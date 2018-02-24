@@ -20,64 +20,75 @@ ObjectManager::ObjectManager(boost::asio::io_service &io_service,
   this->od = od;
 };
 
-void ObjectManager::Terminate() {
+ray::Status ObjectManager::Terminate() {
   this->od->Terminate();
   this->store_client->Terminate();
 };
 
-void ObjectManager::SubscribeObjAdded(void (*callback)(const ObjectID&)) {
+ray::Status ObjectManager::SubscribeObjAdded(void (*callback)(const ObjectID&)) {
   this->store_client->SubscribeObjAdded(callback);
 };
 
-void ObjectManager::SubscribeObjDeleted(void (*callback)(const ObjectID&)) {
+ray::Status ObjectManager::SubscribeObjDeleted(void (*callback)(const ObjectID&)) {
   this->store_client->SubscribeObjDeleted(callback);
 };
 
-void ObjectManager::Push(const ObjectID &object_id,
+ray::Status ObjectManager::Push(const ObjectID &object_id,
                          const ClientID &dbclient_id) {
   this->ExecutePush(object_id, dbclient_id);
 };
 
-void ObjectManager::Pull(const ObjectID &object_id) {
+ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   this->od->GetLocations(object_id,
-                         bind(&ObjectManager::GetLocationsSuccess, this,
-                              placeholders::_1,
-                              placeholders::_2),
-                         bind(&ObjectManager::GetLocationsFailed, this,
-                              placeholders::_1,
-                              placeholders::_2));
+                         [this](const vector<ODRemoteConnectionInfo>& v,
+                             const ObjectID &object_id) {
+                          return this->GetLocationSuccess(v, object_id);
+  } ,
+                         [this](ray::Status status,
+                             const ObjectID &object_id) {
+                          return this->GetLocationsFailed(status, object_id);
+  });
 };
+//                         bind(&ObjectManager::GetLocationsSuccess, this,
+//                              placeholders::_1,
+//                              placeholders::_2),
+//                         bind(&ObjectManager::GetLocationsFailed, this,
+//                              placeholders::_1,
+//                              placeholders::_2));
 
+
+// Private callback implementation for success on get location. Called inside OD.
 void ObjectManager::GetLocationsSuccess(const vector<ray::ODRemoteConnectionInfo> &v,
                                         const ray::ObjectID &object_id) {
   this->ExecutePull(object_id, v.front().dbc_id);
 };
 
+// Private callback impelmentation for failure on get location. Called inside OD.
 void ObjectManager::GetLocationsFailed(Status status,
                                        const ObjectID &object_id){
   throw std::runtime_error("GetLocations Failed.");
 };
 
-void ObjectManager::Pull(const ObjectID &object_id,
+ray::Status ObjectManager::Pull(const ObjectID &object_id,
                          const ClientID &dbclient_id) {
   this->ExecutePull(object_id, dbclient_id);
 };
 
-void ObjectManager::ExecutePull(const ObjectID &object_id,
+ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
                                 const ClientID &dbclient_id) {
   // TODO(hme): Lookup connection and pull.
 };
 
-void ObjectManager::ExecutePush(const ObjectID &object_id,
+ray::Status ObjectManager::ExecutePush(const ObjectID &object_id,
                                 const ClientID &dbclient_id) {
   // TODO(hme): Lookup connection and push.
 };
 
-void ObjectManager::Cancel(const ObjectID &object_id) {
+ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
   this->od->Cancel(object_id);
 };
 
-void ObjectManager::Wait(const list<ObjectID> &object_ids,
+ray::Status ObjectManager::Wait(const list<ObjectID> &object_ids,
                            uint64_t timeout_ms,
                            int num_ready_objects,
                            const WaitCallback &callback) {
