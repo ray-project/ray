@@ -1,4 +1,4 @@
-#include "object_directory.h"
+#include "ray/om/object_directory.h"
 
 namespace ray {
 
