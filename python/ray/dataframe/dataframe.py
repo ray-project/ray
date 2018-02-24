@@ -720,7 +720,6 @@ class DataFrame(object):
             return self
 
         cumulative = np.cumsum(np.array(sizes))
-
         new_dfs = [self._df[i]
                    for i in range(len(cumulative))
                    if cumulative[i] < n]
@@ -731,7 +730,7 @@ class DataFrame(object):
         if last_index == 0:
             num_to_transfer = n
         else:
-            num_to_transfer = n - cumulative[last_index]
+            num_to_transfer = n - cumulative[last_index - 1]
 
         new_dfs.append(_deploy_func.remote(lambda df: df.head(num_to_transfer),
                                            self._df[last_index]))
@@ -1230,7 +1229,7 @@ class DataFrame(object):
         if last_index == 0:
             num_to_transfer = n
         else:
-            num_to_transfer = n - cumulative[last_index]
+            num_to_transfer = n - cumulative[last_index - 1]
 
         new_dfs.append(_deploy_func.remote(lambda df: df.tail(num_to_transfer),
                                            reverse_dfs[last_index])).reverse()

@@ -225,7 +225,7 @@ def test_float_dataframe():
                               'col4': [12.0, 13.0, 14.0, 15.0],
                               'col5': [0.0, 0.0, 0.0, 0.0]})
 
-    ray_df = rdf.from_pandas(pandas_df, 2)
+    ray_df = rdf.from_pandas(pandas_df, 3)
 
     testfuncs = [lambda x: x + 1,
                  lambda x: str(x),
@@ -267,7 +267,7 @@ def test_float_dataframe():
     test___deepcopy__(ray_df, pandas_df)
     test_bool(ray_df, pandas_df)
     test_count(ray_df, pandas_df)
-    test_head(ray_df, pandas_df, 2)
+    test_head(ray_df, pandas_df, 3)
     test_head(ray_df, pandas_df)
     test_tail(ray_df, pandas_df)
     test_idxmax(ray_df, pandas_df)
@@ -324,6 +324,7 @@ def test_mixed_dtype_dataframe():
 
     test_copy(ray_df)
     test_sum(ray_df, pandas_df)
+
     with pytest.raises(TypeError):
         test_abs(ray_df, pandas_df)
 
