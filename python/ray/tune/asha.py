@@ -21,9 +21,6 @@ class ASHAScheduler(FIFOScheduler):
             procedures will use this attribute.
         max_t (int): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
-            The HyperBand scheduler automatically tries to determine a
-            reasonable number of brackets based on this. The scheduler will
-            terminate trials after this time has passed.
     """
 
     def __init__(
@@ -36,7 +33,7 @@ class ASHAScheduler(FIFOScheduler):
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
 
-        self._trial_info = {}  # Stores Trial -> Bracket, Band Iteration
+        self._trial_info = {}  # Stores Trial -> Bracket
 
         # Tracks state for new trial add
         self._state = [_Bracket(grace_period, max_t, reduction_factor, s) for s in range(5)]
@@ -48,15 +45,6 @@ class ASHAScheduler(FIFOScheduler):
         self._trial_info[trial] = np.random.choice(self._state)
 
     def on_trial_result(self, trial_runner, trial, result):
-        """If bracket is finished, all trials will be stopped.
-
-        If a given trial finishes and bracket iteration is not done,
-        the trial will be paused and resources will be given up.
-
-        This scheduler will not start trials but will stop trials.
-        The current running trial will not be handled,
-        as the trialrunner will be given control to handle it."""
-
         if getattr(result, self._time_attr) >= max_t:
             self._num_stopped += 1
             return TrialScheduler.STOP
@@ -75,9 +63,9 @@ class ASHAScheduler(FIFOScheduler):
 
 class _Bracket():
     def __init__(self, min_t, max_t, reduction_factor, s):
-        # TODO(rliaw): from largest to smallest
         MAX_RUNGS = np.log(max_t / min_t, base=reduction_factor) - s + 1
-        self._rungs = [(min_t * reduction_factor**(k + s), {}) for k in range(MAX_RUNGS)]
+        self._rungs = [(min_t * reduction_factor**(k + s), {})
+                       for k in reversed(range(MAX_RUNGS))]
 
     def on_result(self, trial, cur_iter, cur_rew):
         action = TrialScheduler.CONTINUE
