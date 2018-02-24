@@ -57,6 +57,7 @@ typedef UniqueID WorkerID;
 typedef UniqueID DriverID;
 typedef UniqueID DBClientID;
 typedef UniqueID ConfigID;
+typedef UniqueID ClientID;
 
 }  // namespace ray
 

@@ -18,8 +18,8 @@ public:
   // Produces a mapping of tasks to one of three possible destinations:
   // (1) local raylet (to be executed locally), (2) remote raylet,
   /// (3) global scheduler.
-  std::unordered_map<TaskID, DBClientID, UniqueIDHasher> Schedule(
-      const std::unordered_map<DBClientID, LsResources, UniqueIDHasher> &cluster_resources);
+  std::unordered_map<TaskID, ClientID, UniqueIDHasher> Schedule(
+      const std::unordered_map<ClientID, LsResources, UniqueIDHasher> &cluster_resources);
   // Perform a scheduling operation for a single task, given a set of
 
   virtual ~LsPolicy() {}

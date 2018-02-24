@@ -216,7 +216,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   /// @param callback Function to be called when database returns result.
   /// @return Status
   Status SubscribeToTask(const JobID &job_id,
-                         const DBClientID &local_scheduler_id,
+                         const ClientID &local_scheduler_id,
                          int state_filter,
                          const SubscribeToTaskCallback &callback,
                          const Callback &done);
@@ -232,7 +232,7 @@ Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
 Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
                               const TaskID &task_id,
-                              const DBClientID &local_scheduler_id,
+                              const ClientID &local_scheduler_id,
                               int test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);

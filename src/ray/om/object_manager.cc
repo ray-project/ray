@@ -34,7 +34,7 @@ void ObjectManager::SubscribeObjDeleted(void (*callback)(const ObjectID&)) {
 };
 
 void ObjectManager::Push(const ObjectID &object_id,
-                         const DBClientID &dbclient_id) {
+                         const ClientID &dbclient_id) {
   this->ExecutePush(object_id, dbclient_id);
 };
 
@@ -59,17 +59,17 @@ void ObjectManager::GetLocationsFailed(Status status,
 };
 
 void ObjectManager::Pull(const ObjectID &object_id,
-                         const DBClientID &dbclient_id) {
+                         const ClientID &dbclient_id) {
   this->ExecutePull(object_id, dbclient_id);
 };
 
 void ObjectManager::ExecutePull(const ObjectID &object_id,
-                                const DBClientID &dbclient_id) {
+                                const ClientID &dbclient_id) {
   // TODO(hme): Lookup connection and pull.
 };
 
 void ObjectManager::ExecutePush(const ObjectID &object_id,
-                                const DBClientID &dbclient_id) {
+                                const ClientID &dbclient_id) {
   // TODO(hme): Lookup connection and push.
 };
 
