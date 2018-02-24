@@ -10,7 +10,6 @@ using namespace std;
 namespace ray {
 
 class ClientConnection;
-class Worker;
 
 /// WorkerPool class is responsible for managing a pool of workers and
 /// abstracts away the implementation details of workers. From Raylet's
@@ -25,9 +24,9 @@ public:
   /// connects and registers itself.
   bool StartWorker();
   /// Add an idle worker to the pool.
-  void AddWorker(Worker &&worker);
+  void AddWorker(shared_ptr<ClientConnection> worker);
   /// Pop an idle worker from the pool. The pool must be nonempty.
-  Worker PopWorker();
+  shared_ptr<ClientConnection> PopWorker();
   /// Remove the worker with the given connection.
   void RemoveWorker(shared_ptr<ClientConnection> connection);
 
@@ -37,7 +36,7 @@ private:
   /// The initial size of the worker pool. Current size is the size of the
   /// worker pool container.
   int init_size_;
-  std::list<Worker> pool_;
+  list<shared_ptr<ClientConnection>> pool_;
 };
 } // end namespace ray
 

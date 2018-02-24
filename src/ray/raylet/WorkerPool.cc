@@ -26,21 +26,21 @@ uint32_t WorkerPool::PoolSize() const{
   return pool_.size();
 }
 
-void WorkerPool::AddWorker(Worker &&worker) {
-  LOG_INFO("Registering worker with pid %d", worker.Pid());
-  pool_.push_back(std::move(worker));
+void WorkerPool::AddWorker(shared_ptr<ClientConnection> connection) {
+  LOG_INFO("Registering worker with pid %d", connection->GetWorker().Pid());
+  pool_.push_back(connection);
 }
 
-Worker WorkerPool::PopWorker() {
-  Worker worker = std::move(pool_.back());
+shared_ptr<ClientConnection> WorkerPool::PopWorker() {
+  auto worker = std::move(pool_.back());
   pool_.pop_back();
   return worker;
 }
 
 void WorkerPool::RemoveWorker(shared_ptr<ClientConnection> connection) {
   for (auto it = pool_.begin(); it != pool_.end(); it++) {
-    if (it->Connection() == connection) {
-      LOG_INFO("Removing worker with pid %d", it->Pid());
+    if (*it == connection) {
+      LOG_INFO("Removing worker with pid %d", (*it)->GetWorker().Pid());
       pool_.erase(it);
       return;
     }
