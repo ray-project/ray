@@ -305,7 +305,7 @@ class DataFrame(object):
         """
         for t in self.dtypes:
             if np.dtype('O') == t:
-                #TODO Give a more accurate error to Pandas
+                # TODO Give a more accurate error to Pandas
                 raise TypeError("bad operand type for abs():", "str")
         return self._map_partitions(lambda df: df.abs())
 
@@ -547,7 +547,6 @@ class DataFrame(object):
 
     def count(self, axis=0, level=None, numeric_only=False):
         if axis == 1:
-            original_index = self.index
             return self.T.count(axis=0,
                                 level=level,
                                 numeric_only=numeric_only)
