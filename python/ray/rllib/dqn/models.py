@@ -53,9 +53,6 @@ def _build_q_network(registry, inputs, num_actions, config):
     dueling = config["dueling"]
     hiddens = config["hiddens"]  # TODO(ekl)
 
-    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
-    frontend_out = frontend.last_layer
-
     model = baseline_models.cnn_to_mlp(
         convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
         hiddens=[256],
