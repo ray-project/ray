@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 import os
+import time
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
@@ -46,7 +47,10 @@ def traced_run(sess, fetches, feed_dict):
       return results
   else:
       print("skip trace", timeline_counter)
-      return sess.run(fetches, feed_dict=feed_dict)
+      start = time.time()
+      s = sess.run(fetches, feed_dict=feed_dict)
+      print("grad raw time", time.time() - start)
+      return s
 
 
 def _build_q_network(registry, inputs, num_actions, config):
