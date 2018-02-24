@@ -30,10 +30,12 @@ class ObjectStoreClient {
   // Subscribe to notifications of objects added to local store.
   // Upon subscribing, the callback will be invoked for all objects that
   // already exist in the local store.
-  void SubscribeObjAdded(void (*callback)(const ObjectID&));
+  //void SubscribeObjAdded(void (*callback)(const ObjectID&));
+  void SubscribeObjAdded(std::function<void(const ObjectID&)> callback);
 
   // Subscribe to notifications of objects deleted from local store.
-  void SubscribeObjDeleted(void (*callback)(const ObjectID&));
+  //void SubscribeObjDeleted(void (*callback)(const ObjectID&));
+  void SubscribeObjDeleted(std::function<void(const ObjectID&)> callback);
 
   void Terminate();
 

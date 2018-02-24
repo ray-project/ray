@@ -82,12 +82,12 @@ void ObjectStoreClient::ProcessStoreRemove(const ObjectID& object_id){
   this->rem_handler(object_id);
 };
 
-void ObjectStoreClient::SubscribeObjAdded(void (*callback)(const ObjectID&)) {
+void ObjectStoreClient::SubscribeObjAdded(std::function<void(const ObjectID&)> callback) {
   cout << "HandlerAdded" << "\n";
   this->add_handler = callback;
 };
 
-void ObjectStoreClient::SubscribeObjDeleted(void (*callback)(const ObjectID&)) {
+void ObjectStoreClient::SubscribeObjDeleted(std::function<void(const ObjectID&)> callback) {
   this->rem_handler = callback;
 };
 

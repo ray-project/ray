@@ -25,11 +25,12 @@ ray::Status ObjectManager::Terminate() {
   this->store_client->Terminate();
 };
 
-ray::Status ObjectManager::SubscribeObjAdded(void (*callback)(const ObjectID&)) {
+//ray::Status ObjectManager::SubscribeObjAdded(void (*callback)(const ObjectID&)) {
+ray::Status ObjectManager::SubscribeObjAdded(std::function<void(const ObjectID&)> callback) {
   this->store_client->SubscribeObjAdded(callback);
 };
 
-ray::Status ObjectManager::SubscribeObjDeleted(void (*callback)(const ObjectID&)) {
+ray::Status ObjectManager::SubscribeObjDeleted(std::function<void(const ObjectID&)> callback) {
   this->store_client->SubscribeObjDeleted(callback);
 };
 
