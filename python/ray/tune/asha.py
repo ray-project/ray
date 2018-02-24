@@ -31,6 +31,8 @@ class ASHAScheduler(FIFOScheduler):
             reward_attr='episode_reward_mean', max_t=100,
             grace_period=10, reduction_factor=3):
         assert max_t > 0, "Max (time_attr) not valid!"
+        assert grace_period > 0, "Max (time_attr) not valid!"
+        assert reduction_factor > 1, "Reduction Factor not valid!"
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
 
