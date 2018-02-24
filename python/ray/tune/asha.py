@@ -39,7 +39,7 @@ class ASHAScheduler(FIFOScheduler):
         self._trial_info = {}  # Stores Trial -> Bracket, Band Iteration
 
         # Tracks state for new trial add
-        self._state = [Bracket(grace_period, max_t, reduction_factor, s) for s in range(5)]
+        self._state = [_Bracket(grace_period, max_t, reduction_factor, s) for s in range(5)]
         self._num_stopped = 0
         self._reward_attr = reward_attr
         self._time_attr = time_attr
