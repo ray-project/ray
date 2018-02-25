@@ -12,7 +12,7 @@ FLATBUFFERS_VERSION=1.7.1
 # Download and compile flatbuffers if it isn't already present.
 if [ ! -d $TP_DIR/flatbuffers ]; then
   echo "building flatbuffers"
-  wget https://github.com/google/flatbuffers/archive/v$FLATBUFFERS_VERSION.tar.gz -O flatbuffers-$FLATBUFFERS_VERSION.tar.gz
+  curl -sL https://github.com/google/flatbuffers/archive/v$FLATBUFFERS_VERSION.tar.gz -o flatbuffers-$FLATBUFFERS_VERSION.tar.gz
   tar xf flatbuffers-$FLATBUFFERS_VERSION.tar.gz
   rm -rf flatbuffers-$FLATBUFFERS_VERSION.tar.gz
 
