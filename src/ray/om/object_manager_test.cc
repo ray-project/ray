@@ -37,14 +37,25 @@ class TestObjectManager : public ::testing::Test {
     int s = system(plasma_command.c_str());
     ASSERT_TRUE(!s);
 
-    // start om
+    // start mock gcs
+    mock_gcs_client = shared_ptr<GcsClient>(new GcsClient());
+    // mock_gcs_client->Register();
+
+    // start nodeserver
+
+    // start om 1
     OMConfig config;
     config.store_socket_name = "/tmp/store";
-
-    mock_gcs_client = shared_ptr<GcsClient>(new GcsClient());
     shared_ptr<ObjectDirectory> od = shared_ptr<ObjectDirectory>(new ObjectDirectory());
     od->InitGcs(mock_gcs_client);
     om = unique_ptr<ObjectManager>(new ObjectManager(io_service, config, od));
+
+    //start om 2
+    OMConfig config2;
+    config2.store_socket_name = "/tmp/store";
+    shared_ptr<ObjectDirectory> od2 = shared_ptr<ObjectDirectory>(new ObjectDirectory());
+    od2->InitGcs(mock_gcs_client);
+    om2 = unique_ptr<ObjectManager>(new ObjectManager(io_service, config2, od2));
 
     // start client connection
     ARROW_CHECK_OK(client_.Connect("/tmp/store", "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -57,6 +68,7 @@ class TestObjectManager : public ::testing::Test {
     this->StopLoop();
     client_.Disconnect();
     om->Terminate();
+    om2->Terminate();
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
   }
@@ -80,16 +92,17 @@ class TestObjectManager : public ::testing::Test {
   plasma::PlasmaClient client2_;
   boost::asio::io_service io_service;
 
-  unique_ptr<ObjectManager> om;
   shared_ptr<GcsClient> mock_gcs_client;
+  unique_ptr<ObjectManager> om;
+  unique_ptr<ObjectManager> om2;
 
 };
 
-//TEST_F(TestObjectManager, TestPush) {
-//  // test object push between two object managers.
-//  ASSERT_TRUE(true);
-//  sleep(1);
-//}
+TEST_F(TestObjectManager, TestPush) {
+  // test object push between two object managers.
+  ASSERT_TRUE(true);
+  sleep(1);
+}
 
 //TEST_F(TestObjectManager, TestPull) {
 //  ObjectID object_id = ObjectID().from_random();
@@ -106,22 +119,22 @@ void ObjectAdded(const ObjectID &object_id){
   cout << "ObjectID Added: " << object_id.hex().c_str() << endl;
 }
 
-TEST_F(TestObjectManager, TestNotifications) {
-  om->SubscribeObjAdded(ObjectAdded);
-  // put object
-  for(int i=-1;++i<10;){
-    ObjectID object_id = ObjectID::from_random();
-    cout << "ObjectID Created: " << object_id.hex().c_str() << endl;
-    int64_t data_size = 100;
-    uint8_t metadata[] = {5};
-    int64_t metadata_size = sizeof(metadata);
-    std::shared_ptr<Buffer> data;
-    ARROW_CHECK_OK(client_.Create(object_id.to_plasma_id(), data_size, metadata, metadata_size, &data));
-    ARROW_CHECK_OK(client_.Seal(object_id.to_plasma_id()));
-  }
-  // TODO(hme): Can we do this without sleeping?
-  sleep(1);
-}
+//TEST_F(TestObjectManager, TestNotifications) {
+//  om->SubscribeObjAdded(ObjectAdded);
+//  // put object
+//  for(int i=-1;++i<10;){
+//    ObjectID object_id = ObjectID::from_random();
+//    cout << "ObjectID Created: " << object_id.hex().c_str() << endl;
+//    int64_t data_size = 100;
+//    uint8_t metadata[] = {5};
+//    int64_t metadata_size = sizeof(metadata);
+//    std::shared_ptr<Buffer> data;
+//    ARROW_CHECK_OK(client_.Create(object_id.to_plasma_id(), data_size, metadata, metadata_size, &data));
+//    ARROW_CHECK_OK(client_.Seal(object_id.to_plasma_id()));
+//  }
+//  // TODO(hme): Can we do this without sleeping?
+//  sleep(1);
+//}
 
 } // namespace ray
 
