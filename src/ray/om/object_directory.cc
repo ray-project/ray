@@ -32,7 +32,7 @@ namespace ray {
     for (const auto& client_id: client_ids) {
       const auto &client_info = this->gcs_client->client_table().GetClientInformation(client_id);
       ODRemoteConnectionInfo info = ODRemoteConnectionInfo(
-          client_id, client_info.GetIpAddress(), client_info.GetIpPort());
+          client_id, client_info.GetIp(), client_info.GetPort());
       v.push_back(info);
     }
     return GetLocationsComplete(Status::OK(), object_id, v);

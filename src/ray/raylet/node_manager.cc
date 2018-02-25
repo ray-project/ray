@@ -12,13 +12,17 @@ namespace ray {
 
 NodeServer::NodeServer(boost::asio::io_service& io_service,
                        const std::string &socket_name,
-                       const ResourceSet &resource_config)
+                       const ResourceSet &resource_config,
+                       const OMConfig &om_config,
+                       shared_ptr<ray::GcsClient> gcs_client,
+                       shared_ptr<ray::ObjectDirectory> od)
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),
       tcp_acceptor_(io_service, ip::tcp::endpoint(ip::tcp::v4(), 0)),
       tcp_socket_(io_service),
-      object_manager_(),
-      local_scheduler_(socket_name, resource_config, object_manager_) {
+      object_manager_(io_service, om_config, od),
+      local_scheduler_(socket_name, resource_config, object_manager_),
+      gcs_client_(gcs_client) {
   RegisterGcs();
   // Start listening for clients.
   DoAccept();
@@ -26,9 +30,13 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
 }
 
 void NodeServer::RegisterGcs(){
-//  ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
-//  std::string ip = endpoint.address().to_string();
-//  ushort port = endpoint.port();
+  ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
+  std::string ip = endpoint.address().to_string();
+  ushort port = endpoint.port();
+  ray::Status status = gcs_client_->Register(ip, (int) port);
+  if(!status.ok()){
+    throw std::runtime_error("Error registering with gcs.");
+  }
 }
 
 void NodeServer::DoAcceptTcp() {

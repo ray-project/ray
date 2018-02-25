@@ -4,9 +4,9 @@
 using namespace std;
 namespace ray {
 
-class ObjectManager {
+class ObjectManagerTemp {
  public:
-  ObjectManager() {}
+  ObjectManagerTemp() {}
 };
 
 } // end namespace ray

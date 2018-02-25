@@ -8,7 +8,7 @@ namespace ray {
 
 
 TaskDependencyManager::TaskDependencyManager(
-  ObjectManager &object_manager,
+    ObjectManager &object_manager,
   ReconstructionPolicy &reconstruction_policy)
     : object_manager_(object_manager),
       reconstruction_policy_(reconstruction_policy) {

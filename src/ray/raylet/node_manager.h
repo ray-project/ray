@@ -7,7 +7,7 @@
 #include <boost/asio/error.hpp>
 
 #include "local_scheduler.h"
-#include "object_manager.h"
+#include "ray/om/object_manager.h"
 #include "LsResources.h"
 
 namespace ray {
@@ -20,7 +20,10 @@ class NodeServer {
   /// Create a node manager server and listen for new clients.
   NodeServer(boost::asio::io_service& io_service,
              const std::string &socket_name,
-             const ResourceSet &resource_config);
+             const ResourceSet &resource_config,
+             const OMConfig &om_config,
+             shared_ptr<ray::GcsClient> gcs_client,
+             shared_ptr<ray::ObjectDirectory> od);
  private:
   /// Accept a client connection.
   void DoAccept();
@@ -50,6 +53,7 @@ class NodeServer {
   ObjectManager object_manager_;
   // Manages client requests for task submission and execution.
   LocalScheduler local_scheduler_;
+  shared_ptr<ray::GcsClient> gcs_client_;
 };
 
 } // end namespace ray

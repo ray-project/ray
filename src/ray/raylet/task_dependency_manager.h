@@ -4,12 +4,11 @@
 
 #include "ray/id.h"
 #include "Task.h"
-#include "object_manager.h"
+#include "ray/om/object_manager.h"
 #include "reconstruction_policy.h"
 
 namespace ray {
 
-class ObjectManager;
 class ReconstructionPolicy;
 
 class TaskDependencyManager {
