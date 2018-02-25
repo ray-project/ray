@@ -12,6 +12,8 @@ def get_ssh_user():
     return getpass.getuser()
 
 
+# TODO(ekl) this currently only works for clusters launched with
+# ray create_or_update
 def get_ssh_key():
     """Returns ssh key to connecting to cluster workers."""
 

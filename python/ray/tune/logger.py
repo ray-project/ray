@@ -106,8 +106,7 @@ class _JsonLogger(Logger):
 
 def to_tf_values(result, path):
     values = []
-    for attr in result.keys():
-        value = result[attr]
+    for attr, value in in result.items():
         if value is not None:
             if type(value) in [int, float]:
                 values.append(tf.Summary.Value(
