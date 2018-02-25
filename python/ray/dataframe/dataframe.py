@@ -1349,8 +1349,8 @@ class DataFrame(object):
             append (boolean): Whether to append columns to existing index.
             inplace (boolean): Modify the DataFrame in place.
             verify_integrity (boolean): Check the new index for duplicates.
-                Otherwise defer the check until necessary. Setting to False will
-                improve the performance of this method
+                Otherwise defer the check until necessary. Setting to False
+                will improve the performance of this method
 
         Returns:
             If inplace is set to false returns a new DataFrame, otherwise None.

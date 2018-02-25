@@ -239,6 +239,7 @@ def test_int_dataframe():
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
 
+
 def test_float_dataframe():
 
     pandas_df = pd.DataFrame({'col1': [0.0, 1.0, 2.0, 3.0],
