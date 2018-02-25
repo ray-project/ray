@@ -10,32 +10,32 @@ namespace ray {
 
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              OMConfig config) {
-  this->store_client = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
+  this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
   this->od = unique_ptr<ObjectDirectory>(new ObjectDirectory());
 };
 
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              OMConfig config,
                              shared_ptr<ObjectDirectoryInterface> od) {
-  this->store_client = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
+  this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
   this->od = od;
 };
 
 ray::Status ObjectManager::Terminate() {
   ray::Status status_code = this->od->Terminate();
   // TODO: evaluate store client termination status.
-  this->store_client->Terminate();
+  this->store_client_->Terminate();
   return status_code;
 };
 
 //ray::Status ObjectManager::SubscribeObjAdded(void (*callback)(const ObjectID&)) {
 ray::Status ObjectManager::SubscribeObjAdded(std::function<void(const ObjectID&)> callback) {
-  this->store_client->SubscribeObjAdded(callback);
+  this->store_client_->SubscribeObjAdded(callback);
   return ray::Status::OK();
 };
 
 ray::Status ObjectManager::SubscribeObjDeleted(std::function<void(const ObjectID&)> callback) {
-  this->store_client->SubscribeObjDeleted(callback);
+  this->store_client_->SubscribeObjDeleted(callback);
   return ray::Status::OK();
 };
 
@@ -61,7 +61,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 // Private callback implementation for success on get location. Called inside OD.
 void ObjectManager::GetLocationsSuccess(const vector<ray::ODRemoteConnectionInfo> &v,
                                         const ray::ObjectID &object_id) {
-  ray::Status status_code = this->ExecutePull(object_id, v.front().client_id);
+  const ODRemoteConnectionInfo &info = v.front();
+  ray::Status status_code = this->ExecutePull(object_id, info.client_id);
 };
 
 // Private callback impelmentation for failure on get location. Called inside OD.
@@ -71,19 +72,27 @@ void ObjectManager::GetLocationsFailed(ray::Status status,
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id,
-                                const ClientID &dbclient_id) {
-  return this->ExecutePull(object_id, dbclient_id);
+                                const ClientID &client_id) {
+  return this->ExecutePull(object_id, client_id);
 };
 
 ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
-                                       const ClientID &dbclient_id) {
-  // TODO(hme): Lookup connection and pull.
+                                       const ClientID &client_id) {
+  GetMsgConnection(
+      client_id,
+      [this](TCPClientConnection::pointer sock){
+        // pull
+      });
   return ray::Status::OK();
 };
 
 ray::Status ObjectManager::ExecutePush(const ObjectID &object_id,
-                                       const ClientID &dbclient_id) {
-  // TODO(hme): Lookup connection and push.
+                                       const ClientID &client_id) {
+  GetMsgConnection(
+      client_id,
+      [this](TCPClientConnection::pointer sock){
+        // push
+      });
   return ray::Status::OK();
 };
 
