@@ -194,6 +194,7 @@ def test_int_dataframe():
     test___deepcopy__(ray_df, pandas_df)
     test_bool(ray_df, pandas_df)
     test_count(ray_df, pandas_df)
+    test_head(ray_df, pandas_df, 2)
     test_head(ray_df, pandas_df)
     test_tail(ray_df, pandas_df)
     test_idxmax(ray_df, pandas_df)
@@ -224,7 +225,7 @@ def test_float_dataframe():
                               'col4': [12.0, 13.0, 14.0, 15.0],
                               'col5': [0.0, 0.0, 0.0, 0.0]})
 
-    ray_df = rdf.from_pandas(pandas_df, 2)
+    ray_df = rdf.from_pandas(pandas_df, 3)
 
     testfuncs = [lambda x: x + 1,
                  lambda x: str(x),
@@ -266,6 +267,7 @@ def test_float_dataframe():
     test___deepcopy__(ray_df, pandas_df)
     test_bool(ray_df, pandas_df)
     test_count(ray_df, pandas_df)
+    test_head(ray_df, pandas_df, 3)
     test_head(ray_df, pandas_df)
     test_tail(ray_df, pandas_df)
     test_idxmax(ray_df, pandas_df)
@@ -322,24 +324,46 @@ def test_mixed_dtype_dataframe():
 
     test_copy(ray_df)
     test_sum(ray_df, pandas_df)
+
+    with pytest.raises(TypeError):
+        test_abs(ray_df, pandas_df)
+
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test_round(ray_df, pandas_df)
+
+    test_all(ray_df, pandas_df)
+    test_any(ray_df, pandas_df)
+    test___getitem__(ray_df, pandas_df)
+    test___delitem__(ray_df, pandas_df)
+    test___copy__(ray_df, pandas_df)
+    test___deepcopy__(ray_df, pandas_df)
+    test_bool(ray_df, pandas_df)
+    test_count(ray_df, pandas_df)
+    test_head(ray_df, pandas_df, 2)
+    test_head(ray_df, pandas_df)
+    test_tail(ray_df, pandas_df)
+
+    with pytest.raises(TypeError):
+        test_idxmax(ray_df, pandas_df)
+    with pytest.raises(TypeError):
+        test_idxmin(ray_df, pandas_df)
+
+    test_pop(ray_df, pandas_df)
+    test_max(ray_df, pandas_df)
+    test_min(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
+    test_notnull(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
-    test_items(ray_df, pandas_df)
     test_iterrows(ray_df, pandas_df)
     test_items(ray_df, pandas_df)
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
-
-    test_max(ray_df, pandas_df)
-    test_min(ray_df, pandas_df)
-    test_notna(ray_df, pandas_df)
-    test_notnull(ray_df, pandas_df)
 
 
 def test_nan_dataframe():
@@ -377,14 +401,39 @@ def test_nan_dataframe():
 
     test_copy(ray_df)
     test_sum(ray_df, pandas_df)
+    test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test_round(ray_df, pandas_df)
+
+    test_all(ray_df, pandas_df)
+    test_any(ray_df, pandas_df)
+    test___getitem__(ray_df, pandas_df)
+    test___delitem__(ray_df, pandas_df)
+    test___copy__(ray_df, pandas_df)
+    test___deepcopy__(ray_df, pandas_df)
+    test_bool(ray_df, pandas_df)
+    test_count(ray_df, pandas_df)
+    test_head(ray_df, pandas_df, 2)
+    test_head(ray_df, pandas_df)
+    test_tail(ray_df, pandas_df)
+    test_idxmax(ray_df, pandas_df)
+    test_idxmin(ray_df, pandas_df)
+    test_pop(ray_df, pandas_df)
+    test_max(ray_df, pandas_df)
+    test_min(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
+    test_notnull(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
+    test_iterrows(ray_df, pandas_df)
+    test_items(ray_df, pandas_df)
+    test_iteritems(ray_df, pandas_df)
+    test_itertuples(ray_df, pandas_df)
 
 
 def test_add():
@@ -816,8 +865,8 @@ def test_gt():
 
 
 @pytest.fixture
-def test_head(ray_df, pandas_df):
-    ray_df_equals_pandas(ray_df.head(), pandas_df.head())
+def test_head(ray_df, pandas_df, n=5):
+    ray_df_equals_pandas(ray_df.head(n), pandas_df.head(n))
 
 
 def test_hist():
@@ -906,7 +955,7 @@ def test_itertuples(ray_df, pandas_df):
     ray_it_default = ray_df.itertuples()
     pandas_it_default = pandas_df.itertuples()
     for ray_row, pandas_row in zip(ray_it_default, pandas_it_default):
-        assert ray_row == pandas_row
+        np.testing.assert_equal(ray_row, pandas_row)
 
     # test all combinations of custom params
     indices = [True, False]
@@ -917,7 +966,7 @@ def test_itertuples(ray_df, pandas_df):
             ray_it_custom = ray_df.itertuples(index=index, name=name)
             pandas_it_custom = pandas_df.itertuples(index=index, name=name)
             for ray_row, pandas_row in zip(ray_it_custom, pandas_it_custom):
-                assert ray_row == pandas_row
+                np.testing.assert_equal(ray_row, pandas_row)
 
 
 def test_join():
