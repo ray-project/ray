@@ -15,9 +15,11 @@
 namespace ray {
 
 struct ODRemoteConnectionInfo {
+  ODRemoteConnectionInfo(const ClientID &id, const std::string &ipaddr, int portnum):
+    client_id(id), ip(ipaddr), port(portnum) {}
   ClientID client_id;
   std::string ip;
-  std::string port;
+  int port;
 };
 
 // Connection information for remote object managers.

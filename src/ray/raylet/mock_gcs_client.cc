@@ -1,4 +1,4 @@
-#include <ray/raylet/mock_gcs_client.h>
+#include "ray/raylet/mock_gcs_client.h"
 
 namespace ray {
 
@@ -35,16 +35,16 @@ const ClientInformation &ClientTable::GetClientInformation(const ClientID &clien
   if (info_lookup.count(client_id) == 0){
     throw std::runtime_error("ClientID doesn't exist.");
   }
-  return info_lookup[client_id];
+  return info_lookup.at(client_id);
 }
 
 ray::Status ClientTable::Add(const ClientID &client_id,
-                             const std::string ip,
+                             const std::string &ip,
                              int port){
   if (info_lookup.count(client_id) != 0){
     return ray::Status::KeyError("ClientID already exists.");
   }
-  info_lookup[client_id] = std::move(ClientInformation(client_id, ip, port));
+  info_lookup.emplace(client_id, ClientInformation(client_id, ip, port));
   return ray::Status::OK();
 };
 
@@ -57,8 +57,8 @@ ray::Status ClientTable::Remove(const ClientID &client_id){
 };
 
 
-void GcsClient::Register(const std::string &ip, int port) {
-  client_table()->Add(ClientID().from_random(), ip, port);
+ray::Status GcsClient::Register(const std::string &ip, int port) {
+  return client_table()->Add(ClientID().from_random(), ip, port);
 };
 
 std::unique_ptr<ObjectTable> &GcsClient::object_table(){

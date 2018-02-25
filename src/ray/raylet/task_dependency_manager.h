@@ -7,7 +7,6 @@
 #include "object_manager.h"
 #include "reconstruction_policy.h"
 
-using namespace std;
 namespace ray {
 
 class ObjectManager;
