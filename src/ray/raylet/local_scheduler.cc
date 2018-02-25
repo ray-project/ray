@@ -110,7 +110,6 @@ void LocalScheduler::assignTask(Task& task) {
   // TODO(swang): Acquire resources for the task.
   //local_resources_.Acquire(task.GetTaskSpecification().GetRequiredResources());
 
-  // Send the task to the worker.
   flatbuffers::FlatBufferBuilder fbb;
   const TaskSpecification &spec = task.GetTaskSpecification();
   auto message =
@@ -118,10 +117,6 @@ void LocalScheduler::assignTask(Task& task) {
                          fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
   worker->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(), fbb.GetBufferPointer());
-  // Set the worker's assigned task.
-  Worker worker_information = worker->GetWorker();
-  worker->SetWorker(Worker(worker_information.Pid(), spec.TaskId()));
-  // Mark the task as running.
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
 }
 
