@@ -30,14 +30,12 @@ namespace ray {
     std::unordered_set<ClientID, UniqueIDHasher> client_ids = this->gcs_client->object_table()->GetObjectClientIDs(object_id);
     vector<ODRemoteConnectionInfo> v;
     for (const auto& client_id: client_ids) {
-      ClientInformation client_info = this->gcs_client->client_table()->GetClientInformation(client_id);
-      ODRemoteConnectionInfo info = ODRemoteConnectionInfo();
-      info.ip = client_info.GetIpAddress();
-      info.port = client_info.GetIpPort();
+      const auto &client_info = this->gcs_client->client_table()->GetClientInformation(client_id);
+      ODRemoteConnectionInfo info = ODRemoteConnectionInfo(
+          client_id, client_info.GetIpAddress(), client_info.GetIpPort());
       v.push_back(info);
     }
-    GetLocationsComplete(Status::OK(), object_id, v);
-    return ray::Status::OK();
+    return GetLocationsComplete(Status::OK(), object_id, v);
   };
 
   ray::Status ObjectDirectory::GetLocationsComplete(ray::Status status,

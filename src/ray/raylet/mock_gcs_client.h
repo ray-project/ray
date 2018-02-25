@@ -1,7 +1,7 @@
 #ifndef RAY_MOCK_GCS_CLIENT_H
 #define RAY_MOCK_GCS_CLIENT_H
 
-#include <memory>
+//#include <memory>
 #include <cstdint>
 #include <vector>
 #include <map>
@@ -44,11 +44,8 @@ class ClientInformation {
 
  public:
 
-  ClientInformation(const ClientID &client_id, const std::string &ip, int port){
-    client_id_ = client_id;
-    ip_ = ip;
-    port_ = port;
-  }
+  ClientInformation(const ClientID &client_id, const std::string &ip, int port):
+  client_id_(client_id), ip_(ip), port_(port) {}
 
   const ClientID &GetClientId() const {
     return client_id_;
@@ -75,7 +72,7 @@ class ClientTable {
   const ClientInformation &GetClientInformation(const ClientID &client_id);
 
   ray::Status Add(const ClientID &client_id,
-                  const std::string ip,
+                  const std::string &ip,
                   int port);
 
   ray::Status Remove(const ClientID &client_id);
@@ -97,7 +94,7 @@ class GcsClient {
   // ray::Status Connect(const std::string &address, int port);
 
   // Register the ip and port of the connecting client.
-  void Register(const std::string &ip, int port);
+  ray::Status Register(const std::string &ip, int port);
 
   std::unique_ptr<ObjectTable> &object_table();
   std::unique_ptr<ClientTable> &client_table();
