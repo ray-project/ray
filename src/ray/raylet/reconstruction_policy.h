@@ -8,6 +8,8 @@
 using namespace std;
 namespace ray {
 
+// TODO(swang): Use std::function instead of boost.
+
 class ReconstructionPolicy {
  public:
   // TODO(swang): This requires at minimum references to the Raylet's lineage
