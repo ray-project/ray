@@ -93,22 +93,12 @@ const Worker &ClientConnection::GetWorker() const {
 }
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(pid_t pid)
-  : pid_(pid),
-    assigned_task_id_(TaskID::nil()) {
-}
-
-Worker::Worker(pid_t pid, TaskID assigned_task_id)
-  : pid_(pid),
-    assigned_task_id_(assigned_task_id) {
+Worker::Worker(pid_t pid) {
+  pid_ = pid;
 }
 
 pid_t Worker::Pid() const {
   return pid_;
-}
-
-TaskID Worker::AssignedTaskId() const {
-  return assigned_task_id_;
 }
 
 } // end namespace ray
