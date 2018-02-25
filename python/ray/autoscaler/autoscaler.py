@@ -70,6 +70,13 @@ CLUSTER_CONFIG_SCHEMA = {
         "container_name": (str, OPTIONAL),  # e.g., ray_docker
     }, OPTIONAL),
 
+    # Docker configuration. If this is specified, all setup and start commands
+    # will be executed in the container.
+    "docker": {
+        "image": str,  # e.g. tensorflow/tensorflow:1.5.0-py3
+        "container_name": str
+    },
+
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": (dict, OPTIONAL),
 

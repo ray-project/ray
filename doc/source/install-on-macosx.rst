@@ -26,9 +26,9 @@ To build Ray, first install the following dependencies. We recommend using
 .. code-block:: bash
 
   brew update
-  brew install cmake pkg-config automake autoconf libtool boost wget
+  brew install cmake pkg-config automake autoconf libtool boost openssl bison wget
 
-  pip install numpy funcsigs click colorama psutil redis flatbuffers cython --ignore-installed six
+  pip install cython
 
 If you are using Anaconda, you may also need to run the following.
 
@@ -46,7 +46,7 @@ Ray can be built from the repository as follows.
 
   git clone https://github.com/ray-project/ray.git
   cd ray/python
-  python setup.py install  # Add --user if you see a permission denied error.
+  pip install -e . --verbose  # Add --user if you see a permission denied error.
 
 Alternatively, Ray can be built from the repository without cloning using pip.
 

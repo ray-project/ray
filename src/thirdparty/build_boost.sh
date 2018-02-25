@@ -28,6 +28,6 @@ if [[ ! -d $TP_DIR/boost ]]; then
   # Compile boost.
   pushd $TP_DIR/boost_$BOOST_VERSION_UNDERSCORE
     ./bootstrap.sh
-    ./bjam cxxflags=-fPIC cflags=-fPIC --prefix=$TP_DIR/boost --with-filesystem --with-system install > /dev/null
+    ./bjam cxxflags=-fPIC cflags=-fPIC variant=release link=static --prefix=$TP_DIR/boost --with-filesystem --with-system --with-regex install > /dev/null
   popd
 fi

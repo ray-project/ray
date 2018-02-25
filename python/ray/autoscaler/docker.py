@@ -3,7 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from shlex import quote
+try:  # py3
+    from shlex import quote
+except ImportError:  # py2
+    from pipes import quote
 
 
 def dockerize_if_needed(config):

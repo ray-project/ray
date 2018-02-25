@@ -1038,12 +1038,10 @@ def _initialize_serialization(worker=global_worker):
     This defines a custom serializer for object IDs and also tells ray to
     serialize several exception classes that we define for error handling.
     """
-    worker.serialization_context = pyarrow.SerializationContext()
+    worker.serialization_context = pyarrow.default_serialization_context()
     # Tell the serialization context to use the cloudpickle version that we
     # ship with Ray.
     worker.serialization_context.set_pickle(pickle.dumps, pickle.loads)
-    pyarrow.register_default_serialization_handlers(
-        worker.serialization_context)
     pyarrow.register_torch_serialization_handlers(worker.serialization_context)
 
     # Define a custom serializer and deserializer for handling Object IDs.
