@@ -344,9 +344,10 @@ def test_mixed_dtype_dataframe():
     test_head(ray_df, pandas_df)
     test_tail(ray_df, pandas_df)
 
-    # TODO Figure out how to handle these errors
-    # test_idxmax(ray_df, pandas_df)
-    # test_idxmin(ray_df, pandas_df)
+    with pytest.raises(TypeError):
+        test_idxmax(ray_df, pandas_df)
+    with pytest.raises(TypeError):
+        test_idxmin(ray_df, pandas_df)
 
     test_pop(ray_df, pandas_df)
     test_max(ray_df, pandas_df)
