@@ -1171,14 +1171,15 @@ class DataFrame(object):
         Args:
             level: Only remove the given levels from the index. Removes all
                 levels by default
-            drop: Do not try to insert index into dataframe columns. This resets
-                the index to the default integer index.
+            drop: Do not try to insert index into dataframe columns. This
+                resets the index to the default integer index.
             inplace: Modify the DataFrame in place (do not create a new object)
             col_level : If the columns have multiple levels, determines which
-                level the labels are inserted into. By default it is inserted into
-                the first level.
+                level the labels are inserted into. By default it is inserted
+                into the first level.
             col_fill: If the columns have multiple levels, determines how the
-                other levels are named. If None then the index name is repeated.
+                other levels are named. If None then the index name is
+                repeated.
 
         Returns:
             A new DataFrame if inplace is False, None otherwise.
