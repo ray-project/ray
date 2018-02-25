@@ -1,6 +1,6 @@
 cluster_name: apex2
-min_workers: 8
-max_workers: 8
+min_workers: 2
+max_workers: 2
 target_utilization_fraction: 0.8
 idle_timeout_minutes: 5
 provider:
@@ -10,7 +10,7 @@ provider:
 auth:
     ssh_user: ubuntu
 head_node:
-    InstanceType: p3.8xlarge
+    InstanceType: p3.2xlarge
     ImageId: ami-15b6ae6f
 worker_nodes:
     InstanceType: m4.4xlarge
