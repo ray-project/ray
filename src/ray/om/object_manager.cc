@@ -1,3 +1,4 @@
+#include <iostream>
 #include "object_store_client.h"
 #include "object_directory.h"
 #include "object_manager.h"

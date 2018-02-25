@@ -58,15 +58,15 @@ ray::Status ClientTable::Remove(const ClientID &client_id){
 
 
 ray::Status GcsClient::Register(const std::string &ip, int port) {
-  return client_table()->Add(ClientID().from_random(), ip, port);
+  return client_table().Add(ClientID().from_random(), ip, port);
 };
 
-std::unique_ptr<ObjectTable> &GcsClient::object_table(){
-  return object_table_;
+ObjectTable &GcsClient::object_table(){
+  return *object_table_;
 };
 
-std::unique_ptr<ClientTable> &GcsClient::client_table(){
-  return client_table_;
+ClientTable &GcsClient::client_table(){
+  return *client_table_;
 };
 
 };

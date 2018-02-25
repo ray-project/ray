@@ -40,9 +40,11 @@ class TestObjectManager : public ::testing::Test {
     // start om
     OMConfig config;
     config.store_socket_name = "/tmp/store";
-    shared_ptr<ObjectDirectory> od;
+
+    mock_gcs_client = shared_ptr<GcsClient>(new GcsClient());
+    shared_ptr<ObjectDirectory> od = shared_ptr<ObjectDirectory>(new ObjectDirectory());
     od->InitGcs(mock_gcs_client);
-    om = unique_ptr<ObjectManager>(new ObjectManager(io_service, config));
+    om = unique_ptr<ObjectManager>(new ObjectManager(io_service, config, od));
 
     // start client connection
     ARROW_CHECK_OK(client_.Connect("/tmp/store", "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -83,16 +85,22 @@ class TestObjectManager : public ::testing::Test {
 
 };
 
-TEST_F(TestObjectManager, TestPull) {
-  ObjectID object_id = ObjectID().from_random();
-  DBClientID dbc_id = DBClientID().from_random();
-  cout << "ObjectID: " << object_id.hex().c_str() << endl;
-  cout << "DBClientID: " << dbc_id.hex().c_str() << endl;
-  om->Pull(object_id, dbc_id);
-  om->Pull(object_id);
-  ASSERT_TRUE(true);
-  sleep(1);
-}
+//TEST_F(TestObjectManager, TestPush) {
+//  // test object push between two object managers.
+//  ASSERT_TRUE(true);
+//  sleep(1);
+//}
+
+//TEST_F(TestObjectManager, TestPull) {
+//  ObjectID object_id = ObjectID().from_random();
+//  DBClientID dbc_id = DBClientID().from_random();
+//  cout << "ObjectID: " << object_id.hex().c_str() << endl;
+//  cout << "DBClientID: " << dbc_id.hex().c_str() << endl;
+//  om->Pull(object_id, dbc_id);
+//  om->Pull(object_id);
+//  ASSERT_TRUE(true);
+//  sleep(1);
+//}
 
 void ObjectAdded(const ObjectID &object_id){
   cout << "ObjectID Added: " << object_id.hex().c_str() << endl;
