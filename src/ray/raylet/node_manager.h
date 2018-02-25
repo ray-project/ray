@@ -10,7 +10,6 @@
 #include "object_manager.h"
 #include "LsResources.h"
 
-using namespace std;
 namespace ray {
 
 class Task;
@@ -24,14 +23,25 @@ class NodeServer {
              const ResourceSet &resource_config);
  private:
   /// Accept a client connection.
-  void doAccept();
+  void DoAccept();
   /// Handle an accepted client connection.
-  void handleAccept(const boost::system::error_code& error);
+  void HandleAccept(const boost::system::error_code &error);
+  /// Accept a tcp client connection.
+  void DoAcceptTcp();
+  /// Handle an accepted tcp client connection.
+  void HandleAcceptTcp(TCPClientConnection::pointer new_connection,
+                       const boost::system::error_code& error);
+
+  void RegisterGcs();
 
   /// An acceptor for new clients.
   boost::asio::local::stream_protocol::acceptor acceptor_;
   /// The socket to listen on for new clients.
   boost::asio::local::stream_protocol::socket socket_;
+  /// An acceptor for new tcp clients.
+  boost::asio::ip::tcp::acceptor tcp_acceptor_;
+  /// The socket to listen on for new tcp clients.
+  boost::asio::ip::tcp::socket tcp_socket_;
 
   // TODO(swang): Object directory.
   // TODO(swang): GCS client.

@@ -3,6 +3,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
+#include <boost/enable_shared_from_this.hpp>
 #include <memory>
 
 namespace ray {
@@ -41,6 +42,19 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection> {
   int64_t type_;
   uint64_t length_;
   std::vector<uint8_t> message_;
+};
+
+class TCPClientConnection : public boost::enable_shared_from_this<TCPClientConnection> {
+
+ public:
+  typedef boost::shared_ptr<TCPClientConnection> pointer;
+  static pointer Create(boost::asio::io_service& io_service);
+  boost::asio::ip::tcp::socket& GetSocket();
+
+  TCPClientConnection(boost::asio::io_service& io_service);
+ private:
+  boost::asio::ip::tcp::socket socket_;
+
 };
 
 } // end namespace ray

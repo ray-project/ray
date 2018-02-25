@@ -4,7 +4,9 @@
 
 #include "node_manager.h"
 
-boost::asio::io_service io_service;
+namespace ray {
+
+std::string test_executable;  // NOLINT
 
 class TestNodeManager : public ::testing::Test {
 public:
@@ -22,4 +24,6 @@ public:
 
 TEST_F(TestNodeManager, TestNodeManagerCommands) {
   ASSERT_TRUE(true);
+}
+
 }
