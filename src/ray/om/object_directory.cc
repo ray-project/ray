@@ -4,22 +4,16 @@ using namespace std;
 
 namespace ray {
 
-  // TODO(hme): Implement using GCS for object lookup.
-  ObjectDirectory::ObjectDirectory(){
-    this->InitGcs();
-  }
+  ObjectDirectory::ObjectDirectory(){}
 
-  void ObjectDirectory::InitGcs(){
-
+  void ObjectDirectory::InitGcs(std::shared_ptr<GcsClient> gcs_client){
+    this->gcs_client = gcs_client;
   };
 
   ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
                                             const SuccessCallback &success_cb,
                                             const FailureCallback &fail_cb) {
-    if(info_cache_.count(object_id) > 0){
-      // TODO(hme): Disable cache once GCS is implemented.
-      success_cb(info_cache_[object_id], object_id);
-    } else if (existing_requests_.count(object_id) == 0) {
+    if (existing_requests_.count(object_id) == 0) {
       existing_requests_[object_id] = ODCallbacks({success_cb, fail_cb});;
       ExecuteGetLocations(object_id);
     } else {
@@ -29,12 +23,16 @@ namespace ray {
   };
 
   ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id){
-//    vector<ODRemoteConnectionInfo> v;
-//    ODRemoteConnectionInfo info = ODRemoteConnectionInfo();
-//    info.port = "123";
-//    info.ip = "127.0.0.1";
-//    v.push_back(info);
-    // TODO: Asynchronously obtain remote connection info about nodes that contain ObjectID.
+    std::unordered_set<ClientID, UniqueIDHasher> client_ids = this->gcs_client->object_table()->GetObjectClientIDs(object_id);
+    vector<ODRemoteConnectionInfo> v;
+    for (const auto& client_id: client_ids) {
+      ClientInformation client_info = this->gcs_client->client_table()->GetClientInformation(client_id);
+      ODRemoteConnectionInfo info = ODRemoteConnectionInfo();
+      info.ip = client_info.GetIpAddress();
+      info.port = client_info.GetIpPort();
+      v.push_back(info);
+    }
+    GetLocationsComplete(Status::OK(), object_id, v);
     return ray::Status::OK();
   };
 
@@ -43,9 +41,6 @@ namespace ray {
                                                     const std::vector<ODRemoteConnectionInfo> &v){
 
     bool success = status.ok();
-    if (success) {
-      info_cache_[object_id] = v;
-    }
     // Only invoke a callback if the request was not cancelled.
     if (existing_requests_.count(object_id) > 0) {
       ODCallbacks cbs = existing_requests_[object_id];

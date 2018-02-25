@@ -39,6 +39,7 @@ set(RAY_SRCS
   om/object_store_client.cc
   om/object_directory.cc
   om/object_manager.cc
+  raylet/mock_gcs_client.cc
   raylet/Task.cc
   raylet/TaskExecutionSpecification.cc
   raylet/TaskSpecification.cc

@@ -33,6 +33,10 @@ struct Request {
   ClientID client_id;
 };
 
+struct Connection {
+
+};
+
 class ObjectManager {
 
  public:
@@ -55,8 +59,8 @@ class ObjectManager {
   // When this constructor is used, the ObjectManager assumes ownership of
   // the given ObjectDirectory instance.
   explicit ObjectManager(boost::asio::io_service &io_service,
-                         std::shared_ptr<ObjectDirectoryInterface> od,
-                         OMConfig config);
+                         OMConfig config,
+                         std::shared_ptr<ObjectDirectoryInterface> od);
 
   // Subscribe to notifications of objects added to local store.
   // Upon subscribing, the callback will be invoked for all objects that
@@ -78,6 +82,13 @@ class ObjectManager {
   // from DBClientID associated with ObjectID.
   ray::Status Pull(const ObjectID &object_id,
                    const ClientID &dbclient_id);
+
+  ray::Status AddSock(const ClientID &client_id,
+                      const boost::asio::ip::tcp::socket &sock){
+    // 1. read ClientID
+    // 2. read sock type
+    return ray::Status::OK();
+  };
 
   // Cancels all requests (Push/Pull) associated with the given ObjectID.
   ray::Status Cancel(const ObjectID &object_id);
@@ -113,6 +124,27 @@ class ObjectManager {
   /// callback that gets called internally to OD on get location failure.
    void GetLocationsFailed(ray::Status status,
                            const ObjectID &object_id);
+
+  void GetMsgConnection(const ClientID &client_id){
+
+  };
+
+  void CreateMsgConnection(){
+    // NS handles this
+    // 1. establish tcp connection
+
+    // OM handles this
+    // 2. send ClientID
+    // 3. msg sock (flag)
+  }
+
+  void GetTransferConnection(const ClientID &client_id){
+
+  };
+
+  void CreateTransferConnection(){
+
+  }
 
 };
 
