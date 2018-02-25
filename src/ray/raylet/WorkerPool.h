@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <list>
 
+#include "client_connection.h"
 #include "Worker.h"
 
 using namespace std;

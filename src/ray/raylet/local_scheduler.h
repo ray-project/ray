@@ -1,6 +1,7 @@
 #ifndef LOCAL_SCHEDULER_H
 #define LOCAL_SCHEDULER_H
 
+#include "client_connection.h"
 #include "LsResources.h"
 #include "LsQueue.h"
 #include "LsPolicy.h"
