@@ -11,15 +11,19 @@ namespace ray {
   };
 
   ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
-                                            const SuccessCallback &success_cb,
-                                            const FailureCallback &fail_cb) {
-    if (existing_requests_.count(object_id) == 0) {
+                                       const SuccessCallback &success_cb,
+                                       const FailureCallback &fail_cb) {
+    ray::Status status_code = ray::Status::OK();
+    if(info_cache_.count(object_id) > 0){
+      // TODO(hme): Disable cache once GCS is implemented.
+      success_cb(info_cache_[object_id], object_id);
+    } else if (existing_requests_.count(object_id) == 0) {
       existing_requests_[object_id] = ODCallbacks({success_cb, fail_cb});;
-      ExecuteGetLocations(object_id);
+      status_code = ExecuteGetLocations(object_id);
     } else {
       // Do nothing. A request is in progress.
     }
-    return ray::Status::OK();
+    return status_code;
   };
 
   ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id){
