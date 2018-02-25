@@ -46,6 +46,9 @@ const std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(std::shared_ptr<Cl
 }
 
 void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
+  // Since the worker is now idle, unset its assigned task ID.
+  worker->AssignTaskId(TaskID::nil());
+  // Add the worker to the idle pool.
   pool_.push_back(std::move(worker));
 }
 
@@ -58,6 +61,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker() {
   return worker;
 }
 
+// A helper function to remove a worker from a list. Returns true if the worker
+// was found and removed.
 bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool, std::shared_ptr<Worker> worker) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if (*it == worker) {

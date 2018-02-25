@@ -55,6 +55,11 @@ void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, i
   case MessageType_GetTask: {
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     CHECK(worker);
+    // If the worker was assigned a task, mark it as finished.
+    if (!worker->GetAssignedTaskId().is_nil()) {
+      finishTask(worker->GetAssignedTaskId());
+    }
+    // Return the worker to the idle pool.
     worker_pool_.PushWorker(worker);
   } break;
   case MessageType_DisconnectClient: {
@@ -78,7 +83,7 @@ void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, i
   }
 }
 
-void LocalScheduler::submitTask(Task& task) {
+void LocalScheduler::submitTask(const Task& task) {
   local_queues_.QueueReadyTasks(std::vector<Task>({task}));
 
   // Ask policy for scheduling decision.
@@ -102,7 +107,7 @@ void LocalScheduler::submitTask(Task& task) {
   }
 }
 
-void LocalScheduler::assignTask(Task& task) {
+void LocalScheduler::assignTask(const Task& task) {
   if (worker_pool_.PoolSize() == 0) {
     // TODO(swang): Start a new worker and queue this task for future
     // assignment.
@@ -122,7 +127,14 @@ void LocalScheduler::assignTask(Task& task) {
                          fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
   worker->Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(), fbb.GetBufferPointer());
+  worker->AssignTaskId(spec.TaskId());
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
+}
+
+void LocalScheduler::finishTask(const TaskID &task_id) {
+  LOG_INFO("Finished task %s", task_id.hex().c_str());
+  local_queues_.RemoveTasks({task_id});
+  // TODO(swang): Release resources that were held for the task.
 }
 
 } // end namespace ray
