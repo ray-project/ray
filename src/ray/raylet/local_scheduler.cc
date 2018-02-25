@@ -36,9 +36,9 @@ void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, i
     auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_data);
     if (message->is_worker()) {
       // Create a new worker from the registration request.
-      Worker worker(message->worker_pid(), client);
-      // Add the new worker to the pool.
-      worker_pool_.AddWorker(std::move(worker));
+      std::shared_ptr<Worker> worker(new Worker(message->worker_pid(), client));
+      // Register the new worker.
+      worker_pool_.RegisterWorker(std::move(worker));
     }
 
     // Build the reply to the worker's registration request. TODO(swang): This
@@ -52,9 +52,17 @@ void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, i
     // messages.
     client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(), fbb.GetBufferPointer());
   } break;
+  case MessageType_GetTask: {
+    const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    CHECK(worker);
+    worker_pool_.PushWorker(worker);
+  } break;
   case MessageType_DisconnectClient: {
     // Remove the dead worker from the pool and stop listening for messages.
-    worker_pool_.RemoveWorker(client);
+    const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker) {
+      worker_pool_.DisconnectWorker(worker);
+    }
   } break;
   case MessageType_SubmitTask: {
     // Read the task submitted by the client.
@@ -101,8 +109,8 @@ void LocalScheduler::assignTask(Task& task) {
     return;
   }
 
-  Worker worker = worker_pool_.PopWorker();
-  LOG_INFO("Assigning task to worker with pid %d", worker.Pid());
+  std::shared_ptr<Worker> worker = worker_pool_.PopWorker();
+  LOG_INFO("Assigning task to worker with pid %d", worker->Pid());
 
   // TODO(swang): Acquire resources for the task.
   //local_resources_.Acquire(task.GetTaskSpecification().GetRequiredResources());
@@ -113,7 +121,7 @@ void LocalScheduler::assignTask(Task& task) {
       CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
                          fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
-  worker.Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(), fbb.GetBufferPointer());
+  worker->Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(), fbb.GetBufferPointer());
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
 }
 
