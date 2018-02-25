@@ -27,10 +27,10 @@ namespace ray {
   };
 
   ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id){
-    std::unordered_set<ClientID, UniqueIDHasher> client_ids = this->gcs_client->object_table()->GetObjectClientIDs(object_id);
+    std::unordered_set<ClientID, UniqueIDHasher> client_ids = this->gcs_client->object_table().GetObjectClientIDs(object_id);
     vector<ODRemoteConnectionInfo> v;
     for (const auto& client_id: client_ids) {
-      const auto &client_info = this->gcs_client->client_table()->GetClientInformation(client_id);
+      const auto &client_info = this->gcs_client->client_table().GetClientInformation(client_id);
       ODRemoteConnectionInfo info = ODRemoteConnectionInfo(
           client_id, client_info.GetIpAddress(), client_info.GetIpPort());
       v.push_back(info);

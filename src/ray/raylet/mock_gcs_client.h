@@ -88,7 +88,10 @@ class GcsClient {
 
  public:
 
-  GcsClient() = default;
+  GcsClient() {
+    this->object_table_.reset(new ObjectTable());
+    this->client_table_.reset(new ClientTable());
+  }
 
   // this is not needed for mocking.
   // ray::Status Connect(const std::string &address, int port);
@@ -96,8 +99,8 @@ class GcsClient {
   // Register the ip and port of the connecting client.
   ray::Status Register(const std::string &ip, int port);
 
-  std::unique_ptr<ObjectTable> &object_table();
-  std::unique_ptr<ClientTable> &client_table();
+  ObjectTable &object_table();
+  ClientTable &client_table();
 
  private:
 
