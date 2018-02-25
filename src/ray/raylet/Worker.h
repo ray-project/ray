@@ -6,6 +6,8 @@
 #include <memory>
 #include <unistd.h>
 
+#include "ray/id.h"
+
 namespace ray {
 
 class ClientConnection;
@@ -21,6 +23,8 @@ public:
   ~Worker() {}
   /// Return the worker's PID.
   pid_t Pid() const;
+  void AssignTaskId(const TaskID &task_id);
+  const TaskID &GetAssignedTaskId() const;
   /// Return the worker's connection.
   const std::shared_ptr<ClientConnection> Connection() const;
 private:
@@ -28,6 +32,7 @@ private:
   pid_t pid_;
   /// Connection state of a worker.
   std::shared_ptr<ClientConnection> connection_;
+  TaskID assigned_task_id_;
 };
 
 

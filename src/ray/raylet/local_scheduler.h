@@ -36,9 +36,11 @@ class LocalScheduler : public ClientManager {
   void ProcessClientMessage(shared_ptr<ClientConnection> client, int64_t message_type, const uint8_t *message);
  private:
   /// Submit a task to this node.
-  void submitTask(Task& task);
+  void submitTask(const Task& task);
   /// Assign a task.
-  void assignTask(Task& task);
+  void assignTask(const Task& task);
+  /// Finish a task.
+  void finishTask(const TaskID& task_id);
 
   /// The resources local to this node.
   LsResources local_resources_;
