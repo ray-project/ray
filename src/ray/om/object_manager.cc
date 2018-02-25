@@ -14,8 +14,8 @@ ObjectManager::ObjectManager(boost::asio::io_service &io_service,
 };
 
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
-                             shared_ptr<ObjectDirectoryInterface> od,
-                             OMConfig config) {
+                             OMConfig config,
+                             shared_ptr<ObjectDirectoryInterface> od) {
   this->store_client = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
   this->od = od;
 };

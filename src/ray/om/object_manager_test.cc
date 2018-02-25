@@ -40,6 +40,8 @@ class TestObjectManager : public ::testing::Test {
     // start om
     OMConfig config;
     config.store_socket_name = "/tmp/store";
+    shared_ptr<ObjectDirectory> od;
+    od->InitGcs(mock_gcs_client);
     om = unique_ptr<ObjectManager>(new ObjectManager(io_service, config));
 
     // start client connection
@@ -51,8 +53,8 @@ class TestObjectManager : public ::testing::Test {
 
   void TearDown() {
     this->StopLoop();
-    om->Terminate();
     client_.Disconnect();
+    om->Terminate();
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
   }
@@ -77,6 +79,7 @@ class TestObjectManager : public ::testing::Test {
   boost::asio::io_service io_service;
 
   unique_ptr<ObjectManager> om;
+  shared_ptr<GcsClient> mock_gcs_client;
 
 };
 

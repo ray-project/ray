@@ -5,10 +5,11 @@
 #include "vector"
 #include "unordered_set"
 #include "unordered_map"
+
 #include "ray/id.h"
 #include "ray/status.h"
+#include <ray/raylet/mock_gcs_client.h>
 
-// TODO(hme): remove std from header files.
 // TODO(hme): comment everything doxygen-style.
 
 namespace ray {
@@ -51,7 +52,9 @@ class ObjectDirectoryInterface {
 class ObjectDirectory : public ObjectDirectoryInterface {
 
  public:
+
   ObjectDirectory();
+
 
   ray::Status GetLocations(const ObjectID &object_id,
                            const SuccessCallback &success_cb,
@@ -61,6 +64,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
   ray::Status Terminate() override;
 
+  void InitGcs(std::shared_ptr<GcsClient> gcs_client);
+
  private:
 
   struct ODCallbacks {
@@ -68,15 +73,14 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     FailureCallback fail_cb;
   };
 
+  std::shared_ptr<GcsClient> gcs_client;
+
   std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
-  // TODO(hme): get rid of this once we're done with GCS imp.
-  std::unordered_map<ObjectID, std::vector<ODRemoteConnectionInfo>, UniqueIDHasher> info_cache_;
 
   ray::Status ExecuteGetLocations(const ObjectID &object_id);
   ray::Status GetLocationsComplete(ray::Status status,
                                    const ObjectID &object_id,
                                    const std::vector<ODRemoteConnectionInfo> &v);
-  void InitGcs();
 
 };
 

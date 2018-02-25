@@ -53,7 +53,6 @@ class ObjectStoreClient {
   int c_socket_;
   int64_t length_;
   std::vector<uint8_t> notification_;
-  // boost::asio::ip::tcp::socket socket_;
   boost::asio::local::stream_protocol::socket socket_;
 };
 
