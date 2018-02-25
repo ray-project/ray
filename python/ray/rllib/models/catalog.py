@@ -268,5 +268,5 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
         from gym.spaces.box import Box
         self.observation_space = Box(-1.0, 1.0, preprocessor.shape)
 
-    def _observation(self, observation):
+    def observation(self, observation):
         return self.preprocessor.transform(observation)
