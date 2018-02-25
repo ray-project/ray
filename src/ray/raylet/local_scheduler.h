@@ -5,7 +5,7 @@
 #include "LsResources.h"
 #include "LsQueue.h"
 #include "LsPolicy.h"
-#include "object_manager.h"
+#include "ray/om/object_manager.h"
 #include "reconstruction_policy.h"
 #include "task_dependency_manager.h"
 #include "WorkerPool.h"

@@ -31,6 +31,15 @@ ray::Status ObjectTable::Remove(const ObjectID &object_id, const ClientID &clien
 };
 
 
+std::vector<ClientID> ClientTable::GetClientIds(){
+  std::vector<ClientID> keys;
+  keys.reserve(info_lookup.size());
+  for(auto kv : info_lookup) {
+    keys.push_back(kv.first);
+  }
+  return keys;
+};
+
 const ClientInformation &ClientTable::GetClientInformation(const ClientID &client_id){
   if (info_lookup.count(client_id) == 0){
     throw std::runtime_error("ClientID doesn't exist.");

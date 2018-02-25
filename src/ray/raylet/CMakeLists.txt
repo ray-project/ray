@@ -25,7 +25,7 @@ add_library(node_manager node_manager.cc ${NM_FBS_OUTPUT_FILES})
 target_link_libraries(node_manager ray_static ${Boost_SYSTEM_LIBRARY})
 
 add_executable(raylet raylet.cc)
-target_link_libraries(raylet node_manager ${Boost_SYSTEM_LIBRARY})
+target_link_libraries(raylet node_manager ${Boost_SYSTEM_LIBRARY} pthread)
 
 install(FILES
         node_manager
