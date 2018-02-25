@@ -132,9 +132,9 @@ class GenericLearner(threading.Thread):
     def step(self):
         with self.queue_timer:
             ra, replay = self.inqueue.get()
-        with self.grad_timer:
-            td_error = self.local_evaluator.compute_apply(replay)
-        if td_error is not None:
+        if replay is not None:
+            with self.grad_timer:
+                td_error = self.local_evaluator.compute_apply(replay)
             self.outqueue.put((ra, replay, td_error))
         self.learner_queue_size.push(self.inqueue.qsize())
 
