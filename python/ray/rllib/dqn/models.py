@@ -46,10 +46,8 @@ def traced_run(sess, fetches, feed_dict):
         run_metadata.step_stats))
       return results
   else:
-      print("skip trace", timeline_counter)
       start = time.time()
       s = sess.run(fetches, feed_dict=feed_dict)
-      print("grad raw time", time.time() - start)
       return s
 
 
