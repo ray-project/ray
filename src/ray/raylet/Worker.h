@@ -11,20 +11,6 @@ namespace ray {
 
 class ClientManager;
 
-/// Worker class encapsulates the implementation details of a worker. A worker
-/// is the execution container around a unit of Ray work, such as a task or an
-/// actor. Ray units of work execute in the context of a Worker.
-class Worker {
-public:
-  /// A constructor that initializes a worker object.
-  Worker(pid_t pid);
-  /// Return the worker's PID.
-  pid_t Pid() const;
-private:
-  /// The worker's PID.
-  pid_t pid_;
-};
-
 class ClientConnection : public enable_shared_from_this<ClientConnection> {
  public:
   /// Create a new node client connection.
@@ -36,8 +22,6 @@ class ClientConnection : public enable_shared_from_this<ClientConnection> {
   /// Write a message to the client and then listen for more messages.  /
   /// This overwrites any message that was buffered.
   void WriteMessage(int64_t type, size_t length, const uint8_t *message);
-  void SetWorker(Worker &&worker);
-  const Worker &GetWorker() const;
  private:
   /// A private constructor for a node client connection.
   ClientConnection(
@@ -59,9 +43,26 @@ class ClientConnection : public enable_shared_from_this<ClientConnection> {
   int64_t type_;
   uint64_t length_;
   std::vector<uint8_t> message_;
+};
 
-  /// Worker information.
-  Worker worker_;
+/// Worker class encapsulates the implementation details of a worker. A worker
+/// is the execution container around a unit of Ray work, such as a task or an
+/// actor. Ray units of work execute in the context of a Worker.
+class Worker {
+public:
+  /// A constructor that initializes a worker object.
+  Worker(pid_t pid, shared_ptr<ClientConnection> connection);
+  /// A destructor responsible for freeing all worker state.
+  ~Worker() {}
+  /// Return the worker's PID.
+  pid_t Pid();
+  /// Return the worker's connection.
+  const shared_ptr<ClientConnection> Connection();
+private:
+  /// The worker's PID.
+  pid_t pid_;
+  /// Connection state of a worker.
+  shared_ptr<ClientConnection> connection_;
 };
 
 
