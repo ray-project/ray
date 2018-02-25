@@ -19,7 +19,7 @@ from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
     AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from ray.autoscaler.node_provider import get_node_provider, \
-    get_provider_default
+    get_default_config
 from ray.autoscaler.updater import NodeUpdaterProcess
 from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
@@ -69,13 +69,6 @@ CLUSTER_CONFIG_SCHEMA = {
         "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
         "container_name": (str, OPTIONAL),  # e.g., ray_docker
     }, OPTIONAL),
-
-    # Docker configuration. If this is specified, all setup and start commands
-    # will be executed in the container.
-    "docker": {
-        "image": str,  # e.g. tensorflow/tensorflow:1.5.0-py3
-        "container_name": str
-    },
 
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": (dict, OPTIONAL),
@@ -530,7 +523,7 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
 
 
 def fillout_defaults(config):
-    defaults = get_provider_default(config["provider"])
+    defaults = get_default_config(config["provider"])
     defaults.update(config)
     dockerize_if_needed(defaults)
     return defaults

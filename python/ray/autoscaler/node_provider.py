@@ -13,9 +13,9 @@ def import_aws():
 
 
 def load_aws_config():
-    import ray
+    import ray.autoscaler.aws as ray_aws
     return os.path.join(os.path.dirname(
-        ray.autoscaler.__file__), "aws/default.yaml")
+        ray_aws.__file__), "default.yaml")
 
 
 NODE_PROVIDERS = {
@@ -46,7 +46,7 @@ def get_node_provider(provider_config, cluster_name):
     return provider_cls(provider_config, cluster_name)
 
 
-def get_provider_default(provider_config):
+def get_default_config(provider_config):
     load_config = DEFAULT_CONFIGS.get(provider_config["type"])
     if load_config is None:
         raise NotImplementedError(
