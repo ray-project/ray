@@ -78,7 +78,7 @@ class DataFrame(object):
         Returns:
             A list of integers representing the length of each partition.
         """
-        if type(self._length_cache[0]) is ray.local_scheduler.ObjectID:
+        if isinstance(self._length_cache[0], ray.local_scheduler.ObjectID):
             self._length_cache = ray.get(self._length_cache)
         return self._length_cache
 
@@ -753,6 +753,10 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
+        for t in self.dtypes:
+            if np.dtype('O') == t:
+                # TODO Give a more accurate error to Pandas
+                raise TypeError("bad operand type for abs():", "str")
         if axis == 1:
             return to_pandas(self._map_partitions(
                 lambda df: df.idxmax(axis=axis, skipna=skipna)))
@@ -770,6 +774,10 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
+        for t in self.dtypes:
+            if np.dtype('O') == t:
+                # TODO Give a more accurate error to Pandas
+                raise TypeError("bad operand type for abs():", "str")
         if axis == 1:
             return to_pandas(self._map_partitions(
                 lambda df: df.idxmin(axis=axis, skipna=skipna)))
