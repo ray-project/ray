@@ -17,6 +17,8 @@
 #include "ray/id.h"
 #include "ray/status.h"
 
+#include "ray/raylet/client_connection.h"
+
 #include "ray/om/object_directory.h"
 #include "ray/om/object_store_client.h"
 
@@ -30,10 +32,6 @@ struct OMConfig {
 struct Request {
   ObjectID object_id;
   ClientID client_id;
-};
-
-struct Connection {
-
 };
 
 class ObjectManager {
@@ -80,10 +78,10 @@ class ObjectManager {
   // Discover DBClientID via ObjectDirectory, then pull object
   // from DBClientID associated with ObjectID.
   ray::Status Pull(const ObjectID &object_id,
-                   const ClientID &dbclient_id);
+                   const ClientID &client_id);
 
-  ray::Status AddSock(const ClientID &client_id,
-                      const boost::asio::ip::tcp::socket &sock){
+  ray::Status AddSock(TCPClientConnection::pointer sock){
+    sockets_.push_back(sock);
     // 1. read ClientID
     // 2. read sock type
     return ray::Status::OK();
@@ -103,12 +101,32 @@ class ObjectManager {
   ray::Status Terminate();
 
  private:
+  ClientID client_id_;
+  // TODO(hme): maintain ref to io_service and gcs_client.
+  // boost::asio::io_service io_service_;
   OMConfig config;
   std::shared_ptr<ObjectDirectoryInterface> od;
-  std::unique_ptr<ObjectStoreClient> store_client;
+  std::unique_ptr<ObjectStoreClient> store_client_;
+  std::shared_ptr<GcsClient> gcs_client;
 
-  std::vector<Request> send_queue;
-  std::vector<Request> receive_queue;
+  std::vector<Request> send_queue_;
+  std::vector<Request> receive_queue_;
+
+  std::unordered_map<ray::ClientID,
+                     TCPClientConnection::pointer,
+                     ray::UniqueIDHasher> message_send_connections_;
+  std::unordered_map<ray::ClientID,
+                     TCPClientConnection::pointer,
+                     ray::UniqueIDHasher> transfer_send_connections_;
+
+  std::unordered_map<ray::ClientID,
+                     TCPClientConnection::pointer,
+                     ray::UniqueIDHasher> message_receive_connections_;
+  std::unordered_map<ray::ClientID,
+                     TCPClientConnection::pointer,
+                     ray::UniqueIDHasher> transfer_receive_connections_;
+
+  std::vector<TCPClientConnection::pointer> sockets_;
 
   ray::Status ExecutePull(const ObjectID &object_id,
                           const ClientID &dbclient_id);
@@ -124,26 +142,49 @@ class ObjectManager {
    void GetLocationsFailed(ray::Status status,
                            const ObjectID &object_id);
 
-  void GetMsgConnection(const ClientID &client_id){
-
+  ray::Status GetMsgConnection(const ClientID &client_id,
+                               std::function<void(TCPClientConnection::pointer)> callback){
+    if(message_send_connections_.count(client_id) > 0){
+      callback(message_send_connections_[client_id]);
+    } else {
+      CreateMsgConnection(client_id, callback);
+    }
+    return Status::OK();
   };
 
-  void CreateMsgConnection(){
+  ray::Status CreateMsgConnection(const ClientID &client_id,
+                                  std::function<void(TCPClientConnection::pointer)> callback){
+    // TODO(hme): need gcs here...
+//    boost::asio::ip::tcp::endpoint endpoint(
+//        boost::asio::ip::address::from_string("127.0.0.1"),
+//        40749);
+//    boost::asio::ip::tcp::socket socket(io_service_);
+//    socket.connect(endpoint);
+
     // NS handles this
     // 1. establish tcp connection
 
     // OM handles this
     // 2. send ClientID
     // 3. msg sock (flag)
-  }
-
-  void GetTransferConnection(const ClientID &client_id){
-
+    return Status::OK();
   };
 
-  void CreateTransferConnection(){
+  ray::Status GetTransferConnection(const ClientID &client_id,
+                                    std::function<void(TCPClientConnection::pointer)> callback) {
+    if (transfer_send_connections_.count(client_id) > 0) {
+      callback(transfer_send_connections_[client_id]);
+    } else {
+      CreateTransferConnection(client_id, callback);
+    }
+    return Status::OK();
+  };
 
-  }
+  ray::Status CreateTransferConnection(const ClientID &client_id,
+                                       std::function<void(TCPClientConnection::pointer)> callback){
+    // need gcs here...
+    return Status::OK();
+  };
 
 };
 
