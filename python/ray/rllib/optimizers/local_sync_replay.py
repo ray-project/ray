@@ -79,9 +79,11 @@ class LocalSyncReplayOptimizer(Optimizer):
 
         with self.grad_timer:
             td_error = self.local_evaluator.compute_apply(samples)
+            new_priorities = (
+                np.abs(td_error) + self.config["prioritized_replay_eps"])
             if self.config["prioritized_replay"]:
                 self.replay_buffer.update_priorities(
-                    samples["batch_indexes"], td_error)
+                    samples["batch_indexes"], new_priorities)
             self.grad_timer.push_units_processed(samples.count)
 
     def stats(self):
