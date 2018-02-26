@@ -82,6 +82,7 @@ class ProximalPolicyLoss(object):
                                 i, prev_kl in enumerate(self.kl)])
         else:
             kl_prod = kl_coeff[0] * self.kl
+
         if config["use_gae"]:
             # We use a huber loss here to be more robust against outliers,
             # which seem to occur when the rollouts get longer (the variance

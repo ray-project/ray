@@ -26,7 +26,7 @@ class ActionDistribution(object):
         raise NotImplementedError
 
     def entropy(self):
-        """The entroy of the action distribution."""
+        """The entropy of the action distribution."""
         raise NotImplementedError
 
     def sample(self):
