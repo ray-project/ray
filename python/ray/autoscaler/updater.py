@@ -19,6 +19,10 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 NODE_START_WAIT_S = 300
 
 
+def pretty_cmd(cmd_str):
+    return "\n\n\t{}\n\n".format(cmd_str)
+
+
 class NodeUpdater(object):
     """A process for syncing files and running init commands on a node."""
 
@@ -54,9 +58,13 @@ class NodeUpdater(object):
         try:
             self.do_update()
         except Exception as e:
+            error_str = str(e)
+            if hasattr(e, "cmd"):
+                error_str = "(Exit Status {}) {}".format(
+                    e.returncode, pretty_cmd(" ".join(e.cmd)))
             print(
-                "NodeUpdater: Error updating {}, "
-                "see {} for remote logs".format(e, self.output_name),
+                "NodeUpdater: Error updating {}"
+                "See {} for remote logs.".format(error_str, self.output_name),
                 file=self.stdout)
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: "UpdateFailed"})
@@ -103,14 +111,18 @@ class NodeUpdater(object):
                         self.node_id),
                     file=self.stdout)
                 if not self.provider.is_running(self.node_id):
-                    raise Exception()
+                    raise Exception("Node not running yet...")
                 self.ssh_cmd(
                     "uptime",
                     connect_timeout=5, redirect=open("/dev/null", "w"))
                 ssh_ok = True
             except Exception as e:
+                retry_str = str(e)
+                if hasattr(e, "cmd"):
+                    retry_str = "(Exit Status {}): {}".format(
+                        e.returncode, pretty_cmd(" ".join(e.cmd)))
                 print(
-                    "NodeUpdater: SSH not up, retrying: {}".format(e),
+                    "NodeUpdater: SSH not up, retrying: {}".format(retry_str),
                     file=self.stdout)
                 time.sleep(5)
             else:
@@ -150,7 +162,7 @@ class NodeUpdater(object):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
-                    cmd, self.ssh_ip),
+                    pretty_cmd(cmd), self.ssh_ip),
                 file=self.stdout)
         force_interactive = "set -i && source ~/.bashrc && "
         self.process_runner.check_call([

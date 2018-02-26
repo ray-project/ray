@@ -9,25 +9,23 @@ helpful.
    .. code-block:: shell
 
      cd ray/python
-     python setup.py develop
+     pip install -e . --verbose
 
-   (as opposed to ``python setup.py install``). When you do the "install"
-   version, files will be copied from the Ray directory to a directory of Python
-   packages (often something like
+   The ``-e`` means "editable", so changes you make to files in the Ray
+   directory will take effect without reinstalling the package. In contrast, if
+   you do ``python setup.py install``, files will be copied from the Ray
+   directory to a directory of Python packages (often something like
    ``/home/ubuntu/anaconda3/lib/python3.6/site-packages/ray``). This means that
    changes you make to files in the Ray directory will not have any effect.
-   However, when you run the "develop" version, no files will be copied and so
-   any changes you make to Python files will immediately take effect without
-   rerunning ``setup.py``.
 
-   If you run into **Permission Denied** errors when running ``setup.py``, you
-   can try doing ``python setup.py develop --user``. You may also need to run
-   something like ``sudo chown -R $USER /home/ubuntu/anaconda3`` (substituting
-   in the appropriate path).
+   If you run into **Permission Denied** errors when running ``pip install``,
+   you can try adding ``--user``. You may also need to run something like ``sudo
+   chown -R $USER /home/ubuntu/anaconda3`` (substituting in the appropriate
+   path).
 
    If you make changes to the C++ files, you will need to recompile them.
-   However, you do not need to rerun ``setup.py``. Instead, you can recompile
-   much more quickly by doing
+   However, you do not need to rerun ``pip install -e .``. Instead, you can
+   recompile much more quickly by doing
 
    .. code-block:: shell
 
