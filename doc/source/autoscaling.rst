@@ -66,9 +66,13 @@ The Ray autoscaler also reports per-node status in the form of instance tags. In
 Customizing cluster setup
 -------------------------
 
-You are encouraged to copy the example YAML file and modify it to your needs. This may include adding additional setup commands to install libraries or sync local data files. After you have customized the nodes, it is also a good idea to create a new machine image (AMI) and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
+You are encouraged to copy the example YAML file and modify it to your needs. This may include adding additional setup commands to install libraries or sync local data files.
+
+.. note:: After you have customized the nodes, it is also a good idea to create a new machine image (AMI) and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
 
 The setup commands you use should ideally be *idempotent*, that is, can be run more than once. This allows Ray to update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
+
+Most of the example YAML file is optional. Here is a `reference minimal YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/minimal.yaml>`__, and you can find the defaults for `optional fields in this YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/default.yaml>`__.
 
 Syncing git branches
 --------------------
@@ -105,7 +109,7 @@ The ``example.yaml`` configuration is enough to get started with Ray, but for mo
         InstanceType: p2.8xlarge
 
 **Docker**: Specify docker image. This executes all commands on all nodes in the docker container,
-and opens all the necessary ports to support the Ray cluster.
+and opens all the necessary ports to support the Ray cluster. This currently does not have GPU support.
 
 .. code-block:: yaml
 

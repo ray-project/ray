@@ -84,7 +84,7 @@ setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    - most_recent() { echo pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/$(aws s3 ls s3://ray-wheels --recursive | grep $1 | sort -r | head -n 1 | awk '{print $4}'); } && $( most_recent "cp36-cp36m-manylinux1" ) || $( most_recent "cp35-cp35m-manylinux1" )
+    - pip install -U ray==0.3.1
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
