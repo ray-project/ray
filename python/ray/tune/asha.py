@@ -10,6 +10,11 @@ from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 class ASHAScheduler(FIFOScheduler):
     """Implements the Async Successive Halving.
 
+    This should provide similar theoretical performance as HyperBand but
+    avoid straggler issues that HyperBand faces.
+
+    See https://openreview.net/forum?id=S1Y7OOlRZ
+
     Args:
         time_attr (str): The TrainingResult attr to use for comparing time.
             Note that you can pass in something non-temporal such as
@@ -18,8 +23,12 @@ class ASHAScheduler(FIFOScheduler):
         reward_attr (str): The TrainingResult objective value attribute. As
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
-        max_t (int): max time units per trial. Trials will be stopped after
+        max_t (float): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
+        grace_period (float): Only stop trials at least this old in time.
+            The units are the same as the attribute named by `time_attr`.
+        reduction_factor (float): Used to set halving rate and amount. This
+            is simply a unit-less scalar.
     """
 
     def __init__(
@@ -100,6 +109,6 @@ class _Bracket():
 
 
 if __name__ == '__main__':
-    sched = ASHAScheduler(grace_period=1, max_t=2123, reduction_factor=3)
+    sched = ASHAScheduler(grace_period=1.2, max_t=2123.3, reduction_factor=3)
     bracket = sched._brackets[0]
     print(bracket.cutoff({str(i): i for i in range(20)}))
