@@ -37,6 +37,7 @@ struct Request {
   ClientID client_id;
 };
 
+// TODO(hme): Move this to an appropriate location (client_connection?).
 class SenderConnection : public boost::enable_shared_from_this<SenderConnection> {
 
  public:
@@ -62,6 +63,7 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
 
 };
 
+// TODO(hme): Implement connection cleanup.
 class ObjectManager {
 
  public:
