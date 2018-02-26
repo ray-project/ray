@@ -91,9 +91,9 @@ DEFAULT_CONFIG = dict(
     },
 
     # === Parallelism ===
-    # Number of workers for collecting samples with. This only has
-    # setting is 1 unless your environment is particularly slow to sample.
-    num_workers=1,
+    # Number of workers for collecting samples with. This only makes sense
+    # to increase if your environment is particularly slow to sample.
+    num_workers=0,
     # Whether to allocate GPUs for workers (if > 0).
     num_gpus_per_worker=0,
     # (Experimental) Whether to assign each worker a distinct exploration
