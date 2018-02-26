@@ -28,6 +28,7 @@ class ASHAScheduler(FIFOScheduler):
             reward_attr='episode_reward_mean', max_t=100,
             grace_period=10, reduction_factor=3):
         assert max_t > 0, "Max (time_attr) not valid!"
+        assert max_t > grace_period, "grace_period must be less than max_t!"
         assert grace_period > 0, "Max (time_attr) not valid!"
         assert reduction_factor > 1, "Reduction Factor not valid!"
         FIFOScheduler.__init__(self)
@@ -36,7 +37,8 @@ class ASHAScheduler(FIFOScheduler):
         self._trial_info = {}  # Stores Trial -> Bracket
 
         # Tracks state for new trial add
-        self._state = [_Bracket(grace_period, max_t, reduction_factor, s) for s in range(5)]
+        self._state = [_Bracket(
+            grace_period, max_t, reduction_factor, s) for s in range(5)]
         self._num_stopped = 0
         self._reward_attr = reward_attr
         self._time_attr = time_attr
@@ -63,7 +65,7 @@ class ASHAScheduler(FIFOScheduler):
 
 class _Bracket():
     def __init__(self, min_t, max_t, reduction_factor, s):
-        MAX_RUNGS = np.log(max_t / min_t, base=reduction_factor) - s + 1
+        MAX_RUNGS = int(np.log(max_t / min_t) / np.log(reduction_factor) - s + 1)
         self._rungs = [(min_t * reduction_factor**(k + s), {})
                        for k in reversed(range(MAX_RUNGS))]
 
