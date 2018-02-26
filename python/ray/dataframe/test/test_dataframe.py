@@ -200,9 +200,13 @@ def test_int_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
+    test___len__(ray_df, pandas_df)
+    test_first_valid_index(ray_df, pandas_df)
+    test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
+        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -277,9 +281,13 @@ def test_float_dataframe():
     test_min(ray_df, pandas_df)
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
+    test___len__(ray_df, pandas_df)
+    test_first_valid_index(ray_df, pandas_df)
+    test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
+        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -331,7 +339,9 @@ def test_mixed_dtype_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
-
+    test___len__(ray_df, pandas_df)
+    test_first_valid_index(ray_df, pandas_df)
+    test_last_valid_index(ray_df, pandas_df)
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -357,6 +367,7 @@ def test_mixed_dtype_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
+        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -406,6 +417,9 @@ def test_nan_dataframe():
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
 
+    test___len__(ray_df, pandas_df)
+    test_first_valid_index(ray_df, pandas_df)
+    test_last_valid_index(ray_df, pandas_df)
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -427,6 +441,7 @@ def test_nan_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
+        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -802,11 +817,9 @@ def test_first():
         ray_df.first(None)
 
 
-def test_first_valid_index():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.first_valid_index()
+@pytest.fixture
+def test_first_valid_index(ray_df, pandas_df):
+    assert((ray_df.first_valid_index() == pandas_df.first_valid_index()).all())
 
 
 def test_floordiv():
@@ -997,11 +1010,9 @@ def test_last():
         ray_df.last(None)
 
 
-def test_last_valid_index():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.last_valid_index()
+@pytest.fixture
+def test_last_valid_index(ray_df, pandas_df):
+    assert(ray_df.last_valid_index() == pandas_df.last_valid_index())
 
 
 def test_le():
@@ -1775,11 +1786,9 @@ def test___setitem__():
         ray_df.__setitem__(None, None)
 
 
-def test___len__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__len__()
+@pytest.fixture
+def test___len__(ray_df, pandas_df):
+    assert((len(ray_df) == len(pandas_df)))
 
 
 def test___unicode__():
@@ -1817,11 +1826,9 @@ def test___iter__():
         ray_df.__iter__()
 
 
-def test___contains__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__contains__(None)
+@pytest.fixture
+def test___contains__(ray_df, pandas_df, value):
+    assert(ray_df.__contains__(value) == pandas_df.__contains__(value))
 
 
 def test___nonzero__():

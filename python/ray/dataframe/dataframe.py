@@ -629,7 +629,15 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def first_valid_index(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return index for first non-NA/null value.
+
+        Returns:
+            scalar: type of index
+        """
+        if (len(self) == 0):
+            return None
+        if (len(self._index)):
+            return self._index[0]
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -884,7 +892,15 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def last_valid_index(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return index for last non-NA/null value.
+
+        Returns:
+            scalar: type of index
+        """
+        if (len(self) == 0):
+            return None
+        if (len(self._index)):
+            return self._index[-1]
 
     def le(self, other, axis='columns', level=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -1401,7 +1417,12 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __len__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Gets the length of the dataframe.
+
+        Returns:
+            Returns an integer length of the dataframe object.
+        """
+        return sum(self._lengths)
 
     def __unicode__(self):
         raise NotImplementedError("Not Yet implemented.")
@@ -1416,7 +1437,15 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __contains__(self, key):
-        raise NotImplementedError("Not Yet implemented.")
+        """Searches columns for specific key
+
+        Args:
+            key : The column name
+
+        Returns:
+            Returns a boolean if the specified key exists as a column name
+        """
+        return key in self.columns
 
     def __nonzero__(self):
         raise NotImplementedError("Not Yet implemented.")
