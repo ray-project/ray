@@ -92,8 +92,9 @@ class PPOAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
+        self.num_agents = len(self.config["model"].get("custom_options",{}).get("multiagent_obs_shapes", [1]))
         self.global_step = 0
-        self.kl_coeff = self.config["kl_coeff"]
+        self.kl_coeff = [self.config["kl_coeff"]]*self.num_agents
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
@@ -181,19 +182,19 @@ class PPOAgent(Agent):
             loss = np.mean(loss)
             policy_loss = np.mean(policy_loss)
             vf_loss = np.mean(vf_loss)
-            kl = np.mean(kl)
+            kl = np.mean(kl, axis=0)
             entropy = np.mean(entropy)
             sgd_end = time.time()
             print(
                 "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
-                    i, loss, policy_loss, vf_loss, kl, entropy))
+                    i, loss, policy_loss, vf_loss, np.sum(kl), entropy))
 
             values = []
             if i == config["num_sgd_iter"] - 1:
                 metric_prefix = "ppo/sgd/final_iter/"
                 values.append(tf.Summary.Value(
                     tag=metric_prefix + "kl_coeff",
-                    simple_value=self.kl_coeff))
+                    simple_value=self.kl_coeff[0]))
                 values.extend([
                     tf.Summary.Value(
                         tag=metric_prefix + "mean_entropy",
@@ -203,20 +204,29 @@ class PPOAgent(Agent):
                         simple_value=loss),
                     tf.Summary.Value(
                         tag=metric_prefix + "mean_kl",
-                        simple_value=kl)])
+                        simple_value=np.sum(kl))])
                 if self.file_writer:
                     sgd_stats = tf.Summary(value=values)
                     self.file_writer.add_summary(sgd_stats, self.global_step)
             self.global_step += 1
             sgd_time += sgd_end - sgd_start
-        if kl > 2.0 * config["kl_target"]:
-            self.kl_coeff *= 1.5
-        elif kl < 0.5 * config["kl_target"]:
-            self.kl_coeff *= 0.5
+        print(kl)
+        print(config["kl_target"])
+        if isinstance(kl, list):
+            for i, kl_i in enumerate(list(kl)):
+                if kl_i > 2.0 * config["kl_target"]:
+                    self.kl_coeff[i] *= 1.5
+                elif kl_i < 0.5 * config["kl_target"]:
+                    self.kl_coeff[i] *= 0.5
+        else:
+            if kl > 2.0 * config["kl_target"]:
+                self.kl_coeff[0] *= 1.5
+            elif kl < 0.5 * config["kl_target"]:
+                self.kl_coeff[0] *= 0.5
 
         info = {
-            "kl_divergence": kl,
-            "kl_coefficient": self.kl_coeff,
+            "kl_divergence": np.sum(kl),
+            "kl_coefficient": self.kl_coeff[0],
             "rollouts_time": rollouts_time,
             "shuffle_time": shuffle_time,
             "load_time": load_time,
