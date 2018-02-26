@@ -7,7 +7,7 @@ import random
 import sys
 
 from ray.rllib.dqn.common.segment_tree import SumSegmentTree, MinSegmentTree
-from ray.rllib.optimizers.sample_batch import unpack
+from ray.rllib.utils.compression import unpack
 from ray.rllib.utils.window_stat import WindowStats
 
 

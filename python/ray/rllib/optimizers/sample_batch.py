@@ -2,17 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
-
 import numpy as np
-import pyarrow
-
-try:
-    import snappy
-    SNAPPY_ENABLED = True
-except ImportError:
-    print("WARNING: python-snappy not available, disabling sample compression")
-    SNAPPY_ENABLED = False
 
 
 def arrayify(s):
@@ -23,23 +13,6 @@ def arrayify(s):
         return np.array([arrayify(x) for x in s])
     else:
         return np.array(s)
-
-
-def pack(data):
-    if SNAPPY_ENABLED:
-        data = snappy.compress(
-            pyarrow.serialize(data).to_buffer().to_pybytes())
-        return base64.b64encode(data)
-    else:
-        return data
-
-
-def unpack(data):
-    if SNAPPY_ENABLED:
-        data = base64.b64decode(data)
-        return pyarrow.deserialize(snappy.decompress(data))
-    else:
-        return data
 
 
 class SampleBatch(object):

@@ -12,7 +12,7 @@ from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.optimizers import SampleBatch, Evaluator
-from ray.rllib.optimizers.sample_batch import pack
+from ray.rllib.utils.compression import pack
 
 
 def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
