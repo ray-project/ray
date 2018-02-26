@@ -1603,8 +1603,15 @@ class DataFrame(object):
     def __rsub__(other, axis=None, level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def loc(axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+    @property
+    def loc(self):
+        """Purely label-location based indexer for selection by label.
+
+        We currently support: single label, list array, slice object
+        We do not support: boolean array, callable
+        """
+        from .indexing import _Loc_Indexer
+        return _Loc_Indexer(self)
 
     @property
     def is_copy(self):
@@ -1622,8 +1629,15 @@ class DataFrame(object):
     def ix(axis=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def iloc(axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+    @property
+    def iloc(self):
+        """Purely integer-location based indexing for selection by position.
+
+        We currently support: single label, list array, slice object
+        We do not support: boolean array, callable
+        """
+        from .indexing import _iLoc_Indexer
+        return _iLoc_Indexer(self)
 
 
 def _get_lengths(df):

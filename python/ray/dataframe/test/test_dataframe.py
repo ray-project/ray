@@ -216,6 +216,9 @@ def test_int_dataframe():
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
 
+    test_loc(ray_df, pandas_df)
+    test_iloc(ray_df, pandas_df)
+
 
 def test_float_dataframe():
 
@@ -288,13 +291,16 @@ def test_float_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
+    test_loc(ray_df, pandas_df)
+    test_iloc(ray_df, pandas_df)
+
 
 def test_mixed_dtype_dataframe():
     pandas_df = pd.DataFrame({
-                    'col1': [1, 2, 3, 4],
-                    'col2': [4, 5, 6, 7],
-                    'col3': [8.0, 9.4, 10.1, 11.3],
-                    'col4': ['a', 'b', 'c', 'd']})
+        'col1': [1, 2, 3, 4],
+        'col2': [4, 5, 6, 7],
+        'col3': [8.0, 9.4, 10.1, 11.3],
+        'col4': ['a', 'b', 'c', 'd']})
 
     ray_df = rdf.from_pandas(pandas_df, 2)
 
@@ -365,13 +371,16 @@ def test_mixed_dtype_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
+    test_loc(ray_df, pandas_df)
+    test_iloc(ray_df, pandas_df)
+
 
 def test_nan_dataframe():
     pandas_df = pd.DataFrame({
-                    'col1': [1, 2, 3, np.nan],
-                    'col2': [4, 5, np.nan, 7],
-                    'col3': [8, np.nan, 10, 11],
-                    'col4': [np.nan, 13, 14, 15]})
+        'col1': [1, 2, 3, np.nan],
+        'col2': [4, 5, np.nan, 7],
+        'col3': [8, np.nan, 10, 11],
+        'col4': [np.nan, 13, 14, 15]})
 
     ray_df = rdf.from_pandas(pandas_df, 2)
 
@@ -434,6 +443,9 @@ def test_nan_dataframe():
     test_items(ray_df, pandas_df)
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
+
+    test_loc(ray_df, pandas_df)
+    test_iloc(ray_df, pandas_df)
 
 
 def test_add():
@@ -1936,11 +1948,20 @@ def test___rsub__():
         ray_df.__rsub__(None, None, None)
 
 
-def test_loc():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_loc(ray_df, pd_df):
+    # Singleton
+    assert ray_df.loc[0].equals(pd_df.loc[0])
+    assert ray_df.loc[0, 'col1'] == pd_df.loc[0, 'col1']
 
-    with pytest.raises(NotImplementedError):
-        ray_df.loc()
+    # List
+    assert ray_df.loc[[1, 2]].equals(pd_df.loc[[1, 2]])
+    assert ray_df.loc[[1, 2], ['col1']].equals(pd_df.loc[[1, 2], ['col1']])
+
+    # Slice
+    assert ray_df.loc[1:, 'col1'].equals(pd_df.loc[1:, 'col1'])
+    assert ray_df.loc[1:2, 'col1'].equals(pd_df.loc[1:2, 'col1'])
+    assert ray_df.loc[1:2, 'col1':'col2'].equals(pd_df.loc[1:2, 'col1':'col2'])
 
 
 def test_is_copy():
@@ -1978,8 +1999,17 @@ def test_ix():
         ray_df.ix()
 
 
-def test_iloc():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_iloc(ray_df, pd_df):
+    # Singleton
+    assert ray_df.iloc[0].equals(pd_df.iloc[0])
+    assert ray_df.iloc[0, 1] == pd_df.iloc[0, 1]
 
-    with pytest.raises(NotImplementedError):
-        ray_df.iloc()
+    # List
+    assert ray_df.iloc[[1, 2]].equals(pd_df.iloc[[1, 2]])
+    assert ray_df.iloc[[1, 2], [1, 0]].equals(pd_df.iloc[[1, 2], [1, 0]])
+
+    # Slice
+    assert ray_df.iloc[1:, 0].equals(pd_df.iloc[1:, 0])
+    assert ray_df.iloc[1:2, 0].equals(pd_df.iloc[1:2, 0])
+    assert ray_df.iloc[1:2, 0:2].equals(pd_df.iloc[1:2, 0:2])
