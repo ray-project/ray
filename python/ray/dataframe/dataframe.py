@@ -35,7 +35,7 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
-        self._gths()
+        self._update_lengths()
         self.columns = columns
 
         # this _index object is a pd.DataFrame
@@ -55,7 +55,7 @@ class DataFrame(object):
         """Get the index for this DataFrame.
 
         Returns:
-            The union  all indexes across the partitions.
+            The union of all indexes across the partitions.
         """
         return self._index.index
 
@@ -636,7 +636,8 @@ class DataFrame(object):
             Boolean: True if equal, otherwise False
         """
         def helper(df, index, other_series):
-            return df.iloc[index['index_within_partition']].equals(other_series)
+            return df.iloc[index['index_within_partition']] \
+                        .equals(other_series)
 
         results = []
         other_partition = None
@@ -645,10 +646,13 @@ class DataFrame(object):
             if idx['partition'] != other_partition:
                 other_df = ray.get(other._df[idx['partition']])
                 other_partition = idx['partition']
+            # TODO: group series here into full df partitions to reduce
+            # the number of remote calls to helper
             other_series = other_df.iloc[idx['index_within_partition']]
             curr_index = self._index.iloc[i]
+            curr_df = self._df[int(curr_index['partition'])]
             results.append(_deploy_func.remote(helper,
-                                               self._df[int(curr_index['partition'])],
+                                               curr_df,
                                                curr_index,
                                                other_series))
 
