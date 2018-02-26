@@ -20,10 +20,10 @@ def pass_params_to_gym(env_name):
     global env_version_num
 
     register(
-      id=env_name,
-      entry_point='ray.rllib.examples:' + "MultiAgentPendulumEnv",
-      max_episode_steps=100,
-      kwargs={}
+        id=env_name,
+        entry_point='ray.rllib.examples:' + "MultiAgentPendulumEnv",
+        max_episode_steps=100,
+        kwargs={}
     )
 
 
