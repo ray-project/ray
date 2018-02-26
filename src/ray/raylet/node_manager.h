@@ -24,7 +24,12 @@ class NodeServer {
              const OMConfig &om_config,
              shared_ptr<ray::GcsClient> gcs_client,
              shared_ptr<ray::ObjectDirectory> od);
+
+  void Terminate();
+
  private:
+  /// Register GCS client.
+  ClientID RegisterGcs();
   /// Accept a client connection.
   void DoAccept();
   /// Handle an accepted client connection.
@@ -34,8 +39,6 @@ class NodeServer {
   /// Handle an accepted tcp client connection.
   void HandleAcceptTcp(TCPClientConnection::pointer new_connection,
                        const boost::system::error_code& error);
-
-  void RegisterGcs();
 
   /// An acceptor for new clients.
   boost::asio::local::stream_protocol::acceptor acceptor_;

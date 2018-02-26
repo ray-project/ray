@@ -35,6 +35,8 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service io_service;
   ray::NodeServer server(io_service, std::string(argv[1]), resource_config, om_config, mock_gcs_client, od);
   io_service.run();
+  server.Terminate();
+
   return 0;
 }
 #endif

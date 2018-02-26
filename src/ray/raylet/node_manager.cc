@@ -23,20 +23,19 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
       object_manager_(io_service, om_config, od),
       local_scheduler_(socket_name, resource_config, object_manager_),
       gcs_client_(gcs_client) {
-  RegisterGcs();
+  ClientID client_id = RegisterGcs();
+  object_manager_.SetClientID(client_id);
   // Start listening for clients.
   DoAccept();
   DoAcceptTcp();
 }
 
-void NodeServer::RegisterGcs(){
+ClientID NodeServer::RegisterGcs(){
   ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
   std::string ip = endpoint.address().to_string();
   ushort port = endpoint.port();
-  ray::Status status = gcs_client_->Register(ip, (int) port);
-  if(!status.ok()){
-    throw std::runtime_error("Error registering with gcs.");
-  }
+  ClientID client_id = gcs_client_->Register(ip, port);
+  return client_id;
 }
 
 void NodeServer::DoAcceptTcp() {
@@ -70,6 +69,10 @@ void NodeServer::HandleAccept(const boost::system::error_code &error) {
   }
   // We're ready to accept another client.
   DoAccept();
+}
+
+void NodeServer::Terminate(){
+  object_manager_.Terminate();
 }
 
 } // end namespace ray

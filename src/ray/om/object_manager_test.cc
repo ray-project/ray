@@ -68,7 +68,7 @@ class TestObjectManager : public ::testing::Test {
     this->StopLoop();
     client_.Disconnect();
     om->Terminate();
-    om2->Terminate();
+    // om2->Terminate();
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
   }
