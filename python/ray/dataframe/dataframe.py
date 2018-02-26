@@ -1225,19 +1225,9 @@ class DataFrame(object):
         Returns:
             The std of the DataFrame.
         """
-        if axis is None or axis == 0:
-            df = self.T
-            axis = 1
-        else:
-            df = self
+        _var = self.var(axis, skipna, level, ddof, numeric_only)
 
-        mapped = df._map_partitions(lambda df: df.std(axis,
-                                                      skipna,
-                                                      level,
-                                                      ddof,
-                                                      numeric_only,
-                                                      **kwargs))
-        return to_pandas(mapped)
+        return _var ** (1/2)
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -1426,19 +1416,19 @@ class DataFrame(object):
         Returns:
             The variance of the DataFrame.
         """
-        if axis is None or axis == 0:
-            df = self.T
-            axis = 1
-        else:
-            df = self
+        _mean = self.mean(axis, skipna, level, numeric_only)
 
-        mapped = df._map_partitions(lambda df: df.var(axis,
-                                                      skipna,
-                                                      level,
-                                                      ddof,
-                                                      numeric_only,
-                                                      **kwargs))
-        return to_pandas(mapped)
+        intermediate_index = [idx
+                              for _ in range(len(self._df))
+                              for idx in self.columns]
+
+        squared_sum_of_partitions = self._map_partitions(
+            lambda x: x.sum((lambda df: df.pow(2, axis=axis, level=level))),
+            index=intermediate_index)
+
+        _var = squared_sum_of_partitions / self.length - _mean ** 2
+
+        return _var
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):
