@@ -1,17 +1,15 @@
 #include <iostream>
 #include "future"
-#include "common_protocol.h"
 
-#include <memory>
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
 
 #include "common.h"
-// #include "format/om_generated.h"
-#include "object_store_client.h"
+#include "common_protocol.h"
 
+#include "object_store_client.h"
 
 using namespace std;
 
@@ -75,20 +73,23 @@ void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code
 
 void ObjectStoreClient::ProcessStoreAdd(const ObjectID& object_id){
   // TODO(hme): Send notification to gcs (ulc?)
-  this->add_handler(object_id);
+  for (auto handler : this->add_handlers){
+    handler(object_id);
+  }
 };
 
 void ObjectStoreClient::ProcessStoreRemove(const ObjectID& object_id){
-  this->rem_handler(object_id);
+  for (auto handler : this->rem_handlers){
+    handler(object_id);
+  }
 };
 
 void ObjectStoreClient::SubscribeObjAdded(std::function<void(const ObjectID&)> callback) {
-  cout << "HandlerAdded" << "\n";
-  this->add_handler = callback;
+  this->add_handlers.push_back(callback);
 };
 
 void ObjectStoreClient::SubscribeObjDeleted(std::function<void(const ObjectID&)> callback) {
-  this->rem_handler = callback;
+  this->rem_handlers.push_back(callback);
 };
 
 }

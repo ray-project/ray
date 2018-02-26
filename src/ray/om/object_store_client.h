@@ -28,11 +28,11 @@ class ObjectStoreClient {
   // Upon subscribing, the callback will be invoked for all objects that
   // already exist in the local store.
   //void SubscribeObjAdded(void (*callback)(const ObjectID&));
-  void SubscribeObjAdded(std::function<void(const ObjectID&)> callback);
+  void SubscribeObjAdded(std::function<void(const ray::ObjectID&)> callback);
 
   // Subscribe to notifications of objects deleted from local store.
   //void SubscribeObjDeleted(void (*callback)(const ObjectID&));
-  void SubscribeObjDeleted(std::function<void(const ObjectID&)> callback);
+  void SubscribeObjDeleted(std::function<void(const ray::ObjectID&)> callback);
 
   void Terminate();
 
@@ -43,8 +43,8 @@ class ObjectStoreClient {
   void ProcessStoreNotification(const boost::system::error_code &error);
 
   // Support for rebroadcasting object add/rem events.
-  std::function<void(const ray::ObjectID&)> add_handler;
-  std::function<void(const ray::ObjectID&)> rem_handler;
+  std::vector<std::function<void(const ray::ObjectID&)>> add_handlers;
+  std::vector<std::function<void(const ray::ObjectID&)>> rem_handlers;
   void ProcessStoreAdd(const ObjectID& object_id);
   void ProcessStoreRemove(const ObjectID& object_id);
 

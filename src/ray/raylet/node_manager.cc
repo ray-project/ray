@@ -71,6 +71,10 @@ void NodeServer::HandleAccept(const boost::system::error_code &error) {
   DoAccept();
 }
 
+ObjectManager &NodeServer::GetObjectManager(){
+  return object_manager_;
+}
+
 void NodeServer::Terminate(){
   object_manager_.Terminate();
 }

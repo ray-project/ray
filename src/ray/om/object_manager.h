@@ -90,6 +90,7 @@ class ObjectManager {
                          std::shared_ptr<ObjectDirectoryInterface> od);
 
   void SetClientID(const ClientID &client_id);
+  ClientID GetClientID();
 
   // Subscribe to notifications of objects added to local store.
   // Upon subscribing, the callback will be invoked for all objects that
