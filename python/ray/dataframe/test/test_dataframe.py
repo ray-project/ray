@@ -1322,10 +1322,33 @@ def test_quantile():
 
 
 def test_query():
-    ray_df = create_test_dataframe()
+    def generate_data():
+        pandas_df = pd.DataFrame({'a': [0, 1, 2, 3],
+                                  'b': [8, 9, 1, 11],
+                                  'c': [4, 3, 2, 1]})
+        ray_df = rdf.from_pandas(pandas_df, 2)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.query(None)
+        return pandas_df, ray_df
+
+    funcs = ['a < b', 'a > b', 'a == c', '(a > c) and (a < b)']
+
+    pandas_df, ray_df = generate_data()
+    pandas_df.query(funcs[0], inplace=True)
+    ray_df.query(funcs[0], inplace=True)
+    pandas_df.equals(rdf.to_pandas(ray_df))
+
+    pandas_df, ray_df = generate_data()
+    pandas_df.query(funcs[1], inplace=True)
+    ray_df.query(funcs[1], inplace=True)
+    pandas_df.equals(rdf.to_pandas(ray_df))
+
+    pandas_df, ray_df = generate_data()
+    pandas_df_2, ray_df_2 = pandas_df.query(funcs[2]), ray_df.query(funcs[2])
+    pandas_df_2.equals(rdf.to_pandas(ray_df_2))
+
+    pandas_df, ray_df = generate_data()
+    pandas_df_3, ray_df_3 = pandas_df.query(funcs[3]), ray_df.query(funcs[3])
+    pandas_df_3.equals(rdf.to_pandas(ray_df_3))
 
 
 def test_radd():

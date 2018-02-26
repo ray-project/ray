@@ -35,8 +35,7 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
-        self._lengths = [_deploy_func.remote(_get_lengths, d)
-                         for d in self._df]
+        self._update_lengths()
         self.columns = columns
 
         # this _index object is a pd.DataFrame
@@ -83,6 +82,10 @@ class DataFrame(object):
         return pd.DataFrame(dest_indices)
 
     index = property(_get_index, _set_index)
+
+    def _update_lengths(self):
+        self._lengths = [_deploy_func.remote(_get_lengths, d)
+                         for d in self._df]
 
     def _get_lengths(self):
         """Gets the lengths for each partition and caches it if it wasn't.
@@ -203,6 +206,13 @@ class DataFrame(object):
             index = self.index
 
         return DataFrame(new_df, self.columns, index=index)
+
+    def _update_inplace(self, new_dfs):
+        assert(len(new_dfs) > 0)
+
+        self._df = new_dfs
+        self._update_lengths()
+        self._index = self._default_index()
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -1124,7 +1134,13 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def query(self, expr, inplace=False, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        new_dfs = [_deploy_func.remote(lambda df: df.query(expr, **kwargs),
+                                       part) for part in self._df]
+
+        if inplace:
+            self._update_inplace(new_dfs)
+        else:
+            return DataFrame(new_dfs, self.columns)
 
     def radd(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
