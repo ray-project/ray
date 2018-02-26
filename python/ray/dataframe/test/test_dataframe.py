@@ -189,6 +189,7 @@ def test_int_dataframe():
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___neg__(ray_df, pandas_df)
     test___iter__(ray_df, pandas_df)
     test___abs__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
@@ -287,6 +288,7 @@ def test_float_dataframe():
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___neg__(ray_df, pandas_df)
     test___iter__(ray_df, pandas_df)
     test___abs__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
@@ -383,6 +385,10 @@ def test_mixed_dtype_dataframe():
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+
+    with pytest.raises(TypeError):
+        test___neg__(ray_df, pandas_df)
+
     test___iter__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
@@ -477,6 +483,7 @@ def test_nan_dataframe():
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___neg__(ray_df, pandas_df)
     test___iter__(ray_df, pandas_df)
     test___abs__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
@@ -1893,11 +1900,10 @@ def test___unicode__():
         ray_df.__unicode__()
 
 
-def test___neg__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__neg__()
+@pytest.fixture
+def test___neg__(ray_df, pd_df):
+    ray_df_neg = ray_df.__neg__()
+    assert pd_df.__neg__().equals(rdf.to_pandas(ray_df_neg))
 
 
 def test___invert__():

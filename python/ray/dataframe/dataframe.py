@@ -9,6 +9,10 @@ from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas.compat import lzip
+from pandas.core.dtypes.common import (
+    is_bool_dtype,
+    is_numeric_dtype,
+    is_timedelta64_dtype)
 
 import warnings
 import numpy as np
@@ -1795,7 +1799,14 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __neg__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        for t in self.dtypes:
+            if not (is_bool_dtype(t)
+                    or is_numeric_dtype(t)
+                    or is_timedelta64_dtype(t)):
+                raise TypeError("Unary negative expects numeric dtype, not {}"
+                                .format(t))
+
+        return self._map_partitions(lambda df: df.__neg__())
 
     def __floordiv__(self, other):
         raise NotImplementedError("Not Yet implemented.")
