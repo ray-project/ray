@@ -5,6 +5,7 @@ from __future__ import print_function
 import ray
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
+from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
 
@@ -20,6 +21,7 @@ class LocalSyncOptimizer(Optimizer):
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
+        self.throughput = RunningStat()
 
     def step(self):
         with self.update_weights_timer:
@@ -39,10 +41,13 @@ class LocalSyncOptimizer(Optimizer):
         with self.grad_timer:
             grad = self.local_evaluator.compute_gradients(samples)
             self.local_evaluator.apply_gradients(grad)
+            self.grad_timer.push_units_processed(samples.count)
 
     def stats(self):
         return {
             "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
             "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
+            "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
+            "opt_samples": round(self.grad_timer.mean_units_processed, 3),
         }

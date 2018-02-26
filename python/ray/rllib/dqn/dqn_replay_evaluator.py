@@ -6,13 +6,14 @@ import numpy as np
 
 import ray
 from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
-from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.rllib.optimizers import SampleBatch
 
 
 class DQNReplayEvaluator(DQNEvaluator):
     """Wraps DQNEvaluators to provide replay buffer functionality.
+
+    TODO(ekl) consider handling replay in an rllib optimizer
 
     This has two modes:
         If config["num_workers"] == 1:
@@ -21,15 +22,16 @@ class DQNReplayEvaluator(DQNEvaluator):
             Samples will be collected from a number of remote workers.
     """
 
-    def __init__(self, registry, env_creator, config, logdir):
-        DQNEvaluator.__init__(self, registry, env_creator, config, logdir)
+    def __init__(self, registry, env_creator, config, logdir, worker_index):
+        DQNEvaluator.__init__(
+            self, registry, env_creator, config, logdir, worker_index)
 
         # Create extra workers if needed
         if self.config["num_workers"] > 1:
             remote_cls = ray.remote(num_cpus=1)(DQNEvaluator)
             self.workers = [
-                remote_cls.remote(env_creator, config, logdir)
-                for _ in range(self.config["num_workers"])]
+                remote_cls.remote(registry, env_creator, config, logdir, i)
+                for i in range(self.config["num_workers"])]
         else:
             self.workers = []
 
@@ -38,20 +40,11 @@ class DQNReplayEvaluator(DQNEvaluator):
             self.replay_buffer = PrioritizedReplayBuffer(
                 config["buffer_size"],
                 alpha=config["prioritized_replay_alpha"])
-            prioritized_replay_beta_iters = \
-                config["prioritized_replay_beta_iters"]
-            if prioritized_replay_beta_iters is None:
-                prioritized_replay_beta_iters = \
-                    config["schedule_max_timesteps"]
-            self.beta_schedule = LinearSchedule(
-                prioritized_replay_beta_iters,
-                initial_p=config["prioritized_replay_beta0"],
-                final_p=1.0)
         else:
             self.replay_buffer = ReplayBuffer(config["buffer_size"])
-            self.beta_schedule = None
 
         self.samples_to_prioritize = None
+        self.sample_futures = None
 
     def sample(self, no_replay=False):
         # First seed the replay buffer with a few new samples
@@ -59,15 +52,25 @@ class DQNReplayEvaluator(DQNEvaluator):
             weights = ray.put(self.get_weights())
             for w in self.workers:
                 w.set_weights.remote(weights)
-            samples = ray.get([w.sample.remote() for w in self.workers])
+            prev_samples = self.sample_futures
+            if not prev_samples:
+                prev_samples = [w.sample.remote() for w in self.workers]
+            # Kick off another background sample batch to pipeline sampling
+            # with optimization.
+            self.sample_futures = [w.sample.remote() for w in self.workers]
+            samples = ray.get(prev_samples)
         else:
             samples = [DQNEvaluator.sample(self)]
 
         for s in samples:
             for row in s.rows():
+                if self.config["worker_side_prioritization"]:
+                    weight = row["weights"]
+                else:
+                    weight = None
                 self.replay_buffer.add(
                     row["obs"], row["actions"], row["rewards"], row["new_obs"],
-                    row["dones"])
+                    row["dones"], weight)
 
         if no_replay:
             return SampleBatch.concat_samples(samples)
@@ -77,7 +80,7 @@ class DQNReplayEvaluator(DQNEvaluator):
             (obses_t, actions, rewards, obses_tp1,
                 dones, weights, batch_indexes) = self.replay_buffer.sample(
                     self.config["train_batch_size"],
-                    beta=self.beta_schedule.value(self.global_timestep))
+                    beta=self.config["prioritized_replay_beta"])
             self._update_priorities_if_needed()
             batch = SampleBatch({
                 "obs": obses_t, "actions": actions, "rewards": rewards,
