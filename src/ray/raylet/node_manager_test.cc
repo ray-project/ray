@@ -68,11 +68,16 @@ public:
                                  mock_gcs_client,
                                  od2));
 
+    // connect to stores.
+    ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client2.Connect(store_sock_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
     this->StartLoop();
   }
 
   void TearDown() {
     this->StopLoop();
+    client1.Disconnect();
+    client2.Disconnect();
 
     this->server1->Terminate();
     this->server2->Terminate();
@@ -101,6 +106,17 @@ public:
     p.join();
   }
 
+  ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size){
+    ObjectID object_id = ObjectID::from_random();
+    cout << "ObjectID Created: " << object_id.hex().c_str() << endl;
+    uint8_t metadata[] = {5};
+    int64_t metadata_size = sizeof(metadata);
+    std::shared_ptr<Buffer> data;
+    ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata, metadata_size, &data));
+    ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
+    return object_id;
+  }
+
  protected:
 
   std::thread p;
@@ -108,6 +124,9 @@ public:
   shared_ptr<ray::GcsClient> mock_gcs_client;
   unique_ptr<ray::NodeServer> server1;
   unique_ptr<ray::NodeServer> server2;
+
+  plasma::PlasmaClient client1;
+  plasma::PlasmaClient client2;
 
 };
 
@@ -121,7 +140,12 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
     ASSERT_TRUE(client_id == info.GetClientId());
   }
 
-  // TODO(hme): Add Push test.
+  // ClientID client_id_1 = server1->GetObjectManager().GetClientID();
+  ObjectID oid1 = WriteDataToClient(client1, 100);
+  sleep(1);
+
+  ClientID client_id_2 = server1->GetObjectManager().GetClientID();
+  server1->GetObjectManager().Push(oid1, client_id_2);
 
   ASSERT_TRUE(true);
 }

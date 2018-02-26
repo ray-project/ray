@@ -43,6 +43,10 @@ void ObjectManager::SetClientID(const ClientID &client_id){
   this->client_id_ = client_id;
 }
 
+ClientID ObjectManager::GetClientID(){
+  return this->client_id_;
+}
+
 ray::Status ObjectManager::Terminate() {
   StopIOService();
   ray::Status status_code = this->od->Terminate();
@@ -99,23 +103,25 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id,
 
 ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
                                        SenderConnection::pointer client) {
+  cout << "ExecutePull: " << object_id.hex() << endl;
   // TODO: implement pull.
   return ray::Status::OK();
 };
 
 ray::Status ObjectManager::Push(const ObjectID &object_id,
                                 const ClientID &client_id) {
+  // cout << "Push: " << object_id.hex() << " " << client_id.hex() << endl;
   GetTransferConnection(
       client_id,
       [this, object_id](SenderConnection::pointer client){
-        ExecutePush(object_id, client);
+        ExecutePush(object_id, client).ok();
       });
   return Status::OK();
 };
 
 ray::Status ObjectManager::ExecutePush(const ObjectID &object_id,
                                        SenderConnection::pointer client) {
-  // TODO: implement push.
+  cout << "ExecutePush: " << object_id.hex() << endl;
   return ray::Status::OK();
 };
 
@@ -192,6 +198,7 @@ ray::Status ObjectManager::GetTransferConnection(const ClientID &client_id,
 
 ray::Status ObjectManager::CreateTransferConnection(const ODRemoteConnectionInfo &info,
                                                     std::function<void(SenderConnection::pointer)> callback){
+
   transfer_send_connections_.emplace(info.client_id, SenderConnection::Create(io_service_, info));
 
   // Prepare client connection info buffer.
@@ -208,8 +215,12 @@ ray::Status ObjectManager::CreateTransferConnection(const ODRemoteConnectionInfo
 
   // Send synchronously.
   SenderConnection::pointer conn = transfer_send_connections_[info.client_id];
-  boost::system::error_code error;
-  boost::asio::write(conn->GetSocket(), buffer);
+  boost::system::error_code ec;
+  boost::asio::write(conn->GetSocket(), buffer, ec);
+
+  // cout << "CreateTransferConnection: " << info.client_id.hex() << endl;
+  // cout << conn->GetSocket().local_endpoint().address() << endl;
+  // cout << conn->GetSocket().local_endpoint().port() << endl;
 
   callback(transfer_send_connections_[info.client_id]);
   return Status::OK();
@@ -235,6 +246,10 @@ ray::Status ObjectManager::AddSock(TCPClientConnection::pointer conn){
   ClientID client_id = ObjectID::from_binary(info->client_id()->str());
   bool is_transfer = info->is_transfer();
 
+  // cout << "AddSock: " << client_id.hex() << " " << is_transfer << endl;
+  // cout << conn->GetSocket().local_endpoint().address() << endl;
+  // cout << conn->GetSocket().local_endpoint().port() << endl;
+
   if (is_transfer) {
     message_receive_connections_[client_id] = conn;
   } else {
@@ -243,5 +258,9 @@ ray::Status ObjectManager::AddSock(TCPClientConnection::pointer conn){
 
   return ray::Status::OK();
 };
+
+//ProcessPushReceive(){
+//
+//}
 
 } // end ray

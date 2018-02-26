@@ -25,6 +25,7 @@ class NodeServer {
              shared_ptr<ray::GcsClient> gcs_client,
              shared_ptr<ray::ObjectDirectory> od);
 
+  ObjectManager &GetObjectManager();
   void Terminate();
 
  private:
