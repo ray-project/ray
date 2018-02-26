@@ -75,6 +75,11 @@ class ASHAScheduler(FIFOScheduler):
 
 
 class _Bracket():
+    """Bookkeeping system to track the cutoffs.
+
+    Rungs are created in reversed order so that we can more easily find
+    the correct rung corresponding to the current iteration of the result.
+    """
     def __init__(self, min_t, max_t, reduction_factor, s):
         self.rf = reduction_factor
         MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
@@ -89,21 +94,18 @@ class _Bracket():
     def on_result(self, trial, cur_iter, cur_rew):
         action = TrialScheduler.CONTINUE
         for milestone, recorded in self._rungs:
-            if cur_iter < milestone:
-                continue
-            elif trial.trial_id in recorded:
+            if cur_iter < milestone or trial.trial_id in recorded:
                 continue
             else:
                 recorded[trial.trial_id] = cur_rew
                 if cur_rew < self.cutoff(recorded):
                     action = TrialScheduler.STOP
                 break
-
         return action
 
     def debug_str(self):
-        iters = " ".join(
-            ["Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))
+        iters = " | ".join(
+            ["Iter {:.3f}: {:.3f}".format(milestone, self.cutoff(recorded))
              for milestone, recorded in self._rungs])
         return "Bracket: " + iters
 
