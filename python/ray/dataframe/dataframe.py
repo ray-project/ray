@@ -584,7 +584,6 @@ class DataFrame(object):
                             level=level,
                             numeric_only=numeric_only),
                         index=temp_index)._df))
-            # collapsed_df.index = self.columns
             return collapsed_df
 
     def cov(self, min_periods=None):
