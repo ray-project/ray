@@ -43,9 +43,12 @@ class LocalSyncReplayOptimizer(Optimizer):
                     row["obs"], row["actions"], row["rewards"], row["new_obs"],
                     row["dones"], row["weights"])
 
-        if len(self.replay_buffer) < self.replay_starts:
-            return
+        if len(self.replay_buffer) >= self.replay_starts:
+            self._optimize()
 
+        return batch.count
+
+    def _optimize(self):
         with self.replay_timer:
             if self.config["prioritized_replay"]:
                 (obses_t, actions, rewards, obses_tp1,
@@ -68,7 +71,7 @@ class LocalSyncReplayOptimizer(Optimizer):
             td_error = self.local_evaluator.compute_apply(samples)
             if self.config["prioritized_replay"]:
                 self.replay_buffer.update_priorities(
-                    batch["batch_indexes"], td_error)
+                    samples["batch_indexes"], td_error)
             self.grad_timer.push_units_processed(samples.count)
 
     def stats(self):
