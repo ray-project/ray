@@ -12,7 +12,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.dqn import models
 from ray.rllib.dqn.common.atari_wrappers import wrap_deepmind
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
-from ray.rllib.optimizers import SampleBatch, TFMultiGPUSupport
+from ray.rllib.optimizers import SampleBatch, Evaluator
 from ray.rllib.optimizers.sample_batch import pack
 
 
@@ -44,8 +44,8 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
         del arr[new_len:]
 
 
-class DQNEvaluator(TFMultiGPUSupport):
-    """The base DQN Evaluator that does not include the replay buffer.
+class DQNEvaluator(Evaluator):
+    """The DQN Evaluator.
 
     TODO(rliaw): Support observation/reward filters?"""
 
@@ -162,12 +162,6 @@ class DQNEvaluator(TFMultiGPUSupport):
 
     def set_weights(self, weights):
         self.variables.set_weights(weights)
-
-    def tf_loss_inputs(self):
-        return self.dqn_graph.loss_inputs
-
-    def build_tf_loss(self, input_placeholders):
-        return self.dqn_graph.build_loss(*input_placeholders)
 
     def _step(self, global_timestep):
         """Takes a single step, and returns the result of the step."""
