@@ -665,11 +665,14 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     # querying the jupyter server.
     token = binascii.hexlify(os.urandom(24)).decode("ascii")
     command = ["jupyter", "notebook", "--no-browser",
-               "--allow-root",
                "--port={}".format(port),
                "--NotebookApp.iopub_data_rate_limit=10000000000",
                "--NotebookApp.open_browser=False",
                "--NotebookApp.token={}".format(token)]
+    # If the user is root, add the --allow-root flag.
+    if os.geteuid() == 0:
+        command.append("--allow-root")
+
     try:
         ui_process = subprocess.Popen(command, env=new_env,
                                       cwd=new_notebook_directory,
