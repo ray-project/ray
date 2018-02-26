@@ -32,7 +32,7 @@ class LocalSyncReplayOptimizer(Optimizer):
         else:
             self.replay_buffer = ReplayBuffer(self.buffer_size)
 
-        assert self.buffer_size > self.replay_starts
+        assert self.buffer_size >= self.replay_starts
 
     def step(self):
         with self.update_weights_timer:
