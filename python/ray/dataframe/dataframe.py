@@ -5,11 +5,12 @@ from __future__ import print_function
 import pandas as pd
 import numpy as np
 import ray
+import itertools
 
 
 class DataFrame(object):
 
-    def __init__(self, df, columns):
+    def __init__(self, df, columns, index=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -17,11 +18,21 @@ class DataFrame(object):
                 partitions.
             columns (pandas.Index): The column names for this dataframe, in
                 pandas Index object.
+            index (pandas.Index or list): The row index for this dataframe.
         """
         assert(len(df) > 0)
 
         self._df = df
+        self._lengths = [_deploy_func.remote(_get_lengths, d)
+                         for d in self._df]
         self.columns = columns
+
+        # this _index object is a pd.DataFrame
+        # and we use that DataFrame's Index to index the rows.
+        self._index = self._default_index()
+
+        if index is not None:
+            self.index = index
 
     def __str__(self):
         return "ray.DataFrame object"
@@ -29,21 +40,60 @@ class DataFrame(object):
     def __repr__(self):
         return "ray.DataFrame object"
 
-    @property
-    def index(self):
+    def _get_index(self):
         """Get the index for this DataFrame.
 
         Returns:
             The union of all indexes across the partitions.
         """
-        indices = ray.get(self._map_partitions(lambda df: df.index)._df)
-        if isinstance(indices[0], pd.RangeIndex):
-            merged = indices[0]
-            for index in indices[1:]:
-                merged = merged.union(index)
-            return merged
-        else:
-            return indices[0].append(indices[1:])
+        return self._index.index
+
+    def _set_index(self, new_index):
+        """Set the index for this DataFrame.
+
+        Args:
+            new_index: The new index to set this
+        """
+        self._index.index = new_index
+
+    def _default_index(self):
+        """Create a default index, which is a RangeIndex
+
+        Returns:
+            The pd.RangeIndex object that represents this DataFrame.
+        """
+        dest_indices = {"partition":
+                        [i for i in range(len(self._lengths))
+                         for j in range(self._lengths[i])],
+                        "index_within_partition":
+                        [j for i in range(len(self._lengths))
+                         for j in range(self._lengths[i])]}
+        return pd.DataFrame(dest_indices)
+
+    index = property(_get_index, _set_index)
+
+    def _get_lengths(self):
+        """Gets the lengths for each partition and caches it if it wasn't.
+
+        Returns:
+            A list of integers representing the length of each partition.
+        """
+        if isinstance(self._length_cache[0], ray.local_scheduler.ObjectID):
+            self._length_cache = ray.get(self._length_cache)
+        return self._length_cache
+
+    def _set_lengths(self, lengths):
+        """Sets the lengths of each partition for this DataFrame.
+
+        We use this because we can compute it when creating the DataFrame.
+
+        Args:
+            lengths ([ObjectID or Int]): A list of lengths for each
+                partition, in order.
+        """
+        self._length_cache = lengths
+
+    _lengths = property(_get_lengths, _set_lengths)
 
     @property
     def size(self):
@@ -52,8 +102,7 @@ class DataFrame(object):
         Returns:
             The number of elements in the DataFrame.
         """
-        sizes = ray.get(self._map_partitions(lambda df: df.size)._df)
-        return sum(sizes)
+        return len(self.index) * len(self.columns)
 
     @property
     def ndim(self):
@@ -127,7 +176,7 @@ class DataFrame(object):
         """
         return (len(self.index), len(self.columns))
 
-    def _map_partitions(self, func, *args):
+    def _map_partitions(self, func, index=None):
         """Apply a function on each partition.
 
         Args:
@@ -138,8 +187,10 @@ class DataFrame(object):
         """
         assert(callable(func))
         new_df = [_deploy_func.remote(func, part) for part in self._df]
+        if index is None:
+            index = self.index
 
-        return DataFrame(new_df, self.columns)
+        return DataFrame(new_df, self.columns, index=index)
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -147,9 +198,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame containing the new column names.
         """
-        new_dfs = self._map_partitions(lambda df: df.add_prefix(prefix))
         new_cols = self.columns.map(lambda x: str(prefix) + str(x))
-        return DataFrame(new_dfs._df, new_cols)
+        return DataFrame(self._df, new_cols, index=self.index)
 
     def add_suffix(self, suffix):
         """Add a suffix to each of the column names.
@@ -157,9 +207,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame containing the new column names.
         """
-        new_dfs = self._map_partitions(lambda df: df.add_suffix(suffix))
         new_cols = self.columns.map(lambda x: str(x) + str(suffix))
-        return DataFrame(new_dfs._df, new_cols)
+        return DataFrame(self._df, new_cols, index=self.index)
 
     def applymap(self, func):
         """Apply a function to a DataFrame elementwise.
@@ -176,7 +225,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame pointing to the same partitions as this one.
         """
-        return DataFrame(self._df, self.columns)
+        return DataFrame(self._df, self.columns, index=self.index)
 
     def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
                 group_keys=True, squeeze=False, **kwargs):
@@ -194,15 +243,11 @@ class DataFrame(object):
             A new DataFrame resulting from the groupby.
         """
 
-        indices = list(set(
-            [index for df in ray.get(self._df) for index in list(df.index)]))
+        indices = self.index.unique()
 
         chunksize = int(len(indices) / len(self._df))
-        partitions = []
-
-        for df in self._df:
-            partitions.append(_shuffle.remote(df, indices, chunksize))
-
+        partitions = [_shuffle.remote(df, indices, chunksize)
+                      for df in self._df]
         partitions = ray.get(partitions)
 
         # Transpose the list of dataframes
@@ -212,10 +257,9 @@ class DataFrame(object):
             shuffle.append([])
             for j in range(len(partitions)):
                 shuffle[i].append(partitions[j][i])
-
         new_dfs = [_local_groupby.remote(part, axis=axis) for part in shuffle]
 
-        return DataFrame(new_dfs, self.columns)
+        return DataFrame(new_dfs, self.columns, index=indices)
 
     def reduce_by_index(self, func, axis=0):
         """Perform a reduction based on the row index.
@@ -227,7 +271,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the result of the reduction.
         """
-        return self.groupby(axis=axis)._map_partitions(func)
+        return self.groupby(axis=axis)._map_partitions(
+            func, index=pd.unique(self.index))
 
     def sum(self, axis=None, skipna=True, level=None, numeric_only=None):
         """Perform a sum across the DataFrame.
@@ -239,9 +284,14 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
+        intermediate_index = [idx
+                              for _ in range(len(self._df))
+                              for idx in self.columns]
+
         sum_of_partitions = self._map_partitions(
             lambda df: df.sum(axis=axis, skipna=skipna, level=level,
-                              numeric_only=numeric_only))
+                              numeric_only=numeric_only),
+            index=intermediate_index)
 
         return sum_of_partitions.reduce_by_index(
             lambda df: df.sum(axis=axis, skipna=skipna, level=level,
@@ -253,6 +303,10 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the applied absolute value.
         """
+        for t in self.dtypes:
+            if np.dtype('O') == t:
+                # TODO Give a more accurate error to Pandas
+                raise TypeError("bad operand type for abs():", "str")
         return self._map_partitions(lambda df: df.abs())
 
     def isin(self, values):
@@ -298,7 +352,7 @@ class DataFrame(object):
             A pandas Index for this DataFrame.
         """
         # Each partition should have the same index, so we'll use 0's
-        return ray.get(_deploy_func.remote(lambda df: df.keys(), self._df[0]))
+        return self.columns
 
     def transpose(self, *args, **kwargs):
         """Transpose columns and rows for the DataFrame.
@@ -308,10 +362,18 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
+        temp_index = [idx
+                      for _ in range(len(self._df))
+                      for idx in self.columns]
+
+        temp_columns = self.index
         local_transpose = self._map_partitions(
-            lambda df: df.transpose(*args, **kwargs))
+            lambda df: df.transpose(*args, **kwargs), index=temp_index)
+        local_transpose.columns = temp_columns
+
         # Sum will collapse the NAs from the groupby
-        return local_transpose.reduce_by_index(lambda df: df.sum(), axis=1)
+        return local_transpose.reduce_by_index(
+            lambda df: df.apply(lambda x: x), axis=1)
 
     T = property(transpose)
 
@@ -362,17 +424,15 @@ class DataFrame(object):
         if axis is None or axis == 0:
             df = self.T
             axis = 1
-            ordered_index = df.columns
         else:
             df = self
-            ordered_index = df.index
 
         mapped = df._map_partitions(lambda df: df.all(axis,
                                                       bool_only,
                                                       skipna,
                                                       level,
                                                       **kwargs))
-        return to_pandas(mapped)[ordered_index]
+        return to_pandas(mapped)
 
     def any(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
@@ -385,17 +445,15 @@ class DataFrame(object):
         if axis is None or axis == 0:
             df = self.T
             axis = 1
-            ordered_index = df.columns
         else:
             df = self
-            ordered_index = df.index
 
         mapped = df._map_partitions(lambda df: df.any(axis,
                                                       bool_only,
                                                       skipna,
                                                       level,
                                                       **kwargs))
-        return to_pandas(mapped)[ordered_index]
+        return to_pandas(mapped)
 
     def append(self, other, ignore_index=False, verify_integrity=False):
         raise NotImplementedError("Not Yet implemented.")
@@ -489,14 +547,17 @@ class DataFrame(object):
 
     def count(self, axis=0, level=None, numeric_only=False):
         if axis == 1:
-            original_index = self.index
             return self.T.count(axis=0,
                                 level=level,
-                                numeric_only=numeric_only)[original_index]
+                                numeric_only=numeric_only)
         else:
+            temp_index = [idx
+                          for _ in range(len(self._df))
+                          for idx in self.columns]
+
             return sum(ray.get(self._map_partitions(lambda df: df.count(
                 axis=axis, level=level, numeric_only=numeric_only
-            ))._df))
+            ), index=temp_index)._df))
 
     def cov(self, min_periods=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -652,20 +713,29 @@ class DataFrame(object):
         Returns:
             A new dataframe with the first n rows of the dataframe.
         """
-        sizes = ray.get(self._map_partitions(lambda df: df.size)._df)
-        new_dfs = []
-        i = 0
-        while n > 0 and i < len(self._df):
-            if (n - sizes[i]) < 0:
-                new_dfs.append(_deploy_func.remote(lambda df: df.head(n),
-                                                   self._df[i]))
-                break
-            else:
-                new_dfs.append(self._df[i])
-                n -= sizes[i]
-                i += 1
+        sizes = self._lengths
 
-        return DataFrame(new_dfs, self.columns)
+        if n >= sum(sizes):
+            return self
+
+        cumulative = np.cumsum(np.array(sizes))
+        new_dfs = [self._df[i]
+                   for i in range(len(cumulative))
+                   if cumulative[i] < n]
+
+        last_index = len(new_dfs)
+
+        # this happens when we only need from the first partition
+        if last_index == 0:
+            num_to_transfer = n
+        else:
+            num_to_transfer = n - cumulative[last_index - 1]
+
+        new_dfs.append(_deploy_func.remote(lambda df: df.head(num_to_transfer),
+                                           self._df[last_index]))
+
+        index = self._index.head(n).index
+        return DataFrame(new_dfs, self.columns, index=index)
 
     def hist(self, data, column=None, by=None, grid=True, xlabelsize=None,
              xrot=None, ylabelsize=None, yrot=None, ax=None, sharex=False,
@@ -683,6 +753,10 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
+        for t in self.dtypes:
+            if np.dtype('O') == t:
+                # TODO Give a more accurate error to Pandas
+                raise TypeError("bad operand type for abs():", "str")
         if axis == 1:
             return to_pandas(self._map_partitions(
                 lambda df: df.idxmax(axis=axis, skipna=skipna)))
@@ -700,6 +774,10 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
+        for t in self.dtypes:
+            if np.dtype('O') == t:
+                # TODO Give a more accurate error to Pandas
+                raise TypeError("bad operand type for abs():", "str")
         if axis == 1:
             return to_pandas(self._map_partitions(
                 lambda df: df.idxmin(axis=axis, skipna=skipna)))
@@ -720,17 +798,75 @@ class DataFrame(object):
                     limit_direction='forward', downcast=None, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
+    def iterrows(self):
+        """Iterate over DataFrame rows as (index, Series) pairs.
+
+        Note:
+            Generators can't be pickeled so from the remote function
+            we expand the generator into a list before getting it.
+            This is not that ideal.
+
+        Returns:
+            A generator that iterates over the rows of the frame.
+        """
+        iters = ray.get([
+            _deploy_func.remote(
+                lambda df: list(df.iterrows()), part) for part in self._df])
+        return itertools.chain.from_iterable(iters)
+
     def items(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterator over (column name, Series) pairs.
+
+        Note:
+            Generators can't be pickeled so from the remote function
+            we expand the generator into a list before getting it.
+            This is not that ideal.
+
+        Returns:
+            A generator that iterates over the columns of the frame.
+        """
+        iters = ray.get([_deploy_func.remote(
+            lambda df: list(df.items()), part) for part in self._df])
+
+        def concat_iters(iterables):
+            for partitions in zip(*iterables):
+                series = pd.concat([_series for _, _series in partitions])
+                yield (series.name, series)
+
+        return concat_iters(iters)
 
     def iteritems(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterator over (column name, Series) pairs.
 
-    def iterrows(self):
-        raise NotImplementedError("Not Yet implemented.")
+        Note:
+            Returns the same thing as .items()
+
+        Returns:
+            A generator that iterates over the columns of the frame.
+        """
+        return self.items()
 
     def itertuples(self, index=True, name='Pandas'):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterate over DataFrame rows as namedtuples.
+
+        Args:
+            index (boolean, default True): If True, return the index as the
+                first element of the tuple.
+            name (string, default "Pandas"): The name of the returned
+            namedtuples or None to return regular tuples.
+        Note:
+            Generators can't be pickeled so from the remote function
+            we expand the generator into a list before getting it.
+            This is not that ideal.
+
+        Returns:
+            A tuple representing row data. See args for varying tuples.
+        """
+        iters = ray.get([
+            _deploy_func.remote(
+                lambda df: list(df.itertuples(index=index, name=name)),
+                part) for part in self._df])
+        return itertools.chain.from_iterable(iters)
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
@@ -1082,21 +1218,31 @@ class DataFrame(object):
         Returns:
             A new dataframe with the last n rows of this dataframe.
         """
-        sizes = ray.get(self._map_partitions(lambda df: df.size)._df)
-        new_dfs = []
-        i = len(self._df) - 1
-        while n > 0 and i >= 0:
-            if (n - sizes[i]) < 0:
-                new_dfs.append(_deploy_func.remote(lambda df: df.head(n),
-                                                   self._df[i]))
-                break
-            else:
-                new_dfs.append(self._df[i])
-                n -= sizes[i]
-                i -= 1
-        # we were adding in reverse order, so make it right.
-        new_dfs.reverse()
-        return DataFrame(new_dfs, self.columns)
+        sizes = self._lengths
+
+        if n >= sum(sizes):
+            return self
+
+        cumulative = np.cumsum(np.array(sizes.reverse()))
+
+        reverse_dfs = self._df.reverse()
+        new_dfs = [reverse_dfs[i]
+                   for i in range(len(cumulative))
+                   if cumulative[i] < n]
+
+        last_index = len(new_dfs)
+
+        # this happens when we only need from the last partition
+        if last_index == 0:
+            num_to_transfer = n
+        else:
+            num_to_transfer = n - cumulative[last_index - 1]
+
+        new_dfs.append(_deploy_func.remote(lambda df: df.tail(num_to_transfer),
+                                           reverse_dfs[last_index])).reverse()
+
+        index = self._index.tail(n).index
+        return DataFrame(new_dfs, self.columns, index=index)
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
@@ -1443,6 +1589,24 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
 
+def _get_lengths(df):
+    """Gets the length of the dataframe.
+
+    Args:
+        df: A remote pd.DataFrame object.
+
+    Returns:
+        Returns an integer length of the dataframe object. If the attempt
+            fails, returns 0 as the length.
+    """
+    try:
+        return len(df)
+    # Because we sometimes have cases where we have summary statistics in our
+    # DataFrames
+    except TypeError:
+        return 0
+
+
 @ray.remote
 def _shuffle(df, indices, chunksize):
     """Shuffle data by sending it through the Ray Store.
@@ -1459,12 +1623,12 @@ def _shuffle(df, indices, chunksize):
     i = 0
     partition = []
     while len(indices) > chunksize:
-        oids = df.reindex(indices[:chunksize]).dropna()
+        oids = df.reindex(indices[:chunksize])
         partition.append(oids)
         indices = indices[chunksize:]
         i += 1
     else:
-        oids = df.reindex(indices).dropna()
+        oids = df.reindex(indices)
         partition.append(oids)
     return partition
 
@@ -1522,16 +1686,24 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     elif chunksize is None:
         raise ValueError("The number of partitions or chunksize must be set.")
 
-    # TODO stop reassigning df
-    dataframes = []
-    while len(df) > chunksize:
-        top = ray.put(df[:chunksize])
-        dataframes.append(top)
-        df = df[chunksize:]
-    else:
-        dataframes.append(ray.put(df))
+    temp_df = df
 
-    return DataFrame(dataframes, df.columns)
+    dataframes = []
+    lengths = []
+    while len(temp_df) > chunksize:
+        t_df = temp_df[:chunksize]
+        lengths.append(len(t_df))
+        # reindex here because we want a pd.RangeIndex within the partitions.
+        # It is smaller and sometimes faster.
+        t_df.reindex()
+        top = ray.put(t_df)
+        dataframes.append(top)
+        temp_df = temp_df[chunksize:]
+    else:
+        dataframes.append(ray.put(temp_df))
+        lengths.append(len(temp_df))
+
+    return DataFrame(dataframes, df.columns, index=df.index)
 
 
 def to_pandas(df):

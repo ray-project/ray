@@ -26,7 +26,7 @@ To build Ray, first install the following dependencies. We recommend using
 .. code-block:: bash
 
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python # we install python here because python2 is required to build the webui
+  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison python # we install python here because python2 is required to build the webui
 
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.
@@ -35,7 +35,7 @@ To build Ray, first install the following dependencies. We recommend using
   # If you are on Ubuntu 14.04, you need the following.
   pip install cmake
 
-  pip install numpy funcsigs click colorama psutil redis flatbuffers cython
+  pip install cython
 
 
 If you are using Anaconda, you may also need to run the following.
@@ -54,7 +54,7 @@ Ray can be built from the repository as follows.
 
   git clone https://github.com/ray-project/ray.git
   cd ray/python
-  python setup.py install  # Add --user if you see a permission denied error.
+  pip install -e . --verbose  # Add --user if you see a permission denied error.
 
 Alternatively, Ray can be built from the repository without cloning using pip.
 

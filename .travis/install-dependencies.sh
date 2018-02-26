@@ -24,7 +24,7 @@ if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q numpy cython cmake funcsigs click colorama psutil redis tensorflow gym==0.9.5 flatbuffers opencv-python pyyaml pandas requests
+  pip install -q cython cmake tensorflow gym opencv-python pyyaml pandas requests
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake pkg-config python-dev python-numpy build-essential autoconf curl libtool unzip
@@ -32,7 +32,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q numpy cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python pyyaml pandas requests
+  pip install -q cython cmake tensorflow gym opencv-python pyyaml pandas requests
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -41,14 +41,14 @@ elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
     exit 1
   else
     echo "Updating brew."
-    brew update >/dev/null
+    brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool boost
+  brew install cmake pkg-config automake autoconf libtool boost openssl bison > /dev/null
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda2-latest-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q numpy cython cmake funcsigs click colorama psutil redis tensorflow gym==0.9.5 flatbuffers opencv-python pyyaml pandas requests
+  pip install -q cython cmake tensorflow gym opencv-python pyyaml pandas requests
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -57,14 +57,14 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
     exit 1
   else
     echo "Updating brew."
-    brew update >/dev/null
+    brew update > /dev/null
   fi
-  brew install cmake pkg-config automake autoconf libtool boost
+  brew install cmake pkg-config automake autoconf libtool boost openssl bison > /dev/null
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q numpy cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python pyyaml pandas requests
+  pip install -q cython cmake tensorflow gym opencv-python pyyaml pandas requests
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake build-essential autoconf curl libtool unzip
@@ -78,7 +78,17 @@ elif [[ "$LINUX_WHEELS" == "1" ]]; then
   sudo apt-get install docker
   sudo usermod -a -G docker travis
 elif [[ "$MAC_WHEELS" == "1" ]]; then
-  # Don't need to do anything here.
+  which -s brew
+  if [[ $? != 0 ]]; then
+    echo "Could not find brew, please install brew (see http://brew.sh/)."
+    exit 1
+  else
+    echo "Updating brew."
+    brew update > /dev/null
+  fi
+  brew install cmake pkg-config automake autoconf libtool boost openssl bison > /dev/null
+  # We use true to avoid exiting with an error code because the brew install can
+  # fail if a package is already installed.
   true
 else
   echo "Unrecognized environment."

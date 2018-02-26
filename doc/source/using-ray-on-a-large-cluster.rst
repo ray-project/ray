@@ -235,11 +235,10 @@ necessary to upgrade Ray. It should look something like the following:
   pushd .
   # Upgrade Ray.
   cd ray
-  git remote set-url origin https://github.com/ray-project/ray
   git checkout master
   git pull
   cd python
-  python setup.py install --user
+  pip install -e . --verbose
   popd
 
 This script executes a series of git commands to update the Ray source code, then builds

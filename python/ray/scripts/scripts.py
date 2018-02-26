@@ -7,7 +7,8 @@ import json
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.commands import create_or_update_cluster, teardown_cluster
+from ray.autoscaler.commands import (
+    create_or_update_cluster, teardown_cluster, get_head_node_ip)
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -52,8 +53,14 @@ def cli():
 @click.option("--redis-max-clients", required=False, type=int,
               help=("If provided, attempt to configure Redis with this "
                     "maximum number of clients."))
+@click.option("--redis-shard-ports", required=False, type=str,
+              help="the port to use for the Redis shards other than the "
+                   "primary Redis shard")
 @click.option("--object-manager-port", required=False, type=int,
               help="the port to use for starting the object manager")
+@click.option("--object-store-memory", required=False, type=int,
+              help="the maximum amount of memory (in bytes) to allow the "
+                   "object store to use")
 @click.option("--num-workers", required=False, type=int,
               help=("The initial number of workers to start on this node, "
                     "note that the local scheduler may start additional "
@@ -80,15 +87,10 @@ def cli():
 @click.option("--autoscaling-config", required=False, type=str,
               help="the file that contains the autoscaling config")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          redis_max_clients, object_manager_port, num_workers, num_cpus,
-          num_gpus, resources, head, no_ui, block, plasma_directory,
-          huge_pages, autoscaling_config):
-    # Note that we redirect stdout and stderr to /dev/null because otherwise
-    # attempts to print may cause exceptions if a process is started inside of
-    # an SSH connection and the SSH connection dies. TODO(rkn): This is a
-    # temporary fix. We should actually redirect stdout and stderr to Redis in
-    # some way.
-
+          redis_max_clients, redis_shard_ports, object_manager_port,
+          object_store_memory, num_workers, num_cpus, num_gpus, resources,
+          head, no_ui, block, plasma_directory, huge_pages,
+          autoscaling_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -112,6 +114,20 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
     if head:
         # Start Ray on the head node.
+        if redis_shard_ports is not None:
+            redis_shard_ports = redis_shard_ports.split(",")
+            # Infer the number of Redis shards from the ports if the number is
+            # not provided.
+            if num_redis_shards is None:
+                num_redis_shards = len(redis_shard_ports)
+            # Check that the arguments match.
+            if len(redis_shard_ports) != num_redis_shards:
+                raise Exception("If --redis-shard-ports is provided, it must "
+                                "have the form '6380,6381,6382', and the "
+                                "number of ports provided must equal "
+                                "--num-redis-shards (which is 1 if not "
+                                "provided)")
+
         if redis_address is not None:
             raise Exception("If --head is passed in, a Redis server will be "
                             "started, so a Redis address should not be "
@@ -133,6 +149,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             address_info=address_info,
             node_ip_address=node_ip_address,
             redis_port=redis_port,
+            redis_shard_ports=redis_shard_ports,
+            object_store_memory=object_store_memory,
             num_workers=num_workers,
             cleanup=False,
             redirect_output=True,
@@ -161,6 +179,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if redis_port is not None:
             raise Exception("If --head is not passed in, --redis-port is not "
                             "allowed")
+        if redis_shard_ports is not None:
+            raise Exception("If --head is not passed in, --redis-shard-ports "
+                            "is not allowed")
         if redis_address is None:
             raise Exception("If --head is not passed in, --redis-address must "
                             "be provided.")
@@ -199,6 +220,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_address=redis_address,
             object_manager_ports=[object_manager_port],
             num_workers=num_workers,
+            object_store_memory=object_store_memory,
             cleanup=False,
             redirect_output=True,
             resources=resources,
@@ -238,8 +260,14 @@ def stop():
                      "awk '{ print $2 }') 2> /dev/null"], shell=True)
 
     # Find the PID of the jupyter process and kill it.
-    subprocess.call(["kill $(ps aux | grep jupyter | grep -v grep | "
-                     "awk '{ print $2 }') 2> /dev/null"], shell=True)
+    try:
+        from notebook.notebookapp import list_running_servers
+        pids = [str(server["pid"]) for server in list_running_servers()
+                if "/tmp/raylogs" in server["notebook_dir"]]
+        subprocess.call(["kill {} 2> /dev/null".format(
+            " ".join(pids))], shell=True)
+    except ImportError:
+        pass
 
 
 @click.command()
@@ -254,22 +282,35 @@ def stop():
 @click.option(
     "--max-workers", required=False, type=int, help=(
         "Override the configured max worker node count for the cluster."))
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help=(
+        "Don't ask for confirmation."))
 def create_or_update(
-        cluster_config_file, min_workers, max_workers, no_restart):
+        cluster_config_file, min_workers, max_workers, no_restart, yes):
     create_or_update_cluster(
-        cluster_config_file, min_workers, max_workers, no_restart)
+        cluster_config_file, min_workers, max_workers, no_restart, yes)
 
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
-def teardown(cluster_config_file):
-    teardown_cluster(cluster_config_file)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help=(
+        "Don't ask for confirmation."))
+def teardown(cluster_config_file, yes):
+    teardown_cluster(cluster_config_file, yes)
+
+
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+def get_head_ip(cluster_config_file):
+    click.echo(get_head_node_ip(cluster_config_file))
 
 
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(teardown)
+cli.add_command(get_head_ip)
 
 
 def main():
