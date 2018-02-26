@@ -216,6 +216,29 @@ def test_int_dataframe():
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
 
+    labels = ['a', 'b', 'c', 'd']
+    test_set_axis(ray_df, pandas_df, labels, 0)
+    test_set_axis(ray_df, pandas_df, labels, 'rows')
+    labels.append('e')
+    test_set_axis(ray_df, pandas_df, labels, 1)
+    test_set_axis(ray_df, pandas_df, labels, 'columns')
+
+    for key in keys:
+        test_set_index(ray_df, pandas_df, key)
+
+    test_reset_index(ray_df, pandas_df)
+    test_reset_index(ray_df, pandas_df, inplace=True)
+
+    for key in keys:
+        test___contains__(ray_df, key, True)
+    test___contains__(ray_df, "Not Exists", False)
+
+    for key in keys:
+        test_insert(ray_df, pandas_df, 0, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
+        test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+
 
 def test_float_dataframe():
 
@@ -287,6 +310,26 @@ def test_float_dataframe():
     test_items(ray_df, pandas_df)
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
+
+    labels = ['a', 'b', 'c', 'd']
+    test_set_axis(ray_df, pandas_df, labels, 0)
+    test_set_axis(ray_df, pandas_df, labels, 'rows')
+    labels.append('e')
+    test_set_axis(ray_df, pandas_df, labels, 1)
+    test_set_axis(ray_df, pandas_df, labels, 'columns')
+
+    for key in keys:
+        test_set_index(ray_df, pandas_df, key)
+        test_set_index(ray_df, pandas_df, key, inplace=True)
+
+    test_reset_index(ray_df, pandas_df)
+    test_reset_index(ray_df, pandas_df, inplace=True)
+
+    for key in keys:
+        test_insert(ray_df, pandas_df, 0, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
+        test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
 
 
 def test_mixed_dtype_dataframe():
@@ -365,6 +408,25 @@ def test_mixed_dtype_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
+    labels = ['a', 'b', 'c', 'd']
+    test_set_axis(ray_df, pandas_df, labels, 0)
+    test_set_axis(ray_df, pandas_df, labels, 'rows')
+    test_set_axis(ray_df, pandas_df, labels, 1)
+    test_set_axis(ray_df, pandas_df, labels, 'columns')
+
+    for key in keys:
+        test_set_index(ray_df, pandas_df, key)
+        test_set_index(ray_df, pandas_df, key, inplace=True)
+
+    test_reset_index(ray_df, pandas_df)
+    test_reset_index(ray_df, pandas_df, inplace=True)
+
+    for key in keys:
+        test_insert(ray_df, pandas_df, 0, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
+        test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+
 
 def test_nan_dataframe():
     pandas_df = pd.DataFrame({
@@ -434,6 +496,25 @@ def test_nan_dataframe():
     test_items(ray_df, pandas_df)
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
+
+    labels = ['a', 'b', 'c', 'd']
+    test_set_axis(ray_df, pandas_df, labels, 0)
+    test_set_axis(ray_df, pandas_df, labels, 'rows')
+    test_set_axis(ray_df, pandas_df, labels, 1)
+    test_set_axis(ray_df, pandas_df, labels, 'columns')
+
+    for key in keys:
+        test_set_index(ray_df, pandas_df, key)
+        test_set_index(ray_df, pandas_df, key, inplace=True)
+
+    test_reset_index(ray_df, pandas_df)
+    test_reset_index(ray_df, pandas_df, inplace=True)
+
+    for key in keys:
+        test_insert(ray_df, pandas_df, 0, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
+        test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
 
 
 def test_add():
@@ -902,11 +983,13 @@ def test_info():
         ray_df.info()
 
 
-def test_insert():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_insert(ray_df, pandas_df, loc, column, value):
+    ray_df_cp = ray_df.copy()
+    pd_df_cp = pandas_df.copy()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.insert(None, None, None)
+    ray_df_cp.insert(loc, column, value)
+    pd_df_cp.insert(loc, column, value)
 
 
 def test_interpolate():
@@ -1307,11 +1390,19 @@ def test_resample():
         ray_df.resample(None)
 
 
-def test_reset_index():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.reset_index()
+@pytest.fixture
+def test_reset_index(ray_df, pandas_df, inplace=False):
+    if not inplace:
+        print(rdf.to_pandas(ray_df.reset_index(inplace=inplace)).index)
+        print(pandas_df.reset_index(inplace=inplace))
+        assert rdf.to_pandas(ray_df.reset_index(inplace=inplace)).equals(
+            pandas_df.reset_index(inplace=inplace))
+    else:
+        ray_df_cp = ray_df.copy()
+        pd_df_cp = pandas_df.copy()
+        ray_df_cp.reset_index(inplace=inplace)
+        pd_df_cp.reset_index(inplace=inplace)
+        assert rdf.to_pandas(ray_df_cp).equals(pd_df_cp)
 
 
 def test_rfloordiv():
@@ -1397,18 +1488,23 @@ def test_sem():
         ray_df.sem()
 
 
-def test_set_axis():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_set_axis(ray_df, pandas_df, label, axis):
+    assert rdf.to_pandas(ray_df.set_axis(label, axis, inplace=False)).equals(
+        pandas_df.set_axis(label, axis, inplace=False))
 
-    with pytest.raises(NotImplementedError):
-        ray_df.set_axis(None)
 
-
-def test_set_index():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.set_index(None)
+@pytest.fixture
+def test_set_index(ray_df, pandas_df, keys, inplace=False):
+    if not inplace:
+        assert rdf.to_pandas(ray_df.set_index(keys)).equals(
+            pandas_df.set_index(keys))
+    else:
+        ray_df_cp = ray_df.copy()
+        pd_df_cp = pandas_df.copy()
+        ray_df_cp.set_index(keys, inplace=inplace)
+        pd_df_cp.set_index(keys, inplace=inplace)
+        assert rdf.to_pandas(ray_df_cp).equals(pd_df_cp)
 
 
 def test_set_value():
@@ -1817,11 +1913,10 @@ def test___iter__():
         ray_df.__iter__()
 
 
-def test___contains__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__contains__(None)
+@pytest.fixture
+def test___contains__(ray_df, key, result):
+    assert result == ray_df.__contains__(key)
+    assert result == (key in ray_df)
 
 
 def test___nonzero__():
