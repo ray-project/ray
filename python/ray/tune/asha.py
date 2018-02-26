@@ -53,20 +53,31 @@ class ASHAScheduler(FIFOScheduler):
         self._time_attr = time_attr
 
     def on_trial_add(self, trial_runner, trial):
-        self._trial_info[trial] = np.random.choice(self._brackets)
+        self._trial_info[trial.trial_id] = np.random.choice(self._brackets)
 
     def on_trial_result(self, trial_runner, trial, result):
         if getattr(result, self._time_attr) >= self._max_t:
             self._num_stopped += 1
             return TrialScheduler.STOP
 
-        bracket = self._trial_info[trial]
+        bracket = self._trial_info[trial.trial_id]
         action = bracket.on_result(
             trial,
             getattr(result, self._time_attr),
             getattr(result, self._reward_attr))
 
         return action
+
+    def on_trial_complete(self, trial_runner, trial, result):
+        bracket = self._trial_info[trial.trial_id]
+        action = bracket.on_result(
+            trial,
+            getattr(result, self._time_attr),
+            getattr(result, self._reward_attr))
+        del self._trial_info[trial.trial_id]
+
+    def on_trial_remove(self, trial_runner, trial):
+        del self._trial_info[trial.trial_id]
 
     def debug_string(self):
         out = "Using ASHA: num_stopped={}".format(self._num_stopped)
