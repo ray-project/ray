@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np
 
 from ray.rllib.models import ModelCatalog
 
@@ -39,39 +40,80 @@ class ProximalPolicyLoss(object):
             self.value_function = tf.reshape(self.value_function, [-1])
 
         # Make loss functions.
-        self.ratio = tf.exp(self.curr_dist.logp(actions) -
-                            self.prev_dist.logp(actions))
-        self.kl = self.prev_dist.kl(self.curr_dist)
-        self.mean_kl = tf.reduce_mean(self.kl)
-        self.entropy = self.curr_dist.entropy()
-        self.mean_entropy = tf.reduce_mean(self.entropy)
-        self.surr1 = self.ratio * advantages
-        self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
-                                      1 + config["clip_param"]) * advantages
-        self.surr = tf.minimum(self.surr1, self.surr2)
-        self.mean_policy_loss = tf.reduce_mean(-self.surr)
+        # FIXME (ev) not sure you can just add here...
 
-        if config["use_gae"]:
-            # We use a huber loss here to be more robust against outliers,
-            # which seem to occur when the rollouts get longer (the variance
-            # scales superlinearly with the length of the rollout)
-            self.vf_loss1 = tf.square(self.value_function - value_targets)
-            vf_clipped = prev_vf_preds + tf.clip_by_value(
-                self.value_function - prev_vf_preds,
-                -config["clip_param"], config["clip_param"])
-            self.vf_loss2 = tf.square(vf_clipped - value_targets)
-            self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
-            self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
-            self.loss = tf.reduce_mean(
-                -self.surr + kl_coeff * self.kl +
-                config["vf_loss_coeff"] * self.vf_loss -
-                config["entropy_coeff"] * self.entropy)
-        else:
+        curr_logp = self.curr_dist.logp(actions)
+        prev_logp = self.prev_dist.logp(actions)
+        if isinstance(curr_logp, list):
+            self.ratio = np.asarray([tf.exp(a - b) for a,b in zip(curr_logp, prev_logp)])
+            self.kl = self.prev_dist.kl(self.curr_dist)
+            self.mean_kl = [tf.reduce_mean(mean_kl_i) for mean_kl_i in self.kl]
+            self.entropy = self.curr_dist.entropy()
+            self.mean_entropy = [tf.reduce_mean(entropy_i) for entropy_i in self.entropy]
+            self.surr1 = [ratio_i * advantages for ratio_i in self.ratio]
+            self.surr2 = [tf.clip_by_value(ratio_i, 1 - config["clip_param"],
+                                          1 + config["clip_param"]) * advantages for ratio_i in self.ratio]
+            self.surr = [tf.minimum(surr1_i, surr2_i) for surr1_i, surr2_i in zip(self.surr1, self.surr2)]
+            self.mean_policy_loss = tf.reduce_mean(-tf.add_n(self.surr))
             self.mean_vf_loss = tf.constant(0.0)
-            self.loss = tf.reduce_mean(
-                -self.surr +
-                kl_coeff * self.kl -
-                config["entropy_coeff"] * self.entropy)
+            kl_prod = [kl_coeff * kl_i for kl_i in self.kl]
+            entropy_prod = [config["entropy_coeff"] * entropy_i for entropy_i in self.entropy]
+            surr_sum = tf.add_n(self.surr)
+            kl_sum = tf.add_n(kl_prod)
+            entropy_sum = tf.add_n(entropy_prod)
+            if config["use_gae"]:
+                # We use a huber loss here to be more robust against outliers,
+                # which seem to occur when the rollouts get longer (the variance
+                # scales superlinearly with the length of the rollout)
+                self.vf_loss1 = tf.square(self.value_function - value_targets)
+                vf_clipped = prev_vf_preds + tf.clip_by_value(
+                    self.value_function - prev_vf_preds,
+                    -config["clip_param"], config["clip_param"])
+                self.vf_loss2 = tf.square(vf_clipped - value_targets)
+                self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
+                self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
+                self.loss = tf.reduce_mean(
+                    surr_sum + kl_sum +
+                    config["vf_loss_coeff"] * self.vf_loss -
+                    entropy_sum)
+            else:
+                self.mean_vf_loss = tf.constant(0.0)
+                self.loss = tf.reduce_mean(-surr_sum + kl_sum - entropy_sum)
+
+        else:
+            self.ratio = tf.exp(self.curr_dist.logp(actions) -
+                                           self.prev_dist.logp(actions))
+            self.kl = self.prev_dist.kl(self.curr_dist)
+            self.mean_kl = tf.reduce_mean(self.kl)
+            self.entropy = self.curr_dist.entropy()
+            self.mean_entropy = tf.reduce_mean(self.entropy)
+            self.surr1 = self.ratio * advantages
+            self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
+                                          1 + config["clip_param"]) * advantages
+            self.surr = tf.minimum(self.surr1, self.surr2)
+            self.mean_policy_loss = tf.reduce_mean(-self.surr)
+
+            if config["use_gae"]:
+                # We use a huber loss here to be more robust against outliers,
+                # which seem to occur when the rollouts get longer (the variance
+                # scales superlinearly with the length of the rollout)
+                self.vf_loss1 = tf.square(self.value_function - value_targets)
+                vf_clipped = prev_vf_preds + tf.clip_by_value(
+                    self.value_function - prev_vf_preds,
+                    -config["clip_param"], config["clip_param"])
+                self.vf_loss2 = tf.square(vf_clipped - value_targets)
+                self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
+                self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
+                self.loss = tf.reduce_mean(
+                    -self.surr + kl_coeff * self.kl +
+                    config["vf_loss_coeff"] * self.vf_loss -
+                    config["entropy_coeff"] * self.entropy)
+            else:
+                self.mean_vf_loss = tf.constant(0.0)
+                self.loss = tf.reduce_mean(
+                    -self.surr +
+                    kl_coeff * self.kl -
+                    config["entropy_coeff"] * self.entropy)
 
         self.sess = sess
 
