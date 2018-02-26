@@ -1732,7 +1732,7 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
         lengths.append(len(t_df))
         # reset_index here because we want a pd.RangeIndex
         # within the partitions. It is smaller and sometimes faster.
-        t_df.reset_index(drop=True)
+        t_df = t_df.reset_index(drop=True)
         top = ray.put(t_df)
         dataframes.append(top)
         temp_df = temp_df[chunksize:]
