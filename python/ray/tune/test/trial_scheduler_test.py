@@ -778,7 +778,7 @@ class ASHASuite(unittest.TestCase):
         return t1, t2
 
     def testASHAConstantPerf(self):
-        rule = ASHAScheduler(grace_period=0, min_samples_required=1)
+        rule = ASHAScheduler(grace_period=0)
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         self.assertEqual(
@@ -792,7 +792,7 @@ class ASHASuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testASHAOnCompleteOnly(self):
-        rule = ASHAScheduler(grace_period=0, min_samples_required=1)
+        rule = ASHAScheduler(grace_period=0)
         t1, t2 = self.basicSetup(rule)
         self.assertEqual(
             rule.on_trial_result(None, t2, result(100, 0)),
@@ -803,7 +803,7 @@ class ASHASuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testASHAGracePeriod(self):
-        rule = ASHAScheduler(grace_period=2.5, min_samples_required=1)
+        rule = ASHAScheduler(grace_period=2.5)
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         rule.on_trial_complete(None, t2, result(10, 1000))
@@ -819,7 +819,7 @@ class ASHASuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testASHAMinSamples(self):
-        rule = ASHAScheduler(grace_period=0, min_samples_required=2)
+        rule = ASHAScheduler(grace_period=0)
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         t3 = Trial("PPO")
@@ -832,7 +832,7 @@ class ASHASuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testASHAUsesMedian(self):
-        rule = ASHAScheduler(grace_period=0, min_samples_required=1)
+        rule = ASHAScheduler(grace_period=0)
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         rule.on_trial_complete(None, t2, result(10, 1000))
@@ -849,7 +849,7 @@ class ASHASuite(unittest.TestCase):
             return TrainingResult(training_iteration=t, neg_mean_loss=rew)
 
         rule = ASHAScheduler(
-            grace_period=0, min_samples_required=1,
+            grace_period=0,
             time_attr='training_iteration', reward_attr='neg_mean_loss')
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5

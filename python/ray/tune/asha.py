@@ -37,7 +37,7 @@ class ASHAScheduler(FIFOScheduler):
             grace_period=10, reduction_factor=3):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert max_t > grace_period, "grace_period must be less than max_t!"
-        assert grace_period > 0, "Max (time_attr) not valid!"
+        assert grace_period > 0, "grace_period must be positive!"
         assert reduction_factor > 1, "Reduction Factor not valid!"
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
