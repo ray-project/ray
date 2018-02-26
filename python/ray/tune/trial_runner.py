@@ -252,6 +252,7 @@ class TrialRunner(object):
         try:
             print("Attempting to recover trial state from last checkpoint")
             trial.stop(error=True, error_msg=error_msg, stop_logger=False)
+            trial.result_logger.flush()  # make sure checkpoint is synced
             trial.start()
             self._running[trial.train_remote()] = trial
         except Exception:
