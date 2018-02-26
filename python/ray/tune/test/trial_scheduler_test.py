@@ -8,6 +8,7 @@ import unittest
 import numpy as np
 
 from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.asha import ASHAScheduler
 from ray.tune.pbt import PopulationBasedTraining, explore
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.result import TrainingResult
@@ -760,6 +761,113 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             TrialScheduler.CONTINUE)
         self.assertEqual(trials[0].config["id_factor"], 42)
         self.assertEqual(trials[0].config["float_factor"], 43)
+
+
+class ASHASuite(unittest.TestCase):
+    def basicSetup(self, rule):
+        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
+        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        for i in range(10):
+            self.assertEqual(
+                rule.on_trial_result(None, t1, result(i, i * 100)),
+                TrialScheduler.CONTINUE)
+        for i in range(5):
+            self.assertEqual(
+                rule.on_trial_result(None, t2, result(i, 450)),
+                TrialScheduler.CONTINUE)
+        return t1, t2
+
+    def testASHAConstantPerf(self):
+        rule = ASHAScheduler(grace_period=0, min_samples_required=1)
+        t1, t2 = self.basicSetup(rule)
+        rule.on_trial_complete(None, t1, result(10, 1000))
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(5, 450)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(6, 0)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(10, 450)),
+            TrialScheduler.STOP)
+
+    def testASHAOnCompleteOnly(self):
+        rule = ASHAScheduler(grace_period=0, min_samples_required=1)
+        t1, t2 = self.basicSetup(rule)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(100, 0)),
+            TrialScheduler.CONTINUE)
+        rule.on_trial_complete(None, t1, result(10, 1000))
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(101, 0)),
+            TrialScheduler.STOP)
+
+    def testASHAGracePeriod(self):
+        rule = ASHAScheduler(grace_period=2.5, min_samples_required=1)
+        t1, t2 = self.basicSetup(rule)
+        rule.on_trial_complete(None, t1, result(10, 1000))
+        rule.on_trial_complete(None, t2, result(10, 1000))
+        t3 = Trial("PPO")
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(1, 10)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(2, 10)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(3, 10)),
+            TrialScheduler.STOP)
+
+    def testASHAMinSamples(self):
+        rule = ASHAScheduler(grace_period=0, min_samples_required=2)
+        t1, t2 = self.basicSetup(rule)
+        rule.on_trial_complete(None, t1, result(10, 1000))
+        t3 = Trial("PPO")
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(3, 10)),
+            TrialScheduler.CONTINUE)
+        rule.on_trial_complete(None, t2, result(10, 1000))
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(3, 10)),
+            TrialScheduler.STOP)
+
+    def testASHAUsesMedian(self):
+        rule = ASHAScheduler(grace_period=0, min_samples_required=1)
+        t1, t2 = self.basicSetup(rule)
+        rule.on_trial_complete(None, t1, result(10, 1000))
+        rule.on_trial_complete(None, t2, result(10, 1000))
+        t3 = Trial("PPO")
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(1, 260)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(2, 260)),
+            TrialScheduler.STOP)
+
+    def testAlternateMetrics(self):
+        def result2(t, rew):
+            return TrainingResult(training_iteration=t, neg_mean_loss=rew)
+
+        rule = ASHAScheduler(
+            grace_period=0, min_samples_required=1,
+            time_attr='training_iteration', reward_attr='neg_mean_loss')
+        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
+        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        for i in range(10):
+            self.assertEqual(
+                rule.on_trial_result(None, t1, result2(i, i * 100)),
+                TrialScheduler.CONTINUE)
+        for i in range(5):
+            self.assertEqual(
+                rule.on_trial_result(None, t2, result2(i, 450)),
+                TrialScheduler.CONTINUE)
+        rule.on_trial_complete(None, t1, result2(10, 1000))
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result2(5, 450)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result2(6, 0)),
+            TrialScheduler.CONTINUE)
 
 
 if __name__ == "__main__":
