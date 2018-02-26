@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# This script runs all the fast integration tests for RLlib.
-# It should finish within a few minutes.
+# This script runs all the integration tests for RLlib.
+# TODO(ekl) add large-scale tests on different envs here.
 
 import glob
 import os
@@ -13,13 +13,11 @@ from ray.tune import run_experiments
 
 if __name__ == '__main__':
     experiments = {}
-    fast = len(sys.argv) > 1 and sys.argv[1] == "--fast"
 
-    for test in glob.glob("smoke_test/*.yaml"):
+    for test in glob.glob("regression_tests/*.yaml"):
         config = yaml.load(open(test).read())
-        if fast:
-            for trial in config.values():
-                trial["stop"]["training_iteration"] = 1
+        for trial in config.values():
+            trial["stop"]["training_iteration"] = 1
         experiments.update(config)
 
     print("== Test config ==")
