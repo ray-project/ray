@@ -5,7 +5,7 @@ cartpole-es:
         episode_reward_mean: 200
         time_total_s: 300
     resources:
-        cpu: 1
+        cpu: 2
     config:
         num_workers: 2
         noise_size: 25000000

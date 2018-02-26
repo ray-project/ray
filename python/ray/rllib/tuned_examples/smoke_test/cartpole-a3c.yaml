@@ -5,8 +5,7 @@ cartpole-a3c:
         episode_reward_mean: 200
         time_total_s: 600
     resources:
-        cpu: 1
+        cpu: 2
     config:
-        num_workers: 1
+        num_workers: 4
         gamma: 0.95
-        lambda: 0.1
