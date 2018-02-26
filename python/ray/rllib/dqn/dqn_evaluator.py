@@ -4,13 +4,12 @@ from __future__ import print_function
 
 from gym.spaces import Discrete
 import numpy as np
-import time
 import tensorflow as tf
 
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.dqn import models
-from ray.rllib.dqn.common.atari_wrappers import wrap_deepmind
+from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.optimizers import SampleBatch, Evaluator
 from ray.rllib.optimizers.sample_batch import pack
@@ -51,7 +50,7 @@ class DQNEvaluator(Evaluator):
 
     def __init__(self, registry, env_creator, config, logdir, worker_index):
         env = env_creator(config["env_config"])
-        env = wrap_deepmind(env, frame_stack=True, scale=True)
+        env = wrap_dqn(env)
         self.env = env
         self.config = config
 
@@ -137,8 +136,6 @@ class DQNEvaluator(Evaluator):
         return batch
 
     def compute_gradients(self, samples):
-        if samples is None:
-            return None, None
         td_error, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
             samples["new_obs"], samples["dones"], samples["weights"])

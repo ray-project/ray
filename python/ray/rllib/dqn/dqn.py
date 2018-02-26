@@ -91,7 +91,7 @@ DEFAULT_CONFIG = dict(
     },
 
     # === Parallelism ===
-    # Number of workers for collecting samples with. This only has 
+    # Number of workers for collecting samples with. This only has
     # setting is 1 unless your environment is particularly slow to sample.
     num_workers=1,
     # Whether to allocate GPUs for workers (if > 0).
@@ -146,7 +146,7 @@ class DQNAgent(Agent):
             self.optimizer = ApexOptimizer(
                 self.config, self.local_evaluator, self.remote_evaluators)
         else:
-            self.optimizer = SyncLocalReplayOptimizer(
+            self.optimizer = LocalSyncReplayOptimizer(
                 self.config, self.local_evaluator, self.remote_evaluators)
 
         self.saver = tf.train.Saver(max_to_keep=None)
@@ -217,7 +217,6 @@ class DQNAgent(Agent):
         self.local_evaluator.set_global_timestep(self.global_timestep)
         for e in self.remote_evaluators:
             e.set_global_timestep.remote(self.global_timestep)
-
         return stats
 
     def _populate_replay_buffer(self):

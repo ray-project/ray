@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
+import ray
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
