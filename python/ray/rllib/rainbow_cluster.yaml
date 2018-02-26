@@ -1,0 +1,38 @@
+cluster_name: rainbow
+min_workers: 4
+max_workers: 4
+target_utilization_fraction: 0.8
+idle_timeout_minutes: 5
+provider:
+    type: aws
+    region: us-east-1
+    availability_zone: us-east-1a
+auth:
+    ssh_user: ubuntu
+head_node:
+    InstanceType: p3.2xlarge
+    ImageId: ami-66957a1b
+worker_nodes:
+    InstanceType: m4.4xlarge
+    ImageId: ami-66957a1b
+    InstanceMarketOptions:
+        MarketType: spot
+file_mounts: {
+    "/tmp/apex_sha": "/home/eric/Desktop/ray-private/.git/refs/heads/apex",
+    "/tmp/rainbow_sha": "/home/eric/Desktop/Rainbow/.git/refs/heads/master",
+ }
+setup_commands:
+    - pkill -9 python || true
+    - test -e ray || git clone https://github.com/ericl/ray.git
+    - cd ray && git reset --hard; git fetch && git checkout `cat /tmp/apex_sha`
+    - test -e Rainbow || git clone https://github.com/ericl/Rainbow.git
+    - cd Rainbow && git reset --hard; git fetch && git checkout `cat /tmp/rainbow_sha`
+head_setup_commands:
+    - source activate pytorch_p36 && pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+worker_setup_commands: []
+head_start_ray_commands:
+    - source activate pytorch_p36 && ray stop
+    - source activate pytorch_p36 && ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_start_ray_commands:
+    - source activate pytorch_p36 && ray stop
+    - source activate pytorch_p36 && ray start --redis-address=$RAY_HEAD_IP:6379

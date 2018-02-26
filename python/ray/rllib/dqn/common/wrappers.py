@@ -78,6 +78,7 @@ class EpisodicLifeEnv(gym.Wrapper):
             # for Qbert somtimes we stay in lives == 0 condtion for a few
             # frames so its important to keep lives > 0, so that we only reset
             # once the environment advertises done.
+            print("LOST A LIFE")
             done = True
         self.lives = lives
         return obs, reward, done, info
@@ -158,6 +159,8 @@ class ClippedRewardsWrapper(gym.RewardWrapper):
     def _reward(self, reward):
         """Change all the positive rewards to 1, negative to -1 and keep
         zero."""
+        if np.sign(reward) != reward:
+            print("CLIPPED", reward)
         return np.sign(reward)
 
 
@@ -210,7 +213,7 @@ class FrameStack(gym.Wrapper):
 
     def _get_ob(self):
         assert len(self.frames) == self.k
-        return LazyFrames(list(self.frames))
+        return np.array(LazyFrames(list(self.frames)))  # TODO(ekl)
 
 
 def wrap_dqn(registry, env, options):
@@ -229,7 +232,7 @@ def wrap_dqn(registry, env, options):
     env = ModelCatalog.get_preprocessor_as_wrapper(registry, env, options)
 
     if is_atari:
-        env = FrameStack(env, 4)
         env = ClippedRewardsWrapper(env)
+        env = FrameStack(env, 4)
 
     return env

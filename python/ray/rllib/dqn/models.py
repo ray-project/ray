@@ -2,41 +2,66 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+import os
+import time
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 from ray.rllib.models import ModelCatalog
+from ray.rllib.dqn import baseline_models
 from ray.rllib.optimizers.multi_gpu_impl import TOWER_SCOPE_NAME
+
+
+timeline_counter = 0
+run_options = tf.RunOptions(
+    trace_level=tf.RunOptions.FULL_TRACE, output_partition_graphs=True)
+
+
+def traced_run(sess, fetches, feed_dict):
+  """Runs fetches, dumps timeline files in current directory."""
+
+  global timeline_counter
+  timeline_counter+=1
+
+  if timeline_counter % 100 == 0:
+      run_metadata = tf.RunMetadata()
+
+      log_fn = "%d-%s"%(os.getpid(),timeline_counter)
+      
+      root = "/tmp/timelines"
+      os.system('mkdir -p '+root)
+      
+      from tensorflow.python.client import timeline
+
+      results = sess.run(fetches,
+                         feed_dict=feed_dict,
+                         options=run_options,
+                         run_metadata=run_metadata);
+      tl = timeline.Timeline(step_stats=run_metadata.step_stats)
+      ctf = tl.generate_chrome_trace_format(show_memory=True,
+                                              show_dataflow=False)
+      open(root+"/timeline_%s.json"%(log_fn,), "w").write(ctf)
+      open(root+"/stepstats_%s.pbtxt"%(log_fn,), "w").write(str(
+        run_metadata.step_stats))
+      return results
+  else:
+      start = time.time()
+      s = sess.run(fetches, feed_dict=feed_dict)
+      return s
 
 
 def _build_q_network(registry, inputs, num_actions, config):
     dueling = config["dueling"]
-    hiddens = config["hiddens"]
-    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
-    frontend_out = frontend.last_layer
+    hiddens = config["hiddens"]  # TODO(ekl)
 
-    with tf.variable_scope("action_value"):
-        action_out = frontend_out
-        for hidden in hiddens:
-            action_out = layers.fully_connected(
-                action_out, num_outputs=hidden, activation_fn=tf.nn.relu)
-        action_scores = layers.fully_connected(
-            action_out, num_outputs=num_actions, activation_fn=None)
+    model = baseline_models.cnn_to_mlp(
+        convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
+        hiddens=[256],
+        dueling=bool(dueling),
+    )
 
-    if dueling:
-        with tf.variable_scope("state_value"):
-            state_out = frontend_out
-            for hidden in hiddens:
-                state_out = layers.fully_connected(
-                    state_out, num_outputs=hidden, activation_fn=tf.nn.relu)
-            state_score = layers.fully_connected(
-                state_out, num_outputs=1, activation_fn=None)
-        action_scores_mean = tf.reduce_mean(action_scores, 1)
-        action_scores_centered = action_scores - tf.expand_dims(
-            action_scores_mean, 1)
-        return state_score + action_scores_centered
-    else:
-        return action_scores
+    return model(inputs, num_actions)
 
 
 def _build_action_network(
@@ -270,10 +295,10 @@ class DQNGraph(object):
         td_err = sess.run(
             self.td_error,
             feed_dict={
-                self.obs_t: obs_t,
+                self.obs_t: [np.array(ob) for ob in obs_t],
                 self.act_t: act_t,
                 self.rew_t: rew_t,
-                self.obs_tp1: obs_tp1,
+                self.obs_tp1: [np.array(ob) for ob in obs_tp1],
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
@@ -283,3 +308,18 @@ class DQNGraph(object):
         assert len(grads) == len(self.grads_and_vars)
         feed_dict = {ph: g for (g, ph) in zip(grads, self.grads)}
         sess.run(self.train_expr, feed_dict=feed_dict)
+
+    def compute_apply(
+            self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,
+            importance_weights):
+        td_err, _ = traced_run(
+            sess, [self.td_error, self.train_expr],
+            feed_dict={
+                self.obs_t: obs_t,
+                self.act_t: act_t,
+                self.rew_t: rew_t,
+                self.obs_tp1: obs_tp1,
+                self.done_mask: done_mask,
+                self.importance_weights: importance_weights
+            })
+        return td_err

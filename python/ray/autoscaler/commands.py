@@ -100,7 +100,8 @@ def get_or_create_head_node(config, no_restart, yes):
             provider.terminate_node(head_node)
         print("Launching new head node...")
         head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
-        head_node_tags[TAG_NAME] = "ray-{}-head".format(config["cluster_name"])
+        head_node_tags[TAG_NAME] = "ray-{}-head-node".format(
+            config["cluster_name"])
         provider.create_node(config["head_node"], head_node_tags, 1)
 
     nodes = provider.nodes(head_node_tags)

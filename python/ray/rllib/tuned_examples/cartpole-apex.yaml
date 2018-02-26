@@ -1,0 +1,25 @@
+cartpole-apex:
+    env: CartPole-v0
+    run: DQN
+    resources:
+        cpu:
+            eval: spec.config.num_workers
+        gpu: 0
+        driver_cpu_limit: 1
+    stop:
+        episode_reward_mean: 200
+    config:
+        num_workers: 4
+        n_step: 3
+        gamma: 0.99
+        learning_starts: 100
+        buffer_size: 1000
+        target_network_update_freq: 100
+        sample_batch_size: 1
+        max_weight_sync_delay: 4
+        train_batch_size: 32
+        timesteps_per_iteration: 20
+        apex_optimizer: True
+        per_worker_exploration: True
+        worker_side_prioritization: True
+        num_replay_buffer_shards: 4
