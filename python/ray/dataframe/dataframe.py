@@ -35,7 +35,7 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
-        self._update_lengths()
+        self._gths()
         self.columns = columns
 
         # this _index object is a pd.DataFrame
@@ -55,7 +55,7 @@ class DataFrame(object):
         """Get the index for this DataFrame.
 
         Returns:
-            The union of all indexes across the partitions.
+            The union  all indexes across the partitions.
         """
         return self._index.index
 
@@ -84,6 +84,8 @@ class DataFrame(object):
     index = property(_get_index, _set_index)
 
     def _update_lengths(self):
+        """Updates the stored lengths of DataFrame partions
+        """
         self._lengths = [_deploy_func.remote(_get_lengths, d)
                          for d in self._df]
 
@@ -208,6 +210,8 @@ class DataFrame(object):
         return DataFrame(new_df, self.columns, index=index)
 
     def _update_inplace(self, new_dfs):
+        """Updates the current DataFrame inplace
+        """
         assert(len(new_dfs) > 0)
 
         self._df = new_dfs
@@ -625,6 +629,12 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def equals(self, other):
+        """
+        Checks if other DataFrame is elementwise equal to the current one
+
+        Returns:
+            Boolean: True if equal, otherwise False
+        """
         def helper(df, index, other_series):
             return df.iloc[index['index_within_partition']].equals(other_series)
 
@@ -1154,6 +1164,11 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def query(self, expr, inplace=False, **kwargs):
+        """Queries the Dataframe with a boolean expression
+
+        Returns:
+            A new DataFrame if inplace=False
+        """
         new_dfs = [_deploy_func.remote(lambda df: df.query(expr, **kwargs),
                                        part) for part in self._df]
 
@@ -1726,6 +1741,11 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __abs__(self):
+        """Creates a modified DataFrame by elementwise taking the absolute value
+
+        Returns:
+            A modified DataFrame
+        """
         return self.abs()
 
     def __round__(self, decimals=0):
@@ -1805,9 +1825,19 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __eq__(self, other):
+        """Computes the equality of this DataFrame with another
+
+        Returns:
+            True, if the DataFrames are equal. False otherwise.
+        """
         return self.equals(other)
 
     def __ne__(self, other):
+        """Checks that this DataFrame is not equal to another
+
+        Returns:
+            True, if the DataFrames are not equal. False otherwise.
+        """
         return not self.equals(other)
 
     def __add__(self, other):
@@ -1835,6 +1865,11 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __neg__(self):
+        """Computes an element wise negative DataFrame
+
+        Returns:
+            A modified DataFrame where every element is the negation of before
+        """
         for t in self.dtypes:
             if not (is_bool_dtype(t)
                     or is_numeric_dtype(t)
