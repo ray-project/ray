@@ -843,10 +843,19 @@ def test_eq():
 
 
 def test_equals():
-    ray_df = create_test_dataframe()
+    pandas_df1 = pd.DataFrame({'col1': [2.9, 3, 3, 3],
+                              'col2': [2, 3, 4, 1]})
+    ray_df1 = rdf.from_pandas(pandas_df1, 2)
+    ray_df2 = rdf.from_pandas(pandas_df1, 3)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.equals(None)
+    assert ray_df1.equals(ray_df2)
+
+    pandas_df2 = pd.DataFrame({'col1': [2.9, 3, 3, 3],
+                              'col2': [2, 3, 5, 1]})
+    ray_df3 = rdf.from_pandas(pandas_df2, 4)
+
+    assert not ray_df3.equals(ray_df1)
+    assert not ray_df3.equals(ray_df2)
 
 
 def test_eval():

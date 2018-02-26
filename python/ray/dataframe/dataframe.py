@@ -625,7 +625,27 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def equals(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        def helper(df, index, other_series):
+            return df.iloc[index['index_within_partition']].equals(other_series)
+
+        results = []
+        other_partition = None
+        other_df = None
+        for i, idx in other._index.iterrows():
+            if idx['partition'] != other_partition:
+                other_df = ray.get(other._df[idx['partition']])
+                other_partition = idx['partition']
+            other_series = other_df.iloc[idx['index_within_partition']]
+            curr_index = self._index.iloc[i]
+            results.append(_deploy_func.remote(helper,
+                                               self._df[int(curr_index['partition'])],
+                                               curr_index,
+                                               other_series))
+
+        for r in results:
+            if not ray.get(r):
+                return False
+        return True
 
     def eval(self, expr, inplace=False, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
