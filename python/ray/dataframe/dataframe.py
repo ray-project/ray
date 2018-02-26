@@ -1805,10 +1805,10 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __eq__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        return self.equals(other)
 
     def __ne__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        return not self.equals(other)
 
     def __add__(self, other):
         raise NotImplementedError("Not Yet implemented.")
