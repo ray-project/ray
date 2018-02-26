@@ -40,7 +40,7 @@ class DataFrame(object):
 
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
-        self._index = self._default_index()
+        self._index = _default_index.remote(self)
 
         if index is not None:
             self.index = index
@@ -57,7 +57,8 @@ class DataFrame(object):
         Returns:
             The union of all indexes across the partitions.
         """
-        return self._index.index
+        idx = ray.get(self._index)
+        return idx.index
 
     def _set_index(self, new_index):
         """Set the index for this DataFrame.
@@ -65,21 +66,9 @@ class DataFrame(object):
         Args:
             new_index: The new index to set this
         """
-        self._index.index = new_index
-
-    def _default_index(self):
-        """Create a default index, which is a RangeIndex
-
-        Returns:
-            The pd.RangeIndex object that represents this DataFrame.
-        """
-        dest_indices = {"partition":
-                        [i for i in range(len(self._lengths))
-                         for j in range(self._lengths[i])],
-                        "index_within_partition":
-                        [j for i in range(len(self._lengths))
-                         for j in range(self._lengths[i])]}
-        return pd.DataFrame(dest_indices)
+        idx = ray.get(self._index)
+        idx.index = new_index
+        self._index = ray.put(idx)
 
     index = property(_get_index, _set_index)
 
@@ -222,7 +211,7 @@ class DataFrame(object):
             self.index = index
 
         self._compute_lengths()
-        self._index = self._default_index()
+        self._index = _default_index.remote(self)
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -2072,3 +2061,19 @@ def to_pandas(df):
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
+
+
+@ray.remote
+def _default_index(self):
+    """Create a default index, which is a RangeIndex
+
+    Returns:
+        The pd.RangeIndex object that represents this DataFrame.
+    """
+    dest_indices = {"partition":
+                    [i for i in range(len(self._lengths))
+                     for j in range(self._lengths[i])],
+                    "index_within_partition":
+                    [j for i in range(len(self._lengths))
+                     for j in range(self._lengths[i])]}
+    return pd.DataFrame(dest_indices)
