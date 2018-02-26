@@ -40,7 +40,7 @@ if __name__ == '__main__':
     num_cpus = 4
     ray.init(num_cpus=num_cpus, redirect_output=True)
     config["num_workers"] = num_cpus
-    config["timesteps_per_batch"] = 2048*2
+    config["timesteps_per_batch"] = 2048*4
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.95
     config["horizon"] = horizon

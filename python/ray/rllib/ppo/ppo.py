@@ -17,7 +17,6 @@ from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
 from ray.rllib.ppo.rollout import collect_samples
 
-
 DEFAULT_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.995,
@@ -92,9 +91,9 @@ class PPOAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
-        self.num_agents = len(self.config["model"].get("custom_options",{}).get("multiagent_obs_shapes", [1]))
+        self.num_agents = len(self.config["model"].get("custom_options", {}).get("multiagent_obs_shapes", [1]))
         self.global_step = 0
-        self.kl_coeff = [self.config["kl_coeff"]]*self.num_agents
+        self.kl_coeff = [self.config["kl_coeff"]] * self.num_agents
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
@@ -158,7 +157,7 @@ class PPOAgent(Agent):
             sgd_start = time.time()
             batch_index = 0
             num_batches = (
-                int(tuples_per_device) // int(model.per_device_batch_size))
+                    int(tuples_per_device) // int(model.per_device_batch_size))
             loss, policy_loss, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
@@ -166,13 +165,13 @@ class PPOAgent(Agent):
                 model.sess = tf_debug.LocalCLIDebugWrapperSession(model.sess)
             while batch_index < num_batches:
                 full_trace = (
-                    i == 0 and self.iteration == 0 and
-                    batch_index == config["full_trace_nth_sgd_batch"])
+                        i == 0 and self.iteration == 0 and
+                        batch_index == config["full_trace_nth_sgd_batch"])
                 batch_loss, batch_policy_loss, batch_vf_loss, batch_kl, \
-                    batch_entropy = model.run_sgd_minibatch(
-                        permutation[batch_index] * model.per_device_batch_size,
-                        self.kl_coeff, full_trace,
-                        self.file_writer)
+                batch_entropy = model.run_sgd_minibatch(
+                    permutation[batch_index] * model.per_device_batch_size,
+                    self.kl_coeff, full_trace,
+                    self.file_writer)
                 loss.append(batch_loss)
                 policy_loss.append(batch_policy_loss)
                 vf_loss.append(batch_vf_loss)
@@ -210,10 +209,9 @@ class PPOAgent(Agent):
                     self.file_writer.add_summary(sgd_stats, self.global_step)
             self.global_step += 1
             sgd_time += sgd_end - sgd_start
-        print(kl)
-        print(config["kl_target"])
-        if isinstance(kl, list):
-            for i, kl_i in enumerate(list(kl)):
+
+        if isinstance(kl, np.ndarray):
+            for i, kl_i in enumerate(kl):
                 if kl_i > 2.0 * config["kl_target"]:
                     self.kl_coeff[i] *= 1.5
                 elif kl_i < 0.5 * config["kl_target"]:
@@ -290,7 +288,7 @@ class PPOAgent(Agent):
         self.kl_coeff = extra_data[2]
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.remote_evaluators, extra_data[3])])
+            for (a, o) in zip(self.remote_evaluators, extra_data[3])])
 
     def compute_action(self, observation):
         observation = self.local_evaluator.obs_filter(
