@@ -9,6 +9,7 @@ from ray.rllib.models import ModelCatalog
 
 
 class ProximalPolicyLoss(object):
+
     other_output = ["vf_preds", "logprobs"]
     is_recurrent = False
 
