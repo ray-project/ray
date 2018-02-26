@@ -28,7 +28,7 @@ class DQNReplayEvaluator(DQNEvaluator):
         if self.config["num_workers"] > 1:
             remote_cls = ray.remote(num_cpus=1)(DQNEvaluator)
             self.workers = [
-                remote_cls.remote(env_creator, config, logdir)
+                remote_cls.remote(registry, env_creator, config, logdir)
                 for _ in range(self.config["num_workers"])]
         else:
             self.workers = []
@@ -146,3 +146,9 @@ class DQNReplayEvaluator(DQNEvaluator):
             w.restore.remote(d)
         self.beta_schedule = data[2]
         self.replay_buffer = data[3]
+
+    def set_global_timestep(self, global_timestep):
+        self.global_timestep = global_timestep
+        if self.workers:
+            ray.get([worker.set_global_timestep.remote(global_timestep)
+                     for worker in self.workers])
