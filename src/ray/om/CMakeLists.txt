@@ -19,11 +19,11 @@ add_custom_command(
 
 add_custom_target(gen_om_fbs DEPENDS ${OM_FBS_OUTPUT_FILES})
 
-ADD_RAY_TEST(object_manager_test STATIC_LINK_LIBS common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})
+ADD_RAY_TEST(object_manager_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})
 
 add_library(object_manager object_manager.cc object_manager.h ${OM_FBS_OUTPUT_FILES})
 target_link_libraries(object_manager common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
 
 install(FILES
-        object_manager.h
+        object_manager
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ray/om")

@@ -30,7 +30,7 @@ class ObjectTable {
 
 class ClientInformation {
  public:
-  ClientInformation(const ClientID &client_id, const std::string &ip, int port):
+  ClientInformation(const ClientID &client_id, const std::string &ip, ushort port):
   client_id_(client_id), ip_(ip), port_(port) {}
   const ClientID &GetClientId() const {
     return client_id_;
@@ -38,13 +38,13 @@ class ClientInformation {
   const std::string GetIp() const {
     return ip_;
   }
-  int GetPort() const {
+  ushort GetPort() const {
     return port_;
   }
  private:
   ClientID client_id_;
   std::string ip_;
-  int port_;
+  ushort port_;
 };
 
 class ClientTable {
@@ -56,7 +56,7 @@ class ClientTable {
   const ClientInformation &GetClientInformation(const ClientID &client_id);
   ray::Status Add(const ClientID &client_id,
                   const std::string &ip,
-                  int port);
+                  ushort port);
   ray::Status Remove(const ClientID &client_id);
  private:
   info_type info_lookup;
@@ -69,7 +69,7 @@ class GcsClient {
     this->client_table_.reset(new ClientTable());
   }
   // Register the ip and port of the connecting client.
-  ray::Status Register(const std::string &ip, int port);
+  ClientID Register(const std::string &ip, ushort port);
   ObjectTable &object_table();
   ClientTable &client_table();
  private:

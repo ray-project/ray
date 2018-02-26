@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <vector>
 #include <map>
+#include <thread>
 
+// #include <boost/thread.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
@@ -21,6 +23,7 @@
 
 #include "ray/om/object_directory.h"
 #include "ray/om/object_store_client.h"
+#include "ray/om/format/om_generated.h"
 
 namespace ray {
 
@@ -32,6 +35,31 @@ struct OMConfig {
 struct Request {
   ObjectID object_id;
   ClientID client_id;
+};
+
+class SenderConnection : public boost::enable_shared_from_this<SenderConnection> {
+
+ public:
+  typedef boost::shared_ptr<SenderConnection> pointer;
+  static pointer Create(boost::asio::io_service& io_service,
+                        const ODRemoteConnectionInfo &info){
+    return pointer(new SenderConnection(io_service, info));
+  };
+
+  explicit SenderConnection(boost::asio::io_service& io_service,
+                            const ODRemoteConnectionInfo &info) : socket_(io_service) {
+    boost::asio::ip::address addr = boost::asio::ip::address::from_string(info.ip);
+    boost::asio::ip::tcp::endpoint endpoint(addr, info.port);
+    socket_.connect(endpoint);
+  };
+
+  boost::asio::ip::tcp::socket& GetSocket(){
+    return socket_;
+  };
+
+ private:
+  boost::asio::ip::tcp::socket socket_;
+
 };
 
 class ObjectManager {
@@ -59,6 +87,8 @@ class ObjectManager {
                          OMConfig config,
                          std::shared_ptr<ObjectDirectoryInterface> od);
 
+  void SetClientID(const ClientID &client_id);
+
   // Subscribe to notifications of objects added to local store.
   // Upon subscribing, the callback will be invoked for all objects that
   // already exist in the local store.
@@ -80,12 +110,7 @@ class ObjectManager {
   ray::Status Pull(const ObjectID &object_id,
                    const ClientID &client_id);
 
-  ray::Status AddSock(TCPClientConnection::pointer sock){
-    sockets_.push_back(sock);
-    // 1. read ClientID
-    // 2. read sock type
-    return ray::Status::OK();
-  };
+  ray::Status AddSock(TCPClientConnection::pointer conn);
 
   // Cancels all requests (Push/Pull) associated with the given ObjectID.
   ray::Status Cancel(const ObjectID &object_id);
@@ -102,21 +127,23 @@ class ObjectManager {
 
  private:
   ClientID client_id_;
-  // TODO(hme): maintain ref to io_service and gcs_client.
-  // boost::asio::io_service io_service_;
   OMConfig config;
   std::shared_ptr<ObjectDirectoryInterface> od;
   std::unique_ptr<ObjectStoreClient> store_client_;
-  std::shared_ptr<GcsClient> gcs_client;
+
+  boost::asio::io_service io_service_;
+
+  boost::asio::io_service::work work_;
+  std::thread io_thread_;
+  // boost::thread_group thread_group_;
 
   std::vector<Request> send_queue_;
-  std::vector<Request> receive_queue_;
 
   std::unordered_map<ray::ClientID,
-                     TCPClientConnection::pointer,
+                     SenderConnection::pointer,
                      ray::UniqueIDHasher> message_send_connections_;
   std::unordered_map<ray::ClientID,
-                     TCPClientConnection::pointer,
+                     SenderConnection::pointer,
                      ray::UniqueIDHasher> transfer_send_connections_;
 
   std::unordered_map<ray::ClientID,
@@ -126,13 +153,15 @@ class ObjectManager {
                      TCPClientConnection::pointer,
                      ray::UniqueIDHasher> transfer_receive_connections_;
 
-  std::vector<TCPClientConnection::pointer> sockets_;
+  void StartIOService();
+  void IOServiceLoop();
+  void StopIOService();
 
   ray::Status ExecutePull(const ObjectID &object_id,
-                          const ClientID &dbclient_id);
+                          SenderConnection::pointer client);
 
   ray::Status ExecutePush(const ObjectID &object_id,
-                          const ClientID &dbclient_id);
+                          SenderConnection::pointer client);
 
   /// callback that gets called internally to OD on get location success.
   void GetLocationsSuccess(const std::vector<ODRemoteConnectionInfo>& v,
@@ -143,48 +172,16 @@ class ObjectManager {
                            const ObjectID &object_id);
 
   ray::Status GetMsgConnection(const ClientID &client_id,
-                               std::function<void(TCPClientConnection::pointer)> callback){
-    if(message_send_connections_.count(client_id) > 0){
-      callback(message_send_connections_[client_id]);
-    } else {
-      CreateMsgConnection(client_id, callback);
-    }
-    return Status::OK();
-  };
+                               std::function<void(SenderConnection::pointer)> callback);
 
-  ray::Status CreateMsgConnection(const ClientID &client_id,
-                                  std::function<void(TCPClientConnection::pointer)> callback){
-    // TODO(hme): need gcs here...
-//    boost::asio::ip::tcp::endpoint endpoint(
-//        boost::asio::ip::address::from_string("127.0.0.1"),
-//        40749);
-//    boost::asio::ip::tcp::socket socket(io_service_);
-//    socket.connect(endpoint);
-
-    // NS handles this
-    // 1. establish tcp connection
-
-    // OM handles this
-    // 2. send ClientID
-    // 3. msg sock (flag)
-    return Status::OK();
-  };
+  ray::Status CreateMsgConnection(const ODRemoteConnectionInfo &info,
+                                  std::function<void(SenderConnection::pointer)> callback);
 
   ray::Status GetTransferConnection(const ClientID &client_id,
-                                    std::function<void(TCPClientConnection::pointer)> callback) {
-    if (transfer_send_connections_.count(client_id) > 0) {
-      callback(transfer_send_connections_[client_id]);
-    } else {
-      CreateTransferConnection(client_id, callback);
-    }
-    return Status::OK();
-  };
+                                    std::function<void(SenderConnection::pointer)> callback);
 
-  ray::Status CreateTransferConnection(const ClientID &client_id,
-                                       std::function<void(TCPClientConnection::pointer)> callback){
-    // need gcs here...
-    return Status::OK();
-  };
+  ray::Status CreateTransferConnection(const ODRemoteConnectionInfo &info,
+                                       std::function<void(SenderConnection::pointer)> callback);
 
 };
 

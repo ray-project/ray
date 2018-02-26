@@ -47,7 +47,6 @@ public:
     // start first server
     ray::OMConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
-
     shared_ptr<ray::ObjectDirectory> od = shared_ptr<ray::ObjectDirectory>(new ray::ObjectDirectory());
     od->InitGcs(mock_gcs_client);
     server1.reset(new NodeServer(io_service,
@@ -74,6 +73,9 @@ public:
 
   void TearDown() {
     this->StopLoop();
+
+    this->server1->Terminate();
+    this->server2->Terminate();
 
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
@@ -118,6 +120,9 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
     cout << "ClientPort=" << info.GetPort() << endl;
     ASSERT_TRUE(client_id == info.GetClientId());
   }
+
+  // TODO(hme): Add Push test.
+
   ASSERT_TRUE(true);
 }
 

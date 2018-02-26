@@ -10,9 +10,20 @@ namespace ray {
     this->gcs_client = gcs_client;
   };
 
+  ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
+                                              const InfoSuccCB &success_cb,
+                                              const InfoFailCB &fail_cb){
+    const auto &client_info = this->gcs_client->client_table().GetClientInformation(client_id);
+    const auto &info = ODRemoteConnectionInfo(client_id,
+                                              client_info.GetIp(),
+                                              client_info.GetPort());
+    success_cb(info);
+    return ray::Status::OK();
+  };
+
   ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
-                                       const SuccessCallback &success_cb,
-                                       const FailureCallback &fail_cb) {
+                                            const LocSuccCB &success_cb,
+                                            const LocFailCB &fail_cb) {
     ray::Status status_code = ray::Status::OK();
     if(info_cache_.count(object_id) > 0){
       // TODO(hme): Disable cache once GCS is implemented.
@@ -41,7 +52,6 @@ namespace ray {
   ray::Status ObjectDirectory::GetLocationsComplete(ray::Status status,
                                                     const ObjectID &object_id,
                                                     const std::vector<ODRemoteConnectionInfo> &v){
-
     bool success = status.ok();
     // Only invoke a callback if the request was not cancelled.
     if (existing_requests_.count(object_id) > 0) {

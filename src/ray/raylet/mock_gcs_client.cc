@@ -49,7 +49,7 @@ const ClientInformation &ClientTable::GetClientInformation(const ClientID &clien
 
 ray::Status ClientTable::Add(const ClientID &client_id,
                              const std::string &ip,
-                             int port){
+                             ushort port){
   if (info_lookup.count(client_id) != 0){
     return ray::Status::KeyError("ClientID already exists.");
   }
@@ -66,8 +66,10 @@ ray::Status ClientTable::Remove(const ClientID &client_id){
 };
 
 
-ray::Status GcsClient::Register(const std::string &ip, int port) {
-  return client_table().Add(ClientID().from_random(), ip, port);
+ClientID GcsClient::Register(const std::string &ip, ushort port) {
+  ClientID client_id = ClientID().from_random();
+  client_table().Add(std::move(client_id), ip, port);
+  return client_id;
 };
 
 ObjectTable &GcsClient::object_table(){
