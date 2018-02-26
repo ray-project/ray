@@ -1669,7 +1669,12 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __iter__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterate over the columns
+
+        Returns:
+            An Iterator over the columns of the dataframe.
+        """
+        return iter(self.columns)
 
     def __contains__(self, key):
         return key in self.columns
@@ -1681,7 +1686,7 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __abs__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self.abs()
 
     def __round__(self, decimals=0):
         raise NotImplementedError("Not Yet implemented.")

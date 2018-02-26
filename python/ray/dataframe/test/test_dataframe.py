@@ -189,6 +189,8 @@ def test_int_dataframe():
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___iter__(ray_df, pandas_df)
+    test___abs__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
@@ -285,6 +287,8 @@ def test_float_dataframe():
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___iter__(ray_df, pandas_df)
+    test___abs__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
@@ -370,6 +374,7 @@ def test_mixed_dtype_dataframe():
 
     with pytest.raises(TypeError):
         test_abs(ray_df, pandas_df)
+        test___abs__(ray_df, pandas_df)
 
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
@@ -378,6 +383,7 @@ def test_mixed_dtype_dataframe():
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___iter__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
@@ -471,6 +477,8 @@ def test_nan_dataframe():
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___iter__(ray_df, pandas_df)
+    test___abs__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
@@ -1906,11 +1914,16 @@ def test___hash__():
         ray_df.__hash__()
 
 
-def test___iter__():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test___iter__(ray_df, pd_df):
+    ray_iterator = ray_df.__iter__()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.__iter__()
+    # Check that ray_iterator implements the iterator interface
+    assert hasattr(ray_iterator, '__iter__')
+    assert hasattr(ray_iterator, 'next') or hasattr(ray_iterator, '__next__')
+
+    pd_iterator = pd_df.__iter__()
+    assert list(ray_iterator) == list(pd_iterator)
 
 
 @pytest.fixture
@@ -1933,11 +1946,9 @@ def test___bool__():
         ray_df.__bool__()
 
 
-def test___abs__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__abs__()
+@pytest.fixture
+def test___abs__(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(abs(ray_df), abs(pandas_df)))
 
 
 def test___round__():
