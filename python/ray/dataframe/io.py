@@ -68,11 +68,12 @@ def _split_df(pd_df, chunksize):
 
     while len(pd_df) > chunksize:
         t_df = pd_df[:chunksize]
-        t_df.reindex()
+        t_df.reset_index(drop=True)
         top = ray.put(t_df)
         dataframes.append(top)
         pd_df = pd_df[chunksize:]
     else:
+        pd_df = pd_df.reset_index(drop=True)
         dataframes.append(ray.put(pd_df))
 
     return dataframes
