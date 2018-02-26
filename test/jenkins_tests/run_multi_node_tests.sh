@@ -114,6 +114,20 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run DQN \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run DQN \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "apex_optimizer": true}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
     --env FrozenLake-v0 \
     --run DQN \
     --stop '{"training_iteration": 2}'

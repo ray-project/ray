@@ -92,21 +92,14 @@ DEFAULT_CONFIG = dict(
 
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
-    # to increase if your environment is particularly slow to sample.
+    # to increase if your environment is particularly slow to sample, or if
+    # you're using the Ape-X optimizer.
     num_workers=0,
     # Whether to allocate GPUs for workers (if > 0).
     num_gpus_per_worker=0,
-    # (Experimental) Whether to assign each worker a distinct exploration
-    # value that is held constant throughout training. This improves
-    # experience diversity, as discussed in the Ape-X paper.
-    per_worker_exploration=False,
-    # (Experimental) Whether to prioritize samples on the workers. This
-    # significantly improves scalability, as discussed in the Ape-X paper.
-    worker_side_prioritization=False,
 
     # === Ape-X (Experimental) ===
-    # Whether to use the Ape-X optimizer. This option requires
-    # per_worker_exploration and worker_side_prioritization to be enabled.
+    # Whether to use the Ape-X optimizer.
     apex_optimizer=False,
     # Max number of steps to delay synchronizing weights of workers. This only
     # applies if the Ape-X optimizer is used.
@@ -141,8 +134,6 @@ class DQNAgent(Agent):
                 self.remote_evaluators)
 
         if self.config["apex_optimizer"]:
-            assert self.config["per_worker_exploration"]
-            assert self.config["worker_side_prioritization"]
             self.optimizer = ApexOptimizer(
                 self.config, self.local_evaluator, self.remote_evaluators)
         else:
@@ -174,7 +165,7 @@ class DQNAgent(Agent):
         num_episodes = 0
         explorations = []
 
-        if self.config["per_worker_exploration"]:
+        if self.config["apex_optimizer"]:
             # Return stats from workers with the lowest 20% of exploration
             test_stats = stats[-int(max(1, len(stats)*0.2)):]
         else:

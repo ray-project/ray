@@ -63,8 +63,8 @@ class DQNEvaluator(Evaluator):
         self.sess = tf.Session(config=tf_config)
         self.dqn_graph = models.DQNGraph(registry, env, config, logdir)
 
-        # Create the schedule for exploration starting from 1.
-        if config["per_worker_exploration"]:
+        # Use either a different `eps` per worker, or a linear schedule.
+        if config["apex_optimizer"]:
             assert config["num_workers"] > 1, "This requires multiple workers"
             self.exploration = ConstantSchedule(
                 0.4 ** (
@@ -125,7 +125,8 @@ class DQNEvaluator(Evaluator):
             "weights": np.ones_like(rewards)})
         assert batch.count == self.config["sample_batch_size"]
 
-        if self.config["worker_side_prioritization"]:
+        # Prioritize on the worker side
+        if self.config["apex_optimizer"]:
             td_errors = self.dqn_graph.compute_td_error(
                 self.sess, obs, batch["actions"], batch["rewards"],
                 new_obs, batch["dones"], batch["weights"])
