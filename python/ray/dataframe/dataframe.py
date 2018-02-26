@@ -1800,23 +1800,35 @@ class DataFrame(object):
             return new_df
 
     def rename_axis(self, mapper, axis=0, copy=True, inplace=False):
-        if inplace:
-            self._df = self._map_partitions(
-                lambda df: df.rename_axis(mapper, axis=axis, copy=copy)
-            )._df
+        # if inplace:
+        #     self._df = self._map_partitions(
+        #         lambda df: df.rename_axis(mapper, axis=axis, copy=copy)
+        #     )._df
 
-        non_mapper = is_scalar(mapper) or (is_list_like(mapper) and not
-                                           is_dict_like(mapper))
-        if non_mapper:
-            self._set_axis_name(mapper, axis=axis, inplace=inplace)
+        # non_mapper = is_scalar(mapper) or (is_list_like(mapper) and not
+        #                                    is_dict_like(mapper))
+        # if non_mapper:
+        #     self._set_axis_name(mapper, axis=axis, inplace=inplace)
+        # else:
+        #     msg = ("Using 'rename_axis' to alter labels is deprecated. "
+        #            "Use '.rename' instead")
+        #     warnings.warn(msg, FutureWarning, stacklevel=2)
+        #     axis = "columns" if axis == 1 or axis == "columns" else "index"
+        #     d = {'copy': copy, 'inplace': inplace}
+        #     d[axis] = mapper
+        #     return self.rename(**d)
+
+        axes_is_columns = axis == 1 or axis == "columns"
+        renamed = self if inplace else self.copy()
+        if axes_is_columns:
+            renamed.columns.rename_axis(mapper, axis=axis, copy=copy,
+                                        inplace=inplace)
         else:
-            msg = ("Using 'rename_axis' to alter labels is deprecated. "
-                   "Use '.rename' instead")
-            warnings.warn(msg, FutureWarning, stacklevel=2)
-            axis = "columns" if axis == 1 or axis == "columns" else "index"
-            d = {'copy': copy, 'inplace': inplace}
-            d[axis] = mapper
-            return self.rename(**d)
+            renamed._index.rename_axis(mapper, axis=axis, copy=copy,
+                                       inplace=inplace)
+
+        if not inplace:
+            return renamed
 
     def _set_axis_name(self, name, axis=0, inplace=False):
         """
@@ -2938,7 +2950,8 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
         dataframes.append(ray.put(temp_df))
         lengths.append(len(temp_df))
 
-    return DataFrame(dataframes, df.columns, index=df.index)
+    return DataFrame(dataframes, pd.DataFrame(columns=df.columns),
+                     index=df.index)
 
 
 def to_pandas(df):
