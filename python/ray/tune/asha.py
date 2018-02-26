@@ -105,7 +105,7 @@ class _Bracket():
 
     def debug_str(self):
         iters = " | ".join(
-            ["Iter {:.3f}: {:.3f}".format(milestone, self.cutoff(recorded))
+            ["Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))
              for milestone, recorded in self._rungs])
         return "Bracket: " + iters
 
