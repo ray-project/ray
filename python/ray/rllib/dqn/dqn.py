@@ -11,7 +11,8 @@ import tensorflow as tf
 import ray
 from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
 from ray.rllib.optimizers.local_sync_replay import LocalSyncReplayOptimizer
-from ray.rllib.optimizers.apex_optimizer import ApexOptimizer, split_colocated
+from ray.rllib.optimizers.apex_optimizer import ApexOptimizer
+from ray.rllib.utils.actors import split_colocated
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
