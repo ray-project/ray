@@ -5,7 +5,6 @@ from __future__ import print_function
 import numpy as np
 
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.trial import Trial
 
 
 class ASHAScheduler(FIFOScheduler):
