@@ -31,7 +31,7 @@ To run connect to applications running on the cluster (e.g. Jupyter notebook) us
 
 .. code-block:: bash
 
-    $ ssh -L 8899:localhost:8899 -i <key> <user>@<addr> jupyter notebook --port=8899
+    $ ssh -L 8899:localhost:8899 -i <key> <user>@<addr> 'source ~/anaconda3/bin/activate tensorflow_p36 && jupyter notebook --port=8899`
 
 Updating your cluster
 ---------------------
