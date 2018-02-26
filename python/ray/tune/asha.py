@@ -2,11 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import numpy as np
 
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
+
 
 class ASHAScheduler(FIFOScheduler):
     """Implements the Async Successive Halving.
@@ -33,21 +33,22 @@ class ASHAScheduler(FIFOScheduler):
         assert reduction_factor > 1, "Reduction Factor not valid!"
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
+        self._max_t = max_t
 
         self._trial_info = {}  # Stores Trial -> Bracket
 
         # Tracks state for new trial add
-        self._state = [_Bracket(
+        self._brackets = [_Bracket(
             grace_period, max_t, reduction_factor, s) for s in range(5)]
         self._num_stopped = 0
         self._reward_attr = reward_attr
         self._time_attr = time_attr
 
     def on_trial_add(self, trial_runner, trial):
-        self._trial_info[trial] = np.random.choice(self._state)
+        self._trial_info[trial] = np.random.choice(self._brackets)
 
     def on_trial_result(self, trial_runner, trial, result):
-        if getattr(result, self._time_attr) >= max_t:
+        if getattr(result, self._time_attr) >= self._max_t:
             self._num_stopped += 1
             return TrialScheduler.STOP
 
@@ -60,14 +61,19 @@ class ASHAScheduler(FIFOScheduler):
 
     def debug_string(self):
         out = "Using ASHA: num_stopped={}".format(self._num_stopped)
+        out += "\n" + "\n".join([b.debug_str() for b in self._brackets])
         return out
 
 
 class _Bracket():
     def __init__(self, min_t, max_t, reduction_factor, s):
-        MAX_RUNGS = int(np.log(max_t / min_t) / np.log(reduction_factor) - s + 1)
-        self._rungs = [(min_t * reduction_factor**(k + s), {})
+        self.rf = reduction_factor
+        MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
+        self._rungs = [(min_t * self.rf**(k + s), {})
                        for k in reversed(range(MAX_RUNGS))]
+
+    def cutoff(self, recorded):
+        return np.percentile(recorded.values(), 1 / self.rf)
 
     def on_result(self, trial, cur_iter, cur_rew):
         action = TrialScheduler.CONTINUE
@@ -78,9 +84,18 @@ class _Bracket():
                 continue
             else:
                 recorded[trial.trial_id] = cur_rew
-                if cur_rew < np.percentile(
-                    recorded.values(), 1 / reduction_factor):
+                if cur_rew < self.cutoff(recorded):
                     action = Trial.STOP
                 break
 
         return action
+
+    def debug_str(self):
+        iters = " ".join(
+            ["Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))
+             for milestone, recorded in self._rungs])
+        return "Bracket: " + iters
+
+
+if __name__ == '__main__':
+    sched = ASHAScheduler(grace_period=1, max_t=2123, reduction_factor=1.1)
