@@ -54,6 +54,7 @@ class ASHAScheduler(FIFOScheduler):
 
         bracket = self._trial_info[trial]
         action = bracket.on_result(
+            trial,
             getattr(result, self._time_attr),
             getattr(result, self._reward_attr))
 
@@ -73,7 +74,9 @@ class _Bracket():
                        for k in reversed(range(MAX_RUNGS))]
 
     def cutoff(self, recorded):
-        return np.percentile(recorded.values(), 1 / self.rf)
+        if not recorded:
+            return None
+        return np.percentile(list(recorded.values()), (1 - 1 / self.rf) * 100)
 
     def on_result(self, trial, cur_iter, cur_rew):
         action = TrialScheduler.CONTINUE
@@ -85,7 +88,7 @@ class _Bracket():
             else:
                 recorded[trial.trial_id] = cur_rew
                 if cur_rew < self.cutoff(recorded):
-                    action = Trial.STOP
+                    action = TrialScheduler.STOP
                 break
 
         return action
@@ -98,4 +101,6 @@ class _Bracket():
 
 
 if __name__ == '__main__':
-    sched = ASHAScheduler(grace_period=1, max_t=2123, reduction_factor=1.1)
+    sched = ASHAScheduler(grace_period=1, max_t=2123, reduction_factor=3)
+    bracket = sched._brackets[0]
+    print(bracket.cutoff({str(i): i for i in range(20)}))
