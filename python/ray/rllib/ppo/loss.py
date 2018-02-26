@@ -43,15 +43,21 @@ class ProximalPolicyLoss(object):
         curr_logp = self.curr_dist.logp(actions)
         if isinstance(curr_logp, list):
             prev_logp = self.prev_dist.logp(actions)
-            self.ratio = np.asarray([tf.exp(a - b) for a, b in zip(curr_logp, prev_logp)])
+            self.ratio = np.asarray([tf.exp(a - b) for a, b
+                                     in zip(curr_logp, prev_logp)])
             self.kl = self.prev_dist.kl(self.curr_dist)
             self.mean_kl = [tf.reduce_mean(mean_kl_i) for mean_kl_i in self.kl]
             self.entropy = self.curr_dist.entropy()
-            self.mean_entropy = [tf.reduce_mean(entropy_i) for entropy_i in self.entropy]
+            self.mean_entropy = [tf.reduce_mean(entropy_i)
+                                 for entropy_i in self.entropy]
             self.surr1 = [ratio_i * advantages for ratio_i in self.ratio]
-            self.surr2 = [tf.clip_by_value(ratio_i, 1 - config["clip_param"],
-                                           1 + config["clip_param"]) * advantages for ratio_i in self.ratio]
-            self.surr = [tf.minimum(surr1_i, surr2_i) for surr1_i, surr2_i in zip(self.surr1, self.surr2)]
+            self.surr2 = [advantages *
+                          tf.clip_by_value(ratio_i,
+                                           1 - config["clip_param"],
+                                           1 + config["clip_param"])
+                          for ratio_i in self.ratio]
+            self.surr = [tf.minimum(surr1_i, surr2_i) for surr1_i, surr2_i
+                         in zip(self.surr1, self.surr2)]
             self.mean_policy_loss = tf.reduce_mean(-tf.add_n(self.surr))
             self.surr = tf.add_n(self.surr)
             self.entropy = tf.add_n(self.entropy)
@@ -64,13 +70,16 @@ class ProximalPolicyLoss(object):
             self.entropy = self.curr_dist.entropy()
             self.mean_entropy = tf.reduce_mean(self.entropy)
             self.surr1 = self.ratio * advantages
-            self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
-                                          1 + config["clip_param"]) * advantages
+            self.surr2 = tf.clip_by_value(self.ratio,
+                                          1 - config["clip_param"],
+                                          1 + config["clip_param"])
+            self.surr2 *= advantages
             self.surr = tf.minimum(self.surr1, self.surr2)
             self.mean_policy_loss = tf.reduce_mean(-self.surr)
 
         if isinstance(kl_coeff, list):
-            kl_prod = tf.add_n([kl_coeff[i] * prev_kl for i, prev_kl in enumerate(self.kl)])
+            kl_prod = tf.add_n([kl_coeff[i] * prev_kl for
+                                i, prev_kl in enumerate(self.kl)])
         else:
             kl_prod = kl_coeff[0] * self.kl
         if config["use_gae"]:
