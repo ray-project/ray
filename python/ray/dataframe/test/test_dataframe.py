@@ -223,7 +223,6 @@ def test_int_dataframe():
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
 
-
     test_loc(ray_df, pandas_df)
     test_iloc(ray_df, pandas_df)
 
@@ -328,7 +327,6 @@ def test_float_dataframe():
     test_items(ray_df, pandas_df)
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
-
 
     test_loc(ray_df, pandas_df)
     test_iloc(ray_df, pandas_df)
@@ -874,14 +872,14 @@ def test_eq():
 
 def test_equals():
     pandas_df1 = pd.DataFrame({'col1': [2.9, 3, 3, 3],
-                              'col2': [2, 3, 4, 1]})
+                               'col2': [2, 3, 4, 1]})
     ray_df1 = rdf.from_pandas(pandas_df1, 2)
     ray_df2 = rdf.from_pandas(pandas_df1, 3)
 
     assert ray_df1.equals(ray_df2)
 
     pandas_df2 = pd.DataFrame({'col1': [2.9, 3, 3, 3],
-                              'col2': [2, 3, 5, 1]})
+                               'col2': [2, 3, 5, 1]})
     ray_df3 = rdf.from_pandas(pandas_df2, 4)
 
     assert not ray_df3.equals(ray_df1)
