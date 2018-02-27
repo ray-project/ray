@@ -27,8 +27,3 @@ __all__ = [
     "read_parquet"
 ]
 
-try:
-    import ray
-    ray.init()
-except AssertionError:
-    pass
