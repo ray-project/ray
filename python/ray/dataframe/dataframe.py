@@ -636,7 +636,7 @@ class DataFrame(object):
         """
         idx = self._get_index()
         if (idx):
-            return idx.last_valid_index()
+            return idx.first_valid_index()
         return None
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
