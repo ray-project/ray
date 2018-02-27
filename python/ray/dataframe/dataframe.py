@@ -1191,7 +1191,6 @@ class DataFrame(object):
             A Series containing the popped values. Also modifies this
             DataFrame.
         """
-
         popped = to_pandas(self._map_partitions(
             lambda df: df.pop(item)))
         self._df = self._map_partitions(lambda df: df.drop([item], axis=1))._df
