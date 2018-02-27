@@ -89,11 +89,12 @@ void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, i
 }
 
 void LocalScheduler::HandleWaitingTaskReady(const TaskID &task_id) {
+  auto ready_tasks = local_queues_.RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher>({task_id}));
+  local_queues_.QueueReadyTasks(ready_tasks);
+  scheduleTasks();
 }
 
-void LocalScheduler::submitTask(const Task& task) {
-  local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-
+void LocalScheduler::scheduleTasks() {
   // Ask policy for scheduling decision.
   // TODO(alexey): Give the policy all cluster resources instead of just the
   // local one.
@@ -101,6 +102,7 @@ void LocalScheduler::submitTask(const Task& task) {
   cluster_resource_map[ClientID::nil()] = local_resources_;
   const auto &sched_policy_decision = sched_policy_.Schedule(cluster_resource_map);
   // Extract decision for this local scheduler.
+  // TODO(alexey): Check for this node's own client ID, not for nil.
   std::unordered_set<TaskID, UniqueIDHasher> task_ids;
   for (auto &task_schedule : sched_policy_decision) {
     if (task_schedule.second.is_nil()) {
@@ -108,10 +110,20 @@ void LocalScheduler::submitTask(const Task& task) {
     }
   }
 
-  // Assign the tasks to a worker.
+  // Assign the tasks to workers.
   std::vector<Task> tasks = local_queues_.RemoveTasks(task_ids);
   for (auto &task : tasks) {
     assignTask(task);
+  }
+}
+
+void LocalScheduler::submitTask(const Task& task) {
+  if (task_dependency_manager_.TaskReady(task)) {
+    local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+    scheduleTasks();
+  } else {
+    local_queues_.QueueWaitingTasks(std::vector<Task>({task}));
+    task_dependency_manager_.SubscribeTaskReady(task);
   }
 }
 

@@ -53,12 +53,12 @@ void TaskDependencyManager::handleObjectReady(const ray::ObjectID& object_id) {
   }
 }
 
-bool TaskDependencyManager::TaskReady(Task &task) const {
+bool TaskDependencyManager::TaskReady(const Task &task) const {
   const std::vector<ObjectID> arguments = task.GetDependencies();
   return argumentsReady(arguments);
 }
 
-void TaskDependencyManager::SubscribeTaskReady(Task &task) {
+void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
   const std::vector<ObjectID> arguments = task.GetDependencies();
   // Add the task's arguments to the table of subscribed tasks.

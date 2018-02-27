@@ -19,11 +19,11 @@ class TaskDependencyManager {
       boost::function<void(const TaskID&)> handler);
   // Check whether a task's object dependencies are locally available and is
   // therefore ready to run.
-  bool TaskReady(Task &task) const;
+  bool TaskReady(const Task &task) const;
   // Subscribe to the TaskReady callback for a task that has missing
   // dependencies. The registered TaskReady callback will be called when the
   // task's dependencies are locally available.
-  void SubscribeTaskReady(Task &task);
+  void SubscribeTaskReady(const Task &task);
   // Stop waiting for a task's dependencies to become available.
   void UnsubscribeTaskReady(const TaskID &task_id);
   // Mark an object as locally available.
