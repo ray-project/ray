@@ -850,8 +850,9 @@ def test_first():
         ray_df.first(None)
 
 
+@pytest.fixture
 def test_first_valid_index(ray_df, pandas_df):
-    assert(ray_df.first_valid_index() == pandas_df.first_valid_index())
+    assert((ray_df.first_valid_index() == pandas_df.first_valid_index()).all())
 
 
 def test_floordiv():
@@ -1042,8 +1043,9 @@ def test_last():
         ray_df.last(None)
 
 
+@pytest.fixture
 def test_last_valid_index(ray_df, pandas_df):
-    assert(ray_df.last_valid_index() == pandas_df.last_valid_index())
+    assert((ray_df.last_valid_index() == pandas_df.last_valid_index()).all())
 
 
 def test_le():
@@ -1806,6 +1808,7 @@ def test___setitem__():
         ray_df.__setitem__(None, None)
 
 
+@pytest.fixture
 def test___len__(ray_df, pandas_df):
     assert((len(ray_df) == len(pandas_df)))
 
@@ -1845,6 +1848,7 @@ def test___iter__():
         ray_df.__iter__()
 
 
+@pytest.fixture
 def test___contains__(ray_df, pandas_df, value):
     assert(ray_df.__contains__(value) == pandas_df.__contains__(value))
 
