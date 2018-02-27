@@ -53,7 +53,8 @@ class TCPClientConnection : public boost::enable_shared_from_this<TCPClientConne
 
   TCPClientConnection(boost::asio::io_service& io_service);
 
-  uint64_t message_length;
+  int64_t message_type_;
+  uint64_t message_length_;
 
  private:
   boost::asio::ip::tcp::socket socket_;

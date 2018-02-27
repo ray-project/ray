@@ -1,5 +1,5 @@
 #include <iostream>
-#include "future"
+#include <future>
 #include <memory>
 
 #include <boost/asio.hpp>
@@ -17,8 +17,11 @@ using namespace std;
 namespace ray {
 
 ObjectStoreClient::ObjectStoreClient(
-    boost::asio::io_service &io_service, string &store_socket_name
+    boost::asio::io_service &io_service,
+    string &store_socket_name,
+    std::shared_ptr<ObjectDirectoryInterface> od
 ) : socket_(io_service) {
+  this->od_ = od;
   this->client_two_ = unique_ptr<plasma::PlasmaClient>(new plasma::PlasmaClient());
   ARROW_CHECK_OK(this->client_two_->Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
 
@@ -31,6 +34,10 @@ ObjectStoreClient::ObjectStoreClient(
   assert(!ec.value());
   this->NotificationWait();
 };
+
+void ObjectStoreClient::SetClientID(ClientID client_id){
+  this->client_id_ = client_id;
+}
 
 void ObjectStoreClient::Terminate() {
   ARROW_CHECK_OK(this->client_two_->Disconnect());
@@ -77,13 +84,14 @@ void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code
 }
 
 void ObjectStoreClient::ProcessStoreAdd(const ObjectID& object_id){
-  // TODO(hme): Send notification to gcs (ulc?)
+  this->od_->ObjectAdded(object_id, client_id_);
   for (auto handler : this->add_handlers){
     handler(object_id);
   }
 };
 
 void ObjectStoreClient::ProcessStoreRemove(const ObjectID& object_id){
+  this->od_->ObjectRemoved(object_id, client_id_);
   for (auto handler : this->rem_handlers){
     handler(object_id);
   }

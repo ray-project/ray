@@ -31,6 +31,7 @@
 namespace ray {
 
 struct OMConfig {
+  int pull_timeout_ms = 100;
   int num_retries = 5;
   std::string store_socket_name;
 };
@@ -147,7 +148,7 @@ class ObjectManager {
 
   // Push an object to DBClientID.
   ray::Status Push(const ObjectID &object_id,
-                   const ClientID &dbclient_id);
+                   const ClientID &client_id);
 
   // Pull an object from DBClientID. Returns UniqueID associated with
   // an invocation of this method.
@@ -185,6 +186,9 @@ class ObjectManager {
   std::thread io_thread_;
   // boost::thread_group thread_group_;
 
+  using Timer = std::shared_ptr<boost::asio::deadline_timer>;
+  std::unordered_map<ObjectID, Timer, UniqueIDHasher> pull_requests_;
+
   // TODO (hme): This needs to account for receives as well.
   int num_transfers_ = 0;
   // TODO (hme): Allow for concurrent sends.
@@ -211,7 +215,7 @@ class ObjectManager {
   void StopIOService();
 
   ray::Status ExecutePull(const ObjectID &object_id,
-                          SenderConnection::pointer client);
+                          SenderConnection::pointer conn);
 
   ray::Status QueuePush(const ObjectID &object_id,
                         SenderConnection::pointer client);
@@ -243,12 +247,99 @@ class ObjectManager {
 
   ray::Status WaitPushReceive(TCPClientConnection::pointer conn);
 
+  void HandlePushReceive(TCPClientConnection::pointer conn,
+                         const boost::system::error_code& length_ec);
+
   void HandlePushSend(SenderConnection::pointer conn,
                       const ObjectID &object_id,
                       const boost::system::error_code &header_ec);
 
-  void HandlePushReceive(TCPClientConnection::pointer conn,
-                         const boost::system::error_code& length_ec);
+  ray::Status SendPullRequest(const ObjectID &object_id,
+                              SenderConnection::pointer conn){
+    // cout << "SendPullRequest: " << object_id.hex() << endl;
+    size_t msg_type = OMMessageType_PullRequest;
+    boost::system::error_code ec;
+    boost::asio::write(conn->GetSocket(),
+                       boost::asio::buffer(&msg_type,
+                                           sizeof(msg_type)),
+                       ec);
+
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message = CreatePullRequest(fbb,
+                                     fbb.CreateString(client_id_.binary()),
+                                     fbb.CreateString(object_id.binary()));
+    fbb.Finish(message);
+
+    // Pack into asio buffer.
+    size_t length = fbb.GetSize();
+    std::vector<boost::asio::const_buffer> buffer;
+    buffer.push_back(boost::asio::buffer(&length, sizeof(length)));
+    buffer.push_back(boost::asio::buffer(fbb.GetBufferPointer(), length));
+
+    boost::asio::write(conn->GetSocket(), buffer);
+    return ray::Status::OK();
+  }
+
+  ray::Status WaitMessage(TCPClientConnection::pointer conn){
+    boost::asio::async_read(conn->GetSocket(),
+                            boost::asio::buffer(&conn->message_type_, sizeof(conn->message_type_)),
+                            boost::bind(&ObjectManager::HandleMessage,
+                                        this,
+                                        conn,
+                                        boost::asio::placeholders::error));
+    return ray::Status::OK();
+  }
+
+  void HandleMessage(TCPClientConnection::pointer conn,
+                     const boost::system::error_code& msg_ec){
+    switch(conn->message_type_){
+      case OMMessageType_PullRequest:
+        ReceivePullRequest(conn);
+    }
+  }
+
+  void ReceivePullRequest(TCPClientConnection::pointer conn){
+    boost::asio::read(conn->GetSocket(),
+                      boost::asio::buffer(&conn->message_length_,
+                                          sizeof(conn->message_length_))
+    );
+    std::vector<uint8_t> message;
+    message.resize(conn->message_length_);
+    boost::system::error_code ec;
+    boost::asio::read(conn->GetSocket(), boost::asio::buffer(message), ec);
+
+    // Serialize.
+    auto pr = flatbuffers::GetRoot<PullRequest>(message.data());
+    ObjectID object_id = ObjectID::from_binary(pr->object_id()->str());
+    ClientID client_id = ClientID::from_binary(pr->client_id()->str());
+
+    // cout << "ReceivePullRequest: " << object_id.hex() << endl;
+    // Push object to requesting client.
+    Push(object_id, client_id);
+    WaitMessage(conn);
+  }
+
+  void SchedulePull(const ObjectID &object_id, int wait){
+    pull_requests_[object_id] = Timer(new boost::asio::deadline_timer(
+        io_service_,
+        boost::posix_time::milliseconds(wait)
+    ));
+    pull_requests_[object_id]->async_wait(boost::bind(&ObjectManager::SchedulePullHandler, this, object_id));
+  }
+
+  ray::Status SchedulePullHandler(const ObjectID &object_id){
+    pull_requests_.erase(object_id);
+    ray::Status status_code = this->od->GetLocations(
+        object_id,
+        [this](const std::vector<ODRemoteConnectionInfo>& v, const ObjectID &object_id) {
+          return this->GetLocationsSuccess(v, object_id);
+        } ,
+        [this](ray::Status status, const ObjectID &object_id) {
+          return this->GetLocationsFailed(status, object_id);
+        }
+    );
+    return status_code;
+  }
 
 };
 

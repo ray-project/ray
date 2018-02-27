@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "ray/om/object_directory.h"
 
 using namespace std;
@@ -6,18 +8,23 @@ namespace ray {
 
   ObjectDirectory::ObjectDirectory(){}
 
-  void ObjectDirectory::InitGcs(std::shared_ptr<GcsClient> gcs_client){
+ void ObjectDirectory::InitGcs(std::shared_ptr<GcsClient> gcs_client){
     this->gcs_client = gcs_client;
   };
 
   ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
                                               const InfoSuccCB &success_cb,
                                               const InfoFailCB &fail_cb){
-    const auto &client_info = this->gcs_client->client_table().GetClientInformation(client_id);
-    const auto &info = ODRemoteConnectionInfo(client_id,
-                                              client_info.GetIp(),
-                                              client_info.GetPort());
-    success_cb(info);
+    this->gcs_client->client_table().GetClientInformation(
+        client_id,
+        [this, success_cb, client_id](ClientInformation client_info){
+          const auto &info = ODRemoteConnectionInfo(client_id,
+                                                    client_info.GetIp(),
+                                                    client_info.GetPort());
+          success_cb(info);
+        },
+        fail_cb
+    );
     return ray::Status::OK();
   };
 
@@ -38,15 +45,31 @@ namespace ray {
   };
 
   ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id){
-    std::unordered_set<ClientID, UniqueIDHasher> client_ids = this->gcs_client->object_table().GetObjectClientIDs(object_id);
     vector<ODRemoteConnectionInfo> v;
-    for (const auto& client_id: client_ids) {
-      const auto &client_info = this->gcs_client->client_table().GetClientInformation(client_id);
-      ODRemoteConnectionInfo info = ODRemoteConnectionInfo(
-          client_id, client_info.GetIp(), client_info.GetPort());
-      v.push_back(info);
-    }
-    return GetLocationsComplete(Status::OK(), object_id, v);
+    this->gcs_client->object_table().GetObjectClientIDs(
+        object_id,
+        [this, object_id, &v](vector<ClientID> client_ids){
+            // cout << "GetObjectClientIDs " << client_ids.size() << endl;
+            this->gcs_client->client_table().GetClientInformationSet(
+                client_ids,
+                [this, object_id, &v](const vector<ClientInformation> &info_vec){
+                  for (const auto& client_info: info_vec) {
+                    ODRemoteConnectionInfo info = ODRemoteConnectionInfo(
+                        client_info.GetClientId(), client_info.GetIp(), client_info.GetPort());
+                    v.push_back(info);
+                  }
+                  GetLocationsComplete(Status::OK(), object_id, v);
+                },
+                [this, object_id, &v](Status status){
+                  GetLocationsComplete(status, object_id, v);
+                }
+            );
+        },
+        [this, object_id, &v](Status status){
+          GetLocationsComplete(status, object_id, v);
+        }
+    );
+    return Status::OK();
   };
 
   ray::Status ObjectDirectory::GetLocationsComplete(ray::Status status,
@@ -59,9 +82,10 @@ namespace ray {
       if (success) {
         cbs.success_cb(v, object_id);
       } else {
-        cbs.fail_cb(ray::Status::IOError("Something went wrong."), object_id);
+        cbs.fail_cb(status, object_id);
       }
     }
+    existing_requests_.erase(object_id);
     return status;
   };
 
@@ -73,5 +97,17 @@ namespace ray {
   ray::Status ObjectDirectory::Terminate(){
     return ray::Status::OK();
   };
+
+ray::Status ObjectDirectory::ObjectAdded(const ObjectID &object_id,
+                                         const ClientID &client_id){
+  this->gcs_client->object_table().Add(object_id, client_id, []{});
+  return Status::OK();
+};
+
+ray::Status ObjectDirectory::ObjectRemoved(const ObjectID &object_id,
+                                           const ClientID &client_id){
+  this->gcs_client->object_table().Remove(object_id, client_id, []{});
+  return Status::OK();
+};
 
 } // namespace ray

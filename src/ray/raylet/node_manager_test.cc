@@ -145,14 +145,19 @@ public:
 
 TEST_F(TestNodeManager, TestNodeManagerCommands) {
   cout << endl << "All connected clients:" << endl << endl;
-  vector<ClientID> client_ids = mock_gcs_client->client_table().GetClientIds();
-  for (auto client_id : client_ids) {
-    ClientInformation info = mock_gcs_client->client_table().GetClientInformation(client_id);
-    cout << "ClientID=" << client_id.hex() << endl;
-    cout << "ClientIp=" << info.GetIp() << endl;
-    cout << "ClientPort=" << info.GetPort() << endl;
-    ASSERT_TRUE(client_id == info.GetClientId());
-  }
+  mock_gcs_client->client_table().GetClientIds([this](vector<ClientID> client_ids){
+    mock_gcs_client->client_table().GetClientInformationSet(
+        client_ids,
+        [this](std::vector<ClientInformation> info_vec){
+          for (auto info : info_vec) {
+            cout << "ClientID=" << info.GetClientId().hex() << endl;
+            cout << "ClientIp=" << info.GetIp() << endl;
+            cout << "ClientPort=" << info.GetPort() << endl;
+          }
+        },
+        [](Status status){}
+    );
+  });
 
   sleep(1);
 
@@ -177,43 +182,88 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
 
   sleep(1);
 
-  cout << endl << "Test send 1 to 2" << endl << endl;
-  for(int i=-1;++i<3;){
+  cout << endl << "Test bidirectional pull" << endl << endl;
+  for(int i=-1;++i<100;){
     ObjectID oid1 = WriteDataToClient(client1, 100);
-    server1->GetObjectManager().Push(oid1, client_id_2);
+    ObjectID oid2 = WriteDataToClient(client2, 100);
+    server1->GetObjectManager().Pull(oid2);
+    server2->GetObjectManager().Pull(oid1);
   }
   sleep(1);
   cout << v1.size() << " " << v2.size() << endl;
+  ASSERT_TRUE(v1.size() == v2.size());
   for(int i=-1;++i < (int) v1.size();){
     ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
   }
   v1.clear();
   v2.clear();
 
-  cout << endl << "Test send 2 to 1" << endl << endl;
+  cout << endl << "Test pull 1 from 2" << endl << endl;
   for(int i=-1;++i<3;){
     ObjectID oid2 = WriteDataToClient(client2, 100);
-    server2->GetObjectManager().Push(oid2, client_id_1);
+    server1->GetObjectManager().Pull(oid2);
   }
   sleep(1);
   cout << v1.size() << " " << v2.size() << endl;
+  ASSERT_TRUE(v1.size() == v2.size());
   for(int i=-1;++i < (int) v1.size();){
     ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
   }
   v1.clear();
   v2.clear();
 
-  cout << endl << "Test bidirectional" << endl << endl;
+  cout << endl << "Test pull 2 from 1" << endl << endl;
+  for(int i=-1;++i<3;){
+    ObjectID oid1 = WriteDataToClient(client1, 100);
+    server2->GetObjectManager().Pull(oid1);
+  }
+  sleep(1);
+  cout << v1.size() << " " << v2.size() << endl;
+  ASSERT_TRUE(v1.size() == v2.size());
+  for(int i=-1;++i < (int) v1.size();){
+    ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
+  }
+  v1.clear();
+  v2.clear();
+
+  cout << endl << "Test push 1 to 2" << endl << endl;
+  for(int i=-1;++i<3;){
+    ObjectID oid1 = WriteDataToClient(client1, 100);
+    server1->GetObjectManager().Push(oid1, client_id_2);
+  }
+  sleep(1);
+  cout << v1.size() << " " << v2.size() << endl;
+  ASSERT_TRUE(v1.size() == v2.size());
+  for(int i=-1;++i < (int) v1.size();){
+    ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
+  }
+  v1.clear();
+  v2.clear();
+
+  cout << endl << "Test push 2 to 1" << endl << endl;
+  for(int i=-1;++i<3;){
+    ObjectID oid2 = WriteDataToClient(client2, 100);
+    server2->GetObjectManager().Push(oid2, client_id_1);
+  }
+  sleep(1);
+  cout << v1.size() << " " << v2.size() << endl;
+  ASSERT_TRUE(v1.size() == v2.size());
+  for(int i=-1;++i < (int) v1.size();){
+    ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
+  }
+  v1.clear();
+  v2.clear();
+
+  cout << endl << "Test bidirectional push" << endl << endl;
   for(int i=-1;++i<3;){
     ObjectID oid1 = WriteDataToClient(client1, 100);
     ObjectID oid2 = WriteDataToClient(client2, 100);
-    ASSERT_TRUE(oid1.size() > 0);
-    ASSERT_TRUE(oid2.size() > 0);
     server1->GetObjectManager().Push(oid1, client_id_2);
     server2->GetObjectManager().Push(oid2, client_id_1);
   }
   sleep(1);
   cout << v1.size() << " " << v2.size() << endl;
+  ASSERT_TRUE(v1.size() == v2.size());
   for(int i=-1;++i < (int) v1.size();){
     ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
   }

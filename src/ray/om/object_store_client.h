@@ -1,10 +1,9 @@
 #ifndef RAY_STOREMESSENGER_H
 #define RAY_STOREMESSENGER_H
 
-#include "memory"
-#include "vector"
-#include "cstdint"
-#include "list"
+#include <memory>
+#include <vector>
+#include <list>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -16,6 +15,7 @@
 
 #include "ray/id.h"
 #include "ray/status.h"
+#include "object_directory.h"
 
 namespace ray {
 
@@ -25,7 +25,9 @@ class ObjectStoreClient {
 
   typedef std::unique_ptr<plasma::PlasmaClient> PlasmaClientPointer;
 
-  ObjectStoreClient(boost::asio::io_service &io_service, std::string &store_socket_name);
+  ObjectStoreClient(boost::asio::io_service &io_service,
+                    std::string &store_socket_name,
+                    std::shared_ptr<ObjectDirectoryInterface> od);
 
   // Subscribe to notifications of objects added to local store.
   // Upon subscribing, the callback will be invoked for all objects that
@@ -37,6 +39,8 @@ class ObjectStoreClient {
 
   PlasmaClientPointer &GetClient();
   PlasmaClientPointer &GetClientOther();
+
+  void SetClientID(ClientID client_id);
 
   void Terminate();
 
@@ -58,6 +62,8 @@ class ObjectStoreClient {
   int64_t length_;
   std::vector<uint8_t> notification_;
   boost::asio::local::stream_protocol::socket socket_;
+  std::shared_ptr<ObjectDirectoryInterface> od_;
+  ClientID client_id_;
 };
 
 }
