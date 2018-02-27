@@ -373,15 +373,28 @@ class DataFrame(object):
         temp_index = [idx
                       for _ in range(len(self._df))
                       for idx in self.columns]
-
         temp_columns = self.index
         local_transpose = self._map_partitions(
             lambda df: df.transpose(*args, **kwargs), index=temp_index)
         local_transpose.columns = temp_columns
 
         # Sum will collapse the NAs from the groupby
-        return local_transpose.reduce_by_index(
+        df = local_transpose.reduce_by_index(
             lambda df: df.apply(lambda x: x), axis=1)
+
+        # Reassign the columns within partition to self.index.
+        # We have to use _depoly_func instead of _map_partition due to
+        #    new_labels argument
+        def _reassign_columns(df, new_labels):
+            df.columns = new_labels
+            return df
+        df._df = [
+            _deploy_func.remote(
+                _reassign_columns,
+                part,
+                self.index) for part in df._df]
+
+        return df
 
     T = property(transpose)
 
@@ -563,9 +576,15 @@ class DataFrame(object):
                           for _ in range(len(self._df))
                           for idx in self.columns]
 
-            return sum(ray.get(self._map_partitions(lambda df: df.count(
-                axis=axis, level=level, numeric_only=numeric_only
-            ), index=temp_index)._df))
+            collapsed_df = sum(
+                ray.get(
+                    self._map_partitions(
+                        lambda df: df.count(
+                            axis=axis,
+                            level=level,
+                            numeric_only=numeric_only),
+                        index=temp_index)._df))
+            return collapsed_df
 
     def cov(self, min_periods=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -873,7 +892,9 @@ class DataFrame(object):
         iters = ray.get([
             _deploy_func.remote(
                 lambda df: list(df.iterrows()), part) for part in self._df])
-        return itertools.chain.from_iterable(iters)
+        iters = itertools.chain.from_iterable(iters)
+        series = map(lambda idx_series_tuple: idx_series_tuple[1], iters)
+        return zip(self.index, series)
 
     def items(self):
         """Iterator over (column name, Series) pairs.
@@ -892,6 +913,7 @@ class DataFrame(object):
         def concat_iters(iterables):
             for partitions in zip(*iterables):
                 series = pd.concat([_series for _, _series in partitions])
+                series.index = self.index
                 yield (series.name, series)
 
         return concat_iters(iters)
@@ -927,7 +949,20 @@ class DataFrame(object):
             _deploy_func.remote(
                 lambda df: list(df.itertuples(index=index, name=name)),
                 part) for part in self._df])
-        return itertools.chain.from_iterable(iters)
+        iters = itertools.chain.from_iterable(iters)
+
+        def _replace_index(row_tuple, idx):
+            # We need to use try-except here because
+            # isinstance(row_tuple, namedtuple) won't work.
+            try:
+                row_tuple = row_tuple._replace(Index=idx)
+            except AttributeError:  # Tuple not namedtuple
+                row_tuple = (idx,) + row_tuple[1:]
+            return row_tuple
+
+        if index:
+            iters = itertools.starmap(_replace_index, zip(iters, self.index))
+        return iters
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
@@ -1116,8 +1151,7 @@ class DataFrame(object):
         popped = to_pandas(self._map_partitions(
             lambda df: df.pop(item)))
         self._df = self._map_partitions(lambda df: df.drop([item], axis=1))._df
-        self.columns = [col for col in self.columns if col != item]
-
+        self.columns = self.columns.drop(item)
         return popped
 
     def pow(self, other, axis='columns', level=None, fill_value=None):
@@ -1978,13 +2012,14 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     while len(temp_df) > chunksize:
         t_df = temp_df[:chunksize]
         lengths.append(len(t_df))
-        # reindex here because we want a pd.RangeIndex within the partitions.
-        # It is smaller and sometimes faster.
-        t_df.reindex()
+        # reset_index here because we want a pd.RangeIndex
+        # within the partitions. It is smaller and sometimes faster.
+        t_df = t_df.reset_index(drop=True)
         top = ray.put(t_df)
         dataframes.append(top)
         temp_df = temp_df[chunksize:]
     else:
+        temp_df = temp_df.reset_index(drop=True)
         dataframes.append(ray.put(temp_df))
         lengths.append(len(temp_df))
 
