@@ -61,9 +61,9 @@ class HyperBandScheduler(FIFOScheduler):
             procedures will use this attribute.
         max_t (int): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
-            The HyperBand scheduler automatically tries to determine a
-            reasonable number of brackets based on this. The scheduler will
-            terminate trials after this time has passed.
+            The scheduler will terminate trials after this time has passed.
+            Note that this is different from the semantics of `max_t` as
+            mentioned in the original HyperBand paper.
     """
 
     def __init__(
