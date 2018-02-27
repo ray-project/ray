@@ -28,6 +28,9 @@ __all__ = [
     "read_parquet"
 ]
 
-if threading.current_thread().name == "MainThread":
-    import ray
-    ray.init()
+try:
+    if threading.current_thread().name == "MainThread":
+        import ray
+        ray.init()
+except AssertionError:
+    pass
