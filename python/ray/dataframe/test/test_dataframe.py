@@ -364,7 +364,6 @@ def test_float_dataframe():
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
 
-<<<<<<< HEAD
     test_mean(ray_df, pandas_df)
     test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
@@ -374,8 +373,6 @@ def test_float_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
 
-=======
->>>>>>> f5bc2b983a9686da6c149f209d140a9e5c58f2fd
 
 def test_mixed_dtype_dataframe():
     pandas_df = pd.DataFrame({
@@ -425,13 +422,10 @@ def test_mixed_dtype_dataframe():
     test_round(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
     test___len__(ray_df, pandas_df)
-<<<<<<< HEAD
+
     test_first_valid_index(ray_df, pandas_df)
     test_last_valid_index(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
-=======
->>>>>>> f5bc2b983a9686da6c149f209d140a9e5c58f2fd
-
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -471,18 +465,6 @@ def test_mixed_dtype_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
-<<<<<<< HEAD
-=======
-    test_mean(ray_df, pandas_df)
-    test_var(ray_df, pandas_df)
-    test_std(ray_df, pandas_df)
-    test_median(ray_df, pandas_df)
-    test_quantile(ray_df, pandas_df, .25)
-    test_quantile(ray_df, pandas_df, .5)
-    test_quantile(ray_df, pandas_df, .75)
-    test_describe(ray_df, pandas_df)
-
->>>>>>> f5bc2b983a9686da6c149f209d140a9e5c58f2fd
     test_loc(ray_df, pandas_df)
     test_iloc(ray_df, pandas_df)
 
@@ -505,7 +487,6 @@ def test_mixed_dtype_dataframe():
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
 
-<<<<<<< HEAD
     test_mean(ray_df, pandas_df)
     test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
@@ -515,8 +496,6 @@ def test_mixed_dtype_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
 
-=======
->>>>>>> f5bc2b983a9686da6c149f209d140a9e5c58f2fd
 
 def test_nan_dataframe():
     pandas_df = pd.DataFrame({
@@ -596,18 +575,6 @@ def test_nan_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
-<<<<<<< HEAD
-=======
-    test_mean(ray_df, pandas_df)
-    test_var(ray_df, pandas_df)
-    test_std(ray_df, pandas_df)
-    test_median(ray_df, pandas_df)
-    test_quantile(ray_df, pandas_df, .25)
-    test_quantile(ray_df, pandas_df, .5)
-    test_quantile(ray_df, pandas_df, .75)
-    test_describe(ray_df, pandas_df)
-
->>>>>>> f5bc2b983a9686da6c149f209d140a9e5c58f2fd
     test_loc(ray_df, pandas_df)
     test_iloc(ray_df, pandas_df)
 
@@ -630,7 +597,6 @@ def test_nan_dataframe():
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
 
-<<<<<<< HEAD
     test_mean(ray_df, pandas_df)
     test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
@@ -640,8 +606,6 @@ def test_nan_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
 
-=======
->>>>>>> f5bc2b983a9686da6c149f209d140a9e5c58f2fd
 
 def test_add():
     ray_df = create_test_dataframe()
@@ -1616,13 +1580,8 @@ def test_sem():
 def test_set_axis(ray_df, pandas_df, label, axis):
     assert rdf.to_pandas(ray_df.set_axis(label, axis, inplace=False)).equals(
         pandas_df.set_axis(label, axis, inplace=False))
-<<<<<<< HEAD
 
 
-=======
-
-
->>>>>>> f5bc2b983a9686da6c149f209d140a9e5c58f2fd
 @pytest.fixture
 def test_set_index(ray_df, pandas_df, keys, inplace=False):
     if not inplace:
