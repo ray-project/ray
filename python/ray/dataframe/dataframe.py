@@ -9,6 +9,10 @@ from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas.compat import lzip
+from pandas.core.dtypes.common import (
+    is_bool_dtype,
+    is_numeric_dtype,
+    is_timedelta64_dtype)
 
 import warnings
 import numpy as np
@@ -31,13 +35,12 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
-        self._lengths = [_deploy_func.remote(_get_lengths, d)
-                         for d in self._df]
+        self._compute_lengths()
         self.columns = columns
 
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
-        self._index = self._default_index()
+        self._index = _default_index.remote(self)
 
         if index is not None:
             self.index = index
@@ -64,21 +67,33 @@ class DataFrame(object):
         """
         self._index.index = new_index
 
-    def _default_index(self):
-        """Create a default index, which is a RangeIndex
+    index = property(_get_index, _set_index)
+
+    def _get__index(self):
+        """Get the _index for this DataFrame.
 
         Returns:
-            The pd.RangeIndex object that represents this DataFrame.
+            The default index.
         """
-        dest_indices = {"partition":
-                        [i for i in range(len(self._lengths))
-                         for j in range(self._lengths[i])],
-                        "index_within_partition":
-                        [j for i in range(len(self._lengths))
-                         for j in range(self._lengths[i])]}
-        return pd.DataFrame(dest_indices)
+        if isinstance(self._index_cache, ray.local_scheduler.ObjectID):
+            self._index_cache = ray.get(self._index_cache)
+        return self._index_cache
 
-    index = property(_get_index, _set_index)
+    def _set__index(self, new__index):
+        """Set the _index for this DataFrame.
+
+        Args:
+            new__index: The new default index to set.
+        """
+        self._index_cache = new__index
+
+    _index = property(_get__index, _set__index)
+
+    def _compute_lengths(self):
+        """Updates the stored lengths of DataFrame partions
+        """
+        self._lengths = [_deploy_func.remote(_get_lengths, d)
+                         for d in self._df]
 
     def _get_lengths(self):
         """Gets the lengths for each partition and caches it if it wasn't.
@@ -199,6 +214,21 @@ class DataFrame(object):
             index = self.index
 
         return DataFrame(new_df, self.columns, index=index)
+
+    def _update_inplace(self, df=None, columns=None, index=None):
+        """Updates the current DataFrame inplace
+        """
+        assert(len(df) > 0)
+
+        if df:
+            self._df = df
+        if columns:
+            self.columns = columns
+        if index:
+            self.index = index
+
+        self._compute_lengths()
+        self._index = self._default_index()
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -584,7 +614,6 @@ class DataFrame(object):
                             level=level,
                             numeric_only=numeric_only),
                         index=temp_index)._df))
-            # collapsed_df.index = self.columns
             return collapsed_df
 
     def cov(self, min_periods=None):
@@ -631,7 +660,37 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def equals(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        """
+        Checks if other DataFrame is elementwise equal to the current one
+
+        Returns:
+            Boolean: True if equal, otherwise False
+        """
+        def helper(df, index, other_series):
+            return df.iloc[index['index_within_partition']] \
+                        .equals(other_series)
+
+        results = []
+        other_partition = None
+        other_df = None
+        for i, idx in other._index.iterrows():
+            if idx['partition'] != other_partition:
+                other_df = ray.get(other._df[idx['partition']])
+                other_partition = idx['partition']
+            # TODO: group series here into full df partitions to reduce
+            # the number of remote calls to helper
+            other_series = other_df.iloc[idx['index_within_partition']]
+            curr_index = self._index.iloc[i]
+            curr_df = self._df[int(curr_index['partition'])]
+            results.append(_deploy_func.remote(helper,
+                                               curr_df,
+                                               curr_index,
+                                               other_series))
+
+        for r in results:
+            if not ray.get(r):
+                return False
+        return True
 
     def eval(self, expr, inplace=False, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
@@ -1136,9 +1195,7 @@ class DataFrame(object):
         popped = to_pandas(self._map_partitions(
             lambda df: df.pop(item)))
         self._df = self._map_partitions(lambda df: df.drop([item], axis=1))._df
-
         self.columns = self.columns.drop(item)
-
         return popped
 
     def pow(self, other, axis='columns', level=None, fill_value=None):
@@ -1157,7 +1214,18 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def query(self, expr, inplace=False, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Queries the Dataframe with a boolean expression
+
+        Returns:
+            A new DataFrame if inplace=False
+        """
+        new_dfs = [_deploy_func.remote(lambda df: df.query(expr, **kwargs),
+                                       part) for part in self._df]
+
+        if inplace:
+            self._update_inplace(new_dfs)
+        else:
+            return DataFrame(new_dfs, self.columns)
 
     def radd(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -1253,7 +1321,7 @@ class DataFrame(object):
                             values, mask, np.nan)
             return values
 
-        new_index = new_obj._default_index().index
+        new_index = ray.get(_default_index.remote(new_obj)).index
         if level is not None:
             if not isinstance(level, (tuple, list)):
                 level = [level]
@@ -1706,7 +1774,12 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __iter__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterate over the columns
+
+        Returns:
+            An Iterator over the columns of the dataframe.
+        """
+        return iter(self.columns)
 
     def __contains__(self, key):
         return key in self.columns
@@ -1718,7 +1791,12 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __abs__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Creates a modified DataFrame by elementwise taking the absolute value
+
+        Returns:
+            A modified DataFrame
+        """
+        return self.abs()
 
     def __round__(self, decimals=0):
         raise NotImplementedError("Not Yet implemented.")
@@ -1797,10 +1875,20 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __eq__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        """Computes the equality of this DataFrame with another
+
+        Returns:
+            True, if the DataFrames are equal. False otherwise.
+        """
+        return self.equals(other)
 
     def __ne__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        """Checks that this DataFrame is not equal to another
+
+        Returns:
+            True, if the DataFrames are not equal. False otherwise.
+        """
+        return not self.equals(other)
 
     def __add__(self, other):
         raise NotImplementedError("Not Yet implemented.")
@@ -1827,7 +1915,19 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __neg__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Computes an element wise negative DataFrame
+
+        Returns:
+            A modified DataFrame where every element is the negation of before
+        """
+        for t in self.dtypes:
+            if not (is_bool_dtype(t)
+                    or is_numeric_dtype(t)
+                    or is_timedelta64_dtype(t)):
+                raise TypeError("Unary negative expects numeric dtype, not {}"
+                                .format(t))
+
+        return self._map_partitions(lambda df: df.__neg__())
 
     def __floordiv__(self, other):
         raise NotImplementedError("Not Yet implemented.")
@@ -2027,3 +2127,19 @@ def to_pandas(df):
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
+
+
+@ray.remote
+def _default_index(df):
+    """Create a default index, which is a RangeIndex
+
+    Returns:
+        The pd.RangeIndex object that represents this DataFrame.
+    """
+    dest_indices = {"partition":
+                    [i for i in range(len(df._lengths))
+                     for j in range(df._lengths[i])],
+                    "index_within_partition":
+                    [j for i in range(len(df._lengths))
+                     for j in range(df._lengths[i])]}
+    return pd.DataFrame(dest_indices)
