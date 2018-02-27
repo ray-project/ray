@@ -637,14 +637,16 @@ class DataFrame(object):
         results = []
         other_partition = None
         other_df = None
-        for i, idx in other._index.iterrows():
+        other_index = ray.get(other._index)
+        self_index = ray.get(self._index)
+        for i, idx in other_index.iterrows():
             if idx['partition'] != other_partition:
                 other_df = ray.get(other._df[idx['partition']])
                 other_partition = idx['partition']
             # TODO: group series here into full df partitions to reduce
             # the number of remote calls to helper
             other_series = other_df.iloc[idx['index_within_partition']]
-            curr_index = self._index.iloc[i]
+            curr_index = self_index.iloc[i]
             curr_df = self._df[int(curr_index['partition'])]
             results.append(_deploy_func.remote(helper,
                                                curr_df,
