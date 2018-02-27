@@ -22,7 +22,12 @@ LocalScheduler::LocalScheduler(
         local_queues_(LsQueue()),
         sched_policy_(local_queues_),
         reconstruction_policy_(),
-        task_dependency_manager_(object_manager, reconstruction_policy_) {
+        task_dependency_manager_(
+                object_manager,
+                reconstruction_policy_,
+                std::bind(&LocalScheduler::HandleWaitingTaskReady, this,
+                    std::placeholders::_1)
+                ) {
   //// TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
   //cluster_resource_map_[DBClientID::nil()] = local_resources_;
 }
@@ -81,6 +86,9 @@ void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, i
   default:
     CHECK(0);
   }
+}
+
+void LocalScheduler::HandleWaitingTaskReady(const TaskID &task_id) {
 }
 
 void LocalScheduler::submitTask(const Task& task) {

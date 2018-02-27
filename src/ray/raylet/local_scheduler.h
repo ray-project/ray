@@ -34,6 +34,7 @@ class LocalScheduler : public ClientManager {
   /// Process a message from a client, then listen for more messages if the
   /// client is still alive.
   void ProcessClientMessage(shared_ptr<ClientConnection> client, int64_t message_type, const uint8_t *message);
+  void HandleWaitingTaskReady(const TaskID &task_id);
  private:
   /// Submit a task to this node.
   void submitTask(const Task& task);
