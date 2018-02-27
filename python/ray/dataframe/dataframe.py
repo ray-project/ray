@@ -785,7 +785,7 @@ class DataFrame(object):
         new_dfs.append(_deploy_func.remote(lambda df: df.head(num_to_transfer),
                                            self._df[last_index]))
 
-        index = self._index.head(n).index
+        index = ray.get(self._index).head(n).index
         return DataFrame(new_dfs, self.columns, index=index)
 
     def hist(self, data, column=None, by=None, grid=True, xlabelsize=None,
@@ -1270,7 +1270,7 @@ class DataFrame(object):
                             values, mask, np.nan)
             return values
 
-        new_index = new_obj._default_index().index
+        new_index = ray.get(_default_index.remote(new_obj)).index
         if level is not None:
             if not isinstance(level, (tuple, list)):
                 level = [level]
@@ -1387,7 +1387,7 @@ class DataFrame(object):
                 FutureWarning, stacklevel=2)
             inplace = True
         if inplace:
-            setattr(self, self._index._get_axis_name(axis), labels)
+            setattr(self, ray.get(self._index)._get_axis_name(axis), labels)
         else:
             obj = self.copy()
             obj.set_axis(labels, axis=axis, inplace=True)
@@ -1551,7 +1551,7 @@ class DataFrame(object):
         new_dfs.append(_deploy_func.remote(lambda df: df.tail(num_to_transfer),
                                            reverse_dfs[last_index])).reverse()
 
-        index = self._index.tail(n).index
+        index = ray.get(self._index).tail(n).index
         return DataFrame(new_dfs, self.columns, index=index)
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
