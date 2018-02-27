@@ -6,3 +6,10 @@ table ClientConnectionInfo {
   // Whether this is a transfer connection.
   is_transfer: bool;
 }
+
+table ObjectHeader {
+  // The object ID being transferred.
+  object_id: string;
+  // The size of the object being transferred.
+  object_size: ulong;
+}

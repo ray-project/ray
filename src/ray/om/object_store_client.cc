@@ -1,5 +1,6 @@
 #include <iostream>
 #include "future"
+#include <memory>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -18,11 +19,13 @@ namespace ray {
 ObjectStoreClient::ObjectStoreClient(
     boost::asio::io_service &io_service, string &store_socket_name
 ) : socket_(io_service) {
-  this->plasma_conn = new plasma::PlasmaClient();
-  ARROW_CHECK_OK(this->plasma_conn->Connect(store_socket_name.c_str(),
-                                            "",
-                                            PLASMA_DEFAULT_RELEASE_DELAY));
-  ARROW_CHECK_OK(this->plasma_conn->Subscribe(&c_socket_));
+  this->client_two_ = unique_ptr<plasma::PlasmaClient>(new plasma::PlasmaClient());
+  ARROW_CHECK_OK(this->client_two_->Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+
+  this->client_one_ = unique_ptr<plasma::PlasmaClient>(new plasma::PlasmaClient());
+  ARROW_CHECK_OK(this->client_one_->Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(this->client_one_->Subscribe(&c_socket_));
+
   boost::system::error_code ec;
   socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
   assert(!ec.value());
@@ -30,8 +33,10 @@ ObjectStoreClient::ObjectStoreClient(
 };
 
 void ObjectStoreClient::Terminate() {
-  ARROW_CHECK_OK(this->plasma_conn->Disconnect());
-  delete this->plasma_conn;
+  ARROW_CHECK_OK(this->client_two_->Disconnect());
+  this->client_two_.release();
+  ARROW_CHECK_OK(this->client_one_->Disconnect());
+  this->client_one_.release();
 }
 
 void ObjectStoreClient::NotificationWait() {
@@ -90,6 +95,14 @@ void ObjectStoreClient::SubscribeObjAdded(std::function<void(const ObjectID&)> c
 
 void ObjectStoreClient::SubscribeObjDeleted(std::function<void(const ObjectID&)> callback) {
   this->rem_handlers.push_back(callback);
+};
+
+ObjectStoreClient::PlasmaClientPointer &ObjectStoreClient::GetClient(){
+  return client_one_;
+};
+
+ObjectStoreClient::PlasmaClientPointer &ObjectStoreClient::GetClientOther(){
+  return client_two_;
 };
 
 }
