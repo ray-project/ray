@@ -8,19 +8,21 @@ using namespace std;
 namespace ray {
 
 ObjectManager::ObjectManager(boost::asio::io_service &io_service, OMConfig config) :
-    work_(io_service_) {
+    work_(io_service_)
+{
 
-  this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
   this->od = unique_ptr<ObjectDirectory>(new ObjectDirectory());
+  this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name, od));
   this->StartIOService();
 };
 
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              OMConfig config,
                              shared_ptr<ObjectDirectoryInterface> od) :
-    work_(io_service_) {
-  this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
+    work_(io_service_)
+{
   this->od = od;
+  this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name, od));
   this->StartIOService();
 };
 
@@ -41,6 +43,7 @@ void ObjectManager::StopIOService(){
 
 void ObjectManager::SetClientID(const ClientID &client_id){
   this->client_id_ = client_id;
+  this->store_client_->SetClientID(client_id);
 }
 
 ClientID ObjectManager::GetClientID(){
@@ -66,29 +69,26 @@ ray::Status ObjectManager::SubscribeObjDeleted(std::function<void(const ObjectID
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
-  ray::Status status_code = this->od->GetLocations(
-      object_id,
-      [this](const vector<ODRemoteConnectionInfo>& v, const ObjectID &object_id) {
-        return this->GetLocationsSuccess(v, object_id);
-      } ,
-      [this](ray::Status status, const ObjectID &object_id) {
-        return this->GetLocationsFailed(status, object_id);
-      }
-  );
-  return status_code;
+  // cout << "Pull " << object_id.hex() << endl;
+  // TODO(hme): Need to correct. Workaround to get all pull requests on the same thread.
+  SchedulePull(object_id, 0);
+  return Status::OK();
 };
 
 // Private callback implementation for success on get location. Called inside OD.
 void ObjectManager::GetLocationsSuccess(const vector<ray::ODRemoteConnectionInfo> &v,
                                         const ray::ObjectID &object_id) {
-  const ODRemoteConnectionInfo &info = v.front();
+  // cout << "GetLocationsSuccess " << v.size() << endl;
+  ODRemoteConnectionInfo info = v.front();
+  pull_requests_.erase(object_id);
   ray::Status status_code = this->Pull(object_id, info.client_id);
 };
 
 // Private callback implementation for failure on get location. Called inside OD.
 void ObjectManager::GetLocationsFailed(ray::Status status,
                                        const ObjectID &object_id){
-  throw std::runtime_error("GetLocations Failed: " + status.message());
+  // cout << "GetLocationsFailed" << endl;
+  SchedulePull(object_id, config.pull_timeout_ms);
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id,
@@ -102,9 +102,9 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id,
 };
 
 ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
-                                       SenderConnection::pointer client) {
-  cout << "ExecutePull: " << object_id.hex() << endl;
-  // TODO: implement pull.
+                                       SenderConnection::pointer conn) {
+  // cout << "ExecutePull: " << object_id.hex() << endl;
+  SendPullRequest(object_id, conn);
   return ray::Status::OK();
 };
 
@@ -244,22 +244,23 @@ ray::Status ObjectManager::AddSock(TCPClientConnection::pointer conn){
   // cout << conn->GetSocket().local_endpoint().address() << endl;
   // cout << conn->GetSocket().local_endpoint().port() << endl;
 
+  // TODO: trash connection if either fails.
   if (is_transfer) {
-    message_receive_connections_[client_id] = conn;
-  } else {
     transfer_receive_connections_[client_id] = conn;
+    Status status = WaitPushReceive(conn);
+    return status;
+  } else {
+    message_receive_connections_[client_id] = conn;
+    Status status = WaitMessage(conn);
+    return status;
   }
 
-  // TODO: trash connection if this fails.
-  Status status = WaitPushReceive(conn);
-
-  return status;
 };
 
 ray::Status ObjectManager::WaitPushReceive(TCPClientConnection::pointer conn){
   // cout << "WaitPushReceive" << endl;
   boost::asio::async_read(conn->GetSocket(),
-                          boost::asio::buffer(&conn->message_length, sizeof(conn->message_length)),
+                          boost::asio::buffer(&conn->message_length_, sizeof(conn->message_length_)),
                           boost::bind(&ObjectManager::HandlePushReceive,
                                       this,
                                       conn,
@@ -270,7 +271,7 @@ ray::Status ObjectManager::WaitPushReceive(TCPClientConnection::pointer conn){
 void ObjectManager::HandlePushReceive(TCPClientConnection::pointer conn,
                                       const boost::system::error_code& length_ec){
   std::vector<uint8_t> message;
-  message.resize(conn->message_length);
+  message.resize(conn->message_length_);
   boost::system::error_code ec;
   boost::asio::read(conn->GetSocket(), boost::asio::buffer(message), ec);
 
@@ -280,7 +281,7 @@ void ObjectManager::HandlePushReceive(TCPClientConnection::pointer conn,
   int64_t object_size = (int64_t) object_header->object_size();
   int64_t metadata_size = 0;
 
-  // cout << "HandlePushReceive: " << object_id.hex() << " " << object_size << endl;
+  cout << "HandlePushReceive: " << object_id.hex() << " " << object_size << endl;
 
   // Try to create shared buffer.
   std::shared_ptr<Buffer> data;
@@ -334,17 +335,13 @@ ray::Status ObjectManager::ExecutePushQueue(SenderConnection::pointer conn){
       return ray::Status::OK();
     }
     ObjectID object_id = conn->DeQueueObjectId();
-    ExecutePush(object_id, conn);
+    // cout << "ExecutePushQueue: " << object_id.hex() << endl;
+    // Note: The threads that increment/decrement num_transfers_ are different.
+    // It's important to increment num_transfers_ before executing the push.
     num_transfers_ += 1;
+    ExecutePush(object_id, conn);
   }
   return ray::Status::OK();
-};
-
-ray::Status ObjectManager::ExecutePushCompleted(const ObjectID &object_id_const,
-                                                SenderConnection::pointer conn){
-  conn->RemoveSendRequest(object_id_const);
-  num_transfers_ -= 1;
-  return ExecutePushQueue(conn);
 };
 
 ray::Status ObjectManager::ExecutePush(const ObjectID &object_id_const,
@@ -409,5 +406,13 @@ void ObjectManager::HandlePushSend(SenderConnection::pointer conn,
 
   ExecutePushCompleted(object_id, conn);
 }
+
+ray::Status ObjectManager::ExecutePushCompleted(const ObjectID &object_id,
+                                                SenderConnection::pointer conn){
+  // cout << "ExecutePushCompleted: " << object_id.hex() << endl;
+  conn->RemoveSendRequest(object_id);
+  num_transfers_ -= 1;
+  return ExecutePushQueue(conn);
+};
 
 } // end ray

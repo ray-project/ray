@@ -53,6 +53,12 @@ class ObjectDirectoryInterface {
   // Cancels the invocation of the callback associated with callback_id.
   virtual ray::Status Cancel(const ObjectID &object_id) = 0;
 
+  virtual ray::Status ObjectAdded(const ObjectID &object_id,
+                                  const ClientID &client_id) = 0;
+
+  virtual ray::Status ObjectRemoved(const ObjectID &object_id,
+                                    const ClientID &client_id) = 0;
+
   virtual ray::Status Terminate() = 0;
 
 };
@@ -71,6 +77,12 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                            const LocFailCB &fail_cb) override;
   ray::Status Cancel(const ObjectID &object_id) override;
   ray::Status Terminate() override;
+
+  ray::Status ObjectAdded(const ObjectID &object_id,
+                          const ClientID &client_id) override;
+
+  ray::Status ObjectRemoved(const ObjectID &object_id,
+                            const ClientID &client_id) override;
 
   // Ray only (not part of the OD interface.
   void InitGcs(std::shared_ptr<GcsClient> gcs_client);

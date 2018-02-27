@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <map>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -18,11 +19,21 @@ namespace ray {
 
 class ObjectTable {
  public:
-  ray::Status Add(const ObjectID &object_id, const ClientID &client_id);
-  ray::Status Remove(const ObjectID &object_id, const ClientID &client_id);
-  const std::unordered_set<ClientID, UniqueIDHasher> &GetObjectClientIDs(const ObjectID &object_id);
+  using DoneCallback = std::function<void()>;
+  using ClientIDsCallback = std::function<void(const std::vector<ray::ClientID>&)>;
+  using FailCallback = std::function<void(const ray::Status&)>;
+  ray::Status Add(const ObjectID &object_id,
+                  const ClientID &client_id,
+                  const DoneCallback &done);
+  ray::Status Remove(const ObjectID &object_id,
+                     const ClientID &client_id,
+                     const DoneCallback &done);
+  ray::Status GetObjectClientIDs(const ObjectID &object_id,
+                                 const ClientIDsCallback&,
+                                 const FailCallback&);
+
  private:
-  std::unordered_set<ClientID, UniqueIDHasher> empty_set_;
+  std::vector<ClientID> empty_set_;
   std::unordered_map<ObjectID,
                      std::unordered_set<ClientID, UniqueIDHasher>,
                      UniqueIDHasher> client_lookup;
@@ -52,12 +63,26 @@ class ClientTable {
   typedef std::unordered_map<ClientID,
                              ClientInformation,
                              UniqueIDHasher> info_type;
-  std::vector<ClientID> GetClientIds();
-  const ClientInformation &GetClientInformation(const ClientID &client_id);
+
+  using ClientIDsCallback = std::function<void(std::vector<ray::ClientID>)>;
+  using SingleInfoCallback  = std::function<void(ClientInformation info)>;
+  using ManyInfoCallback  = std::function<void(std::vector<ClientInformation> info_vec)>;
+  using DoneCallback = std::function<void()>;
+  using FailCallback = std::function<void(ray::Status)>;
+
+  ray::Status GetClientIds(ClientIDsCallback cb);
+  void GetClientInformationSet(std::vector<ClientID> client_ids,
+                              ManyInfoCallback cb,
+                               FailCallback failcb);
+  void GetClientInformation(ClientID client_id,
+                            SingleInfoCallback cb,
+                            FailCallback failcb);
   ray::Status Add(const ClientID &client_id,
                   const std::string &ip,
-                  ushort port);
-  ray::Status Remove(const ClientID &client_id);
+                  ushort port,
+                  DoneCallback cb);
+  ray::Status Remove(const ClientID &client_id,
+                     DoneCallback done);
  private:
   info_type info_lookup;
 };
