@@ -6,8 +6,9 @@ import pytest
 import numpy as np
 import pandas as pd
 import ray
-ray.init()
 import ray.dataframe as rdf
+
+ray.init()
 
 
 @pytest.fixture
