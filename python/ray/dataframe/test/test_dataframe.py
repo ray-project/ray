@@ -211,7 +211,6 @@ def test_int_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
-        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -306,7 +305,6 @@ def test_float_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
-        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -404,7 +402,6 @@ def test_mixed_dtype_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
-        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -523,7 +520,6 @@ def test_nan_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
-        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -1967,8 +1963,12 @@ def test___iter__(ray_df, pd_df):
 
 @pytest.fixture
 def test___contains__(ray_df, key, result):
-    assert result == ray_df.__contains__(key)
-    assert result == (key in ray_df)
+    # assert result == ray_df.__contains__(key)
+    # assert result == (key in ray_df)
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.__nonzero__()
 
 
 def test___nonzero__():
