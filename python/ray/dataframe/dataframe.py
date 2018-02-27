@@ -43,17 +43,7 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
-        self._lengths = [_deploy_func.remote(_get_lengths, d)
-                         for d in self._df]
-
         self.columns = columns
-
-        if index is None:
-            self._index = self._default_index()
-        else:
-            self._index = index
-
-        self._pd_index = None
 
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
@@ -1758,39 +1748,33 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    @ray.remote
-    def _get_index_as_list(df, i):
-        return df.index.tolist()
-
     def rename(self, mapper=None, index=None, columns=None, axis=None,
                copy=True, inplace=False, level=None):
         if mapper is None and index is None and columns is None:
             raise TypeError('must pass an index to rename')
 
         new_df = None
+        # import pdb; pdb.set_trace()
         if axis is None:
             new_df = self._map_partitions(
                 lambda df: df.rename(mapper=mapper, index=index,
                                      columns=columns, copy=copy, level=level)
             )
+            new_df._index.rename(mapper=mapper, index=index, columns=columns,
+                                 copy=copy, level=level, inplace=True)
+            new_df.columns = pd.DataFrame(columns=new_df.columns)\
+                .rename(mapper=mapper, index=index, columns=columns,
+                        copy=copy, level=level).columns
         else:
             new_df = self._map_partitions(
                 lambda df: df.rename(mapper=mapper, axis=axis, copy=copy,
                                      level=level)
             )
-
-        index_lists = list(itertools.chain.from_iterable(ray.get([
-            self._get_index_as_list.remote(new_df._df[i], i)
-            for i in range(len(new_df._df))
-        ])))
-
-        index_df = pd.DataFrame(
-            index=pd.Index(index_lists, name=self.index.name,
-                           names=self.index.names)
-        )
-
-        new_df._index = from_pandas(index_df, len(new_df._df))._index
-        new_df.columns = ray.get(new_df._df[0]).columns
+            new_df._index = new_df._index.rename(mapper=mapper, axis=axis,
+                                                 copy=copy, level=level)
+            new_df.columns = pd.DataFrame(columns=new_df.columns)\
+                .rename(mapper=mapper, axis=axis, copy=copy,
+                        level=level).columns
 
         if inplace:
             self._df = new_df._df
@@ -1821,11 +1805,10 @@ class DataFrame(object):
         axes_is_columns = axis == 1 or axis == "columns"
         renamed = self if inplace else self.copy()
         if axes_is_columns:
-            renamed.columns.rename_axis(mapper, axis=axis, copy=copy,
-                                        inplace=inplace)
+            renamed.columns.name = mapper
         else:
             renamed._index.rename_axis(mapper, axis=axis, copy=copy,
-                                       inplace=inplace)
+                                       inplace=True)
 
         if not inplace:
             return renamed
@@ -2950,8 +2933,7 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
         dataframes.append(ray.put(temp_df))
         lengths.append(len(temp_df))
 
-    return DataFrame(dataframes, pd.DataFrame(columns=df.columns),
-                     index=df.index)
+    return DataFrame(dataframes, df.columns, index=df.index)
 
 
 def to_pandas(df):
@@ -2967,7 +2949,6 @@ def to_pandas(df):
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
-
 
 @ray.remote(num_return_vals=2)
 def _compute_length_and_index(dfs):
@@ -2987,3 +2968,8 @@ def _compute_length_and_index(dfs):
                      for j in range(lengths[i])]}
 
     return lengths, pd.DataFrame(dest_indices)
+
+@ray.remote
+def _get_index_as_list(df, i):
+    return df.index.tolist()
+
