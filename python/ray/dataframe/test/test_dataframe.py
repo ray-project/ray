@@ -201,8 +201,6 @@ def test_int_dataframe():
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
-    test_first_valid_index(ray_df, pandas_df)
-    test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -291,8 +289,7 @@ def test_float_dataframe():
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
-    test_first_valid_index(ray_df, pandas_df)
-    test_last_valid_index(ray_df, pandas_df)
+
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -358,8 +355,6 @@ def test_mixed_dtype_dataframe():
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
-    test_first_valid_index(ray_df, pandas_df)
-    test_last_valid_index(ray_df, pandas_df)
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -445,8 +440,6 @@ def test_nan_dataframe():
     test_round(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
-    test_first_valid_index(ray_df, pandas_df)
-    test_last_valid_index(ray_df, pandas_df)
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
