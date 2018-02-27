@@ -630,10 +630,13 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def first_valid_index(self):
+        """Return index for first non-NA/null value.
+
+        Returns:
+            scalar: type of index
+        """
         if (self.index):
             return self.index
-        else:
-            return None
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -888,10 +891,13 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def last_valid_index(self):
+        """Return index for last non-NA/null value.
+
+        Returns:
+            scalar: type of index
+        """
         if (self.index):
             return self.index
-        else:
-            return None
 
     def le(self, other, axis='columns', level=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -1484,6 +1490,11 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __len__(self):
+        """Gets the length of the dataframe.
+
+        Returns:
+            Returns an integer length of the dataframe object.
+        """
         return sum(self._lengths)
 
     def __unicode__(self):
@@ -1499,6 +1510,14 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __contains__(self, key):
+        """Searches columns for specific key
+
+        Args:
+            key : The column name
+
+        Returns:
+            Returns a boolean if the specified key exists as a column name
+        """
         return key in self.columns
 
     def __nonzero__(self):
