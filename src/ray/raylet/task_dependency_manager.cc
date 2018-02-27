@@ -35,19 +35,25 @@ bool TaskDependencyManager::argumentsReady(const std::vector<ObjectID> arguments
 
 void TaskDependencyManager::handleObjectReady(const ray::ObjectID& object_id) {
   LOG_INFO("object %s ready", object_id.hex().c_str());
+  // Add the object to the table of locally available objects.
   CHECK(local_objects_.count(object_id) == 0);
   local_objects_.insert(object_id);
 
+  // Handle any tasks that were dependent on the newly available object.
   std::vector<TaskID> ready_task_ids;
   auto dependent_tasks = remote_object_dependencies_.find(object_id);
   if (dependent_tasks != remote_object_dependencies_.end()) {
     for (auto &dependent_task_id : dependent_tasks->second) {
+      // If the dependent task now has all of its arguments ready, it's ready
+      // to run.
       if (argumentsReady(task_dependencies_[dependent_task_id])) {
         ready_task_ids.push_back(dependent_task_id);
       }
     }
     remote_object_dependencies_.erase(dependent_tasks);
   }
+  // Process callbacks for all of the tasks dependent on the object that are
+  // now ready to run.
   for (auto &ready_task_id : ready_task_ids) {
     UnsubscribeTaskReady(ready_task_id);
     task_ready_callback_(ready_task_id);
@@ -71,6 +77,7 @@ void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
       remote_object_dependencies_[argument].push_back(task_id);
       num_missing_arguments++;
       // TODO(swang): Check return status.
+      // TODO(swang): Handle Pull failure (if object manager does not retry).
       object_manager_.Pull(argument);
     }
   }
