@@ -635,7 +635,7 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        if (self.index):
+        if (self.index.any()):
             return self.index
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
@@ -896,7 +896,7 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        if (self.index):
+        if (self.index.any()):
             return self.index
 
     def le(self, other, axis='columns', level=None):
