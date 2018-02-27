@@ -634,7 +634,7 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        idx = self.index
+        idx = self._index
         if (idx is not None):
             return idx.first_valid_index()
         return None
@@ -897,7 +897,7 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        idx = self.index
+        idx = self._index
         if (idx is not None):
             return idx.last_valid_index()
         return None
