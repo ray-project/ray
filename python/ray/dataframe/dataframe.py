@@ -133,6 +133,23 @@ class DataFrame(object):
 
     _lengths = property(_get_lengths, _set_lengths)
 
+    def _map_to_partition_range_index(self, pd_index, partition_idx):
+        try:
+            inter = set.intersection(
+                set(pd_index), set(_index.index)
+            )
+            pd_index = _index\
+                .loc[list(inter)]\
+                .loc[_index['partition'] == i]['index_within_partition']\
+                .tolist()
+        except:
+            if pd_index in _index.index:
+                pd_index = _index\
+                    .loc[[pd_index]]\
+                    .loc[_index['partition'] == i]['index_within_partition']\
+                    .tolist()
+        return pd_index
+
     @property
     def size(self):
         """Get the number of elements in the DataFrame.
@@ -225,6 +242,7 @@ class DataFrame(object):
         """
         assert(callable(func))
         new_df = [_deploy_func.remote(func, part) for part in self._df]
+
         if index is None:
             index = self.index
 
@@ -235,11 +253,11 @@ class DataFrame(object):
         """
         assert(len(df) > 0)
 
-        if df:
+        if df is not None:
             self._df = df
-        if columns:
+        if columns is not None:
             self.columns = columns
-        if index:
+        if index is not None:
             self.index = index
 
         self._lengths, self._index = _compute_length_and_index.remote(self._df)
@@ -741,28 +759,24 @@ class DataFrame(object):
              inplace=False, errors='raise'):
         """Return new object with labels in requested axis removed.
         Args:
-            labels (single label or list-like):
-                Index or column labels to drop.
+            labels: Index or column labels to drop.
 
-            axis (int or axis name):
-                Whether to drop labels from the index (0 / ‘index’) or
+            axis: Whether to drop labels from the index (0 / ‘index’) or
                 columns (1 / ‘columns’).
 
-            index, columns (single label or list-like):
-                Alternative to specifying axis (labels, axis=1 is equivalent
-                to columns=labels).
+            index, columns: Alternative to specifying axis (labels, axis=1 is
+                equivalent to columns=labels).
 
-            level (int or level name, default None): For MultiIndex
+            level: For MultiIndex
 
-            inplace (bool, default False):
-                If True, do operation inplace and return None.
+            inplace: If True, do operation inplace and return None.
 
-            errors ({‘ignore’, ‘raise’}, default ‘raise’):
-                If ‘ignore’, suppress error and existing labels are dropped.
+            errors: If ‘ignore’, suppress error and existing labels are
+                dropped.
         Returns:
             dropped : type of caller
         """
-        inplace = validate_bool_kwarg(inplace, "inplace")
+        # inplace = validate_bool_kwarg(inplace, "inplace")
         if errors == 'raise':
             if labels is not None:
                 if index is not None or columns is not None:
@@ -774,29 +788,86 @@ class DataFrame(object):
 
         is_axis_zero = axis is None or axis == 0 or axis == 'index'\
             or axis == 'rows'
-        new_index = self._index.copy()
-        new_columns = self.columns.copy()
-        if (labels is not None and is_axis_zero) or index is not None:
-            new_index = new_index.drop(
-                labels=labels, axis=axis, index=index, level=level,
-                inplace=False, errors=errors
-            )
-        if (labels is not None and not is_axis_zero) or columns is not None:
-            new_columns = pd.DataFrame(columns=new_columns).drop(
-                labels=labels, axis=axis, columns=columns, level=level,
-                inplace=False, errors=errors
-            ).columns
 
-        new_df = self._map_partitions(lambda df: df.drop(labels=labels,
-                                      axis=axis, index=index, columns=columns,
-                                      level=level, inplace=False,
-                                      errors='ignore'), index=new_index)
-        new_df._index = new_index
-        new_df.columns = new_columns
+        new_df = None
+        if is_axis_zero:
+            # import pdb; pdb.set_trace()
+            try:
+                filtered_index = self._index.loc[labels]
+            except KeyError:
+                raise ValueError("{} is not contained in the index".format(labels))
+
+            partition_idx = [
+                filtered_index.loc[self._index['partition'] == i]['index_within_partition']
+                for i in range(len(self._df))
+            ]
+
+            new_df = [
+                _deploy_func.remote(
+                    lambda df, new_labels: df.drop(new_labels, errors='ignore'),
+                    self._df[i], partition_idx[i]
+                )
+                for i in range(len(self._df))
+            ]
+            new_index = self._index.copy().drop(labels)
+            new_df = DataFrame(new_df, self.columns, index=new_index.index)
+        else:
+            new_df = self._map_partitions(
+                lambda df: df.drop(
+                    labels=labels, axis=axis, index=index, columns=columns,
+                    level=level, inplace=inplace, errors='ignore')
+            )
+            new_columns = self.columns.copy().drop(labels)
+            new_df.columns = new_columns
+
+        # new_columns = self.columns.copy()
+        # if labels is not None and isinstance(labels, list) and 0 in labels and 1 in labels:
+        #     import pdb; pdb.set_trace()
+        # new_index = self.index.copy()
+        # if (labels is not None and is_axis_zero) or index is not None:
+        #     new_index = pd.DataFrame(index=new_index).drop(
+        #         labels=labels, axis=axis, index=index, level=level,
+        #         inplace=False, errors=errors
+        #     ).index
+        # if (labels is not None and not is_axis_zero) or columns is not None:
+        #     new_columns = pd.DataFrame(columns=new_columns).drop(
+        #         labels=labels, axis=axis, columns=columns, level=level,
+        #         inplace=False, errors=errors
+        #     ).columns
+
+        # def drop_part(df, i, labels, index, _index, is_axis_zero):
+        #     if (labels is not None and is_axis_zero) or index is not None:
+        #         df_labels = labels
+        #         df_index = index
+
+        #         if labels is None:
+        #             df_index = self._map_to_partition_range_index(
+        #                 _index.index, i
+        #             )
+        #         else:
+        #             df_labels = self._map_to_partition_range_index(
+        #                 _index.index, i
+        #             )
+        #         return df.drop(labels=df_labels, axis=axis, index=df_index,
+        #                 columns=columns, level=level, inplace=False,
+        #                 errors='ignore')
+        #     return df.drop(labels=labels, axis=axis, index=index,
+        #                    columns=columns, level=level, inplace=False,
+        #                    errors='ignore')
+        # import pdb; pdb.s set_trace()
+        # dfs = [
+        #     _deploy_func.remote(drop_part, part, i, labels, index,
+        #                         self._index, is_axis_zero)
+        #     for i, part in enumerate(self._df)
+        # ]
+        # new_df = DataFrame(dfs, new_columns, index=new_index)
+        # new_df.columns = new_columns
         if inplace:
-            self._df = new_df._df
-            self._index = new_df._index
-            self.columns = new_df.columns
+            self._update_inplace(
+                df=new_df._df,
+                index=new_df._index,
+                columns=new_df.columns
+            )
         else:
             return new_df
 
@@ -851,62 +922,43 @@ class DataFrame(object):
     def eval(self, expr, inplace=False, **kwargs):
         """Evaluate a Python expression as a string using various backends.
         Args:
-            expr (str or unicode):
-                The expression to evaluate. This string cannot contain any
+            expr: The expression to evaluate. This string cannot contain any
                 Python statements, only Python expressions.
 
-            parser (string, default ‘pandas’, {‘pandas’, ‘python’}):
-                The parser to use to construct the syntax tree from the
+            parser: The parser to use to construct the syntax tree from the
                 expression. The default of 'pandas' parses code slightly
                 different than standard Python. Alternatively, you can parse
                 an expression using the 'python' parser to retain strict
                 Python semantics. See the enhancing performance documentation
                 for more details.
 
-            engine (string or None, default ‘numexpr’, {‘python’,
-                ‘numexpr’}):
-                The engine used to evaluate the expression. Supported
-                engines are:
-                    None : tries to use numexpr, falls back to python
-                    'numexpr': This default engine evaluates pandas objects
-                        using numexpr for large speed ups in complex
-                        expressions with large frames.
-                    'python': Performs operations as if you had eval‘d in top
-                        level python. This engine is generally not that
-                        useful.
+            engine: The engine used to evaluate the expression.
 
-            truediv (bool, optional):
-                Whether to use true division, like in Python >= 3
+            truediv: Whether to use true division, like in Python >= 3
 
-            local_dict (dict or None, optional):
-                A dictionary of local variables, taken from locals() by
-                default.
+            local_dict: A dictionary of local variables, taken from locals()
+                by default.
 
-            global_dict (dict or None, optional):
-                A dictionary of global variables, taken from globals() by
-                default.
+            global_dict: A dictionary of global variables, taken from
+                globals() by default.
 
-            resolvers (list of dict-like or None, optional):
-                A list of objects implementing the __getitem__ special
+            resolvers: A list of objects implementing the __getitem__ special
                 method that you can use to inject an additional collection
                 of namespaces to use for variable lookup. For example, this is
                 used in the query() method to inject the index and columns
                 variables that refer to their respective DataFrame instance
                 attributes.
 
-            level (int, optional):
-                The number of prior stack frames to traverse and add to
+            level: The number of prior stack frames to traverse and add to
                 the current scope. Most users will not need to change this
                 parameter.
 
-            target (object, optional, default None):
-                This is the target object for assignment. It is used when
+            target: This is the target object for assignment. It is used when
                 there is variable assignment in the expression. If so, then
                 target must support item assignment with string keys, and if a
                 copy is being returned, it must also support .copy().
 
-            inplace (bool, default False):
-                If target is provided, and the expression mutates target,
+            inplace: If target is provided, and the expression mutates target,
                 whether to modify target inplace. Otherwise, return a copy of
                 target with the mutation.
         Returns:
@@ -952,25 +1004,19 @@ class DataFrame(object):
         """Fill NA/NaN values using the specified method.
 
         Args:
-            value: Value to use to fill holes (e.g. 0), alternately a
-                dict/Series/DataFrame of values specifying which value to use
-                for each index (for a Series) or column (for a DataFrame).
-                (values not in the dict/Series/DataFrame will not be filled).
-                This value cannot be a list.
+            value: Value to use to fill holes. This value cannot be a list.
 
-            method: Method to use for filling holes in reindexed Series pad /
+            method: Method to use for filling holes in reindexed Series pad.
                 ffill: propagate last valid observation forward to next valid
-                backfill / bfill: use NEXT valid observation to fill gap
+                backfill.
+                bfill: use NEXT valid observation to fill gap.
 
-            axis ({0 or ‘index’, 1 or ‘columns’})
+            axis: 0 or ‘index’, 1 or ‘columns’.
 
-            inplace (boolean, default False):
-                If True, fill in place. Note: this will modify any other views
-                on this object, (e.g. a no-copy slice for a column in a
-                DataFrame).
+            inplace: If True, fill in place. Note: this will modify any other
+                views on this object.
 
-            limit (int, default None):
-                If method is specified, this is the maximum number of
+            limit: If method is specified, this is the maximum number of
                 consecutive NaN values to forward/backward fill. In other
                 words, if there is a gap with more than this number of
                 consecutive NaNs, it will only be partially filled. If method
@@ -978,13 +1024,12 @@ class DataFrame(object):
                 the entire axis where NaNs will be filled. Must be greater
                 than 0 if not None.
 
-            downcast (dict, default is None):
-                a dict of item->dtype of what to downcast if possible, or the
-                string ‘infer’ which will try to downcast to an appropriate
-                equal type (e.g. float64 to int64 if possible)
+            downcast: A dict of item->dtype of what to downcast if possible,
+                or the string ‘infer’ which will try to downcast to an
+                appropriate equal type.
 
         Returns:
-            filled : DataFrame
+            filled: DataFrame
         """
         if isinstance(value, (list, tuple)):
             raise TypeError('"value" parameter must be a scalar or dict, but '
@@ -1000,10 +1045,22 @@ class DataFrame(object):
                   .format(expecting=expecting, method=method)
             raise ValueError(msg)
 
-        new_df = self._map_partitions(
-            lambda df: df.fillna(value=value, method=method, axis=axis,
-                                 limit=limit, downcast=downcast, **kwargs)
-        )
+        new_df = [
+            _deploy_func.remote(
+                lambda df, i, _index: _apply_pd_function_on_partition(
+                    _index, df, i,
+                    lambda df: df.fillna(
+                        value=value, method=method, axis=axis, limit=limit,
+                        downcast=downcast, **kwargs)
+                ),
+                part, i, self._index
+            )
+            for i, part in enumerate(self._df)
+        ]
+
+        new_df = DataFrame(new_df, self.columns, self.index)
+
+        # new_df = DataFrame(dfs, self.columns, self.index)
         is_bfill = method is not None and method in ['backfill', 'bfill']
         is_ffill = method is not None and method in ['pad', 'ffill']
         is_axis_zero = axis is None or axis == 0 or axis == 'index'\
@@ -1038,6 +1095,7 @@ class DataFrame(object):
                     for i in range(len(self._df) - 1)
                 ]
 
+        # TODO: Revist this to improve performance
         if limit is not None:
             # need to do a seperate fillna for each column seperatley
             # count how many N/As there are in each partition
@@ -1046,9 +1104,6 @@ class DataFrame(object):
                 part
             ) for part in self._df])
 
-            identity = self._map_partitions(
-                lambda df: df.copy()
-            )
             col_len = len(self.columns)
             stopping_points = [-1] * col_len
             left_over = [limit] * col_len
@@ -1069,6 +1124,7 @@ class DataFrame(object):
                             current_count - nan_counts[i]
                         )[j]
 
+            import pdb; pdb.set_trace()
             for i in range(col_len):
                 col_val = value
                 if isinstance(value, dict)\
@@ -1085,20 +1141,22 @@ class DataFrame(object):
                 # limit w/ the original column
                 for j in row_gen:
                     new_df._df[j] = _copy_part_col.remote(
-                        i, j, new_df, identity
+                        i, j, new_df._df[j], self._df[j]
                     )
 
                 # Apply fill w/ limit on partition & column w/ last fills
                 new_df._df[stopping_points[i]] = _update_part_col.remote(
-                    i, stopping_points[i], new_df, identity, left_over,
+                    i, stopping_points[i], new_df._df[stopping_points[i]], self._df[stopping_points[i]], left_over,
                     col_val, is_ffill, is_bfill, method=method,
                     downcast=downcast
                 )
 
         if inplace:
-            self._df = new_df._df
-            self.columns = new_df.columns
-            self._index = new_df._index
+            self._update_inplace(
+                df=new_df._df,
+                columns=new_df.columns,
+                index=new_df.index
+            )
         else:
             return new_df
 
@@ -2900,9 +2958,10 @@ def _copy_part_col(i, j, new_df, identity):
         A pandas df with it's ith column replaced with
         the original column
     """
-    n_df = ray.get(new_df._df[j]).copy()
-    i_df = ray.get(identity._df[j]).copy()
-    n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
+    # import pdb; pdb.set_trace()
+    n_df = new_df.copy()
+    i_df = identity.copy()
+    # n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
     return n_df
 
 
@@ -2921,26 +2980,37 @@ def _update_part_col(i, j, new_df, identity, left_over, col_val=None,
         A pandas df updated with correctly limited fill
         on its ith column
     """
-    n_df = ray.get(new_df._df[j]).copy()
-    i_df = ray.get(identity._df[j]).copy()
-    if is_ffill:
-        if j != 0:
-            filled_df = ray.get(new_df._df[j - 1]).copy()
-            if (not np.isnan(filled_df.iloc[-1, i]))\
-               and np.isnan(i_df.iloc[0, i]):
-                left_over[i] -= 1
-                i_df.iloc[0, i] = filled_df.iloc[-1, i]
-        col_val = None
-    elif is_bfill:
-        if j != -1:
-            filled_df = ray.get(new_df._df[j + 1]).copy()
-            if (not np.isnan(filled_df.iloc[0, i]))\
-               and np.isnan(i_df.iloc[-1, i]):
-                left_over[i] -= 1
-                i_df.iloc[-1, i] = filled_df.iloc[0, i]
-        col_val = None
-    if left_over[i] > 0:
-        i_df = i_df.fillna(value=col_val, method=method,
-                           limit=left_over[i], downcast=None)
+    n_df = new_df.copy()
+    i_df = identity.copy()
+    # if is_ffill:
+    #     if j != 0:
+    #         filled_df = ray.get(new_df._df[j - 1]).copy()
+    #         if (not np.isnan(filled_df.iloc[-1, i]))\
+    #            and np.isnan(i_df.iloc[0, i]):
+    #             left_over[i] -= 1
+    #             i_df.iloc[0, i] = filled_df.iloc[-1, i]
+    #     col_val = None
+    # elif is_bfill:
+    #     if j != -1:
+    #         filled_df = ray.get(new_df._df[j + 1]).copy()
+    #         if (not np.isnan(filled_df.iloc[0, i]))\
+    #            and np.isnan(i_df.iloc[-1, i]):
+    #             left_over[i] -= 1
+    #             i_df.iloc[-1, i] = filled_df.iloc[0, i]
+    #     col_val = None
+    # if left_over[i] > 0:
+    #     i_df = i_df.fillna(value=col_val, method=method,
+    #                        limit=left_over[i], downcast=None)
     n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
-    return n_df
+    return i_df
+
+def _map_partition_index_to_real_index(_index, part, part_idx):
+    part.index = _index\
+            .loc[_index['partition'] == part_idx].index
+    return part
+
+def _apply_pd_function_on_partition(_index, part, part_idx, func):
+    part = _map_partition_index_to_real_index(_index, part, part_idx)
+    part = func(part)
+    # part = part.reset_index(drop=True)
+    return part
