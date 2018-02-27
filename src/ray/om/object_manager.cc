@@ -297,7 +297,7 @@ void ObjectManager::HandlePushReceive(TCPClientConnection::pointer conn,
     // cout << "Buffer Create Succeeded" << endl;
     // Read object into store.
     uint8_t *mutable_data = data->mutable_data();
-    boost::asio::read(conn->GetSocket(), boost::asio::buffer(&mutable_data, object_size), ec);
+    boost::asio::read(conn->GetSocket(), boost::asio::buffer(mutable_data, object_size), ec);
     if(!ec.value()){
       ARROW_CHECK_OK(store_client_->GetClient().Seal(object_id.to_plasma_id()));
       ARROW_CHECK_OK(store_client_->GetClient().Release(object_id.to_plasma_id()));
