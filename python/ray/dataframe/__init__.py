@@ -26,3 +26,9 @@ __all__ = [
     "DataFrame", "from_pandas", "to_pandas", "Series", "read_csv",
     "read_parquet"
 ]
+
+try:
+    import ray
+    ray.init()
+except AssertionError:
+    pass
