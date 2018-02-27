@@ -630,10 +630,8 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def first_valid_index(self):
-        if (len(self) == 0):
-            return None
-        if (len(self._index)):
-            return self._index[0]
+        if (self.index):
+            return self.index
         else:
             return None
 
@@ -890,10 +888,8 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def last_valid_index(self):
-        if (len(self) == 0):
-            return None
-        if (len(self._index)):
-            return self._index[-1]
+        if (self.index):
+            return self.index
         else:
             return None
 
