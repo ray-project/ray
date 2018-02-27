@@ -634,10 +634,9 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        if (len(self) == 0):
-            return None
-        if (len(self._index)):
-            return self._index[0]
+        if (self.index):
+            return self.index
+        return None
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -897,10 +896,9 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        if (len(self) == 0):
-            return None
-        if (len(self._index)):
-            return self._index[-1]
+        if self.index:
+            return self.index
+        return None
 
     def le(self, other, axis='columns', level=None):
         raise NotImplementedError("Not Yet implemented.")

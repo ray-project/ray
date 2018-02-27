@@ -819,7 +819,7 @@ def test_first():
 
 @pytest.fixture
 def test_first_valid_index(ray_df, pandas_df):
-    assert((ray_df.first_valid_index() == pandas_df.first_valid_index()).all())
+    assert(ray_df.first_valid_index() == pandas_df.first_valid_index())
 
 
 def test_floordiv():
