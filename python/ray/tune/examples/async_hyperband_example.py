@@ -14,7 +14,7 @@ import numpy as np
 import ray
 from ray.tune import Trainable, TrainingResult, register_trainable, \
     run_experiments
-from ray.tune.asha import ASHAScheduler
+from ray.tune.async_hyperband import AsyncHyperBandScheduler
 
 
 class MyTrainableClass(Trainable):
@@ -56,14 +56,15 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    # asha early stopping, configured with `episode_reward_mean` as the
+    # asynchronous hyperband early stopping, configured with
+    # `episode_reward_mean` as the
     # objective and `timesteps_total` as the time unit.
-    asha = ASHAScheduler(
+    ahb = AsyncHyperBandScheduler(
         time_attr="timesteps_total", reward_attr="episode_reward_mean",
         grace_period=5, max_t=100)
 
     run_experiments({
-        "asha_test": {
+        "asynchyperband_test": {
             "run": "my_class",
             "stop": {"training_iteration": 1 if args.smoke_test else 99999},
             "repeat": 20,
@@ -73,4 +74,4 @@ if __name__ == "__main__":
                 "height": lambda spec: int(100 * random.random()),
             },
         }
-    }, scheduler=asha)
+    }, scheduler=ahb)

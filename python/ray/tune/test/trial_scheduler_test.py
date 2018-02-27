@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 
 from ray.tune.hyperband import HyperBandScheduler
-from ray.tune.asha import ASHAScheduler
+from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.pbt import PopulationBasedTraining, explore
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.result import TrainingResult
@@ -763,7 +763,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(trials[0].config["float_factor"], 43)
 
 
-class ASHASuite(unittest.TestCase):
+class AsyncHyperBandSuite(unittest.TestCase):
     def basicSetup(self, scheduler):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
@@ -778,7 +778,7 @@ class ASHASuite(unittest.TestCase):
         return t1, t2
 
     def testASHAConstantPerf(self):
-        scheduler = ASHAScheduler(grace_period=1)
+        scheduler = AsyncHyperBandScheduler(grace_period=1)
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         self.assertEqual(
@@ -792,7 +792,7 @@ class ASHASuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testASHAOnCompleteOnly(self):
-        scheduler = ASHAScheduler(grace_period=1)
+        scheduler = AsyncHyperBandScheduler(grace_period=1)
         t1, t2 = self.basicSetup(scheduler)
         self.assertEqual(
             scheduler.on_trial_result(None, t2, result(100, 0)),
@@ -803,7 +803,7 @@ class ASHASuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testASHAGracePeriod(self):
-        scheduler = ASHAScheduler(grace_period=2.5)
+        scheduler = AsyncHyperBandScheduler(grace_period=2.5)
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
@@ -819,7 +819,7 @@ class ASHASuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testASHAMinSamples(self):
-        scheduler = ASHAScheduler(grace_period=1)
+        scheduler = AsyncHyperBandScheduler(grace_period=1)
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         t3 = Trial("PPO")
@@ -832,7 +832,7 @@ class ASHASuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testASHAUsesMedian(self):
-        scheduler = ASHAScheduler(grace_period=1)
+        scheduler = AsyncHyperBandScheduler(grace_period=1)
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
@@ -848,7 +848,7 @@ class ASHASuite(unittest.TestCase):
         def result2(t, rew):
             return TrainingResult(training_iteration=t, neg_mean_loss=rew)
 
-        scheduler = ASHAScheduler(
+        scheduler = AsyncHyperBandScheduler(
             grace_period=1,
             time_attr='training_iteration', reward_attr='neg_mean_loss')
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10

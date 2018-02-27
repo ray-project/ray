@@ -7,7 +7,7 @@ import numpy as np
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
 
-class ASHAScheduler(FIFOScheduler):
+class AsyncHyperBandScheduler(FIFOScheduler):
     """Implements the Async Successive Halving.
 
     This should provide similar theoretical performance as HyperBand but
@@ -80,7 +80,8 @@ class ASHAScheduler(FIFOScheduler):
         del self._trial_info[trial.trial_id]
 
     def debug_string(self):
-        out = "Using ASHA: num_stopped={}".format(self._num_stopped)
+        out = "Using AsyncHyperBand: num_stopped={}".format(
+            self._num_stopped)
         out += "\n" + "\n".join([b.debug_str() for b in self._brackets])
         return out
 
@@ -122,6 +123,7 @@ class _Bracket():
 
 
 if __name__ == '__main__':
-    sched = ASHAScheduler(grace_period=1.2, max_t=2123.3, reduction_factor=3)
+    sched = AsyncHyperBandScheduler(
+        grace_period=1.2, max_t=2123.3, reduction_factor=3)
     bracket = sched._brackets[0]
     print(bracket.cutoff({str(i): i for i in range(20)}))
