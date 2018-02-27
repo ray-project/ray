@@ -852,7 +852,7 @@ def test_first():
 
 @pytest.fixture
 def test_first_valid_index(ray_df, pandas_df):
-    assert((ray_df.first_valid_index() == pandas_df.first_valid_index()).all())
+    assert(ray_df.first_valid_index().equals(pandas_df.first_valid_index()))
 
 
 def test_floordiv():
@@ -1045,7 +1045,7 @@ def test_last():
 
 @pytest.fixture
 def test_last_valid_index(ray_df, pandas_df):
-    assert((ray_df.last_valid_index() == pandas_df.last_valid_index()).all())
+    assert(ray_df.last_valid_index().equals(pandas_df.last_valid_index()))
 
 
 def test_le():
@@ -1256,6 +1256,7 @@ def test_product():
         ray_df.product()
 
 
+@pytest.fixture
 def test_quantile(ray_df, pandas_df, q):
     assert(ray_df_equals_pandas(ray_df.quantile(q), pandas_df.quantile(q)))
 
