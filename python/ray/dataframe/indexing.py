@@ -3,19 +3,6 @@ import ray
 from .dataframe import _deploy_func
 
 
-def _row_tuples_to_dict(row_tuples):
-    """A convenient helper function convert:
-    [(partition, idx_in_partition)] to {partition: [idx_in_partition]}
-    """
-    d = {}
-    for partition, idx_in_partition in row_tuples:
-        if partition in d:
-            d[partition].append(idx_in_partition)
-        else:
-            d[partition] = [idx_in_partition]
-    return d
-
-
 class _Location_Indexer_Base():
     """Base class for location indexer like loc and iloc
     This class abstract away commonly used method
@@ -35,14 +22,15 @@ class _Location_Indexer_Base():
         if ray_partition_idx.ndim == 1:  # Single row matched
             position = (ray_partition_idx['partition'],
                         ray_partition_idx['index_within_partition'])
-            rows_to_lookup = [position]
-
+            rows_to_lookup = {position[0]: [position[1]]}
         if ray_partition_idx.ndim == 2:  # Multiple rows matched
-            rows_to_lookup = [(row['partition'], row['index_within_partition'])
-                              for _, row in ray_partition_idx.iterrows()]
-
-        lookup_dict = _row_tuples_to_dict(rows_to_lookup)
-        return lookup_dict
+            # We copy ray_partition_idx because it allows us to
+            # do groupby. This might not be the most efficient method.
+            # And have room to optimize.
+            ray_partition_idx = ray_partition_idx.copy()
+            rows_to_lookup = ray_partition_idx.groupby('partition').aggregate(
+                lambda x: list(x)).to_dict()['index_within_partition']
+        return rows_to_lookup
 
     def locate_2d(self, row_label, col_label):
         pass
@@ -57,17 +45,19 @@ class _Location_Indexer_Base():
         assert indexer in ['loc', 'iloc'], "indexer must be loc or iloc"
 
         if indexer == 'loc':
-            def retrieve_func(
-                df, idx_lst, col_label): return df.loc[idx_lst, col_label]
-        elif indexer == 'iloc':
-            def retrieve_func(
-                df, idx_lst, col_idx): return df.iloc[idx_lst, col_idx]
 
-        retrieved_rows_remote = []
-        for partition, idx_to_lookup in lookup_dict.items():
-            part_remote = _deploy_func.remote(
-                retrieve_func, self.df._df[partition], idx_to_lookup, col_lst)
-            retrieved_rows_remote.append(part_remote)
+            def retrieve_func(df, idx_lst, col_label):
+                return df.loc[idx_lst, col_label]
+        elif indexer == 'iloc':
+
+            def retrieve_func(df, idx_lst, col_idx):
+                return df.iloc[idx_lst, col_idx]
+
+        retrieved_rows_remote = [
+            _deploy_func.remote(retrieve_func, self.df._df[partition],
+                                idx_to_lookup, col_lst)
+            for partition, idx_to_lookup in lookup_dict.items()
+        ]
         return retrieved_rows_remote
 
 
