@@ -634,7 +634,8 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def describe(self, percentiles=None, include=None, exclude=None):
-        raise NotImplementedError("Not Yet implemented.")
+        return self.T._map_partitions(lambda df: df.T.describe(
+                                    percentiles, include, exclude))
 
     def diff(self, periods=1, axis=0):
         raise NotImplementedError("Not Yet implemented.")
@@ -1089,11 +1090,46 @@ class DataFrame(object):
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Computes mean across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the mean on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The mean of the DataFrame.
+        """
+        _sum = self.sum(axis, skipna, level, numeric_only)
+        _count = self.count(axis, level, numeric_only)
+
+        if(skipna is False or skipna is None):
+            _count = self.__len__()
+
+        return _sum/_count
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
                **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Computes median across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the median on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The median of the DataFrame.
+        """
+        if axis == 1:
+            return self.T.count(axis=0,
+                                level=level,
+                                numeric_only=numeric_only)
+        else:
+            temp_index = [idx
+                          for _ in range(len(self._df))
+                          for idx in self.columns]
+
+            return ray.get(self._map_partitions(lambda df: df.median(
+                axis=axis, level=level, numeric_only=numeric_only
+            ), index=temp_index)._df)
 
     def melt(self, id_vars=None, value_vars=None, var_name=None,
              value_name='value', col_level=None):
@@ -1228,7 +1264,16 @@ class DataFrame(object):
 
     def quantile(self, q=0.5, axis=0, numeric_only=True,
                  interpolation='linear'):
-        raise NotImplementedError("Not Yet implemented.")
+        if axis == 1:
+            return self.T.quantile(axis=0, q=q, numeric_only=numeric_only)
+        else:
+            temp_index = [idx
+                          for _ in range(len(self._df))
+                          for idx in self.columns]
+
+            return ray.get(self._map_partitions(lambda df: df.quantile(
+                axis=axis, q=q, numeric_only=numeric_only
+            ), index=temp_index)._df)
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression
@@ -1574,7 +1619,18 @@ class DataFrame(object):
 
     def std(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Computes standard deviation across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the std on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The std of the DataFrame.
+        """
+        _var = self.var(axis, skipna, level, ddof, numeric_only)
+
+        return _var ** (1/2)
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -1754,7 +1810,28 @@ class DataFrame(object):
 
     def var(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Computes variance across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the variance on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The variance of the DataFrame.
+        """
+        _mean = self.mean(axis, skipna, level, numeric_only)
+
+        intermediate_index = [idx
+                              for _ in range(len(self._df))
+                              for idx in self.columns]
+
+        squared_sum_of_partitions = self._map_partitions(
+            lambda x: x.sum((lambda df: df.pow(2, axis=axis, level=level))),
+            index=intermediate_index)
+
+        _var = squared_sum_of_partitions / self.length - _mean ** 2
+
+        return _var
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):

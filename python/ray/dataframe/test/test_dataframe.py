@@ -208,8 +208,6 @@ def test_int_dataframe():
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
-    test_first_valid_index(ray_df, pandas_df)
-    test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -226,6 +224,15 @@ def test_int_dataframe():
     test_min(ray_df, pandas_df)
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
+
+    test_mean(ray_df, pandas_df)
+    test_var(ray_df, pandas_df)
+    test_std(ray_df, pandas_df)
+    test_median(ray_df, pandas_df)
+    test_quantile(ray_df, pandas_df, .25)
+    test_quantile(ray_df, pandas_df, .5)
+    test_quantile(ray_df, pandas_df, .75)
+    test_describe(ray_df, pandas_df)
 
     test_loc(ray_df, pandas_df)
     test_iloc(ray_df, pandas_df)
@@ -322,8 +329,6 @@ def test_float_dataframe():
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
-    test_first_valid_index(ray_df, pandas_df)
-    test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -336,6 +341,7 @@ def test_float_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
+<<<<<<< bcc7a13aab89216296e15357c32614ebbfb2a5a5
     test_loc(ray_df, pandas_df)
     test_iloc(ray_df, pandas_df)
 
@@ -358,6 +364,16 @@ def test_float_dataframe():
         test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+=======
+    test_mean(ray_df, pandas_df)
+    test_var(ray_df, pandas_df)
+    test_std(ray_df, pandas_df)
+    test_median(ray_df, pandas_df)
+    test_quantile(ray_df, pandas_df, .25)
+    test_quantile(ray_df, pandas_df, .5)
+    test_quantile(ray_df, pandas_df, .75)
+    test_describe(ray_df, pandas_df)
+>>>>>>> rebasing with master
 
 
 def test_mixed_dtype_dataframe():
@@ -407,10 +423,13 @@ def test_mixed_dtype_dataframe():
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
+<<<<<<< bcc7a13aab89216296e15357c32614ebbfb2a5a5
     test_first_valid_index(ray_df, pandas_df)
     test_last_valid_index(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
 
+=======
+>>>>>>> rebasing with master
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -450,6 +469,7 @@ def test_mixed_dtype_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
+<<<<<<< bcc7a13aab89216296e15357c32614ebbfb2a5a5
     test_loc(ray_df, pandas_df)
     test_iloc(ray_df, pandas_df)
 
@@ -471,6 +491,16 @@ def test_mixed_dtype_dataframe():
         test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+=======
+    test_mean(ray_df, pandas_df)
+    test_var(ray_df, pandas_df)
+    test_std(ray_df, pandas_df)
+    test_median(ray_df, pandas_df)
+    test_quantile(ray_df, pandas_df, .25)
+    test_quantile(ray_df, pandas_df, .5)
+    test_quantile(ray_df, pandas_df, .75)
+    test_describe(ray_df, pandas_df)
+>>>>>>> rebasing with master
 
 
 def test_nan_dataframe():
@@ -518,8 +548,6 @@ def test_nan_dataframe():
     test_query(ray_df, pandas_df, query_funcs)
 
     test___len__(ray_df, pandas_df)
-    test_first_valid_index(ray_df, pandas_df)
-    test_last_valid_index(ray_df, pandas_df)
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -553,6 +581,7 @@ def test_nan_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
+<<<<<<< bcc7a13aab89216296e15357c32614ebbfb2a5a5
     test_loc(ray_df, pandas_df)
     test_iloc(ray_df, pandas_df)
 
@@ -574,6 +603,16 @@ def test_nan_dataframe():
         test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+=======
+    test_mean(ray_df, pandas_df)
+    test_var(ray_df, pandas_df)
+    test_std(ray_df, pandas_df)
+    test_median(ray_df, pandas_df)
+    test_quantile(ray_df, pandas_df, .25)
+    test_quantile(ray_df, pandas_df, .5)
+    test_quantile(ray_df, pandas_df, .75)
+    test_describe(ray_df, pandas_df)
+>>>>>>> rebasing with master
 
 
 def test_add():
@@ -823,11 +862,9 @@ def test_cumsum():
         ray_df.cumsum()
 
 
-def test_describe():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.describe()
+@pytest.fixture
+def test_describe(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.describe(), pandas_df.describe()))
 
 
 def test_diff():
@@ -953,7 +990,7 @@ def test_first():
 
 @pytest.fixture
 def test_first_valid_index(ray_df, pandas_df):
-    assert(ray_df.first_valid_index() == pandas_df.first_valid_index())
+    assert(ray_df.first_valid_index() == (pandas_df.first_valid_index()))
 
 
 def test_floordiv():
@@ -1148,7 +1185,7 @@ def test_last():
 
 @pytest.fixture
 def test_last_valid_index(ray_df, pandas_df):
-    assert(ray_df.last_valid_index() == pandas_df.last_valid_index())
+    assert(ray_df.last_valid_index() == (pandas_df.last_valid_index()))
 
 
 def test_le():
@@ -1191,18 +1228,14 @@ def test_max(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.max(), pandas_df.max()))
 
 
-def test_mean():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.mean()
+@pytest.fixture
+def test_mean(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.mean(), pandas_df.mean()))
 
 
-def test_median():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.median()
+@pytest.fixture
+def test_median(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.median(), pandas_df.median()))
 
 
 def test_melt():
@@ -1363,11 +1396,9 @@ def test_product():
         ray_df.product()
 
 
-def test_quantile():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.quantile()
+@pytest.fixture
+def test_quantile(ray_df, pandas_df, q):
+    assert(ray_df_equals_pandas(ray_df.quantile(q), pandas_df.quantile(q)))
 
 
 @pytest.fixture
@@ -1635,11 +1666,9 @@ def test_stack():
         ray_df.stack()
 
 
-def test_std():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.std()
+@pytest.fixture
+def test_std(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.mean(), pandas_df.mean()))
 
 
 def test_sub():
@@ -1899,11 +1928,9 @@ def test_update():
         ray_df.update(None)
 
 
-def test_var():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.var()
+@pytest.fixture
+def test_var(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.mean(), pandas_df.mean()))
 
 
 def test_where():
