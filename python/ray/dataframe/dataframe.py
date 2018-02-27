@@ -1890,7 +1890,7 @@ class DataFrame(object):
         Returns:
             Returns a boolean if the specified key exists as a column name
         """
-        return key in self.columns
+        return self.columns.contains(key)
 
     def __nonzero__(self):
         raise NotImplementedError("Not Yet implemented.")
