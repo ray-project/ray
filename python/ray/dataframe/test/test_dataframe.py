@@ -160,6 +160,9 @@ def test_int_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    query_funcs = ['col1 < col2', 'col3 > col4', 'col1 == col2',
+                   '(col2 > col1) and (col1 < col3)']
+
     keys = ['col1',
             'col2',
             'col3',
@@ -185,10 +188,14 @@ def test_int_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
+    test_query(ray_df, pandas_df, query_funcs)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___neg__(ray_df, pandas_df)
+    test___iter__(ray_df, pandas_df)
+    test___abs__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
@@ -260,6 +267,9 @@ def test_float_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    query_funcs = ['col1 < col2', 'col3 > col4', 'col1 == col2',
+                   '(col2 > col1) and (col1 < col3)']
+
     keys = ['col1',
             'col2',
             'col3',
@@ -285,10 +295,14 @@ def test_float_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
+    test_query(ray_df, pandas_df, query_funcs)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___neg__(ray_df, pandas_df)
+    test___iter__(ray_df, pandas_df)
+    test___abs__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
@@ -354,6 +368,9 @@ def test_mixed_dtype_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    query_funcs = ['col1 < col2', 'col1 == col2',
+                   '(col2 > col1) and (col1 < col3)']
+
     keys = ['col1',
             'col2',
             'col3',
@@ -378,6 +395,7 @@ def test_mixed_dtype_dataframe():
 
     with pytest.raises(TypeError):
         test_abs(ray_df, pandas_df)
+        test___abs__(ray_df, pandas_df)
 
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
@@ -385,9 +403,16 @@ def test_mixed_dtype_dataframe():
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
     test_last_valid_index(ray_df, pandas_df)
+    test_query(ray_df, pandas_df, query_funcs)
+
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+
+    with pytest.raises(TypeError):
+        test___neg__(ray_df, pandas_df)
+
+    test___iter__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
@@ -453,6 +478,9 @@ def test_nan_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    query_funcs = ['col1 < col2', 'col3 > col4', 'col1 == col2',
+                   '(col2 > col1) and (col1 < col3)']
+
     keys = ['col1',
             'col2',
             'col3',
@@ -478,6 +506,7 @@ def test_nan_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
+    test_query(ray_df, pandas_df, query_funcs)
 
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
@@ -485,6 +514,9 @@ def test_nan_dataframe():
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
+    test___neg__(ray_df, pandas_df)
+    test___iter__(ray_df, pandas_df)
+    test___abs__(ray_df, pandas_df)
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
@@ -843,10 +875,19 @@ def test_eq():
 
 
 def test_equals():
-    ray_df = create_test_dataframe()
+    pandas_df1 = pd.DataFrame({'col1': [2.9, 3, 3, 3],
+                              'col2': [2, 3, 4, 1]})
+    ray_df1 = rdf.from_pandas(pandas_df1, 2)
+    ray_df2 = rdf.from_pandas(pandas_df1, 3)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.equals(None)
+    assert ray_df1.equals(ray_df2)
+
+    pandas_df2 = pd.DataFrame({'col1': [2.9, 3, 3, 3],
+                              'col2': [2, 3, 5, 1]})
+    ray_df3 = rdf.from_pandas(pandas_df2, 4)
+
+    assert not ray_df3.equals(ray_df1)
+    assert not ray_df3.equals(ray_df2)
 
 
 def test_eval():
@@ -1317,11 +1358,12 @@ def test_quantile():
         ray_df.quantile()
 
 
-def test_query():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_query(ray_df, pandas_df, funcs):
 
-    with pytest.raises(NotImplementedError):
-        ray_df.query(None)
+    for f in funcs:
+        pandas_df_new, ray_df_new = pandas_df.query(f), ray_df.query(f)
+        assert pandas_df_new.equals(rdf.to_pandas(ray_df_new))
 
 
 def test_radd():
@@ -1894,11 +1936,10 @@ def test___unicode__():
         ray_df.__unicode__()
 
 
-def test___neg__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__neg__()
+@pytest.fixture
+def test___neg__(ray_df, pd_df):
+    ray_df_neg = ray_df.__neg__()
+    assert pd_df.__neg__().equals(rdf.to_pandas(ray_df_neg))
 
 
 def test___invert__():
@@ -1915,11 +1956,16 @@ def test___hash__():
         ray_df.__hash__()
 
 
-def test___iter__():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test___iter__(ray_df, pd_df):
+    ray_iterator = ray_df.__iter__()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.__iter__()
+    # Check that ray_iterator implements the iterator interface
+    assert hasattr(ray_iterator, '__iter__')
+    assert hasattr(ray_iterator, 'next') or hasattr(ray_iterator, '__next__')
+
+    pd_iterator = pd_df.__iter__()
+    assert list(ray_iterator) == list(pd_iterator)
 
 
 @pytest.fixture
@@ -1942,11 +1988,9 @@ def test___bool__():
         ray_df.__bool__()
 
 
-def test___abs__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__abs__()
+@pytest.fixture
+def test___abs__(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(abs(ray_df), abs(pandas_df)))
 
 
 def test___round__():
