@@ -608,7 +608,6 @@ class DataFrame(object):
                             level=level,
                             numeric_only=numeric_only),
                         index=temp_index)._df))
-
             return collapsed_df
 
     def cov(self, min_periods=None):
@@ -1190,7 +1189,6 @@ class DataFrame(object):
             lambda df: df.pop(item)))
         self._df = self._map_partitions(lambda df: df.drop([item], axis=1))._df
         self.columns = self.columns.drop(item)
-        
         return popped
 
     def pow(self, other, axis='columns', level=None, fill_value=None):
