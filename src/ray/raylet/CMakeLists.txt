@@ -26,6 +26,8 @@ target_link_libraries(node_manager ray_static ${Boost_SYSTEM_LIBRARY})
 
 add_executable(raylet raylet.cc)
 target_link_libraries(raylet node_manager ${Boost_SYSTEM_LIBRARY} pthread)
+add_executable(raylet_demo remote_dependencies_demo.cc)
+target_link_libraries(raylet_demo node_manager ${Boost_SYSTEM_LIBRARY} pthread)
 
 install(FILES
         node_manager
