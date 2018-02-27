@@ -10,7 +10,8 @@ void ReconstructionPolicy::CheckObjectReconstruction(const ObjectID &object) {
   throw std::runtime_error("Method not implemented");
 }
 
-void ReconstructionPolicy::RegisterTaskReconstructionHandler(boost::function<void(const TaskID&)> reconstruction_handler) {
+void ReconstructionPolicy::RegisterTaskReconstructionHandler(
+    std::function<void(const TaskID&)> reconstruction_handler) {
   throw std::runtime_error("Method not implemented");
 }
 

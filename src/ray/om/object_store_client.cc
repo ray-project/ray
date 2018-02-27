@@ -84,14 +84,14 @@ void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code
 }
 
 void ObjectStoreClient::ProcessStoreAdd(const ObjectID& object_id){
-  this->od_->ObjectAdded(object_id, client_id_);
+  ray::Status status = this->od_->ObjectAdded(object_id, client_id_);
   for (auto handler : this->add_handlers){
     handler(object_id);
   }
 };
 
 void ObjectStoreClient::ProcessStoreRemove(const ObjectID& object_id){
-  this->od_->ObjectRemoved(object_id, client_id_);
+  ray::Status status = this->od_->ObjectRemoved(object_id, client_id_);
   for (auto handler : this->rem_handlers){
     handler(object_id);
   }

@@ -46,9 +46,9 @@ namespace ray {
 
   ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id){
     vector<ODRemoteConnectionInfo> v;
-    this->gcs_client->object_table().GetObjectClientIDs(
+    ray::Status status = this->gcs_client->object_table().GetObjectClientIDs(
         object_id,
-        [this, object_id, &v](vector<ClientID> client_ids){
+        [this, object_id, &v](const vector<ClientID> &client_ids){
             // cout << "GetObjectClientIDs " << client_ids.size() << endl;
             this->gcs_client->client_table().GetClientInformationSet(
                 client_ids,
@@ -58,21 +58,24 @@ namespace ray {
                         client_info.GetClientId(), client_info.GetIp(), client_info.GetPort());
                     v.push_back(info);
                   }
-                  GetLocationsComplete(Status::OK(), object_id, v);
+                  ray::Status cb_completion_status =
+                      GetLocationsComplete(Status::OK(), object_id, v);
                 },
-                [this, object_id, &v](Status status){
-                  GetLocationsComplete(status, object_id, v);
+                [this, object_id, &v](const Status &status){
+                  ray::Status cb_completion_status =
+                      GetLocationsComplete(status, object_id, v);
                 }
             );
         },
-        [this, object_id, &v](Status status){
-          GetLocationsComplete(status, object_id, v);
+        [this, object_id, &v](const Status &status){
+          ray::Status cb_completion_status =
+              GetLocationsComplete(status, object_id, v);
         }
     );
-    return Status::OK();
+    return status;
   };
 
-  ray::Status ObjectDirectory::GetLocationsComplete(ray::Status status,
+  ray::Status ObjectDirectory::GetLocationsComplete(const ray::Status &status,
                                                     const ObjectID &object_id,
                                                     const std::vector<ODRemoteConnectionInfo> &v){
     bool success = status.ok();
@@ -100,14 +103,12 @@ namespace ray {
 
 ray::Status ObjectDirectory::ObjectAdded(const ObjectID &object_id,
                                          const ClientID &client_id){
-  this->gcs_client->object_table().Add(object_id, client_id, []{});
-  return Status::OK();
+  return this->gcs_client->object_table().Add(object_id, client_id, []{});
 };
 
 ray::Status ObjectDirectory::ObjectRemoved(const ObjectID &object_id,
                                            const ClientID &client_id){
-  this->gcs_client->object_table().Remove(object_id, client_id, []{});
-  return Status::OK();
+  return this->gcs_client->object_table().Remove(object_id, client_id, []{});
 };
 
 } // namespace ray

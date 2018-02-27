@@ -15,8 +15,8 @@ class TaskDependencyManager {
  public:
   TaskDependencyManager(
       ObjectManager &object_manager,
-      ReconstructionPolicy &reconstruction_policy,
-      boost::function<void(const TaskID&)> handler);
+      // ReconstructionPolicy &reconstruction_policy,
+      std::function<void(const TaskID&)> handler);
   // Check whether a task's object dependencies are locally available and is
   // therefore ready to run.
   bool TaskReady(const Task &task) const;
@@ -38,7 +38,7 @@ class TaskDependencyManager {
   ObjectManager &object_manager_;
   // A reference to the reconstruction policy so that we can decide when
   // objects should be reconstructed.
-  ReconstructionPolicy &reconstruction_policy_;
+   // ReconstructionPolicy &reconstruction_policy_;
   // A mapping from task ID of each subscribed task to its list of
   // dependencies.
   std::unordered_map<ray::TaskID, std::vector<ray::ObjectID>, UniqueIDHasher> task_dependencies_;
@@ -48,7 +48,7 @@ class TaskDependencyManager {
   // The set of locally available objects.
   std::unordered_set<ray::ObjectID, UniqueIDHasher> local_objects_;
   // The callback to call when a subscribed task becomes ready.
-  boost::function<void(const TaskID&)> task_ready_callback_;
+  std::function<void(const TaskID&)> task_ready_callback_;
 };
 
 } // end namespace ray

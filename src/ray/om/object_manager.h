@@ -315,8 +315,8 @@ class ObjectManager {
 
     // cout << "ReceivePullRequest: " << object_id.hex() << endl;
     // Push object to requesting client.
-    Push(object_id, client_id);
-    WaitMessage(conn);
+    ray::Status push_status = Push(object_id, client_id);
+    ray::Status wait_status = WaitMessage(conn);
   }
 
   void SchedulePull(const ObjectID &object_id, int wait){

@@ -71,8 +71,8 @@ class ClientTable {
   using FailCallback = std::function<void(ray::Status)>;
 
   ray::Status GetClientIds(ClientIDsCallback cb);
-  void GetClientInformationSet(std::vector<ClientID> client_ids,
-                              ManyInfoCallback cb,
+  void GetClientInformationSet(const std::vector<ClientID> &client_ids,
+                               ManyInfoCallback cb,
                                FailCallback failcb);
   void GetClientInformation(ClientID client_id,
                             SingleInfoCallback cb,

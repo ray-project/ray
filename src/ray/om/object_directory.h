@@ -99,7 +99,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
 
   ray::Status ExecuteGetLocations(const ObjectID &object_id);
-  ray::Status GetLocationsComplete(ray::Status status,
+  ray::Status GetLocationsComplete(const ray::Status &status,
                                    const ObjectID &object_id,
                                    const std::vector<ODRemoteConnectionInfo> &v);
 
