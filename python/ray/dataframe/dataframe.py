@@ -634,7 +634,7 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        if (self.index):
+        if (self.index.any()):
             return self.index
         return None
 
@@ -896,7 +896,7 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        if self.index:
+        if (self.index.any()):
             return self.index
         return None
 
