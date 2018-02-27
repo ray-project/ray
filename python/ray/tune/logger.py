@@ -6,6 +6,7 @@ import csv
 import json
 import numpy as np
 import os
+import yaml
 
 from ray.tune.result import TrainingResult
 from ray.tune.log_sync import get_syncer
@@ -16,11 +17,6 @@ except ImportError:
     tf = None
     print("Couldn't import TensorFlow - this disables TensorBoard logging.")
 
-try:
-    import yaml
-except ImportError:
-    print("Could not import YAML module, falling back to JSON pretty-printing")
-    yaml = None
 
 class Logger(object):
     """Logging interface for ray.tune; specialized implementations follow.
@@ -177,7 +173,4 @@ def pretty_print(result):
             out[k] = v
 
     cleaned = json.dumps(out, encoder=_CustomEncoder)
-    if yaml:
-        return yaml.dump(json.loads(cleaned), default_flow_style=False)
-    else:
-        return cleaned + "\n"
+    return yaml.dump(json.loads(cleaned), default_flow_style=False)

@@ -59,7 +59,7 @@ CLUSTER_CONFIG_SCHEMA = {
 
     # How Ray will authenticate with newly launched nodes.
     "auth": ({
-        "ssh_user": (str, REQUIRED),  # e.g. aws
+        "ssh_user": (str, REQUIRED),  # e.g. ubuntu
         "ssh_private_key": (str, OPTIONAL),
     }, REQUIRED),
 
@@ -96,7 +96,7 @@ CLUSTER_CONFIG_SCHEMA = {
 
     # Whether to avoid restarting the cluster during updates. This field is
     # controlled by the ray --no-restart flag and cannot be set by the user.
-    "no_restart": (None, None),
+    "no_restart": (None, OPTIONAL),
 }
 
 
