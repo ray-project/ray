@@ -146,8 +146,6 @@ To reduce costs, long-running trials can often be early stopped if their initial
 
 An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
 
-Note that some trial schedulers such as HyperBand and PBT require your Trainable to support checkpointing, which is described in the next section. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
-
 ::
 
     == Status ==
@@ -180,10 +178,15 @@ Note that some trial schedulers such as HyperBand and PBT require your Trainable
      - my_class_31_height=40,width=10:	RUNNING
      - my_class_53_height=28,width=96:	RUNNING
 
+Ray Tune also implements an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__, providing better parallelism and avoids straggler issues during eliminations. An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__. We recommend using this over the vanilla HyperBand scheduler.
+
+.. note:: Some trial schedulers such as HyperBand and PBT require your Trainable to support checkpointing, which is described in the next section. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
+
 Currently we support the following early stopping algorithms, or you can write your own that implements the `TrialScheduler <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_scheduler.py>`__ interface.
 
 .. autoclass:: ray.tune.median_stopping_rule.MedianStoppingRule
 .. autoclass:: ray.tune.hyperband.HyperBandScheduler
+.. autoclass:: ray.tune.async_hyperband.AsyncHyperBandScheduler
 
 Population Based Training
 -------------------------
