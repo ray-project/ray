@@ -156,6 +156,13 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
+    --run DQN \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
     --run PG \
     --stop '{"training_iteration": 2}' \
     --config '{"batch_size": 500, "num_workers": 1}'
