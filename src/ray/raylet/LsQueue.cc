@@ -18,6 +18,10 @@ const std::list<Task> &LsQueue::ready_tasks() const {
   return this->ready_tasks_;
 }
 
+const std::list<Task> &LsQueue::scheduled_tasks() const {
+  return this->scheduled_tasks_;
+}
+
 const std::list<Task> &LsQueue::running_tasks() const {
   return this->running_tasks_;
 }
@@ -60,6 +64,7 @@ std::vector<Task> LsQueue::RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher
   // Try to find the tasks to remove from the waiting tasks.
   removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
+  removeTasksFromQueue(scheduled_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
   // TODO(swang): Remove from running methods.
 
@@ -73,6 +78,10 @@ void LsQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {
 
 void LsQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
   queueTasks(ready_tasks_, tasks);
+}
+
+void LsQueue::QueueScheduledTasks(const std::vector<Task> &tasks) {
+  queueTasks(scheduled_tasks_, tasks);
 }
 
 void LsQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
