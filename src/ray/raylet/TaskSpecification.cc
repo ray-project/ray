@@ -158,20 +158,30 @@ int64_t TaskSpecification::ParentCounter() const {
 FunctionID TaskSpecification::FunctionId() const {
   throw std::runtime_error("Method not implemented");
 }
+
 int64_t TaskSpecification::NumArgs() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->args()->size();
 }
+
 int64_t TaskSpecification::NumReturns() const {
   throw std::runtime_error("Method not implemented");
 }
+
 bool TaskSpecification::ArgByRef(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
+  return (ArgIdCount(arg_index) != 0);
 }
+
 int TaskSpecification::ArgIdCount(int64_t arg_index) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto ids = message->args()->Get(arg_index)->object_ids();
+  return ids->size();
 }
+
 ObjectID TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(
+      *message->args()->Get(arg_index)->object_ids()->Get(id_index));
 }
 const uint8_t *TaskSpecification::ArgVal(int64_t arg_index) const {
   throw std::runtime_error("Method not implemented");
