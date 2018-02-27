@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-DEFAULT_NPARTITIONS = 10
+DEFAULT_NPARTITIONS = 4
 
 
 def set_npartition_default(n):
