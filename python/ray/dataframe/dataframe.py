@@ -35,7 +35,7 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
-        self._update_lengths()
+        self._compute_lengths()
         self.columns = columns
 
         # this _index object is a pd.DataFrame
@@ -83,7 +83,7 @@ class DataFrame(object):
 
     index = property(_get_index, _set_index)
 
-    def _update_lengths(self):
+    def _compute_lengths(self):
         """Updates the stored lengths of DataFrame partions
         """
         self._lengths = [_deploy_func.remote(_get_lengths, d)
@@ -209,13 +209,19 @@ class DataFrame(object):
 
         return DataFrame(new_df, self.columns, index=index)
 
-    def _update_inplace(self, new_dfs):
+    def _update_inplace(self, df=None, columns=None, index=None):
         """Updates the current DataFrame inplace
         """
-        assert(len(new_dfs) > 0)
+        assert(len(df) > 0)
 
-        self._df = new_dfs
-        self._update_lengths()
+        if df:
+            self._df = df
+        if columns:
+            self.columns = columns
+        if index:
+            self.index = index
+
+        self._compute_lengths()
         self._index = self._default_index()
 
     def add_prefix(self, prefix):

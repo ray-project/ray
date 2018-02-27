@@ -160,6 +160,9 @@ def test_int_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    query_funcs = ['col1 < col2', 'col3 > col4', 'col1 == col2',
+                   '(col2 > col1) and (col1 < col3)']
+
     keys = ['col1',
             'col2',
             'col3',
@@ -185,6 +188,7 @@ def test_int_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
+    test_query(ray_df, pandas_df, query_funcs)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -259,6 +263,9 @@ def test_float_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    query_funcs = ['col1 < col2', 'col3 > col4', 'col1 == col2',
+                   '(col2 > col1) and (col1 < col3)']
+
     keys = ['col1',
             'col2',
             'col3',
@@ -284,6 +291,7 @@ def test_float_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
+    test_query(ray_df, pandas_df, query_funcs)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -352,6 +360,9 @@ def test_mixed_dtype_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    query_funcs = ['col1 < col2', 'col1 == col2',
+                   '(col2 > col1) and (col1 < col3)']
+
     keys = ['col1',
             'col2',
             'col3',
@@ -381,6 +392,7 @@ def test_mixed_dtype_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
+    test_query(ray_df, pandas_df, query_funcs)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -454,6 +466,9 @@ def test_nan_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    query_funcs = ['col1 < col2', 'col3 > col4', 'col1 == col2',
+                   '(col2 > col1) and (col1 < col3)']
+
     keys = ['col1',
             'col2',
             'col3',
@@ -479,6 +494,7 @@ def test_nan_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
+    test_query(ray_df, pandas_df, query_funcs)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -1330,34 +1346,12 @@ def test_quantile():
         ray_df.quantile()
 
 
-def test_query():
-    def generate_data():
-        pandas_df = pd.DataFrame({'a': [0, 1, 2, 3],
-                                  'b': [8, 9, 1, 11],
-                                  'c': [4, 3, 2, 1]})
-        ray_df = rdf.from_pandas(pandas_df, 2)
+@pytest.fixture
+def test_query(ray_df, pandas_df, funcs):
 
-        return pandas_df, ray_df
-
-    funcs = ['a < b', 'a > b', 'a == c', '(a > c) and (a < b)']
-
-    pandas_df, ray_df = generate_data()
-    pandas_df.query(funcs[0], inplace=True)
-    ray_df.query(funcs[0], inplace=True)
-    pandas_df.equals(rdf.to_pandas(ray_df))
-
-    pandas_df, ray_df = generate_data()
-    pandas_df.query(funcs[1], inplace=True)
-    ray_df.query(funcs[1], inplace=True)
-    pandas_df.equals(rdf.to_pandas(ray_df))
-
-    pandas_df, ray_df = generate_data()
-    pandas_df_2, ray_df_2 = pandas_df.query(funcs[2]), ray_df.query(funcs[2])
-    pandas_df_2.equals(rdf.to_pandas(ray_df_2))
-
-    pandas_df, ray_df = generate_data()
-    pandas_df_3, ray_df_3 = pandas_df.query(funcs[3]), ray_df.query(funcs[3])
-    pandas_df_3.equals(rdf.to_pandas(ray_df_3))
+    for f in funcs:
+        pandas_df_new, ray_df_new = pandas_df.query(f), ray_df.query(f)
+        assert pandas_df_new.equals(rdf.to_pandas(ray_df_new))
 
 
 def test_radd():
