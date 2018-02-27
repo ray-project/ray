@@ -66,6 +66,12 @@ void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, i
     }
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(worker);
+    auto scheduled_tasks = local_queues_.scheduled_tasks();
+    if (!scheduled_tasks.empty()) {
+      const TaskID& scheduled_task_id = scheduled_tasks.front().GetTaskSpecification().TaskId();
+      auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});
+      assignTask(scheduled_tasks.front());
+    }
   } break;
   case MessageType_DisconnectClient: {
     // Remove the dead worker from the pool and stop listening for messages.
@@ -89,8 +95,9 @@ void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, i
 }
 
 void LocalScheduler::HandleWaitingTaskReady(const TaskID &task_id) {
-  auto ready_tasks = local_queues_.RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher>({task_id}));
-  local_queues_.QueueReadyTasks(ready_tasks);
+  auto ready_tasks = local_queues_.RemoveTasks({task_id});
+  local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
+  // Schedule the newly ready tasks if possible.
   scheduleTasks();
 }
 
@@ -129,8 +136,12 @@ void LocalScheduler::submitTask(const Task& task) {
 
 void LocalScheduler::assignTask(const Task& task) {
   if (worker_pool_.PoolSize() == 0) {
-    // TODO(swang): Start a new worker and queue this task for future
-    // assignment.
+    // Start a new worker.
+    worker_pool_.StartWorker();
+    // Queue this task for future assignment. The task will be assigned to a
+    // worker once one becomes available.
+    local_queues_.QueueScheduledTasks(std::vector<Task>({task}));
+    // TODO(swang): Acquire resources here or when a worker becomes available?
     return;
   }
 
