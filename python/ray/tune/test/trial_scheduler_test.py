@@ -767,6 +767,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
     def basicSetup(self, scheduler):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        scheduler.on_trial_add(None, t1)
+        scheduler.on_trial_add(None, t2)
         for i in range(10):
             self.assertEqual(
                 scheduler.on_trial_result(None, t1, result(i, i * 100)),
@@ -777,37 +779,25 @@ class AsyncHyperBandSuite(unittest.TestCase):
                 TrialScheduler.CONTINUE)
         return t1, t2
 
-    def testASHAConstantPerf(self):
-        scheduler = AsyncHyperBandScheduler(grace_period=1)
+    def testAsyncHBOnComplete(self):
+        scheduler = AsyncHyperBandScheduler(
+            max_t=10, brackets=1)
         t1, t2 = self.basicSetup(scheduler)
-        scheduler.on_trial_complete(None, t1, result(10, 1000))
-        self.assertEqual(
-            scheduler.on_trial_result(None, t2, result(5, 450)),
-            TrialScheduler.CONTINUE)
-        self.assertEqual(
-            scheduler.on_trial_result(None, t2, result(6, 0)),
-            TrialScheduler.CONTINUE)
-        self.assertEqual(
-            scheduler.on_trial_result(None, t2, result(10, 450)),
-            TrialScheduler.STOP)
-
-    def testASHAOnCompleteOnly(self):
-        scheduler = AsyncHyperBandScheduler(grace_period=1)
-        t1, t2 = self.basicSetup(scheduler)
-        self.assertEqual(
-            scheduler.on_trial_result(None, t2, result(100, 0)),
-            TrialScheduler.CONTINUE)
-        scheduler.on_trial_complete(None, t1, result(10, 1000))
+        t3 = Trial("PPO")
+        scheduler.on_trial_add(None, t3)
+        scheduler.on_trial_complete(None, t3, result(10, 1000))
         self.assertEqual(
             scheduler.on_trial_result(None, t2, result(101, 0)),
             TrialScheduler.STOP)
 
-    def testASHAGracePeriod(self):
-        scheduler = AsyncHyperBandScheduler(grace_period=2.5)
+    def testAsyncHBGracePeriod(self):
+        scheduler = AsyncHyperBandScheduler(
+            grace_period=2.5, reduction_factor=3, brackets=1)
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
         t3 = Trial("PPO")
+        scheduler.on_trial_add(None, t3)
         self.assertEqual(
             scheduler.on_trial_result(None, t3, result(1, 10)),
             TrialScheduler.CONTINUE)
@@ -818,28 +808,29 @@ class AsyncHyperBandSuite(unittest.TestCase):
             scheduler.on_trial_result(None, t3, result(3, 10)),
             TrialScheduler.STOP)
 
-    def testASHAMinSamples(self):
-        scheduler = AsyncHyperBandScheduler(grace_period=1)
-        t1, t2 = self.basicSetup(scheduler)
-        scheduler.on_trial_complete(None, t1, result(10, 1000))
-        t3 = Trial("PPO")
-        self.assertEqual(
-            scheduler.on_trial_result(None, t3, result(3, 10)),
-            TrialScheduler.CONTINUE)
-        scheduler.on_trial_complete(None, t2, result(10, 1000))
-        self.assertEqual(
-            scheduler.on_trial_result(None, t3, result(3, 10)),
-            TrialScheduler.STOP)
+    def testAsyncHBAllCompletes(self):
+        scheduler = AsyncHyperBandScheduler(
+            max_t=10, brackets=10)
+        trials = [Trial("PPO") for i in range(10)]
+        for t in trials:
+            scheduler.on_trial_add(None, t)
 
-    def testASHAUsesMedian(self):
-        scheduler = AsyncHyperBandScheduler(grace_period=1)
+        for t in trials:
+            self.assertEqual(
+                scheduler.on_trial_result(None, t, result(10, -2)),
+                TrialScheduler.STOP)
+
+    def testAsyncHBUsesPercentile(self):
+        scheduler = AsyncHyperBandScheduler(
+            grace_period=1, max_t=10, reduction_factor=2, brackets=1)
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
         t3 = Trial("PPO")
+        scheduler.on_trial_add(None, t3)
         self.assertEqual(
             scheduler.on_trial_result(None, t3, result(1, 260)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.STOP)
         self.assertEqual(
             scheduler.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
@@ -849,10 +840,12 @@ class AsyncHyperBandSuite(unittest.TestCase):
             return TrainingResult(training_iteration=t, neg_mean_loss=rew)
 
         scheduler = AsyncHyperBandScheduler(
-            grace_period=1,
-            time_attr='training_iteration', reward_attr='neg_mean_loss')
+            grace_period=1, time_attr='training_iteration',
+            reward_attr='neg_mean_loss', brackets=1)
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        scheduler.on_trial_add(None, t1)
+        scheduler.on_trial_add(None, t2)
         for i in range(10):
             self.assertEqual(
                 scheduler.on_trial_result(None, t1, result2(i, i * 100)),

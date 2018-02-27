@@ -29,16 +29,19 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             The units are the same as the attribute named by `time_attr`.
         reduction_factor (float): Used to set halving rate and amount. This
             is simply a unit-less scalar.
+        brackets (int): Number of brackets. Each bracket has a different
+            halving rate, specified by the reduction factor.
     """
 
     def __init__(
             self, time_attr='training_iteration',
             reward_attr='episode_reward_mean', max_t=100,
-            grace_period=10, reduction_factor=3):
+            grace_period=10, reduction_factor=3, brackets=5):
         assert max_t > 0, "Max (time_attr) not valid!"
-        assert max_t > grace_period, "grace_period must be less than max_t!"
+        assert max_t >= grace_period, "grace_period must be <= max_t!"
         assert grace_period > 0, "grace_period must be positive!"
         assert reduction_factor > 1, "Reduction Factor not valid!"
+        assert brackets > 0, "brackets must be positive!"
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
         self._max_t = max_t
@@ -47,13 +50,14 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
         # Tracks state for new trial add
         self._brackets = [_Bracket(
-            grace_period, max_t, reduction_factor, s) for s in range(5)]
+            grace_period, max_t, reduction_factor, s) for s in range(brackets)]
         self._num_stopped = 0
         self._reward_attr = reward_attr
         self._time_attr = time_attr
 
     def on_trial_add(self, trial_runner, trial):
-        self._trial_info[trial.trial_id] = np.random.choice(self._brackets)
+        idx = len(self._trial_info) % len(self._brackets)
+        self._trial_info[trial.trial_id] = self._brackets[idx]
 
     def on_trial_result(self, trial_runner, trial, result):
         if getattr(result, self._time_attr) >= self._max_t:
@@ -65,12 +69,11 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             trial,
             getattr(result, self._time_attr),
             getattr(result, self._reward_attr))
-
         return action
 
     def on_trial_complete(self, trial_runner, trial, result):
         bracket = self._trial_info[trial.trial_id]
-        action = bracket.on_result(
+        bracket.on_result(
             trial,
             getattr(result, self._time_attr),
             getattr(result, self._reward_attr))
@@ -109,9 +112,10 @@ class _Bracket():
             if cur_iter < milestone or trial.trial_id in recorded:
                 continue
             else:
-                recorded[trial.trial_id] = cur_rew
-                if cur_rew < self.cutoff(recorded):
+                cutoff = self.cutoff(recorded)
+                if cutoff is not None and cur_rew < cutoff:
                     action = TrialScheduler.STOP
+                recorded[trial.trial_id] = cur_rew
                 break
         return action
 
@@ -124,6 +128,7 @@ class _Bracket():
 
 if __name__ == '__main__':
     sched = AsyncHyperBandScheduler(
-        grace_period=1.2, max_t=2123.3, reduction_factor=3)
+        grace_period=1, max_t=10, reduction_factor=2)
+    print(sched.debug_string())
     bracket = sched._brackets[0]
     print(bracket.cutoff({str(i): i for i in range(20)}))
