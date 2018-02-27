@@ -42,6 +42,8 @@ class LocalScheduler : public ClientManager {
   void assignTask(const Task& task);
   /// Finish a task.
   void finishTask(const TaskID& task_id);
+  /// Schedule tasks.
+  void scheduleTasks();
 
   /// The resources local to this node.
   LsResources local_resources_;
