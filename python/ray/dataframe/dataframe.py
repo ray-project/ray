@@ -40,7 +40,7 @@ class DataFrame(object):
 
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
-        self._index = _default_index.remote(self)
+        self._index = _default_index.remote(self._lengths)
 
         if index is not None:
             self.index = index
@@ -228,7 +228,7 @@ class DataFrame(object):
             self.index = index
 
         self._compute_lengths()
-        self._index = self._default_index()
+        self._index = _default_index.remote(self._lengths)
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -1321,7 +1321,7 @@ class DataFrame(object):
                             values, mask, np.nan)
             return values
 
-        new_index = ray.get(_default_index.remote(new_obj)).index
+        new_index = ray.get(_default_index.remote(new_obj._lengths)).index
         if level is not None:
             if not isinstance(level, (tuple, list)):
                 level = [level]
@@ -2116,16 +2116,16 @@ def to_pandas(df):
 
 
 @ray.remote
-def _default_index(df):
+def _default_index(lengths):
     """Create a default index, which is a RangeIndex
 
     Returns:
         The pd.RangeIndex object that represents this DataFrame.
     """
     dest_indices = {"partition":
-                    [i for i in range(len(df._lengths))
-                     for j in range(df._lengths[i])],
+                    [i for i in range(len(lengths))
+                     for j in range(lengths[i])],
                     "index_within_partition":
-                    [j for i in range(len(df._lengths))
-                     for j in range(df._lengths[i])]}
+                    [j for i in range(len(lengths))
+                     for j in range(lengths[i])]}
     return pd.DataFrame(dest_indices)
