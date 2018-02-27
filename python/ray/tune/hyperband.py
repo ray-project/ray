@@ -370,6 +370,8 @@ class Bracket():
 
         This will not be always finish with 100 since dead trials
         are dropped."""
+        if self.finished():
+            return 1.0
         return self._completed_progress / self._total_work
 
     def _get_result_time(self, result):
@@ -393,7 +395,7 @@ class Bracket():
     def __repr__(self):
         status = ", ".join([
             "Max Size (n)={}".format(self._n),
-            "Milestone (r)={}".format(self._r),
+            "Milestone (r)={}".format(self._cumul_r),
             "completed={:.1%}".format(self.completion_percentage())
             ])
         counts = collections.Counter([t.status for t in self._all_trials])
