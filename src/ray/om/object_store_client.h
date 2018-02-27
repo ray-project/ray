@@ -23,8 +23,6 @@ class ObjectStoreClient {
 
  public:
 
-  typedef std::unique_ptr<plasma::PlasmaClient> PlasmaClientPointer;
-
   ObjectStoreClient(boost::asio::io_service &io_service,
                     std::string &store_socket_name,
                     std::shared_ptr<ObjectDirectoryInterface> od);
@@ -37,8 +35,8 @@ class ObjectStoreClient {
   // Subscribe to notifications of objects deleted from local store.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID&)> callback);
 
-  PlasmaClientPointer &GetClient();
-  PlasmaClientPointer &GetClientOther();
+  plasma::PlasmaClient &GetClient();
+  plasma::PlasmaClient &GetClientOther();
 
   void SetClientID(ClientID client_id);
 
@@ -56,8 +54,8 @@ class ObjectStoreClient {
   void ProcessStoreAdd(const ObjectID& object_id);
   void ProcessStoreRemove(const ObjectID& object_id);
 
-  PlasmaClientPointer client_one_;
-  PlasmaClientPointer client_two_;
+  plasma::PlasmaClient client_one_;
+  plasma::PlasmaClient client_two_;
   int c_socket_;
   int64_t length_;
   std::vector<uint8_t> notification_;

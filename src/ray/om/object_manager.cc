@@ -291,7 +291,7 @@ void ObjectManager::HandlePushReceive(TCPClientConnection::pointer conn,
 
   // Try to create shared buffer.
   std::shared_ptr<Buffer> data;
-  arrow::Status s = store_client_->GetClient()->Create(object_id.to_plasma_id(), object_size, NULL, metadata_size, &data);
+  arrow::Status s = store_client_->GetClient().Create(object_id.to_plasma_id(), object_size, NULL, metadata_size, &data);
 
   if(s.ok()){
     // cout << "Buffer Create Succeeded" << endl;
@@ -299,12 +299,12 @@ void ObjectManager::HandlePushReceive(TCPClientConnection::pointer conn,
     uint8_t *mutable_data = data->mutable_data();
     boost::asio::read(conn->GetSocket(), boost::asio::buffer(&mutable_data, object_size), ec);
     if(!ec.value()){
-      ARROW_CHECK_OK(store_client_->GetClient()->Seal(object_id.to_plasma_id()));
-      ARROW_CHECK_OK(store_client_->GetClient()->Release(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client_->GetClient().Seal(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client_->GetClient().Release(object_id.to_plasma_id()));
       // cout << "Receive Succeeded" << endl;
     } else {
-      ARROW_CHECK_OK(store_client_->GetClient()->Release(object_id.to_plasma_id()));
-      ARROW_CHECK_OK(store_client_->GetClient()->Abort(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client_->GetClient().Release(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client_->GetClient().Abort(object_id.to_plasma_id()));
       cout << "Receive Failed" << endl;
     }
   } else {
@@ -359,7 +359,7 @@ ray::Status ObjectManager::ExecutePush(const ObjectID &object_id_const,
   /* Allocate and append the request to the transfer queue. */
   plasma::ObjectBuffer object_buffer;
   plasma::ObjectID plasma_id = object_id.to_plasma_id();
-  ARROW_CHECK_OK(store_client_->GetClientOther()->Get(&plasma_id, 1, 0, &object_buffer));
+  ARROW_CHECK_OK(store_client_->GetClientOther().Get(&plasma_id, 1, 0, &object_buffer));
   if (object_buffer.data_size == -1) {
     cout << "Failed to get object" << endl;
     /* If the object wasn't locally available, exit immediately. If the object
@@ -409,7 +409,7 @@ void ObjectManager::HandlePushSend(SenderConnection::pointer conn,
                      boost::asio::buffer(send_request.data, (size_t) send_request.object_size),
                      ec);
   // Do this regardless of whether it failed or succeeded.
-  ARROW_CHECK_OK(store_client_->GetClientOther()->Release(send_request.object_id.to_plasma_id()));
+  ARROW_CHECK_OK(store_client_->GetClientOther().Release(send_request.object_id.to_plasma_id()));
 
   ray::Status ray_status = ExecutePushCompleted(object_id, conn);
 }
