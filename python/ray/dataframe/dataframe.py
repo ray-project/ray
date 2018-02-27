@@ -575,7 +575,8 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def describe(self, percentiles=None, include=None, exclude=None):
-        raise NotImplementedError("Not Yet implemented.")
+        return self.T._map_partitions(lambda df: df.T.describe(
+                                    percentiles, include, exclude))
 
     def diff(self, periods=1, axis=0):
         raise NotImplementedError("Not Yet implemented.")
@@ -948,7 +949,27 @@ class DataFrame(object):
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
                **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Computes median across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the median on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The median of the DataFrame.
+        """
+        if axis == 1:
+            return self.T.count(axis=0,
+                                level=level,
+                                numeric_only=numeric_only)
+        else:
+            temp_index = [idx
+                          for _ in range(len(self._df))
+                          for idx in self.columns]
+
+            return ray.get(self._map_partitions(lambda df: df.median(
+                axis=axis, level=level, numeric_only=numeric_only
+            ), index=temp_index)._df)
 
     def melt(self, id_vars=None, value_vars=None, var_name=None,
              value_name='value', col_level=None):
@@ -1083,7 +1104,16 @@ class DataFrame(object):
 
     def quantile(self, q=0.5, axis=0, numeric_only=True,
                  interpolation='linear'):
-        raise NotImplementedError("Not Yet implemented.")
+        if axis == 1:
+            return self.T.quantile(axis=0, q=q, numeric_only=numeric_only)
+        else:
+            temp_index = [idx
+                          for _ in range(len(self._df))
+                          for idx in self.columns]
+
+            return ray.get(self._map_partitions(lambda df: df.quantile(
+                axis=axis, q=q, numeric_only=numeric_only
+            ), index=temp_index)._df)
 
     def query(self, expr, inplace=False, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
