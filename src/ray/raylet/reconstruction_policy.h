@@ -1,7 +1,7 @@
 #ifndef RECONSTRUCTION_POLICY_H
 #define RECONSTRUCTION_POLICY_H
 
-#include <boost/function.hpp>
+#include <functional>
 
 #include "ray/id.h"
 
@@ -19,7 +19,7 @@ class ReconstructionPolicy {
   // handler will be called for the tasks that need to be re-executed.
   void CheckObjectReconstruction(const ObjectID &object);
   // Register a handler to call if a task needs to be reconstructed.
-  void RegisterTaskReconstructionHandler(boost::function<void(const TaskID&)> reconstruction_handler);
+  void RegisterTaskReconstructionHandler(std::function<void(const TaskID&)> reconstruction_handler);
  private:
 };
 

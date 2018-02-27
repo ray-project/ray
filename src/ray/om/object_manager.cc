@@ -93,30 +93,30 @@ void ObjectManager::GetLocationsFailed(ray::Status status,
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id,
                                 const ClientID &client_id) {
-  GetMsgConnection(
+  Status status = GetMsgConnection(
       client_id,
       [this, object_id](SenderConnection::pointer client){
-        ExecutePull(object_id, client);
+        Status status = ExecutePull(object_id, client);
       });
-  return Status::OK();
+  return status;
 };
 
 ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
                                        SenderConnection::pointer conn) {
   // cout << "ExecutePull: " << object_id.hex() << endl;
-  SendPullRequest(object_id, conn);
-  return ray::Status::OK();
+  return SendPullRequest(object_id, conn);
 };
 
 ray::Status ObjectManager::Push(const ObjectID &object_id,
                                 const ClientID &client_id) {
   // cout << "Push: " << object_id.hex() << " " << client_id.hex() << endl;
-  GetTransferConnection(
+  ray::Status status;
+  status = GetTransferConnection(
       client_id,
       [this, object_id](SenderConnection::pointer conn){
-        QueuePush(object_id, conn).ok();
+        ray::Status status = QueuePush(object_id, conn);
       });
-  return Status::OK();
+  return status;
 };
 
 ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
@@ -131,20 +131,23 @@ ray::Status ObjectManager::Wait(const vector<ObjectID> &object_ids,
   return ray::Status::OK();
 };
 
-ray::Status ObjectManager::GetMsgConnection(const ClientID &client_id,
-                                            std::function<void(SenderConnection::pointer)> callback){
+ray::Status ObjectManager::GetMsgConnection(
+    const ClientID &client_id,
+    std::function<void(SenderConnection::pointer)> callback){
+
+  ray::Status status = Status::OK();
   if(message_send_connections_.count(client_id) > 0){
     callback(message_send_connections_[client_id]);
   } else {
-    this->od->GetInformation(client_id,
+    status = this->od->GetInformation(client_id,
                              [this, callback](ODRemoteConnectionInfo info){
-                               CreateMsgConnection(info, callback);
+                               Status status = CreateMsgConnection(info, callback);
                              },
-                             [this](Status status){
-                               // deal with failure.
+                             [this](const Status &status){
+                               // TODO: deal with failure.
                              });
   }
-  return Status::OK();
+  return status;
 };
 
 ray::Status ObjectManager::CreateMsgConnection(const ODRemoteConnectionInfo &info,
@@ -173,21 +176,24 @@ ray::Status ObjectManager::CreateMsgConnection(const ODRemoteConnectionInfo &inf
   return Status::OK();
 };
 
-ray::Status ObjectManager::GetTransferConnection(const ClientID &client_id,
-                                                 std::function<void(SenderConnection::pointer)> callback) {
+ray::Status ObjectManager::GetTransferConnection(
+    const ClientID &client_id,
+    std::function<void(SenderConnection::pointer)> callback) {
+
+  ray::Status status = Status::OK();
   if (transfer_send_connections_.count(client_id) > 0) {
     callback(transfer_send_connections_[client_id]);
   } else {
-    this->od->GetInformation(client_id,
+    status = this->od->GetInformation(client_id,
                              [this, callback](ODRemoteConnectionInfo info){
-                               CreateTransferConnection(info, callback);
+                               Status status = CreateTransferConnection(info, callback);
                              },
-                             [this](Status status){
+                             [this](const Status &status){
                                // TODO(hme): deal with failure.
                              }
     );
   }
-  return Status::OK();
+  return status;
 };
 
 ray::Status ObjectManager::CreateTransferConnection(const ODRemoteConnectionInfo &info,
@@ -309,7 +315,7 @@ void ObjectManager::HandlePushReceive(TCPClientConnection::pointer conn,
   }
 
   // Wait for another push.
-  WaitPushReceive(conn);
+  ray::Status ray_status = WaitPushReceive(conn);
 };
 
 ray::Status ObjectManager::QueuePush(const ObjectID &object_id_const,
@@ -330,6 +336,7 @@ ray::Status ObjectManager::QueuePush(const ObjectID &object_id_const,
 };
 
 ray::Status ObjectManager::ExecutePushQueue(SenderConnection::pointer conn){
+  ray::Status status = ray::Status::OK();
   while(num_transfers_ < max_transfers_){
     if (conn->IsObjectIdQueueEmpty()){
       return ray::Status::OK();
@@ -339,9 +346,9 @@ ray::Status ObjectManager::ExecutePushQueue(SenderConnection::pointer conn){
     // Note: The threads that increment/decrement num_transfers_ are different.
     // It's important to increment num_transfers_ before executing the push.
     num_transfers_ += 1;
-    ExecutePush(object_id, conn);
+    status = ExecutePush(object_id, conn);
   }
-  return ray::Status::OK();
+  return status;
 };
 
 ray::Status ObjectManager::ExecutePush(const ObjectID &object_id_const,
@@ -404,7 +411,7 @@ void ObjectManager::HandlePushSend(SenderConnection::pointer conn,
   // Do this regardless of whether it failed or succeeded.
   ARROW_CHECK_OK(store_client_->GetClientOther()->Release(send_request.object_id.to_plasma_id()));
 
-  ExecutePushCompleted(object_id, conn);
+  ray::Status ray_status = ExecutePushCompleted(object_id, conn);
 }
 
 ray::Status ObjectManager::ExecutePushCompleted(const ObjectID &object_id,

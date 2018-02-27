@@ -11,13 +11,14 @@ namespace ray {
 
 TaskDependencyManager::TaskDependencyManager(
     ObjectManager &object_manager,
-    ReconstructionPolicy &reconstruction_policy,
-    boost::function<void(const TaskID&)> handler)
+    //ReconstructionPolicy &reconstruction_policy,
+    std::function<void(const TaskID&)> handler)
     : object_manager_(object_manager),
-      reconstruction_policy_(reconstruction_policy),
+      //reconstruction_policy_(reconstruction_policy),
       task_ready_callback_(handler) {
   // TODO(swang): Check return status.
-  object_manager_.SubscribeObjAdded(std::bind(&TaskDependencyManager::handleObjectReady, this, std::placeholders::_1));
+  ray::Status status = object_manager_.SubscribeObjAdded(
+      std::bind(&TaskDependencyManager::handleObjectReady, this, std::placeholders::_1));
   // TODO(swang): Subscribe to object removed notifications.
 }
 

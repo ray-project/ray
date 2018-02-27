@@ -24,7 +24,7 @@ LocalScheduler::LocalScheduler(
         reconstruction_policy_(),
         task_dependency_manager_(
                 object_manager,
-                reconstruction_policy_,
+                //reconstruction_policy_,
                 std::bind(&LocalScheduler::HandleWaitingTaskReady, this,
                     std::placeholders::_1)
                 ) {

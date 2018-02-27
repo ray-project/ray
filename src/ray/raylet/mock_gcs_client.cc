@@ -68,11 +68,11 @@ ray::Status ClientTable::GetClientIds(ClientIDsCallback cb){
   return Status::OK();
 };
 
-void ClientTable::GetClientInformationSet(vector<ClientID> client_ids,
+void ClientTable::GetClientInformationSet(const vector<ClientID> &client_ids,
                                           ManyInfoCallback cb,
                                           FailCallback failcb){
   std::vector<ClientInformation> info_vec;
-  for(auto client_id : client_ids){
+  for(const auto &client_id : client_ids){
     if (info_lookup.count(client_id) != 0){
       info_vec.push_back(info_lookup.at(client_id));
     }
@@ -119,7 +119,9 @@ ray::Status ClientTable::Remove(const ClientID &client_id,
 
 ClientID GcsClient::Register(const std::string &ip, ushort port) {
   ClientID client_id = ClientID().from_random();
-  client_table().Add(std::move(client_id), ip, port, [](){});
+  // TODO: handle client registration failure.
+  ray::Status status =
+      client_table().Add(std::move(client_id), ip, port, [](){});
   return client_id;
 };
 
