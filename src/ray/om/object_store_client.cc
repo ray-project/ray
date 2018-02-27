@@ -20,14 +20,14 @@ ObjectStoreClient::ObjectStoreClient(
     boost::asio::io_service &io_service,
     string &store_socket_name,
     std::shared_ptr<ObjectDirectoryInterface> od
-) : socket_(io_service) {
-  this->od_ = od;
-  this->client_two_ = unique_ptr<plasma::PlasmaClient>(new plasma::PlasmaClient());
-  ARROW_CHECK_OK(this->client_two_->Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+) : client_one_(),
+    client_two_(),
+    socket_(io_service),
+    od_(od) {
+  ARROW_CHECK_OK(this->client_two_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
 
-  this->client_one_ = unique_ptr<plasma::PlasmaClient>(new plasma::PlasmaClient());
-  ARROW_CHECK_OK(this->client_one_->Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
-  ARROW_CHECK_OK(this->client_one_->Subscribe(&c_socket_));
+  ARROW_CHECK_OK(this->client_one_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(this->client_one_.Subscribe(&c_socket_));
 
   boost::system::error_code ec;
   socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
@@ -40,10 +40,8 @@ void ObjectStoreClient::SetClientID(ClientID client_id){
 }
 
 void ObjectStoreClient::Terminate() {
-  ARROW_CHECK_OK(this->client_two_->Disconnect());
-  this->client_two_.release();
-  ARROW_CHECK_OK(this->client_one_->Disconnect());
-  this->client_one_.release();
+  ARROW_CHECK_OK(this->client_two_.Disconnect());
+  ARROW_CHECK_OK(this->client_one_.Disconnect());
 }
 
 void ObjectStoreClient::NotificationWait() {
@@ -105,11 +103,11 @@ void ObjectStoreClient::SubscribeObjDeleted(std::function<void(const ObjectID&)>
   this->rem_handlers.push_back(callback);
 };
 
-ObjectStoreClient::PlasmaClientPointer &ObjectStoreClient::GetClient(){
+plasma::PlasmaClient &ObjectStoreClient::GetClient(){
   return client_one_;
 };
 
-ObjectStoreClient::PlasmaClientPointer &ObjectStoreClient::GetClientOther(){
+plasma::PlasmaClient &ObjectStoreClient::GetClientOther(){
   return client_two_;
 };
 
