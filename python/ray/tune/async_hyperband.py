@@ -94,6 +94,14 @@ class _Bracket():
 
     Rungs are created in reversed order so that we can more easily find
     the correct rung corresponding to the current iteration of the result.
+
+    Example:
+        >>> b = _Bracket(1, 10, 2, 3)
+        >>> b.on_result(trial1, 1, 2)  # CONTINUE
+        >>> b.on_result(trial2, 1, 4)  # CONTINUE
+        >>> b.cutoff(b._rungs[-1][1]) == 3.0  # rungs are reversed
+        >>> b.on_result(trial3, 1, 1)  # STOP
+        >>> b.cutoff(b._rungs[0][1]) == 2.0
     """
     def __init__(self, min_t, max_t, reduction_factor, s):
         self.rf = reduction_factor
