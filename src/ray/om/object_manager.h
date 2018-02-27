@@ -3,9 +3,10 @@
 
 #include <memory>
 #include <cstdint>
-#include <vector>
+#include <deque>
 #include <map>
 #include <thread>
+#include <algorithm>
 
 // #include <boost/thread.hpp>
 #include <boost/asio.hpp>
@@ -24,6 +25,8 @@
 #include "ray/om/object_directory.h"
 #include "ray/om/object_store_client.h"
 #include "ray/om/format/om_generated.h"
+// #include "plasma/plasma_common.h"
+// #include "common_protocol.h"
 
 namespace ray {
 
@@ -32,9 +35,11 @@ struct OMConfig {
   std::string store_socket_name;
 };
 
-struct Request {
+struct SendRequest {
   ObjectID object_id;
   ClientID client_id;
+  int64_t object_size;
+  uint8_t *data;
 };
 
 // TODO(hme): Move this to an appropriate location (client_connection?).
@@ -42,24 +47,64 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
 
  public:
   typedef boost::shared_ptr<SenderConnection> pointer;
+  typedef std::unordered_map<ray::ObjectID, SendRequest, UniqueIDHasher> SendRequestsType;
+  typedef std::deque<ray::ObjectID> SendQueueType;
+
   static pointer Create(boost::asio::io_service& io_service,
                         const ODRemoteConnectionInfo &info){
     return pointer(new SenderConnection(io_service, info));
   };
 
   explicit SenderConnection(boost::asio::io_service& io_service,
-                            const ODRemoteConnectionInfo &info) : socket_(io_service) {
+                            const ODRemoteConnectionInfo &info) :
+      socket_(io_service),
+      send_queue_()
+  {
     boost::asio::ip::address addr = boost::asio::ip::address::from_string(info.ip);
     boost::asio::ip::tcp::endpoint endpoint(addr, info.port);
     socket_.connect(endpoint);
   };
 
-  boost::asio::ip::tcp::socket& GetSocket(){
+  boost::asio::ip::tcp::socket &GetSocket(){
     return socket_;
+  };
+
+  bool IsObjectIdQueueEmpty(){
+    return send_queue_.empty();
+  }
+
+  bool ObjectIdQueued(const ObjectID &object_id){
+    return std::find(send_queue_.begin(),
+                     send_queue_.end(),
+                     object_id)!=send_queue_.end();
+  }
+
+  void QueueObjectId(const ObjectID &object_id){
+    send_queue_.push_back(ObjectID(object_id));
+  }
+
+  ObjectID DeQueueObjectId(){
+    ObjectID object_id = send_queue_.front();
+    send_queue_.pop_front();
+    return object_id;
+  }
+
+  void AddSendRequest(const ObjectID &object_id, SendRequest &send_request){
+    send_requests_.emplace(object_id, send_request);
+  }
+
+  void RemoveSendRequest(const ObjectID &object_id){
+    send_requests_.erase(object_id);
+  }
+
+  SendRequest &GetSendRequest(const ObjectID &object_id){
+    return send_requests_[object_id];
   };
 
  private:
   boost::asio::ip::tcp::socket socket_;
+  SendQueueType send_queue_;
+  SendRequestsType send_requests_;
 
 };
 
@@ -140,8 +185,13 @@ class ObjectManager {
   std::thread io_thread_;
   // boost::thread_group thread_group_;
 
-  std::vector<Request> send_queue_;
+  // TODO (hme): This needs to account for receives as well.
+  int num_transfers_ = 0;
+  // TODO (hme): Allow for concurrent sends.
+  int max_transfers_ = 1;
 
+  // Note that, currently, receives take place on the main thread,
+  // and sends take place on a dedicated thread.
   std::unordered_map<ray::ClientID,
                      SenderConnection::pointer,
                      ray::UniqueIDHasher> message_send_connections_;
@@ -163,6 +213,11 @@ class ObjectManager {
   ray::Status ExecutePull(const ObjectID &object_id,
                           SenderConnection::pointer client);
 
+  ray::Status QueuePush(const ObjectID &object_id,
+                        SenderConnection::pointer client);
+  ray::Status ExecutePushQueue(SenderConnection::pointer client);
+  ray::Status ExecutePushCompleted(const ObjectID &object_id,
+                                   SenderConnection::pointer client);
   ray::Status ExecutePush(const ObjectID &object_id,
                           SenderConnection::pointer client);
 
@@ -185,6 +240,15 @@ class ObjectManager {
 
   ray::Status CreateTransferConnection(const ODRemoteConnectionInfo &info,
                                        std::function<void(SenderConnection::pointer)> callback);
+
+  ray::Status WaitPushReceive(TCPClientConnection::pointer conn);
+
+  void HandlePushSend(SenderConnection::pointer conn,
+                      const ObjectID &object_id,
+                      const boost::system::error_code &header_ec);
+
+  void HandlePushReceive(TCPClientConnection::pointer conn,
+                         const boost::system::error_code& length_ec);
 
 };
 

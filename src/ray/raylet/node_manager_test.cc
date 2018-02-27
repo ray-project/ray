@@ -1,5 +1,6 @@
 #include <iostream>
 #include <thread>
+#include <algorithm>
 
 #include "gtest/gtest.h"
 
@@ -108,7 +109,7 @@ public:
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size){
     ObjectID object_id = ObjectID::from_random();
-    cout << "ObjectID Created: " << object_id.hex().c_str() << endl;
+    // cout << "ObjectID Created: " << object_id.hex().c_str() << endl;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
@@ -116,6 +117,16 @@ public:
     ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
     return object_id;
   }
+
+  void object_added_handler_1(const ObjectID &object_id){
+    cout << "Store 1 added: " << object_id.hex() << endl;
+    v1.push_back(object_id);
+  };
+
+  void object_added_handler_2(const ObjectID &object_id){
+    cout << "Store 2 added: " << object_id.hex() << endl;
+    v2.push_back(object_id);
+  };
 
  protected:
 
@@ -127,10 +138,13 @@ public:
 
   plasma::PlasmaClient client1;
   plasma::PlasmaClient client2;
+  vector<ObjectID> v1;
+  vector<ObjectID> v2;
 
 };
 
 TEST_F(TestNodeManager, TestNodeManagerCommands) {
+  cout << endl << "All connected clients:" << endl << endl;
   vector<ClientID> client_ids = mock_gcs_client->client_table().GetClientIds();
   for (auto client_id : client_ids) {
     ClientInformation info = mock_gcs_client->client_table().GetClientInformation(client_id);
@@ -140,12 +154,71 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
     ASSERT_TRUE(client_id == info.GetClientId());
   }
 
-  // ClientID client_id_1 = server1->GetObjectManager().GetClientID();
-  ObjectID oid1 = WriteDataToClient(client1, 100);
   sleep(1);
 
-  ClientID client_id_2 = server1->GetObjectManager().GetClientID();
-  server1->GetObjectManager().Push(oid1, client_id_2);
+  cout << endl << "Server client ids:" << endl << endl;
+
+  server1->GetObjectManager().SubscribeObjAdded(
+      [this](const ObjectID &object_id){
+        object_added_handler_1(object_id);
+      }
+  );
+
+  server2->GetObjectManager().SubscribeObjAdded(
+      [this](const ObjectID &object_id){
+        object_added_handler_2(object_id);
+      }
+  );
+
+  ClientID client_id_1 = server1->GetObjectManager().GetClientID();
+  ClientID client_id_2 = server2->GetObjectManager().GetClientID();
+  cout << "Server 1: " << client_id_1.hex() << endl;
+  cout << "Server 2: " << client_id_2.hex() << endl;
+
+  sleep(1);
+
+  cout << endl << "Test send 1 to 2" << endl << endl;
+  for(int i=-1;++i<3;){
+    ObjectID oid1 = WriteDataToClient(client1, 100);
+    server1->GetObjectManager().Push(oid1, client_id_2);
+  }
+  sleep(1);
+  cout << v1.size() << " " << v2.size() << endl;
+  for(int i=-1;++i < (int) v1.size();){
+    ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
+  }
+  v1.clear();
+  v2.clear();
+
+  cout << endl << "Test send 2 to 1" << endl << endl;
+  for(int i=-1;++i<3;){
+    ObjectID oid2 = WriteDataToClient(client2, 100);
+    server2->GetObjectManager().Push(oid2, client_id_1);
+  }
+  sleep(1);
+  cout << v1.size() << " " << v2.size() << endl;
+  for(int i=-1;++i < (int) v1.size();){
+    ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
+  }
+  v1.clear();
+  v2.clear();
+
+  cout << endl << "Test bidirectional" << endl << endl;
+  for(int i=-1;++i<3;){
+    ObjectID oid1 = WriteDataToClient(client1, 100);
+    ObjectID oid2 = WriteDataToClient(client2, 100);
+    ASSERT_TRUE(oid1.size() > 0);
+    ASSERT_TRUE(oid2.size() > 0);
+    server1->GetObjectManager().Push(oid1, client_id_2);
+    server2->GetObjectManager().Push(oid2, client_id_1);
+  }
+  sleep(1);
+  cout << v1.size() << " " << v2.size() << endl;
+  for(int i=-1;++i < (int) v1.size();){
+    ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
+  }
+  v1.clear();
+  v2.clear();
 
   ASSERT_TRUE(true);
 }
