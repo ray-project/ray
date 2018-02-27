@@ -70,6 +70,8 @@ void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
     if (local_objects_.count(argument) == 0) {
       remote_object_dependencies_[argument].push_back(task_id);
       num_missing_arguments++;
+      // TODO(swang): Check return status.
+      object_manager_.Pull(argument);
     }
   }
   // Check that the task has some missing arguments.
