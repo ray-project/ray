@@ -461,8 +461,6 @@ class DataFrame(object):
             DataFrame with the dropna applied.
         """
         raise NotImplementedError("Not yet")
-        if how != 'any' and how != 'all':
-            raise ValueError("<how> not correctly set.")
 
     def add(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -770,32 +768,34 @@ class DataFrame(object):
                 if index is not None or columns is not None:
                     raise ValueError("Cannot specify both 'labels' and "
                                      "'index'/'columns'")
-                collection = None
-                if axis == 1 or axis == "columns":
-                    collection = self.columns
-                else:
-                    collection = self._index.idx.keys()
-                collection = list(collection)
-
-                try:
-                    assert labels in collection
-                except (ValueError, TypeError, AssertionError):
-                    try:
-                        assert all([x in collection for x in labels])
-                    except (ValueError, TypeError, AssertionError):
-                        raise ValueError(
-                            "labels {} not contained in axis".format(labels)
-                        )
             elif index is None and columns is None:
                 raise ValueError("Need to specify at least one of 'labels', "
                                  "'index' or 'columns'")
 
+        is_axis_zero = axis is None or axis == 0 or axis == 'index'\
+            or axis == 'rows'
+        new_index = self._index.copy()
+        new_columns = self.columns.copy()
+        if (labels is not None and is_axis_zero) or index is not None:
+            new_index = new_index.drop(
+                labels=labels, axis=axis, index=index, level=level,
+                inplace=False, errors=errors
+            )
+        if (labels is not None and not is_axis_zero) or columns is not None:
+            new_columns = pd.DataFrame(columns=new_columns).drop(
+                labels=labels, axis=axis, columns=columns, level=level,
+                inplace=False, errors=errors
+            ).columns
+
         new_df = self._map_partitions(lambda df: df.drop(labels=labels,
                                       axis=axis, index=index, columns=columns,
                                       level=level, inplace=False,
-                                      errors='ignore'))
+                                      errors='ignore'), index=new_index)
+        new_df._index = new_index
+        new_df.columns = new_columns
         if inplace:
             self._df = new_df._df
+            self._index = new_df._index
             self.columns = new_df.columns
         else:
             return new_df
@@ -915,6 +915,7 @@ class DataFrame(object):
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_df = self._map_partitions(lambda df: df.eval(expr, inplace=False,
                                       **kwargs))
+        new_df.columns = new_df.columns.insert(self.columns.size, 'e')
         if inplace:
             # TODO: return ray series instead of ray df
             self.e = new_df.drop(columns=self.columns)
@@ -948,19 +949,16 @@ class DataFrame(object):
 
     def fillna(self, value=None, method=None, axis=None, inplace=False,
                limit=None, downcast=None, **kwargs):
-        """Fill NA/NaN values using the specified method
+        """Fill NA/NaN values using the specified method.
 
         Args:
-            value (scalar, dict, Series, or DataFrame):
-                Value to use to fill holes (e.g. 0), alternately a
+            value: Value to use to fill holes (e.g. 0), alternately a
                 dict/Series/DataFrame of values specifying which value to use
                 for each index (for a Series) or column (for a DataFrame).
                 (values not in the dict/Series/DataFrame will not be filled).
                 This value cannot be a list.
 
-            method ({‘backfill’, ‘bfill’, ‘pad’, ‘ffill’, None},
-                    default None):
-                Method to use for filling holes in reindexed Series pad /
+            method: Method to use for filling holes in reindexed Series pad /
                 ffill: propagate last valid observation forward to next valid
                 backfill / bfill: use NEXT valid observation to fill gap
 
@@ -1008,7 +1006,8 @@ class DataFrame(object):
         )
         is_bfill = method is not None and method in ['backfill', 'bfill']
         is_ffill = method is not None and method in ['pad', 'ffill']
-        is_axis_zero = axis is None or axis == 0
+        is_axis_zero = axis is None or axis == 0 or axis == 'index'\
+            or axis == 'rows'
 
         if is_axis_zero and (is_bfill or is_ffill):
             def fill_in_part(part, row):
@@ -1042,9 +1041,11 @@ class DataFrame(object):
         if limit is not None:
             # need to do a seperate fillna for each column seperatley
             # count how many N/As there are in each partition
-            nan_counts = ray.get(self._map_partitions(
-                lambda df: df.isnull().sum()
-            )._df)
+            nan_counts = ray.get([_deploy_func.remote(
+                lambda df: df.isnull().sum(),
+                part
+            ) for part in self._df])
+
             identity = self._map_partitions(
                 lambda df: df.copy()
             )
@@ -1083,12 +1084,12 @@ class DataFrame(object):
                 # Replace all columns that were not affected b/c of the
                 # limit w/ the original column
                 for j in row_gen:
-                    new_df._df[j] = self._copy_part_col.remote(
+                    new_df._df[j] = _copy_part_col.remote(
                         i, j, new_df, identity
                     )
 
                 # Apply fill w/ limit on partition & column w/ last fills
-                new_df._df[stopping_points[i]] = self._update_part_col.remote(
+                new_df._df[stopping_points[i]] = _update_part_col.remote(
                     i, stopping_points[i], new_df, identity, left_over,
                     col_val, is_ffill, is_bfill, method=method,
                     downcast=downcast
@@ -1097,65 +1098,9 @@ class DataFrame(object):
         if inplace:
             self._df = new_df._df
             self.columns = new_df.columns
+            self._index = new_df._index
         else:
             return new_df
-
-    @ray.remote
-    def _copy_part_col(i, j, new_df, identity):
-        """
-        Args:
-            i: The column index to copy
-            j: The df partition to work on
-            new_df: The ray df w/ non-limited fills
-            identity: The ray df w/ no fills
-
-        Returns:
-            A pandas df with it's ith column replaced with
-            the original column
-        """
-        n_df = ray.get(new_df._df[j]).copy()
-        i_df = ray.get(identity._df[j]).copy()
-        n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
-        return n_df
-
-    @ray.remote
-    def _update_part_col(i, j, new_df, identity, left_over, col_val=None,
-                         is_ffill=False, is_bfill=False, method=None,
-                         downcast=None):
-        """
-        Args:
-            i: The column index to copy
-            j: The df partition to work on
-            new_df: The ray df w/ non-limited fills
-            identity: The ray df w/ no fills
-
-        Returns:
-            A pandas df updated with correctly limited fill
-            on its ith column
-        """
-        n_df = ray.get(new_df._df[j]).copy()
-        i_df = ray.get(identity._df[j]).copy()
-        if is_ffill:
-            if j != 0:
-                filled_df = ray.get(new_df._df[j - 1]).copy()
-                if (not np.isnan(filled_df.iloc[-1, i]))\
-                   and np.isnan(i_df.iloc[0, i]):
-                    left_over[i] -= 1
-                    i_df.iloc[0, i] = filled_df.iloc[-1, i]
-            col_val = None
-        elif is_bfill:
-            if j != -1:
-                filled_df = ray.get(new_df._df[j + 1]).copy()
-                if (not np.isnan(filled_df.iloc[0, i]))\
-                   and np.isnan(i_df.iloc[-1, i]):
-                    left_over[i] -= 1
-                    i_df.iloc[-1, i] = filled_df.iloc[0, i]
-            col_val = None
-        if left_over[i] > 0:
-            i_df = i_df.fillna(value=col_val, method=method,
-                               limit=left_over[i], downcast=None)
-        n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
-        return n_df
 
     def filter(self, items=None, like=None, regex=None, axis=None):
         raise NotImplementedError(
@@ -2940,3 +2885,62 @@ def _compute_length_and_index(dfs):
                      for j in range(lengths[i])]}
 
     return lengths, pd.DataFrame(dest_indices)
+
+
+@ray.remote
+def _copy_part_col(i, j, new_df, identity):
+    """
+    Args:
+        i: The column index to copy
+        j: The df partition to work on
+        new_df: The ray df w/ non-limited fills
+        identity: The ray df w/ no fills
+
+    Returns:
+        A pandas df with it's ith column replaced with
+        the original column
+    """
+    n_df = ray.get(new_df._df[j]).copy()
+    i_df = ray.get(identity._df[j]).copy()
+    n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
+    return n_df
+
+
+@ray.remote
+def _update_part_col(i, j, new_df, identity, left_over, col_val=None,
+                     is_ffill=False, is_bfill=False, method=None,
+                     downcast=None):
+    """
+    Args:
+        i: The column index to copy
+        j: The df partition to work on
+        new_df: The ray df w/ non-limited fills
+        identity: The ray df w/ no fills
+
+    Returns:
+        A pandas df updated with correctly limited fill
+        on its ith column
+    """
+    n_df = ray.get(new_df._df[j]).copy()
+    i_df = ray.get(identity._df[j]).copy()
+    if is_ffill:
+        if j != 0:
+            filled_df = ray.get(new_df._df[j - 1]).copy()
+            if (not np.isnan(filled_df.iloc[-1, i]))\
+               and np.isnan(i_df.iloc[0, i]):
+                left_over[i] -= 1
+                i_df.iloc[0, i] = filled_df.iloc[-1, i]
+        col_val = None
+    elif is_bfill:
+        if j != -1:
+            filled_df = ray.get(new_df._df[j + 1]).copy()
+            if (not np.isnan(filled_df.iloc[0, i]))\
+               and np.isnan(i_df.iloc[-1, i]):
+                left_over[i] -= 1
+                i_df.iloc[-1, i] = filled_df.iloc[0, i]
+        col_val = None
+    if left_over[i] > 0:
+        i_df = i_df.fillna(value=col_val, method=method,
+                           limit=left_over[i], downcast=None)
+    n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
+    return n_df
