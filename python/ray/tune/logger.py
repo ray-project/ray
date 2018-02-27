@@ -172,5 +172,5 @@ def pretty_print(result):
         if v is not None:
             out[k] = v
 
-    cleaned = json.dumps(out, encoder=_CustomEncoder)
+    cleaned = json.dumps(out, cls=_CustomEncoder)
     return yaml.dump(json.loads(cleaned), default_flow_style=False)
