@@ -36,6 +36,7 @@ set(RAY_SRCS
   gcs/tables.cc
   gcs/redis_context.cc
   gcs/asio.cc
+  om/om_client_connection.cc
   om/object_store_client.cc
   om/object_directory.cc
   om/object_manager.cc
