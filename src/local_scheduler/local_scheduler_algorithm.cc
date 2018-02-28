@@ -224,25 +224,23 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   entry.task_queue = new std::list<TaskExecutionSpec>();
   entry.worker = worker;
   entry.worker_available = false;
-  CHECK(algorithm_state->local_actor_infos.count(actor_id) == 0)
+  RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) == 0);
   algorithm_state->local_actor_infos[actor_id] = entry;
 
   /* Log some useful information about the actor that we created. */
-  std::string id_string = actor_id.hex();
-  LOG_DEBUG("Creating actor with ID %s.", id_string.c_str());
+  RAY_LOG(DEBUG) << "Creating actor with ID " << actor_id;
 }
 
 void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
-  CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
+  RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
 
   /* Log some useful information about the actor that we're removing. */
-  std::string id_string = actor_id.hex();
   size_t count = entry.task_queue->size();
   if (count > 0) {
-    LOG_WARN("Removing actor with ID %s and %lld remaining tasks.",
-             id_string.c_str(), (long long) count);
+    RAY_LOG(WARNING) << "Removing actor with ID " << actor_id << " and "
+                     << count << " remaining tasks.";
   }
 
   entry.task_queue->clear();
@@ -266,7 +264,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
                          SchedulingAlgorithmState *algorithm_state,
                          ActorID actor_id) {
   /* Make sure this worker actually is an actor. */
-  CHECK(!actor_id.is_nil());
+  RAY_CHECK(!actor_id.is_nil());
   /* Return if this actor doesn't have any pending tasks. */
   if (algorithm_state->actors_with_pending_tasks.find(actor_id) ==
       algorithm_state->actors_with_pending_tasks.end()) {
@@ -278,16 +276,16 @@ bool dispatch_actor_task(LocalSchedulerState *state,
      * scheduler. This should be rare. */
     return false;
   }
-  CHECK(state->actor_mapping[actor_id].local_scheduler_id ==
-        get_db_client_id(state->db));
+  RAY_CHECK(state->actor_mapping[actor_id].local_scheduler_id ==
+            get_db_client_id(state->db));
 
   /* Get the local actor entry for this actor. */
-  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
 
   /* There should be some queued tasks for this actor. */
-  CHECK(!entry.task_queue->empty());
+  RAY_CHECK(!entry.task_queue->empty());
   /* If the worker is not available, we cannot assign a task to it. */
   if (!entry.worker_available) {
     return false;
@@ -304,7 +302,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   }
 
   /* If there are not enough resources available, we cannot assign the task. */
-  CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
+  RAY_CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
   if (!check_dynamic_resources(state, TaskSpec_get_required_resources(spec))) {
     return false;
   }
@@ -428,7 +426,7 @@ void insert_actor_task_queue(LocalSchedulerState *state,
      * not been created yet. The correct worker struct will be inserted when the
      * actor worker connects to the local scheduler. */
     create_actor(algorithm_state, actor_id, NULL);
-    CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
+    RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
   }
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
@@ -437,7 +435,7 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   }
   /* Extend the frontier to include the new handle. */
   if (entry.frontier_dependencies.count(task_handle_id) == 0) {
-    CHECK(task_entry.ExecutionDependencies().size() == 1);
+    RAY_CHECK(task_entry.ExecutionDependencies().size() == 1);
     entry.frontier_dependencies[task_handle_id] =
         task_entry.ExecutionDependencies()[1];
   }
@@ -448,9 +446,9 @@ void insert_actor_task_queue(LocalSchedulerState *state,
    * check will fail if the fault-tolerance mechanism resubmits a task on an
    * actor. */
   if (task_counter < entry.task_counters[task_handle_id]) {
-    LOG_INFO(
-        "A task that has already been executed has been resubmitted, so we "
-        "are ignoring it. This should only happen during reconstruction.");
+    RAY_LOG(INFO) << "A task that has already been executed has been "
+                  << "resubmitted, so we are ignoring it. This should only "
+                  << "happen during reconstruction.";
     return;
   }
 
@@ -466,9 +464,8 @@ void insert_actor_task_queue(LocalSchedulerState *state,
     }
     /* A duplicate task submitted by the same handle. */
     if (task_counter == TaskSpec_actor_counter(pending_task_spec)) {
-      LOG_INFO(
-          "A task was resubmitted, so we are ignoring it. This should only "
-          "happen during reconstruction.");
+      RAY_LOG(INFO) << "A task was resubmitted, so we are ignoring it. This "
+                    << "should only happen during reconstruction.";
       return;
     }
     /* We found a task with the same handle ID and a greater task counter. */
@@ -501,7 +498,7 @@ void queue_actor_task(LocalSchedulerState *state,
                       bool from_global_scheduler) {
   TaskSpec *spec = execution_spec.Spec();
   ActorID actor_id = TaskSpec_actor_id(spec);
-  DCHECK(!actor_id.is_nil());
+  RAY_CHECK(!actor_id.is_nil());
 
   /* Update the task table. */
   if (state->db != NULL) {
@@ -567,10 +564,9 @@ void fetch_missing_dependency(
         /* TODO(swang): Local scheduler should also exit even if there are no
          * pending fetches. This could be done by subscribing to the db_client
          * table, or pinging the plasma manager in the heartbeat handler. */
-        LOG_FATAL(
-            "Lost connection to the plasma manager, local scheduler is "
-            "exiting. Error: %s",
-            arrow_status.ToString().c_str());
+        RAY_LOG(FATAL) << "Lost connection to the plasma manager, local "
+                       << "scheduler is exiting. Error: "
+                       << arrow_status.ToString();
       }
     }
     /* Create an entry and add it to the list of active fetch requests to
@@ -617,7 +613,7 @@ void fetch_missing_dependencies(
       }
     }
   }
-  CHECK(num_missing_dependencies > 0);
+  RAY_CHECK(num_missing_dependencies > 0);
 }
 
 /**
@@ -700,7 +696,8 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Only try the fetches if we are connected to the object store manager. */
   if (state->plasma_conn->get_manager_fd() == -1) {
-    LOG_INFO("Local scheduler is not connected to a object store manager");
+    RAY_LOG(INFO)
+        << "Local scheduler is not connected to a object store manager";
     return RayConfig::instance().local_scheduler_fetch_timeout_milliseconds();
   }
 
@@ -728,10 +725,9 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
         reinterpret_cast<plasma::ObjectID *>(&object_ids[j]));
     if (!arrow_status.ok()) {
       LocalSchedulerState_free(state);
-      LOG_FATAL(
-          "Lost connection to the plasma manager, local scheduler is exiting. "
-          "Error: %s",
-          arrow_status.ToString().c_str());
+      RAY_LOG(FATAL) << "Lost connection to the plasma manager, local "
+                     << "scheduler is exiting. Error: "
+                     << arrow_status.ToString();
     }
   }
 
@@ -739,8 +735,8 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   int64_t end_time = current_time_ms();
   if (end_time - start_time >
       RayConfig::instance().max_time_for_handler_milliseconds()) {
-    LOG_WARN("fetch_object_timeout_handler took %" PRId64 " milliseconds.",
-             end_time - start_time);
+    RAY_LOG(WARNING) << "fetch_object_timeout_handler took "
+                     << end_time - start_time << " milliseconds.";
   }
 
   /* Wait at least local_scheduler_fetch_timeout_milliseconds before running
@@ -795,9 +791,8 @@ int reconstruct_object_timeout_handler(event_loop *loop,
   int64_t end_time = current_time_ms();
   if (end_time - start_time >
       RayConfig::instance().max_time_for_handler_milliseconds()) {
-    LOG_WARN("reconstruct_object_timeout_handler took %" PRId64
-             " milliseconds.",
-             end_time - start_time);
+    RAY_LOG(WARNING) << "reconstruct_object_timeout_handler took "
+                     << end_time - start_time << " milliseconds.";
   }
 
   return RayConfig::instance()
@@ -879,7 +874,7 @@ void dispatch_tasks(LocalSchedulerState *state,
     }
 
     /* Dispatch this task to an available worker and dequeue the task. */
-    LOG_DEBUG("Dispatching task");
+    RAY_LOG(DEBUG) << "Dispatching task";
     /* Get the last available worker in the available worker queue. */
     LocalSchedulerClient *worker = algorithm_state->available_workers.back();
     /* Tell the available worker to execute the task. */
@@ -1004,15 +999,15 @@ void queue_waiting_task(LocalSchedulerState *state,
       if (task_counter != task_counters.end() &&
           TaskSpec_actor_counter(spec) < task_counter->second) {
         /* If the task to queue has a lower task counter, do not queue it. */
-        LOG_INFO(
-            "A task that has already been executed has been resubmitted, so we "
-            "are ignoring it. This should only happen during reconstruction.");
+        RAY_LOG(INFO) << "A task that has already been executed has been "
+                      << "resubmitted, so we are ignoring it. This should only "
+                      << "happen during reconstruction.";
         return;
       }
     }
   }
 
-  LOG_DEBUG("Queueing task in waiting queue");
+  RAY_LOG(DEBUG) << "Queueing task in waiting queue";
   auto it = queue_task(state, algorithm_state->waiting_task_queue,
                        execution_spec, from_global_scheduler);
   fetch_missing_dependencies(state, algorithm_state, it);
@@ -1033,7 +1028,7 @@ void queue_dispatch_task(LocalSchedulerState *state,
                          SchedulingAlgorithmState *algorithm_state,
                          TaskExecutionSpec &execution_spec,
                          bool from_global_scheduler) {
-  LOG_DEBUG("Queueing task in dispatch queue");
+  RAY_LOG(DEBUG) << "Queueing task in dispatch queue";
   TaskSpec *spec = execution_spec.Spec();
   if (TaskSpec_is_actor_task(spec)) {
     queue_actor_task(state, algorithm_state, execution_spec,
@@ -1076,14 +1071,14 @@ void give_task_to_local_scheduler_retry(UniqueID id,
                                         void *user_data) {
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   Task *task = (Task *) user_data;
-  CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
+  RAY_CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
 
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
   TaskSpec *spec = execution_spec->Spec();
-  CHECK(TaskSpec_is_actor_task(spec));
+  RAY_CHECK(TaskSpec_is_actor_task(spec));
 
   ActorID actor_id = TaskSpec_actor_id(spec);
-  CHECK(state->actor_mapping.count(actor_id) == 1);
+  RAY_CHECK(state->actor_mapping.count(actor_id) == 1);
 
   if (state->actor_mapping[actor_id].local_scheduler_id ==
       get_db_client_id(state->db)) {
@@ -1113,11 +1108,11 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
                                   TaskExecutionSpec &execution_spec,
                                   DBClientID local_scheduler_id) {
   if (local_scheduler_id == get_db_client_id(state->db)) {
-    LOG_WARN("Local scheduler is trying to assign a task to itself.");
+    RAY_LOG(WARNING) << "Local scheduler is trying to assign a task to itself.";
   }
-  CHECK(state->db != NULL);
+  RAY_CHECK(state->db != NULL);
   /* Assign the task to the relevant local scheduler. */
-  DCHECK(state->config.global_scheduler_exists);
+  RAY_CHECK(state->config.global_scheduler_exists);
   Task *task =
       Task_alloc(execution_spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
 #if !RAY_USE_NEW_GCS
@@ -1139,11 +1134,11 @@ void give_task_to_global_scheduler_retry(UniqueID id,
                                          void *user_data) {
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   Task *task = (Task *) user_data;
-  CHECK(Task_state(task) == TASK_STATUS_WAITING);
+  RAY_CHECK(Task_state(task) == TASK_STATUS_WAITING);
 
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
   TaskSpec *spec = execution_spec->Spec();
-  CHECK(!TaskSpec_is_actor_task(spec));
+  RAY_CHECK(!TaskSpec_is_actor_task(spec));
 
   give_task_to_global_scheduler(state, state->algorithm_state, *execution_spec);
 }
@@ -1165,11 +1160,11 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
     return;
   }
   /* Pass on the task to the global scheduler. */
-  DCHECK(state->config.global_scheduler_exists);
+  RAY_CHECK(state->config.global_scheduler_exists);
   Task *task = Task_alloc(execution_spec, TASK_STATUS_WAITING,
                           get_db_client_id(state->db));
 #if !RAY_USE_NEW_GCS
-  DCHECK(state->db != NULL);
+  RAY_CHECK(state->db != NULL);
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
       .timeout = 0,      // This value is unused.
@@ -1225,7 +1220,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
                                  TaskExecutionSpec &execution_spec) {
   TaskSpec *task_spec = execution_spec.Spec();
-  CHECK(TaskSpec_is_actor_task(task_spec));
+  RAY_CHECK(TaskSpec_is_actor_task(task_spec));
   ActorID actor_id = TaskSpec_actor_id(task_spec);
 
   if (state->actor_mapping.count(actor_id) == 0) {
@@ -1284,8 +1279,8 @@ void handle_task_scheduled(LocalSchedulerState *state,
   /* This callback handles tasks that were assigned to this local scheduler by
    * the global scheduler, so we can safely assert that there is a connection to
    * the database. */
-  DCHECK(state->db != NULL);
-  DCHECK(state->config.global_scheduler_exists);
+  RAY_CHECK(state->db != NULL);
+  RAY_CHECK(state->config.global_scheduler_exists);
   /* Push the task to the appropriate queue. */
   queue_task_locally(state, algorithm_state, execution_spec, true);
   dispatch_tasks(state, algorithm_state);
@@ -1298,24 +1293,24 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
   /* This callback handles tasks that were assigned to this local scheduler by
    * the global scheduler or by other workers, so we can safely assert that
    * there is a connection to the database. */
-  DCHECK(state->db != NULL);
-  DCHECK(state->config.global_scheduler_exists);
+  RAY_CHECK(state->db != NULL);
+  RAY_CHECK(state->config.global_scheduler_exists);
   /* Check that the task is meant to run on an actor that this local scheduler
    * is responsible for. */
-  DCHECK(TaskSpec_is_actor_task(spec));
+  RAY_CHECK(TaskSpec_is_actor_task(spec));
   ActorID actor_id = TaskSpec_actor_id(spec);
   if (state->actor_mapping.count(actor_id) == 1) {
-    DCHECK(state->actor_mapping[actor_id].local_scheduler_id ==
-           get_db_client_id(state->db));
+    RAY_CHECK(state->actor_mapping[actor_id].local_scheduler_id ==
+              get_db_client_id(state->db));
   } else {
     /* This means that an actor has been assigned to this local scheduler, and a
      * task for that actor has been received by this local scheduler, but this
      * local scheduler has not yet processed the notification about the actor
      * creation. This may be possible though should be very uncommon. If it does
      * happen, it's ok. */
-    LOG_INFO(
-        "handle_actor_task_scheduled called on local scheduler but the "
-        "corresponding actor_map_entry is not present. This should be rare.");
+    RAY_LOG(INFO) << "handle_actor_task_scheduled called on local scheduler "
+                  << "but the corresponding actor_map_entry is not present. "
+                  << "This should be rare.";
   }
   /* Push the task to the appropriate queue. */
   queue_task_locally(state, algorithm_state, execution_spec, true);
@@ -1325,19 +1320,19 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
 void handle_worker_available(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
-  CHECK(worker->task_in_progress == NULL);
+  RAY_CHECK(worker->task_in_progress == NULL);
   /* Check that the worker isn't in the pool of available workers. */
-  DCHECK(!worker_in_vector(algorithm_state->available_workers, worker));
+  RAY_CHECK(!worker_in_vector(algorithm_state->available_workers, worker));
 
   /* Check that the worker isn't in the list of blocked workers. */
-  DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
+  RAY_CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
 
   /* If the worker was executing a task, it must have finished, so remove it
    * from the list of executing workers. If the worker is connecting for the
    * first time, it will not be in the list of executing workers. */
   remove_worker_from_vector(algorithm_state->executing_workers, worker);
   /* Double check that we successfully removed the worker. */
-  DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
+  RAY_CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
   /* Add worker to the list of available workers. */
   algorithm_state->available_workers.push_back(worker);
@@ -1350,7 +1345,7 @@ void handle_worker_removed(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
   /* Make sure this is not an actor. */
-  CHECK(worker->actor_id.is_nil());
+  RAY_CHECK(worker->actor_id.is_nil());
 
   /* Make sure that we remove the worker at most once. */
   int num_times_removed = 0;
@@ -1360,24 +1355,24 @@ void handle_worker_removed(LocalSchedulerState *state,
       remove_worker_from_vector(algorithm_state->available_workers, worker);
   num_times_removed += removed_from_available;
   /* Double check that we actually removed the worker. */
-  DCHECK(!worker_in_vector(algorithm_state->available_workers, worker));
+  RAY_CHECK(!worker_in_vector(algorithm_state->available_workers, worker));
 
   /* Remove the worker from executing workers, if it's there. */
   bool removed_from_executing =
       remove_worker_from_vector(algorithm_state->executing_workers, worker);
   num_times_removed += removed_from_executing;
   /* Double check that we actually removed the worker. */
-  DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
+  RAY_CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
   /* Remove the worker from blocked workers, if it's there. */
   bool removed_from_blocked =
       remove_worker_from_vector(algorithm_state->blocked_workers, worker);
   num_times_removed += removed_from_blocked;
   /* Double check that we actually removed the worker. */
-  DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
+  RAY_CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
 
   /* Make sure we removed the worker at most once. */
-  CHECK(num_times_removed <= 1);
+  RAY_CHECK(num_times_removed <= 1);
 
   /* Attempt to dispatch some tasks because some resources may have freed up. */
   dispatch_all_tasks(state, algorithm_state);
@@ -1400,7 +1395,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 
     state->removed_actors.insert(worker->actor_id);
 
-    CHECK(algorithm_state->local_actor_infos.count(worker->actor_id) != 0);
+    RAY_CHECK(algorithm_state->local_actor_infos.count(worker->actor_id) != 0);
     LocalActorInfo &entry =
         algorithm_state->local_actor_infos.find(worker->actor_id)->second;
     for (auto &task : *entry.task_queue) {
@@ -1421,13 +1416,13 @@ void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
                                    LocalSchedulerClient *worker) {
   ActorID actor_id = worker->actor_id;
-  CHECK(!actor_id.is_nil());
+  RAY_CHECK(!actor_id.is_nil());
   /* Get the actor info for this worker. */
-  CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
+  RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
-  CHECK(worker == entry.worker);
-  CHECK(!entry.worker_available);
+  RAY_CHECK(worker == entry.worker);
+  RAY_CHECK(!entry.worker_available);
   /* If an actor task was assigned, mark returned dummy object as locally
    * available. This is not added to the object table, so the update will be
    * invisible to other nodes. */
@@ -1446,10 +1441,11 @@ void handle_worker_blocked(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
   /* Find the worker in the list of executing workers. */
-  CHECK(remove_worker_from_vector(algorithm_state->executing_workers, worker));
+  RAY_CHECK(
+      remove_worker_from_vector(algorithm_state->executing_workers, worker));
 
   /* Check that the worker isn't in the list of blocked workers. */
-  DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
+  RAY_CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
 
   /* Add the worker to the list of blocked workers. */
   algorithm_state->blocked_workers.push_back(worker);
@@ -1471,10 +1467,11 @@ void handle_worker_unblocked(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
   /* Find the worker in the list of blocked workers. */
-  CHECK(remove_worker_from_vector(algorithm_state->blocked_workers, worker));
+  RAY_CHECK(
+      remove_worker_from_vector(algorithm_state->blocked_workers, worker));
 
   /* Check that the worker isn't in the list of executing workers. */
-  DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
+  RAY_CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
   /* Add the worker to the list of executing workers. */
   algorithm_state->executing_workers.push_back(worker);
@@ -1499,7 +1496,7 @@ void handle_object_available(LocalSchedulerState *state,
   }
 
   /* Add the entry to the set of locally available objects. */
-  CHECK(algorithm_state->local_objects.count(object_id) == 0);
+  RAY_CHECK(algorithm_state->local_objects.count(object_id) == 0);
   algorithm_state->local_objects[object_id] = entry;
 
   if (!entry.dependent_tasks.empty()) {
@@ -1530,7 +1527,7 @@ void handle_object_removed(LocalSchedulerState *state,
   /* Remove the object from the set of locally available objects. */
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
 
-  CHECK(algorithm_state->local_objects.count(removed_object_id) == 1);
+  RAY_CHECK(algorithm_state->local_objects.count(removed_object_id) == 1);
   algorithm_state->local_objects.erase(removed_object_id);
 
   /* Track queued tasks that were dependent on this object.
@@ -1544,7 +1541,7 @@ void handle_object_removed(LocalSchedulerState *state,
        it != algorithm_state->dispatch_task_queue->end();) {
     if (it->DependsOn(removed_object_id)) {
       /* This task was dependent on the removed object. */
-      LOG_DEBUG("Moved task from dispatch queue back to waiting queue");
+      RAY_LOG(DEBUG) << "Moved task from dispatch queue back to waiting queue";
       algorithm_state->waiting_task_queue->push_back(std::move(*it));
       /* Remove the task from the dispatch queue, but do not free the task
        * spec. */
@@ -1563,7 +1560,8 @@ void handle_object_removed(LocalSchedulerState *state,
          queue_it != actor_info.task_queue->end();) {
       if (queue_it->DependsOn(removed_object_id)) {
         /* This task was dependent on the removed object. */
-        LOG_DEBUG("Moved task from actor dispatch queue back to waiting queue");
+        RAY_LOG(DEBUG) << "Moved task from actor dispatch queue back to "
+                       << "waiting queue";
         algorithm_state->waiting_task_queue->push_back(std::move(*queue_it));
         /* Remove the task from the dispatch queue, but do not free the task
          * spec. */
@@ -1667,16 +1665,16 @@ int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state) {
 
 void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state) {
-  LOG_DEBUG("%s: %lu available, %lu executing, %lu blocked", message,
-            algorithm_state->available_workers.size(),
-            algorithm_state->executing_workers.size(),
-            algorithm_state->blocked_workers.size());
+  RAY_LOG(DEBUG) << message << ": " << algorithm_state->available_workers.size()
+                 << " available, " << algorithm_state->executing_workers.size()
+                 << " executing, " << algorithm_state->blocked_workers.size()
+                 << " blocked";
 }
 
 std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
 get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
                         ActorID actor_id) {
-  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   return algorithm_state->local_actor_infos[actor_id].task_counters;
 }
 
@@ -1685,7 +1683,7 @@ void set_actor_task_counters(
     ActorID actor_id,
     const std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
         &task_counters) {
-  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   /* Overwrite the current task counters for the actor. This is necessary
    * during reconstruction when resuming from a checkpoint so that we can
    * resume the task frontier at the time that the checkpoint was saved. */
@@ -1731,7 +1729,7 @@ void set_actor_task_counters(
 std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id) {
-  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   return algorithm_state->local_actor_infos[actor_id].frontier_dependencies;
 }
 
@@ -1741,7 +1739,7 @@ void set_actor_frontier(
     ActorID actor_id,
     const std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
         &frontier_dependencies) {
-  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   auto entry = algorithm_state->local_actor_infos[actor_id];
   entry.frontier_dependencies = frontier_dependencies;
   for (auto frontier_dependency : entry.frontier_dependencies) {

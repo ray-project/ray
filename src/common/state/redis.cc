@@ -35,17 +35,17 @@ extern "C" {
 extern int usleep(useconds_t usec);
 #endif
 
-#define CHECK_REDIS_CONNECT(CONTEXT_TYPE, context, M, ...) \
-  do {                                                     \
-    CONTEXT_TYPE *_context = (context);                    \
-    if (!_context) {                                       \
-      LOG_FATAL("could not allocate redis context");       \
-    }                                                      \
-    if (_context->err) {                                   \
-      LOG_ERROR(M, ##__VA_ARGS__);                         \
-      LOG_REDIS_ERROR(_context, "");                       \
-      exit(-1);                                            \
-    }                                                      \
+#define CHECK_REDIS_CONNECT(CONTEXT_TYPE, context, M, ...)  \
+  do {                                                      \
+    CONTEXT_TYPE *_context = (context);                     \
+    if (!_context) {                                        \
+      RAY_LOG(FATAL) << "could not allocate redis context"; \
+    }                                                       \
+    if (_context->err) {                                    \
+      RAY_LOG(ERROR) << M;                                  \
+      LOG_REDIS_ERROR(_context, "");                        \
+      exit(-1);                                             \
+    }                                                       \
   } while (0)
 
 /**
@@ -110,14 +110,14 @@ void get_redis_shards(redisContext *context,
     num_attempts++;
     continue;
   }
-  CHECKM(num_attempts < RayConfig::instance().redis_db_connect_retries(),
-         "No entry found for NumRedisShards");
-  CHECKM(reply->type == REDIS_REPLY_STRING,
-         "Expected string, found Redis type %d for NumRedisShards",
-         reply->type);
+  RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
+      << "No entry found for NumRedisShards";
+  RAY_CHECK(reply->type == REDIS_REPLY_STRING)
+      << "Expected string, found Redis type " << reply->type
+      << " for NumRedisShards";
   int num_redis_shards = atoi(reply->str);
-  CHECKM(num_redis_shards >= 1, "Expected at least one Redis shard, found %d.",
-         num_redis_shards);
+  RAY_CHECK(num_redis_shards >= 1) << "Expected at least one Redis shard, "
+                                   << "found " << num_redis_shards;
   freeReplyObject(reply);
 
   /* Get the addresses of all of the Redis shards. */
@@ -137,18 +137,18 @@ void get_redis_shards(redisContext *context,
     num_attempts++;
     continue;
   }
-  CHECKM(num_attempts < RayConfig::instance().redis_db_connect_retries(),
-         "Expected %d Redis shard addresses, found %d", num_redis_shards,
-         (int) reply->elements);
+  RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
+      << "Expected " << num_redis_shards << " Redis shard addresses, found "
+      << reply->elements;
 
   /* Parse the Redis shard addresses. */
   char db_shard_address[16];
   int db_shard_port;
   for (size_t i = 0; i < reply->elements; ++i) {
     /* Parse the shard addresses and ports. */
-    CHECK(reply->element[i]->type == REDIS_REPLY_STRING);
-    CHECK(parse_ip_addr_port(reply->element[i]->str, db_shard_address,
-                             &db_shard_port) == 0);
+    RAY_CHECK(reply->element[i]->type == REDIS_REPLY_STRING);
+    RAY_CHECK(parse_ip_addr_port(reply->element[i]->str, db_shard_address,
+                                 &db_shard_port) == 0);
     db_shards_addresses.push_back(std::string(db_shard_address));
     db_shards_ports.push_back(db_shard_port);
   }
@@ -174,7 +174,7 @@ void db_connect_shard(const std::string &db_address,
         RayConfig::instance().redis_db_connect_retries()) {
       break;
     }
-    LOG_WARN("Failed to connect to Redis, retrying.");
+    RAY_LOG(WARNING) << "Failed to connect to Redis, retrying.";
     /* Sleep for a little. */
     usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
     sync_context = redisConnect(db_address.c_str(), db_port);
@@ -190,13 +190,13 @@ void db_connect_shard(const std::string &db_address,
    * processes by hand), it is easier to do it multiple times. */
   reply = (redisReply *) redisCommand(sync_context,
                                       "CONFIG SET notify-keyspace-events Kl");
-  CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
+  RAY_CHECK(reply != NULL) << "db_connect failed on CONFIG SET";
   freeReplyObject(reply);
   /* Also configure Redis to not run in protected mode, so clients on other
    * hosts can connect to it. */
   reply =
       (redisReply *) redisCommand(sync_context, "CONFIG SET protected-mode no");
-  CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
+  RAY_CHECK(reply != NULL) << "db_connect failed on CONFIG SET";
   freeReplyObject(reply);
 
   /* Construct the argument arrays for RAY.CONNECT. */
@@ -224,9 +224,9 @@ void db_connect_shard(const std::string &db_address,
   /* Register this client with Redis. RAY.CONNECT is a custom Redis command that
    * we've defined. */
   reply = (redisReply *) redisCommandArgv(sync_context, argc, argv, argvlen);
-  CHECKM(reply != NULL, "db_connect failed on RAY.CONNECT");
-  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+  RAY_CHECK(reply != NULL) << "db_connect failed on RAY.CONNECT";
+  RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is " << reply->str;
+  RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
   freeReplyObject(reply);
   free(argv);
   free(argvlen);
@@ -261,7 +261,7 @@ DBHandle *db_connect(const std::string &db_primary_address,
   /* Check that the number of args is even. These args will be passed to the
    * RAY.CONNECT Redis command, which takes arguments in pairs. */
   if (args.size() % 2 != 0) {
-    LOG_FATAL("The number of extra args must be divisible by two.");
+    RAY_LOG(FATAL) << "The number of extra args must be divisible by two.";
   }
 
   /* Create a client ID for this client. */
@@ -288,7 +288,7 @@ DBHandle *db_connect(const std::string &db_primary_address,
   std::vector<std::string> db_shards_addresses;
   std::vector<int> db_shards_ports;
   get_redis_shards(db->sync_context, db_shards_addresses, db_shards_ports);
-  CHECKM(db_shards_addresses.size() > 0, "No Redis shards found");
+  RAY_CHECK(db_shards_addresses.size() > 0) << "No Redis shards found";
   /* Connect to the shards. */
   for (size_t i = 0; i < db_shards_addresses.size(); ++i) {
     db_connect_shard(db_shards_addresses[i], db_shards_ports[i], client,
@@ -309,7 +309,7 @@ void DBHandle_free(DBHandle *db) {
   redisAsyncFree(db->subscribe_context);
 
   /* Clean up the Redis shards. */
-  CHECK(db->contexts.size() == db->subscribe_contexts.size());
+  RAY_CHECK(db->contexts.size() == db->subscribe_contexts.size());
   for (size_t i = 0; i < db->contexts.size(); ++i) {
     redisAsyncFree(db->contexts[i]);
     redisAsyncFree(db->subscribe_contexts[i]);
@@ -326,8 +326,8 @@ void db_disconnect(DBHandle *db) {
   redisReply *reply =
       (redisReply *) redisCommand(db->sync_context, "RAY.DISCONNECT %b",
                                   db->client.data(), sizeof(db->client));
-  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+  RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is " << reply->str;
+  RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
   freeReplyObject(reply);
 
   DBHandle_free(db);
@@ -340,24 +340,24 @@ void db_attach(DBHandle *db, event_loop *loop, bool reattach) {
   /* If the database is reattached in the tests, redis normally gives
    * an error which we can safely ignore. */
   if (!reattach) {
-    CHECKM(err == REDIS_OK, "failed to attach the event loop");
+    RAY_CHECK(err == REDIS_OK) << "failed to attach the event loop";
   }
   err = redisAeAttach(loop, db->subscribe_context);
   if (!reattach) {
-    CHECKM(err == REDIS_OK, "failed to attach the event loop");
+    RAY_CHECK(err == REDIS_OK) << "failed to attach the event loop";
   }
   /* Attach other redis shards to the event loop. */
-  CHECK(db->contexts.size() == db->subscribe_contexts.size());
+  RAY_CHECK(db->contexts.size() == db->subscribe_contexts.size());
   for (size_t i = 0; i < db->contexts.size(); ++i) {
     int err = redisAeAttach(loop, db->contexts[i]);
     /* If the database is reattached in the tests, redis normally gives
      * an error which we can safely ignore. */
     if (!reattach) {
-      CHECKM(err == REDIS_OK, "failed to attach the event loop");
+      RAY_CHECK(err == REDIS_OK) << "failed to attach the event loop";
     }
     err = redisAeAttach(loop, db->subscribe_contexts[i]);
     if (!reattach) {
-      CHECKM(err == REDIS_OK, "failed to attach the event loop");
+      RAY_CHECK(err == REDIS_OK) << "failed to attach the event loop";
     }
   }
 }
@@ -377,13 +377,14 @@ void redis_object_table_add_callback(redisAsyncContext *c,
   if (!success) {
     /* If our object hash doesn't match the one recorded in the table, report
      * the error back to the user and exit immediately. */
-    LOG_WARN(
-        "Found objects with different value but same object ID, most likely "
-        "because a nondeterministic task was executed twice, either for "
-        "reconstruction or for speculation.");
+    RAY_LOG(WARNING) << "Found objects with different value but same object "
+                     << "ID, most likely because a nondeterministic task was "
+                     << "executed twice, either for reconstruction or for "
+                     << "speculation.";
   } else {
-    CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-    CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+    RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is "
+                                                << reply->str;
+    RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
   }
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
@@ -428,8 +429,8 @@ void redis_object_table_remove_callback(redisAsyncContext *c,
      * condition with an object_table_add. */
     return;
   }
-  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+  RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is " << reply->str;
+  RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
     object_table_done_callback done_callback =
@@ -464,7 +465,7 @@ void redis_object_table_remove(TableCallbackData *callback_data) {
 }
 
 void redis_object_table_lookup(TableCallbackData *callback_data) {
-  CHECK(callback_data);
+  RAY_CHECK(callback_data);
   DBHandle *db = callback_data->db_handle;
 
   ObjectID obj_id = callback_data->id;
@@ -486,9 +487,9 @@ void redis_result_table_add_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
   /* Check that the command succeeded. */
-  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-  CHECKM(strncmp(reply->str, "OK", strlen("OK")) == 0, "reply->str is %s",
-         reply->str);
+  RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is " << reply->str;
+  RAY_CHECK(strncmp(reply->str, "OK", strlen("OK")) == 0) << "reply->str is "
+                                                          << reply->str;
   /* Call the done callback if there is one. */
   if (callback_data->done_callback) {
     result_table_done_callback done_callback =
@@ -499,7 +500,7 @@ void redis_result_table_add_callback(redisAsyncContext *c,
 }
 
 void redis_result_table_add(TableCallbackData *callback_data) {
-  CHECK(callback_data);
+  RAY_CHECK(callback_data);
   DBHandle *db = callback_data->db_handle;
   ObjectID id = callback_data->id;
   ResultTableAddInfo *info = (ResultTableAddInfo *) callback_data->data->Get();
@@ -522,10 +523,9 @@ void redis_result_table_add(TableCallbackData *callback_data) {
  * task is NULL. This is used by both redis_result_table_lookup_callback and
  * redis_task_table_get_task_callback. */
 Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
-  Task *task;
+  Task *task = NULL;
   if (reply->type == REDIS_REPLY_NIL) {
     /* There is no task in the reply, so return NULL. */
-    task = NULL;
   } else if (reply->type == REDIS_REPLY_STRING) {
     /* The reply is a flatbuffer TaskReply object. Parse it and construct the
      * task. */
@@ -540,7 +540,7 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
         from_flatbuf(*message->local_scheduler_id()),
         from_flatbuf(*execution_dependencies->execution_dependencies()));
   } else {
-    LOG_FATAL("Unexpected reply type %d", reply->type);
+    RAY_LOG(FATAL) << "Unexpected reply type " << reply->type;
   }
   /* Return the task. If it is not NULL, then it must be freed by the caller. */
   return task;
@@ -551,9 +551,9 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
                                         void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
-  CHECKM(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_STRING,
-         "Unexpected reply type %d in redis_result_table_lookup_callback",
-         reply->type);
+  RAY_CHECK(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_STRING)
+      << "Unexpected reply type " << reply->type << " in "
+      << "redis_result_table_lookup_callback";
   /* Parse the task from the reply. */
   TaskID result_id = TaskID::nil();
   bool is_put = false;
@@ -575,7 +575,7 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
 }
 
 void redis_result_table_lookup(TableCallbackData *callback_data) {
-  CHECK(callback_data);
+  RAY_CHECK(callback_data);
   DBHandle *db = callback_data->db_handle;
   ObjectID id = callback_data->id;
   redisAsyncContext *context = get_redis_context(db, id);
@@ -594,8 +594,8 @@ DBClient redis_db_client_table_get(DBHandle *db,
   redisReply *reply =
       (redisReply *) redisCommand(db->sync_context, "HGETALL %s%b",
                                   DB_CLIENT_PREFIX, client_id, client_id_len);
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
-  CHECK(reply->elements > 0);
+  RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
+  RAY_CHECK(reply->elements > 0);
   DBClient db_client;
   int num_fields = 0;
   /* Parse the fields into a DBClient. */
@@ -620,7 +620,7 @@ DBClient redis_db_client_table_get(DBHandle *db,
   freeReplyObject(reply);
   /* The client ID, type, and whether it is deleted are all
    * mandatory fields. Auxiliary address is optional. */
-  CHECK(num_fields >= 3);
+  RAY_CHECK(num_fields >= 3);
   return db_client;
 }
 
@@ -651,8 +651,8 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
                                         void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
-  LOG_DEBUG("Object table lookup callback");
-  CHECK(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_ARRAY);
+  RAY_LOG(DEBUG) << "Object table lookup callback";
+  RAY_CHECK(reply->type == REDIS_REPLY_NIL || reply->type == REDIS_REPLY_ARRAY);
 
   object_table_lookup_done_callback done_callback =
       (object_table_lookup_done_callback) callback_data->done_callback;
@@ -671,7 +671,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
     std::vector<DBClientID> manager_ids;
 
     for (size_t j = 0; j < reply->elements; ++j) {
-      CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
+      RAY_CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
       DBClientID manager_id;
       memcpy(manager_id.mutable_data(), reply->element[j]->str,
              sizeof(manager_id));
@@ -682,7 +682,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
       done_callback(obj_id, false, manager_ids, callback_data->user_context);
     }
   } else {
-    LOG_FATAL("Unexpected reply type from object table lookup.");
+    RAY_LOG(FATAL) << "Unexpected reply type from object table lookup.";
   }
 
   /* Clean up timer and callback. */
@@ -708,11 +708,11 @@ void object_table_redis_subscribe_to_notifications_callback(
    *     - reply->emement[2]->str is the contents of the message.
    */
   redisReply *reply = (redisReply *) r;
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
-  CHECK(reply->elements == 3);
+  RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
+  RAY_CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  LOG_DEBUG("Object table subscribe to notifications callback, message %s",
-            message_type->str);
+  RAY_LOG(DEBUG) << "Object table subscribe to notifications callback, message"
+                 << message_type->str;
 
   if (strcmp(message_type->str, "message") == 0) {
     /* We received an object notification. Parse the payload. */
@@ -752,8 +752,8 @@ void object_table_redis_subscribe_to_notifications_callback(
      * destroy the callback data. */
     remove_timer_callback(db->loop, callback_data);
   } else {
-    LOG_FATAL(
-        "Unexpected reply type from object table subscribe to notifications.");
+    RAY_LOG(FATAL) << "Unexpected reply type from object table subscribe to "
+                   << "notifications.";
   }
 }
 
@@ -770,8 +770,8 @@ void redis_object_table_subscribe_to_notifications(
      * as the channel name so this channel is specific to this client.
      * TODO(rkn):
      * The channel name should probably be the client ID with some prefix. */
-    CHECKM(callback_data->data->Get() != NULL,
-           "Object table subscribe data passed as NULL.");
+    RAY_CHECK(callback_data->data->Get() != NULL)
+        << "Object table subscribe data passed as NULL.";
     if (((ObjectTableSubscribeData *) (callback_data->data->Get()))
             ->subscribe_all) {
       /* Subscribe to the object broadcast channel. */
@@ -802,9 +802,9 @@ void redis_object_table_request_notifications_callback(redisAsyncContext *c,
 
   /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
-  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
-  CHECK(callback_data->done_callback == NULL);
+  RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is " << reply->str;
+  RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
+  RAY_CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
 }
@@ -876,7 +876,7 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
 
 void redis_task_table_get_task(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  CHECK(callback_data->data->Get() == NULL);
+  RAY_CHECK(callback_data->data->Get() == NULL);
   TaskID task_id = callback_data->id;
 
   redisAsyncContext *context = get_redis_context(db, task_id);
@@ -902,15 +902,16 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
   // db_client table before retrying the add.
   if (reply->type == REDIS_REPLY_ERROR &&
       strcmp(reply->str, "No subscribers received message.") == 0) {
-    LOG_WARN("No subscribers received the task_table_add message.");
+    RAY_LOG(WARNING) << "No subscribers received the task_table_add message.";
     if (callback_data->retry.fail_callback != NULL) {
       callback_data->retry.fail_callback(callback_data->id,
                                          callback_data->user_context,
                                          callback_data->data->Get());
     }
   } else {
-    CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-    CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+    RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is "
+                                                << reply->str;
+    RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
     /* Call the done callback if there is one. */
     if (callback_data->done_callback != NULL) {
       task_table_done_callback done_callback =
@@ -926,7 +927,7 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
 void redis_task_table_add_task(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data->Get();
-  CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
+  RAY_CHECK(task != NULL) << "NULL task passed to redis_task_table_add_task.";
 
   TaskID task_id = Task_task_id(task);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
@@ -967,15 +968,17 @@ void redis_task_table_update_callback(redisAsyncContext *c,
   // alive in the db_client table.
   if (reply->type == REDIS_REPLY_ERROR &&
       strcmp(reply->str, "No subscribers received message.") == 0) {
-    LOG_WARN("No subscribers received the task_table_update message.");
+    RAY_LOG(WARNING) << "No subscribers received the task_table_update "
+                     << "message.";
     if (callback_data->retry.fail_callback != NULL) {
       callback_data->retry.fail_callback(callback_data->id,
                                          callback_data->user_context,
                                          callback_data->data->Get());
     }
   } else {
-    CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-    CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+    RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is "
+                                                << reply->str;
+    RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
 
     /* Call the done callback if there is one. */
     if (callback_data->done_callback != NULL) {
@@ -992,7 +995,7 @@ void redis_task_table_update_callback(redisAsyncContext *c,
 void redis_task_table_update(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data->Get();
-  CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
+  RAY_CHECK(task != NULL) << "NULL task passed to redis_task_table_update.";
 
   TaskID task_id = Task_task_id(task);
   redisAsyncContext *context = get_redis_context(db, task_id);
@@ -1030,7 +1033,7 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
      * delayed when added to the task table if they are submitted to a local
      * scheduler before it receives the notification that maps the actor to a
      * local scheduler. */
-    LOG_ERROR("No task found during task_table_test_and_update");
+    RAY_LOG(ERROR) << "No task found during task_table_test_and_update";
     return;
   }
   /* Determine whether the update happened. */
@@ -1091,11 +1094,11 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
 
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
   /* The number of elements is 3 for a reply to SUBSCRIBE, and 4 for a reply to
    * PSUBSCRIBE. */
-  CHECKM(reply->elements == 3 || reply->elements == 4, "reply->elements is %zu",
-         reply->elements);
+  RAY_CHECK(reply->elements == 3 || reply->elements == 4)
+      << "reply->elements is " << reply->elements;
   /* The first element is the message type and the last entry is the payload.
    * The middle one or middle two elements describe the channel that was
    * published on. */
@@ -1148,9 +1151,8 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
      * subscription callback needs this data. */
     remove_timer_callback(db->loop, callback_data);
   } else {
-    LOG_FATAL(
-        "Unexpected reply type from task table subscribe. Message type is %s.",
-        message_type->str);
+    RAY_LOG(FATAL) << "Unexpected reply type from task table subscribe. "
+                   << "Message type is " << message_type->str;
   }
 }
 
@@ -1200,8 +1202,8 @@ void redis_db_client_table_remove_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
 
-  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+  RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is " << reply->str;
+  RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
 
   /* Call the done callback if there is one. */
   db_client_table_done_callback done_callback =
@@ -1235,7 +1237,7 @@ void redis_db_client_table_scan(DBHandle *db,
     return;
   }
   /* Get all the database client information. */
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
   for (size_t i = 0; i < reply->elements; ++i) {
     /* Strip the database client table prefix. */
     unsigned char *key = (unsigned char *) reply->element[i]->str;
@@ -1255,8 +1257,8 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
 
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
-  CHECK(reply->elements > 2);
+  RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
+  RAY_CHECK(reply->elements > 2);
   /* First entry is message type, then possibly the regex we psubscribed to,
    * then topic, then payload. */
   redisReply *payload = reply->element[reply->elements - 1];
@@ -1323,11 +1325,11 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
   redisReply *reply = (redisReply *) r;
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
-  CHECK(reply->elements == 3);
+  RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
+  RAY_CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  LOG_DEBUG("Local scheduler table subscribe callback, message %s",
-            message_type->str);
+  RAY_LOG(DEBUG) << "Local scheduler table subscribe callback, message "
+                 << message_type->str;
 
   if (strcmp(message_type->str, "message") == 0) {
     /* Handle a local scheduler heartbeat. Parse the payload and call the
@@ -1362,13 +1364,13 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
     }
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE command. */
-    CHECK(callback_data->done_callback == NULL);
+    RAY_CHECK(callback_data->done_callback == NULL);
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
     remove_timer_callback(db->loop, callback_data);
 
   } else {
-    LOG_FATAL("Unexpected reply type from local scheduler subscribe.");
+    RAY_LOG(FATAL) << "Unexpected reply type from local scheduler subscribe.";
   }
 }
 
@@ -1389,10 +1391,10 @@ void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
   redisReply *reply = (redisReply *) r;
-  CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
+  RAY_CHECK(reply->type == REDIS_REPLY_INTEGER);
+  RAY_LOG(DEBUG) << reply->integer << " subscribers received this publish.";
 
-  CHECK(callback_data->done_callback == NULL);
+  RAY_CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
 }
@@ -1430,9 +1432,9 @@ void redis_local_scheduler_table_disconnect(DBHandle *db) {
   redisReply *reply = (redisReply *) redisCommand(
       db->sync_context, "PUBLISH local_schedulers %b", fbb.GetBufferPointer(),
       (size_t) fbb.GetSize());
-  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-  CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
+  RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is " << reply->str;
+  RAY_CHECK(reply->type == REDIS_REPLY_INTEGER);
+  RAY_LOG(DEBUG) << reply->integer << " subscribers received this publish.";
   freeReplyObject(reply);
 }
 
@@ -1442,10 +1444,11 @@ void redis_driver_table_subscribe_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
   redisReply *reply = (redisReply *) r;
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
-  CHECK(reply->elements == 3);
+  RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
+  RAY_CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  LOG_DEBUG("Driver table subscribe callback, message %s", message_type->str);
+  RAY_LOG(DEBUG) << "Driver table subscribe callback, message "
+                 << message_type->str;
 
   if (strcmp(message_type->str, "message") == 0) {
     /* Handle a driver heartbeat. Parse the payload and call the subscribe
@@ -1463,13 +1466,13 @@ void redis_driver_table_subscribe_callback(redisAsyncContext *c,
     }
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE command. */
-    CHECK(callback_data->done_callback == NULL);
+    RAY_CHECK(callback_data->done_callback == NULL);
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
     remove_timer_callback(db->loop, callback_data);
 
   } else {
-    LOG_FATAL("Unexpected reply type from driver subscribe.");
+    RAY_LOG(FATAL) << "Unexpected reply type from driver subscribe.";
   }
 }
 
@@ -1490,13 +1493,13 @@ void redis_driver_table_send_driver_death_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
   redisReply *reply = (redisReply *) r;
-  CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
+  RAY_CHECK(reply->type == REDIS_REPLY_INTEGER);
+  RAY_LOG(DEBUG) << reply->integer << " subscribers received this publish.";
   /* At the very least, the local scheduler that publishes this message should
    * also receive it. */
-  CHECK(reply->integer >= 1);
+  RAY_CHECK(reply->integer >= 1);
 
-  CHECK(callback_data->done_callback == NULL);
+  RAY_CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
 }
@@ -1544,11 +1547,11 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
   redisReply *reply = (redisReply *) r;
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
-  CHECK(reply->elements == 3);
+  RAY_CHECK(reply->type == REDIS_REPLY_ARRAY);
+  RAY_CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  LOG_DEBUG("Local scheduler table subscribe callback, message %s",
-            message_type->str);
+  RAY_LOG(DEBUG) << "Local scheduler table subscribe callback, message "
+                 << message_type->str;
 
   if (strcmp(message_type->str, "message") == 0) {
     /* Handle an actor notification message. Parse the payload and call the
@@ -1561,9 +1564,9 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     WorkerID driver_id;
     DBClientID local_scheduler_id;
     bool reconstruct;
-    CHECK(sizeof(actor_id) + sizeof(driver_id) + sizeof(local_scheduler_id) +
-              1 ==
-          payload->len);
+    RAY_CHECK(sizeof(actor_id) + sizeof(driver_id) +
+                  sizeof(local_scheduler_id) + 1 ==
+              payload->len);
     char *current_ptr = payload->str;
     /* Parse the actor ID. */
     memcpy(&actor_id, current_ptr, sizeof(actor_id));
@@ -1580,7 +1583,8 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     } else if (*current_ptr == '0') {
       reconstruct = false;
     } else {
-      LOG_FATAL("This code should be unreachable.");
+      reconstruct = false;  // We set this value to avoid a compiler warning.
+      RAY_LOG(FATAL) << "This code should be unreachable.";
     }
     current_ptr += 1;
 
@@ -1590,13 +1594,14 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     }
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE command. */
-    CHECK(callback_data->done_callback == NULL);
+    RAY_CHECK(callback_data->done_callback == NULL);
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
     remove_timer_callback(db->loop, callback_data);
 
   } else {
-    LOG_FATAL("Unexpected reply type from actor notification subscribe.");
+    RAY_LOG(FATAL) << "Unexpected reply type from actor notification "
+                   << "subscribe.";
   }
 }
 
@@ -1627,7 +1632,7 @@ void redis_push_error_rpush_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
   /* The reply should be the length of the errors list after our RPUSH. */
-  CHECK(reply->type == REDIS_REPLY_INTEGER);
+  RAY_CHECK(reply->type == REDIS_REPLY_INTEGER);
   destroy_timer_callback(db->loop, callback_data);
 }
 
@@ -1638,8 +1643,8 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
   redisReply *reply = (redisReply *) r;
 
   /* Make sure we were able to add the error information. */
-  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
-  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+  RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is " << reply->str;
+  RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
 
   /* Add the error to this driver's list of errors. */
   ErrorInfo *info = (ErrorInfo *) callback_data->data->Get();
@@ -1656,7 +1661,7 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
 void redis_push_error(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   ErrorInfo *info = (ErrorInfo *) callback_data->data->Get();
-  CHECK(info->error_index < MAX_ERROR_INDEX && info->error_index >= 0);
+  RAY_CHECK(info->error_index < MAX_ERROR_INDEX && info->error_index >= 0);
   /* Look up the error type. */
   const char *error_type = error_types[info->error_index];
   const char *error_message = error_messages[info->error_index];
@@ -1674,6 +1679,6 @@ void redis_push_error(TableCallbackData *callback_data) {
 }
 
 DBClientID get_db_client_id(DBHandle *db) {
-  CHECK(db != NULL);
+  RAY_CHECK(db != NULL);
   return db->client;
 }

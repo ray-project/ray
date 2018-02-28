@@ -31,7 +31,7 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
                                           void *user_data) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   Task *task = (Task *) user_data;
-  CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
+  RAY_CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
 
   // If the local scheduler has died since we requested the task assignment, do
   // not retry again.
@@ -68,13 +68,13 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
 void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     Task *task,
                                     DBClientID local_scheduler_id) {
-  std::string id_string = local_scheduler_id.hex();
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-  LOG_DEBUG("assigning task to local_scheduler_id = %s", id_string.c_str());
+  RAY_LOG(DEBUG) << "assigning task to local_scheduler_id = "
+                 << local_scheduler_id;
   Task_set_state(task, TASK_STATUS_SCHEDULED);
   Task_set_local_scheduler(task, local_scheduler_id);
-  id_string = Task_task_id(task).hex();
-  LOG_DEBUG("Issuing a task table update for task = %s", id_string.c_str());
+  RAY_LOG(DEBUG) << "Issuing a task table update for task = "
+                 << Task_task_id(task);
 
 #if !RAY_USE_NEW_GCS
   auto retryInfo = RetryInfo{
@@ -99,7 +99,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
       /* The value -1 indicates that the size of the object is not known yet. */
       obj_info_entry.data_size = -1;
     }
-    CHECK(state->local_scheduler_plasma_map.count(local_scheduler_id) == 1);
+    RAY_CHECK(state->local_scheduler_plasma_map.count(local_scheduler_id) == 1);
     state->scheduler_object_info_table[return_id].object_locations.push_back(
         state->local_scheduler_plasma_map[local_scheduler_id]);
   }
@@ -108,7 +108,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
    * instead of db_client_id objects. */
   /* Update the local scheduler info. */
   auto it = state->local_schedulers.find(local_scheduler_id);
-  CHECK(it != state->local_schedulers.end());
+  RAY_CHECK(it != state->local_schedulers.end());
 
   LocalScheduler &local_scheduler = it->second;
   local_scheduler.num_tasks_sent += 1;
@@ -119,8 +119,9 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
     double resource_quantity = resource_pair.second;
     // The local scheduler must have this resource because otherwise we wouldn't
     // be assigning the task to this local scheduler.
-    CHECK(local_scheduler.info.dynamic_resources.count(resource_name) == 1 ||
-          resource_quantity == 0);
+    RAY_CHECK(local_scheduler.info.dynamic_resources.count(resource_name) ==
+                  1 ||
+              resource_quantity == 0);
     // Subtract task's resource from the cached dynamic resource capacity for
     // this local scheduler. This will be overwritten on the next heartbeat.
     local_scheduler.info.dynamic_resources[resource_name] =
@@ -161,9 +162,8 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
   /* Free the array of unschedulable tasks. */
   int64_t num_pending_tasks = state->pending_tasks.size();
   if (num_pending_tasks > 0) {
-    LOG_WARN("There are %" PRId64
-             " remaining tasks in the pending tasks array.",
-             num_pending_tasks);
+    RAY_LOG(WARNING) << "There are " << num_pending_tasks
+                     << " remaining tasks in the pending tasks array.";
   }
   for (int i = 0; i < num_pending_tasks; ++i) {
     Task *pending_task = state->pending_tasks[i];
@@ -195,7 +195,7 @@ void signal_handler(int signal) {
 
 void process_task_waiting(Task *waiting_task, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  LOG_DEBUG("Task waiting callback is called.");
+  RAY_LOG(DEBUG) << "Task waiting callback is called.";
   bool successfully_assigned =
       handle_task_waiting(state, state->policy_state, waiting_task);
   /* If the task was not successfully submitted to a local scheduler, add the
@@ -238,7 +238,7 @@ remove_local_scheduler(
     GlobalSchedulerState *state,
     std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>::iterator
         it) {
-  CHECK(it != state->local_schedulers.end());
+  RAY_CHECK(it != state->local_schedulers.end());
   DBClientID local_scheduler_id = it->first;
   it = state->local_schedulers.erase(it);
 
@@ -264,8 +264,8 @@ remove_local_scheduler(
  */
 void process_new_db_client(DBClient *db_client, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  std::string id_string = db_client->id.hex();
-  LOG_DEBUG("db client table callback for db client = %s", id_string.c_str());
+  RAY_LOG(DEBUG) << "db client table callback for db client = "
+                 << db_client->id;
   if (strncmp(db_client->client_type.c_str(), "local_scheduler",
               strlen("local_scheduler")) == 0) {
     bool local_scheduler_present =
@@ -304,15 +304,14 @@ void object_table_subscribe_callback(ObjectID object_id,
                                      void *user_context) {
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  std::string id_string = object_id.hex();
-  LOG_DEBUG("object table subscribe callback for OBJECT = %s",
-            id_string.c_str());
+  RAY_LOG(DEBUG) << "object table subscribe callback for OBJECT = "
+                 << object_id;
 
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(state->db, manager_ids);
-  LOG_DEBUG("\tManagers<%lu>:", managers.size());
+  RAY_LOG(DEBUG) << "\tManagers<" << managers.size() << ">:";
   for (size_t i = 0; i < managers.size(); i++) {
-    LOG_DEBUG("\t\t%s", managers[i].c_str());
+    RAY_LOG(DEBUG) << "\t\t" << managers[i];
   }
 
   if (state->scheduler_object_info_table.find(object_id) ==
@@ -322,12 +321,11 @@ void object_table_subscribe_callback(ObjectID object_id,
         state->scheduler_object_info_table[object_id];
     obj_info_entry.data_size = data_size;
 
-    id_string = object_id.hex();
-    LOG_DEBUG("New object added to object_info_table with id = %s",
-              id_string.c_str());
-    LOG_DEBUG("\tmanager locations:");
+    RAY_LOG(DEBUG) << "New object added to object_info_table with id = "
+                   << object_id;
+    RAY_LOG(DEBUG) << "\tmanager locations:";
     for (size_t i = 0; i < managers.size(); i++) {
-      LOG_DEBUG("\t\t%s", managers[i].c_str());
+      RAY_LOG(DEBUG) << "\t\t" << managers[i];
     }
   }
 
@@ -347,12 +345,10 @@ void local_scheduler_table_handler(DBClientID client_id,
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   ARROW_UNUSED(state);
-  std::string id_string = client_id.hex();
-  LOG_DEBUG("Local scheduler heartbeat from db_client_id %s",
-            id_string.c_str());
-  LOG_DEBUG(
-      "total workers = %d, task queue length = %d, available workers = %d",
-      info.total_num_workers, info.task_queue_length, info.available_workers);
+  RAY_LOG(DEBUG) << "Local scheduler heartbeat from db_client_id " << client_id;
+  RAY_LOG(DEBUG) << "total workers = " << info.total_num_workers
+                 << ", task queue length = " << info.task_queue_length
+                 << ", available workers = " << info.available_workers;
 
   /* Update the local scheduler info struct. */
   auto it = state->local_schedulers.find(client_id);
@@ -371,7 +367,8 @@ void local_scheduler_table_handler(DBClientID client_id,
       local_scheduler.info = info;
     }
   } else {
-    LOG_WARN("client_id didn't match any cached local scheduler entries");
+    RAY_LOG(WARNING) << "client_id didn't match any cached local scheduler "
+                     << "entries";
   }
 }
 
@@ -408,8 +405,8 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
   while (it != state->local_schedulers.end()) {
     if (it->second.num_heartbeats_missed >=
         RayConfig::instance().num_heartbeats_timeout()) {
-      LOG_WARN(
-          "Missed too many heartbeats from local scheduler, marking as dead.");
+      RAY_LOG(WARNING) << "Missed too many heartbeats from local scheduler, "
+                       << "marking as dead.";
       /* Notify others by updating the global state. */
       db_client_table_remove(state->db, it->second.id, NULL, NULL, NULL);
       /* Remove the scheduler from the local state. The call to
@@ -484,22 +481,20 @@ int main(int argc, char *argv[]) {
       node_ip_address = optarg;
       break;
     default:
-      LOG_ERROR("unknown option %c", c);
-      exit(-1);
+      RAY_LOG(FATAL) << "unknown option " << c;
     }
   }
 
   char redis_primary_addr[16];
-  int redis_primary_port;
+  int redis_primary_port = -1;
   if (!redis_primary_addr_port ||
       parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
                          &redis_primary_port) == -1) {
-    LOG_FATAL(
-        "specify the primary redis address like 127.0.0.1:6379 with the -r "
-        "switch");
+    RAY_LOG(FATAL) << "specify the primary redis address like 127.0.0.1:6379 "
+                   << "with the -r switch";
   }
   if (!node_ip_address) {
-    LOG_FATAL("specify the node IP address with the -h switch");
+    RAY_LOG(FATAL) << "specify the node IP address with the -h switch";
   }
   start_server(node_ip_address, redis_primary_addr, redis_primary_port);
 }

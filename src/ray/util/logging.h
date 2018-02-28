@@ -34,12 +34,26 @@ namespace ray {
                         << __FILE__ << __LINE__          \
                         << " Check failed: " #condition " "
 
+#ifdef NDEBUG
+
+#define RAY_DCHECK(condition) \
+  RAY_IGNORE_EXPR(condition)  \
+  while (false)               \
+  ::ray::internal::NullLog()
+
+#else
+
+#define RAY_DCHECK(condition) RAY_CHECK(condition)
+
+#endif  // NDEBUG
+
 namespace internal {
 
 class NullLog {
  public:
   template <class T>
   NullLog &operator<<(const T &t) {
+    RAY_IGNORE_EXPR(t);
     return *this;
   }
 };
