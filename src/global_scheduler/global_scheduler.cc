@@ -126,6 +126,10 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
     local_scheduler.info.dynamic_resources[resource_name] =
         MAX(0, local_scheduler.info.dynamic_resources[resource_name] -
                    resource_quantity);
+    // TODO(atumanov): leave reported dynamic resources immutable.
+    local_scheduler.expected_capacity[resource_name] =
+        MAX(0, local_scheduler.expected_capacity[resource_name] -
+                   resource_quantity);
   }
 }
 
@@ -348,6 +352,7 @@ void local_scheduler_table_handler(DBClientID client_id,
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   ARROW_UNUSED(state);
   std::string id_string = client_id.hex();
+  int64_t curtime = current_time_ms();
   LOG_DEBUG("Local scheduler heartbeat from db_client_id %s",
             id_string.c_str());
   LOG_DEBUG(
@@ -368,6 +373,9 @@ void local_scheduler_table_handler(DBClientID client_id,
       LocalScheduler &local_scheduler = it->second;
       local_scheduler.num_heartbeats_missed = 0;
       local_scheduler.num_recent_tasks_sent = 0;
+      local_scheduler.last_heartbeat = curtime;
+      /* Overwrite expected capacity with reported dynamic resource capacity. */
+      local_scheduler.expected_capacity = info.dynamic_resources;
       local_scheduler.info = info;
     }
   } else {
