@@ -1,9 +1,7 @@
 #include <iostream>
 #include <future>
-#include <memory>
 
 #include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
 
@@ -18,26 +16,20 @@ namespace ray {
 
 ObjectStoreClient::ObjectStoreClient(
     boost::asio::io_service &io_service,
-    string &store_socket_name,
-    std::shared_ptr<ObjectDirectoryInterface> od
+    string &store_socket_name
 ) : client_one_(),
     client_two_(),
-    socket_(io_service),
-    od_(od) {
+    socket_(io_service){
   ARROW_CHECK_OK(this->client_two_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
-
   ARROW_CHECK_OK(this->client_one_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
-  ARROW_CHECK_OK(this->client_one_.Subscribe(&c_socket_));
 
+  // Connect to two clients, but subscribe to only one.
+  ARROW_CHECK_OK(this->client_one_.Subscribe(&c_socket_));
   boost::system::error_code ec;
   socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
   assert(!ec.value());
   this->NotificationWait();
 };
-
-void ObjectStoreClient::SetClientID(ClientID client_id){
-  this->client_id_ = client_id;
-}
 
 void ObjectStoreClient::Terminate() {
   ARROW_CHECK_OK(this->client_two_.Disconnect());
@@ -82,14 +74,12 @@ void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code
 }
 
 void ObjectStoreClient::ProcessStoreAdd(const ObjectID& object_id){
-  ray::Status status = this->od_->ObjectAdded(object_id, client_id_);
   for (auto handler : this->add_handlers){
     handler(object_id);
   }
 };
 
 void ObjectStoreClient::ProcessStoreRemove(const ObjectID& object_id){
-  ray::Status status = this->od_->ObjectRemoved(object_id, client_id_);
   for (auto handler : this->rem_handlers){
     handler(object_id);
   }

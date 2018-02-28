@@ -44,23 +44,6 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection> {
   std::vector<uint8_t> message_;
 };
 
-class TCPClientConnection : public boost::enable_shared_from_this<TCPClientConnection> {
-
- public:
-  typedef boost::shared_ptr<TCPClientConnection> pointer;
-  static pointer Create(boost::asio::io_service& io_service);
-  boost::asio::ip::tcp::socket& GetSocket();
-
-  TCPClientConnection(boost::asio::io_service& io_service);
-
-  int64_t message_type_;
-  uint64_t message_length_;
-
- private:
-  boost::asio::ip::tcp::socket socket_;
-
-};
-
 } // end namespace ray
 
 #endif

@@ -23,9 +23,9 @@ class ObjectStoreClient {
 
  public:
 
+  // Encapsulates communication with the object store.
   ObjectStoreClient(boost::asio::io_service &io_service,
-                    std::string &store_socket_name,
-                    std::shared_ptr<ObjectDirectoryInterface> od);
+                    std::string &store_socket_name);
 
   // Subscribe to notifications of objects added to local store.
   // Upon subscribing, the callback will be invoked for all objects that
@@ -35,15 +35,17 @@ class ObjectStoreClient {
   // Subscribe to notifications of objects deleted from local store.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID&)> callback);
 
+  // TODO(hme): There should be as many client connections as there are threads.
+  // Two client connections are made to enable concurrent communication with the store.
   plasma::PlasmaClient &GetClient();
   plasma::PlasmaClient &GetClientOther();
 
-  void SetClientID(ClientID client_id);
-
+  // Terminate this object.
   void Terminate();
 
  private:
-  // async callback chain...
+
+  // Async loop for handling object store notifications.
   void NotificationWait();
   void ProcessStoreLength(const boost::system::error_code &error);
   void ProcessStoreNotification(const boost::system::error_code &error);
@@ -60,8 +62,6 @@ class ObjectStoreClient {
   int64_t length_;
   std::vector<uint8_t> notification_;
   boost::asio::local::stream_protocol::socket socket_;
-  std::shared_ptr<ObjectDirectoryInterface> od_;
-  ClientID client_id_;
 };
 
 }
