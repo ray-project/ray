@@ -22,7 +22,7 @@ class SimpleCorridor(gym.Env):
         self.end_pos = config["corridor_length"]
         self.cur_pos = 0
         self.action_space = Discrete(2)
-        self.observation_space = Box(0.0, self.end_pos, shape=(1,))
+        self.observation_space = Box(0.0, self.end_pos, shape=(1,), dtype=np.float32)
         self._spec = EnvSpec("SimpleCorridor-{}-v0".format(self.end_pos))
 
     def _reset(self):

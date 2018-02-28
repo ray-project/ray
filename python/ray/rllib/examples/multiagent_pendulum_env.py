@@ -22,10 +22,12 @@ class MultiAgentPendulumEnv(PendulumEnv):
 
         high = np.array([1., 1., self.max_speed])
         self.action_space = [Box(low=-self.max_torque / 2,
-                                 high=self.max_torque / 2, shape=(1,))
+                                 high=self.max_torque / 2,
+                                 shape=(1,),
+                                 dtype=np.float32)
                              for _ in range(2)]
         self.observation_space = Tuple([
-            Box(low=-high, high=high) for _ in range(2)])
+            Box(low=-high, high=high, dtype=np.float32) for _ in range(2)])
 
         self.seed()
 
