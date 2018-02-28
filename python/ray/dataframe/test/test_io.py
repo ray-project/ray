@@ -5,7 +5,6 @@ from __future__ import print_function
 import pytest
 import numpy as np
 import pandas as pd
-import ray
 import ray.dataframe as rdf
 import ray.dataframe.io as io
 import os
@@ -58,7 +57,6 @@ def teardown_csv_file():
 
 
 def test_from_parquet_small():
-    ray.init()
 
     setup_parquet_file(SMALL_ROW_SIZE)
 
