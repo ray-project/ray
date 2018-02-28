@@ -23,7 +23,7 @@ APEX_DEFAULT_CONFIG.update(dict(
 
 
 class ApexAgent(DQNAgent):
-    """DQN agent configured to run in Ape-X mode by default.
+    """DQN variant that uses the Ape-X policy optimizer by default.
 
     By default, this is configured for a large single node (32 cores). For
     running in a large cluster, increase `num_workers` and consider setting
