@@ -13,19 +13,7 @@
 using namespace std;
 namespace ray {
 
-// TODO(swang): Move this to a header file shared by LocalScheduler and ObjectManager.
-class ClientManager {
- public:
-  /// Process a message from a client, then listen for more messages if the
-  /// client is still alive.
-  virtual void ProcessClientMessage(
-      shared_ptr<ClientConnection> client,
-      int64_t message_type,
-      const uint8_t *message) = 0;
-};
-
-
-class LocalScheduler : public ClientManager {
+class LocalScheduler : public ClientManager<boost::asio::local::stream_protocol> {
  public:
   LocalScheduler(
       const std::string &socket_name,
@@ -33,7 +21,7 @@ class LocalScheduler : public ClientManager {
       ObjectManager &object_manager);
   /// Process a message from a client, then listen for more messages if the
   /// client is still alive.
-  void ProcessClientMessage(shared_ptr<ClientConnection> client, int64_t message_type, const uint8_t *message);
+  void ProcessClientMessage(shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message);
   void HandleWaitingTaskReady(const TaskID &task_id);
  private:
   /// Submit a task to this node.

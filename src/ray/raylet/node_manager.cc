@@ -64,7 +64,7 @@ void NodeServer::DoAccept() {
 void NodeServer::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
     // Accept a new client.
-    auto new_connection = ClientConnection::Create(local_scheduler_, std::move(socket_));
+    auto new_connection = LocalClientConnection::Create(local_scheduler_, std::move(socket_));
     new_connection->ProcessMessages();
   }
   // We're ready to accept another client.
