@@ -27,13 +27,13 @@ class MultiAgentPendulumEnv(PendulumEnv):
         self.observation_space = Tuple([
             Box(low=-high, high=high) for _ in range(2)])
 
-        self._seed()
+        self.seed()
 
-    def _seed(self, seed=None):
+    def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def _step(self, u):
+    def step(self, u):
         th, thdot = self.state  # th := theta
 
         summed_u = np.sum(u)
@@ -55,7 +55,7 @@ class MultiAgentPendulumEnv(PendulumEnv):
         self.state = np.array([newth, newthdot])
         return self._get_obs(), -costs, False, {}
 
-    def _reset(self):
+    def reset(self):
         high = np.array([np.pi, 1])
         self.state = self.np_random.uniform(low=-high, high=high)
         self.last_u = None

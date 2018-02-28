@@ -25,10 +25,10 @@ class MultiAgentMountainCarEnv(MountainCarEnv):
         self.observation_space = Tuple([
             Box(self.low, self.high) for _ in range(2)])
 
-        self._seed()
+        self.seed()
         self.reset()
 
-    def _step(self, action):
+    def step(self, action):
         summed_act = 0.5 * np.sum(action)
 
         position, velocity = self.state
@@ -47,6 +47,6 @@ class MultiAgentMountainCarEnv(MountainCarEnv):
         self.state = (position, velocity)
         return [np.array(self.state) for _ in range(2)], reward, done, {}
 
-    def _reset(self):
+    def reset(self):
         self.state = np.array([self.np_random.uniform(low=-0.6, high=-0.4), 0])
         return [np.array(self.state) for _ in range(2)]
