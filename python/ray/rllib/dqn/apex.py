@@ -21,7 +21,7 @@ APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
     timesteps_per_iteration=25000,
     per_worker_exploration=True,
     worker_side_prioritization=True,
-    force_evaluators_remote=False,
+    force_evaluators_remote=False,  # consider enabling for large clusters
 ))
 
 
