@@ -71,12 +71,12 @@ void NodeServer::HandleAccept(const boost::system::error_code &error) {
   DoAccept();
 }
 
-ObjectManager &NodeServer::GetObjectManager(){
+ObjectManager &NodeServer::GetObjectManager() {
   return object_manager_;
 }
 
-void NodeServer::Terminate(){
-  ray::Status status = object_manager_.Terminate();
+ray::Status NodeServer::Terminate(){
+  return object_manager_.Terminate();
 }
 
 } // end namespace ray

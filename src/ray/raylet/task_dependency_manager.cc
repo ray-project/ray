@@ -78,7 +78,8 @@ void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
       num_missing_arguments++;
       // TODO(swang): Check return status.
       // TODO(swang): Handle Pull failure (if object manager does not retry).
-      object_manager_.Pull(argument);
+      // TODO(atumanov): pull return status should be propagated back to the caller.
+      ray::Status status = object_manager_.Pull(argument);
     }
   }
   // Check that the task has some missing arguments.
