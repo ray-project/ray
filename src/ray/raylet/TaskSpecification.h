@@ -24,6 +24,7 @@ class TaskArgument {
   virtual flatbuffers::Offset<Arg> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const = 0;
   virtual const BYTE *HashData() const = 0;
   virtual size_t HashDataLength() const = 0;
+  virtual ~TaskArgument() = 0;
 };
 
 /// A TaskSpecification argument consisting of a list of object ID references.
