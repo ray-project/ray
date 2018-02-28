@@ -8,7 +8,7 @@
 
 namespace ray {
 
-template <typename T>
+template <class T>
 class ClientManager;
 
 // A generic type representing a client connection on a server. This class can
@@ -56,7 +56,7 @@ using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
 
 // A generic client manager. This class should define a method for processing a
 // message on the server sent by the client.
-template <typename T>
+template <class T>
 class ClientManager {
  public:
   /// Process a message from a client, then listen for more messages if the
@@ -65,6 +65,7 @@ class ClientManager {
       std::shared_ptr<ClientConnection<T>> client,
       int64_t message_type,
       const uint8_t *message) = 0;
+  virtual ~ClientManager() = 0;
 };
 
 class TCPClientConnection : public boost::enable_shared_from_this<TCPClientConnection> {

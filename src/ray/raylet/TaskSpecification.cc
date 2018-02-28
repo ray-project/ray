@@ -9,6 +9,9 @@
 using namespace std;
 namespace ray {
 
+TaskArgument::~TaskArgument() {
+}
+
 TaskArgumentByReference::TaskArgumentByReference(const std::vector<ObjectID> &references) : references_(references) {
 }
 
