@@ -14,8 +14,6 @@ if __name__ == '__main__':
 
     for test in glob.glob("regression_tests/*.yaml"):
         config = yaml.load(open(test).read())
-        for trial in config.values():
-            trial["stop"]["training_iteration"] = 1
         experiments.update(config)
 
     print("== Test config ==")
