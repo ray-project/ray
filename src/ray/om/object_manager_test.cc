@@ -66,8 +66,10 @@ class TestObjectManager : public ::testing::Test {
 
   void TearDown() {
     this->StopLoop();
-    client_.Disconnect();
-    om->Terminate();
+    arrow::Status arrow_status = client_.Disconnect();
+    ASSERT_TRUE(arrow_status.ok());
+    ray::Status ray_status = om->Terminate();
+    ASSERT_TRUE(ray_status.ok());
     // om2->Terminate();
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
@@ -120,9 +122,10 @@ void ObjectAdded(const ObjectID &object_id){
 }
 
 TEST_F(TestObjectManager, TestNotifications) {
-  om->SubscribeObjAdded(ObjectAdded);
+  ray::Status status = om->SubscribeObjAdded(ObjectAdded);
+  ASSERT_TRUE(status.ok());
   // put object
-  for(int i=-1;++i<10;){
+  for(int i = 0; i < 10; ++i) {
     ObjectID object_id = ObjectID::from_random();
     cout << "ObjectID Created: " << object_id.hex().c_str() << endl;
     int64_t data_size = 100;

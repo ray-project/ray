@@ -77,11 +77,13 @@ public:
 
   void TearDown() {
     this->StopLoop();
-    client1.Disconnect();
-    client2.Disconnect();
+    arrow::Status client1_status = client1.Disconnect();
+    arrow::Status client2_status = client2.Disconnect();
+    ASSERT_TRUE(client1_status.ok() && client2_status.ok());
 
-    this->server1->Terminate();
-    this->server2->Terminate();
+    ray::Status client1_ray_status = this->server1->Terminate();
+    ray::Status client2_ray_status = this->server2->Terminate();
+    ASSERT_TRUE(client1_ray_status.ok() && client2_ray_status.ok());
 
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
@@ -144,12 +146,14 @@ public:
 };
 
 TEST_F(TestNodeManager, TestNodeManagerCommands) {
+  ray::Status status = ray::Status::OK();
+  // TODO(atumanov): assert status is OK everywhere it's returned.
   cout << endl << "All connected clients:" << endl << endl;
-  mock_gcs_client->client_table().GetClientIds([this](vector<ClientID> client_ids){
+  status = mock_gcs_client->client_table().GetClientIds([this](const vector<ClientID> &client_ids){
     mock_gcs_client->client_table().GetClientInformationSet(
         client_ids,
-        [this](std::vector<ClientInformation> info_vec){
-          for (auto info : info_vec) {
+        [this](const std::vector<ClientInformation> &info_vec){
+          for (const auto &info : info_vec) {
             cout << "ClientID=" << info.GetClientId().hex() << endl;
             cout << "ClientIp=" << info.GetIp() << endl;
             cout << "ClientPort=" << info.GetPort() << endl;
@@ -163,17 +167,19 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
 
   cout << endl << "Server client ids:" << endl << endl;
 
-  server1->GetObjectManager().SubscribeObjAdded(
+  status = server1->GetObjectManager().SubscribeObjAdded(
       [this](const ObjectID &object_id){
         object_added_handler_1(object_id);
       }
   );
+  ASSERT_TRUE(status.ok());
 
-  server2->GetObjectManager().SubscribeObjAdded(
+  status = server2->GetObjectManager().SubscribeObjAdded(
       [this](const ObjectID &object_id){
         object_added_handler_2(object_id);
       }
   );
+  ASSERT_TRUE(status.ok());
 
   ClientID client_id_1 = server1->GetObjectManager().GetClientID();
   ClientID client_id_2 = server2->GetObjectManager().GetClientID();
@@ -186,8 +192,8 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
   for(int i=-1;++i<100;){
     ObjectID oid1 = WriteDataToClient(client1, 100);
     ObjectID oid2 = WriteDataToClient(client2, 100);
-    server1->GetObjectManager().Pull(oid2);
-    server2->GetObjectManager().Pull(oid1);
+    status = server1->GetObjectManager().Pull(oid2);
+    status = server2->GetObjectManager().Pull(oid1);
   }
   sleep(1);
   cout << v1.size() << " " << v2.size() << endl;
@@ -201,7 +207,7 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
   cout << endl << "Test pull 1 from 2" << endl << endl;
   for(int i=-1;++i<3;){
     ObjectID oid2 = WriteDataToClient(client2, 100);
-    server1->GetObjectManager().Pull(oid2);
+    status = server1->GetObjectManager().Pull(oid2);
   }
   sleep(1);
   cout << v1.size() << " " << v2.size() << endl;
@@ -215,7 +221,7 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
   cout << endl << "Test pull 2 from 1" << endl << endl;
   for(int i=-1;++i<3;){
     ObjectID oid1 = WriteDataToClient(client1, 100);
-    server2->GetObjectManager().Pull(oid1);
+    status = server2->GetObjectManager().Pull(oid1);
   }
   sleep(1);
   cout << v1.size() << " " << v2.size() << endl;
@@ -229,7 +235,7 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
   cout << endl << "Test push 1 to 2" << endl << endl;
   for(int i=-1;++i<3;){
     ObjectID oid1 = WriteDataToClient(client1, 100);
-    server1->GetObjectManager().Push(oid1, client_id_2);
+    status = server1->GetObjectManager().Push(oid1, client_id_2);
   }
   sleep(1);
   cout << v1.size() << " " << v2.size() << endl;
@@ -243,7 +249,7 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
   cout << endl << "Test push 2 to 1" << endl << endl;
   for(int i=-1;++i<3;){
     ObjectID oid2 = WriteDataToClient(client2, 100);
-    server2->GetObjectManager().Push(oid2, client_id_1);
+    status = server2->GetObjectManager().Push(oid2, client_id_1);
   }
   sleep(1);
   cout << v1.size() << " " << v2.size() << endl;
@@ -258,8 +264,8 @@ TEST_F(TestNodeManager, TestNodeManagerCommands) {
   for(int i=-1;++i<3;){
     ObjectID oid1 = WriteDataToClient(client1, 100);
     ObjectID oid2 = WriteDataToClient(client2, 100);
-    server1->GetObjectManager().Push(oid1, client_id_2);
-    server2->GetObjectManager().Push(oid2, client_id_1);
+    status = server1->GetObjectManager().Push(oid1, client_id_2);
+    status = server2->GetObjectManager().Push(oid2, client_id_1);
   }
   sleep(1);
   cout << v1.size() << " " << v2.size() << endl;

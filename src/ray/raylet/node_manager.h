@@ -26,7 +26,7 @@ class NodeServer {
              shared_ptr<ray::ObjectDirectory> od);
 
   ObjectManager &GetObjectManager();
-  void Terminate();
+  ray::Status Terminate();
 
  private:
   /// Register GCS client.

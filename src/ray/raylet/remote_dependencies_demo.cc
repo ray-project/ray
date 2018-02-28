@@ -13,7 +13,6 @@
  */
 int main(int argc, char *argv[]) {
   CHECK(argc == 3);
-
   std::string store1 = "/tmp/store1";
   std::string store2 = "/tmp/store2";
   // start store
@@ -45,8 +44,8 @@ int main(int argc, char *argv[]) {
   om_config.store_socket_name = store2;
   ray::NodeServer server2(io_service, std::string(argv[2]), resource_config, om_config, mock_gcs_client, od);
   io_service.run();
-  server1.Terminate();
-  server2.Terminate();
+  ray::Status ray_status1 = server1.Terminate();
+  ray::Status ray_status2 = server2.Terminate();
 
-  return 0;
+  return !(ray_status1.ok() && ray_status2.ok());
 }
