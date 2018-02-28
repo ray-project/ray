@@ -5,7 +5,7 @@ from __future__ import print_function
 import numpy as np
 
 
-class WindowStats(object):
+class WindowStat(object):
     def __init__(self, name, n):
         self.name = name
         self.items = [None] * n

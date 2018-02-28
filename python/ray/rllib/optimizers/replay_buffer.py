@@ -8,7 +8,7 @@ import sys
 
 from ray.rllib.optimizers.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.utils.compression import unpack
-from ray.rllib.utils.window_stat import WindowStats
+from ray.rllib.utils.window_stat import WindowStat
 
 
 class ReplayBuffer(object):
@@ -28,7 +28,7 @@ class ReplayBuffer(object):
         self._eviction_started = False
         self._num_added = 0
         self._num_sampled = 0
-        self._evicted_hit_stats = WindowStats("evicted_hit", 1000)
+        self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
         self._est_size_bytes = 0
 
     def __len__(self):
@@ -130,7 +130,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_sum = SumSegmentTree(it_capacity)
         self._it_min = MinSegmentTree(it_capacity)
         self._max_priority = 1.0
-        self._prio_change_stats = WindowStats("reprio", 1000)
+        self._prio_change_stats = WindowStat("reprio", 1000)
 
     def add(self, obs_t, action, reward, obs_tp1, done, weight):
         """See ReplayBuffer.store_effect"""

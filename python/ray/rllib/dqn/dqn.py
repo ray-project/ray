@@ -16,6 +16,11 @@ from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
 
+OPTIMIZER_SHARED_CONFIGS = [
+    "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
+    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
+    "train_batch_size", "learning_starts"]
+
 DEFAULT_CONFIG = dict(
     # === Model ===
     # Whether to use dueling dqn
@@ -48,11 +53,33 @@ DEFAULT_CONFIG = dict(
     # Update the target network every `target_network_update_freq` steps.
     target_network_update_freq=500,
 
+    # === Replay buffer ===
+    # Size of the replay buffer. Note that if async_updates is set, then
+    # each worker will have a replay buffer of this size.
+    buffer_size=50000,
+    # If True prioritized replay buffer will be used.
+    prioritized_replay=True,
+    # Alpha parameter for prioritized replay buffer.
+    prioritized_replay_alpha=0.6,
+    # Beta parameter for sampling from prioritized replay buffer.
+    prioritized_replay_beta=0.4,
+    # Epsilon to add to the TD errors when updating priorities.
+    prioritized_replay_eps=1e-6,
+
     # === Optimization ===
     # Learning rate for adam optimizer
     lr=5e-4,
     # If not None, clip gradients during optimization at this value
     grad_norm_clipping=40,
+    # How many steps of the model to sample before learning starts.
+    learning_starts=1000,
+    # Update the replay buffer with this many samples at once. Note that
+    # this setting applies per-worker if num_workers > 1.
+    sample_batch_size=4,
+    # Size of a batched sampled from replay buffer for training. Note that
+    # if async_updates is set, then each worker returns gradients for a
+    # batch of this size.
+    train_batch_size=32,
 
     # === Tensorflow ===
     # Arguments to pass to tensorflow
@@ -77,29 +104,7 @@ DEFAULT_CONFIG = dict(
     # Optimizer class to use.
     optimizer_class="LocalSyncReplayOptimizer",
     # Config to pass to the optimizer.
-    optimizer_config=dict(
-        # How many steps of the model to sample before learning starts.
-        learning_starts=1000,
-        # Update the replay buffer with this many samples at once. Note that
-        # this setting applies per-worker if num_workers > 1.
-        sample_batch_size=4,
-        # Size of a batched sampled from replay buffer for training. Note that
-        # if async_updates is set, then each worker returns gradients for a
-        # batch of this size.
-        train_batch_size=32,
-        # === Replay buffer ===
-        # Size of the replay buffer. Note that if async_updates is set, then
-        # each worker will have a replay buffer of this size.
-        buffer_size=50000,
-        # If True prioritized replay buffer will be used.
-        prioritized_replay=True,
-        # Alpha parameter for prioritized replay buffer.
-        prioritized_replay_alpha=0.6,
-        # Beta parameter for sampling from prioritized replay buffer.
-        prioritized_replay_beta=0.4,
-        # Epsilon to add to the TD errors when updating priorities.
-        prioritized_replay_eps=1e-6,
-    ),
+    optimizer_config=dict(),
     # Whether to use a distribution of epsilons across workers for exploration.
     per_worker_exploration=False,
     # Whether to compute priorities on workers.
@@ -129,6 +134,10 @@ class DQNAgent(Agent):
         if self.config["force_evaluators_remote"]:
             _, self.remote_evaluators = split_colocated(
                 self.remote_evaluators)
+
+        for k in OPTIMIZER_SHARED_CONFIGS:
+            if k not in self.config["optimizer_config"]:
+                self.config["optimizer_config"][k] = self.config[k]
 
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.config["optimizer_config"], self.local_evaluator,

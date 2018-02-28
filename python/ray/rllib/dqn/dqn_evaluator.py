@@ -102,8 +102,7 @@ class DQNEvaluator(Evaluator):
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
         for _ in range(
-                self.config["optimizer_config"]["sample_batch_size"] +
-                self.config["n_step"] - 1):
+                self.config["sample_batch_size"] + self.config["n_step"] - 1):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
             obs.append(ob)
             actions.append(act)
@@ -124,9 +123,7 @@ class DQNEvaluator(Evaluator):
             "rewards": rewards,
             "new_obs": [pack(o) for o in new_obs], "dones": dones,
             "weights": np.ones_like(rewards)})
-        assert (
-            batch.count ==
-            self.config["optimizer_config"]["sample_batch_size"])
+        assert (batch.count == self.config["sample_batch_size"])
 
         # Prioritize on the worker side
         if self.config["worker_side_prioritization"]:
@@ -134,8 +131,7 @@ class DQNEvaluator(Evaluator):
                 self.sess, obs, batch["actions"], batch["rewards"],
                 new_obs, batch["dones"], batch["weights"])
             new_priorities = (
-                np.abs(td_errors) +
-                self.config["optimizer_config"]["prioritized_replay_eps"])
+                np.abs(td_errors) + self.config["prioritized_replay_eps"])
             batch.data["weights"] = new_priorities
 
         return batch
