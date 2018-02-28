@@ -9,9 +9,8 @@ import numpy as np
 import tensorflow as tf
 
 import ray
+from ray.rllib import optimizers
 from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
-from ray.rllib.optimizers.local_sync_replay import LocalSyncReplayOptimizer
-from ray.rllib.optimizers.apex_optimizer import ApexOptimizer
 from ray.rllib.utils.actors import split_colocated
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
@@ -46,34 +45,12 @@ DEFAULT_CONFIG = dict(
     exploration_fraction=0.1,
     # Final value of random action probability
     exploration_final_eps=0.02,
-    # How many steps of the model to sample before learning starts.
-    learning_starts=1000,
     # Update the target network every `target_network_update_freq` steps.
     target_network_update_freq=500,
-
-    # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then each
-    # worker will have a replay buffer of this size.
-    buffer_size=50000,
-    # If True prioritized replay buffer will be used.
-    prioritized_replay=True,
-    # Alpha parameter for prioritized replay buffer.
-    prioritized_replay_alpha=0.6,
-    # Beta parameter for sampling from prioritized replay buffer.
-    prioritized_replay_beta=0.4,
-    # Epsilon to add to the TD errors when updating priorities.
-    prioritized_replay_eps=1e-6,
 
     # === Optimization ===
     # Learning rate for adam optimizer
     lr=5e-4,
-    # Update the replay buffer with this many samples at once. Note that this
-    # setting applies per-worker if num_workers > 1.
-    sample_batch_size=4,
-    # Size of a batched sampled from replay buffer for training. Note that if
-    # async_updates is set, then each worker returns gradients for a batch of
-    # this size.
-    train_batch_size=32,
     # If not None, clip gradients during optimization at this value
     grad_norm_clipping=40,
 
@@ -97,16 +74,36 @@ DEFAULT_CONFIG = dict(
     num_workers=0,
     # Whether to allocate GPUs for workers (if > 0).
     num_gpus_per_worker=0,
-
-    # === Ape-X (Experimental) ===
-    # Whether to use the Ape-X optimizer.
-    apex_optimizer=False,
-    # Max number of steps to delay synchronizing weights of workers. This only
-    # applies if the Ape-X optimizer is used.
-    max_weight_sync_delay=400,
-    # Number of shards to use for the replay actors in Ape-X. This only applies
-    # if the Ape-X optimizer is used.
-    num_replay_buffer_shards=1,
+    # Optimizer class to use.
+    optimizer_class="LocalSyncReplayOptimizer",
+    # Config to pass to the optimizer.
+    optimizer_config=dict(
+        # How many steps of the model to sample before learning starts.
+        learning_starts=1000,
+        # Update the replay buffer with this many samples at once. Note that
+        # this setting applies per-worker if num_workers > 1.
+        sample_batch_size=4,
+        # Size of a batched sampled from replay buffer for training. Note that
+        # if async_updates is set, then each worker returns gradients for a
+        # batch of this size.
+        train_batch_size=32,
+        # === Replay buffer ===
+        # Size of the replay buffer. Note that if async_updates is set, then
+        # each worker will have a replay buffer of this size.
+        buffer_size=50000,
+        # If True prioritized replay buffer will be used.
+        prioritized_replay=True,
+        # Alpha parameter for prioritized replay buffer.
+        prioritized_replay_alpha=0.6,
+        # Beta parameter for sampling from prioritized replay buffer.
+        prioritized_replay_beta=0.4,
+        # Epsilon to add to the TD errors when updating priorities.
+        prioritized_replay_eps=1e-6,
+    ),
+    # Whether to use a distribution of epsilons across workers for exploration.
+    per_worker_exploration=False,
+    # Whether to compute priorities on workers.
+    worker_side_prioritization=False,
     # Whether to force evaluator actors to be placed on remote machines.
     force_evaluators_remote=False)
 
@@ -133,12 +130,9 @@ class DQNAgent(Agent):
             _, self.remote_evaluators = split_colocated(
                 self.remote_evaluators)
 
-        if self.config["apex_optimizer"]:
-            self.optimizer = ApexOptimizer(
-                self.config, self.local_evaluator, self.remote_evaluators)
-        else:
-            self.optimizer = LocalSyncReplayOptimizer(
-                self.config, self.local_evaluator, self.remote_evaluators)
+        self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
+            self.config["optimizer_config"], self.local_evaluator,
+            self.remote_evaluators)
 
         self.saver = tf.train.Saver(max_to_keep=None)
         self.global_timestep = 0
@@ -165,7 +159,7 @@ class DQNAgent(Agent):
         num_episodes = 0
         explorations = []
 
-        if self.config["apex_optimizer"]:
+        if self.config["per_worker_exploration"]:
             # Return stats from workers with the lowest 20% of exploration
             test_stats = stats[-int(max(1, len(stats)*0.2)):]
         else:

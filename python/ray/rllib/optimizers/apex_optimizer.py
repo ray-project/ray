@@ -11,8 +11,9 @@ import threading
 import numpy as np
 
 import ray
-from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
+    PrioritizedReplayBuffer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.timer import TimerStat
