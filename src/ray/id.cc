@@ -78,4 +78,9 @@ bool UniqueID::operator==(const UniqueID &rhs) const {
   return std::memcmp(data(), rhs.data(), kUniqueIDSize) == 0;
 }
 
+std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
+  os << id.hex();
+  return os;
+}
+
 }  // namespace ray

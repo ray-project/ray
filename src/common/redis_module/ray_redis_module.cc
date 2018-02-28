@@ -441,7 +441,8 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    CHECKM(num_clients <= 1, "Published to %lld clients.", num_clients);
+    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
+                                << " clients.";
 
     RedisModule_FreeString(ctx, publish_message);
     RedisModule_FreeString(ctx, publish_topic);
@@ -473,7 +474,7 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
 }
 
 bool is_nil(const std::string &data) {
-  CHECK(data.size() == kUniqueIDSize);
+  RAY_CHECK(data.size() == kUniqueIDSize);
   const uint8_t *d = reinterpret_cast<const uint8_t *>(data.data());
   for (int i = 0; i < kUniqueIDSize; ++i) {
     if (d[i] != 255) {
@@ -518,9 +519,9 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   }
 
   if (do_update) {
-    CHECK(data->mutate_scheduling_state(update->update_state()));
+    RAY_CHECK(data->mutate_scheduling_state(update->update_state()));
   }
-  CHECK(data->mutate_updated(do_update));
+  RAY_CHECK(data->mutate_updated(do_update));
 
   int result = RedisModule_ReplyWithStringBuffer(ctx, value_buf, value_len);
 
@@ -978,8 +979,8 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
     data_size_value = -1;
   } else {
     RedisModule_StringToLongLong(data_size, &data_size_value);
-    CHECK(RedisModule_StringToLongLong(data_size, &data_size_value) ==
-          REDISMODULE_OK);
+    RAY_CHECK(RedisModule_StringToLongLong(data_size, &data_size_value) ==
+              REDISMODULE_OK);
   }
 
   flatbuffers::Offset<flatbuffers::String> hash_str;
@@ -1091,7 +1092,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    CHECKM(num_clients <= 1, "Published to %lld clients.", num_clients);
+    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
+                                << " clients.";
 
     RedisModule_FreeString(ctx, publish_message);
     RedisModule_FreeString(ctx, publish_topic);

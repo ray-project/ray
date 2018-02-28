@@ -55,7 +55,7 @@ int64_t locally_available_data_size(const GlobalSchedulerState *state,
    * local scheduler. */
   int64_t task_data_size = 0;
 
-  CHECK(state->local_scheduler_plasma_map.count(local_scheduler_id) == 1);
+  RAY_CHECK(state->local_scheduler_plasma_map.count(local_scheduler_id) == 1);
 
   const std::string &plasma_manager =
       state->local_scheduler_plasma_map.at(local_scheduler_id);
@@ -120,8 +120,8 @@ bool handle_task_waiting_random(GlobalSchedulerState *state,
                                 GlobalSchedulerPolicyState *policy_state,
                                 Task *task) {
   TaskSpec *task_spec = Task_task_execution_spec(task)->Spec();
-  CHECKM(task_spec != NULL,
-         "task wait handler encounted a task with NULL spec");
+  RAY_CHECK(task_spec != NULL)
+      << "task wait handler encounted a task with NULL spec";
 
   std::vector<DBClientID> feasible_nodes;
 
@@ -136,10 +136,8 @@ bool handle_task_waiting_random(GlobalSchedulerState *state,
   }
 
   if (feasible_nodes.size() == 0) {
-    std::string id_string = Task_task_id(task).hex();
-    LOG_ERROR(
-        "Infeasible task. No nodes satisfy hard constraints for task = %s",
-        id_string.c_str());
+    RAY_LOG(ERROR) << "Infeasible task. No nodes satisfy hard constraints for "
+                   << "task = " << Task_task_id(task);
     return false;
   }
 
@@ -148,8 +146,8 @@ bool handle_task_waiting_random(GlobalSchedulerState *state,
   std::uniform_int_distribution<> dis(0, feasible_nodes.size() - 1);
   DBClientID local_scheduler_id =
       feasible_nodes[dis(policy_state->getRandomGenerator())];
-  CHECKM(!local_scheduler_id.is_nil(),
-         "Task is feasible, but doesn't have a local scheduler assigned.");
+  RAY_CHECK(!local_scheduler_id.is_nil())
+      << "Task is feasible, but doesn't have a local scheduler assigned.";
   // A local scheduler ID was found, so assign the task.
   assign_task_to_local_scheduler(state, task, local_scheduler_id);
   return true;
@@ -161,15 +159,15 @@ bool handle_task_waiting_cost(GlobalSchedulerState *state,
   TaskSpec *task_spec = Task_task_execution_spec(task)->Spec();
   int64_t curtime = current_time_ms();
 
-  CHECKM(task_spec != NULL,
-         "task wait handler encounted a task with NULL spec");
+  RAY_CHECK(task_spec != NULL)
+      << "task wait handler encounted a task with NULL spec";
 
   // For tasks already seen by the global scheduler (spillback > 1),
   // adjust scheduled task counts for the source local scheduler.
   if (task->execution_spec->SpillbackCount() > 1) {
     auto it = state->local_schedulers.find(task->local_scheduler_id);
     // Task's previous local scheduler must be present and known.
-    CHECK(it != state->local_schedulers.end());
+    RAY_CHECK(it != state->local_schedulers.end());
     LocalScheduler &src_local_scheduler = it->second;
     src_local_scheduler.num_recent_tasks_sent -= 1;
   }
@@ -178,12 +176,11 @@ bool handle_task_waiting_cost(GlobalSchedulerState *state,
 
   // Go through all the nodes, calculate the score for each, pick max score.
   double best_local_scheduler_score = INT32_MIN;
-  CHECKM(best_local_scheduler_score < 0,
-         "We might have a floating point underflow");
-  std::string id_string_fromlocalsched = task->local_scheduler_id.hex();
-  LOG_INFO("ct[%" PRId64 "] task from %s spillback %d", curtime,
-           id_string_fromlocalsched.c_str(),
-           task->execution_spec->SpillbackCount());
+  RAY_CHECK(best_local_scheduler_score < 0)
+      << "We might have a floating point underflow";
+  RAY_LOG(INFO) << "ct[" << curtime << "] task from "
+                << task->local_scheduler_id << " spillback "
+                << task->execution_spec->SpillbackCount();
 
   // The best node to send this task.
   DBClientID best_local_scheduler_id = DBClientID::nil();
@@ -200,14 +197,13 @@ bool handle_task_waiting_cost(GlobalSchedulerState *state,
     if (task->local_scheduler_id == scheduler->id) {
       continue;
     }
-    std::string id_string = scheduler->id.hex();
     task_feasible = true;
     // This node satisfies the hard capacity constraint. Calculate its score.
     double score = -1 * calculate_cost_pending(state, scheduler, task_spec);
-    LOG_INFO("ct[%" PRId64 "][%s][q%d][w%d]: score %f bestscore %f\n", curtime,
-             id_string.c_str(), scheduler->info.task_queue_length,
-             scheduler->info.available_workers, score,
-             best_local_scheduler_score);
+    RAY_LOG(INFO) << "ct[" << curtime << "][" << scheduler->id << "][q"
+                  << scheduler->info.task_queue_length << "][w"
+                  << scheduler->info.available_workers << "]: score " << score
+                  << " bestscore " << best_local_scheduler_score;
     if (score >= best_local_scheduler_score) {
       best_local_scheduler_score = score;
       best_local_scheduler_id = scheduler->id;
@@ -215,16 +211,14 @@ bool handle_task_waiting_cost(GlobalSchedulerState *state,
   }
 
   if (!task_feasible) {
-    std::string id_string = Task_task_id(task).hex();
-    LOG_ERROR(
-        "Infeasible task. No nodes satisfy hard constraints for task = %s",
-        id_string.c_str());
+    RAY_LOG(ERROR) << "Infeasible task. No nodes satisfy hard constraints for "
+                   << "task = " << Task_task_id(task);
     // TODO(atumanov): propagate this error to the task's driver and/or
     // cache the task in case new local schedulers satisfy it in the future.
     return false;
   }
-  CHECKM(!best_local_scheduler_id.is_nil(),
-         "Task is feasible, but doesn't have a local scheduler assigned.");
+  RAY_CHECK(!best_local_scheduler_id.is_nil())
+      << "Task is feasible, but doesn't have a local scheduler assigned.";
   // A local scheduler ID was found, so assign the task.
   assign_task_to_local_scheduler(state, task, best_local_scheduler_id);
   return true;
