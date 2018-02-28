@@ -34,12 +34,15 @@ namespace ray {
                         << __FILE__ << __LINE__          \
                         << " Check failed: " #condition " "
 
+#define RAY_DCHECK(condition) RAY_CHECK(condition)
+
 namespace internal {
 
 class NullLog {
  public:
   template <class T>
   NullLog &operator<<(const T &t) {
+    RAY_IGNORE_EXPR(t);
     return *this;
   }
 };
