@@ -59,7 +59,7 @@ def make_stub_env(action_space, obs_space):
         def __init__(self):
             self.action_space = action_space
             self.observation_space = obs_space
-            self._spec = EnvSpec("StubEnv-v0")
+            self.spec = EnvSpec("StubEnv-v0")
 
         def reset(self):
             sample = self.observation_space.sample()
