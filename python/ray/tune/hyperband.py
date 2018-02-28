@@ -318,10 +318,7 @@ class Bracket():
         self._n = int(np.ceil(self._n))
 
         self._r *= self._eta
-        self._r = int((self._r))
-        if self._cumul_r + self._r > self._max_t_attr:
-            self._r = int(self._max_t_attr - self._cumul_r)
-
+        self._r = int(min(self._r, self._max_t_attr - self._cumul_r))
         self._cumul_r += self._r
         sorted_trials = sorted(
             self._live_trials,
@@ -387,9 +384,7 @@ class Bracket():
             n /= self._eta
             n = int(np.ceil(n))
             r *= self._eta
-            r = int(r)
-            if cumulative_r + r > self._max_t_attr:
-                r = int(self._max_t_attr - cumulative_r)
+            r = int(min(r, self._max_t_attr - cumulative_r))
         return work
 
     def __repr__(self):
