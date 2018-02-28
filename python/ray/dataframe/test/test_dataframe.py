@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import ray.dataframe as rdf
 
+ray.init()
+
 
 @pytest.fixture
 def ray_df_equals_pandas(ray_df, pandas_df):

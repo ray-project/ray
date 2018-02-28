@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 import threading
 
-DEFAULT_NPARTITIONS = 10
+DEFAULT_NPARTITIONS = 4
 
 
 def set_npartition_default(n):
