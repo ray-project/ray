@@ -38,7 +38,8 @@ namespace ray {
 
 #define RAY_DCHECK(condition) \
   RAY_IGNORE_EXPR(condition)  \
-  while (false) ::ray::internal::NullLog()
+  while (false)               \
+  ::ray::internal::NullLog()
 
 #else
 
