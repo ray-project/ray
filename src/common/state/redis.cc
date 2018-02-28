@@ -1583,6 +1583,7 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     } else if (*current_ptr == '0') {
       reconstruct = false;
     } else {
+      reconstruct = false;  // We set this value to avoid a compiler warning.
       RAY_LOG(FATAL) << "This code should be unreachable.";
     }
     current_ptr += 1;
