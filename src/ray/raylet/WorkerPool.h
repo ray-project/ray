@@ -10,7 +10,6 @@
 using namespace std;
 namespace ray {
 
-class ClientConnection;
 class Worker;
 
 /// WorkerPool class is responsible for managing a pool of workers and
@@ -30,7 +29,7 @@ public:
   void RegisterWorker(std::shared_ptr<Worker> worker);
   /// Get the client connection's registered worker. Returns nullptr if the
   /// client has not registered a worker yet.
-  const std::shared_ptr<Worker> GetRegisteredWorker(std::shared_ptr<ClientConnection> connection) const;
+  const std::shared_ptr<Worker> GetRegisteredWorker(std::shared_ptr<LocalClientConnection> connection) const;
   /// Disconnect the given worker. Returns true if the given worker was in the
   /// pool of idle workers.
   bool DisconnectWorker(shared_ptr<Worker> worker);

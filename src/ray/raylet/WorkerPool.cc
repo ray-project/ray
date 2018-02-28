@@ -36,7 +36,7 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   registered_workers_.push_back(worker);
 }
 
-const std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(std::shared_ptr<ClientConnection> connection) const {
+const std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(std::shared_ptr<LocalClientConnection> connection) const {
   for (auto it = registered_workers_.begin(); it != registered_workers_.end(); it++) {
     if ((*it)->Connection() == connection) {
       return (*it);

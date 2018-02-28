@@ -33,7 +33,7 @@ LocalScheduler::LocalScheduler(
 }
 
 
-void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, int64_t message_type, const uint8_t *message_data) {
+void LocalScheduler::ProcessClientMessage(shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message_data) {
   LOG_INFO("Message of type %" PRId64, message_type);
 
   switch (message_type) {
