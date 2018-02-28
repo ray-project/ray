@@ -2,11 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 from ray.rllib.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
 
-APEX_DEFAULT_CONFIG = copy.deepcopy(DQN_CONFIG)
-APEX_DEFAULT_CONFIG.update(dict(
+APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
     optimizer_class="ApexOptimizer",
     optimizer_config=dict(DQN_CONFIG["optimizer_config"], **dict(
         buffer_size=2000000,
