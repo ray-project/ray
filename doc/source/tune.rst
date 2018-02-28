@@ -199,17 +199,17 @@ Trial Checkpointing
 
 To enable checkpoint / resume, you must subclass ``Trainable`` and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand and PBT.
 
-For TensorFlow model training, this would look something like this:
+For TensorFlow model training, this would look something like this `(full tensorflow example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
 
 .. code-block:: python
 
     class MyClass(Trainable):
-        def __init__(self, ...):
+        def _setup(self):
             self.saver = tf.train.Saver()
             self.sess = ...
             self.iteration = 0
 
-        def train(self):
+        def _train(self):
             self.sess.run(...)
             self.iteration += 1
 
