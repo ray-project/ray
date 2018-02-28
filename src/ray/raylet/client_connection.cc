@@ -91,6 +91,9 @@ void ClientConnection<T>::processMessages(const boost::system::error_code& error
   }
 }
 
+template class ClientConnection<boost::asio::local::stream_protocol>;
+template class ClientConnection<boost::asio::ip::tcp>;
+
 } // end namespace ray
 
 #endif

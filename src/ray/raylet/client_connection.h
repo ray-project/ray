@@ -53,8 +53,6 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
 
 using LocalClientConnection = ClientConnection<boost::asio::local::stream_protocol>;
 using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
-template class ClientConnection<boost::asio::local::stream_protocol>;
-template class ClientConnection<boost::asio::ip::tcp>;
 
 // A generic client manager. This class should define a method for processing a
 // message on the server sent by the client.
