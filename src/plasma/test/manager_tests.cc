@@ -227,16 +227,14 @@ TEST read_write_object_chunk_test(void) {
    * - Read the object data on the local manager.
    * - Check that the data matches.
    */
-  ClientConnection_start_request(remote_mock->write_conn);
   write_object_chunk(remote_mock->write_conn, &remote_buf);
-  ASSERT(ClientConnection_request_finished(remote_mock->write_conn));
+  ASSERT(remote_buf.state == PlasmaRequestBufferState::complete);
   /* Wait until the data is ready to be read. */
   wait_for_pollin(get_client_sock(remote_mock->read_conn));
   /* Read the data. */
-  ClientConnection_start_request(remote_mock->read_conn);
   int err = read_object_chunk(remote_mock->read_conn, &local_buf);
   ASSERT_EQ(err, 0);
-  ASSERT(ClientConnection_request_finished(remote_mock->read_conn));
+  ASSERT(local_buf.state == PlasmaRequestBufferState::complete);
   ASSERT_EQ(memcmp(remote_buf.data, local_buf.data, data_size), 0);
   /* Clean up. */
   free(local_buf.data);

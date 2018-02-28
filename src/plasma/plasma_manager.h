@@ -154,14 +154,30 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
  * internally by the plasma manager code.
  */
 
+enum PlasmaRequestBufferState { idle, started, complete };
+
 /* Buffer for requests between plasma managers. */
 typedef struct PlasmaRequestBuffer {
+  /** Either PlasmaDataReply or PlasmaDataRequest. */
   int type;
   ray::ObjectID object_id;
+  /**
+   * Shared buffer between manager and store.
+   * Data is read and written to this buffer during
+   * an object transfer.
+   */
   uint8_t *data;
   int64_t data_size;
   uint8_t *metadata;
   int64_t metadata_size;
+
+  /** Set to started when transfer begins
+   *  and complete when transfer completes. */
+  PlasmaRequestBufferState state = PlasmaRequestBufferState::idle;
+  /** Stores pointer position of read/write data buffer. */
+  int64_t cursor = 0;
+  /** Set when plasma client refuses object creation. */
+  bool ignore = false;
 } PlasmaRequestBuffer;
 
 /**
@@ -222,30 +238,6 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
  * @return The errno set, if the write wasn't successful.
  */
 int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
-
-/**
- * Start a new request on this connection.
- *
- * @param conn The connection on which the request is being sent.
- * @return Void.
- */
-void ClientConnection_start_request(ClientConnection *client_conn);
-
-/**
- * Finish the current request on this connection.
- *
- * @param conn The connection on which the request is being sent.
- * @return Void.
- */
-void ClientConnection_finish_request(ClientConnection *client_conn);
-
-/**
- * Check whether the current request on this connection is finished.
- *
- * @param conn The connection on which the request is being sent.
- * @return Whether the request has finished.
- */
-bool ClientConnection_request_finished(ClientConnection *client_conn);
 
 /**
  * Get the event loop of the given plasma manager state.
