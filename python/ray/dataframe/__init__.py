@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import threading
 
 DEFAULT_NPARTITIONS = 10
 
@@ -26,3 +27,10 @@ __all__ = [
     "DataFrame", "from_pandas", "to_pandas", "Series", "read_csv",
     "read_parquet"
 ]
+
+try:
+    if threading.current_thread().name == "MainThread":
+        import ray
+        ray.init()
+except AssertionError:
+    pass

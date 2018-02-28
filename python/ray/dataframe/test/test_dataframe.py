@@ -5,7 +5,6 @@ from __future__ import print_function
 import pytest
 import numpy as np
 import pandas as pd
-import ray
 import ray.dataframe as rdf
 
 
@@ -145,7 +144,6 @@ def create_test_dataframe():
 
 
 def test_int_dataframe():
-    ray.init()
 
     pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3],
                               'col2': [4, 5, 6, 7],
