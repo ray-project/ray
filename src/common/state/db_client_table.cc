@@ -51,8 +51,8 @@ const std::vector<std::string> db_client_table_get_ip_addresses(
   int64_t end_time = current_time_ms();
   if (end_time - start_time > RayConfig::instance().max_time_for_loop()) {
     RAY_LOG(WARNING) << "calling redis_get_cached_db_client in a loop in with "
-                  << manager_ids.size() << " manager IDs took "
-                  << end_time - start_time << " milliseconds.";
+                     << manager_ids.size() << " manager IDs took "
+                     << end_time - start_time << " milliseconds.";
   }
 
   return manager_vector;

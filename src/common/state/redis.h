@@ -15,9 +15,9 @@
   RAY_LOG(ERROR) << "Redis error " << context->err << " " << context->errstr \
                  << "; " << M
 
-#define LOG_REDIS_DEBUG(context, M, ...)                                   \
-RAY_LOG(DEBUG) << "Redis error " << context->err << " " << context->errstr \
-               << "; " << M;
+#define LOG_REDIS_DEBUG(context, M, ...)                                     \
+  RAY_LOG(DEBUG) << "Redis error " << context->err << " " << context->errstr \
+                 << "; " << M;
 
 struct DBHandle {
   /** String that identifies this client type. */

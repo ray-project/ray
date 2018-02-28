@@ -46,9 +46,9 @@ void lookup_done_callback(ObjectID object_id,
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(db, manager_ids);
   RAY_CHECK(parse_ip_addr_port(managers.at(0).c_str(), received_addr1,
-                           &received_port1) == 0);
+                               &received_port1) == 0);
   RAY_CHECK(parse_ip_addr_port(managers.at(1).c_str(), received_addr2,
-                           &received_port2) == 0);
+                               &received_port2) == 0);
 }
 
 /* Entry added to database successfully. */

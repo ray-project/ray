@@ -202,8 +202,8 @@ bool handle_task_waiting_cost(GlobalSchedulerState *state,
     double score = -1 * calculate_cost_pending(state, scheduler, task_spec);
     RAY_LOG(INFO) << "ct[" << curtime << "][" << scheduler->id << "][q"
                   << scheduler->info.task_queue_length << "][w"
-                  << scheduler->info.available_workers << "]: score "
-                  << score << " bestscore " << best_local_scheduler_score;
+                  << scheduler->info.available_workers << "]: score " << score
+                  << " bestscore " << best_local_scheduler_score;
     if (score >= best_local_scheduler_score) {
       best_local_scheduler_score = score;
       best_local_scheduler_id = scheduler->id;

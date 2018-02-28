@@ -564,7 +564,7 @@ void fetch_missing_dependency(
         /* TODO(swang): Local scheduler should also exit even if there are no
          * pending fetches. This could be done by subscribing to the db_client
          * table, or pinging the plasma manager in the heartbeat handler. */
-        RAY_LOG(FATAL) <<  "Lost connection to the plasma manager, local "
+        RAY_LOG(FATAL) << "Lost connection to the plasma manager, local "
                        << "scheduler is exiting. Error: "
                        << arrow_status.ToString();
       }
@@ -1441,8 +1441,8 @@ void handle_worker_blocked(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
   /* Find the worker in the list of executing workers. */
-  RAY_CHECK(remove_worker_from_vector(algorithm_state->executing_workers,
-                                      worker));
+  RAY_CHECK(
+      remove_worker_from_vector(algorithm_state->executing_workers, worker));
 
   /* Check that the worker isn't in the list of blocked workers. */
   RAY_CHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
@@ -1467,8 +1467,8 @@ void handle_worker_unblocked(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
   /* Find the worker in the list of blocked workers. */
-  RAY_CHECK(remove_worker_from_vector(algorithm_state->blocked_workers,
-                                      worker));
+  RAY_CHECK(
+      remove_worker_from_vector(algorithm_state->blocked_workers, worker));
 
   /* Check that the worker isn't in the list of executing workers. */
   RAY_CHECK(!worker_in_vector(algorithm_state->executing_workers, worker));

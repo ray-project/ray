@@ -120,7 +120,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
     // The local scheduler must have this resource because otherwise we wouldn't
     // be assigning the task to this local scheduler.
     RAY_CHECK(local_scheduler.info.dynamic_resources.count(resource_name) ==
-              1 ||
+                  1 ||
               resource_quantity == 0);
     // Subtract task's resource from the cached dynamic resource capacity for
     // this local scheduler. This will be overwritten on the next heartbeat.
@@ -345,8 +345,7 @@ void local_scheduler_table_handler(DBClientID client_id,
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   ARROW_UNUSED(state);
-  RAY_LOG(DEBUG) << "Local scheduler heartbeat from db_client_id "
-                 << client_id;
+  RAY_LOG(DEBUG) << "Local scheduler heartbeat from db_client_id " << client_id;
   RAY_LOG(DEBUG) << "total workers = " << info.total_num_workers
                  << ", task queue length = " << info.task_queue_length
                  << ", available workers = " << info.available_workers;
