@@ -4,7 +4,7 @@
 
 #include "gtest/gtest.h"
 
-#include "node_manager.h"
+#include "raylet.h"
 
 namespace ray {
 
