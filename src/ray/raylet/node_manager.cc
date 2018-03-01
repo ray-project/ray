@@ -1,7 +1,7 @@
 #ifndef LOCAL_SCHEDULER_CC
 #define LOCAL_SCHEDULER_CC
 
-#include "local_scheduler.h"
+#include "node_manager.h"
 
 #include "common.h"
 #include "common_protocol.h"
@@ -13,19 +13,19 @@
 using namespace std;
 namespace ray {
 
-LocalScheduler::LocalScheduler(
+NodeManager::NodeManager(
                        const std::string &socket_name,
                        const ResourceSet &resource_config,
                        ObjectManager &object_manager)
       : local_resources_(resource_config),
         worker_pool_(WorkerPool(0)),
-        local_queues_(LsQueue()),
+        local_queues_(SchedulingQueue()),
         sched_policy_(local_queues_),
         reconstruction_policy_(),
         task_dependency_manager_(
                 object_manager,
                 //reconstruction_policy_,
-                std::bind(&LocalScheduler::HandleWaitingTaskReady, this,
+                std::bind(&NodeManager::HandleWaitingTaskReady, this,
                     std::placeholders::_1)
                 ) {
   //// TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
@@ -33,7 +33,7 @@ LocalScheduler::LocalScheduler(
 }
 
 
-void LocalScheduler::ProcessClientMessage(shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message_data) {
   LOG_INFO("Message of type %" PRId64, message_type);
 
   switch (message_type) {
@@ -94,14 +94,14 @@ void LocalScheduler::ProcessClientMessage(shared_ptr<LocalClientConnection> clie
   }
 }
 
-void LocalScheduler::HandleWaitingTaskReady(const TaskID &task_id) {
+void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
   auto ready_tasks = local_queues_.RemoveTasks({task_id});
   local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
   // Schedule the newly ready tasks if possible.
   scheduleTasks();
 }
 
-void LocalScheduler::scheduleTasks() {
+void NodeManager::scheduleTasks() {
   // Ask policy for scheduling decision.
   // TODO(alexey): Give the policy all cluster resources instead of just the
   // local one.
@@ -124,7 +124,7 @@ void LocalScheduler::scheduleTasks() {
   }
 }
 
-void LocalScheduler::submitTask(const Task& task) {
+void NodeManager::submitTask(const Task& task) {
   if (task_dependency_manager_.TaskReady(task)) {
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
     scheduleTasks();
@@ -134,7 +134,7 @@ void LocalScheduler::submitTask(const Task& task) {
   }
 }
 
-void LocalScheduler::assignTask(const Task& task) {
+void NodeManager::assignTask(const Task& task) {
   if (worker_pool_.PoolSize() == 0) {
     // Start a new worker.
     worker_pool_.StartWorker();
@@ -162,7 +162,7 @@ void LocalScheduler::assignTask(const Task& task) {
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
 }
 
-void LocalScheduler::finishTask(const TaskID &task_id) {
+void NodeManager::finishTask(const TaskID &task_id) {
   LOG_INFO("Finished task %s", task_id.hex().c_str());
   local_queues_.RemoveTasks({task_id});
   // TODO(swang): Release resources that were held for the task.

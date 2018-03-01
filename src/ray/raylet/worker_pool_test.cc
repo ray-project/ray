@@ -2,7 +2,7 @@
 #include "gmock/gmock.h"
 
 #include "WorkerPool.h"
-#include "local_scheduler.h"
+#include "node_manager.h"
 
 namespace ray {
 
