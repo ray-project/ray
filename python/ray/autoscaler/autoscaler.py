@@ -467,7 +467,7 @@ class StandardAutoscaler(object):
             suffix, self.load_metrics.debug_string())
 
 
-def typename(obj):
+def typename(v):
     if isinstance(v, type):
         return v.__name__
     else:
