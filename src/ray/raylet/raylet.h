@@ -31,7 +31,7 @@ class Raylet {
              const std::string &socket_name,
              const ResourceSet &resource_config,
              const OMConfig &object_manager_config,
-             shared_ptr<ray::GcsClient> gcs_client);
+             std::shared_ptr<ray::GcsClient> gcs_client);
 
   /// Destroy the NodeServer.
   ~Raylet();
@@ -67,7 +67,7 @@ class Raylet {
   /// Manages client requests for task submission and execution.
   NodeManager node_manager_;
   /// A client connection to the GCS.
-  shared_ptr<ray::GcsClient> gcs_client_;
+  std::shared_ptr<ray::GcsClient> gcs_client_;
 };
 
 } // end namespace ray

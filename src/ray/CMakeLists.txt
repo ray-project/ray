@@ -45,8 +45,8 @@ set(RAY_SRCS
   raylet/TaskExecutionSpecification.cc
   raylet/TaskSpecification.cc
   raylet/client_connection.cc
-  raylet/Worker.cc
-  raylet/WorkerPool.cc
+  raylet/worker.cc
+  raylet/worker_pool.cc
   raylet/scheduling_resources.cc
   raylet/actor.cc
   raylet/scheduling_queue.cc

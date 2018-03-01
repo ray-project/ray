@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "WorkerPool.h"
+#include "worker_pool.h"
 
 namespace ray {
 
@@ -23,7 +23,7 @@ class ResourceSet {
 public:
   ResourceSet() {} // empty resource container
   /// Resource set object constructor
-  ResourceSet(const std::unordered_map<string, double> &resource_map):
+  ResourceSet(const std::unordered_map<std::string, double> &resource_map):
     resource_capacity_(resource_map) {}
 
   /// Test the equality of two resource sets.

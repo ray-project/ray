@@ -5,9 +5,8 @@
 #include <list>
 
 #include "client_connection.h"
-#include "Worker.h"
+#include "worker.h"
 
-using namespace std;
 namespace ray {
 
 class Worker;
@@ -58,7 +57,7 @@ public:
   ///
   /// \param The worker to disconnect. The worker must be registered.
   /// \return Whether the given worker was in the pool of idle workers.
-  bool DisconnectWorker(shared_ptr<Worker> worker);
+  bool DisconnectWorker(std::shared_ptr<Worker> worker);
 
   /// Add an idle worker to the pool. The worker's task assignment will be
   /// reset.

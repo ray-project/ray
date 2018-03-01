@@ -5,7 +5,7 @@
 #include "common.h"
 #include "raylet.h"
 
-
+using namespace std;
 /**
  * A demo that starts two Raylets, with one object store each. The two Raylets
  * share a mock GCS client for communication between the two (e.g., for

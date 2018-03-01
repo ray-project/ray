@@ -5,6 +5,7 @@
 #include "common.h"
 #include "raylet.h"
 
+using namespace std;
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
