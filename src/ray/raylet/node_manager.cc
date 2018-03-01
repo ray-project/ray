@@ -6,8 +6,8 @@
 #include "common.h"
 #include "common_protocol.h"
 #include "format/nm_generated.h"
-#include "Task.h"
-#include "TaskSpecification.h"
+#include "task.h"
+#include "task_spec.h"
 
 
 using namespace std;

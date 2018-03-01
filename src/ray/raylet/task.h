@@ -1,8 +1,8 @@
 #ifndef TASK_H
 #define TASK_H
 
-#include "TaskSpecification.h"
-#include "TaskExecutionSpecification.h"
+#include "task_spec.h"
+#include "task_execution_spec.h"
 
 #include <inttypes.h>
 
