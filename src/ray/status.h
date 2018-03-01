@@ -21,6 +21,7 @@
 
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
+#include "ray/util/logging.h"
 
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \

@@ -75,9 +75,8 @@ public:
     arrow::Status client2_status = client2.Disconnect();
     ASSERT_TRUE(client1_status.ok() && client2_status.ok());
 
-    ray::Status client1_ray_status = this->server1->Terminate();
-    ray::Status client2_ray_status = this->server2->Terminate();
-    ASSERT_TRUE(client1_ray_status.ok() && client2_ray_status.ok());
+    this->server1.reset();
+    this->server2.reset();
 
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);

@@ -32,8 +32,11 @@ class NodeServer {
              const OMConfig &object_manager_config,
              shared_ptr<ray::GcsClient> gcs_client);
 
+  /// Destroy the NodeServer.
+  ~NodeServer();
+
+  // TODO(melih): Get rid of this method.
   ObjectManager &GetObjectManager();
-  ray::Status Terminate();
 
  private:
   /// Register GCS client.
