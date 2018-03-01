@@ -3,7 +3,7 @@
 #include <boost/bind.hpp>
 
 #include "common.h"
-#include "node_manager.h"
+#include "raylet.h"
 
 
 #ifndef NODE_MANAGER_TEST

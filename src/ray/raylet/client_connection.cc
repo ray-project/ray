@@ -7,7 +7,7 @@
 
 #include "common.h"
 #include "format/nm_generated.h"
-#include "node_manager.h"
+#include "raylet.h"
 #include "Worker.h"
 
 using namespace std;

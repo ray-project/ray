@@ -3,8 +3,7 @@
 
 #include <boost/bind.hpp>
 
-#include "node_manager.h"
-
+#include "raylet.h"
 #include "ray/status.h"
 
 using namespace std;
