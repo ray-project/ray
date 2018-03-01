@@ -467,6 +467,13 @@ class StandardAutoscaler(object):
             suffix, self.load_metrics.debug_string())
 
 
+def typename(obj):
+    if isinstance(v, type):
+        return v.__name__
+    else:
+        return type(v).__name__
+
+
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     if type(config) is not dict:
         raise ValueError("Config is not a dictionary")
@@ -476,7 +483,7 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
         if k not in config:
             raise ValueError(
                 "Missing required config key `{}` of type {}".format(
-                    k, v.__name__))
+                    k, typename(v)))
         if isinstance(v, type):
             if not isinstance(config[k], v):
                 raise ValueError(
