@@ -5,7 +5,7 @@ pendulum-ppo:
     resources:
         cpu: 4
     config:
-        timesteps_per_batch: 2048
+        timesteps_per_batch: 4096
         lambda: 0.1
         gamma: 0.95
         sgd_stepsize: 0.0003
