@@ -101,4 +101,43 @@ TEST_F(TestGcs, TestTaskTable) {
   aeDeleteEventLoop(loop);
 }
 
+class TestAsioGcs : public ::testing::Test {
+ public:
+  TestAsioGcs() {
+    RAY_CHECK_OK(client_.Connect("127.0.0.1", 6379));
+    job_id_ = UniqueID::from_random();
+  }
+
+ protected:
+  gcs::AsyncGcsClient client_;
+  UniqueID job_id_;
+};
+
+boost::asio::io_service io_service;
+
+void ObjectAddedAsio(gcs::AsyncGcsClient *client,
+                     const UniqueID &id,
+                     std::shared_ptr<ObjectTableDataT> data) {
+  ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
+}
+
+void LookupAsio(gcs::AsyncGcsClient *client,
+                const UniqueID &id,
+                std::shared_ptr<ObjectTableDataT> data) {
+  ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
+  io_service.stop();
+}
+
+TEST_F(TestAsioGcs, TestObjectTable) {
+  RAY_CHECK_OK(client_.AttachToAsio(io_service));
+  auto data = std::make_shared<ObjectTableDataT>();
+  data->managers.push_back("A");
+  data->managers.push_back("B");
+  ObjectID object_id = ObjectID::from_random();
+  RAY_CHECK_OK(
+      client_.object_table().Add(job_id_, object_id, data, &ObjectAddedAsio));
+  RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &LookupAsio));
+  io_service.run();
+}
+
 }  // namespace

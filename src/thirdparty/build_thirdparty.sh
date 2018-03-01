@@ -80,7 +80,7 @@ if [[ -d $ARROW_HOME/lib64 ]]; then
   cp -r $ARROW_HOME/lib64 $ARROW_HOME/lib
 fi
 
-bash "$TP_DIR/build_parquet.sh"
+# bash "$TP_DIR/build_parquet.sh"
 
 echo "installing pyarrow"
 cd $TP_DIR/arrow/python
@@ -94,8 +94,8 @@ $PYTHON_EXECUTABLE setup.py build
 PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
 PYARROW_WITH_PLASMA=1 \
 PYARROW_BUNDLE_ARROW_CPP=1 \
-PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
-PYARROW_WITH_PARQUET=1 \
+# PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
+# PYARROW_WITH_PARQUET=1 \
 $PYTHON_EXECUTABLE setup.py build_ext
 
 # Find the pyarrow directory that was just built and copy it to ray/python/ray/
