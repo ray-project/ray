@@ -5,7 +5,7 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae)
 
 add_subdirectory(util)
 add_subdirectory(gcs)
-add_subdirectory(om)
+add_subdirectory(object_manager)
 add_subdirectory(raylet)
 # add_subdirectory(sandbox)
 
@@ -36,10 +36,10 @@ set(RAY_SRCS
   gcs/tables.cc
   gcs/redis_context.cc
   gcs/asio.cc
-  om/om_client_connection.cc
-  om/object_store_client.cc
-  om/object_directory.cc
-  om/object_manager.cc
+  object_manager/om_client_connection.cc
+  object_manager/object_store_client.cc
+  object_manager/object_directory.cc
+  object_manager/object_manager.cc
   raylet/mock_gcs_client.cc
   raylet/task.cc
   raylet/task_execution_spec.cc

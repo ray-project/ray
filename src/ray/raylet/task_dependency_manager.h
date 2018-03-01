@@ -4,7 +4,7 @@
 
 #include "ray/id.h"
 #include "task.h"
-#include "ray/om/object_manager.h"
+#include "ray/object_manager/object_manager.h"
 #include "reconstruction_policy.h"
 
 namespace ray {

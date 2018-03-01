@@ -5,7 +5,7 @@
 #include "scheduling_resources.h"
 #include "scheduling_queue.h"
 #include "scheduling_policy.h"
-#include "ray/om/object_manager.h"
+#include "ray/object_manager/object_manager.h"
 #include "reconstruction_policy.h"
 #include "task_dependency_manager.h"
 #include "worker_pool.h"

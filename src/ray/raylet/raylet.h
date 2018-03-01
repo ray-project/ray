@@ -7,7 +7,7 @@
 #include <boost/asio/error.hpp>
 
 #include "node_manager.h"
-#include "ray/om/object_manager.h"
+#include "ray/object_manager/object_manager.h"
 #include "scheduling_resources.h"
 
 namespace ray {
