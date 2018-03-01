@@ -146,14 +146,12 @@ class MultiActionDistribution(ActionDistribution):
                    distribution, other_distribution in
                    zip(self.child_distributions,
                        other.child_distributions)]
-        # return np.sum(kl_list)
         return kl_list
 
     def entropy(self):
         """The entropy of the action distribution."""
         entropy_list = [s.entropy() for s in
                         self.child_distributions]
-        # return np.sum(entropy_list)
         return entropy_list
 
     def sample(self):

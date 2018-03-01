@@ -58,7 +58,7 @@ class PPOEvaluator(Evaluator):
         num_agents = len(self.config["model"].get("custom_options", {}).
                          get("multiagent_obs_shapes", [1]))
         self.kl_coeff = tf.placeholder(
-            name="newkl", shape=num_agents, dtype=tf.float32)
+            name="newkl", shape=(num_agents,), dtype=tf.float32)
 
         # The input observations.
         self.observations = tf.placeholder(

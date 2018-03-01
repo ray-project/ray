@@ -213,21 +213,30 @@ class PPOAgent(Agent):
             self.global_step += 1
             sgd_time += sgd_end - sgd_start
 
-        if isinstance(kl, np.ndarray):
-            for i, kl_i in enumerate(kl):
-                if kl_i > 2.0 * config["kl_target"]:
-                    self.kl_coeff[i] *= 1.5
-                elif kl_i < 0.5 * config["kl_target"]:
-                    self.kl_coeff[i] *= 0.5
-        else:
-            if kl > 2.0 * config["kl_target"]:
-                self.kl_coeff[0] *= 1.5
-            elif kl < 0.5 * config["kl_target"]:
-                self.kl_coeff[0] *= 0.5
+        if not isinstance(kl, np.ndarray):
+            kl = [kl]
+
+        for i, kl_i in enumerate(kl):
+            if kl_i > 2.0 * config["kl_target"]:
+                self.kl_coeff[i] *= 1.5
+            elif kl_i < 0.5 * config["kl_target"]:
+                self.kl_coeff[i] *= 0.5
+
+        # if isinstance(kl, np.ndarray):
+        #     for i, kl_i in enumerate(kl):
+        #         if kl_i > 2.0 * config["kl_target"]:
+        #             self.kl_coeff[i] *= 1.5
+        #         elif kl_i < 0.5 * config["kl_target"]:
+        #             self.kl_coeff[i] *= 0.5
+        # else:
+        #     if kl > 2.0 * config["kl_target"]:
+        #         self.kl_coeff[0] *= 1.5
+        #     elif kl < 0.5 * config["kl_target"]:
+        #         self.kl_coeff[0] *= 0.5
 
         info = {
-            "kl_divergence": np.sum(kl),
-            "kl_coefficient": self.kl_coeff[0],
+            "kl_divergence": np.mean(kl),
+            "kl_coefficient": np.mean(self.kl_coeff),
             "rollouts_time": rollouts_time,
             "shuffle_time": shuffle_time,
             "load_time": load_time,
