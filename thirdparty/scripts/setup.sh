@@ -5,19 +5,25 @@ set -x
 # Cause the script to exit if a single command fails.
 set -e
 
-TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+TP_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+TP_DIR=$TP_SCRIPT_DIR/..
+
+mkdir -p $TP_DIR/build
+mkdir -p $TP_DIR/pkg
+
+unamestr="$(uname)"
 
 ##############################################
 # redis
 ##############################################
-bash "$TP_DIR/build_redis.sh"
+bash "$TP_SCRIPT_DIR/build_redis.sh"
 
 ##############################################
 # boost if necessary
 ##############################################
 if [[ "$unamestr" == "Linux" ]]; then
   echo "building boost"
-  bash "$TP_DIR/build_boost.sh"
+  bash "$TP_SCRIPT_DIR/build_boost.sh"
 fi
 
 ##############################################
@@ -25,26 +31,26 @@ fi
 ##############################################
 if [[ "$unamestr" == "Linux" ]]; then
   echo "building flatbuffers"
-  bash "$TP_DIR/build_flatbuffers.sh"
+  bash "$TP_SCRIPT_DIR/build_flatbuffers.sh"
 fi
 
 ##############################################
 # arrow
 ##############################################
-bash "$TP_DIR/build_arrow.sh"
+bash "$TP_SCRIPT_DIR/build_arrow.sh"
 
 ##############################################
 # parquet (skipped as it is inlined in build_arrow.sh)
 ##############################################
-# bash "$TP_DIR/build_parquet.sh"
+# bash "$TP_SCRIPT_DIR/build_parquet.sh"
 
 ##############################################
 # catapult
 ##############################################
 # Clone catapult and build the static HTML needed for the UI.
-bash "$TP_DIR/build_ui.sh"
+bash "$TP_SCRIPT_DIR/build_ui.sh"
 
 ##############################################
 # rDSN (optional)
 ##############################################
-# bash "$TP_DIR/build_rdsn.sh"
+# bash "$TP_SCRIPT_DIR/build_rdsn.sh"

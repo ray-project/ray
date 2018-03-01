@@ -7,7 +7,7 @@ set -e
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-sh $ROOT_DIR/setup_thirdparty.sh
+bash $ROOT_DIR/setup_thirdparty.sh
 
 if [[ -z  "$1" ]]; then
   PYTHON_EXECUTABLE=`which python`
@@ -31,17 +31,17 @@ fi
 pushd "$ROOT_DIR/python/ray/core"
   # We use these variables to set PKG_CONFIG_PATH, which is important so that
   # in cmake, pkg-config can find plasma.
-  TP_DIR=$ROOT_DIR/thirdparty/pkg
-  ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
+  TP_PKG_DIR=$ROOT_DIR/thirdparty/pkg
+  ARROW_HOME=$TP_PKG_DIR/arrow/cpp/build/cpp-install
   if [[ "$VALGRIND" = "1" ]]; then
-    BOOST_ROOT=$TP_DIR/boost \
+    BOOST_ROOT=$TP_PKG_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     cmake -DCMAKE_BUILD_TYPE=Debug \
           -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
           -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
           ../../..
   else
-    BOOST_ROOT=$TP_DIR/boost \
+    BOOST_ROOT=$TP_PKG_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     cmake -DCMAKE_BUILD_TYPE=Release \
           -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
