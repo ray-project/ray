@@ -41,9 +41,9 @@ set(RAY_SRCS
   om/object_directory.cc
   om/object_manager.cc
   raylet/mock_gcs_client.cc
-  raylet/Task.cc
-  raylet/TaskExecutionSpecification.cc
-  raylet/TaskSpecification.cc
+  raylet/task.cc
+  raylet/task_execution_spec.cc
+  raylet/task_spec.cc
   raylet/client_connection.cc
   raylet/worker.cc
   raylet/worker_pool.cc

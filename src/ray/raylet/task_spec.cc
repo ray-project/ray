@@ -1,7 +1,7 @@
 #ifndef TASK_SPECIFICATION_CC
 #define TASK_SPECIFICATION_CC
 
-#include "TaskSpecification.h"
+#include "task_spec.h"
 
 #include "common.h"
 #include "common_protocol.h"
