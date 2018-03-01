@@ -15,7 +15,7 @@ def import_aws():
 def load_aws_config():
     import ray.autoscaler.aws as ray_aws
     return os.path.join(os.path.dirname(
-        ray_aws.__file__), "default.yaml")
+        ray_aws.__file__), "cluster-defaults.yaml")
 
 
 NODE_PROVIDERS = {
