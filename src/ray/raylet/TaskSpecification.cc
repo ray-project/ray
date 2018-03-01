@@ -61,10 +61,6 @@ static const ObjectID task_compute_return_id(TaskID task_id, int64_t return_inde
 TaskSpecification::TaskSpecification(const uint8_t *spec, size_t spec_size) : spec_(spec, spec + spec_size) {
 }
 
-TaskSpecification::TaskSpecification(const TaskSpecification &spec) :
-  TaskSpecification(spec.data(), spec.size()) {
-}
-
 TaskSpecification::TaskSpecification(const flatbuffers::String &string) :
   TaskSpecification(
       reinterpret_cast<const uint8_t *>(string.data()),

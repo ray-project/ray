@@ -7,11 +7,6 @@
 
 namespace ray {
 
-TaskExecutionSpecification::TaskExecutionSpecification():
-  execution_dependencies_(std::vector<ObjectID>()),
-  last_timestamp_(0),
-  spillback_count_(0) {}
-
 TaskExecutionSpecification::TaskExecutionSpecification(const std::vector<ObjectID> &&execution_dependencies) :
   execution_dependencies_(std::move(execution_dependencies)),
   last_timestamp_(0),
@@ -22,11 +17,6 @@ TaskExecutionSpecification::TaskExecutionSpecification(const std::vector<ObjectI
   execution_dependencies_(std::move(execution_dependencies)),
   last_timestamp_(0),
   spillback_count_(spillback_count) {}
-
-TaskExecutionSpecification::TaskExecutionSpecification(const TaskExecutionSpecification &execution_spec) :
-  execution_dependencies_(execution_spec.ExecutionDependencies()),
-  last_timestamp_(execution_spec.LastTimeStamp()),
-  spillback_count_(execution_spec.SpillbackCount()) {}
 
 const std::vector<ObjectID> &TaskExecutionSpecification::ExecutionDependencies() const {
   return execution_dependencies_;
