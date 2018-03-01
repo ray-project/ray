@@ -18,12 +18,19 @@ class LocalScheduler;
 class NodeServer {
  public:
   /// Create a node manager server and listen for new clients.
+  ///
+  /// \param io_service The event loop to run the server on.
+  /// \param socket_name The Unix domain socket to listen on for local clients.
+  /// \param resource_config The initial set of resources to start the local
+  /// scheduler with.
+  /// \param object_manager_config Configuration to initialize the object
+  /// manager.
+  /// \param gcs_client A client connection to the GCS.
   NodeServer(boost::asio::io_service& io_service,
              const std::string &socket_name,
              const ResourceSet &resource_config,
-             const OMConfig &om_config,
-             shared_ptr<ray::GcsClient> gcs_client,
-             shared_ptr<ray::ObjectDirectory> od);
+             const OMConfig &object_manager_config,
+             shared_ptr<ray::GcsClient> gcs_client);
 
   ObjectManager &GetObjectManager();
   ray::Status Terminate();
@@ -50,8 +57,6 @@ class NodeServer {
   /// The socket to listen on for new tcp clients.
   boost::asio::ip::tcp::socket tcp_socket_;
 
-  // TODO(swang): Object directory.
-  // TODO(swang): GCS client.
   // TODO(swang): Lineage cache.
   // Manages client requests for object transfers and availability.
   ObjectManager object_manager_;

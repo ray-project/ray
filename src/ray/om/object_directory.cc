@@ -9,7 +9,7 @@ namespace ray {
 ObjectDirectory::ObjectDirectory() = default;
 ObjectDirectory::~ObjectDirectory() = default;
 
-void ObjectDirectory::InitGcs(std::shared_ptr<GcsClient> gcs_client){
+ObjectDirectory::ObjectDirectory(std::shared_ptr<GcsClient> gcs_client){
   this->gcs_client = gcs_client;
 };
 
