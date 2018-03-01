@@ -11,6 +11,13 @@ TP_DIR=$TP_SCRIPT_DIR/..
 mkdir -p $TP_DIR/build
 mkdir -p $TP_DIR/pkg
 
+if [[ -z  "$1" ]]; then
+  PYTHON_EXECUTABLE=`which python`
+else
+  PYTHON_EXECUTABLE=$1
+fi
+echo "Using Python executable $PYTHON_EXECUTABLE."
+
 unamestr="$(uname)"
 
 ##############################################
@@ -37,7 +44,7 @@ fi
 ##############################################
 # arrow
 ##############################################
-bash "$TP_SCRIPT_DIR/build_arrow.sh"
+bash "$TP_SCRIPT_DIR/build_arrow.sh" $PYTHON_EXECUTABLE
 
 ##############################################
 # parquet (skipped as it is inlined in build_arrow.sh)

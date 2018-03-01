@@ -15,6 +15,8 @@ else
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
+unamestr="$(uname)"
+
 if [[ "$unamestr" == "Linux" ]]; then
   FLATBUFFERS_HOME=$TP_DIR/pkg/flatbuffers
 else
@@ -22,7 +24,6 @@ else
 fi
 
 # Determine how many parallel jobs to use for make based on the number of cores
-unamestr="$(uname)"
 if [[ "$unamestr" == "Linux" ]]; then
   PARALLEL=$(nproc)
 elif [[ "$unamestr" == "Darwin" ]]; then
@@ -44,8 +45,8 @@ if [[ ! -d $TP_DIR/pkg/arrow ]]; then
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
     git checkout 46aa99e9843ac0148357bb36a9235cfd48903e73
-    
-    cd cpp 
+
+    cd cpp
     mkdir build
     cd build
 
@@ -105,5 +106,5 @@ if [[ ! -d $TP_DIR/pkg/arrow ]]; then
     echo "copying pyarrow files from $PYARROW_BUILD_LIB_DIR/pyarrow"
     cp -r $PYARROW_BUILD_LIB_DIR/pyarrow $TP_DIR/../python/ray/pyarrow_files/
 
-    popd 
-fi 
+    popd
+fi

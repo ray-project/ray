@@ -7,14 +7,14 @@ set -e
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-bash $ROOT_DIR/setup_thirdparty.sh
-
 if [[ -z  "$1" ]]; then
   PYTHON_EXECUTABLE=`which python`
 else
   PYTHON_EXECUTABLE=$1
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
+
+bash $ROOT_DIR/setup_thirdparty.sh $PYTHON_EXECUTABLE
 
 # Determine how many parallel jobs to use for make based on the number of cores
 unamestr="$(uname)"
