@@ -5,6 +5,8 @@
 
 #include "node_manager.h"
 
+#include "ray/status.h"
+
 using namespace std;
 using namespace boost::asio;
 
@@ -27,6 +29,10 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
   // Start listening for clients.
   DoAccept();
   DoAcceptTcp();
+}
+
+NodeServer::~NodeServer(){
+  RAY_CHECK_OK(object_manager_.Terminate());
 }
 
 ClientID NodeServer::RegisterGcs(){
@@ -72,10 +78,6 @@ void NodeServer::HandleAccept(const boost::system::error_code &error) {
 
 ObjectManager &NodeServer::GetObjectManager() {
   return object_manager_;
-}
-
-ray::Status NodeServer::Terminate(){
-  return object_manager_.Terminate();
 }
 
 } // end namespace ray

@@ -42,8 +42,4 @@ int main(int argc, char *argv[]) {
   om_config.store_socket_name = store2;
   ray::NodeServer server2(io_service, std::string(argv[2]), resource_config, om_config, mock_gcs_client);
   io_service.run();
-  ray::Status ray_status1 = server1.Terminate();
-  ray::Status ray_status2 = server2.Terminate();
-
-  return !(ray_status1.ok() && ray_status2.ok());
 }
