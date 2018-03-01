@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "ray/om/object_directory.h"
+#include "object_directory.h"
 
 using namespace std;
 

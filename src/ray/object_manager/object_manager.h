@@ -22,9 +22,9 @@
 
 #include "ray/raylet/client_connection.h"
 
-#include "ray/om/object_directory.h"
-#include "ray/om/object_store_client.h"
-#include "ray/om/format/om_generated.h"
+#include "object_directory.h"
+#include "object_store_client.h"
+#include "format/om_generated.h"
 
 #include "om_client_connection.h"
 
