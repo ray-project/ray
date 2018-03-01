@@ -3,7 +3,8 @@
 
 #include "task_dependency_manager.h"
 
-#include "common.h"
+#include "ray/status.h"
+#include "ray/util/logging.h"
 
 using namespace std;
 namespace ray {
@@ -34,9 +35,9 @@ bool TaskDependencyManager::argumentsReady(const std::vector<ObjectID> arguments
 }
 
 void TaskDependencyManager::handleObjectReady(const ray::ObjectID& object_id) {
-  LOG_INFO("object %s ready", object_id.hex().c_str());
+  RAY_LOG(DEBUG) << "object ready " << object_id.hex();
   // Add the object to the table of locally available objects.
-  CHECK(local_objects_.count(object_id) == 0);
+  RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_.insert(object_id);
 
   // Handle any tasks that were dependent on the newly available object.
@@ -83,7 +84,7 @@ void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
     }
   }
   // Check that the task has some missing arguments.
-  CHECK(num_missing_arguments > 0);
+  RAY_CHECK(num_missing_arguments > 0);
 }
 
 void TaskDependencyManager::UnsubscribeTaskReady(const TaskID &task_id) {

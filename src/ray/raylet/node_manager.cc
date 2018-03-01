@@ -3,7 +3,8 @@
 
 #include "node_manager.h"
 
-#include "common.h"
+#include "ray/status.h"
+#include "ray/util/logging.h"
 #include "common_protocol.h"
 #include "format/nm_generated.h"
 #include "task.h"
@@ -34,7 +35,7 @@ NodeManager::NodeManager(
 
 
 void NodeManager::ProcessClientMessage(shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message_data) {
-  LOG_INFO("Message of type %" PRId64, message_type);
+  RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (message_type) {
   case MessageType_RegisterClientRequest: {
@@ -59,7 +60,7 @@ void NodeManager::ProcessClientMessage(shared_ptr<LocalClientConnection> client,
   } break;
   case MessageType_GetTask: {
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-    CHECK(worker);
+    RAY_CHECK(worker);
     // If the worker was assigned a task, mark it as finished.
     if (!worker->GetAssignedTaskId().is_nil()) {
       finishTask(worker->GetAssignedTaskId());
@@ -90,7 +91,7 @@ void NodeManager::ProcessClientMessage(shared_ptr<LocalClientConnection> client,
     submitTask(task);
   } break;
   default:
-    CHECK(0);
+    RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
 }
 
@@ -146,7 +147,7 @@ void NodeManager::assignTask(const Task& task) {
   }
 
   std::shared_ptr<Worker> worker = worker_pool_.PopWorker();
-  LOG_INFO("Assigning task to worker with pid %d", worker->Pid());
+  RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
 
   // TODO(swang): Acquire resources for the task.
   //local_resources_.Acquire(task.GetTaskSpecification().GetRequiredResources());
@@ -163,7 +164,7 @@ void NodeManager::assignTask(const Task& task) {
 }
 
 void NodeManager::finishTask(const TaskID &task_id) {
-  LOG_INFO("Finished task %s", task_id.hex().c_str());
+  RAY_LOG(DEBUG) << "Finished task " << task_id.hex();
   local_queues_.RemoveTasks({task_id});
   // TODO(swang): Release resources that were held for the task.
 }

@@ -6,6 +6,7 @@
 #include <boost/bind.hpp>
 
 #include "common.h"
+#include "ray/status.h"
 #include "format/nm_generated.h"
 #include "raylet.h"
 #include "worker.h"
@@ -50,7 +51,7 @@ void ClientConnection<T>::processMessageHeader(const boost::system::error_code& 
   }
 
   // If there was no error, make sure the protocol version matches.
-  CHECK(read_version_ == RayConfig::instance().ray_protocol_version());
+  RAY_CHECK(read_version_ == RayConfig::instance().ray_protocol_version());
   // Resize the message buffer to match the received length.
   read_message_.resize(read_length_);
   // Wait for the message to be read.
