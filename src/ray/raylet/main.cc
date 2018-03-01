@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
 
   // Initialize the node manager.
   boost::asio::io_service io_service;
-  ray::NodeServer server(io_service, std::string(argv[1]), resource_config, om_config, mock_gcs_client);
+  ray::Raylet server(io_service, std::string(argv[1]), resource_config, om_config, mock_gcs_client);
   io_service.run();
 }
 #endif

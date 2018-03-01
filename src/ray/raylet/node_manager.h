@@ -16,7 +16,7 @@ class Task;
 class LocalScheduler;
 
 // TODO(swang): Rename class and source files to Raylet.
-class NodeServer {
+class Raylet {
  public:
   /// Create a node manager server and listen for new clients.
   ///
@@ -27,14 +27,14 @@ class NodeServer {
   /// \param object_manager_config Configuration to initialize the object
   /// manager.
   /// \param gcs_client A client connection to the GCS.
-  NodeServer(boost::asio::io_service& io_service,
+  Raylet(boost::asio::io_service& io_service,
              const std::string &socket_name,
              const ResourceSet &resource_config,
              const OMConfig &object_manager_config,
              shared_ptr<ray::GcsClient> gcs_client);
 
   /// Destroy the NodeServer.
-  ~NodeServer();
+  ~Raylet();
 
   // TODO(melih): Get rid of this method.
   ObjectManager &GetObjectManager();

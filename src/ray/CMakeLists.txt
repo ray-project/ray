@@ -48,7 +48,7 @@ set(RAY_SRCS
   raylet/Worker.cc
   raylet/WorkerPool.cc
   raylet/LsResources.cc
-  raylet/ActorInformation.cc
+  raylet/actor.cc
   raylet/LsQueue.cc
   raylet/LsPolicy.cc
   raylet/task_dependency_manager.cc

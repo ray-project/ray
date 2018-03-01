@@ -12,7 +12,7 @@ using namespace boost::asio;
 
 namespace ray {
 
-NodeServer::NodeServer(boost::asio::io_service& io_service,
+Raylet::Raylet(boost::asio::io_service& io_service,
                        const std::string &socket_name,
                        const ResourceSet &resource_config,
                        const OMConfig &om_config,
@@ -31,11 +31,11 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
   DoAcceptTcp();
 }
 
-NodeServer::~NodeServer(){
+Raylet::~Raylet(){
   RAY_CHECK_OK(object_manager_.Terminate());
 }
 
-ClientID NodeServer::RegisterGcs(){
+ClientID Raylet::RegisterGcs(){
   ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
   std::string ip = endpoint.address().to_string();
   ushort port = endpoint.port();
@@ -43,15 +43,15 @@ ClientID NodeServer::RegisterGcs(){
   return client_id;
 }
 
-void NodeServer::DoAcceptTcp() {
+void Raylet::DoAcceptTcp() {
   TCPClientConnection::pointer new_connection = TCPClientConnection::Create(acceptor_.get_io_service());
   tcp_acceptor_.async_accept(
       new_connection->GetSocket(),
-      boost::bind(&NodeServer::HandleAcceptTcp, this, new_connection, boost::asio::placeholders::error)
+      boost::bind(&Raylet::HandleAcceptTcp, this, new_connection, boost::asio::placeholders::error)
   );
 }
 
-void NodeServer::HandleAcceptTcp(TCPClientConnection::pointer new_connection,
+void Raylet::HandleAcceptTcp(TCPClientConnection::pointer new_connection,
                                  const boost::system::error_code& error) {
   if (!error) {
     // Pass it off to object manager for now.
@@ -60,13 +60,13 @@ void NodeServer::HandleAcceptTcp(TCPClientConnection::pointer new_connection,
   DoAcceptTcp();
 }
 
-void NodeServer::DoAccept() {
+void Raylet::DoAccept() {
   acceptor_.async_accept(socket_,
-      boost::bind(&NodeServer::HandleAccept, this, boost::asio::placeholders::error)
+      boost::bind(&Raylet::HandleAccept, this, boost::asio::placeholders::error)
       );
 }
 
-void NodeServer::HandleAccept(const boost::system::error_code &error) {
+void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
     // Accept a new client.
     auto new_connection = LocalClientConnection::Create(local_scheduler_, std::move(socket_));
@@ -76,7 +76,7 @@ void NodeServer::HandleAccept(const boost::system::error_code &error) {
   DoAccept();
 }
 
-ObjectManager &NodeServer::GetObjectManager() {
+ObjectManager &Raylet::GetObjectManager() {
   return object_manager_;
 }
 
