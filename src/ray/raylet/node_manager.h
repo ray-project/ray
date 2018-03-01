@@ -15,6 +15,7 @@ namespace ray {
 class Task;
 class LocalScheduler;
 
+// TODO(swang): Rename class and source files to Raylet.
 class NodeServer {
  public:
   /// Create a node manager server and listen for new clients.
@@ -61,10 +62,11 @@ class NodeServer {
   boost::asio::ip::tcp::socket tcp_socket_;
 
   // TODO(swang): Lineage cache.
-  // Manages client requests for object transfers and availability.
+  /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
-  // Manages client requests for task submission and execution.
+  /// Manages client requests for task submission and execution.
   LocalScheduler local_scheduler_;
+  /// A client connection to the GCS.
   shared_ptr<ray::GcsClient> gcs_client_;
 };
 
