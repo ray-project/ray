@@ -1,7 +1,7 @@
 #ifndef WORKER_POOL_CC
 #define WORKER_POOL_CC
 
-#include "WorkerPool.h"
+#include "worker_pool.h"
 
 #include "common.h"
 

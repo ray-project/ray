@@ -14,7 +14,6 @@ extern "C" {
 #include "sha256.h"
 }
 
-using namespace std;
 namespace ray {
 
 /// \class TaskArgument
@@ -110,9 +109,9 @@ public:
       //UniqueID actor_handle_id,
       //int64_t actor_counter,
       FunctionID function_id,
-      const vector<TaskArgument> &arguments,
+      const std::vector<TaskArgument> &arguments,
       int64_t num_returns,
-      const unordered_map<string, double> &required_resources);
+      const std::unordered_map<std::string, double> &required_resources);
 
   ~TaskSpecification() {}
 

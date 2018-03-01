@@ -5,7 +5,6 @@
 
 #include "ray/id.h"
 
-using namespace std;
 namespace ray {
 
 // TODO(swang): Use std::function instead of boost.

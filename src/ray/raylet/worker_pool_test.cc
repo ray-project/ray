@@ -1,9 +1,10 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include "WorkerPool.h"
+#include "worker_pool.h"
 #include "node_manager.h"
 
+using namespace std;
 namespace ray {
 
 class MockClientManager : public ClientManager<boost::asio::local::stream_protocol> {

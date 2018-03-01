@@ -6,6 +6,7 @@
 
 #include "raylet.h"
 
+using namespace std;
 namespace ray {
 
 std::string test_executable;  // NOLINT

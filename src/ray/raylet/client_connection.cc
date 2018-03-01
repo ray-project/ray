@@ -8,7 +8,7 @@
 #include "common.h"
 #include "format/nm_generated.h"
 #include "raylet.h"
-#include "Worker.h"
+#include "worker.h"
 
 using namespace std;
 namespace ray {

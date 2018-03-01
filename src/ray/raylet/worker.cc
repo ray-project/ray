@@ -1,7 +1,7 @@
 #ifndef WORKER_CC
 #define WORKER_CC
 
-#include "Worker.h"
+#include "worker.h"
 
 #include <boost/bind.hpp>
 

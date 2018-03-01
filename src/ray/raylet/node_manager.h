@@ -8,9 +8,8 @@
 #include "ray/om/object_manager.h"
 #include "reconstruction_policy.h"
 #include "task_dependency_manager.h"
-#include "WorkerPool.h"
+#include "worker_pool.h"
 
-using namespace std;
 namespace ray {
 
 class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
@@ -21,7 +20,7 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
       ObjectManager &object_manager);
   /// Process a message from a client, then listen for more messages if the
   /// client is still alive.
-  void ProcessClientMessage(shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message);
+  void ProcessClientMessage(std::shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message);
   void HandleWaitingTaskReady(const TaskID &task_id);
  private:
   /// Submit a task to this node.
