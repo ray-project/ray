@@ -107,7 +107,6 @@ ray::Status ObjectManager::SchedulePullHandler(const ObjectID &object_id){
   return status_code;
 }
 
-// Private callback implementation for success on get location. Called inside OD.
 void ObjectManager::GetLocationsSuccess(const vector<ray::RemoteConnectionInfo> &v,
                                         const ray::ObjectID &object_id) {
   RemoteConnectionInfo info = v.front();
@@ -115,7 +114,6 @@ void ObjectManager::GetLocationsSuccess(const vector<ray::RemoteConnectionInfo> 
   ray::Status status_code = this->Pull(object_id, info.client_id);
 };
 
-// Private callback implementation for failure on get location. Called inside OD.
 void ObjectManager::GetLocationsFailed(ray::Status status, const ObjectID &object_id){
   SchedulePull(object_id, config.pull_timeout_ms);
 };

@@ -14,6 +14,8 @@ using namespace std;
 
 namespace ray {
 
+// TODO(hme): Dedicate this class to notifications.
+// TODO(hme): Create object store client pool for object manager.
 ObjectStoreClient::ObjectStoreClient(
     boost::asio::io_service &io_service,
     string &store_socket_name

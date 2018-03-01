@@ -19,6 +19,7 @@
 
 namespace ray {
 
+// TODO(hme): document public API after refactor.
 class ObjectStoreClient {
 
  public:

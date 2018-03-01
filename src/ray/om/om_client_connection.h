@@ -20,6 +20,7 @@ struct SendRequest {
   uint8_t *data;
 };
 
+// TODO(hme): Document public API after integration with common connection.
 class SenderConnection : public boost::enable_shared_from_this<SenderConnection> {
 
  public:
@@ -51,6 +52,7 @@ const std::string &ip, ushort port);
 
 };
 
+// TODO(hme): Document public API after integration with common connection.
 class TCPClientConnection : public boost::enable_shared_from_this<TCPClientConnection> {
 
  public:
