@@ -136,17 +136,6 @@ class DQNEvaluator(Evaluator):
 
         return batch
 
-    def compute_gradients(self, samples):
-        td_error, grad = self.dqn_graph.compute_gradients(
-            self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
-        return grad, td_error
-
-    def apply_gradients(self, grads):
-        if type(grads) is tuple:
-            grads, _ = grads  # drop td_error
-        self.dqn_graph.apply_gradients(self.sess, grads)
-
     def compute_apply(self, samples):
         if samples is None:
             return None
