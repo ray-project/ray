@@ -10,11 +10,11 @@ namespace ray {
 
 std::string test_executable;  // NOLINT
 
-class TestNodeManager : public ::testing::Test {
+class TestRaylet : public ::testing::Test {
 public:
 
-  TestNodeManager() {
-    std::cout << "TestNodeManager: started." << std::endl;
+  TestRaylet() {
+    std::cout << "TestRaylet: started." << std::endl;
   }
 
   std::string StartStore(const std::string &id){
@@ -94,7 +94,7 @@ public:
   };
 
   void StartLoop(){
-    p = std::thread(&TestNodeManager::Loop, this);
+    p = std::thread(&TestRaylet::Loop, this);
   };
 
   void StopLoop(){
@@ -138,7 +138,7 @@ public:
 
 };
 
-TEST_F(TestNodeManager, TestNodeManagerCommands) {
+TEST_F(TestRaylet, TestRayletCommands) {
   ray::Status status = ray::Status::OK();
   // TODO(atumanov): assert status is OK everywhere it's returned.
   cout << endl << "All connected clients:" << endl << endl;

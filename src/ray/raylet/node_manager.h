@@ -3,8 +3,8 @@
 
 #include "client_connection.h"
 #include "LsResources.h"
-#include "LsQueue.h"
-#include "LsPolicy.h"
+#include "scheduling_queue.h"
+#include "scheduling_policy.h"
 #include "ray/om/object_manager.h"
 #include "reconstruction_policy.h"
 #include "task_dependency_manager.h"
@@ -13,9 +13,9 @@
 using namespace std;
 namespace ray {
 
-class LocalScheduler : public ClientManager<boost::asio::local::stream_protocol> {
+class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
  public:
-  LocalScheduler(
+  NodeManager(
       const std::string &socket_name,
       const ResourceSet &resource_config,
       ObjectManager &object_manager);
@@ -41,9 +41,9 @@ class LocalScheduler : public ClientManager<boost::asio::local::stream_protocol>
   WorkerPool worker_pool_;
   // A set of queues that maintain tasks enqueued in pending, ready, running
   // states.
-  LsQueue local_queues_;
+  SchedulingQueue local_queues_;
   // Scheduling policy in effect for this local scheduler.
-  LsPolicy sched_policy_;
+  SchedulingPolicy sched_policy_;
   ReconstructionPolicy reconstruction_policy_;
   TaskDependencyManager task_dependency_manager_;
 };

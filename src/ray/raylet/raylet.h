@@ -1,19 +1,19 @@
-#ifndef RAY_NODE_MANAGER_H
-#define RAY_NODE_MANAGER_H
+#ifndef RAYLET_H
+#define RAYLET_H
 
 #include <list>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 
-#include "local_scheduler.h"
+#include "node_manager.h"
 #include "ray/om/object_manager.h"
 #include "LsResources.h"
 
 namespace ray {
 
 class Task;
-class LocalScheduler;
+class NodeManager;
 
 // TODO(swang): Rename class and source files to Raylet.
 class Raylet {
@@ -65,11 +65,11 @@ class Raylet {
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// Manages client requests for task submission and execution.
-  LocalScheduler local_scheduler_;
+  NodeManager node_manager_;
   /// A client connection to the GCS.
   shared_ptr<ray::GcsClient> gcs_client_;
 };
 
 } // end namespace ray
 
-#endif  // RAY_NODE_MANAGER_H
+#endif  // RAYLET_H

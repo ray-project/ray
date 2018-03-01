@@ -11,15 +11,15 @@
 
 namespace ray {
 
-/// LSQueue: encapsulates task queues. Responsible for task queue transitions.
+/// SchedulingQueue: encapsulates task queues. Responsible for task queue transitions.
 ///
-class LsQueue {
+class SchedulingQueue {
  public:
-  /// public constructor of the LSQueue class
-  LsQueue() {}
+  /// public constructor of the SchedulingQueue class
+  SchedulingQueue() {}
 
-  /// LSQueue destructor
-  virtual ~LsQueue() {}
+  /// SchedulingQueue destructor
+  virtual ~SchedulingQueue() {}
 
   /// Return a list of tasks in the waiting state.
   const std::list<Task>& waiting_tasks() const;
@@ -51,7 +51,7 @@ class LsQueue {
   // Tasks that have acquired resources and are running on a worker.
   std::list<Task> running_tasks_;
   std::unordered_map<ActorID, ActorInformation, UniqueIDHasher> actor_registry_;
-}; // end class LSQueue
+};
 } // end namespace ray
 
 #endif

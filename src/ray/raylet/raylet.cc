@@ -21,7 +21,7 @@ Raylet::Raylet(boost::asio::io_service& io_service,
       tcp_acceptor_(io_service, ip::tcp::endpoint(ip::tcp::v4(), 0)),
       tcp_socket_(io_service),
       object_manager_(io_service, om_config, gcs_client),
-      local_scheduler_(socket_name, resource_config, object_manager_),
+      node_manager_(socket_name, resource_config, object_manager_),
       gcs_client_(gcs_client) {
   ClientID client_id = RegisterGcs();
   object_manager_.SetClientID(client_id);
@@ -68,7 +68,7 @@ void Raylet::DoAccept() {
 void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
     // Accept a new client.
-    auto new_connection = LocalClientConnection::Create(local_scheduler_, std::move(socket_));
+    auto new_connection = LocalClientConnection::Create(node_manager_, std::move(socket_));
     new_connection->ProcessMessages();
   }
   // We're ready to accept another client.

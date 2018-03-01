@@ -2,7 +2,7 @@
 #define LS_POLICY_CC
 #include <unordered_map>
 
-#include "LsPolicy.h"
+#include "scheduling_policy.h"
 #include "LsResources.h"
 
 using namespace std;
@@ -10,14 +10,14 @@ namespace ray{
 
 /// Given a set of cluster resources, produce a placement decision on all work
 /// in the queue.
-std::unordered_map<TaskID, ClientID, UniqueIDHasher> LsPolicy::Schedule(
+std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     const std::unordered_map<ClientID, LsResources, UniqueIDHasher> &cluster_resources) {
   // return data structure
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
 
   // Iterate over running tasks, get their resource demand and try to schedule.
   TaskID last_task_id = TaskID::nil();
-  const auto ready_tasks = lsqueue_.ready_tasks();
+  const auto ready_tasks = sched_queue_.ready_tasks();
   for (const auto &t : ready_tasks) {
     // Get task's resource demand
     const auto &resource_demand_map = t.GetTaskSpecification().GetRequiredResources();

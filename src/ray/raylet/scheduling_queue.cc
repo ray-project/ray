@@ -1,7 +1,7 @@
 #ifndef LS_QUEUE_CC
 #define LS_QUEUE_CC
 
-#include "LsQueue.h"
+#include "scheduling_queue.h"
 
 #include <list>
 
@@ -10,23 +10,23 @@
 
 namespace ray {
 
-const std::list<Task> &LsQueue::waiting_tasks() const {
+const std::list<Task> &SchedulingQueue::waiting_tasks() const {
   return this->waiting_tasks_;
 }
 
-const std::list<Task> &LsQueue::ready_tasks() const {
+const std::list<Task> &SchedulingQueue::ready_tasks() const {
   return this->ready_tasks_;
 }
 
-const std::list<Task> &LsQueue::scheduled_tasks() const {
+const std::list<Task> &SchedulingQueue::scheduled_tasks() const {
   return this->scheduled_tasks_;
 }
 
-const std::list<Task> &LsQueue::running_tasks() const {
+const std::list<Task> &SchedulingQueue::running_tasks() const {
   return this->running_tasks_;
 }
 
-const std::list<Task>& LsQueue::ready_methods() const {
+const std::list<Task>& SchedulingQueue::ready_methods() const {
   throw std::runtime_error("Method not implemented");
 }
 
@@ -58,7 +58,7 @@ void queueTasks(
   }
 }
 
-std::vector<Task> LsQueue::RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher> task_ids) {
+std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher> task_ids) {
   std::vector<Task> removed_tasks;
 
   // Try to find the tasks to remove from the waiting tasks.
@@ -72,25 +72,25 @@ std::vector<Task> LsQueue::RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher
   return removed_tasks;
 }
 
-void LsQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {
+void SchedulingQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {
   queueTasks(waiting_tasks_, tasks);
 }
 
-void LsQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
+void SchedulingQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
   queueTasks(ready_tasks_, tasks);
 }
 
-void LsQueue::QueueScheduledTasks(const std::vector<Task> &tasks) {
+void SchedulingQueue::QueueScheduledTasks(const std::vector<Task> &tasks) {
   queueTasks(scheduled_tasks_, tasks);
 }
 
-void LsQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
+void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
   queueTasks(running_tasks_, tasks);
 }
 
 // RegisterActor is responsible for recording provided actor_information
 // in the actor registry.
-bool LsQueue::RegisterActor(ActorID actor_id,
+bool SchedulingQueue::RegisterActor(ActorID actor_id,
                             const ActorInformation &actor_information) {
   actor_registry_[actor_id] = actor_information;
   return true;

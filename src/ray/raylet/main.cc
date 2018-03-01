@@ -6,7 +6,7 @@
 #include "raylet.h"
 
 
-#ifndef NODE_MANAGER_TEST
+#ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
   CHECK(argc == 2);
 
