@@ -157,12 +157,6 @@ class DQNAgent(Agent):
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
-    '''
-    online network vs target network differentiation
-    local vs remote evluator what are they supposed to
-    what is tf.variable_scope supposed to do vs tf.variable
-    would I change models.py?
-    '''
 
     def _train(self):
         start_timestep = self.global_timestep

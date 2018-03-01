@@ -98,13 +98,6 @@ def _scope_vars(scope, trainable_only=False):
         scope=scope if isinstance(scope, str) else scope.name)
 
     '''
-    should I be making changes in models.py
-    q_network vs target q network
-    how is action evaluated for non double_q, no argmax function
-    how do you advance the steps, how are u getting reward and next state
-    @239 when does this get called since already return ModelAndLoss
-
-    is alpha value the learning rate
 
 
     action_gap = min(q_t_seleted - q_t,q_tp1_best - q_tp1)
@@ -150,14 +143,20 @@ class ModelAndLoss(object):
             q_tp1_best = tf.reduce_max(self.q_tp1, 1)
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
-        #import ipdb; ipdb.set_trace();
+
         # compute RHS of bellman equation
         q_t_selected_target = (
             rew_t + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
 
+        #get q value in target network
+        with tf.variable_scope("target_q_func", reuse=True) as scope:
+            self.q_t_using_target_net = _build_q_network(
+                    registry, obs_t, num_actions, config)
 
-        #compute action gap
-        first_diff = tf.reduce_max(self.q_t) - q_t_selected
+        #compute action gap for persistent action learning
+        q_t_selected_using_target_net = tf.reduce_sum(
+            self.q_t_using_target_net * tf.one_hot(act_t, num_actions), 1)
+        first_diff = tf.reduce_max(self.q_t_using_target_net) - q_t_selected_using_target_net
         second_diff = tf.reduce_max(self.q_tp1) - q_tp1_best
         action_gap = tf.minimum(first_diff, second_diff)
         tf.summary.scalar('action_gap', tf.reduce_mean(action_gap))
@@ -166,11 +165,8 @@ class ModelAndLoss(object):
 
         #adjust for persistent advatange learning
         if config["pal"]:
-            #import ipdb; ipdb.set_trace()
             q_t_pal = q_t_selected_target - config['pal_alpha'] * action_gap
             q_t_selected_target = q_t_pal
-
-
 
 
         tf.summary.scalar('value_function', tf.reduce_mean(q_t_selected_target))
@@ -180,7 +176,6 @@ class ModelAndLoss(object):
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
         errors = _huber_loss(self.td_error)
-        #import ipdb; ipdb.set_trace();
         weighted_error = tf.reduce_mean(importance_weights * errors)
 
         self.loss = weighted_error
@@ -278,11 +273,10 @@ class DQNGraph(object):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
-        self.writer = tf.summary.FileWriter('/tmp/tf/pal/cartpole')
+        self.writer = tf.summary.FileWriter('/tmp/tf/pal/space_invaders')
         self.summary_op = loss_obj.summary_op
 
     def update_target(self, sess):
-        #import ipdb; ipdb.set_trace()
         return sess.run(self.update_target_expr)
 
     def act(self, sess, obs, eps, stochastic=True):
