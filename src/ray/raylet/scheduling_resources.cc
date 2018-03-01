@@ -3,7 +3,7 @@
 
 #include <cmath>
 
-#include "LsResources.h"
+#include "scheduling_resources.h"
 
 namespace ray {
 
@@ -66,9 +66,9 @@ bool ResourceSet::GetResource(
   return true;
 }
 
-/// LsResources class implementation
+/// SchedulingResources class implementation
 
-ResourceAvailabilityStatus LsResources::CheckResourcesSatisfied(
+ResourceAvailabilityStatus SchedulingResources::CheckResourcesSatisfied(
     ResourceSet &resources) const {
   if (!resources.isSubset(this->resources_total_)) {
     return kInfeasible;
@@ -80,17 +80,17 @@ ResourceAvailabilityStatus LsResources::CheckResourcesSatisfied(
   return kFeasible;
 }
 
-const ResourceSet &LsResources::GetAvailableResources() const{
+const ResourceSet &SchedulingResources::GetAvailableResources() const{
   return this->resources_available_;
 }
 
-// Return specified resources back to LsResources.
-bool LsResources::Release(const ResourceSet &resources) {
+// Return specified resources back to SchedulingResources.
+bool SchedulingResources::Release(const ResourceSet &resources) {
   return this->resources_available_.AddResources(resources);
 }
 
-// Take specified resources from LsResources.
-bool LsResources::Acquire(const ResourceSet &resources) {
+// Take specified resources from SchedulingResources.
+bool SchedulingResources::Acquire(const ResourceSet &resources) {
   return this->resources_available_.SubtractResources(resources);
 }
 
