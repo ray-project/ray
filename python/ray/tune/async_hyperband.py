@@ -11,7 +11,9 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     """Implements the Async Successive Halving.
 
     This should provide similar theoretical performance as HyperBand but
-    avoid straggler issues that HyperBand faces.
+    avoid straggler issues that HyperBand faces. One implementation detail
+    is when using multiple brackets, trial allocation to bracket is done
+    randomly with over a softmax probability.
 
     See https://openreview.net/forum?id=S1Y7OOlRZ
 
@@ -36,7 +38,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     def __init__(
             self, time_attr='training_iteration',
             reward_attr='episode_reward_mean', max_t=100,
-            grace_period=10, reduction_factor=3, brackets=5):
+            grace_period=10, reduction_factor=3, brackets=3):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert max_t >= grace_period, "grace_period must be <= max_t!"
         assert grace_period > 0, "grace_period must be positive!"
@@ -51,12 +53,16 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         # Tracks state for new trial add
         self._brackets = [_Bracket(
             grace_period, max_t, reduction_factor, s) for s in range(brackets)]
+        self._counter = 0  # for
         self._num_stopped = 0
         self._reward_attr = reward_attr
         self._time_attr = time_attr
 
     def on_trial_add(self, trial_runner, trial):
-        idx = len(self._trial_info) % len(self._brackets)
+        sizes = np.array([len(b._rungs) for b in self._brackets])
+        probs = np.e ** (sizes - sizes.max())
+        normalized = probs / probs.sum()
+        idx = np.random.choice(len(self._brackets), p=normalized)
         self._trial_info[trial.trial_id] = self._brackets[idx]
 
     def on_trial_result(self, trial_runner, trial, result):
