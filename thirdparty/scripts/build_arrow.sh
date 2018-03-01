@@ -44,10 +44,10 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
 
     pushd $TP_DIR/build/arrow
     git fetch origin master
-    # The PR for this commit is https://github.com/apache/arrow/pull/1581. We
+    # The PR for this commit is https://github.com/apache/arrow/pull/1651. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout 46aa99e9843ac0148357bb36a9235cfd48903e73
+    git checkout bfac60dd73bffa5f7bcefc890486268036182278
 
     cd cpp
     mkdir build
