@@ -103,7 +103,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ObjectRemoved(const ObjectID &object_id,
                             const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).
-  void InitGcs(std::shared_ptr<GcsClient> gcs_client);
+  ObjectDirectory(std::shared_ptr<GcsClient> gcs_client);
 
  private:
 

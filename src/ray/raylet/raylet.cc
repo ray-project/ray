@@ -28,12 +28,10 @@ int main(int argc, char *argv[]) {
 
   //  initialize mock gcs & object directory
   shared_ptr<ray::GcsClient> mock_gcs_client = shared_ptr<ray::GcsClient>(new ray::GcsClient());
-  shared_ptr<ray::ObjectDirectory> od = shared_ptr<ray::ObjectDirectory>(new ray::ObjectDirectory());
-  od->InitGcs(mock_gcs_client);
 
   // Initialize the node manager.
   boost::asio::io_service io_service;
-  ray::NodeServer server(io_service, std::string(argv[1]), resource_config, om_config, mock_gcs_client, od);
+  ray::NodeServer server(io_service, std::string(argv[1]), resource_config, om_config, mock_gcs_client);
   io_service.run();
   ray::Status ray_status = server.Terminate();
 

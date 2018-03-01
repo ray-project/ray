@@ -50,8 +50,10 @@ class ObjectManager {
   /// Implicitly instantiates Ray implementation of ObjectDirectory.
   /// \param io_service The asio io_service tied to the object manager.
   /// \param config ObjectManager configuration.
+  /// \param gcs_client A client connection to the Ray GCS.
   explicit ObjectManager(boost::asio::io_service &io_service,
-                         OMConfig config);
+                         OMConfig config,
+                         std::shared_ptr<ray::GcsClient> gcs_client);
 
   /// Takes user-defined ObjectDirectoryInterface implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
@@ -61,7 +63,7 @@ class ObjectManager {
   /// \param od An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &io_service,
                          OMConfig config,
-                         std::shared_ptr<ObjectDirectoryInterface> od);
+                         std::unique_ptr<ObjectDirectoryInterface> od);
 
   /// \param client_id Set the client id associated with this node.
   void SetClientID(const ClientID &client_id);
@@ -141,7 +143,7 @@ class ObjectManager {
 
   ClientID client_id_;
   OMConfig config;
-  std::shared_ptr<ObjectDirectoryInterface> od;
+  std::unique_ptr<ObjectDirectoryInterface> od;
   std::unique_ptr<ObjectStoreClient> store_client_;
 
   /// An io service for creating connections to other object managers.

@@ -46,9 +46,7 @@ class TestObjectManager : public ::testing::Test {
     // start om 1
     OMConfig config;
     config.store_socket_name = "/tmp/store";
-    shared_ptr<ObjectDirectory> od = shared_ptr<ObjectDirectory>(new ObjectDirectory());
-    od->InitGcs(mock_gcs_client);
-    om = unique_ptr<ObjectManager>(new ObjectManager(io_service, config, od));
+    om = unique_ptr<ObjectManager>(new ObjectManager(io_service, config, mock_gcs_client));
 
     //start om 2
 //    OMConfig config2;

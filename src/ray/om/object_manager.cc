@@ -7,11 +7,11 @@ using namespace std;
 
 namespace ray {
 
-ObjectManager::ObjectManager(boost::asio::io_service &io_service, OMConfig config) :
-    work_(io_service_)
-{
-
-  this->od = unique_ptr<ObjectDirectory>(new ObjectDirectory());
+ObjectManager::ObjectManager(boost::asio::io_service &io_service,
+                             OMConfig config,
+                             shared_ptr<ray::GcsClient> gcs_client)
+  : od(new ObjectDirectory(gcs_client)),
+    work_(io_service_) {
   this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
   this->store_client_->SubscribeObjAdded([this](const ObjectID &oid){NotifyDirectoryObjectAdd(oid);});
   this->store_client_->SubscribeObjDeleted([this](const ObjectID &oid){NotifyDirectoryObjectDeleted(oid);});
@@ -20,10 +20,9 @@ ObjectManager::ObjectManager(boost::asio::io_service &io_service, OMConfig confi
 
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              OMConfig config,
-                             shared_ptr<ObjectDirectoryInterface> od) :
-    work_(io_service_)
-{
-  this->od = od;
+                             std::unique_ptr<ObjectDirectoryInterface> od)
+  : od(std::move(od)),
+    work_(io_service_) {
   this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
   this->store_client_->SubscribeObjAdded([this](const ObjectID &oid){NotifyDirectoryObjectAdd(oid);});
   this->store_client_->SubscribeObjDeleted([this](const ObjectID &oid){NotifyDirectoryObjectDeleted(oid);});

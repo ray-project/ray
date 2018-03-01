@@ -48,26 +48,20 @@ public:
     // start first server
     ray::OMConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
-    shared_ptr<ray::ObjectDirectory> od = shared_ptr<ray::ObjectDirectory>(new ray::ObjectDirectory());
-    od->InitGcs(mock_gcs_client);
     server1.reset(new NodeServer(io_service,
                                  std::string("hello1"),
                                  resource_config,
                                  om_config_1,
-                                 mock_gcs_client,
-                                 od));
+                                 mock_gcs_client));
 
     // start second server
     ray::OMConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
-    shared_ptr<ray::ObjectDirectory> od2 = shared_ptr<ray::ObjectDirectory>(new ray::ObjectDirectory());
-    od2->InitGcs(mock_gcs_client);
     server2.reset(new NodeServer(io_service,
                                  std::string("hello2"),
                                  resource_config,
                                  om_config_2,
-                                 mock_gcs_client,
-                                 od2));
+                                 mock_gcs_client));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
