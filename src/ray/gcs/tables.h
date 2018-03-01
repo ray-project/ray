@@ -216,7 +216,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   /// @param callback Function to be called when database returns result.
   /// @return Status
   Status SubscribeToTask(const JobID &job_id,
-                         const DBClientID &local_scheduler_id,
+                         const ClientID &local_scheduler_id,
                          int state_filter,
                          const SubscribeToTaskCallback &callback,
                          const Callback &done);
@@ -232,10 +232,28 @@ Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
 Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
                               const TaskID &task_id,
-                              const DBClientID &local_scheduler_id,
+                              const ClientID &local_scheduler_id,
                               int test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
+
+class ClientInformation {
+ public:
+  const ClientID &GetClientId() const;
+  const std::string GetIpAddress() const;
+  int GetIpPort() const;
+};
+
+class ClientTable {
+ public:
+  // Connect to the GCS by registering ourselves in the client table and
+  // subscribing to client table notifications. Return the assigned ClientID.
+  ClientID Connect();
+  // Disconnect from the GCS.
+  void Disconnect();
+  // Get the client information from the cache.
+  const ClientInformation &GetClientInformation(ClientID client);
+};
 
 }  // namespace gcs
 
