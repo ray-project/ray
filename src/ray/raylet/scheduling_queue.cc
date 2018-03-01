@@ -5,7 +5,7 @@
 
 #include <list>
 
-#include "common.h"
+#include "ray/status.h"
 #include "ray/id.h"
 
 namespace ray {
@@ -68,7 +68,7 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID, Unique
   removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
   // TODO(swang): Remove from running methods.
 
-  CHECK(task_ids.size() == 0);
+  RAY_CHECK(task_ids.size() == 0);
   return removed_tasks;
 }
 

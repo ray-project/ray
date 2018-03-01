@@ -2,23 +2,24 @@
 
 #include <boost/bind.hpp>
 
-#include "common.h"
+#include "ray/status.h"
+#include "ray/util/logging.h"
 #include "raylet.h"
 
 using namespace std;
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
-  CHECK(argc == 2);
+  RAY_CHECK(argc == 2);
 
   // start store
   std::string executable_str = std::string(argv[0]);
   std::string exec_dir = executable_str.substr(0, executable_str.find_last_of("/"));
   std::string plasma_dir = exec_dir + "./../plasma";
   std::string plasma_command = plasma_dir + "/plasma_store -m 1000000000 -s /tmp/store 1> /dev/null 2> /dev/null &";
-  cout << plasma_command << endl;
+  RAY_LOG(INFO) << plasma_command;
   int s = system(plasma_command.c_str());
-  CHECK(s == 0);
+  RAY_CHECK(s == 0);
 
   // configure
   std::unordered_map<std::string, double> static_resource_conf;

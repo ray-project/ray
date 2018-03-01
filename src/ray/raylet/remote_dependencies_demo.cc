@@ -2,7 +2,8 @@
 
 #include <boost/bind.hpp>
 
-#include "common.h"
+#include "ray/status.h"
+#include "ray/util/logging.h"
 #include "raylet.h"
 
 using namespace std;
@@ -12,18 +13,18 @@ using namespace std;
  * ObjectManager::Push).
  */
 int main(int argc, char *argv[]) {
-  CHECK(argc == 3);
+  RAY_CHECK(argc == 3);
   std::string store1 = "/tmp/store1";
   std::string store2 = "/tmp/store2";
   // start store
   std::string plasma_dir = "../../plasma";
   std::string plasma_command1 = plasma_dir + "/plasma_store -m 1000000000 -s ";
   std::string plasma_command2 = " 1> /dev/null 2> /dev/null &";
-  cout << plasma_command1 << store1 << plasma_command2 << endl;
-  cout << plasma_command1 << store2 << plasma_command2 << endl;
+  RAY_LOG(INFO) << plasma_command1 << store1 << plasma_command2;
+  RAY_LOG(INFO) << plasma_command1 << store2 << plasma_command2;
   int s;
   s = system((plasma_command1 + store1 + plasma_command2).c_str());
-  CHECK(s == 0);
+  RAY_CHECK(s == 0);
   s = system((plasma_command1 + store2 + plasma_command2).c_str());
 
   // configure

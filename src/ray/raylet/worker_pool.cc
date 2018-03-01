@@ -3,7 +3,8 @@
 
 #include "worker_pool.h"
 
-#include "common.h"
+#include "ray/status.h"
+#include "ray/util/logging.h"
 
 using namespace std;
 namespace ray {
@@ -32,7 +33,7 @@ uint32_t WorkerPool::PoolSize() const{
 }
 
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
-  LOG_INFO("Registering worker with pid %d", worker->Pid());
+  RAY_LOG(DEBUG) << "Registering worker with pid "<< worker->Pid();
   registered_workers_.push_back(worker);
 }
 
@@ -74,7 +75,7 @@ bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool, std::shared_p
 }
 
 bool WorkerPool::DisconnectWorker(shared_ptr<Worker> worker) {
-  CHECK(removeWorker(registered_workers_, worker));
+  RAY_CHECK(removeWorker(registered_workers_, worker));
   return removeWorker(pool_, worker);
 }
 

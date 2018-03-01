@@ -103,7 +103,7 @@ TaskSpecification::TaskSpecification(
   BYTE buff[DIGEST_SIZE];
   sha256_final(&ctx, buff);
   TaskID task_id;
-  CHECK(sizeof(task_id) <= DIGEST_SIZE);
+  RAY_DCHECK(sizeof(task_id) <= DIGEST_SIZE);
   memcpy(&task_id, buff, sizeof(task_id));
 
   // Add return object IDs.
