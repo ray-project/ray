@@ -7,7 +7,7 @@
 #include <unordered_set>
 
 #include "Task.h"
-#include "ActorInformation.h"
+#include "actor.h"
 
 namespace ray {
 

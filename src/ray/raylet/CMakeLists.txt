@@ -26,7 +26,7 @@ ADD_RAY_TEST(worker_pool_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} $
 add_library(node_manager node_manager.cc ${NM_FBS_OUTPUT_FILES})
 target_link_libraries(node_manager ray_static ${Boost_SYSTEM_LIBRARY})
 
-add_executable(raylet raylet.cc)
+add_executable(raylet main.cc)
 target_link_libraries(raylet node_manager ${Boost_SYSTEM_LIBRARY} pthread)
 add_executable(raylet_demo remote_dependencies_demo.cc)
 target_link_libraries(raylet_demo node_manager ${Boost_SYSTEM_LIBRARY} pthread)

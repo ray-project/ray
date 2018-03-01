@@ -1,7 +1,7 @@
 #ifndef ACTOR_INFORMATION_CC
 #define ACTOR_INFORMATION_CC
 
-#include "ActorInformation.h"
+#include "actor.h"
 
 namespace ray {
 ActorID ActorInformation::GetActorId() const {
