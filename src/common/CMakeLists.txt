@@ -89,16 +89,10 @@ define_test(redis_tests "")
 define_test(task_table_tests "")
 define_test(object_table_tests "")
 
-add_custom_target(
-   redis
-   COMMAND make
-   WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/thirdparty/redis)
-
 add_custom_target(copy_redis ALL)
 foreach(file "redis-cli" "redis-server")
 add_custom_command(TARGET copy_redis POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E
-                      copy ${CMAKE_CURRENT_LIST_DIR}/thirdparty/redis/src/${file}
+                      copy ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/pkg/redis/src/${file}
                            ${CMAKE_BINARY_DIR}/src/common/thirdparty/redis/src/${file})
 endforeach()
-add_dependencies(copy_redis redis)
