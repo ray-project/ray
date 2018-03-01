@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 #include "scheduling_queue.h"
-#include "LsResources.h"
+#include "scheduling_resources.h"
 
 
 namespace ray {
@@ -18,7 +18,7 @@ public:
   // (1) local raylet (to be executed locally), (2) remote raylet,
   /// (3) global scheduler.
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> Schedule(
-      const std::unordered_map<ClientID, LsResources, UniqueIDHasher> &cluster_resources);
+      const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> &cluster_resources);
   // Perform a scheduling operation for a single task, given a set of
 
   virtual ~SchedulingPolicy() {}

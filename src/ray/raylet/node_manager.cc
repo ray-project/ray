@@ -105,7 +105,7 @@ void NodeManager::scheduleTasks() {
   // Ask policy for scheduling decision.
   // TODO(alexey): Give the policy all cluster resources instead of just the
   // local one.
-  std::unordered_map<ClientID, LsResources, UniqueIDHasher> cluster_resource_map;
+  std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> cluster_resource_map;
   cluster_resource_map[ClientID::nil()] = local_resources_;
   const auto &sched_policy_decision = sched_policy_.Schedule(cluster_resource_map);
   // Extract decision for this local scheduler.

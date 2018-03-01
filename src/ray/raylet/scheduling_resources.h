@@ -7,7 +7,6 @@
 
 #include "WorkerPool.h"
 
-using namespace std;
 namespace ray {
 
 typedef enum {
@@ -50,19 +49,19 @@ private:
 };
 
 
-/// LsResources class encapsulates state of all local resources and manages
+/// SchedulingResources class encapsulates state of all local resources and manages
 /// accounting of those resources. Resources include configured resource
 /// bundle capacity, and GPU allocation map.
-class LsResources {
+class SchedulingResources {
  public:
   // Raylet resource object constructors: set the total configured resource
   // capacity
-  LsResources() : resources_total_(ResourceSet()), resources_available_(ResourceSet()) {}
+  SchedulingResources() : resources_total_(ResourceSet()), resources_available_(ResourceSet()) {}
 
-  LsResources(const ResourceSet& total):
+  SchedulingResources(const ResourceSet& total):
     resources_total_(total), resources_available_(total) {}
 
-  LsResources(const ResourceSet &total, const WorkerPool &pool):
+  SchedulingResources(const ResourceSet &total, const WorkerPool &pool):
     resources_total_(total), resources_available_(total) {}
 
   ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &resources) const;

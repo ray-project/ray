@@ -8,7 +8,7 @@
 
 #include "node_manager.h"
 #include "ray/om/object_manager.h"
-#include "LsResources.h"
+#include "scheduling_resources.h"
 
 namespace ray {
 

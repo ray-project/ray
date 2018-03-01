@@ -2,7 +2,7 @@
 #define LOCAL_SCHEDULER_H
 
 #include "client_connection.h"
-#include "LsResources.h"
+#include "scheduling_resources.h"
 #include "scheduling_queue.h"
 #include "scheduling_policy.h"
 #include "ray/om/object_manager.h"
@@ -34,9 +34,9 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
   void scheduleTasks();
 
   /// The resources local to this node.
-  LsResources local_resources_;
+  SchedulingResources local_resources_;
   // TODO(alexey): Add resource information from other nodes.
-  //std::unordered_map<DBClientID, LsResources&, UniqueIDHasher> cluster_resource_map_;
+  //std::unordered_map<DBClientID, SchedulingResources&, UniqueIDHasher> cluster_resource_map_;
   // A set of workers, in a WorkerPool()
   WorkerPool worker_pool_;
   // A set of queues that maintain tasks enqueued in pending, ready, running
