@@ -15,6 +15,7 @@ env_config.update({
     "x_res": 80,
     "y_res": 80,
     "discrete_actions": True,
+    "use_depth_camera": True,
     "server_map": "/Game/Maps/Town02",
     "reward_function": "custom",
     "scenarios": TOWN2_STRAIGHT_CROWDED,
