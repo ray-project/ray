@@ -53,6 +53,6 @@ Note that the HyperBand scheduler requires your trainable to support checkpointi
 Median Stopping Rule
 --------------------
 
-Tune also implements the Median Stopping Rule, which implements the simple strategy of stopping a trial if it's performance falls below the median of other trials at similar points in time.
+The Median Stopping Rule implements the simple strategy of stopping a trial if it's performance falls below the median of other trials at similar points in time.
 
 .. autoclass:: ray.tune.median_stopping_rule.MedianStoppingRule
