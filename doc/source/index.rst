@@ -60,10 +60,17 @@ Example Program
    api.rst
    actors.rst
    using-ray-with-gpus.rst
+   webui.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Ray Libraries
+
    tune.rst
+   hyperband.rst
+   pbt.rst
    rllib.rst
    rllib-dev.rst
-   webui.rst
 
 .. toctree::
    :maxdepth: 1
