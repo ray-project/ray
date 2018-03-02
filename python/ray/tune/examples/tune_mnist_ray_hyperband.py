@@ -227,6 +227,7 @@ if __name__ == '__main__':
 
     if args.smoke_test:
         mnist_spec['stop']['training_iteration'] = 2
+        mnist_spec['repeat'] = 2
 
     ray.init()
     hyperband = HyperBandScheduler(
@@ -234,5 +235,4 @@ if __name__ == '__main__':
         max_t=100)
 
     run_experiments(
-        {'mnist_hyperband_test': mnist_spec},
-        scheduler=hyperband, with_server=True)
+        {'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)
