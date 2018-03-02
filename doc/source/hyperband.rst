@@ -6,7 +6,7 @@ Ray Tune includes distributed implementations of early stopping algorithms such 
 HyperBand Scheduler
 -------------------
 
-Ray Tune allows early stopping algorithms to be plugged in on top of existing grid or random searches. This can be enabled by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
+The HyperBand scheduler can be plugged in on top of an existing grid or random search. This can be done by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
 
 .. code-block:: python
 
