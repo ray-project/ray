@@ -3,8 +3,8 @@
 #include "raylet.h"
 
 #include <iostream>
-
 #include <boost/bind.hpp>
+
 #include "ray/status.h"
 
 using namespace std;

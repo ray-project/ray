@@ -1,10 +1,10 @@
 #ifndef TASK_H
 #define TASK_H
 
-#include "task_spec.h"
-#include "task_execution_spec.h"
-
 #include <inttypes.h>
+
+#include "ray/raylet/task_spec.h"
+#include "ray/raylet/task_execution_spec.h"
 
 namespace ray {
 

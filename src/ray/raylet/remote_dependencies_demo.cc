@@ -4,7 +4,7 @@
 
 #include "ray/status.h"
 #include "ray/util/logging.h"
-#include "raylet.h"
+#include "ray/raylet/raylet.h"
 
 using namespace std;
 /**

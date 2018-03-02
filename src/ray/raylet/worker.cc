@@ -7,7 +7,7 @@
 
 #include "common.h"
 #include "format/nm_generated.h"
-#include "raylet.h"
+#include "ray/raylet/raylet.h"
 
 using namespace std;
 namespace ray {

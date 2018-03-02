@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "task_execution_spec.h"
+#include "ray/raylet/task_execution_spec.h"
 
 namespace ray {
 

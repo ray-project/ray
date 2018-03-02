@@ -1,14 +1,14 @@
 #ifndef NODE_MANAGER_H
 #define NODE_MANAGER_H
 
-#include "client_connection.h"
-#include "scheduling_resources.h"
-#include "scheduling_queue.h"
-#include "scheduling_policy.h"
+#include "ray/raylet/client_connection.h"
+#include "ray/raylet/scheduling_resources.h"
+#include "ray/raylet/scheduling_queue.h"
+#include "ray/raylet/scheduling_policy.h"
 #include "ray/object_manager/object_manager.h"
-#include "reconstruction_policy.h"
-#include "task_dependency_manager.h"
-#include "worker_pool.h"
+#include "ray/raylet/reconstruction_policy.h"
+#include "ray/raylet/task_dependency_manager.h"
+#include "ray/raylet/worker_pool.h"
 
 namespace ray {
 

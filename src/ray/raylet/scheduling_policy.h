@@ -3,8 +3,8 @@
 
 #include <unordered_map>
 
-#include "scheduling_queue.h"
-#include "scheduling_resources.h"
+#include "ray/raylet/scheduling_queue.h"
+#include "ray/raylet/scheduling_resources.h"
 
 namespace ray {
 

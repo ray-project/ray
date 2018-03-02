@@ -8,8 +8,8 @@
 #include "common.h"
 #include "ray/status.h"
 #include "format/nm_generated.h"
-#include "raylet.h"
-#include "worker.h"
+#include "ray/raylet/raylet.h"
+#include "ray/raylet/worker.h"
 
 using namespace std;
 namespace ray {

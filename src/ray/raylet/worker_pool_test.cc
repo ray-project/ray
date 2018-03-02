@@ -1,8 +1,8 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include "worker_pool.h"
-#include "node_manager.h"
+#include "ray/raylet/worker_pool.h"
+#include "ray/raylet/node_manager.h"
 
 using namespace std;
 namespace ray {

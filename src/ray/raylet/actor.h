@@ -13,11 +13,11 @@ public:
   ~ActorInformation();
 
   /// \brief Return the id of this actor.
-  /// @return actor id.
+  /// \return actor id.
   const ActorID& GetActorId() const;
 
 private:
-  /// \brief Unique identifier for this actor.
+  /// Unique identifier for this actor.
   ActorID id_;
 }; // class ActorInformation
 

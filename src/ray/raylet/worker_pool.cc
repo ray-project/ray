@@ -1,7 +1,7 @@
 #ifndef WORKER_POOL_CC
 #define WORKER_POOL_CC
 
-#include "worker_pool.h"
+#include "ray/raylet/worker_pool.h"
 
 #include "ray/status.h"
 #include "ray/util/logging.h"

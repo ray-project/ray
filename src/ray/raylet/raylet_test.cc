@@ -4,7 +4,7 @@
 
 #include "gtest/gtest.h"
 
-#include "raylet.h"
+#include "ray/raylet/raylet.h"
 
 using namespace std;
 namespace ray {

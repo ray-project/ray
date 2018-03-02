@@ -1,11 +1,10 @@
 #ifndef TASK_DEPENDENCY_MANAGER_H
 #define TASK_DEPENDENCY_MANAGER_H
 
-
 #include "ray/id.h"
-#include "task.h"
+#include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
-#include "reconstruction_policy.h"
+#include "ray/raylet/reconstruction_policy.h"
 
 namespace ray {
 

@@ -5,7 +5,7 @@
 
 #include <unordered_map>
 
-#include "scheduling_resources.h"
+#include "ray/raylet/scheduling_resources.h"
 
 using namespace std;
 namespace ray{

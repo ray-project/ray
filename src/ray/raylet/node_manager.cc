@@ -7,9 +7,8 @@
 #include "ray/util/logging.h"
 #include "common_protocol.h"
 #include "format/nm_generated.h"
-#include "task.h"
-#include "task_spec.h"
-
+#include "ray/raylet/task.h"
+#include "ray/raylet/task_spec.h"
 
 using namespace std;
 namespace ray {

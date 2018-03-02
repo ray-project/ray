@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "worker_pool.h"
+#include "ray/raylet/worker_pool.h"
 
 namespace ray {
 
@@ -101,30 +101,30 @@ class SchedulingResources {
 
   /// SchedulingResources constructor: sets available and configured capacity
   /// to the resource set specified.
-  /// @param total: The amount of total configured capacity.
+  /// \param total: The amount of total configured capacity.
   SchedulingResources(const ResourceSet& total);
 
   /// \brief SchedulingResources destructor.
   ~SchedulingResources();
 
   /// \brief Check if the specified resource request can be satisfied.
-  /// @param set: The set of resources representing the resource request.
-  /// @return Availability status that specifies if the requested resource set
+  /// \param set: The set of resources representing the resource request.
+  /// \return Availability status that specifies if the requested resource set
   ///         is feasible, infeasible, or feasible but unavailable.
   ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &set) const;
 
   /// \brief Request the set and capacity of resources currently available.
-  /// @return Immutable set of resources with currently available capacity.
+  /// \return Immutable set of resources with currently available capacity.
   const ResourceSet &GetAvailableResources() const;
 
   /// \brief Release the amount of resources specified.
-  /// @param resources: the amount of resources to be released.
-  /// @return True if resources were successfully released. False otherwise.
+  /// \param resources: the amount of resources to be released.
+  /// \return True if resources were successfully released. False otherwise.
   bool Release(const ResourceSet &resources);
 
   /// \brief Acquire the amount of resources specified.
-  /// @param resources: the amount of resources to be acquired.
-  /// @return True if resources were successfully acquired. False otherwise.
+  /// \param resources: the amount of resources to be acquired.
+  /// \return True if resources were successfully acquired. False otherwise.
   bool Acquire(const ResourceSet &resources);
 
  private:

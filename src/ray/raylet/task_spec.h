@@ -8,7 +8,7 @@
 
 #include "ray/id.h"
 #include "format/common_generated.h"
-#include "scheduling_resources.h"
+#include "ray/raylet/scheduling_resources.h"
 
 extern "C" {
 #include "sha256.h"

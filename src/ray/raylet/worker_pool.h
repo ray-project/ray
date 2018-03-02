@@ -4,8 +4,8 @@
 #include <inttypes.h>
 #include <list>
 
-#include "client_connection.h"
-#include "worker.h"
+#include "ray/raylet/client_connection.h"
+#include "ray/raylet/worker.h"
 
 namespace ray {
 

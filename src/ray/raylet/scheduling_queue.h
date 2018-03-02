@@ -6,8 +6,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "task.h"
-#include "actor.h"
+#include "ray/raylet/task.h"
+#include "ray/raylet/actor.h"
 
 namespace ray {
 
