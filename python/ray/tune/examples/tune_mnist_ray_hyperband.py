@@ -27,6 +27,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import time
 
 import ray
@@ -205,6 +206,10 @@ class TrainMNIST(Trainable):
 
 # !!! Example of using the ray.tune Python API !!!
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--smoke-test', action='store_true', help='Finish quickly for testing')
+    args, _ = parser.parse_known_args()
 
     register_trainable("my_class", TrainMNIST)
     mnist_spec = {
@@ -220,8 +225,10 @@ if __name__ == '__main__':
         "repeat": 10,
     }
 
-    ray.init()
+    if args.smoke_test:
+        mnist_spec['stop']['training_iteration'] = 2
 
+    ray.init()
     hyperband = HyperBandScheduler(
         time_attr="timesteps_total", reward_attr="mean_accuracy",
         max_t=100)
