@@ -237,22 +237,67 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
+/// \class ClientInformation
+///
+/// Represents information in the client table about a particular client. Each
+/// client has an associated node manager.
 class ClientInformation {
  public:
+  /// Create a client information object.
+  ///
+  /// @param client_table_entry A serialized client table entry flatbuffer.
+  ClientInformation(const ClientTableData& client_table_entry);
+
+  /// Get the client ID.
+  ///
+  /// @return The ID of this client.
   const ClientID &GetClientId() const;
+
+  /// Get the IP address of the client's node manager.
+  ///
+  /// @return The IP address of the client's node manager.
   const std::string GetIpAddress() const;
-  int GetIpPort() const;
+
+  /// Get the port at which the client's node manager is listening for
+  /// TCP connections.
+  ///
+  /// @return The client's TCP port.
+  int GetPort() const;
+
+  /// Get whether the client is alive.
+  ///
+  /// @return Whether the client is alive.
+  bool IsAlive() const;
 };
 
-class ClientTable {
+class ClientTable : private Table<ClientID, ClientTableData> {
  public:
-  // Connect to the GCS by registering ourselves in the client table and
-  // subscribing to client table notifications. Return the assigned ClientID.
-  ClientID Connect();
-  // Disconnect from the GCS.
-  void Disconnect();
-  // Get the client information from the cache.
+  ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client);
+
+  /// Connect as a client to the GCS. This registers us in the client table and
+  /// begins subscription to client table notifications.
+  ///
+  /// @param client_id The assigned client ID will be written to this pointer.
+  /// @return Status
+  // TODO(swang): Call this from AsyncGcsClient::Connect?
+  ray::Status Connect(ClientID *client_id);
+
+  /// Disconnect the client from the GCS. The client ID assigned during
+  /// registration should never be reused after disconnecting.
+  ///
+  /// @return Status
+  ray::Status Disconnect();
+
+  /// Get a client's information from the cache.
+  ///
+  /// @param client The client to get information about.
   const ClientInformation &GetClientInformation(ClientID client);
+
+ private:
+  /// This client's ID.
+  ClientID client_id_;
+  /// A cache for information about all clients.
+  std::unordered_map<ClientID, ClientInformation, UniqueIDHasher> client_cache_;
 };
 
 }  // namespace gcs

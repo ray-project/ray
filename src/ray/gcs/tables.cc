@@ -65,6 +65,46 @@ Status TaskTableTestAndUpdate(
                                                 data, callback);
 }
 
+void clientConnected(gcs::AsyncGcsClient *client,
+                     const UniqueID &client_id,
+                     std::shared_ptr<ObjectTableDataT> data) {
+}
+
+ClientTable::ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+    : Table(context, client),
+      client_id_(UniqueID::from_random()) {}
+
+
+Status ClientTable::Connect(ClientID *client_id) {
+  auto data = std::make_shared<ClientTableDataT>();
+  data->client_id = client_id_.binary();
+  // TODO(swang): Get the address and port from somewhere.
+  data->node_manager_address = "";
+  data->node_manager_port = 0;
+  data->is_insertion = true;
+
+  // TODO(swang):
+  // - Add ourselves to the client table (easier if this is synchronous).
+  // - Subscribe to the client table.
+  // - Once subscription is complete, read all client table entries once.
+
+  *client_id = client_id_;
+  return Status::OK();
+}
+
+Status ClientTable::Disconnect() {
+  auto data = std::make_shared<ClientTableDataT>();
+  data->client_id = client_id_.binary();
+  // TODO(swang): Get the address and port from somewhere.
+  data->node_manager_address = "";
+  data->node_manager_port = 0;
+  data->is_insertion = false;
+
+  // TODO(swang):
+  // - Add ourselves to the client table (easier if this is synchronous).
+  return Status::OK();
+}
+
 }  // namespace gcs
 
 }  // namespace ray
