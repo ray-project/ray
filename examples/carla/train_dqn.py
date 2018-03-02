@@ -6,7 +6,7 @@ from ray.tune import register_env, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
 from models import register_carla_model
-from scenarios import TOWN2_ONE_CURVE
+from scenarios import TOWN2_STRAIGHT_CROWDED
 
 env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
@@ -17,7 +17,7 @@ env_config.update({
     "discrete_actions": True,
     "server_map": "/Game/Maps/Town02",
     "reward_function": "custom",
-    "scenarios": TOWN2_STRAIGHT_DYNAMIC,
+    "scenarios": TOWN2_STRAIGHT_CROWDED,
 })
 
 register_env(env_name, lambda env_config: CarlaEnv(env_config))
