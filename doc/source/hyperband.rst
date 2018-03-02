@@ -3,8 +3,8 @@ HyperBand and Early Stopping
 
 Ray Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__ and `HyperBand <https://arxiv.org/abs/1603.06560>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`__.
 
-HyperBand Scheduler
--------------------
+HyperBand
+---------
 
 The HyperBand scheduler can be plugged in on top of an existing grid or random search. This can be done by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
 
@@ -50,8 +50,8 @@ Note that the HyperBand scheduler requires your trainable to support checkpointi
 
 .. autoclass:: ray.tune.hyperband.HyperBandScheduler
 
-Median Stopping Rule Scheduler
-------------------------------
+Median Stopping Rule
+--------------------
 
 Tune also implements the Median Stopping Rule, which implements the simple strategy of stopping a trial if it's performance falls below the median of other trials at similar points in time.
 
