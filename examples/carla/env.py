@@ -225,7 +225,10 @@ class CarlaEnv(gym.Env):
             try:
                 if not self.server_process:
                     self.init_server()
-                return self._reset()
+                obs = self._reset()
+                for _ in range(15):
+                    obs, _, _, _ = self._step(1)
+                return obs
             except Exception as e:
                 print("Error during reset: {}".format(traceback.format_exc()))
                 self.clear_server_state()

@@ -16,7 +16,8 @@ env_config.update({
     "y_res": 80,
     "discrete_actions": True,
     "server_map": "/Game/Maps/Town02",
-    "scenarios": TOWN2_ONE_CURVE,
+    "reward_function": "custom",
+    "scenarios": TOWN2_STRAIGHT_DYNAMIC,
 })
 
 register_env(env_name, lambda env_config: CarlaEnv(env_config))
