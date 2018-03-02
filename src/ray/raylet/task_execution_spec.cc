@@ -45,4 +45,4 @@ void TaskExecutionSpecification::SetLastTimeStamp(int64_t new_timestamp) {
 
 } // end namespace ray
 
-#endif
+#endif // TASK_EXECUTION_SPECIFICATION_CC

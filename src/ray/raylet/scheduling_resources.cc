@@ -9,16 +9,15 @@ namespace ray {
 
 ResourceSet::ResourceSet() {}
 
-// ResourceSet class implementation
-bool ResourceSet::operator==(const ResourceSet &rhs) const {
-  return (this->isSubset(rhs) && rhs.isSubset(*this));
-}
-
 ResourceSet::ResourceSet(
     const std::unordered_map<std::string, double> &resource_map):
         resource_capacity_(resource_map) {}
 
 ResourceSet::~ResourceSet() {}
+
+bool ResourceSet::operator==(const ResourceSet &rhs) const {
+  return (this->isSubset(rhs) && rhs.isSubset(*this));
+}
 
 bool ResourceSet::isSubset(const ResourceSet &other) const {
   // Check to make sure all keys of this are in other.

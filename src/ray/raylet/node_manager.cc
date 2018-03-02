@@ -1,5 +1,5 @@
-#ifndef LOCAL_SCHEDULER_CC
-#define LOCAL_SCHEDULER_CC
+#ifndef NODE_MANAGER_CC
+#define NODE_MANAGER_CC
 
 #include "node_manager.h"
 
@@ -177,4 +177,4 @@ void NodeManager::resubmitTask(const TaskID &task_id) {
 
 } // end namespace ray
 
-#endif  // LOCAL_SCHEDULER_CC
+#endif  // NODE_MANAGER_CC

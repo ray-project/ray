@@ -149,4 +149,4 @@ private:
 };
 }
 
-#endif
+#endif // TASK_SPECIFICATION_H

@@ -1,17 +1,26 @@
-#ifndef ACTOR_INFORMATION_H
-#define ACTOR_INFORMATION_H
+#ifndef ACTOR_H
+#define ACTOR_H
 
 #include "ray/id.h"
 
 namespace ray {
 class ActorInformation {
 public:
-  ActorInformation(): id_(UniqueID::nil()) {}
-  ~ActorInformation() {}
-  ActorID GetActorId() const;
-private:
-  ActorID id_;
-}; // end class ActorInformation
-} // end namespace ray
+  /// \brief ActorInformation constructor.
+  ActorInformation();
 
-#endif
+  /// \brief ActorInformation destructor.
+  ~ActorInformation();
+
+  /// \brief Return the id of this actor.
+  /// @return actor id.
+  ActorID GetActorId() const;
+
+private:
+  /// \brief Unique identifier for this actor.
+  ActorID id_;
+}; // class ActorInformation
+
+} // namespace ray
+
+#endif // ACTOR_H

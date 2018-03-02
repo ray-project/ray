@@ -32,4 +32,4 @@ class ReconstructionPolicy {
 
 } // end namespace ray
 
-#endif  // RECONSTRUCTION_POLICY_CC
+#endif  // RECONSTRUCTION_POLICY_H

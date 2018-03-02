@@ -1,12 +1,18 @@
-#ifndef ACTOR_INFORMATION_CC
-#define ACTOR_INFORMATION_CC
+#ifndef ACTOR_CC
+#define ACTOR_CC
 
 #include "actor.h"
 
 namespace ray {
+
+ActorInformation::ActorInformation(): id_(UniqueID::nil()) {}
+
+ActorInformation::~ActorInformation() {}
+
 ActorID ActorInformation::GetActorId() const {
   return this->id_;
 }
-} // end namespace ray
 
-#endif
+} // namespace ray
+
+#endif // ACTOR_CC

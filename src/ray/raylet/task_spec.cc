@@ -199,4 +199,4 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
 
 }
 
-#endif
+#endif // TASK_SPECIFICATION_CC

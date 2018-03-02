@@ -1,9 +1,10 @@
+#ifndef RAYLET_CC
+#define RAYLET_CC
+#include "raylet.h"
 
 #include <iostream>
 
 #include <boost/bind.hpp>
-
-#include "raylet.h"
 #include "ray/status.h"
 
 using namespace std;
@@ -79,4 +80,6 @@ ObjectManager &Raylet::GetObjectManager() {
   return object_manager_;
 }
 
-} // end namespace ray
+} // namespace ray
+
+#endif // RAYLET_CC

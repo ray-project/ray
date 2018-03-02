@@ -54,6 +54,7 @@ set(RAY_SRCS
   raylet/task_dependency_manager.cc
   raylet/reconstruction_policy.cc
   raylet/node_manager.cc
+  raylet/lineage_cache.cc
   raylet/raylet.cc
 )
 

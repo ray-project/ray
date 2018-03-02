@@ -36,4 +36,4 @@ private:
 
 } // end namespace ray
 
-#endif
+#endif // WORKER_H

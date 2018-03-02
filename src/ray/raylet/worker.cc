@@ -37,4 +37,4 @@ const shared_ptr<LocalClientConnection> Worker::Connection() const {
 
 } // end namespace ray
 
-#endif
+#endif // WORKER_CC

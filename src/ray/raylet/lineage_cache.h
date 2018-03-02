@@ -1,6 +1,10 @@
 #ifndef LINEAGE_CACHE_H
 #define LINEAGE_CACHE_H
 
+#include "ray/raylet/task.h"
+#include "ray/id.h"
+#include "ray/status.h"
+
 namespace ray {
 
 // TODO(swang): Define this class.
@@ -74,6 +78,6 @@ class LineageCache {
   std::unordered_map<ObjectID, LineageCacheObjectEntry, UniqueIDHasher> object_table_;
 };
 
-};
+} // namespace ray
 
-#endif
+#endif // LINEAGE_CACHE_H

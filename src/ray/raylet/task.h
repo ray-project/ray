@@ -66,4 +66,4 @@ private:
 
 } // end namespace ray
 
-#endif
+#endif // TASK_H

@@ -1,5 +1,5 @@
-#ifndef LOCAL_SCHEDULER_H
-#define LOCAL_SCHEDULER_H
+#ifndef NODE_MANAGER_H
+#define NODE_MANAGER_H
 
 #include "client_connection.h"
 #include "scheduling_resources.h"
@@ -72,4 +72,4 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
 
 } // end namespace ray
 
-#endif  // LOCAL_SCHEDULER_H
+#endif  // NODE_MANAGER_H

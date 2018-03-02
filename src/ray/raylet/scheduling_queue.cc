@@ -1,5 +1,5 @@
-#ifndef LS_QUEUE_CC
-#define LS_QUEUE_CC
+#ifndef SCHEDULING_QUEUE_CC
+#define SCHEDULING_QUEUE_CC
 
 #include "scheduling_queue.h"
 
@@ -96,6 +96,6 @@ bool SchedulingQueue::RegisterActor(ActorID actor_id,
   return true;
 }
 
-} // end namespace ray
+} // namespace ray
 
-#endif
+#endif // SCHEDULING_QUEUE_CC

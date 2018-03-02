@@ -81,4 +81,4 @@ bool WorkerPool::DisconnectWorker(shared_ptr<Worker> worker) {
 
 } // end namespace ray
 
-#endif
+#endif // WORKER_POOL_CC

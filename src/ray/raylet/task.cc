@@ -52,4 +52,4 @@ bool Task::DependsOn(ObjectID object_id) const {
 }
 
 } // end namespace ray
-#endif
+#endif // TASK_CC

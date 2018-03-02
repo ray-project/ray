@@ -1,5 +1,5 @@
-#ifndef LS_QUEUE_H
-#define LS_QUEUE_H
+#ifndef SCHEDULING_QUEUE_H
+#define SCHEDULING_QUEUE_H
 
 #include <list>
 #include <vector>
@@ -104,6 +104,6 @@ class SchedulingQueue {
   /// The registry of known actors.
   std::unordered_map<ActorID, ActorInformation, UniqueIDHasher> actor_registry_;
 };
-} // end namespace ray
+} // namespace ray
 
-#endif
+#endif // SCHEDULING_QUEUE_H
