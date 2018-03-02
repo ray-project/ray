@@ -74,6 +74,14 @@ bool ResourceSet::GetResource(
 
 /// SchedulingResources class implementation
 
+SchedulingResources::SchedulingResources()
+    : resources_total_(ResourceSet()), resources_available_(ResourceSet()) {}
+
+SchedulingResources::SchedulingResources(const ResourceSet& total)
+    : resources_total_(total), resources_available_(total) {}
+
+SchedulingResources::~SchedulingResources() {}
+
 ResourceAvailabilityStatus SchedulingResources::CheckResourcesSatisfied(
     ResourceSet &resources) const {
   if (!resources.isSubset(this->resources_total_)) {

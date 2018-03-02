@@ -89,35 +89,50 @@ private:
   std::unordered_map<std::string, double> resource_capacity_;
 };
 
-
-/// SchedulingResources class encapsulates state of all local resources and manages
-/// accounting of those resources. Resources include configured resource
+/// \class SchedulingResources
+/// SchedulingResources class encapsulates the state of all local resources and
+/// manages accounting of those resources. Resources include configured resource
 /// bundle capacity, and GPU allocation map.
 class SchedulingResources {
  public:
-  // Raylet resource object constructors: set the total configured resource
-  // capacity
-  SchedulingResources() : resources_total_(ResourceSet()), resources_available_(ResourceSet()) {}
+  /// SchedulingResources constructor: sets configured and available resources
+  /// to an empty set.
+  SchedulingResources();
 
-  SchedulingResources(const ResourceSet& total):
-    resources_total_(total), resources_available_(total) {}
+  /// SchedulingResources constructor: sets available and configured capacity
+  /// to the resource set specified.
+  /// @param total: The amount of total configured capacity.
+  SchedulingResources(const ResourceSet& total);
 
-  SchedulingResources(const ResourceSet &total, const WorkerPool &pool):
-    resources_total_(total), resources_available_(total) {}
+  /// \brief SchedulingResources destructor.
+  ~SchedulingResources();
 
-  ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &resources) const;
+  /// \brief Check if the specified resource request can be satisfied.
+  /// @param set: The set of resources representing the resource request.
+  /// @return Availability status that specifies if the requested resource set
+  ///         is feasible, infeasible, or feasible but unavailable.
+  ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &set) const;
 
+  /// \brief Request the set and capacity of resources currently available.
+  /// @return Immutable set of resources with currently available capacity.
   const ResourceSet &GetAvailableResources() const;
 
-  /// Methods that mutate state.
+  /// \brief Release the amount of resources specified.
+  /// @param resources: the amount of resources to be released.
+  /// @return True if resources were successfully released. False otherwise.
   bool Release(const ResourceSet &resources);
+
+  /// \brief Acquire the amount of resources specified.
+  /// @param resources: the amount of resources to be acquired.
+  /// @return True if resources were successfully acquired. False otherwise.
   bool Acquire(const ResourceSet &resources);
+
  private:
-   // static resource configuration (e.g., static_resources)
+  /// Static resource configuration (e.g., static_resources).
   ResourceSet resources_total_;
-   // dynamic resource capacity (e.g., dynamic_resources)
+  /// Dynamic resource capacity (e.g., dynamic_resources).
   ResourceSet resources_available_;
-   // gpu_map - replace with ResourceMap (for generality)
+  /// gpu_map - replace with ResourceMap (for generality).
 };
 
 } // namespace ray

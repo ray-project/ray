@@ -14,7 +14,7 @@ public:
 
   /// \brief Return the id of this actor.
   /// @return actor id.
-  ActorID GetActorId() const;
+  const ActorID& GetActorId() const;
 
 private:
   /// \brief Unique identifier for this actor.

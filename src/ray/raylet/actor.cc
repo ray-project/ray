@@ -9,7 +9,7 @@ ActorInformation::ActorInformation(): id_(UniqueID::nil()) {}
 
 ActorInformation::~ActorInformation() {}
 
-ActorID ActorInformation::GetActorId() const {
+const ActorID& ActorInformation::GetActorId() const {
   return this->id_;
 }
 
