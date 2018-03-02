@@ -45,10 +45,19 @@ class DataFrame(object):
             self.index = index
 
     def __str__(self):
-        return "ray.DataFrame object"
+        return repr(self)
 
     def __repr__(self):
-        return "ray.DataFrame object"
+        if sum(self._lengths) < 40:
+            result = repr(to_pandas(self))
+            return result
+
+        head = repr(to_pandas(self.head(20)))
+        tail = repr(to_pandas(self.tail(20)))
+
+        result = head + "\n...\n" + tail
+
+        return result
 
     def _get_index(self):
         """Get the index for this DataFrame.
@@ -1844,9 +1853,9 @@ class DataFrame(object):
         if n >= sum(sizes):
             return self
 
-        cumulative = np.cumsum(np.array(sizes.reverse()))
+        cumulative = np.cumsum(np.array(sizes[::-1]))
 
-        reverse_dfs = self._df.reverse()
+        reverse_dfs = self._df[::-1]
         new_dfs = [reverse_dfs[i]
                    for i in range(len(cumulative))
                    if cumulative[i] < n]
@@ -1860,7 +1869,9 @@ class DataFrame(object):
             num_to_transfer = n - cumulative[last_index - 1]
 
         new_dfs.append(_deploy_func.remote(lambda df: df.tail(num_to_transfer),
-                                           reverse_dfs[last_index])).reverse()
+                                           reverse_dfs[last_index]))
+
+        new_dfs.reverse()
 
         index = self._index.tail(n).index
         return DataFrame(new_dfs, self.columns, index=index)
