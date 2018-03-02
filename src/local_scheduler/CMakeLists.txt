@@ -62,9 +62,9 @@ add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 add_dependencies(local_scheduler_client gen_local_scheduler_fbs)
 
 if(APPLE)
-  target_link_libraries(local_scheduler_library "-undefined dynamic_lookup" local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
+  target_link_libraries(local_scheduler_library "-undefined dynamic_lookup" local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
 else(APPLE)
-  target_link_libraries(local_scheduler_library local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
+  target_link_libraries(local_scheduler_library local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${Boost_SYSTEM_LIBRARY})
 endif(APPLE)
 
 add_dependencies(local_scheduler_library gen_local_scheduler_fbs)
