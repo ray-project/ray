@@ -1,18 +1,25 @@
-#ifndef LS_RESOURCES_CC
-#define LS_RESOURCES_CC
-
-#include <cmath>
+#ifndef SCHEDULING_RESOURCES_CC
+#define SCHEDULING_RESOURCES_CC
 
 #include "scheduling_resources.h"
 
+#include <cmath>
+
 namespace ray {
+
+ResourceSet::ResourceSet() {}
 
 // ResourceSet class implementation
 bool ResourceSet::operator==(const ResourceSet &rhs) const {
   return (this->isSubset(rhs) && rhs.isSubset(*this));
 }
 
-/// Test whether this ResourceSet is a subset of the other ResourceSet
+ResourceSet::ResourceSet(
+    const std::unordered_map<std::string, double> &resource_map):
+        resource_capacity_(resource_map) {}
+
+ResourceSet::~ResourceSet() {}
+
 bool ResourceSet::isSubset(const ResourceSet &other) const {
   // Check to make sure all keys of this are in other.
   for (const auto &resource_pair: resource_capacity_) {
@@ -94,6 +101,6 @@ bool SchedulingResources::Acquire(const ResourceSet &resources) {
   return this->resources_available_.SubtractResources(resources);
 }
 
-} // end namespace ray
+} // namespace ray
 
-#endif
+#endif // SCHEDULING_RESOURCES_CC

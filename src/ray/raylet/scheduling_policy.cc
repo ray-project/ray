@@ -1,17 +1,21 @@
-#ifndef LS_POLICY_CC
-#define LS_POLICY_CC
-#include <unordered_map>
+#ifndef SCHEDULING_POLICY_CC
+#define SCHEDULING_POLICY_CC
 
 #include "scheduling_policy.h"
+
+#include <unordered_map>
+
 #include "scheduling_resources.h"
 
 using namespace std;
 namespace ray{
 
-/// Given a set of cluster resources, produce a placement decision on all work
-/// in the queue.
+SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &sched_queue)
+  : sched_queue_(sched_queue) {}
+
 std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
-    const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> &cluster_resources) {
+    const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
+    &cluster_resources) {
   // return data structure
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
 
@@ -34,5 +38,8 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
   return decision;
 }
 
-} // end namespace ray
-#endif
+SchedulingPolicy::~SchedulingPolicy() {}
+
+} // namespace ray
+
+#endif // SCHEDULING_POLICY_CC
