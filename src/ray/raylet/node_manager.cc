@@ -22,13 +22,15 @@ NodeManager::NodeManager(
         worker_pool_(WorkerPool(0)),
         local_queues_(SchedulingQueue()),
         sched_policy_(local_queues_),
-        reconstruction_policy_(),
+        reconstruction_policy_([this](const TaskID &task_id) {
+            resubmitTask(task_id);
+          }),
         task_dependency_manager_(
                 object_manager,
                 //reconstruction_policy_,
-                std::bind(&NodeManager::HandleWaitingTaskReady, this,
-                    std::placeholders::_1)
-                ) {
+                [this](const TaskID &task_id) {
+                  handleWaitingTaskReady(task_id);
+                }) {
   //// TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
   //cluster_resource_map_[DBClientID::nil()] = local_resources_;
 }
@@ -95,7 +97,7 @@ void NodeManager::ProcessClientMessage(shared_ptr<LocalClientConnection> client,
   }
 }
 
-void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
+void NodeManager::handleWaitingTaskReady(const TaskID &task_id) {
   auto ready_tasks = local_queues_.RemoveTasks({task_id});
   local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
   // Schedule the newly ready tasks if possible.
@@ -167,6 +169,10 @@ void NodeManager::finishTask(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Finished task " << task_id.hex();
   local_queues_.RemoveTasks({task_id});
   // TODO(swang): Release resources that were held for the task.
+}
+
+void NodeManager::resubmitTask(const TaskID &task_id) {
+  throw std::runtime_error("Method not implemented");
 }
 
 } // end namespace ray

@@ -37,12 +37,6 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
       int64_t message_type,
       const uint8_t *message);
 
-  /// Handle a task whose local dependencies were missing and are now
-  /// available.
-  ///
-  /// @param task_id The ID of the waiting task.
-  void HandleWaitingTaskReady(const TaskID &task_id);
-
  private:
   /// Submit a task to this node.
   void submitTask(const Task& task);
@@ -52,6 +46,12 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
   void finishTask(const TaskID& task_id);
   /// Schedule tasks.
   void scheduleTasks();
+  /// Handle a task whose local dependencies were missing and are now
+  /// available.
+  void handleWaitingTaskReady(const TaskID &task_id);
+  /// Resubmit a task whose return value needs to be reconstructed.
+  void resubmitTask(const TaskID& task_id);
+
 
   /// The resources local to this node.
   SchedulingResources local_resources_;

@@ -10,11 +10,6 @@ void ReconstructionPolicy::CheckObjectReconstruction(const ObjectID &object) {
   throw std::runtime_error("Method not implemented");
 }
 
-void ReconstructionPolicy::RegisterTaskReconstructionHandler(
-    std::function<void(const TaskID&)> reconstruction_handler) {
-  throw std::runtime_error("Method not implemented");
-}
-
 } // end namespace ray
 
 #endif  // RECONSTRUCTION_POLICY_CC

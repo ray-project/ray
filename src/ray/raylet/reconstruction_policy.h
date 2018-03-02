@@ -11,14 +11,22 @@ namespace ray {
 
 class ReconstructionPolicy {
  public:
+  /// Create the reconstruction policy.
+  ///
+  /// @param reconstruction_handler The handler to call if a task needs to be
+  /// re-executed.
   // TODO(swang): This requires at minimum references to the Raylet's lineage
   // cache and GCS client.
-  ReconstructionPolicy() {}
-  // If this object requires reconstruction, the task reconstruction
-  // handler will be called for the tasks that need to be re-executed.
-  void CheckObjectReconstruction(const ObjectID &object);
-  // Register a handler to call if a task needs to be reconstructed.
-  void RegisterTaskReconstructionHandler(std::function<void(const TaskID&)> reconstruction_handler);
+  ReconstructionPolicy(
+      std::function<void(const TaskID&)> reconstruction_handler) {}
+
+  /// Check whether an object requires reconstruction. If this object requires
+  /// reconstruction, the registered task reconstruction handler will be called
+  /// for each task that needs to be re-executed.
+  ///
+  /// @param object_id The object to check for reconstruction.
+  void CheckObjectReconstruction(const ObjectID &object_id);
+
  private:
 };
 
