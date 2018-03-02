@@ -53,9 +53,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<TaskTable> task_table_;
   std::shared_ptr<RedisContext> context_;
-#ifndef PLASMA_TEST
   std::unique_ptr<RedisAsioClient> asio_client_;
-#endif
 };
 
 class SyncGcsClient {
