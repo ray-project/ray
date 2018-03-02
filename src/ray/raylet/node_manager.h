@@ -16,10 +16,10 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
  public:
   /// Create a node manager.
   ///
-  /// @param socket_name The pathname of the Unix domain socket to listen at
+  /// \param socket_name The pathname of the Unix domain socket to listen at
   ///        for local connections.
-  /// @param resource_config The initial set of node resources.
-  /// @param object_manager A reference to the local object manager.
+  /// \param resource_config The initial set of node resources.
+  /// \param object_manager A reference to the local object manager.
   NodeManager(
       const std::string &socket_name,
       const ResourceSet &resource_config,
@@ -29,9 +29,9 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
   /// explicitly listening for more messages from the client if the client is
   /// still alive.
   ///
-  /// @param client The client that sent the message.
-  /// @param message_type The message type (e.g., a flatbuffer enum).
-  /// @param message A pointer to the message data.
+  /// \param client The client that sent the message.
+  /// \param message_type The message type (e.g., a flatbuffer enum).
+  /// \param message A pointer to the message data.
   void ProcessClientMessage(
       std::shared_ptr<LocalClientConnection> client,
       int64_t message_type,
