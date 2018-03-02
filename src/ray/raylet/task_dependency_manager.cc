@@ -19,7 +19,9 @@ TaskDependencyManager::TaskDependencyManager(
       task_ready_callback_(handler) {
   // TODO(swang): Check return status.
   ray::Status status = object_manager_.SubscribeObjAdded(
-      std::bind(&TaskDependencyManager::handleObjectReady, this, std::placeholders::_1));
+      [this](const ObjectID& object_id) {
+        handleObjectReady(object_id);
+      });
   // TODO(swang): Subscribe to object removed notifications.
 }
 
