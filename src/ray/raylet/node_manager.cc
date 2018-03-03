@@ -90,6 +90,8 @@ void NodeManager::ProcessClientMessage(shared_ptr<LocalClientConnection> client,
     Task task(task_execution_spec, task_spec);
     // Submit the task to the local scheduler.
     submitTask(task);
+    // Listen for more messages.
+    client->ProcessMessages();
   } break;
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
