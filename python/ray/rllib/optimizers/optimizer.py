@@ -31,6 +31,10 @@ class Optimizer(object):
         self.remote_evaluators = remote_evaluators
         self._init()
 
+        # Counters that should be updated by sub-classes
+        self.num_steps_trained = 0
+        self.num_steps_sampled = 0
+
     def _init(self):
         pass
 
@@ -42,4 +46,14 @@ class Optimizer(object):
     def stats(self):
         """Returns a dictionary of internal performance statistics."""
 
-        return {}
+        return {
+            "num_steps_trained": self.num_steps_trained,
+            "num_steps_sampled": self.num_steps_sampled,
+        }
+
+    def save(self):
+        return [self.num_steps_trained, self.num_steps_sampled]
+
+    def restore(self, data):
+        self.num_steps_trained = data[0]
+        self.num_steps_sampled = data[1]

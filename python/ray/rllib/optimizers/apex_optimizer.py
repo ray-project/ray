@@ -140,8 +140,6 @@ class ApexOptimizer(Optimizer):
             "samples_per_loop", "replays_per_loop", "reprios_per_loop",
             "reweights_per_loop"]}
         self.num_weight_syncs = 0
-        self.num_samples_added = 0
-        self.num_samples_trained = 0
         self.learning_started = False
 
         # Number of worker steps since the last weight update
@@ -173,9 +171,8 @@ class ApexOptimizer(Optimizer):
         if self.learning_started:
             self.timers["train"].push(time_delta)
             self.timers["train"].push_units_processed(train_timesteps)
-        self.num_samples_added += sample_timesteps
-        self.num_samples_trained += train_timesteps
-        return sample_timesteps
+        self.num_steps_sampled += sample_timesteps
+        self.num_steps_trained += train_timesteps
 
     def _step(self):
         sample_timesteps, train_timesteps = 0, 0
@@ -244,7 +241,6 @@ class ApexOptimizer(Optimizer):
                 self.timers["sample"].mean_throughput, 3),
             "train_throughput": round(self.timers["train"].mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
-            "num_samples_trained": self.num_samples_trained,
             "pending_sample_tasks": self.sample_tasks.count,
             "pending_replay_tasks": self.replay_tasks.count,
             "learner_queue": self.learner.learner_queue_size.stats(),
@@ -253,4 +249,4 @@ class ApexOptimizer(Optimizer):
             "reprios": self.meters["reprios_per_loop"].stats(),
             "reweights": self.meters["reweights_per_loop"].stats(),
         }
-        return stats
+        return dict(Optimizer.stats(self), **stats)

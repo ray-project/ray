@@ -48,6 +48,7 @@ class AsyncOptimizer(Optimizer):
                     fut = e.compute_gradients.remote(e.sample.remote())
                     gradient_queue.append((fut, e))
                     num_gradients += 1
+            # TODO(ekl) update num_steps_trained here
 
     def stats(self):
         return {

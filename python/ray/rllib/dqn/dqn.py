@@ -144,9 +144,19 @@ class DQNAgent(Agent):
             self.remote_evaluators)
 
         self.saver = tf.train.Saver(max_to_keep=None)
-        self.global_timestep = 0
         self.last_target_update_ts = 0
         self.num_target_updates = 0
+
+    @property
+    def global_timestep(self):
+        return self.optimizer.num_steps_sampled
+
+    def update_target_if_needed(self):
+        if self.global_timestep - self.last_target_update_ts > \
+                self.config["target_network_update_freq"]:
+            self.local_evaluator.update_target()
+            self.last_target_update_ts = self.global_timestep
+            self.num_target_updates += 1
 
     def _train(self):
         start_timestep = self.global_timestep
@@ -154,14 +164,23 @@ class DQNAgent(Agent):
         while (self.global_timestep - start_timestep <
                self.config["timesteps_per_iteration"]):
 
-            self.global_timestep += self.optimizer.step()
-            if self.global_timestep - self.last_target_update_ts > \
-                    self.config["target_network_update_freq"]:
-                self.local_evaluator.update_target()
-                self.last_target_update_ts = self.global_timestep
-                self.num_target_updates += 1
+            self.optimizer.step()
+            self.update_target_if_needed()
 
-        stats = self._update_global_stats()
+        self.local_evaluator.set_global_timestep(self.global_timestep)
+        for e in self.remote_evaluators:
+            e.set_global_timestep.remote(self.global_timestep)
+
+        return self._train_stats()
+
+    def _train_stats(self):
+        if self.remote_evaluators:
+            stats = ray.get([
+                e.stats.remote() for e in self.remote_evaluators])
+        else:
+            stats = self.local_evaluator.stats()
+            if not isinstance(stats, list):
+                stats = [stats]
 
         mean_100ep_reward = 0.0
         mean_100ep_length = 0.0
@@ -197,22 +216,6 @@ class DQNAgent(Agent):
 
         return result
 
-    def _update_global_stats(self):
-        if self.remote_evaluators:
-            stats = ray.get([
-                e.stats.remote() for e in self.remote_evaluators])
-        else:
-            stats = self.local_evaluator.stats()
-            if not isinstance(stats, list):
-                stats = [stats]
-        new_timestep = sum(s["local_timestep"] for s in stats)
-        assert new_timestep >= self.global_timestep, new_timestep
-        self.global_timestep = new_timestep
-        self.local_evaluator.set_global_timestep(self.global_timestep)
-        for e in self.remote_evaluators:
-            e.set_global_timestep.remote(self.global_timestep)
-        return stats
-
     def _populate_replay_buffer(self):
         if self.remote_evaluators:
             for e in self.remote_evaluators:
@@ -233,7 +236,7 @@ class DQNAgent(Agent):
         extra_data = [
             self.local_evaluator.save(),
             ray.get([e.save.remote() for e in self.remote_evaluators]),
-            self.global_timestep,
+            self.optimizer.save(),
             self.num_target_updates,
             self.last_target_update_ts]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
@@ -246,7 +249,7 @@ class DQNAgent(Agent):
         ray.get([
             e.restore.remote(d) for (d, e)
             in zip(extra_data[1], self.remote_evaluators)])
-        self.global_timestep = extra_data[2]
+        self.optimizer.restore(extra_data[2])
         self.num_target_updates = extra_data[3]
         self.last_target_update_ts = extra_data[4]
 

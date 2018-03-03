@@ -96,10 +96,13 @@ class LocalMultiGPUOptimizer(Optimizer):
                         permutation[batch_index] * self.per_device_batch_size)
                     batch_index += 1
 
+        self.num_steps_sampled += samples.count
+        self.num_steps_trained += samples.count
+
     def stats(self):
-        return {
+        return dict(Optimizer.stats(), **{
             "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
             "load_time_ms": round(1000 * self.load_timer.mean, 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
             "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
-        }
+        })
