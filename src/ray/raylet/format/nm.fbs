@@ -129,3 +129,16 @@ table ActorFrontier {
 table GetActorFrontierRequest {
   actor_id: string;
 }
+
+table RegisterNodeManagerRequest {
+  // GCS ClientID of the connecting node manager.
+  client_id: string;
+}
+
+table ForwardTaskRequest {
+  // The task to be forwarded.
+  task: TaskInfo;
+  // The uncommitted lineage of the forwarded task, according to the sending
+  // node manager.
+  uncommitted_lineage: [TaskInfo];
+}
