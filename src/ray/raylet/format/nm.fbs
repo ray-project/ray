@@ -137,8 +137,9 @@ table RegisterNodeManagerRequest {
 
 table ForwardTaskRequest {
   // The task to be forwarded.
-  task: TaskInfo;
+  // TODO(swang): Replace with a Task flatbuffer type.
+  task: string;
   // The uncommitted lineage of the forwarded task, according to the sending
   // node manager.
-  uncommitted_lineage: [TaskInfo];
+  uncommitted_lineage: [string];
 }
