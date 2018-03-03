@@ -65,7 +65,7 @@ table CustomSerializerData {
 table ConfigTableData {
 }
 
-table ResourcePair {
+table Resource {
   // The type of the resource.
   resource_name: string;
   // The total capacity of this resource type.
@@ -84,7 +84,7 @@ table ClientTableData {
   // connections from other object managers.
   object_manager_port: int;
   // The total resources of this client.
-  resources_total: [ResourcePair];
+  resources_total: [Resource];
   // True if the message is about the addition of a client and false if it is
   // about the deletion of a client.
   is_insertion: bool;
@@ -93,7 +93,7 @@ table ClientTableData {
 table NodeManagerHeartbeat {
   // The available resources on this node manager. This information may be
   // stale.
-  resources_available: [ResourcePair];
+  resources_available: [Resource];
   // The total resources on this node manager.
-  resources_total: [ResourcePair];
+  resources_total: [Resource];
 }
