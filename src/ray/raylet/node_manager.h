@@ -25,6 +25,9 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
       const ResourceSet &resource_config,
       ObjectManager &object_manager);
 
+  /// Process a new client connection.
+  void ProcessNewClient(std::shared_ptr<LocalClientConnection> client);
+
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
   /// still alive.

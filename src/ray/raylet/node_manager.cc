@@ -34,6 +34,10 @@ NodeManager::NodeManager(
   //cluster_resource_map_[DBClientID::nil()] = local_resources_;
 }
 
+void NodeManager::ProcessNewClient(shared_ptr<LocalClientConnection> client) {
+  // The new client is a worker, so begin listening for messages.
+  client->ProcessMessages();
+}
 
 void NodeManager::ProcessClientMessage(shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message_data) {
   RAY_LOG(DEBUG) << "Message of type " << message_type;

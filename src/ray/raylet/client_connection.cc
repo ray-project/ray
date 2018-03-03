@@ -18,7 +18,10 @@ template <class T>
 shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
     ClientManager<T>& manager,
     boost::asio::basic_stream_socket<T> &&socket) {
-  return shared_ptr<ClientConnection<T>>(new ClientConnection(manager, std::move(socket)));
+  shared_ptr<ClientConnection<T>> self(new ClientConnection(manager, std::move(socket)));
+  // Let our manager process our new connection.
+  self->manager_.ProcessNewClient(self);
+  return self;
 }
 
 template <class T>

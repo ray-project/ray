@@ -85,6 +85,12 @@ using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
 template <class T>
 class ClientManager {
  public:
+  /// Process a new client connection.
+  ///
+  /// \param client A shared pointer to the client that connected.
+  virtual void ProcessNewClient(std::shared_ptr<ClientConnection<T>> client) =
+    0;
+
   /// Process a message from a client, then listen for more messages if the
   /// client is still alive.
   ///

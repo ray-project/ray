@@ -13,6 +13,8 @@ class MockClientManager : public ClientManager<boost::asio::local::stream_protoc
       shared_ptr<LocalClientConnection>,
       int64_t,
       const uint8_t*));
+    MOCK_METHOD1(ProcessNewClient, void(
+      shared_ptr<LocalClientConnection>));
 };
 
 class WorkerPoolTest : public ::testing::Test {
