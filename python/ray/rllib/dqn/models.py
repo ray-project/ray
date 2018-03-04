@@ -157,15 +157,15 @@ class ModelAndLoss(object):
             self.q_t_using_target_net * tf.one_hot(act_t, num_actions), 1)
         self.action_gap_t = tf.reduce_max(self.q_t_using_target_net) - self.q_t_selected_using_target_net
         self.action_gap_tp1 = tf.reduce_max(self.q_tp1) - q_tp1_best
-        self.action_gap_min = tf.minimum(self.action_gap_t, self.action_tp1)
+        self.action_gap_min = tf.minimum(self.action_gap_t, self.action_gap_tp1)
 
         #adjust for persistent advatange learning
         if config['pal'] == 'PAL':
-            q_t_pal = q_t_selected_target - config['pal_alpha'] * self.action_gap_min
+            q_t_pal = self.q_t_selected_target - config['pal_alpha'] * self.action_gap_min
             self.q_t_selected_target = q_t_pal
         #adjust for advantage learning
         elif config['pal'] == 'AL':
-            q_t_al = q_t_selected_target - config['pal_alpha'] * self.action_gap_t
+            q_t_al = self.q_t_selected_target - config['pal_alpha'] * self.action_gap_t
             self.q_t_selected_target = q_t_al
 
         tf.summary.scalar('action_gap_t', tf.reduce_mean(self.action_gap_t))
@@ -175,7 +175,7 @@ class ModelAndLoss(object):
         self.summary_op = tf.summary.merge_all()
 
         # compute the error (potentially clipped)
-        self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
+        self.td_error = q_t_selected - tf.stop_gradient(self.q_t_selected_target)
         errors = _huber_loss(self.td_error)
         weighted_error = tf.reduce_mean(importance_weights * errors)
         self.loss = weighted_error
@@ -273,7 +273,7 @@ class DQNGraph(object):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
-        self.writer = tf.summary.FileWriter(logdir)
+        self.writer = tf.summary.FileWriter(logdir,tf.get_default_graph())
         self.summary_op = loss_obj.summary_op
 
     def update_target(self, sess):
@@ -301,7 +301,7 @@ class DQNGraph(object):
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
-        self.writer.add_summary(summary, step)
+        self.writer.add_summary(summary, step) 
         self.writer.flush()
         return td_err, grads
 
