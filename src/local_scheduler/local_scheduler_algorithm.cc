@@ -6,6 +6,7 @@
 
 #include "state/task_table.h"
 #include "state/actor_notification_table.h"
+#include "state/db_client_table.h"
 #include "state/local_scheduler_table.h"
 #include "state/object_table.h"
 #include "local_scheduler_shared.h"
@@ -205,6 +206,7 @@ void provide_scheduler_info(LocalSchedulerState *state,
  *
  * @param algorithm_state The state of the scheduling algorithm.
  * @param actor_id The actor ID of the actor being created.
+ * @param initial_execution_dependency .......................................................
  * @param worker The worker struct for the worker that is running this actor.
  *        If the worker struct has not been created yet (meaning that the worker
  *        that is running this actor has not registered with the local scheduler
@@ -213,14 +215,15 @@ void provide_scheduler_info(LocalSchedulerState *state,
  * @return Void.
  */
 void create_actor(SchedulingAlgorithmState *algorithm_state,
-                  ActorID actor_id,
+                  const ActorID &actor_id,
+                  const ObjectID &initial_execution_dependency,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
   entry.task_counters[ActorHandleID::nil()] = 0;
   entry.frontier_dependencies[ActorHandleID::nil()] = ObjectID::nil();
   /* The actor has not yet executed any tasks, so there are no execution
    * dependencies for the next task to be scheduled. */
-  entry.execution_dependency = ObjectID::nil();
+  entry.execution_dependency = initial_execution_dependency;
   entry.task_queue = new std::list<TaskExecutionSpec>();
   entry.worker = worker;
   entry.worker_available = false;
@@ -315,12 +318,14 @@ bool dispatch_actor_task(LocalSchedulerState *state,
    * deterministic reconstruction ordering for tasks whose updates are
    * reflected in the task table. */
   std::vector<ObjectID> ordered_execution_dependencies;
-  /* Only overwrite execution dependencies for tasks that have a
-   * submission-time dependency (meaning it is not the initial task). */
-  if (!entry.execution_dependency.is_nil()) {
+  // /* Only overwrite execution dependencies for tasks that have a
+  //  * submission-time dependency (meaning it is not the initial task). */
+  // if (!entry.execution_dependency.is_nil()) {
     ordered_execution_dependencies.push_back(entry.execution_dependency);
-  }
+  // }
   task->SetExecutionDependencies(ordered_execution_dependencies);
+
+// Why do we even need to pass execution dependencies into submit_task in the first place?
 
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
@@ -342,19 +347,19 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   return true;
 }
 
-void handle_actor_worker_connect(LocalSchedulerState *state,
-                                 SchedulingAlgorithmState *algorithm_state,
-                                 ActorID actor_id,
-                                 LocalSchedulerClient *worker) {
+void handle_convert_worker_to_actor(LocalSchedulerState *state,
+                                    SchedulingAlgorithmState *algorithm_state,
+                                    const ActorID &actor_id,
+                                    const ObjectID &initial_execution_dependency,
+                                    LocalSchedulerClient *worker) {
   if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
-    create_actor(algorithm_state, actor_id, worker);
+    create_actor(algorithm_state, actor_id, initial_execution_dependency, worker);
   } else {
     /* In this case, the LocalActorInfo struct was already been created by the
      * first call to add_task_to_actor_queue. However, the worker field was not
      * filled out, so fill out the correct worker field now. */
     algorithm_state->local_actor_infos[actor_id].worker = worker;
   }
-  dispatch_actor_task(state, algorithm_state, actor_id);
 }
 
 /**
@@ -422,10 +427,12 @@ void insert_actor_task_queue(LocalSchedulerState *state,
 
   /* Handle the case in which there is no LocalActorInfo struct yet. */
   if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
+    // TODO(rkn): I THINK THIS CASE IS IMPOSSIBLE NOW.. DOUBLE CHECK!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    RAY_CHECK(false);
     /* Create the actor struct with a NULL worker because the worker struct has
      * not been created yet. The correct worker struct will be inserted when the
      * actor worker connects to the local scheduler. */
-    create_actor(algorithm_state, actor_id, NULL);
+    create_actor(algorithm_state, actor_id, ObjectID::nil(), NULL);
     RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
   }
   LocalActorInfo &entry =
@@ -799,6 +806,42 @@ int reconstruct_object_timeout_handler(event_loop *loop,
       .local_scheduler_reconstruction_timeout_milliseconds();
 }
 
+int rerun_actor_creation_tasks_timeout_handler(event_loop *loop,
+                                               timer_id id,
+                                               void *context) {
+  int64_t start_time = current_time_ms();
+
+  //TODO reconstruction is probably being surpressed!!!! need to set task status to done or lost or something.
+
+  LocalSchedulerState *state = (LocalSchedulerState *) context;
+
+  // Create a set of the dummy object IDs for the actor creation tasks to
+  // reconstruct.
+  std::unordered_set<ObjectID, UniqueIDHasher> actor_dummy_objects;
+  for (auto const &execution_spec :
+       state->algorithm_state->cached_submitted_actor_tasks) {
+    ObjectID actor_creation_dummy_object_id =
+        TaskSpec_actor_creation_dummy_object_id(execution_spec.Spec());
+    actor_dummy_objects.insert(actor_creation_dummy_object_id);
+  }
+
+  // Issue reconstruct calls.
+  for (auto const &object_id : actor_dummy_objects) {
+    reconstruct_object(state, object_id);
+  }
+
+  // Print a warning if this method took too long.
+  int64_t end_time = current_time_ms();
+  if (end_time - start_time >
+      RayConfig::instance().max_time_for_handler_milliseconds()) {
+    RAY_LOG(WARNING) << "reconstruct_object_timeout_handler took "
+                     << end_time - start_time << " milliseconds.";
+  }
+
+  return RayConfig::instance()
+      .local_scheduler_reconstruction_timeout_milliseconds();
+}
+
 /**
  * Return true if there are still some resources available and false otherwise.
  *
@@ -855,7 +898,7 @@ void dispatch_tasks(LocalSchedulerState *state,
       if (state->child_pids.size() == 0) {
         /* If there are no workers, including those pending PID registration,
          * then we must start a new one to replenish the worker pool. */
-        start_worker(state, ActorID::nil(), false);
+        start_worker(state);
       }
       return;
     }
@@ -1080,16 +1123,54 @@ void give_task_to_local_scheduler_retry(UniqueID id,
   ActorID actor_id = TaskSpec_actor_id(spec);
   RAY_CHECK(state->actor_mapping.count(actor_id) == 1);
 
-  if (state->actor_mapping[actor_id].local_scheduler_id ==
-      get_db_client_id(state->db)) {
-    /* The task is now scheduled to us. Call the callback directly. */
-    handle_task_scheduled(state, state->algorithm_state, *execution_spec);
-  } else {
-    /* The task is scheduled to a remote local scheduler. Try to hand it to
-     * them again. */
+  DBClientID remote_local_scheduler_id =
+      state->actor_mapping[actor_id].local_scheduler_id;
+
+// THIS FAILED!!!!!!!!!!!
+//   RAY_CHECK(!(remote_local_scheduler_id == get_db_client_id(state->db)));
+//   if (remote_local_scheduler_id == get_db_client_id(state->db)) {
+//
+//   }
+
+  if (remote_local_scheduler_id.is_nil()) {
+    // THIS IS REPEATED, CLEAN THIS UP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // Process the actor task submission again. This will cache the task
+    // locally until a new actor creation notification is broadcast. We will
+    // attempt to reissue the actor creation tasks for all cached actor tasks
+    // in rerun_actor_creation_tasks_timeout_handler.
+    handle_actor_task_submitted(state, state->algorithm_state,
+                                *execution_spec);
+    return;
+  }
+
+  // TODO(rkn): db_client_table_cache_get is a blocking call, is this a
+  // performance issue?
+  DBClient remote_local_scheduler =
+      db_client_table_cache_get(state->db, remote_local_scheduler_id);
+
+  // Check if the local scheduler that we're assigning this task to is still
+  // alive.
+  if (remote_local_scheduler.is_alive) {
+    // The local scheduler is still alive, which means that perhaps it hasn't
+    // subscribed to the appropriate channel yet, so retrying should suffice.
+    // This should be rare.
     give_task_to_local_scheduler(
         state, state->algorithm_state, *execution_spec,
         state->actor_mapping[actor_id].local_scheduler_id);
+  } else {
+    // The local scheduler is dead, so we will need to recreate the actor by
+    // invoking reconstruction.
+    RAY_LOG(INFO) << "Local scheduler " << remote_local_scheduler_id
+                  << " that was running actor " << actor_id << " died.";
+    RAY_CHECK(state->actor_mapping.count(actor_id) == 1);
+    // Update the actor mapping.
+    state->actor_mapping[actor_id].local_scheduler_id = DBClientID::nil();
+    // Process the actor task submission again. This will cache the task
+    // locally until a new actor creation notification is broadcast. We will
+    // attempt to reissue the actor creation tasks for all cached actor tasks
+    // in rerun_actor_creation_tasks_timeout_handler.
+    handle_actor_task_submitted(state, state->algorithm_state,
+                                *execution_spec);
   }
 }
 
@@ -1224,6 +1305,12 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
   ActorID actor_id = TaskSpec_actor_id(task_spec);
 
   if (state->actor_mapping.count(actor_id) == 0) {
+    // Create a copy of the task to write to the task table.
+    Task *task = Task_alloc(task_spec, execution_spec.SpecSize(),
+                            TASK_STATUS_ACTOR_CACHED,
+                            get_db_client_id(state->db),
+                            execution_spec.ExecutionDependencies());
+
     /* Add this task to a queue of tasks that have been submitted but the local
      * scheduler doesn't know which actor is responsible for them. These tasks
      * will be resubmitted (internally by the local scheduler) whenever a new
@@ -1232,6 +1319,18 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     TaskExecutionSpec task_entry = TaskExecutionSpec(&execution_spec);
     algorithm_state->cached_submitted_actor_tasks.push_back(
         std::move(task_entry));
+
+    // Even if the task can't be assigned to a worker yet, we should still write
+    // it to the task table. TODO(rkn): There's no need to do this more than
+    // once, and we could run into problems if we have very large numbers of
+    // tasks in this cache.
+#if !RAY_USE_NEW_GCS
+    task_table_add_task(state->db, task, NULL, NULL, NULL);
+#else
+    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+    Task_free(task);
+#endif
+
     return;
   }
 
@@ -1255,8 +1354,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
 void handle_actor_creation_notification(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id,
-    bool reconstruct) {
+    ActorID actor_id) {
   int num_cached_actor_tasks =
       algorithm_state->cached_submitted_actor_tasks.size();
 
