@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.dqn.common.segment_tree import SumSegmentTree, MinSegmentTree
+from ray.rllib.optimizers.segment_tree import SumSegmentTree, MinSegmentTree
 
 
 def test_tree_set():

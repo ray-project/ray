@@ -1,0 +1,14 @@
+pong-apex:
+    env: Pong-v0
+    run: APEX
+    resources:
+        cpu:
+            eval: spec.config.num_workers
+        gpu: 1
+    config:
+        force_evaluators_remote: True  # requires cluster
+        num_workers: 32
+        lr: .0001
+        gamma: 0.99
+        model:
+          grayscale: True
