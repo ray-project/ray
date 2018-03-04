@@ -192,10 +192,10 @@ class HyperbandSuite(unittest.TestCase):
 
         Bracketing is placed as follows:
         (5, 81);
-        (8, 27) -> (3, 81);
-        (15, 9) -> (5, 27) -> (2, 81);
-        (34, 3) -> (12, 9) -> (4, 27) -> (2, 81);
-        (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 81);"""
+        (8, 27) -> (3, 54);
+        (15, 9) -> (5, 27) -> (2, 45);
+        (34, 3) -> (12, 9) -> (4, 27) -> (2, 42);
+        (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 41);"""
         sched = HyperBandScheduler()
         for i in range(num_trials):
             t = Trial("__fake")
@@ -328,9 +328,9 @@ class HyperbandSuite(unittest.TestCase):
 
         self.assertEqual(action, TrialScheduler.STOP)
 
-    def testContinueLastOne(self):
+    def testStopsLastOne(self):
         stats = self.default_statistics()
-        num_trials = stats[str(0)]["n"]
+        num_trials = stats[str(0)]["n"]  # setup one bracket
         sched, mock_runner = self.schedulerSetup(num_trials)
         big_bracket = sched._state["bracket"]
         for trl in big_bracket.current_trials():
@@ -343,12 +343,7 @@ class HyperbandSuite(unittest.TestCase):
                 mock_runner, trl, result(cur_units, i))
             mock_runner.process_action(trl, action)
 
-        self.assertEqual(action, TrialScheduler.CONTINUE)
-
-        for x in range(100):
-            action = sched.on_trial_result(
-                mock_runner, trl, result(cur_units + x, 10))
-            self.assertEqual(action, TrialScheduler.CONTINUE)
+        self.assertEqual(action, TrialScheduler.STOP)
 
     def testTrialErrored(self):
         """If a trial errored, make sure successive halving still happens"""

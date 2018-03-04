@@ -4,9 +4,6 @@ from __future__ import print_function
 
 import pytest
 import ray.dataframe as rdf
-import ray
-
-ray.init()
 
 
 @pytest.fixture

@@ -50,7 +50,7 @@ with the ``-L`` option as such:
 
 .. code-block:: bash
 
-  ssh -L <port>:localhost:<port> <user>@<ip-address>
+  ssh -L <local_port>:localhost:<remote_port> <user>@<ip-address>
 
 So for the above URL, you would use the port 8889. The Jupyter notebook attempts
 to run on port 8888, but if that fails it tries successive ports until it finds

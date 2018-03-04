@@ -156,6 +156,13 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
+    --run DQN \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
     --run PG \
     --stop '{"training_iteration": 2}' \
     --config '{"batch_size": 500, "num_workers": 1}'
@@ -197,6 +204,10 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/tune/examples/async_hyperband_example.py \
+    --smoke-test
+    
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/tune_mnist_ray_hyperband.py \
     --smoke-test
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
