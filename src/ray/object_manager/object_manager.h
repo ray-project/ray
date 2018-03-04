@@ -142,8 +142,8 @@ class ObjectManager {
   using BoostEC = const boost::system::error_code&;
 
   ClientID client_id_;
-  OMConfig config;
-  std::unique_ptr<ObjectDirectoryInterface> od;
+  OMConfig config_;
+  std::unique_ptr<ObjectDirectoryInterface> object_directory_;
   std::unique_ptr<ObjectStoreClient> store_client_;
 
   /// An io service for creating connections to other object managers.

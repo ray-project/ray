@@ -10,71 +10,73 @@ namespace ray {
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              OMConfig config,
                              shared_ptr<ray::GcsClient> gcs_client)
-  : od(new ObjectDirectory(gcs_client)),
+  : object_directory_(new ObjectDirectory(gcs_client)),
     work_(io_service_) {
-  this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
-  this->store_client_->SubscribeObjAdded([this](const ObjectID &oid){NotifyDirectoryObjectAdd(oid);});
-  this->store_client_->SubscribeObjDeleted([this](const ObjectID &oid){NotifyDirectoryObjectDeleted(oid);});
-  this->StartIOService();
+  config_ = config;
+  store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
+  store_client_->SubscribeObjAdded([this](const ObjectID &oid){NotifyDirectoryObjectAdd(oid);});
+  store_client_->SubscribeObjDeleted([this](const ObjectID &oid){NotifyDirectoryObjectDeleted(oid);});
+  StartIOService();
 };
 
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              OMConfig config,
                              std::unique_ptr<ObjectDirectoryInterface> od)
-  : od(std::move(od)),
+  : object_directory_(std::move(od)),
     work_(io_service_) {
-  this->store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
-  this->store_client_->SubscribeObjAdded([this](const ObjectID &oid){NotifyDirectoryObjectAdd(oid);});
-  this->store_client_->SubscribeObjDeleted([this](const ObjectID &oid){NotifyDirectoryObjectDeleted(oid);});
-  this->StartIOService();
+  config_ = config;
+  store_client_ = unique_ptr<ObjectStoreClient>(new ObjectStoreClient(io_service, config.store_socket_name));
+  store_client_->SubscribeObjAdded([this](const ObjectID &oid){NotifyDirectoryObjectAdd(oid);});
+  store_client_->SubscribeObjDeleted([this](const ObjectID &oid){NotifyDirectoryObjectDeleted(oid);});
+  StartIOService();
 };
 
 void ObjectManager::StartIOService(){
-  this->io_thread_ = std::thread(&ObjectManager::IOServiceLoop, this);
-//  this->thread_group_.create_thread(boost::bind(&boost::asio::io_service::run, &io_service_));
+  io_thread_ = std::thread(&ObjectManager::IOServiceLoop, this);
+//  thread_group_.create_thread(boost::bind(&boost::asio::io_service::run, &io_service_));
 }
 
 void ObjectManager::IOServiceLoop(){
-   this->io_service_.run();
+   io_service_.run();
 }
 
 void ObjectManager::StopIOService(){
-  this->io_service_.stop();
-  this->io_thread_.join();
-//  this->thread_group_.join_all();
+  io_service_.stop();
+  io_thread_.join();
+//  thread_group_.join_all();
 }
 
 void ObjectManager::SetClientID(const ClientID &client_id){
-  this->client_id_ = client_id;
+  client_id_ = client_id;
 }
 
 ClientID ObjectManager::GetClientID(){
-  return this->client_id_;
+  return client_id_;
 }
 
 void ObjectManager::NotifyDirectoryObjectAdd(const ObjectID &object_id){
-  ray::Status status = this->od->ObjectAdded(object_id, client_id_);
+  ray::Status status = object_directory_->ReportObjectAdded(object_id, client_id_);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id){
-  ray::Status status = this->od->ObjectRemoved(object_id, client_id_);
+  ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
 }
 
 ray::Status ObjectManager::Terminate() {
   StopIOService();
-  ray::Status status_code = this->od->Terminate();
+  ray::Status status_code = object_directory_->Terminate();
   // TODO: evaluate store client termination status.
-  this->store_client_->Terminate();
+  store_client_->Terminate();
   return status_code;
 };
 
 ray::Status ObjectManager::SubscribeObjAdded(std::function<void(const ObjectID&)> callback) {
-  this->store_client_->SubscribeObjAdded(callback);
+  store_client_->SubscribeObjAdded(callback);
   return ray::Status::OK();
 };
 
 ray::Status ObjectManager::SubscribeObjDeleted(std::function<void(const ObjectID&)> callback) {
-  this->store_client_->SubscribeObjDeleted(callback);
+  store_client_->SubscribeObjDeleted(callback);
   return ray::Status::OK();
 };
 
@@ -94,13 +96,13 @@ void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms){
 
 ray::Status ObjectManager::SchedulePullHandler(const ObjectID &object_id){
   pull_requests_.erase(object_id);
-  ray::Status status_code = this->od->GetLocations(
+  ray::Status status_code = object_directory_->GetLocations(
       object_id,
       [this](const std::vector<RemoteConnectionInfo>& v, const ObjectID &object_id) {
-        return this->GetLocationsSuccess(v, object_id);
+        return GetLocationsSuccess(v, object_id);
       } ,
       [this](ray::Status status, const ObjectID &object_id) {
-        return this->GetLocationsFailed(status, object_id);
+        return GetLocationsFailed(status, object_id);
       }
   );
   return status_code;
@@ -110,11 +112,11 @@ void ObjectManager::GetLocationsSuccess(const vector<ray::RemoteConnectionInfo> 
                                         const ray::ObjectID &object_id) {
   RemoteConnectionInfo info = v.front();
   pull_requests_.erase(object_id);
-  ray::Status status_code = this->Pull(object_id, info.client_id);
+  ray::Status status_code = Pull(object_id, info.client_id);
 };
 
 void ObjectManager::GetLocationsFailed(ray::Status status, const ObjectID &object_id){
-  SchedulePull(object_id, config.pull_timeout_ms);
+  SchedulePull(object_id, config_.pull_timeout_ms);
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id,
@@ -161,7 +163,7 @@ ray::Status ObjectManager::Push(const ObjectID &object_id,
 
 ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
   // TODO(hme): Account for pull timers.
-  ray::Status status = this->od->Cancel(object_id);
+  ray::Status status = object_directory_->Cancel(object_id);
   return ray::Status::OK();
 };
 
@@ -181,13 +183,14 @@ ray::Status ObjectManager::GetMsgConnection(
   if(message_send_connections_.count(client_id) > 0){
     callback(message_send_connections_[client_id]);
   } else {
-    status = this->od->GetInformation(client_id,
-                             [this, callback](RemoteConnectionInfo info){
-                               Status status = CreateMsgConnection(info, callback);
-                             },
-                             [this](const Status &status){
-                               // TODO: deal with failure.
-                             });
+    status = object_directory_->GetInformation(
+        client_id,
+        [this, callback](RemoteConnectionInfo info){
+          Status status = CreateMsgConnection(info, callback);
+        },
+        [this](const Status &status){
+          // TODO: deal with failure.
+        });
   }
   return status;
 };
@@ -222,13 +225,14 @@ ray::Status ObjectManager::GetTransferConnection(
   if (transfer_send_connections_.count(client_id) > 0) {
     callback(transfer_send_connections_[client_id]);
   } else {
-    status = this->od->GetInformation(client_id,
-                             [this, callback](RemoteConnectionInfo info){
-                               Status status = CreateTransferConnection(info, callback);
-                             },
-                             [this](const Status &status){
-                               // TODO(hme): deal with failure.
-                             }
+    status = object_directory_->GetInformation(
+        client_id,
+        [this, callback](RemoteConnectionInfo info){
+          Status status = CreateTransferConnection(info, callback);
+        },
+        [this](const Status &status){
+          // TODO(hme): deal with failure.
+        }
     );
   }
   return status;

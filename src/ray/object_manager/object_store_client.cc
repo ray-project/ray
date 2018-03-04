@@ -22,20 +22,20 @@ ObjectStoreClient::ObjectStoreClient(
 ) : client_one_(),
     client_two_(),
     socket_(io_service){
-  ARROW_CHECK_OK(this->client_two_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
-  ARROW_CHECK_OK(this->client_one_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client_two_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client_one_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
 
   // Connect to two clients, but subscribe to only one.
-  ARROW_CHECK_OK(this->client_one_.Subscribe(&c_socket_));
+  ARROW_CHECK_OK(client_one_.Subscribe(&c_socket_));
   boost::system::error_code ec;
   socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
   assert(!ec.value());
-  this->NotificationWait();
+  NotificationWait();
 };
 
 void ObjectStoreClient::Terminate() {
-  ARROW_CHECK_OK(this->client_two_.Disconnect());
-  ARROW_CHECK_OK(this->client_one_.Disconnect());
+  ARROW_CHECK_OK(client_two_.Disconnect());
+  ARROW_CHECK_OK(client_one_.Disconnect());
 }
 
 void ObjectStoreClient::NotificationWait() {
@@ -63,36 +63,36 @@ void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification_.data());
   ObjectID object_id = from_flatbuf(*object_info->object_id());
   if (object_info->is_deletion()) {
-    this->ProcessStoreRemove(object_id);
+    ProcessStoreRemove(object_id);
   } else {
-    this->ProcessStoreAdd(object_id);
+    ProcessStoreAdd(object_id);
     // why all these params?
-    //    this->ProcessStoreAdd(
+    //    ProcessStoreAdd(
     //        object_id, object_info->data_size(),
     //        object_info->metadata_size(),
     //        (unsigned char *) object_info->digest()->data());
   }
-  this->NotificationWait();
+  NotificationWait();
 }
 
 void ObjectStoreClient::ProcessStoreAdd(const ObjectID& object_id){
-  for (auto handler : this->add_handlers){
+  for (auto handler : add_handlers_){
     handler(object_id);
   }
 };
 
 void ObjectStoreClient::ProcessStoreRemove(const ObjectID& object_id){
-  for (auto handler : this->rem_handlers){
+  for (auto handler : rem_handlers_){
     handler(object_id);
   }
 };
 
 void ObjectStoreClient::SubscribeObjAdded(std::function<void(const ObjectID&)> callback) {
-  this->add_handlers.push_back(callback);
+  add_handlers_.push_back(callback);
 };
 
 void ObjectStoreClient::SubscribeObjDeleted(std::function<void(const ObjectID&)> callback) {
-  this->rem_handlers.push_back(callback);
+  rem_handlers_.push_back(callback);
 };
 
 plasma::PlasmaClient &ObjectStoreClient::GetClient(){

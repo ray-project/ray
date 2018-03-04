@@ -38,22 +38,22 @@ class TestObjectManager : public ::testing::Test {
     ASSERT_TRUE(!s);
 
     // start mock gcs
-    mock_gcs_client = shared_ptr<GcsClient>(new GcsClient());
-    // mock_gcs_client->Register();
+    mock_gcs_client_ = shared_ptr<GcsClient>(new GcsClient());
+    // mock_gcs_client_->Register();
 
     // start nodeserver
 
     // start om 1
     OMConfig config;
     config.store_socket_name = "/tmp/store";
-    om = unique_ptr<ObjectManager>(new ObjectManager(io_service, config, mock_gcs_client));
+    object_manager_1_ = unique_ptr<ObjectManager>(new ObjectManager(io_service_, config, mock_gcs_client_));
 
     //start om 2
 //    OMConfig config2;
 //    config2.store_socket_name = "/tmp/store";
 //    shared_ptr<ObjectDirectory> od2 = shared_ptr<ObjectDirectory>(new ObjectDirectory());
-//    od2->InitGcs(mock_gcs_client);
-//    om2 = unique_ptr<ObjectManager>(new ObjectManager(io_service, config2, od2));
+//    od2->InitGcs(mock_gcs_client_);
+//    object_manager_2_ = unique_ptr<ObjectManager>(new ObjectManager(io_service, config2, od2));
 
     // start client connection
     ARROW_CHECK_OK(client_.Connect("/tmp/store", "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -66,35 +66,35 @@ class TestObjectManager : public ::testing::Test {
     this->StopLoop();
     arrow::Status arrow_status = client_.Disconnect();
     ASSERT_TRUE(arrow_status.ok());
-    ray::Status ray_status = om->Terminate();
+    ray::Status ray_status = object_manager_1_->Terminate();
     ASSERT_TRUE(ray_status.ok());
-    // om2->Terminate();
+    // object_manager_2_->Terminate();
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
   }
 
   void Loop(){
-    io_service.run();
+    io_service_.run();
   };
 
   void StartLoop(){
-    p = std::thread(&TestObjectManager::Loop, this);
+    process_thread_ = std::thread(&TestObjectManager::Loop, this);
   };
 
   void StopLoop(){
-    io_service.stop();
-    p.join();
+    io_service_.stop();
+    process_thread_.join();
   }
 
  protected:
-  std::thread p;
+  std::thread process_thread_;
   plasma::PlasmaClient client_;
   plasma::PlasmaClient client2_;
-  boost::asio::io_service io_service;
+  boost::asio::io_service io_service_;
 
-  shared_ptr<GcsClient> mock_gcs_client;
-  unique_ptr<ObjectManager> om;
-  unique_ptr<ObjectManager> om2;
+  shared_ptr<GcsClient> mock_gcs_client_;
+  unique_ptr<ObjectManager> object_manager_1_;
+  unique_ptr<ObjectManager> object_manager_2_;
 
 };
 
@@ -120,7 +120,7 @@ void ObjectAdded(const ObjectID &object_id){
 }
 
 TEST_F(TestObjectManager, TestNotifications) {
-  ray::Status status = om->SubscribeObjAdded(ObjectAdded);
+  ray::Status status = object_manager_1_->SubscribeObjAdded(ObjectAdded);
   ASSERT_TRUE(status.ok());
   // put object
   for(int i = 0; i < 10; ++i) {

@@ -10,23 +10,23 @@ ObjectDirectory::ObjectDirectory() = default;
 ObjectDirectory::~ObjectDirectory() = default;
 
 ObjectDirectory::ObjectDirectory(std::shared_ptr<GcsClient> gcs_client){
-  this->gcs_client = gcs_client;
+  gcs_client_ = gcs_client;
 };
 
-ray::Status ObjectDirectory::ObjectAdded(const ObjectID &object_id,
-                                         const ClientID &client_id){
-  return this->gcs_client->object_table().Add(object_id, client_id, []{});
+ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
+                                               const ClientID &client_id){
+  return gcs_client_->object_table().Add(object_id, client_id, []{});
 };
 
-ray::Status ObjectDirectory::ObjectRemoved(const ObjectID &object_id,
-                                           const ClientID &client_id){
-  return this->gcs_client->object_table().Remove(object_id, client_id, []{});
+ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
+                                                 const ClientID &client_id){
+  return gcs_client_->object_table().Remove(object_id, client_id, []{});
 };
 
 ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
                                             const InfoSuccCB &success_cb,
                                             const InfoFailCB &fail_cb){
-  this->gcs_client->client_table().GetClientInformation(
+  gcs_client_->client_table().GetClientInformation(
       client_id,
       [this, success_cb, client_id](ClientInformation client_info){
         const auto &info = RemoteConnectionInfo(client_id,
@@ -55,10 +55,10 @@ ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
 ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id){
   // TODO(hme): Avoid callback hell.
   vector<RemoteConnectionInfo> v;
-  ray::Status status = this->gcs_client->object_table().GetObjectClientIDs(
+  ray::Status status = gcs_client_->object_table().GetObjectClientIDs(
       object_id,
       [this, object_id, &v](const vector<ClientID> &client_ids){
-          this->gcs_client->client_table().GetClientInformationSet(
+          gcs_client_->client_table().GetClientInformationSet(
               client_ids,
               [this, object_id, &v](const vector<ClientInformation> &info_vec){
                 for (const auto& client_info: info_vec) {

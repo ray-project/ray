@@ -46,16 +46,8 @@ class ObjectStoreClient {
 
  private:
 
-  // Async loop for handling object store notifications.
-  void NotificationWait();
-  void ProcessStoreLength(const boost::system::error_code &error);
-  void ProcessStoreNotification(const boost::system::error_code &error);
-
-  // Support for rebroadcasting object add/rem events.
-  std::vector<std::function<void(const ray::ObjectID&)>> add_handlers;
-  std::vector<std::function<void(const ray::ObjectID&)>> rem_handlers;
-  void ProcessStoreAdd(const ObjectID& object_id);
-  void ProcessStoreRemove(const ObjectID& object_id);
+  std::vector<std::function<void(const ray::ObjectID&)>> add_handlers_;
+  std::vector<std::function<void(const ray::ObjectID&)>> rem_handlers_;
 
   plasma::PlasmaClient client_one_;
   plasma::PlasmaClient client_two_;
@@ -63,6 +55,16 @@ class ObjectStoreClient {
   int64_t length_;
   std::vector<uint8_t> notification_;
   boost::asio::local::stream_protocol::socket socket_;
+
+  // Async loop for handling object store notifications.
+  void NotificationWait();
+  void ProcessStoreLength(const boost::system::error_code &error);
+  void ProcessStoreNotification(const boost::system::error_code &error);
+
+  // Support for rebroadcasting object add/rem events.
+  void ProcessStoreAdd(const ObjectID& object_id);
+  void ProcessStoreRemove(const ObjectID& object_id);
+
 };
 
 }

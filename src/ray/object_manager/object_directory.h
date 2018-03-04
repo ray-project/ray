@@ -1,5 +1,5 @@
-#ifndef RAY_OBJECTDIRECTORY_H
-#define RAY_OBJECTDIRECTORY_H
+#ifndef RAY_OBJECT_DIRECTORY_H
+#define RAY_OBJECT_DIRECTORY_H
 
 #include <memory>
 #include <vector>
@@ -66,15 +66,15 @@ class ObjectDirectoryInterface {
   /// \param object_id The object id that was put into the store.
   /// \param client_id The client id corresponding to this node.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ObjectAdded(const ObjectID &object_id,
-                                  const ClientID &client_id) = 0;
+  virtual ray::Status ReportObjectAdded(const ObjectID &object_id,
+                                        const ClientID &client_id) = 0;
 
   /// Report objects removed from this client's store to the object directory.
   /// \param object_id The object id that was removed from the store.
   /// \param client_id The client id corresponding to this node.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ObjectRemoved(const ObjectID &object_id,
-                                    const ClientID &client_id) = 0;
+  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
+                                          const ClientID &client_id) = 0;
 
   /// Terminate this object.
   /// \return Status of whether termination succeeded.
@@ -98,17 +98,14 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                            const LocFailCB &fail_cb) override;
   ray::Status Cancel(const ObjectID &object_id) override;
   ray::Status Terminate() override;
-  ray::Status ObjectAdded(const ObjectID &object_id,
-                          const ClientID &client_id) override;
-  ray::Status ObjectRemoved(const ObjectID &object_id,
-                            const ClientID &client_id) override;
+  ray::Status ReportObjectAdded(const ObjectID &object_id,
+                                const ClientID &client_id) override;
+  ray::Status ReportObjectRemoved(const ObjectID &object_id,
+                                  const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).
   ObjectDirectory(std::shared_ptr<GcsClient> gcs_client);
 
  private:
-
-  /// Reference to the gcs client.
-  std::shared_ptr<GcsClient> gcs_client;
 
   /// Callbacks associated with a call to GetLocations.
   // TODO(hme): I think these can be removed.
@@ -117,7 +114,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     LocFailCB fail_cb;
   };
 
+  /// Maintain map of in-flight GetLocation requests.
   std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
+
+  /// Reference to the gcs client.
+  std::shared_ptr<GcsClient> gcs_client_;
 
   /// GetLocations registers a request for locations.
   /// This function actually carries out that request.
@@ -131,4 +132,4 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
 } // namespace ray
 
-#endif // RAY_OBJECTDIRECTORY_H
+#endif // RAY_OBJECT_DIRECTORY_H
