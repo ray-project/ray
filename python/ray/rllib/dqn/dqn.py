@@ -23,9 +23,10 @@ DEFAULT_CONFIG = dict(
     dueling=True,
     # Whether to use double dqn
     double_q=True,
-    #Use 'PAL' for persistent advantage learning, 'AL' for advantage learning, 'DQN' for normal DQN
+    # Use 'PAL' for Persistent Advantage Learning,
+    # 'AL' for advantage learning, 'DQN' for normal DQN
     pal='PAL',
-    #alpha value for persistent advantage learning
+    # Alpha value for Persistent Advantage Learning
     pal_alpha = 0.1,
     # Hidden layer sizes of the state and action value networks
     hiddens=[256],
