@@ -24,6 +24,12 @@ Status Attach(plasma::EventLoop &event_loop) {
   return Status::OK();
 }
 
+Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
+  asio_client_.reset(
+      new RedisAsioClient(io_service, context_->async_context()));
+  return Status::OK();
+}
+
 ObjectTable &AsyncGcsClient::object_table() {
   return *object_table_;
 }
