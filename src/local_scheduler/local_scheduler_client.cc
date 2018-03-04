@@ -30,7 +30,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
   /* Register the process ID with the local scheduler. */
   int success = write_message(result->conn, MessageType_RegisterClientRequest,
                               fbb.GetSize(), fbb.GetBufferPointer());
-  CHECKM(success == 0, "Unable to register worker with local scheduler");
+  RAY_CHECK(success == 0) << "Unable to register worker with local scheduler";
 
   /* Wait for a confirmation from the local scheduler. */
   int64_t type;
@@ -38,10 +38,10 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
   uint8_t *reply;
   read_message(result->conn, &type, &reply_size, &reply);
   if (type == DISCONNECT_CLIENT) {
-    LOG_DEBUG("Exiting because local scheduler closed connection.");
+    RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
-  CHECK(type == MessageType_RegisterClientReply);
+  RAY_CHECK(type == MessageType_RegisterClientReply);
 
   /* Parse the reply object. */
   auto reply_message = flatbuffers::GetRoot<RegisterClientReply>(reply);
@@ -50,7 +50,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
   }
   /* If the worker is not an actor, there should not be any GPU IDs here. */
   if (ActorID_equal(result->actor_id, ActorID::nil())) {
-    CHECK(reply_message->gpu_ids()->size() == 0);
+    RAY_CHECK(reply_message->gpu_ids()->size() == 0);
   }
 
   free(reply);
@@ -111,10 +111,10 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
    * scheduler gives this client a task. */
   read_message(conn->conn, &type, &reply_size, &reply);
   if (type == DISCONNECT_CLIENT) {
-    LOG_WARN("Exiting because local scheduler closed connection.");
+    RAY_LOG(WARNING) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
-  CHECK(type == MessageType_ExecuteTask);
+  RAY_CHECK(type == MessageType_ExecuteTask);
 
   /* Parse the flatbuffer object. */
   auto reply_message = flatbuffers::GetRoot<GetTaskReply>(reply);
@@ -186,10 +186,10 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
   std::vector<uint8_t> reply;
   read_vector(conn->conn, &type, reply);
   if (type == DISCONNECT_CLIENT) {
-    LOG_DEBUG("Exiting because local scheduler closed connection.");
+    RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
-  CHECK(type == MessageType_GetActorFrontierReply);
+  RAY_CHECK(type == MessageType_GetActorFrontierReply);
   return reply;
 }
 

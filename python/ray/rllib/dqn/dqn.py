@@ -80,6 +80,8 @@ DEFAULT_CONFIG = dict(
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     train_batch_size=32,
+    # Smooth the current average reward over this many previous episodes.
+    smoothing_num_episodes=100,
 
     # === Tensorflow ===
     # Arguments to pass to tensorflow

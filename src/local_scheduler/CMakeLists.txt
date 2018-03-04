@@ -6,7 +6,7 @@ project(local_scheduler)
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
 # Include plasma
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../thirdparty/arrow/python/cmake_modules)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../../thirdparty/pkg/arrow/python/cmake_modules)
 
 find_package(Arrow)
 find_package(Plasma)
