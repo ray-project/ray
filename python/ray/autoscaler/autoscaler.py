@@ -475,6 +475,13 @@ class StandardAutoscaler(object):
             suffix, self.load_metrics.debug_string())
 
 
+def typename(v):
+    if isinstance(v, type):
+        return v.__name__
+    else:
+        return type(v).__name__
+
+
 def check_required(config, schema):
     # Check required schema entries
     if type(config) is not dict:
@@ -485,8 +492,7 @@ def check_required(config, schema):
             continue  # None means we don't validate the field
         if kreq is REQUIRED:
             if k not in config:
-                type_str = (v.__name__ if isinstance(v, type)
-                            else type(v).__name__)
+                type_str = typename(v)
                 raise ValueError(
                     "Missing required config key `{}` of type {}".format(
                         k, type_str))

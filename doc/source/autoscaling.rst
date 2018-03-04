@@ -12,7 +12,7 @@ as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/conf
 Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example.yaml>`__ cluster config file will create a small cluster with a m4.large head node (on-demand), and two m4.large `spot workers <https://aws.amazon.com/ec2/spot/>`__, configured to autoscale up to four m4.large workers.
 
 Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node to run Ray programs with ``ray.init(redis_address=ray.services.get_node_ip_address() + ":6379")``.
+SSH into the head node, ``source activate tensorflow_p36``, and then run Ray programs with ``ray.init(redis_address=ray.services.get_node_ip_address() + ":6379")``.
 
 .. code-block:: bash
 
@@ -31,7 +31,7 @@ To run connect to applications running on the cluster (e.g. Jupyter notebook) us
 
 .. code-block:: bash
 
-    $ ssh -L 8899:localhost:8899 -i <key> <user>@<addr> jupyter notebook --port=8899
+    $ ssh -L 8899:localhost:8899 -i <key> <user>@<addr> 'source ~/anaconda3/bin/activate tensorflow_p36 && jupyter notebook --port=8899'
 
 Updating your cluster
 ---------------------
@@ -57,7 +57,7 @@ The default idle timeout is 5 minutes. This is to prevent excessive node churn w
 Monitoring cluster status
 -------------------------
 
-You can monitor cluster usage and auto-scaling status by tailing the autoscaling logs in ``/tmp/raylogs/monitor-*.log``.
+You can monitor cluster usage and auto-scaling status by tailing the autoscaling logs in ``/tmp/raylogs/monitor-*``.
 
 The Ray autoscaler also reports per-node status in the form of instance tags. In the AWS console, you can click on a Node, go the the "Tags" pane, and add the ``ray:NodeStatus`` tag as a column. This lets you see per-node statuses at a glance:
 
