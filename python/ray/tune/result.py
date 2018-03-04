@@ -80,6 +80,9 @@ TrainingResult = namedtuple("TrainingResult", [
     # (Auto-filled) The hostname of the machine hosting the training process.
     "hostname",
 
+    # (Auto-filled) The node ip of the machine hosting the training process.
+    "node_ip",
+
     # (Auto=filled) The current hyperparameter configuration.
     "config",
 ])

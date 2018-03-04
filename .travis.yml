@@ -146,18 +146,33 @@ script:
   - python -m pytest python/ray/rllib/test/test_evaluators.py
 
 deploy:
-  provider: s3
-  access_key_id: AKIAJ2L7XDUSZVTXI5QA
-  secret_access_key:
-    secure: MZbzbQvfn9QI2H19Ai0EZju5BERhCMA8/piHU29syvtmoDqd/QdMW0DTHhLAqlaCrGeMGCx0y6sB9DjX46ZKndQ/cgSQDesfNC300NTZZlWyYr7K86yhj+hgIpYXs+G28g1hmQOUzCWL8kAgfeMle9GvKkZ7DkhdRszg8bPyIXdKtjQGO5RRrrjQBgIzjvOiWFOD9lDzula5j8uV4tsiXT8nQjuiOIwmAxB2r7zXHc/Vsr9wBAeQ9Fq6aomEGuuVscoMhZqWc0SHOOz0dIDdlJFF+W4Effw6l9u0Fe262g0WfsnS3PqF7a6eBC0qkf3yH8joAlvquVxWp+dr7dBzy0gGZysD/pqF/NBiB3GZ9TMreK39DJ9zC83p2r0awP1hduhkCJI2QOsNX7fna6e2edVt7rxOEe19So83eDNBbJ6bfV7YbkEMqUJxNHWC6MIDCrCbFf8QlT3fnPsb0IHMa9aJRe/TvgI+aR+nKjRhvVymXddCBAy5hYb/I66omx4BGbl7+9HPo/w/c3m+vCJIu6IQZFVAmsoP6pft9aYVXgkz20C4I/4tF0YlDuH617PT3DeCjf+MG4Mgh9JiXJ2Jt8U6NH1tlXiS/F6OjPGFB7UrFw1o2e0KhX+l/qJEslf5Xc35vmbELf1Fy7QNVttZ2H5OXYrWhsV8EOmpN+KcVQI=
-  bucket: ray-wheels
-  acl: public_read
-  region: us-west-2
-  local_dir: .whl
-  upload-dir: $TRAVIS_COMMIT
-  skip_cleanup: true
-  only:
-    - master
-  on:
-    repo: ray-project/ray
-    condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+  - provider: s3
+    access_key_id: AKIAJ2L7XDUSZVTXI5QA
+    secret_access_key:
+      secure: MZbzbQvfn9QI2H19Ai0EZju5BERhCMA8/piHU29syvtmoDqd/QdMW0DTHhLAqlaCrGeMGCx0y6sB9DjX46ZKndQ/cgSQDesfNC300NTZZlWyYr7K86yhj+hgIpYXs+G28g1hmQOUzCWL8kAgfeMle9GvKkZ7DkhdRszg8bPyIXdKtjQGO5RRrrjQBgIzjvOiWFOD9lDzula5j8uV4tsiXT8nQjuiOIwmAxB2r7zXHc/Vsr9wBAeQ9Fq6aomEGuuVscoMhZqWc0SHOOz0dIDdlJFF+W4Effw6l9u0Fe262g0WfsnS3PqF7a6eBC0qkf3yH8joAlvquVxWp+dr7dBzy0gGZysD/pqF/NBiB3GZ9TMreK39DJ9zC83p2r0awP1hduhkCJI2QOsNX7fna6e2edVt7rxOEe19So83eDNBbJ6bfV7YbkEMqUJxNHWC6MIDCrCbFf8QlT3fnPsb0IHMa9aJRe/TvgI+aR+nKjRhvVymXddCBAy5hYb/I66omx4BGbl7+9HPo/w/c3m+vCJIu6IQZFVAmsoP6pft9aYVXgkz20C4I/4tF0YlDuH617PT3DeCjf+MG4Mgh9JiXJ2Jt8U6NH1tlXiS/F6OjPGFB7UrFw1o2e0KhX+l/qJEslf5Xc35vmbELf1Fy7QNVttZ2H5OXYrWhsV8EOmpN+KcVQI=
+    bucket: ray-wheels
+    acl: public_read
+    region: us-west-2
+    local_dir: .whl
+    upload-dir: $TRAVIS_COMMIT
+    skip_cleanup: true
+    only:
+      - master
+    on:
+      repo: ray-project/ray
+      condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
+  - provider: s3
+    access_key_id: AKIAJ2L7XDUSZVTXI5QA
+    secret_access_key:
+      secure: MZbzbQvfn9QI2H19Ai0EZju5BERhCMA8/piHU29syvtmoDqd/QdMW0DTHhLAqlaCrGeMGCx0y6sB9DjX46ZKndQ/cgSQDesfNC300NTZZlWyYr7K86yhj+hgIpYXs+G28g1hmQOUzCWL8kAgfeMle9GvKkZ7DkhdRszg8bPyIXdKtjQGO5RRrrjQBgIzjvOiWFOD9lDzula5j8uV4tsiXT8nQjuiOIwmAxB2r7zXHc/Vsr9wBAeQ9Fq6aomEGuuVscoMhZqWc0SHOOz0dIDdlJFF+W4Effw6l9u0Fe262g0WfsnS3PqF7a6eBC0qkf3yH8joAlvquVxWp+dr7dBzy0gGZysD/pqF/NBiB3GZ9TMreK39DJ9zC83p2r0awP1hduhkCJI2QOsNX7fna6e2edVt7rxOEe19So83eDNBbJ6bfV7YbkEMqUJxNHWC6MIDCrCbFf8QlT3fnPsb0IHMa9aJRe/TvgI+aR+nKjRhvVymXddCBAy5hYb/I66omx4BGbl7+9HPo/w/c3m+vCJIu6IQZFVAmsoP6pft9aYVXgkz20C4I/4tF0YlDuH617PT3DeCjf+MG4Mgh9JiXJ2Jt8U6NH1tlXiS/F6OjPGFB7UrFw1o2e0KhX+l/qJEslf5Xc35vmbELf1Fy7QNVttZ2H5OXYrWhsV8EOmpN+KcVQI=
+    bucket: ray-wheels
+    acl: public_read
+    region: us-west-2
+    local_dir: .whl
+    upload-dir: latest
+    skip_cleanup: true
+    only:
+      - master
+    on:
+      repo: ray-project/ray
+      condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
