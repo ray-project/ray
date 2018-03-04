@@ -119,9 +119,9 @@ class DQNEvaluator(Evaluator):
                 obs, actions, rewards, new_obs, dones)
 
         batch = SampleBatch({
-            "obs": [pack(o) for o in obs], "actions": actions,
+            "obs": [pack(np.array(o)) for o in obs], "actions": actions,
             "rewards": rewards,
-            "new_obs": [pack(o) for o in new_obs], "dones": dones,
+            "new_obs": [pack(np.array(o)) for o in new_obs], "dones": dones,
             "weights": np.ones_like(rewards)})
         assert (batch.count == self.config["sample_batch_size"])
 
