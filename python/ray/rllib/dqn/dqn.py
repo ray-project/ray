@@ -84,6 +84,8 @@ DEFAULT_CONFIG = dict(
     grad_norm_clipping=10,
     # Arguments to pass to the rllib optimizer
     optimizer={},
+    # Smooth the current average reward over this many previous episodes.
+    smoothing_num_episodes=100,
 
     # === Tensorflow ===
     # Arguments to pass to tensorflow
