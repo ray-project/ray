@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 
 class Evaluator(object):
     """Algorithms implement this interface to leverage RLlib optimizers.
@@ -61,6 +63,22 @@ class Evaluator(object):
         """
 
         raise NotImplementedError
+
+    def compute_apply(self, samples):
+        """Fused compute and apply gradients on given samples.
+
+        Returns:
+            The result of calling compute_gradients(samples)
+        """
+
+        grads = self.compute_gradients(samples)
+        self.apply_gradients(grads)
+        return grads
+
+    def get_host(self):
+        """Returns hostname of actor."""
+
+        return os.uname()[1]
 
 
 class TFMultiGPUSupport(Evaluator):

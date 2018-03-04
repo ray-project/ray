@@ -41,7 +41,9 @@ else:
     optional_ray_files += ray_ui_files
 
 extras = {
-    "rllib": ["tensorflow", "pyyaml", "gym[atari]", "opencv-python", "scipy"]
+    "rllib": [
+        "tensorflow", "pyyaml", "gym[atari]", "opencv-python",
+        "python-snappy", "scipy"]
 }
 
 
