@@ -35,6 +35,7 @@ void ObjectAdded(gcs::AsyncGcsClient *client,
 void Lookup(gcs::AsyncGcsClient *client,
             const UniqueID &id,
             std::shared_ptr<ObjectTableDataT> data) {
+  // Check that the object entry was added.
   ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
   aeStop(loop);
 }
@@ -49,6 +50,8 @@ TEST_F(TestGcs, TestObjectTable) {
   RAY_CHECK_OK(
       client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
   RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &Lookup));
+  // Run the event loop. The loop will only stop if the Lookup callback is
+  // called (or an assertion failure).
   aeMain(loop);
   aeDeleteEventLoop(loop);
 }
@@ -95,8 +98,41 @@ TEST_F(TestGcs, TestTaskTable) {
   update->test_scheduler_id = local_scheduler_id.binary();
   update->test_state_bitmask = SchedulingState_SCHEDULED;
   update->update_state = SchedulingState_LOST;
+  // After test-and-setting, the callback will lookup the current state of the
+  // task.
   RAY_CHECK_OK(client_.task_table().TestAndUpdate(job_id_, task_id, update,
                                                   &TaskUpdateCallback));
+  // Run the event loop. The loop will only stop if the lookup after the
+  // test-and-set succeeds (or an assertion failure).
+  aeMain(loop);
+  aeDeleteEventLoop(loop);
+}
+
+void ObjectTableSubscribed(gcs::AsyncGcsClient *client,
+                           const UniqueID &id,
+                           std::shared_ptr<ObjectTableDataT> data) {
+  aeStop(loop);
+}
+
+TEST_F(TestGcs, TestSubscribeAll) {
+  loop = aeCreateEventLoop(1024);
+  RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
+  // Subscribe to all object table notifications. The registered callback for
+  // notifications will check whether the object below is added.
+  RAY_CHECK_OK(client_.object_table().Subscribe(
+      job_id_, ClientID::nil(), &Lookup, &ObjectTableSubscribed));
+  // Run the event loop. The loop will only stop if the subscription succeeds.
+  aeMain(loop);
+
+  // We have subscribed. Add an object table entry.
+  auto data = std::make_shared<ObjectTableDataT>();
+  data->managers.push_back("A");
+  data->managers.push_back("B");
+  ObjectID object_id = ObjectID::from_random();
+  RAY_CHECK_OK(
+      client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
+  // Run the event loop. The loop will only stop if the registered subscription
+  // callback is called (or an assertion failure).
   aeMain(loop);
   aeDeleteEventLoop(loop);
 }
