@@ -239,16 +239,17 @@ class ApexOptimizer(Optimizer):
 
     def stats(self):
         replay_stats = ray.get(self.replay_actors[0].stats.remote())
+        timing = {
+            "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
+            for k in self.timers
+        }
+        timing["learner_grad_time_ms"] = round(
+            1000 * self.learner.grad_timer.mean, 3)
+        timing["learner_dequeue_time_ms"] = round(
+            1000 * self.learner.queue_timer.mean, 3)
         stats = {
             "replay_shard_0": replay_stats,
-            "timing_breakdown": {
-                "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
-                for k in self.timers
-            },
-            "learner_grad_time_ms":
-                round(1000 * self.learner.grad_timer.mean, 3),
-            "learner_dequeue_time_ms":
-                round(1000 * self.learner.queue_timer.mean, 3),
+            "timing_breakdown": timing,
             "sample_throughput": round(
                 self.timers["sample"].mean_throughput, 3),
             "train_throughput": round(self.timers["train"].mean_throughput, 3),
