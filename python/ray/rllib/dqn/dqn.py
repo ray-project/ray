@@ -23,8 +23,8 @@ DEFAULT_CONFIG = dict(
     dueling=True,
     # Whether to use double dqn
     double_q=True,
-    #Whether to use persistent advantage learning
-    pal=True,
+    #Use 'PAL' for persistent advantage learning, 'AL' for advantage learning, 'DQN' for normal DQN
+    pal='PAL',
     #alpha value for persistent advantage learning
     pal_alpha = 0.1,
     # Hidden layer sizes of the state and action value networks
@@ -167,8 +167,6 @@ class DQNAgent(Agent):
             if self.global_timestep < self.config["learning_starts"]:
                 self._populate_replay_buffer()
             else:
-                #print(self.global_timestep - start_timestep)
-                #print(self.optimizer.stats())
                 self.optimizer.step()
 
             stats = self._update_global_stats()
@@ -178,7 +176,6 @@ class DQNAgent(Agent):
                 self.local_evaluator.update_target()
                 self.last_target_update_ts = self.global_timestep
                 self.num_target_updates += 1
-                #print("Update target")
 
 
 

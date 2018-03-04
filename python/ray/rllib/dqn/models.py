@@ -97,13 +97,6 @@ def _scope_vars(scope, trainable_only=False):
         if trainable_only else tf.GraphKeys.VARIABLES,
         scope=scope if isinstance(scope, str) else scope.name)
 
-    '''
-
-
-    action_gap = min(q_t_seleted - q_t,q_tp1_best - q_tp1)
-    q_t_PAL = q_t_selected_target - alpha * action_gap
-    '''
-
 
 class ModelAndLoss(object):
     """Holds the model and loss function.
@@ -111,7 +104,6 @@ class ModelAndLoss(object):
     Both graphs are necessary in order for the multi-gpu SGD implementation
     to create towers on each device.
     """
-
     def __init__(
             self, registry, num_actions, config,
             obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
@@ -124,7 +116,6 @@ class ModelAndLoss(object):
             self.q_tp1 = _build_q_network(
                 registry, obs_tp1, num_actions, config)
             self.target_q_func_vars = _scope_vars(scope.name)
-
 
         # q scores for actions which we know were selected in the given state.
         q_t_selected = tf.reduce_sum(
@@ -143,41 +134,50 @@ class ModelAndLoss(object):
             q_tp1_best = tf.reduce_max(self.q_tp1, 1)
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
-
         # compute RHS of bellman equation
-        q_t_selected_target = (
+        self.q_t_selected_target = (
             rew_t + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
 
-        #get q value in target network
+        '''    
+        first diff, second diff, action gap, graph, 3 trials get rid of comments
+        3 trials of advantage learning
+        3 trial of DQN
+        change local dir on train.py for file naming
+        log using default logdir
+        remove comments and spaces 
+        compute action gap for persistent action learning
+        '''
+        #get q value in target network used for computing action gap
         with tf.variable_scope("target_q_func", reuse=True) as scope:
             self.q_t_using_target_net = _build_q_network(
                     registry, obs_t, num_actions, config)
 
-        #compute action gap for persistent action learning
-        q_t_selected_using_target_net = tf.reduce_sum(
+        #compute action gap at iteration t,t+1, and minimum of the two, used for PAL
+        self.q_t_selected_using_target_net = tf.reduce_sum(
             self.q_t_using_target_net * tf.one_hot(act_t, num_actions), 1)
-        first_diff = tf.reduce_max(self.q_t_using_target_net) - q_t_selected_using_target_net
-        second_diff = tf.reduce_max(self.q_tp1) - q_tp1_best
-        action_gap = tf.minimum(first_diff, second_diff)
-        tf.summary.scalar('action_gap', tf.reduce_mean(action_gap))
-
-        #action_gap = tf.Print(action_gap,[action_gap])
+        self.action_gap_t = tf.reduce_max(self.q_t_using_target_net) - self.q_t_selected_using_target_net
+        self.action_gap_tp1 = tf.reduce_max(self.q_tp1) - q_tp1_best
+        self.action_gap_min = tf.minimum(self.action_gap_t, self.action_tp1)
 
         #adjust for persistent advatange learning
-        if config["pal"]:
-            q_t_pal = q_t_selected_target - config['pal_alpha'] * action_gap
-            q_t_selected_target = q_t_pal
+        if config['pal'] == 'PAL':
+            q_t_pal = q_t_selected_target - config['pal_alpha'] * self.action_gap_min
+            self.q_t_selected_target = q_t_pal
+        #adjust for advantage learning
+        elif config['pal'] == 'AL':
+            q_t_al = q_t_selected_target - config['pal_alpha'] * self.action_gap_t
+            self.q_t_selected_target = q_t_al
 
-
-        tf.summary.scalar('value_function', tf.reduce_mean(q_t_selected_target))
+        tf.summary.scalar('action_gap_t', tf.reduce_mean(self.action_gap_t))
+        tf.summary.scalar('action_gap_tp1', tf.reduce_mean(self.action_gap_tp1))
+        tf.summary.scalar('action_gap_min', tf.reduce_mean(self.action_gap_min))
+        tf.summary.scalar('value_function', tf.reduce_mean(self.q_t_selected_target))
         self.summary_op = tf.summary.merge_all()
-
 
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
         errors = _huber_loss(self.td_error)
         weighted_error = tf.reduce_mean(importance_weights * errors)
-
         self.loss = weighted_error
 
 
@@ -273,7 +273,7 @@ class DQNGraph(object):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
-        self.writer = tf.summary.FileWriter('/tmp/tf/pal/space_invaders')
+        self.writer = tf.summary.FileWriter(logdir)
         self.summary_op = loss_obj.summary_op
 
     def update_target(self, sess):
@@ -301,7 +301,6 @@ class DQNGraph(object):
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
-        print(step)
         self.writer.add_summary(summary, step)
         self.writer.flush()
         return td_err, grads
