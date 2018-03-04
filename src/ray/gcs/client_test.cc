@@ -53,9 +53,9 @@ class TestGcsWithAe : public TestGcs {
 
 class TestGcsWithAsio : public TestGcs {
  public:
-   TestGcsWithAsio() { RAY_CHECK_OK(client_.Attach(io_service_)); }
-   void Start() override { io_service_.run(); }
-   void Stop() override { io_service_.stop(); }
+  TestGcsWithAsio() { RAY_CHECK_OK(client_.Attach(io_service_)); }
+  void Start() override { io_service_.run(); }
+  void Stop() override { io_service_.stop(); }
 
  private:
   boost::asio::io_service io_service_;
