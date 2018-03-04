@@ -152,7 +152,7 @@ TEST_F(TestGcsWithAsio, TestTaskTable) {
   TestTaskTable(job_id_, client_);
 }
 
-void objectTableSubscribed(gcs::AsyncGcsClient *client,
+void ObjectTableSubscribed(gcs::AsyncGcsClient *client,
                            const UniqueID &id,
                            std::shared_ptr<ObjectTableDataT> data) {
   aeStop(loop);
@@ -162,7 +162,7 @@ void TestSubscribeAll(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
   // Subscribe to all object table notifications. The registered callback for
   // notifications will check whether the object below is added.
   RAY_CHECK_OK(client_.object_table().Subscribe(
-      job_id_, ClientID::nil(), &Lookup, &objectTableSubscribed));
+      job_id_, ClientID::nil(), &Lookup, &ObjectTableSubscribed));
   // Run the event loop. The loop will only stop if the subscription succeeds.
   test->Start();
 
