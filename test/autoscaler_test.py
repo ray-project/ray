@@ -7,9 +7,11 @@ import tempfile
 import time
 import unittest
 import yaml
+import copy
 
 import ray
-from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics
+from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
+    fillout_defaults, validate_config
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.autoscaler.updater import NodeUpdaterThread
@@ -196,6 +198,41 @@ class AutoscalingTest(unittest.TestCase):
             ValueError,
             lambda: StandardAutoscaler(
                 invalid_config, LoadMetrics(), update_interval_s=0))
+
+    def testValidation(self):
+        """Ensures that schema validation is working."""
+        config = copy.deepcopy(SMALL_CLUSTER)
+        try:
+            validate_config(config)
+        except Exception:
+            self.fail("Test config did not pass validation test!")
+
+        config["blah"] = "blah"
+        with self.assertRaises(ValueError):
+            validate_config(config)
+        del config["blah"]
+
+        config["provider"]["blah"] = "blah"
+        with self.assertRaises(ValueError):
+            validate_config(config)
+        del config["provider"]["blah"]
+
+        del config["provider"]
+        with self.assertRaises(ValueError):
+            validate_config(config)
+
+    def testValidateDefaultConfig(self):
+        config = {}
+        config["provider"] = {
+            "type": "aws",
+            "region": "us-east-1",
+            "availability_zone": "us-east-1a",
+        }
+        config = fillout_defaults(config)
+        try:
+            validate_config(config)
+        except Exception:
+            self.fail("Default config did not pass validation test!")
 
     def testScaleUp(self):
         config_path = self.write_config(SMALL_CLUSTER)

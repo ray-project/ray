@@ -6,6 +6,7 @@ import time
 
 from ray.tune import TuneError
 from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
@@ -19,6 +20,7 @@ _SCHEDULERS = {
     "FIFO": FIFOScheduler,
     "MedianStopping": MedianStoppingRule,
     "HyperBand": HyperBandScheduler,
+    "AsyncHyperBand": AsyncHyperBandScheduler,
 }
 
 
