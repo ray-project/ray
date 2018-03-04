@@ -4,6 +4,10 @@ enum OMMessageType:int {
   PullRequest = 1
 }
 
+table PushRequest {
+
+}
+
 table PullRequest {
   // ID of the requesting client.
   client_id: string;

@@ -1,7 +1,7 @@
 #ifndef NODE_MANAGER_H
 #define NODE_MANAGER_H
 
-#include "ray/raylet/client_connection.h"
+#include "ray/common/client_connection.h"
 #include "ray/raylet/scheduling_resources.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/scheduling_policy.h"

@@ -256,7 +256,7 @@ ray::Status ObjectManager::CreateTransferConnection(const RemoteConnectionInfo &
   return Status::OK();
 };
 
-ray::Status ObjectManager::AddSock(TCPClientConnection::pointer conn){
+ray::Status ObjectManager::AcceptConnection(TCPClientConnection::pointer conn){
   boost::system::error_code ec;
   // read header
   size_t length;

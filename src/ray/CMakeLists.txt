@@ -35,6 +35,7 @@ set(RAY_SRCS
   gcs/tables.cc
   gcs/redis_context.cc
   gcs/asio.cc
+  common/client_connection.cc
   object_manager/om_client_connection.cc
   object_manager/object_store_client.cc
   object_manager/object_directory.cc
@@ -43,7 +44,6 @@ set(RAY_SRCS
   raylet/task.cc
   raylet/task_execution_spec.cc
   raylet/task_spec.cc
-  raylet/client_connection.cc
   raylet/worker.cc
   raylet/worker_pool.cc
   raylet/scheduling_resources.cc

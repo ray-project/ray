@@ -55,7 +55,7 @@ void Raylet::HandleAcceptTcp(TCPClientConnection::pointer new_connection,
                                  const boost::system::error_code& error) {
   if (!error) {
     // Pass it off to object manager for now.
-    ray::Status status = object_manager_.AddSock(std::move(new_connection));
+    ray::Status status = object_manager_.AcceptConnection(std::move(new_connection));
   }
   DoAcceptTcp();
 }

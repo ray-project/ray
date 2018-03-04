@@ -46,10 +46,10 @@ class ClientInformation {
   const ClientID &GetClientId() const {
     return client_id_;
   }
-  const std::string GetIp() const {
+  const std::string &GetIp() const {
     return ip_;
   }
-  ushort GetPort() const {
+  const ushort &GetPort() const {
     return port_;
   }
  private:

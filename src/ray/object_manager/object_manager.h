@@ -20,13 +20,13 @@
 #include "ray/id.h"
 #include "ray/status.h"
 
-#include "ray/raylet/client_connection.h"
-
 #include "object_directory.h"
 #include "object_store_client.h"
 #include "format/om_generated.h"
 
 #include "om_client_connection.h"
+
+// #include "ray/common/client_connection.h"
 
 namespace ray {
 
@@ -108,7 +108,7 @@ class ObjectManager {
   /// This is invoked by an external server.
   /// \param conn The connection.
   /// \return Status of whether the connection was successfully established.
-  ray::Status AddSock(TCPClientConnection::pointer conn);
+  ray::Status AcceptConnection(TCPClientConnection::pointer conn);
 
   /// Cancels all requests (Push/Pull) associated with the given ObjectID.
   /// \param object_id The ObjectID.
@@ -219,12 +219,12 @@ class ObjectManager {
   /// Initiate a push. This method asynchronously sends the object id and object size
   /// to the remote object manager.
   ray::Status ExecutePushMeta(const ObjectID &object_id,
-                          SenderConnection::pointer client);
+                              SenderConnection::pointer client);
   /// Called by the handler for ExecutePushMeta.
   /// This method initiates the actual object transfer.
   void ExecutePushObject(SenderConnection::pointer conn,
-                      const ObjectID &object_id,
-                      const boost::system::error_code &header_ec);
+                         const ObjectID &object_id,
+                         const boost::system::error_code &header_ec);
   /// Invoked when a push is completed. This method will decrement num_transfers_
   /// and invoke ExecutePushQueue.
   ray::Status ExecutePushCompleted(const ObjectID &object_id,
@@ -253,13 +253,13 @@ class ObjectManager {
                                        std::function<void(SenderConnection::pointer)> callback);
 
   /// A socket connection doing an asynchronous read on a transfer connection that was
-  /// added by AddSock.
+  /// added by AcceptConnection.
   ray::Status WaitPushReceive(TCPClientConnection::pointer conn);
   /// Invoked when a remote object manager pushes an object to this object manager.
   void HandlePushReceive(TCPClientConnection::pointer conn, BoostEC length_ec);
 
   /// A socket connection doing an asynchronous read on a message connection that was
-  /// added by AddSock.
+  /// added by AcceptConnection.
   ray::Status WaitMessage(TCPClientConnection::pointer conn);
   /// Handle messages.
   void HandleMessage(TCPClientConnection::pointer conn, BoostEC msg_ec);

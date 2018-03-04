@@ -1,7 +1,7 @@
 #ifndef WORKER_H
 #define WORKER_H
 
-#include "client_connection.h"
+#include "ray/common/client_connection.h"
 
 #include <memory>
 #include <unistd.h>

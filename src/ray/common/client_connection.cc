@@ -7,9 +7,7 @@
 
 #include "common.h"
 #include "ray/status.h"
-#include "format/nm_generated.h"
-#include "ray/raylet/raylet.h"
-#include "ray/raylet/worker.h"
+#include "ray/raylet/format/nm_generated.h"
 
 using namespace std;
 namespace ray {
@@ -82,6 +80,7 @@ void ClientConnection<T>::WriteMessage(int64_t type, size_t length, const uint8_
 template <class T>
 void ClientConnection<T>::processMessage(const boost::system::error_code& error) {
   if (error) {
+    // TODO(hme): Disconnect in a different way & remove dependency on nm_generated.h
     read_type_ = MessageType_DisconnectClient;
   }
   manager_.ProcessClientMessage(this->shared_from_this(), read_type_, read_message_.data());

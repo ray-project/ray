@@ -73,7 +73,7 @@ void NodeManager::ProcessClientMessage(shared_ptr<LocalClientConnection> client,
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(worker);
     auto scheduled_tasks = local_queues_.scheduled_tasks();
-    if (!scheduled_tasks.empty()) {
+     if (!scheduled_tasks.empty()) {
       const TaskID& scheduled_task_id = scheduled_tasks.front().GetTaskSpecification().TaskId();
       auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});
       assignTask(scheduled_tasks.front());
