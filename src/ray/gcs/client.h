@@ -23,8 +23,12 @@ class RAY_EXPORT AsyncGcsClient {
   ~AsyncGcsClient();
 
   Status Connect(const std::string &address, int port);
+  /// Attach this client to a plasma event loop. Note that only
+  /// one event loop should be attached at a time.
   Status Attach(plasma::EventLoop &event_loop);
-  Status AttachToAsio(boost::asio::io_service &io_service);
+  /// Attach this client to an asio event loop. Note that only
+  /// one event loop should be attached at a time.
+  Status Attach(boost::asio::io_service &io_service);
 
   inline FunctionTable &function_table();
   // TODO: Some API for getting the error on the driver

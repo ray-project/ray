@@ -12,8 +12,6 @@ extern "C" {
 
 namespace ray {
 
-aeEventLoop *loop;
-
 class TestGcs : public ::testing::Test {
  public:
   TestGcs() {
@@ -21,9 +19,36 @@ class TestGcs : public ::testing::Test {
     job_id_ = UniqueID::from_random();
   }
 
+  virtual ~TestGcs() {};
+
+  virtual void Start() = 0;
+
+  virtual void Stop() = 0;
+
  protected:
   gcs::AsyncGcsClient client_;
   UniqueID job_id_;
+};
+
+TestGcs *test;
+
+class TestGcsWithAe : public TestGcs {
+ public:
+  TestGcsWithAe() {
+    loop_ = aeCreateEventLoop(1024);
+    RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop_));
+  }
+  ~TestGcsWithAe() override {
+    aeDeleteEventLoop(loop_);
+  }
+  void Start() override {
+    aeMain(loop_);
+  }
+  void Stop() override {
+    aeStop(loop_);
+  }
+ private:
+  aeEventLoop *loop_;
 };
 
 void ObjectAdded(gcs::AsyncGcsClient *client,
@@ -36,12 +61,11 @@ void Lookup(gcs::AsyncGcsClient *client,
             const UniqueID &id,
             std::shared_ptr<ObjectTableDataT> data) {
   ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
-  aeStop(loop);
+  test->Stop();
 }
 
-TEST_F(TestGcs, TestObjectTable) {
-  loop = aeCreateEventLoop(1024);
-  RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
+TEST_F(TestGcsWithAe, TestObjectTable) {
+  test = this;
   auto data = std::make_shared<ObjectTableDataT>();
   data->managers.push_back("A");
   data->managers.push_back("B");
@@ -49,8 +73,7 @@ TEST_F(TestGcs, TestObjectTable) {
   RAY_CHECK_OK(
       client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
   RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &Lookup));
-  aeMain(loop);
-  aeDeleteEventLoop(loop);
+  test->Start();
 }
 
 void TaskAdded(gcs::AsyncGcsClient *client,
@@ -69,7 +92,7 @@ void TaskLookupAfterUpdate(gcs::AsyncGcsClient *client,
                            const TaskID &id,
                            std::shared_ptr<TaskTableDataT> data) {
   ASSERT_EQ(data->scheduling_state, SchedulingState_LOST);
-  aeStop(loop);
+  test->Stop();
 }
 
 void TaskUpdateCallback(gcs::AsyncGcsClient *client,
@@ -80,9 +103,8 @@ void TaskUpdateCallback(gcs::AsyncGcsClient *client,
                                            &TaskLookupAfterUpdate));
 }
 
-TEST_F(TestGcs, TestTaskTable) {
-  loop = aeCreateEventLoop(1024);
-  RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
+TEST_F(TestGcsWithAe, TestTaskTable) {
+  test = this;
   auto data = std::make_shared<TaskTableDataT>();
   data->scheduling_state = SchedulingState_SCHEDULED;
   DBClientID local_scheduler_id =
@@ -97,8 +119,7 @@ TEST_F(TestGcs, TestTaskTable) {
   update->update_state = SchedulingState_LOST;
   RAY_CHECK_OK(client_.task_table().TestAndUpdate(job_id_, task_id, update,
                                                   &TaskUpdateCallback));
-  aeMain(loop);
-  aeDeleteEventLoop(loop);
+  this->Start();
 }
 
 class TestAsioGcs : public ::testing::Test {
@@ -129,7 +150,7 @@ void LookupAsio(gcs::AsyncGcsClient *client,
 }
 
 TEST_F(TestAsioGcs, TestObjectTable) {
-  RAY_CHECK_OK(client_.AttachToAsio(io_service));
+  RAY_CHECK_OK(client_.Attach(io_service));
   auto data = std::make_shared<ObjectTableDataT>();
   data->managers.push_back("A");
   data->managers.push_back("B");
