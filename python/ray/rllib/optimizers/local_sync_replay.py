@@ -16,7 +16,18 @@ from ray.rllib.utils.timer import TimerStat
 class LocalSyncReplayOptimizer(Optimizer):
     """Variant of the local sync optimizer that supports replay (for DQN)."""
 
-    def _init(self):
+    def _init(
+            self, learning_starts=1000, buffer_size=10000,
+            prioritized_replay=True, prioritized_replay_alpha=0.6,
+            prioritized_replay_beta=0.4, prioritized_replay_eps=1e-6,
+            train_batch_size=32, sample_batch_size=4):
+
+        self.replay_starts = learning_starts
+        self.prioritized_replay_beta = prioritized_replay_beta
+        self.prioritized_replay_eps = prioritized_replay_eps
+        self.train_batch_size = train_batch_size
+
+        # Stats
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.replay_timer = TimerStat()
@@ -24,16 +35,14 @@ class LocalSyncReplayOptimizer(Optimizer):
         self.throughput = RunningStat()
 
         # Set up replay buffer
-        self.replay_starts = self.config["learning_starts"]
-        self.buffer_size = self.config["buffer_size"]
-        if self.config["prioritized_replay"]:
+        if prioritized_replay:
             self.replay_buffer = PrioritizedReplayBuffer(
-                self.buffer_size,
-                alpha=self.config["prioritized_replay_alpha"])
+                buffer_size,
+                alpha=prioritized_replay_alpha)
         else:
-            self.replay_buffer = ReplayBuffer(self.buffer_size)
+            self.replay_buffer = ReplayBuffer(buffer_size)
 
-        assert self.buffer_size >= self.replay_starts
+        assert buffer_size >= self.replay_starts
 
     def step(self):
         with self.update_weights_timer:
@@ -61,15 +70,15 @@ class LocalSyncReplayOptimizer(Optimizer):
 
     def _optimize(self):
         with self.replay_timer:
-            if self.config["prioritized_replay"]:
+            if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
                 (obses_t, actions, rewards, obses_tp1,
                     dones, weights, batch_indexes) = self.replay_buffer.sample(
-                        self.config["train_batch_size"],
-                        beta=self.config["prioritized_replay_beta"])
+                        self.train_batch_size,
+                        beta=self.prioritized_replay_beta)
             else:
                 (obses_t, actions, rewards, obses_tp1,
                     dones) = self.replay_buffer.sample(
-                        self.config["train_batch_size"])
+                        self.train_batch_size)
                 weights = np.ones_like(rewards)
                 batch_indexes = - np.ones_like(rewards)
 
@@ -81,8 +90,8 @@ class LocalSyncReplayOptimizer(Optimizer):
         with self.grad_timer:
             td_error = self.local_evaluator.compute_apply(samples)
             new_priorities = (
-                np.abs(td_error) + self.config["prioritized_replay_eps"])
-            if self.config["prioritized_replay"]:
+                np.abs(td_error) + self.prioritized_replay_eps)
+            if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
                 self.replay_buffer.update_priorities(
                     samples["batch_indexes"], new_priorities)
             self.grad_timer.push_units_processed(samples.count)

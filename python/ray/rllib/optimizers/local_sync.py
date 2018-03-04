@@ -17,11 +17,12 @@ class LocalSyncOptimizer(Optimizer):
     model weights are then broadcast to all remote evaluators.
     """
 
-    def _init(self):
+    def _init(self, batch_size=32):
         self.update_weights_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
+        self.batch_size = batch_size
 
     def step(self):
         with self.update_weights_timer:
@@ -45,10 +46,6 @@ class LocalSyncOptimizer(Optimizer):
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
-
-    def num_steps_trained(self):
-
-    def num_steps_sampled(self):
 
     def stats(self):
         return dict(Optimizer.stats(self), **{

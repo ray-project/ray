@@ -171,9 +171,9 @@ class DQNAgent(Agent):
         for e in self.remote_evaluators:
             e.set_global_timestep.remote(self.global_timestep)
 
-        return self._train_stats()
+        return self._train_stats(start_timestep)
 
-    def _train_stats(self):
+    def _train_stats(self, start_timestep):
         if self.remote_evaluators:
             stats = ray.get([
                 e.stats.remote() for e in self.remote_evaluators])

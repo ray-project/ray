@@ -26,9 +26,11 @@ class LocalMultiGPUOptimizer(Optimizer):
     the TFMultiGPUSupport API.
     """
 
-    def _init(self):
+    def _init(self, sgd_batch_size=128, sgd_stepsize=5e-5, num_sgd_iter=10):
         assert isinstance(self.local_evaluator, TFMultiGPUSupport)
-        self.batch_size = self.config.get("sgd_batch_size", 128)
+        self.batch_size = sgd_batch_size
+        self.sgd_stepsize = sgd_stepsize
+        self.num_sgd_iter = num_sgd_iter
         gpu_ids = ray.get_gpu_ids()
         if not gpu_ids:
             self.devices = ["/cpu:0"]
@@ -51,12 +53,12 @@ class LocalMultiGPUOptimizer(Optimizer):
         tf.get_variable_scope().reuse_variables()
 
         self.par_opt = LocalSyncParallelOptimizer(
-            tf.train.AdamOptimizer(self.config.get("sgd_stepsize", 5e-5)),
+            tf.train.AdamOptimizer(self.sgd_stepsize),
             self.devices,
             [ph for _, ph in self.loss_inputs],
             self.per_device_batch_size,
             lambda *ph: self.local_evaluator.build_tf_loss(ph),
-            self.config.get("logdir", os.getcwd()))
+            os.getcwd())
 
         self.sess = self.local_evaluator.sess
         self.sess.run(tf.global_variables_initializer())
@@ -83,7 +85,7 @@ class LocalMultiGPUOptimizer(Optimizer):
                 samples.columns([key for key, _ in self.loss_inputs]))
 
         with self.grad_timer:
-            for i in range(self.config.get("num_sgd_iter", 10)):
+            for i in range(self.num_sgd_iter):
                 batch_index = 0
                 num_batches = (
                     int(tuples_per_device) // int(self.per_device_batch_size))

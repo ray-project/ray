@@ -12,8 +12,7 @@ import numpy as np
 
 import ray
 from ray.rllib.optimizers.optimizer import Optimizer
-from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
-    PrioritizedReplayBuffer
+from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.timer import TimerStat
@@ -26,16 +25,18 @@ LEARNER_QUEUE_MAX_SIZE = 16
 
 @ray.remote
 class ReplayActor(object):
-    def __init__(self, config, num_shards):
-        self.config = config
-        self.replay_starts = self.config["learning_starts"] // num_shards
-        self.buffer_size = self.config["buffer_size"] // num_shards
-        if self.config["prioritized_replay"]:
-            self.replay_buffer = PrioritizedReplayBuffer(
-                self.buffer_size,
-                alpha=self.config["prioritized_replay_alpha"])
-        else:
-            self.replay_buffer = ReplayBuffer(self.buffer_size)
+    def __init__(
+            self, num_shards, learning_starts, buffer_size, train_batch_size,
+            prioritized_replay_alpha, prioritized_replay_beta,
+            prioritized_replay_eps):
+        self.replay_starts = learning_starts // num_shards
+        self.buffer_size = buffer_size // num_shards
+        self.train_batch_size = train_batch_size
+        self.prioritized_replay_beta = prioritized_replay_beta
+        self.prioritized_replay_eps = prioritized_replay_eps
+
+        self.replay_buffer = PrioritizedReplayBuffer(
+            buffer_size, alpha=prioritized_replay_alpha)
 
         # Metrics
         self.add_batch_timer = TimerStat()
@@ -57,17 +58,10 @@ class ReplayActor(object):
             if len(self.replay_buffer) < self.replay_starts:
                 return None
 
-            if self.config["prioritized_replay"]:
-                (obses_t, actions, rewards, obses_tp1,
-                    dones, weights, batch_indexes) = self.replay_buffer.sample(
-                        self.config["train_batch_size"],
-                        beta=self.config["prioritized_replay_beta"])
-            else:
-                (obses_t, actions, rewards, obses_tp1,
-                    dones) = self.replay_buffer.sample(
-                        self.config["train_batch_size"])
-                weights = np.ones_like(rewards)
-                batch_indexes = - np.ones_like(rewards)
+            (obses_t, actions, rewards, obses_tp1,
+                dones, weights, batch_indexes) = self.replay_buffer.sample(
+                    self.train_batch_size,
+                    beta=self.prioritized_replay_beta)
 
             batch = SampleBatch({
                 "obs": obses_t, "actions": actions, "rewards": rewards,
@@ -77,11 +71,10 @@ class ReplayActor(object):
 
     def update_priorities(self, batch, td_errors):
         with self.update_priorities_timer:
-            if self.config["prioritized_replay"]:
-                new_priorities = (
-                    np.abs(td_errors) + self.config["prioritized_replay_eps"])
-                self.replay_buffer.update_priorities(
-                    batch["batch_indexes"], new_priorities)
+            new_priorities = (
+                np.abs(td_errors) + self.prioritized_replay_eps)
+            self.replay_buffer.update_priorities(
+                batch["batch_indexes"], new_priorities)
 
     def stats(self):
         stat = {
@@ -123,13 +116,29 @@ class GenericLearner(threading.Thread):
 
 class ApexOptimizer(Optimizer):
 
-    def _init(self):
+    def _init(
+            self, learning_starts=1000, buffer_size=10000,
+            prioritized_replay=True, prioritized_replay_alpha=0.6,
+            prioritized_replay_beta=0.4, prioritized_replay_eps=1e-6,
+            train_batch_size=512, sample_batch_size=50,
+            num_replay_buffer_shards=1, max_weight_sync_delay=400):
+
+        self.replay_starts = learning_starts
+        self.prioritized_replay_beta = prioritized_replay_beta
+        self.prioritized_replay_eps = prioritized_replay_eps
+        self.train_batch_size = train_batch_size
+        self.sample_batch_size = sample_batch_size
+        self.max_weight_sync_delay = max_weight_sync_delay
+
         self.learner = GenericLearner(self.local_evaluator)
         self.learner.start()
 
-        num_replay_actors = self.config["num_replay_buffer_shards"]
         self.replay_actors = create_colocated(
-            ReplayActor, [self.config, num_replay_actors], num_replay_actors)
+            ReplayActor,
+            [num_replay_buffer_shards, learning_starts, buffer_size,
+             train_batch_size, prioritized_replay_alpha,
+             prioritized_replay_beta, prioritized_replay_eps],
+            num_replay_buffer_shards)
         assert len(self.remote_evaluators) > 0
 
         # Stats
@@ -183,16 +192,15 @@ class ApexOptimizer(Optimizer):
             num_weight_syncs = 0
             for ev, sample_batch in self.sample_tasks.completed():
                 i += 1
-                sample_timesteps += self.config["sample_batch_size"]
+                sample_timesteps += self.sample_batch_size
 
                 # Send the data to the replay buffer
                 random.choice(self.replay_actors).add_batch.remote(
                     sample_batch)
 
                 # Update weights if needed
-                self.steps_since_update[ev] += self.config["sample_batch_size"]
-                if (self.steps_since_update[ev] >=
-                        self.config["max_weight_sync_delay"]):
+                self.steps_since_update[ev] += self.sample_batch_size
+                if self.steps_since_update[ev] >= self.max_weight_sync_delay:
                     if weights is None:
                         with self.timers["put_weights"]:
                             weights = ray.put(
@@ -224,7 +232,7 @@ class ApexOptimizer(Optimizer):
                 i += 1
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay, td_error)
-                train_timesteps += self.config["train_batch_size"]
+                train_timesteps += self.train_batch_size
             self.meters["reprios_per_loop"].push(i)
 
         return sample_timesteps, train_timesteps
