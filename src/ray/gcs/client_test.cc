@@ -51,6 +51,22 @@ class TestGcsWithAe : public TestGcs {
   aeEventLoop *loop_;
 };
 
+class TestGcsWithAsio : public TestGcs {
+ public:
+   TestGcsWithAsio() {
+     RAY_CHECK_OK(client_.Attach(io_service_));
+   }
+   void Start() override {
+     io_service_.run();
+   }
+   void Stop() override {
+     io_service_.stop();
+   }
+
+ private:
+  boost::asio::io_service io_service_;
+};
+
 void ObjectAdded(gcs::AsyncGcsClient *client,
                  const UniqueID &id,
                  std::shared_ptr<ObjectTableDataT> data) {
@@ -64,16 +80,25 @@ void Lookup(gcs::AsyncGcsClient *client,
   test->Stop();
 }
 
-TEST_F(TestGcsWithAe, TestObjectTable) {
-  test = this;
+void TestObjectTable(const UniqueID &job_id, gcs::AsyncGcsClient& client) {
   auto data = std::make_shared<ObjectTableDataT>();
   data->managers.push_back("A");
   data->managers.push_back("B");
   ObjectID object_id = ObjectID::from_random();
   RAY_CHECK_OK(
-      client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
-  RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &Lookup));
+      client.object_table().Add(job_id, object_id, data, &ObjectAdded));
+  RAY_CHECK_OK(client.object_table().Lookup(job_id, object_id, &Lookup));
   test->Start();
+}
+
+TEST_F(TestGcsWithAe, TestObjectTable) {
+  test = this;
+  TestObjectTable(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAsio, TestObjectTable) {
+  test = this;
+  TestObjectTable(job_id_, client_);
 }
 
 void TaskAdded(gcs::AsyncGcsClient *client,
@@ -103,62 +128,32 @@ void TaskUpdateCallback(gcs::AsyncGcsClient *client,
                                            &TaskLookupAfterUpdate));
 }
 
-TEST_F(TestGcsWithAe, TestTaskTable) {
-  test = this;
+void TestTaskTable(const UniqueID &job_id, gcs::AsyncGcsClient& client) {
   auto data = std::make_shared<TaskTableDataT>();
   data->scheduling_state = SchedulingState_SCHEDULED;
   DBClientID local_scheduler_id =
       DBClientID::from_binary("abcdefghijklmnopqrst");
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
-  RAY_CHECK_OK(client_.task_table().Add(job_id_, task_id, data, &TaskAdded));
-  RAY_CHECK_OK(client_.task_table().Lookup(job_id_, task_id, &TaskLookup));
+  RAY_CHECK_OK(client.task_table().Add(job_id, task_id, data, &TaskAdded));
+  RAY_CHECK_OK(client.task_table().Lookup(job_id, task_id, &TaskLookup));
   auto update = std::make_shared<TaskTableTestAndUpdateT>();
   update->test_scheduler_id = local_scheduler_id.binary();
   update->test_state_bitmask = SchedulingState_SCHEDULED;
   update->update_state = SchedulingState_LOST;
-  RAY_CHECK_OK(client_.task_table().TestAndUpdate(job_id_, task_id, update,
-                                                  &TaskUpdateCallback));
-  this->Start();
+  RAY_CHECK_OK(client.task_table().TestAndUpdate(job_id, task_id, update,
+                                                 &TaskUpdateCallback));
+  test->Start();
 }
 
-class TestAsioGcs : public ::testing::Test {
- public:
-  TestAsioGcs() {
-    RAY_CHECK_OK(client_.Connect("127.0.0.1", 6379));
-    job_id_ = UniqueID::from_random();
-  }
-
- protected:
-  gcs::AsyncGcsClient client_;
-  UniqueID job_id_;
-};
-
-boost::asio::io_service io_service;
-
-void ObjectAddedAsio(gcs::AsyncGcsClient *client,
-                     const UniqueID &id,
-                     std::shared_ptr<ObjectTableDataT> data) {
-  ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
+TEST_F(TestGcsWithAe, TestTaskTable) {
+  test = this;
+  TestTaskTable(job_id_, client_);
 }
 
-void LookupAsio(gcs::AsyncGcsClient *client,
-                const UniqueID &id,
-                std::shared_ptr<ObjectTableDataT> data) {
-  ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
-  io_service.stop();
-}
-
-TEST_F(TestAsioGcs, TestObjectTable) {
-  RAY_CHECK_OK(client_.Attach(io_service));
-  auto data = std::make_shared<ObjectTableDataT>();
-  data->managers.push_back("A");
-  data->managers.push_back("B");
-  ObjectID object_id = ObjectID::from_random();
-  RAY_CHECK_OK(
-      client_.object_table().Add(job_id_, object_id, data, &ObjectAddedAsio));
-  RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &LookupAsio));
-  io_service.run();
+TEST_F(TestGcsWithAsio, TestTaskTable) {
+  test = this;
+  TestTaskTable(job_id_, client_);
 }
 
 }  // namespace
