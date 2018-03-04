@@ -36,7 +36,7 @@ class ReplayActor(object):
         self.prioritized_replay_eps = prioritized_replay_eps
 
         self.replay_buffer = PrioritizedReplayBuffer(
-            buffer_size, alpha=prioritized_replay_alpha)
+            self.buffer_size, alpha=prioritized_replay_alpha)
 
         # Metrics
         self.add_batch_timer = TimerStat()

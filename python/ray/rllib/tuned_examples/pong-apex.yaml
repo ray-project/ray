@@ -7,8 +7,6 @@ pong-apex:
         gpu: 1
     config:
         force_evaluators_remote: True  # requires cluster
-        num_workers: 32
+        num_workers: 128
         lr: .0001
         gamma: 0.99
-        model:
-          grayscale: True
