@@ -23,6 +23,11 @@ DEFAULT_CONFIG = dict(
     dueling=True,
     # Whether to use double dqn
     double_q=True,
+    # Use 'PAL' for Persistent Advantage Learning,
+    # 'AL' for advantage learning, 'DQN' for normal DQN
+    pal='PAL',
+    # Alpha value for Persistent Advantage Learning
+    pal_alpha = 0.1,
     # Hidden layer sizes of the state and action value networks
     hiddens=[256],
     # N-step Q learning
@@ -155,8 +160,12 @@ class DQNAgent(Agent):
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
+
     def _train(self):
         start_timestep = self.global_timestep
+
+        if self.global_timestep >= 3000:
+            return
 
         while (self.global_timestep - start_timestep <
                self.config["timesteps_per_iteration"]):
@@ -167,7 +176,6 @@ class DQNAgent(Agent):
                 self.optimizer.step()
 
             stats = self._update_global_stats()
-
             if self.global_timestep - self.last_target_update_ts > \
                     self.config["target_network_update_freq"]:
                 self.local_evaluator.update_target()
@@ -194,6 +202,8 @@ class DQNAgent(Agent):
                 "exploration": exploration,
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
+
+
 
         return result
 

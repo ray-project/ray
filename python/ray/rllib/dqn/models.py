@@ -104,7 +104,6 @@ class ModelAndLoss(object):
     Both graphs are necessary in order for the multi-gpu SGD implementation
     to create towers on each device.
     """
-
     def __init__(
             self, registry, num_actions, config,
             obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
@@ -136,15 +135,49 @@ class ModelAndLoss(object):
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
-        q_t_selected_target = (
+        self.q_t_selected_target = (
             rew_t + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
 
+        '''    
+        first diff, second diff, action gap, graph, 3 trials get rid of comments
+        3 trials of advantage learning
+        3 trial of DQN
+        change local dir on train.py for file naming
+        log using default logdir
+        remove comments and spaces 
+        compute action gap for persistent action learning
+        '''
+        #get q value in target network used for computing action gap
+        with tf.variable_scope("target_q_func", reuse=True) as scope:
+            self.q_t_using_target_net = _build_q_network(
+                    registry, obs_t, num_actions, config)
+
+        #compute action gap at iteration t,t+1, and minimum of the two, used for PAL
+        self.q_t_selected_using_target_net = tf.reduce_sum(
+            self.q_t_using_target_net * tf.one_hot(act_t, num_actions), 1)
+        self.action_gap_t = tf.reduce_max(self.q_t_using_target_net) - self.q_t_selected_using_target_net
+        self.action_gap_tp1 = tf.reduce_max(self.q_tp1) - q_tp1_best
+        self.action_gap_min = tf.minimum(self.action_gap_t, self.action_gap_tp1)
+
+        #adjust for persistent advatange learning
+        if config['pal'] == 'PAL':
+            q_t_pal = self.q_t_selected_target - config['pal_alpha'] * self.action_gap_min
+            self.q_t_selected_target = q_t_pal
+        #adjust for advantage learning
+        elif config['pal'] == 'AL':
+            q_t_al = self.q_t_selected_target - config['pal_alpha'] * self.action_gap_t
+            self.q_t_selected_target = q_t_al
+
+        tf.summary.scalar('action_gap_t', tf.reduce_mean(self.action_gap_t))
+        tf.summary.scalar('action_gap_tp1', tf.reduce_mean(self.action_gap_tp1))
+        tf.summary.scalar('action_gap_min', tf.reduce_mean(self.action_gap_min))
+        tf.summary.scalar('value_function', tf.reduce_mean(self.q_t_selected_target))
+        self.summary_op = tf.summary.merge_all()
+
         # compute the error (potentially clipped)
-        self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
+        self.td_error = q_t_selected - tf.stop_gradient(self.q_t_selected_target)
         errors = _huber_loss(self.td_error)
-
         weighted_error = tf.reduce_mean(importance_weights * errors)
-
         self.loss = weighted_error
 
 
@@ -166,6 +199,7 @@ class DQNGraph(object):
             q_values = _build_q_network(
                 registry, self.cur_observations, num_actions, config)
             q_func_vars = _scope_vars(scope.name)
+
 
         # Action outputs
         self.output_actions = _build_action_network(
@@ -231,11 +265,16 @@ class DQNGraph(object):
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
         update_target_expr = []
+
+
         for var, var_target in zip(
             sorted(q_func_vars, key=lambda v: v.name),
                 sorted(target_q_func_vars, key=lambda v: v.name)):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
+
+        self.writer = tf.summary.FileWriter(logdir,tf.get_default_graph())
+        self.summary_op = loss_obj.summary_op
 
     def update_target(self, sess):
         return sess.run(self.update_target_expr)
@@ -251,9 +290,9 @@ class DQNGraph(object):
 
     def compute_gradients(
             self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,
-            importance_weights):
-        td_err, grads = sess.run(
-            [self.td_error, self.grads],
+            importance_weights, step):
+        td_err, grads, summary = sess.run(
+            [self.td_error, self.grads, self.summary_op],
             feed_dict={
                 self.obs_t: obs_t,
                 self.act_t: act_t,
@@ -262,6 +301,8 @@ class DQNGraph(object):
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
+        self.writer.add_summary(summary, step) 
+        self.writer.flush()
         return td_err, grads
 
     def compute_td_error(

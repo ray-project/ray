@@ -121,7 +121,7 @@ class DQNEvaluator(TFMultiGPUSupport):
     def compute_gradients(self, samples):
         _, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
+            samples["new_obs"], samples["dones"], samples["weights"], self.global_timestep)
         return grad
 
     def apply_gradients(self, grads):

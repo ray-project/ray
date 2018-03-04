@@ -94,9 +94,10 @@ class DQNReplayEvaluator(DQNEvaluator):
         return batch
 
     def compute_gradients(self, samples):
+        #import ipdb; ipdb.set_trace()
         td_errors, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
+            samples["new_obs"], samples["dones"], samples["weights"],self.global_timestep)
         if self.config["prioritized_replay"]:
             new_priorities = (
                 np.abs(td_errors) + self.config["prioritized_replay_eps"])
