@@ -101,4 +101,30 @@ TEST_F(TestGcs, TestTaskTable) {
   aeDeleteEventLoop(loop);
 }
 
+void objectTableSubscribed(gcs::AsyncGcsClient *client,
+                           const UniqueID &id,
+                           std::shared_ptr<ObjectTableDataT> data) {
+  aeStop(loop);
+}
+
+TEST_F(TestGcs, TestSubscribeAll) {
+  loop = aeCreateEventLoop(1024);
+  RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
+  // Subscribe to all object table notifications.
+  RAY_CHECK_OK(client_.object_table().Subscribe(
+      job_id_, ClientID::nil(), &Lookup, &objectTableSubscribed));
+  aeMain(loop);
+
+  // We have subscribed. Add an object table entry and make sure the registered
+  // subscription callback gets called.
+  auto data = std::make_shared<ObjectTableDataT>();
+  data->managers.push_back("A");
+  data->managers.push_back("B");
+  ObjectID object_id = ObjectID::from_random();
+  RAY_CHECK_OK(
+      client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
+  aeMain(loop);
+  aeDeleteEventLoop(loop);
+}
+
 }  // namespace

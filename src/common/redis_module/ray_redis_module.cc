@@ -394,58 +394,81 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
 int TableAdd_RedisCommand(RedisModuleCtx *ctx,
                           RedisModuleString **argv,
                           int argc) {
-  if (argc != 3) {
+  if (argc != 4) {
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleString *id = argv[1];
-  RedisModuleString *data = argv[2];
+  RedisModuleString *pubsub_channel_str = argv[1];
+  RedisModuleString *id = argv[2];
+  RedisModuleString *data = argv[3];
 
-  // Set the keys in the table
+  // Set the keys in the table.
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
   RedisModule_StringSet(key, data);
   RedisModule_CloseKey(key);
 
-  size_t len = 0;
-  const char *buf = RedisModule_StringPtrLen(data, &len);
+  // Get the requested pubsub channel.
+  long long pubsub_channel_long;
+  RAY_CHECK(RedisModule_StringToLongLong(
+                pubsub_channel_str, &pubsub_channel_long) == REDISMODULE_OK)
+      << "Pubsub channel must be a valid TablePubsub";
+  auto pubsub_channel = static_cast<TablePubsub>(pubsub_channel_long);
+  RAY_CHECK(pubsub_channel >= TablePubsub_MIN &&
+            pubsub_channel <= TablePubsub_MAX)
+      << "Pubsub channel must be a valid TablePubsub";
 
-  auto message = flatbuffers::GetRoot<TaskTableData>(buf);
+  // Publish a message on the requested pubsub channel if necessary.
+  if (pubsub_channel == TablePubsub_TASK) {
+    size_t len = 0;
+    const char *buf = RedisModule_StringPtrLen(data, &len);
 
-  if (message->scheduling_state() == SchedulingState_WAITING ||
-      message->scheduling_state() == SchedulingState_SCHEDULED) {
-    /* Build the PUBLISH topic and message for task table subscribers. The topic
-     * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>". The
-     * message is a serialized SubscribeToTasksReply flatbuffer object. */
-    std::string state = std::to_string(message->scheduling_state());
-    RedisModuleString *publish_topic = RedisString_Format(
-        ctx, "%s%b:%s", TASK_PREFIX, message->scheduler_id()->str().data(),
-        sizeof(DBClientID), state.c_str());
+    auto message = flatbuffers::GetRoot<TaskTableData>(buf);
 
-    /* Construct the flatbuffers object for the payload. */
-    flatbuffers::FlatBufferBuilder fbb;
-    /* Create the flatbuffers message. */
-    auto msg = CreateTaskReply(
-        fbb, RedisStringToFlatbuf(fbb, id), message->scheduling_state(),
-        fbb.CreateString(message->scheduler_id()),
-        fbb.CreateString(message->execution_dependencies()),
-        fbb.CreateString(message->task_info()), message->spillback_count(),
-        true /* not used */);
-    fbb.Finish(msg);
+    if (message->scheduling_state() == SchedulingState_WAITING ||
+        message->scheduling_state() == SchedulingState_SCHEDULED) {
+      /* Build the PUBLISH topic and message for task table subscribers. The
+       * topic
+       * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>".
+       * The
+       * message is a serialized SubscribeToTasksReply flatbuffer object. */
+      std::string state = std::to_string(message->scheduling_state());
+      RedisModuleString *publish_topic = RedisString_Format(
+          ctx, "%s%b:%s", TASK_PREFIX, message->scheduler_id()->str().data(),
+          sizeof(DBClientID), state.c_str());
 
-    RedisModuleString *publish_message = RedisModule_CreateString(
-        ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
+      /* Construct the flatbuffers object for the payload. */
+      flatbuffers::FlatBufferBuilder fbb;
+      /* Create the flatbuffers message. */
+      auto msg = CreateTaskReply(
+          fbb, RedisStringToFlatbuf(fbb, id), message->scheduling_state(),
+          fbb.CreateString(message->scheduler_id()),
+          fbb.CreateString(message->execution_dependencies()),
+          fbb.CreateString(message->task_info()), message->spillback_count(),
+          true /* not used */);
+      fbb.Finish(msg);
 
+      RedisModuleString *publish_message = RedisModule_CreateString(
+          ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
+
+      RedisModuleCallReply *reply = RedisModule_Call(
+          ctx, "PUBLISH", "ss", publish_topic, publish_message);
+
+      /* See how many clients received this publish. */
+      long long num_clients = RedisModule_CallReplyInteger(reply);
+      RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
+                                  << " clients.";
+
+      RedisModule_FreeString(ctx, publish_message);
+      RedisModule_FreeString(ctx, publish_topic);
+    }
+  } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+    // All other pubsub channels write the data back directly onto the channel.
     RedisModuleCallReply *reply =
-        RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
-
-    /* See how many clients received this publish. */
-    long long num_clients = RedisModule_CallReplyInteger(reply);
-    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
-                                << " clients.";
-
-    RedisModule_FreeString(ctx, publish_message);
-    RedisModule_FreeString(ctx, publish_topic);
+        RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, data);
+    if (reply == NULL) {
+      RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+    }
   }
 
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
@@ -456,11 +479,11 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 int TableLookup_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
-  if (argc != 2) {
+  if (argc != 3) {
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleString *id = argv[1];
+  RedisModuleString *id = argv[2];
 
   RedisModuleKey *key = OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ);
   size_t len = 0;
@@ -490,11 +513,11 @@ bool is_nil(const std::string &data) {
 int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                     RedisModuleString **argv,
                                     int argc) {
-  if (argc != 3) {
+  if (argc != 4) {
     return RedisModule_WrongArity(ctx);
   }
-  RedisModuleString *id = argv[1];
-  RedisModuleString *update_data = argv[2];
+  RedisModuleString *id = argv[2];
+  RedisModuleString *update_data = argv[3];
 
   RedisModuleKey *key =
       OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
@@ -1060,9 +1083,10 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
   if (state_value == TASK_STATUS_WAITING ||
       state_value == TASK_STATUS_SCHEDULED) {
-    /* Build the PUBLISH topic and message for task table subscribers. The topic
-     * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>". The
-     * message is a serialized SubscribeToTasksReply flatbuffer object. */
+    /* Build the PUBLISH topic and message for task table subscribers. The
+     * topic is a string in the format
+     * "TASK_PREFIX:<local scheduler ID>:<state>". The message is a serialized
+     * SubscribeToTasksReply flatbuffer object. */
     RedisModuleString *publish_topic = RedisString_Format(
         ctx, "%s%S:%S", TASK_PREFIX, local_scheduler_id, state);
 
