@@ -53,15 +53,9 @@ class TestGcsWithAe : public TestGcs {
 
 class TestGcsWithAsio : public TestGcs {
  public:
-   TestGcsWithAsio() {
-     RAY_CHECK_OK(client_.Attach(io_service_));
-   }
-   void Start() override {
-     io_service_.run();
-   }
-   void Stop() override {
-     io_service_.stop();
-   }
+   TestGcsWithAsio() { RAY_CHECK_OK(client_.Attach(io_service_)); }
+   void Start() override { io_service_.run(); }
+   void Stop() override { io_service_.stop(); }
 
  private:
   boost::asio::io_service io_service_;
@@ -80,7 +74,7 @@ void Lookup(gcs::AsyncGcsClient *client,
   test->Stop();
 }
 
-void TestObjectTable(const UniqueID &job_id, gcs::AsyncGcsClient& client) {
+void TestObjectTable(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
   auto data = std::make_shared<ObjectTableDataT>();
   data->managers.push_back("A");
   data->managers.push_back("B");
@@ -128,7 +122,7 @@ void TaskUpdateCallback(gcs::AsyncGcsClient *client,
                                            &TaskLookupAfterUpdate));
 }
 
-void TestTaskTable(const UniqueID &job_id, gcs::AsyncGcsClient& client) {
+void TestTaskTable(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
   auto data = std::make_shared<TaskTableDataT>();
   data->scheduling_state = SchedulingState_SCHEDULED;
   DBClientID local_scheduler_id =
