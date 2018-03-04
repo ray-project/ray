@@ -19,7 +19,7 @@ class TestGcs : public ::testing::Test {
     job_id_ = UniqueID::from_random();
   }
 
-  virtual ~TestGcs() {};
+  virtual ~TestGcs(){};
 
   virtual void Start() = 0;
 
@@ -38,15 +38,10 @@ class TestGcsWithAe : public TestGcs {
     loop_ = aeCreateEventLoop(1024);
     RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop_));
   }
-  ~TestGcsWithAe() override {
-    aeDeleteEventLoop(loop_);
-  }
-  void Start() override {
-    aeMain(loop_);
-  }
-  void Stop() override {
-    aeStop(loop_);
-  }
+  ~TestGcsWithAe() override { aeDeleteEventLoop(loop_); }
+  void Start() override { aeMain(loop_); }
+  void Stop() override { aeStop(loop_); }
+
  private:
   aeEventLoop *loop_;
 };
