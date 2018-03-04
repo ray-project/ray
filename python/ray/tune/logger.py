@@ -6,14 +6,9 @@ import csv
 import json
 import numpy as np
 import os
-import sys
 
 from ray.tune.result import TrainingResult
-
-if sys.version_info[0] == 2:
-    import cStringIO as StringIO
-elif sys.version_info[0] == 3:
-    import io as StringIO
+from ray.tune.log_sync import get_syncer
 
 try:
     import tensorflow as tf
@@ -28,10 +23,6 @@ class Logger(object):
     By default, the UnifiedLogger implementation is used which logs results in
     multiple formats (TensorBoard, rllab/viskit, plain json) at once.
     """
-
-    _attrs_to_log = [
-        "time_this_iter_s", "mean_loss", "mean_accuracy",
-        "episode_reward_mean", "episode_len_mean"]
 
     def __init__(self, config, logdir, upload_uri=None):
         self.config = config
@@ -52,9 +43,16 @@ class Logger(object):
 
         pass
 
+    def flush(self):
+        """Flushes all disk writes to storage."""
+
+        pass
+
 
 class UnifiedLogger(Logger):
-    """Unified result logger for TensorBoard, rllab/viskit, plain json."""
+    """Unified result logger for TensorBoard, rllab/viskit, plain json.
+
+    This class also periodically syncs output to the given upload uri."""
 
     def _init(self):
         self._loggers = []
@@ -63,15 +61,22 @@ class UnifiedLogger(Logger):
                 print("TF not installed - cannot log with {}...".format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
-        print("Unified logger created with logdir '{}'".format(self.logdir))
+        self._log_syncer = get_syncer(self.logdir, self.uri)
 
     def on_result(self, result):
         for logger in self._loggers:
             logger.on_result(result)
+        self._log_syncer.set_worker_ip(result.node_ip)
+        self._log_syncer.sync_if_needed()
 
     def close(self):
         for logger in self._loggers:
             logger.close()
+        self._log_syncer.sync_now(force=True)
+
+    def flush(self):
+        self._log_syncer.sync_now(force=True)
+        self._log_syncer.wait()
 
 
 class NoopLogger(Logger):
@@ -86,10 +91,6 @@ class _JsonLogger(Logger):
             json.dump(self.config, f, sort_keys=True, cls=_CustomEncoder)
         local_file = os.path.join(self.logdir, "result.json")
         self.local_out = open(local_file, "w")
-        if self.uri:
-            self.result_buffer = StringIO.StringIO()
-            import smart_open
-            self.smart_open = smart_open.smart_open
 
     def on_result(self, result):
         json.dump(result._asdict(), self, cls=_CustomEncoder)
@@ -98,17 +99,22 @@ class _JsonLogger(Logger):
     def write(self, b):
         self.local_out.write(b)
         self.local_out.flush()
-        # TODO(pcm): At the moment we are writing the whole results output from
-        # the beginning in each iteration. This will write O(n^2) bytes where n
-        # is the number of bytes printed so far. Fix this! This should at least
-        # only write the last 5MBs (S3 chunksize).
-        if self.uri:
-            with self.smart_open(self.uri, "w") as f:
-                self.result_buffer.write(b)
-                f.write(self.result_buffer.getvalue())
 
     def close(self):
         self.local_out.close()
+
+
+def to_tf_values(result, path):
+    values = []
+    for attr, value in result.items():
+        if value is not None:
+            if type(value) in [int, float]:
+                values.append(tf.Summary.Value(
+                    tag="/".join(path + [attr]),
+                    simple_value=value))
+            elif type(value) is dict:
+                values.extend(to_tf_values(value, path + [attr]))
+    return values
 
 
 class _TFLogger(Logger):
@@ -116,12 +122,12 @@ class _TFLogger(Logger):
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
-        values = []
-        for attr in Logger._attrs_to_log:
-            if getattr(result, attr) is not None:
-                values.append(tf.Summary.Value(
-                    tag="ray/tune/{}".format(attr),
-                    simple_value=getattr(result, attr)))
+        tmp = result._asdict()
+        for k in [
+                "config", "pid", "timestamp", "time_total_s",
+                "timesteps_total"]:
+            del tmp[k]  # not useful to tf log these
+        values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
         self._file_writer.add_summary(train_stats, result.timesteps_total)
 

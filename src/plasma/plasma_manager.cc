@@ -41,8 +41,9 @@
 #include "state/error_table.h"
 #include "state/task_table.h"
 #include "state/db_client_table.h"
+#include "ray/gcs/client.h"
 
-int handle_sigpipe(Status s, int fd) {
+int handle_sigpipe(plasma::Status s, int fd) {
   if (s.ok()) {
     return 0;
   }
@@ -73,8 +74,8 @@ int handle_sigpipe(Status s, int fd) {
   } break;
   default:
     /* This code should be unreachable. */
-    CHECK(0);
-    LOG_FATAL("Failed to write message to client on fd %d", fd);
+    RAY_CHECK(0);
+    RAY_LOG(FATAL) << "Failed to write message to client on fd " << fd;
   }
 
   return err;
@@ -212,6 +213,8 @@ struct PlasmaManagerState {
    *  other plasma stores. */
   std::unordered_map<std::string, ClientConnection *> manager_connections;
   DBHandle *db;
+  /** The handle to the GCS (modern version of the above). */
+  ray::gcs::AsyncGcsClient gcs_client;
   /** Our address. */
   const char *addr;
   /** Our port. */
@@ -235,6 +238,16 @@ struct PlasmaManagerState {
   /** The time (in milliseconds since the Unix epoch) when the most recent
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
+  /** This is the set of ObjectIDs currently being transferred to this manager.
+   *  An ObjectID is added to this set if a shared buffer is
+   *  successfully created for the corresponding object.
+   *  The ObjectID is removed in process_add_object_notification, which is
+   *  triggered by the corresponding notification from the plasma store.
+   *  If an object transfer fails, only the ObjectID of the corresponding
+   *  object is removed. If object transfers between managers is parallelized,
+   *  then all objects being received from a remote manager will need to be
+   *  removed if the connection to the remote manager fails. */
+  std::unordered_set<ObjectID, UniqueIDHasher> receives_in_progress;
 };
 
 PlasmaManagerState *g_manager_state = NULL;
@@ -307,12 +320,12 @@ bool ClientConnection_request_finished(ClientConnection *client_conn) {
 std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher> &
 object_wait_requests_from_type(PlasmaManagerState *manager_state, int type) {
   /* We use different types of hash tables for different requests. */
+  RAY_CHECK(type == plasma::PLASMA_QUERY_LOCAL ||
+            type == plasma::PLASMA_QUERY_ANYWHERE);
   if (type == plasma::PLASMA_QUERY_LOCAL) {
     return manager_state->object_wait_requests_local;
-  } else if (type == plasma::PLASMA_QUERY_ANYWHERE) {
-    return manager_state->object_wait_requests_remote;
   } else {
-    LOG_FATAL("This code should be unreachable.");
+    return manager_state->object_wait_requests_remote;
   }
 }
 
@@ -354,8 +367,8 @@ void remove_wait_request_for_object(PlasmaManagerState *manager_state,
 void remove_wait_request(PlasmaManagerState *manager_state,
                          WaitRequest *wait_req) {
   if (wait_req->timer != -1) {
-    CHECK(event_loop_remove_timer(manager_state->loop, wait_req->timer) ==
-          AE_OK);
+    RAY_CHECK(event_loop_remove_timer(manager_state->loop, wait_req->timer) ==
+              AE_OK);
   }
   delete wait_req;
 }
@@ -403,9 +416,9 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
       auto object_request =
           wait_req->object_requests.find(obj_id.to_plasma_id());
       /* Check that we found the object. */
-      CHECK(object_request != wait_req->object_requests.end());
+      RAY_CHECK(object_request != wait_req->object_requests.end());
       /* Check that the object found was not previously known to us. */
-      CHECK(object_request->second.status == ObjectStatus_Nonexistent);
+      RAY_CHECK(object_request->second.status == ObjectStatus_Nonexistent);
       /* Update the found object's status to a known status. */
       object_request->second.status = status;
 
@@ -418,7 +431,7 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
         index += 1;
       }
     }
-    DCHECK(static_cast<size_t>(index) == wait_requests.size());
+    RAY_CHECK(static_cast<size_t>(index) == wait_requests.size());
     /* Remove the array of wait requests for this object, since no one should be
      * waiting for this object anymore. */
     object_wait_requests.erase(object_wait_requests_it);
@@ -473,9 +486,12 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "plasma_manager", manager_addr, db_connect_args);
     db_attach(state->db, state->loop, false);
+    RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
+                                           redis_primary_port));
+    RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(state->loop));
   } else {
     state->db = NULL;
-    LOG_DEBUG("No db connection specified");
+    RAY_LOG(DEBUG) << "No db connection specified";
   }
   state->addr = manager_addr;
   state->port = manager_port;
@@ -528,6 +544,12 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
   delete state;
 }
 
+bool is_receiving_or_received(const PlasmaManagerState *state,
+                              const ObjectID &object_id) {
+  return state->local_available_objects.count(object_id) > 0 ||
+         state->receives_in_progress.count(object_id) > 0;
+}
+
 event_loop *get_event_loop(PlasmaManagerState *state) {
   return state->loop;
 }
@@ -540,7 +562,6 @@ void process_message(event_loop *loop,
                      int events);
 
 int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
-  LOG_DEBUG("Writing data to fd %d", conn->fd);
   ssize_t r, s;
   /* Try to write one buf_size at a time. */
   s = buf->data_size + buf->metadata_size - conn->cursor;
@@ -551,14 +572,14 @@ int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
 
   int err;
   if (r <= 0) {
-    LOG_ERROR("Write error");
+    RAY_LOG(ERROR) << "Write error";
     err = errno;
   } else {
     conn->cursor += r;
-    CHECK(conn->cursor <= buf->data_size + buf->metadata_size);
+    RAY_CHECK(conn->cursor <= buf->data_size + buf->metadata_size);
     /* If we've finished writing this buffer, reset the cursor. */
     if (conn->cursor == buf->data_size + buf->metadata_size) {
-      LOG_DEBUG("writing on channel %d finished", conn->fd);
+      RAY_LOG(DEBUG) << "writing on channel " << conn->fd << " finished";
       ClientConnection_finish_request(conn);
     }
     err = 0;
@@ -591,7 +612,7 @@ void send_queued_request(event_loop *loop,
         conn->fd);
     break;
   case MessageType_PlasmaDataReply:
-    LOG_DEBUG("Transferring object to manager");
+    RAY_LOG(DEBUG) << "Transferring object to manager";
     if (ClientConnection_request_finished(conn)) {
       /* If the cursor is not set, we haven't sent any requests for this object
        * yet, so send the initial data request. */
@@ -606,7 +627,7 @@ void send_queued_request(event_loop *loop,
     }
     break;
   default:
-    LOG_FATAL("Buffered request has unknown type.");
+    RAY_LOG(FATAL) << "Buffered request has unknown type.";
   }
 
   /* If the other side hung up, stop sending to this manager. */
@@ -636,10 +657,8 @@ void send_queued_request(event_loop *loop,
 }
 
 int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
-  LOG_DEBUG("Reading data from fd %d to %p", conn->fd,
-            buf->data + conn->cursor);
   ssize_t r, s;
-  CHECK(buf != NULL);
+  RAY_CHECK(buf != NULL);
   /* Try to read one buf_size at a time. */
   s = buf->data_size + buf->metadata_size - conn->cursor;
   if (s > RayConfig::instance().buf_size()) {
@@ -649,11 +668,11 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
 
   int err;
   if (r <= 0) {
-    LOG_ERROR("Read error");
+    RAY_LOG(ERROR) << "Read error";
     err = errno;
   } else {
     conn->cursor += r;
-    CHECK(conn->cursor <= buf->data_size + buf->metadata_size);
+    RAY_CHECK(conn->cursor <= buf->data_size + buf->metadata_size);
     /* If the cursor is equal to the full object size, reset the cursor and
      * we're done. */
     if (conn->cursor == buf->data_size + buf->metadata_size) {
@@ -674,6 +693,11 @@ void process_data_chunk(event_loop *loop,
   int err = read_object_chunk(conn, buf);
   auto plasma_conn = conn->manager_state->plasma_conn;
   if (err != 0) {
+    // Remove the object from the receives_in_progress set so that
+    // retries are processed.
+    // TODO(hme): Remove all ObjectIDs associated with this manager if we
+    // allow parallel object transfers.
+    conn->manager_state->receives_in_progress.erase(buf->object_id);
     /* Abort the object that we were trying to read from the remote plasma
      * manager. */
     ARROW_CHECK_OK(plasma_conn->Release(buf->object_id.to_plasma_id()));
@@ -685,7 +709,7 @@ void process_data_chunk(event_loop *loop,
     /* If we're done receiving the object, seal the object and release it. The
      * release corresponds to the call to plasma_create that occurred in
      * process_data_request. */
-    LOG_DEBUG("reading on channel %d finished", data_sock);
+    RAY_LOG(DEBUG) << "reading on channel " << data_sock << " finished";
     /* The following seal also triggers notification of clients for fetch or
      * wait requests, see process_object_notification. */
     ARROW_CHECK_OK(plasma_conn->Seal(buf->object_id.to_plasma_id()));
@@ -781,9 +805,8 @@ void process_transfer_request(event_loop *loop,
     /* If the object wasn't locally available, exit immediately. If the object
      * later appears locally, the requesting plasma manager should request the
      * transfer again. */
-    LOG_WARN(
-        "Unable to transfer object to requesting plasma manager, object not "
-        "local.");
+    RAY_LOG(WARNING) << "Unable to transfer object to requesting plasma "
+                     << "manager, object not local.";
     return;
   }
 
@@ -798,8 +821,8 @@ void process_transfer_request(event_loop *loop,
     }
   }
 
-  CHECK(object_buffer.metadata->data() ==
-        object_buffer.data->data() + object_buffer.data_size);
+  RAY_CHECK(object_buffer.metadata->data() ==
+            object_buffer.data->data() + object_buffer.data_size);
   PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = obj_id;
@@ -839,8 +862,8 @@ void process_data_request(event_loop *loop,
 
   /* The corresponding call to plasma_release should happen in
    * process_data_chunk. */
-  std::shared_ptr<MutableBuffer> data;
-  Status s = conn->manager_state->plasma_conn->Create(
+  std::shared_ptr<Buffer> data;
+  plasma::Status s = conn->manager_state->plasma_conn->Create(
       object_id.to_plasma_id(), data_size, NULL, metadata_size, &data);
 
   /* If success_create == true, a new object has been created.
@@ -851,7 +874,7 @@ void process_data_request(event_loop *loop,
      * conn->transfer_queue. */
     conn->transfer_queue.push_back(buf);
   }
-  CHECK(ClientConnection_request_finished(conn));
+  RAY_CHECK(ClientConnection_request_finished(conn));
   ClientConnection_start_request(conn);
 
   /* Switch to reading the data from this socket, instead of listening for
@@ -859,6 +882,14 @@ void process_data_request(event_loop *loop,
   event_loop_remove_file(loop, client_sock);
   event_loop_file_handler data_chunk_handler;
   if (s.ok()) {
+    // Monitor objects that are in progress of being received.
+    // If a read fails while receiving this object, its
+    // ObjectID will be removed. If the object is successfully
+    // received, its ObjectID is removed by process_add_object_notification.
+    // If a shared buffer for the object cannot be created,
+    // then the receive is ignored, and the corresponding ObjectID
+    // is not inserted into receives_in_progress.
+    conn->manager_state->receives_in_progress.insert(object_id);
     buf->data = data->mutable_data();
     data_chunk_handler = process_data_chunk;
   } else {
@@ -880,10 +911,10 @@ void process_data_request(event_loop *loop,
 
 void request_transfer_from(PlasmaManagerState *manager_state,
                            FetchRequest *fetch_req) {
-  CHECK(fetch_req->manager_vector.size() > 0);
-  CHECK(fetch_req->next_manager >= 0 &&
-        static_cast<size_t>(fetch_req->next_manager) <
-            fetch_req->manager_vector.size());
+  RAY_CHECK(fetch_req->manager_vector.size() > 0);
+  RAY_CHECK(fetch_req->next_manager >= 0 &&
+            static_cast<size_t>(fetch_req->next_manager) <
+                fetch_req->manager_vector.size());
   char addr[16];
   int port;
   parse_ip_addr_port(fetch_req->manager_vector[fetch_req->next_manager].c_str(),
@@ -899,8 +930,8 @@ void request_transfer_from(PlasmaManagerState *manager_state,
            &temp_addr[2], &temp_addr[3]);
     if (memcmp(temp_addr, manager_state->addr, 4) == 0 &&
         port == manager_state->port) {
-      LOG_FATAL(
-          "This manager is attempting to request a transfer from itself.");
+      RAY_LOG(FATAL) << "This manager is attempting to request a transfer from "
+                     << "itself.";
     }
 
     PlasmaRequestBuffer *transfer_request = new PlasmaRequestBuffer();
@@ -940,6 +971,15 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
        it != manager_state->fetch_requests.end(); it++) {
     FetchRequest *fetch_req = it->second;
     if (fetch_req->manager_vector.size() > 0) {
+      if (is_receiving_or_received(manager_state, fetch_req->object_id)) {
+        // Do nothing if the object transfer is in progress or if the object
+        // has already been received.
+        RAY_LOG(DEBUG) << "fetch_timeout_handler: Object in progress or "
+                       << "received. " << fetch_req->object_id;
+        continue;
+      }
+      RAY_LOG(DEBUG) << "fetch_timeout_handler: Object missing. "
+                     << fetch_req->object_id;
       request_transfer_from(manager_state, fetch_req);
       /* If we've tried all of the managers that we know about for this object,
        * add this object to the list to resend requests for. */
@@ -977,13 +1017,13 @@ void request_transfer(ObjectID object_id,
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
   /* This callback is called from object_table_subscribe, which guarantees that
    * the manager vector contains at least one element. */
-  CHECK(manager_vector.size() >= 1);
+  RAY_CHECK(manager_vector.size() >= 1);
   auto it = manager_state->fetch_requests.find(object_id);
 
   if (is_object_local(manager_state, object_id)) {
     /* If the object is already here, then the fetch request should have been
      * removed. */
-    CHECK(it == manager_state->fetch_requests.end());
+    RAY_CHECK(it == manager_state->fetch_requests.end());
     return;
   }
   FetchRequest *fetch_req = it->second;
@@ -992,14 +1032,19 @@ void request_transfer(ObjectID object_id,
    * TODO(rkn): We actually have to remove this check to handle the rare
    * scenario where the object is transferred here and then evicted before this
    * callback gets called. */
-  CHECK(fetch_req != NULL);
+  RAY_CHECK(fetch_req != NULL);
 
   /* Update the manager vector. */
   fetch_req->manager_vector = manager_vector;
   fetch_req->next_manager = 0;
   /* Wait for the object data for the default number of retries, which timeout
    * after a default interval. */
-  request_transfer_from(manager_state, fetch_req);
+
+  if (!is_receiving_or_received(manager_state, object_id)) {
+    // Request object if it's not already being received,
+    // or if it has not already been received.
+    request_transfer_from(manager_state, fetch_req);
+  }
 }
 
 /* This method is only called from the tests. */
@@ -1009,7 +1054,7 @@ void call_request_transfer(ObjectID object_id,
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
   /* Check that there isn't already a fetch request for this object. */
   auto it = manager_state->fetch_requests.find(object_id);
-  CHECK(it == manager_state->fetch_requests.end());
+  RAY_CHECK(it == manager_state->fetch_requests.end());
   /* Create a fetch request. */
   FetchRequest *fetch_req = create_fetch_request(manager_state, object_id);
   manager_state->fetch_requests[object_id] = fetch_req;
@@ -1017,7 +1062,7 @@ void call_request_transfer(ObjectID object_id,
 }
 
 void fatal_table_callback(ObjectID id, void *user_context, void *user_data) {
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 /* This callback is used by both fetch and wait. Therefore, it may have to
@@ -1031,6 +1076,7 @@ void object_table_subscribe_callback(ObjectID object_id,
       db_client_table_get_ip_addresses(manager_state->db, manager_ids);
   /* Run the callback for fetch requests if there is a fetch request. */
   auto it = manager_state->fetch_requests.find(object_id);
+
   if (it != manager_state->fetch_requests.end()) {
     request_transfer(object_id, managers, context);
   }
@@ -1096,7 +1142,7 @@ void process_wait_request(ClientConnection *client_conn,
                           plasma::ObjectRequestMap &&object_requests,
                           uint64_t timeout_ms,
                           int num_ready_objects) {
-  CHECK(client_conn != NULL);
+  RAY_CHECK(client_conn != NULL);
   PlasmaManagerState *manager_state = client_conn->manager_state;
   int num_object_requests = object_requests.size();
 
@@ -1137,7 +1183,7 @@ void process_wait_request(ClientConnection *client_conn,
       num_object_ids_to_request += 1;
     } else {
       /* This code should be unreachable. */
-      CHECK(0);
+      RAY_CHECK(0);
     }
   }
 
@@ -1208,7 +1254,7 @@ void object_table_lookup_fail_callback(ObjectID object_id,
                                        void *user_data) {
   /* Fail for now. Later, we may want to send a ObjectStatus_Nonexistent to the
    * client. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 void process_status_request(ClientConnection *client_conn,
@@ -1252,7 +1298,7 @@ void process_delete_object_notification(PlasmaManagerState *state,
 
 void log_object_hash_mismatch_error_task_callback(Task *task,
                                                   void *user_context) {
-  CHECK(task != NULL);
+  RAY_CHECK(task != NULL);
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
   FunctionID function = TaskSpec_function(spec);
@@ -1267,11 +1313,24 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
                                                     TaskID task_id,
                                                     bool is_put,
                                                     void *user_context) {
-  CHECK(!task_id.is_nil());
+  RAY_CHECK(!task_id.is_nil());
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;
-  /* Get the specification for the nondeterministic task. */
+/* Get the specification for the nondeterministic task. */
+#if !RAY_USE_NEW_GCS
   task_table_get_task(state->db, task_id, NULL,
                       log_object_hash_mismatch_error_task_callback, state);
+#else
+  RAY_CHECK_OK(state->gcs_client.task_table().Lookup(
+      ray::JobID::nil(), task_id,
+      [user_context](gcs::AsyncGcsClient *, const TaskID &,
+                     std::shared_ptr<TaskTableDataT> t) {
+        Task *task = Task_alloc(
+            t->task_info.data(), t->task_info.size(), t->scheduling_state,
+            DBClientID::from_binary(t->scheduler_id), std::vector<ObjectID>());
+        log_object_hash_mismatch_error_task_callback(task, user_context);
+        Task_free(task);
+      }));
+#endif
 }
 
 void log_object_hash_mismatch_error_object_callback(ObjectID object_id,
@@ -1296,6 +1355,11 @@ void process_add_object_notification(PlasmaManagerState *state,
                                      int64_t metadata_size,
                                      unsigned char *digest) {
   state->local_available_objects.insert(object_id);
+  if (state->receives_in_progress.count(object_id) > 0) {
+    // This object is now locally available, so remove it from the
+    // receives_in_progress set.
+    state->receives_in_progress.erase(object_id);
+  }
 
   /* Add this object to the (redis) object table. */
   if (state->db) {
@@ -1326,8 +1390,8 @@ void process_object_notification(event_loop *loop,
   uint8_t *notification = read_message_async(loop, client_sock);
   if (notification == NULL) {
     PlasmaManagerState_free(state);
-    LOG_FATAL(
-        "Lost connection to the plasma store, plasma manager is exiting!");
+    RAY_LOG(FATAL) << "Lost connection to the plasma store, plasma manager is "
+                   << "exiting!";
   }
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   /* Add object to locally available object. */
@@ -1372,7 +1436,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
   ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
 
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
-  LOG_DEBUG("New client connection with fd %d", new_socket);
+  RAY_LOG(DEBUG) << "New client connection with fd " << new_socket;
   return conn;
 }
 
@@ -1418,7 +1482,7 @@ void process_message(event_loop *loop,
 
   switch (type) {
   case MessageType_PlasmaDataRequest: {
-    LOG_DEBUG("Processing data request");
+    RAY_LOG(DEBUG) << "Processing data request";
     plasma::ObjectID object_id;
     char *address;
     int port;
@@ -1428,7 +1492,7 @@ void process_message(event_loop *loop,
     free(address);
   } break;
   case MessageType_PlasmaDataReply: {
-    LOG_DEBUG("Processing data reply");
+    RAY_LOG(DEBUG) << "Processing data reply";
     plasma::ObjectID object_id;
     int64_t object_size;
     int64_t metadata_size;
@@ -1438,7 +1502,7 @@ void process_message(event_loop *loop,
                          metadata_size, conn);
   } break;
   case MessageType_PlasmaFetchRequest: {
-    LOG_DEBUG("Processing fetch remote");
+    RAY_LOG(DEBUG) << "Processing fetch remote";
     std::vector<plasma::ObjectID> object_ids_to_fetch;
     /* TODO(pcm): process_fetch_requests allocates an array of num_objects
      * object_ids too so these should be shared in the future. */
@@ -1447,7 +1511,7 @@ void process_message(event_loop *loop,
                            object_ids_to_fetch.data());
   } break;
   case MessageType_PlasmaWaitRequest: {
-    LOG_DEBUG("Processing wait");
+    RAY_LOG(DEBUG) << "Processing wait";
     plasma::ObjectRequestMap object_requests;
     int64_t timeout_ms;
     int num_ready_objects;
@@ -1457,18 +1521,18 @@ void process_message(event_loop *loop,
                          num_ready_objects);
   } break;
   case MessageType_PlasmaStatusRequest: {
-    LOG_DEBUG("Processing status");
+    RAY_LOG(DEBUG) << "Processing status";
     plasma::ObjectID object_id;
     ARROW_CHECK_OK(plasma::ReadStatusRequest(data, length, &object_id, 1));
     process_status_request(conn, object_id);
   } break;
   case DISCONNECT_CLIENT: {
-    LOG_DEBUG("Disconnecting client on fd %d", client_sock);
+    RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_sock;
     event_loop_remove_file(loop, client_sock);
     ClientConnection_free(conn);
   } break;
   default:
-    LOG_FATAL("invalid request %" PRId64, type);
+    RAY_LOG(FATAL) << "invalid request " << type;
   }
   free(data);
 
@@ -1476,9 +1540,8 @@ void process_message(event_loop *loop,
   int64_t end_time = current_time_ms();
   if (end_time - start_time >
       RayConfig::instance().max_time_for_handler_milliseconds()) {
-    LOG_WARN("process_message of type %" PRId64 " took %" PRId64
-             " milliseconds.",
-             type, end_time - start_time);
+    RAY_LOG(WARNING) << "process_message of type " << type << " took "
+                     << end_time - start_time << " milliseconds.";
   }
 }
 
@@ -1487,12 +1550,13 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Check that the last heartbeat was not sent too long ago. */
   int64_t current_time = current_time_ms();
-  CHECK(current_time >= state->previous_heartbeat_time);
+  RAY_CHECK(current_time >= state->previous_heartbeat_time);
   if (current_time - state->previous_heartbeat_time >
       RayConfig::instance().num_heartbeats_timeout() *
           RayConfig::instance().heartbeat_timeout_milliseconds()) {
-    LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
-              current_time - state->previous_heartbeat_time);
+    RAY_LOG(FATAL) << "The last heartbeat was sent "
+                   << current_time - state->previous_heartbeat_time
+                   << " milliseconds ago.";
   }
   state->previous_heartbeat_time = current_time;
 
@@ -1518,18 +1582,18 @@ void start_server(const char *store_socket_name,
   }
 
   int local_sock = bind_ipc_sock(manager_socket_name, false);
-  CHECKM(local_sock >= 0, "Unable to bind local manager socket");
+  RAY_CHECK(local_sock >= 0) << "Unable to bind local manager socket";
 
   g_manager_state = PlasmaManagerState_init(
       store_socket_name, manager_socket_name, master_addr, port,
       redis_primary_addr, redis_primary_port);
-  CHECK(g_manager_state);
+  RAY_CHECK(g_manager_state);
 
-  CHECK(listen(remote_sock, 128) != -1);
-  CHECK(listen(local_sock, 128) != -1);
+  RAY_CHECK(listen(remote_sock, 128) != -1);
+  RAY_CHECK(listen(local_sock, 128) != -1);
 
-  LOG_DEBUG("Started server connected to store %s, listening on port %d",
-            store_socket_name, port);
+  RAY_LOG(DEBUG) << "Started server connected to store " << store_socket_name
+                 << ", listening on port " << port;
   event_loop_add_file(g_manager_state->loop, local_sock, EVENT_LOOP_READ,
                       handle_new_client, g_manager_state);
   event_loop_add_file(g_manager_state->loop, remote_sock, EVENT_LOOP_READ,
@@ -1554,7 +1618,7 @@ void start_server(const char *store_socket_name,
 
 /* Report "success" to valgrind. */
 void signal_handler(int signal) {
-  LOG_DEBUG("Signal was %d", signal);
+  RAY_LOG(DEBUG) << "Signal was " << signal;
   if (signal == SIGTERM) {
     if (g_manager_state) {
       PlasmaManagerState_free(g_manager_state);
@@ -1597,37 +1661,32 @@ int main(int argc, char *argv[]) {
       redis_primary_addr_port = optarg;
       break;
     default:
-      LOG_FATAL("unknown option %c", c);
+      RAY_LOG(FATAL) << "unknown option " << c;
     }
   }
   if (!store_socket_name) {
-    LOG_FATAL(
-        "please specify socket for connecting to the plasma store with -s "
-        "switch");
+    RAY_LOG(FATAL) << "please specify socket for connecting to the plasma "
+                   << "store with -s switch";
   }
   if (!manager_socket_name) {
-    LOG_FATAL(
-        "please specify socket name of the manager's local socket with -m "
-        "switch");
+    RAY_LOG(FATAL) << "please specify socket name of the manager's local "
+                   << "socket with -m switch";
   }
   if (!master_addr) {
-    LOG_FATAL(
-        "please specify ip address of the current host in the format "
-        "123.456.789.10 with -h switch");
+    RAY_LOG(FATAL) << "please specify ip address of the current host in the "
+                   << "format 123.456.789.10 with -h switch";
   }
   if (port == -1) {
-    LOG_FATAL(
-        "please specify port the plasma manager shall listen to in the"
-        "format 12345 with -p switch");
+    RAY_LOG(FATAL) << "please specify port the plasma manager shall listen to "
+                   << "in the format 12345 with -p switch";
   }
   char redis_primary_addr[16];
-  int redis_primary_port;
+  int redis_primary_port = -1;
   if (!redis_primary_addr_port ||
       parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
                          &redis_primary_port) == -1) {
-    LOG_FATAL(
-        "specify the primary redis address like 127.0.0.1:6379 with the -r "
-        "switch");
+    RAY_LOG(FATAL) << "specify the primary redis address like 127.0.0.1:6379 "
+                   << "with the -r switch";
   }
   start_server(store_socket_name, manager_socket_name, master_addr, port,
                redis_primary_addr, redis_primary_port);

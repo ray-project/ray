@@ -7,11 +7,17 @@ import json
 import tempfile
 import time
 import sys
+import click
 
 import yaml
+try:  # py3
+    from shlex import quote
+except ImportError:  # py2
+    from pipes import quote
 
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
     hash_launch_conf
+from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_NAME
@@ -19,12 +25,14 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(
-        config_file, override_min_workers, override_max_workers, no_restart):
+        config_file, override_min_workers, override_max_workers,
+        no_restart, yes):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
-
     validate_config(config)
+    dockerize_if_needed(config)
+
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
     if override_max_workers is not None:
@@ -37,17 +45,18 @@ def create_or_update_cluster(
 
     bootstrap_config, _ = importer()
     config = bootstrap_config(config)
-    get_or_create_head_node(config, no_restart)
+    get_or_create_head_node(config, no_restart, yes)
 
 
-def teardown_cluster(config_file):
+def teardown_cluster(config_file, yes):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     config = yaml.load(open(config_file).read())
-
-    confirm("This will destroy your cluster")
-
     validate_config(config)
+    dockerize_if_needed(config)
+
+    confirm("This will destroy your cluster", yes)
+
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "Head",
@@ -64,7 +73,7 @@ def teardown_cluster(config_file):
         nodes = provider.nodes({})
 
 
-def get_or_create_head_node(config, no_restart):
+def get_or_create_head_node(config, no_restart, yes):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -78,15 +87,15 @@ def get_or_create_head_node(config, no_restart):
         head_node = None
 
     if not head_node:
-        confirm("This will create a new cluster")
+        confirm("This will create a new cluster", yes)
     elif not no_restart:
-        confirm("This will restart cluster services")
+        confirm("This will restart cluster services", yes)
 
     launch_hash = hash_launch_conf(config["head_node"], config["auth"])
     if head_node is None or provider.node_tags(head_node).get(
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
         if head_node is not None:
-            confirm("Head node config out-of-date. It will be terminated")
+            confirm("Head node config out-of-date. It will be terminated", yes)
             print("Terminating outdated head node {}".format(head_node))
             provider.terminate_node(head_node)
         print("Launching new head node...")
@@ -155,12 +164,21 @@ def get_or_create_head_node(config, no_restart):
     print(
         "Head node up-to-date, IP address is: {}".format(
             provider.external_ip(head_node)))
+
+    monitor_str = "tail -f /tmp/raylogs/monitor-*"
+    for s in init_commands:
+        if ("ray start" in s and "docker exec" in s and
+                "--autoscaling-config" in s):
+            monitor_str = "docker exec {} /bin/sh -c {}".format(
+                        config["docker"]["container_name"],
+                        quote(monitor_str))
     print(
         "To monitor auto-scaling activity, you can run:\n\n"
-        "  ssh -i {} {}@{} 'tail -f /tmp/raylogs/monitor-*'\n".format(
+        "  ssh -i {} {}@{} {}\n".format(
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
-            provider.external_ip(head_node)))
+            provider.external_ip(head_node),
+            quote(monitor_str)))
     print(
         "To login to the cluster, run:\n\n"
         "  ssh -i {} {}@{}\n".format(
@@ -169,12 +187,23 @@ def get_or_create_head_node(config, no_restart):
             provider.external_ip(head_node)))
 
 
-def confirm(msg):
-    print("{}. Do you want to continue [y/N]? ".format(msg), end="")
-    if sys.version_info >= (3, 0):
-        answer = input()
+def get_head_node_ip(config_file):
+    """Returns head node IP for given configuration file if exists."""
+
+    config = yaml.load(open(config_file).read())
+    provider = get_node_provider(config["provider"], config["cluster_name"])
+    head_node_tags = {
+        TAG_RAY_NODE_TYPE: "Head",
+    }
+    nodes = provider.nodes(head_node_tags)
+    if len(nodes) > 0:
+        head_node = nodes[0]
+        return provider.external_ip(head_node)
     else:
-        answer = raw_input()  # noqa: F821
-    if answer.strip().lower() != "y":
-        print("Abort.")
-        exit(1)
+        print("Head node of cluster ({}) not found!".format(
+            config["cluster_name"]))
+        sys.exit(1)
+
+
+def confirm(msg, yes):
+    return None if yes else click.confirm(msg, abort=True)

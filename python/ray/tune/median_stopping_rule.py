@@ -31,7 +31,7 @@ class MedianStoppingRule(FIFOScheduler):
     """
 
     def __init__(
-            self, time_attr='time_total_s', reward_attr='episode_reward_mean',
+            self, time_attr="time_total_s", reward_attr="episode_reward_mean",
             grace_period=60.0, min_samples_required=3, hard_stop=True):
         FIFOScheduler.__init__(self)
         self._stopped_trials = set()

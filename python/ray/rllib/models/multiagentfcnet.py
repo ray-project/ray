@@ -31,7 +31,8 @@ class MultiAgentFullyConnectedNetwork(Model):
         reuse = tf.AUTO_REUSE if shared_model else False
         outputs = []
         for i in range(len(hiddens)):
-            with tf.variable_scope("multi{}".format(i), reuse=reuse):
+            scope = "multi" if shared_model else "multi{}".format(i)
+            with tf.variable_scope(scope, reuse=reuse):
                 sub_options = options.copy()
                 sub_options.update({"fcnet_hiddens": hiddens[i]})
                 # TODO(ev) make this support arbitrary networks

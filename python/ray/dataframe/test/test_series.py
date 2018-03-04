@@ -4,14 +4,11 @@ from __future__ import print_function
 
 import pytest
 import ray.dataframe as rdf
-import ray
-
-ray.init()
 
 
 @pytest.fixture
 def create_test_series():
-    return rdf.Series()
+    return rdf.Series(None)
 
 
 def test_T():

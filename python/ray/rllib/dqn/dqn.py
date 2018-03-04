@@ -88,6 +88,8 @@ DEFAULT_CONFIG = dict(
     grad_norm_clipping=10,
     # Arguments to pass to the rllib optimizer
     optimizer={},
+    # Smooth the current average reward over this many previous episodes.
+    smoothing_num_episodes=100,
 
     # === Tensorflow ===
     # Arguments to pass to tensorflow
@@ -226,6 +228,11 @@ class DQNAgent(Agent):
                 e.sample.remote(no_replay=True)
         else:
             self.local_evaluator.sample(no_replay=True)
+
+    def _stop(self):
+        # workaround for https://github.com/ray-project/ray/issues/1516
+        for ev in self.remote_evaluators:
+            ev.__ray_terminate__.remote(ev._ray_actor_id.id())
 
     def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(

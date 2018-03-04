@@ -96,6 +96,11 @@ SMALL_CLUSTER = {
         "region": "us-east-1",
         "availability_zone": "us-east-1a",
     },
+    "docker": {
+        "image": "example",
+        "container_name": "mock",
+
+    },
     "auth": {
         "ssh_user": "ubuntu",
         "ssh_private_key": "/dev/null",

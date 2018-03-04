@@ -41,6 +41,8 @@ DEFAULT_CONFIG = {
         "device_count": {"CPU": 4},
         "log_device_placement": False,
         "allow_soft_placement": True,
+        "intra_op_parallelism_threads": 1,
+        "inter_op_parallelism_threads": 2,
     },
     # Batch size for policy evaluations for rollouts
     "rollout_batchsize": 1,
@@ -64,7 +66,7 @@ DEFAULT_CONFIG = {
     "timesteps_per_batch": 4000,
     # Each tasks performs rollouts until at least this
     # number of steps is obtained
-    "min_steps_per_task": 1000,
+    "min_steps_per_task": 200,
     # Number of actors used to collect the rollouts
     "num_workers": 5,
     # Resource requirements for remote actors
@@ -115,6 +117,14 @@ class PPOAgent(Agent):
         agents = self.remote_evaluators
         config = self.config
         model = self.local_evaluator
+
+        if (config["num_workers"] * config["min_steps_per_task"] >
+                config["timesteps_per_batch"]):
+            print(
+                "WARNING: num_workers * min_steps_per_task > "
+                "timesteps_per_batch. This means that the output of some "
+                "tasks will be wasted. Consider decreasing "
+                "min_steps_per_task or increasing timesteps_per_batch.")
 
         print("===> iteration", self.iteration)
 
@@ -243,6 +253,11 @@ class PPOAgent(Agent):
             timesteps_this_iter=timesteps)
 
         return result
+
+    def _stop(self):
+        # workaround for https://github.com/ray-project/ray/issues/1516
+        for ev in self.remote_evaluators:
+            ev.__ray_terminate__.remote(ev._ray_actor_id.id())
 
     def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(

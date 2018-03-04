@@ -75,10 +75,10 @@ class Trial(object):
     ERROR = "ERROR"
 
     def __init__(
-            self, trainable_name, config={}, local_dir=DEFAULT_RESULTS_DIR,
+            self, trainable_name, config=None, local_dir=DEFAULT_RESULTS_DIR,
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
-            stopping_criterion={}, checkpoint_freq=0,
-            restore_path=None, upload_dir=None):
+            stopping_criterion=None, checkpoint_freq=0,
+            restore_path=None, upload_dir=None, max_failures=0):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
@@ -89,21 +89,24 @@ class Trial(object):
                 TRAINABLE_CLASS, trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
-        for k in stopping_criterion:
-            if k not in TrainingResult._fields:
-                raise TuneError(
-                    "Stopping condition key `{}` must be one of {}".format(
-                        k, TrainingResult._fields))
+        if stopping_criterion:
+            for k in stopping_criterion:
+                if k not in TrainingResult._fields:
+                    raise TuneError(
+                        "Stopping condition key `{}` must be one of {}".format(
+                            k, TrainingResult._fields))
 
-        # Immutable config
+        # Trial config
         self.trainable_name = trainable_name
-        self.config = config
+        self.config = config or {}
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
         self.resources = resources
-        self.stopping_criterion = stopping_criterion
+        self.stopping_criterion = stopping_criterion or {}
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
+        self.verbose = True
+        self.max_failures = max_failures
 
         # Local trial state that is updated during the run
         self.last_result = None
@@ -116,16 +119,23 @@ class Trial(object):
         self.result_logger = None
         self.last_debug = 0
         self.trial_id = binary_to_hex(random_string())[:8]
+        self.error_file = None
+        self.num_failures = 0
 
-    def start(self):
+    def start(self, checkpoint_obj=None):
         """Starts this trial.
 
         If an error is encountered when starting the trial, an exception will
         be thrown.
+
+        Args:
+            checkpoint_obj (obj): Optional checkpoint to resume from.
         """
 
         self._setup_runner()
-        if self._checkpoint_path:
+        if checkpoint_obj:
+            self.restore_from_obj(checkpoint_obj)
+        elif self._checkpoint_path:
             self.restore_from_path(self._checkpoint_path)
         elif self._checkpoint_obj:
             self.restore_from_obj(self._checkpoint_obj)
@@ -150,10 +160,12 @@ class Trial(object):
 
         try:
             if error_msg and self.logdir:
+                self.num_failures += 1
                 error_file = os.path.join(
                     self.logdir, "error_{}.txt".format(date_str()))
                 with open(error_file, "w") as f:
                     f.write(error_msg)
+                self.error_file = error_file
             if self.runner:
                 stop_tasks = []
                 stop_tasks.append(self.runner.stop.remote())
@@ -162,9 +174,6 @@ class Trial(object):
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
                         stop_tasks, num_returns=2, timeout=250)
-                if unfinished:
-                    print(("Stopping %s Actor timed out, "
-                           "but moving on...") % self)
         except Exception:
             print("Error stopping runner:", traceback.format_exc())
             self.status = Trial.ERROR
@@ -229,7 +238,7 @@ class Trial(object):
         """Returns a progress message for printing out to the console."""
 
         if self.last_result is None:
-            return self.status
+            return self._status_string()
 
         def location_string(hostname, pid):
             if hostname == os.uname()[1]:
@@ -239,7 +248,8 @@ class Trial(object):
 
         pieces = [
             '{} [{}]'.format(
-                self.status, location_string(
+                self._status_string(),
+                location_string(
                     self.last_result.hostname, self.last_result.pid)),
             '{} s'.format(int(self.last_result.time_total_s)),
             '{} ts'.format(int(self.last_result.timesteps_total))]
@@ -258,6 +268,16 @@ class Trial(object):
 
         return ', '.join(pieces)
 
+    def _status_string(self):
+        return "{}{}".format(
+            self.status,
+            ", {} failures: {}".format(self.num_failures, self.error_file)
+            if self.error_file else "")
+
+    def has_checkpoint(self):
+        return self._checkpoint_path is not None or \
+            self._checkpoint_obj is not None
+
     def checkpoint(self, to_object_store=False):
         """Checkpoints the state of this trial.
 
@@ -275,7 +295,8 @@ class Trial(object):
         self._checkpoint_path = path
         self._checkpoint_obj = obj
 
-        print("Saved checkpoint to:", path or obj)
+        if self.verbose:
+            print("Saved checkpoint for {} to {}".format(self, path or obj))
         return path or obj
 
     def restore_from_path(self, path):
@@ -309,7 +330,9 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        if terminate or time.time() - self.last_debug > DEBUG_PRINT_INTERVAL:
+        if terminate or (
+                self.verbose and
+                time.time() - self.last_debug > DEBUG_PRINT_INTERVAL):
             print("TrainingResult for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
@@ -347,12 +370,17 @@ class Trial(object):
             config=self.config, registry=get_registry(),
             logger_creator=logger_creator)
 
-    def __str__(self):
-        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
+    def set_verbose(self, verbose):
+        self.verbose = verbose
 
-        Truncates to MAX_LEN_IDENTIFIER (default is 130) to avoid problems
-        when creating logging directories.
-        """
+    def is_finished(self):
+        return self.status in [Trial.TERMINATED, Trial.ERROR]
+
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
         if "env" in self.config:
             identifier = "{}_{}".format(
                 self.trainable_name, self.config["env"])
@@ -360,4 +388,4 @@ class Trial(object):
             identifier = self.trainable_name
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
-        return identifier[:MAX_LEN_IDENTIFIER]
+        return identifier

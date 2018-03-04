@@ -4,7 +4,7 @@ project(ray)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/src/thirdparty/arrow/python/cmake_modules)
+include(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/scripts/thirdparty.cmake)
 
 find_package(Arrow)
 find_package(Plasma)
@@ -26,6 +26,14 @@ option(RAY_BUILD_SHARED
 option(RAY_BUILD_TESTS
   "Build the Ray googletest unit tests"
   ON)
+
+option(RAY_USE_NEW_GCS
+  "Use the new GCS implementation"
+  OFF)
+
+if (RAY_USE_NEW_GCS)
+  add_definitions(-DRAY_USE_NEW_GCS)
+endif()
 
 include(ExternalProject)
 include(GNUInstallDirs)

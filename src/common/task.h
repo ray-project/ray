@@ -18,10 +18,10 @@ typedef char TaskSpec;
 class TaskExecutionSpec {
  public:
   TaskExecutionSpec(const std::vector<ObjectID> &execution_dependencies,
-                    TaskSpec *spec,
+                    const TaskSpec *spec,
                     int64_t task_spec_size);
   TaskExecutionSpec(const std::vector<ObjectID> &execution_dependencies,
-                    TaskSpec *spec,
+                    const TaskSpec *spec,
                     int64_t task_spec_size,
                     int spillback_count);
   TaskExecutionSpec(TaskExecutionSpec *execution_spec);
@@ -30,7 +30,7 @@ class TaskExecutionSpec {
   ///
   /// @return A vector of object IDs representing this task's execution
   ///         dependencies.
-  std::vector<ObjectID> ExecutionDependencies();
+  std::vector<ObjectID> ExecutionDependencies() const;
 
   /// Set the task's execution dependencies.
   ///
@@ -70,33 +70,33 @@ class TaskExecutionSpec {
   /// Get the task spec.
   ///
   /// @return A pointer to the immutable task spec.
-  TaskSpec *Spec();
+  TaskSpec *Spec() const;
 
   /// Get the number of dependencies. This comprises the immutable task
   /// arguments and the mutable execution dependencies.
   ///
   /// @return The number of dependencies.
-  int64_t NumDependencies();
+  int64_t NumDependencies() const;
 
   /// Get the number of object IDs at the given dependency index.
   ///
   /// @param dependency_index The dependency index whose object IDs to count.
   /// @return The number of object IDs at the given dependency_index.
-  int DependencyIdCount(int64_t dependency_index);
+  int DependencyIdCount(int64_t dependency_index) const;
 
   /// Get the object ID of a given dependency index.
   ///
   /// @param dependency_index The index at which we should look up the object
   ///        ID.
   /// @param id_index The index of the object ID.
-  ObjectID DependencyId(int64_t dependency_index, int64_t id_index);
+  ObjectID DependencyId(int64_t dependency_index, int64_t id_index) const;
 
   /// Compute whether the task is dependent on an object ID.
   ///
   /// @param object_id The object ID that the task may be dependent on.
   /// @return bool This returns true if the task is dependent on the given
   ///         object ID and false otherwise.
-  bool DependsOn(ObjectID object_id);
+  bool DependsOn(ObjectID object_id) const;
 
   /// Returns whether the given dependency index is a static dependency (an
   /// argument of the immutable task).
@@ -104,7 +104,7 @@ class TaskExecutionSpec {
   /// @param dependency_index The requested dependency index.
   /// @return bool This returns true if the requested dependency index is
   ///         immutable (an argument of the task).
-  bool IsStaticDependency(int64_t dependency_index);
+  bool IsStaticDependency(int64_t dependency_index) const;
 
  private:
   /** A list of object IDs representing this task's dependencies at execution
@@ -532,7 +532,7 @@ struct Task {
  * @param local_scheduler_id The ID of the local scheduler that the task is
  *        scheduled on, if any.
  */
-Task *Task_alloc(TaskSpec *spec,
+Task *Task_alloc(const TaskSpec *spec,
                  int64_t task_spec_size,
                  int state,
                  DBClientID local_scheduler_id,

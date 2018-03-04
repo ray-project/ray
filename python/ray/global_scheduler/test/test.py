@@ -188,6 +188,9 @@ class TestGlobalScheduler(unittest.TestCase):
         db_client_id = self.get_plasma_manager_id()
         assert(db_client_id is not None)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "New GCS API doesn't have a Python API yet.")
     def test_integration_single_task(self):
         # There should be three db clients, the global scheduler, the local
         # scheduler, and the plasma manager.
@@ -299,11 +302,19 @@ class TestGlobalScheduler(unittest.TestCase):
             num_retries -= 1
             time.sleep(0.1)
 
-        self.assertEqual(num_tasks_done, num_tasks)
+        # Tasks can either be queued or in the global scheduler due to
+        # spillback.
+        self.assertEqual(num_tasks_done + num_tasks_waiting, num_tasks)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "New GCS API doesn't have a Python API yet.")
     def test_integration_many_tasks_handler_sync(self):
         self.integration_many_tasks_helper(timesync=True)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "New GCS API doesn't have a Python API yet.")
     def test_integration_many_tasks(self):
         # More realistic case: should handle out of order object and task
         # notifications.

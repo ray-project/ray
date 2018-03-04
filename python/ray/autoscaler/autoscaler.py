@@ -55,6 +55,13 @@ CLUSTER_CONFIG_SCHEMA = {
     # How Ray will authenticate with newly launched nodes.
     "auth": dict,
 
+    # Docker configuration. If this is specified, all setup and start commands
+    # will be executed in the container.
+    "docker": {
+        "image": str,  # e.g. tensorflow/tensorflow:1.5.0-py3
+        "container_name": str
+    },
+
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": dict,
 
@@ -460,6 +467,13 @@ class StandardAutoscaler(object):
             suffix, self.load_metrics.debug_string())
 
 
+def typename(v):
+    if isinstance(v, type):
+        return v.__name__
+    else:
+        return type(v).__name__
+
+
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     if type(config) is not dict:
         raise ValueError("Config is not a dictionary")
@@ -469,7 +483,7 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
         if k not in config:
             raise ValueError(
                 "Missing required config key `{}` of type {}".format(
-                    k, v.__name__))
+                    k, typename(v)))
         if isinstance(v, type):
             if not isinstance(config[k], v):
                 raise ValueError(

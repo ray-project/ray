@@ -69,11 +69,15 @@ def make_parser(**kwargs):
             DEFAULT_RESULTS_DIR))
     parser.add_argument(
         "--upload-dir", default="", type=str,
-        help="Optional URI to upload training results to.")
+        help="Optional URI to sync training results to (e.g. s3://bucket).")
     parser.add_argument(
         "--checkpoint-freq", default=0, type=int,
         help="How many training iterations between checkpoints. "
         "A value of 0 (default) disables checkpointing.")
+    parser.add_argument(
+        "--max-failures", default=3, type=int,
+        help="Try to recover a trial from its last checkpoint at least this "
+        "many times. Only applies if checkpointing is enabled.")
     parser.add_argument(
         "--scheduler", default="FIFO", type=str,
         help="FIFO (default), MedianStopping, or HyperBand.")

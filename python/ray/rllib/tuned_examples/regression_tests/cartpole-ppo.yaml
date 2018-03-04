@@ -1,0 +1,10 @@
+cartpole-ppo:
+    env: CartPole-v0
+    run: PPO
+    stop:
+        episode_reward_mean: 200
+        time_total_s: 300
+    resources:
+        cpu: 1
+    config:
+        num_workers: 1
