@@ -245,6 +245,10 @@ class ApexOptimizer(Optimizer):
                 "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
                 for k in self.timers
             },
+            "learner_grad_time_ms":
+                round(1000 * self.learner.grad_timer.mean, 3),
+            "learner_dequeue_time_ms":
+                round(1000 * self.learner.queue_timer.mean, 3),
             "sample_throughput": round(
                 self.timers["sample"].mean_throughput, 3),
             "train_throughput": round(self.timers["train"].mean_throughput, 3),
