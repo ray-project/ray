@@ -31,7 +31,9 @@ OBSERVATION_SPACES_TO_TEST = {
     "simple_tuple": Tuple([
         Box(0.0, 1.0, (5,), dtype=np.float32),
         Box(0.0, 1.0, (5,), dtype=np.float32)]),
-    "mixed_tuple": Tuple([Discrete(10), Box(0.0, 1.0, (5,), dtype=np.float32)]),
+    "mixed_tuple": Tuple([
+        Discrete(10),
+        Box(0.0, 1.0, (5,), dtype=np.float32)]),
 }
 
 # (alg, action_space, obs_space)
