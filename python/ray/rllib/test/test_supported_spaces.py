@@ -122,7 +122,7 @@ class ModelSupportedSpaces(unittest.TestCase):
             stats)
         check_support(
             "PG",
-            {"num_workers": 1, "optimizer": {"grads_per_step": 1}},
+            {"num_workers": 1, "optimizer": {}},
             stats)
         num_unexpected_errors = 0
         num_unexpected_success = 0
