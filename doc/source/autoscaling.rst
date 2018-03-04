@@ -9,7 +9,7 @@ Quick start
 First, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials``,
 as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/configuration.html>`__.
 
-Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example.yaml>`__ cluster config file will create a small cluster with a m4.large head node (on-demand), and two m4.large `spot workers <https://aws.amazon.com/ec2/spot/>`__, configured to autoscale up to four m4.large workers.
+Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with a m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
 
 Try it out by running these commands from your personal computer. Once the cluster is started, you can then
 SSH into the head node, ``source activate tensorflow_p36``, and then run Ray programs with ``ray.init(redis_address=ray.services.get_node_ip_address() + ":6379")``.
@@ -18,14 +18,14 @@ SSH into the head node, ``source activate tensorflow_p36``, and then run Ray pro
 
     # Create or update the cluster. When the command finishes, it will print
     # out the command that can be used to SSH into the cluster head node.
-    $ ray create_or_update ray/python/ray/autoscaler/aws/example.yaml
+    $ ray create_or_update ray/python/ray/autoscaler/aws/example-full.yaml
 
     # Reconfigure autoscaling behavior without interrupting running jobs
-    $ ray create_or_update ray/python/ray/autoscaler/aws/example.yaml \
+    $ ray create_or_update ray/python/ray/autoscaler/aws/example-full.yaml \
         --max-workers=N --no-restart
 
     # Teardown the cluster
-    $ ray teardown ray/python/ray/autoscaler/aws/example.yaml
+    $ ray teardown ray/python/ray/autoscaler/aws/example-full.yaml
 
 To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can forward the port to your local machine using SSH:
 
@@ -72,7 +72,7 @@ You are encouraged to copy the example YAML file and modify it to your needs. Th
 
 The setup commands you use should ideally be *idempotent*, that is, can be run more than once. This allows Ray to update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
 
-Most of the example YAML file is optional. Here is a `reference minimal YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/minimal.yaml>`__, and you can find the defaults for `optional fields in this YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/default.yaml>`__.
+Most of the example YAML file is optional. Here is a `reference minimal YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-minimal.yaml>`__, and you can find the defaults for `optional fields in this YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__.
 
 Syncing git branches
 --------------------
@@ -98,7 +98,7 @@ This tells ``ray create_or_update`` to sync the current git branch SHA from your
 Common cluster configurations
 -----------------------------
 
-The ``example.yaml`` configuration is enough to get started with Ray, but for more compute intensive workloads you will want to change the instance types to e.g. use GPU or larger compute instance by editing the yaml file. Here are a few common configurations:
+The ``example-full.yaml`` configuration is enough to get started with Ray, but for more compute intensive workloads you will want to change the instance types to e.g. use GPU or larger compute instance by editing the yaml file. Here are a few common configurations:
 
 **GPU single node**: use Ray on a single large GPU instance.
 
