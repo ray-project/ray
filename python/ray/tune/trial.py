@@ -181,9 +181,9 @@ class Trial(object):
                 for sec in range(5):
                     time.sleep(sec)
                     print("Checking if Trial has released resources...")
-                    terminated = (
-                        redis_client.hget(actor_key, "removed") == '"1"')
-                    if not terminated:
+                    not_removed = (
+                        redis_client.hget(actor_key, "removed") == 'False')
+                    if not_removed:
                         if sec == 4:
                             print("Trial didn't release resources...")
                         else:
