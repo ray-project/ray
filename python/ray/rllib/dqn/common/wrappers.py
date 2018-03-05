@@ -132,7 +132,8 @@ class MaxAndSkipEnv(gym.Wrapper):
 class ProcessFrame80(gym.ObservationWrapper):
     def __init__(self, env=None):
         super(ProcessFrame80, self).__init__(env)
-        self.observation_space = spaces.Box(low=0, high=255, shape=(80, 80, 1), dtype=np.uint8)
+        self.observation_space = spaces.Box(
+            low=0, high=255, shape=(80, 80, 1), dtype=np.uint8)
 
     def observation(self, obs):
         return ProcessFrame80.process(obs)
@@ -195,7 +196,8 @@ class FrameStack(gym.Wrapper):
         self.frames = deque([], maxlen=k)
         shp = env.observation_space.shape
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(shp[0], shp[1], shp[2] * k), dtype=np.uint8)
+            low=0, high=255, shape=(shp[0], shp[1], shp[2] * k),
+            dtype=np.uint8)
 
     def reset(self):
         ob = self.env.reset()

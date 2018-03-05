@@ -154,10 +154,10 @@ class CarlaEnv(gym.Env):
                 0, 255, shape=(
                     config["y_res"], config["x_res"],
                     3 * config["framestack"]), dtype=np.uint8)
-        self.observation_space = Tuple(
+        self.observation_space = Tuple(  # forward_speed, dist to goal
             [image_space,
              Discrete(len(COMMANDS_ENUM)),  # next_command
-             Box(-128.0, 128.0, shape=(2,), dtype=np.float32)])  # forward_speed, dist to goal
+             Box(-128.0, 128.0, shape=(2,), dtype=np.float32)])
 
         # TODO(ekl) this isn't really a proper gym spec
         self._spec = lambda: None
