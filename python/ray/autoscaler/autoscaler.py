@@ -503,7 +503,7 @@ def check_required(config, schema):
 def check_extraneous(config, schema):
     """Make sure all items of config are in schema"""
     if type(config) is not dict:
-        raise ValueError("Config is not a dictionary")
+        raise ValueError("Config {} is not a dictionary".format(config))
     for k in config:
         if k not in schema:
             raise ValueError(
@@ -524,7 +524,7 @@ def check_extraneous(config, schema):
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     """Required Dicts indicate that no extra fields can be introduced."""
     if type(config) is not dict:
-        raise ValueError("Config is not a dictionary")
+        raise ValueError("Config {} is not a dictionary".format(config))
 
     check_required(config, schema)
     check_extraneous(config, schema)
