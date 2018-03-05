@@ -2,10 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 from ray.rllib.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
-from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
-from ray.rllib.utils.actors import keep_non_colocated
 
 APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
     optimizer_class="ApexOptimizer",
