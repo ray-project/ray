@@ -510,7 +510,9 @@ def check_extraneous(config, schema):
                 "Unexpected config key `{}` not in {}".format(
                     k, list(schema.keys())))
         v, kreq = schema[k]
-        if isinstance(v, type):
+        if v is None:
+            continue
+        elif isinstance(v, type):
             if not isinstance(config[k], v):
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
