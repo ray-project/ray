@@ -164,9 +164,6 @@ class DQNAgent(Agent):
     def _train(self):
         start_timestep = self.global_timestep
 
-        if self.global_timestep >= 3000:
-            return
-
         while (self.global_timestep - start_timestep <
                self.config["timesteps_per_iteration"]):
 
