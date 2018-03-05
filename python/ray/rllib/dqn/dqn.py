@@ -11,7 +11,7 @@ import tensorflow as tf
 import ray
 from ray.rllib import optimizers
 from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
-from ray.rllib.utils.actors import split_colocated
+from ray.rllib.utils.actors import keep_non_colocated
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
@@ -134,8 +134,7 @@ class DQNAgent(Agent):
             for i in range(self.config["num_workers"])]
 
         if self.config["force_evaluators_remote"]:
-            _, self.remote_evaluators = split_colocated(
-                self.remote_evaluators)
+            self.remote_evaluators = keep_non_colocated(self.remote_evaluators)
 
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer_config"]:

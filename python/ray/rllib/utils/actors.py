@@ -25,6 +25,13 @@ class TaskPool(object):
         return len(self._tasks)
 
 
+def keep_non_colocated(actors):
+    colocated, non_colocated = split_colocated(actors)
+    for a in colocated:
+        a.__ray_terminate__.remote(a._ray_actor_id.id())
+    return non_colocated
+
+
 def split_colocated(actors):
     localhost = os.uname()[1]
     hosts = ray.get([a.get_host.remote() for a in actors])
