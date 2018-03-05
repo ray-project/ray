@@ -84,7 +84,7 @@ void ClientTable::GetClientInformationSet(const vector<ClientID> &client_ids,
   }
 }
 
-void ClientTable::GetClientInformation(ClientID client_id,
+void ClientTable::GetClientInformation(const ClientID &client_id,
                                        SingleInfoCallback cb,
                                        FailCallback failcb){
   if (info_lookup.count(client_id) == 0){

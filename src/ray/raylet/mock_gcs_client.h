@@ -74,7 +74,7 @@ class ClientTable {
   void GetClientInformationSet(const std::vector<ClientID> &client_ids,
                                ManyInfoCallback cb,
                                FailCallback failcb);
-  void GetClientInformation(ClientID client_id,
+  void GetClientInformation(const ClientID &client_id,
                             SingleInfoCallback cb,
                             FailCallback failcb);
   ray::Status Add(const ClientID &client_id,
