@@ -291,7 +291,7 @@ class ClientTable : private Table<ClientID, ClientTableData> {
   /// Get a client's information from the cache.
   ///
   /// @param client The client to get information about.
-  const ClientInformation &GetClientInformation(ClientID client);
+  const ClientInformation &GetClientInformation(const ClientID &client);
 
  private:
   /// This client's ID.
