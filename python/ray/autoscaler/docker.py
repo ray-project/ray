@@ -13,6 +13,8 @@ def dockerize_if_needed(config):
     docker_image = config["docker"].get("image")
     cname = config["docker"].get("container_name")
     if not docker_image:
+        if cname:
+            print("Container name given but no Docker image - continuing...")
         return config
     else:
         assert cname, "Must provide container name!"

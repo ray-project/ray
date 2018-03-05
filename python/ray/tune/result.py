@@ -3,14 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
-import json
 import os
 
-try:
-    import yaml
-except ImportError:
-    print("Could not import YAML module, falling back to JSON pretty-printing")
-    yaml = None
 
 """
 When using ray.tune with custom training scripts, you must periodically report
@@ -91,18 +85,6 @@ TrainingResult = namedtuple("TrainingResult", [
     # (Auto=filled) The current hyperparameter configuration.
     "config",
 ])
-
-
-def pretty_print(result):
-    result = result._replace(config=None)  # drop config from pretty print
-    out = {}
-    for k, v in result._asdict().items():
-        if v is not None:
-            out[k] = v
-    if yaml:
-        return yaml.safe_dump(out, default_flow_style=False)
-    else:
-        return json.dumps(out) + "\n"
 
 
 TrainingResult.__new__.__defaults__ = (None,) * len(TrainingResult._fields)
