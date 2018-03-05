@@ -136,10 +136,20 @@ class DDPGCritic():
         ac_size = np.prod(ac_space.shape)
 
         # placeholder concatenating the obs and action
-        self.obs_and_action = tf.placeholder(tf.float32, [None, obs_size + ac_size])
-        self.critic_network = FullyConnectedNetwork(self.obs_and_action,
-                                                    1, self.config["critic_model"])
+        self.obs = tf.placeholder(tf.float32, [None, obs_size])
+        self.act = tf.placeholder(tf.float32, [None, ac_size])
+        self.obs_and_action = tf.concat([self.obs, self.act], 1)
+
+        with tf.variable_scope("critic"):
+            self.critic_network = FullyConnectedNetwork(self.obs_and_action,
+                                                        1, self.config["critic_model"])
         self.critic_eval = self.critic_network.outputs
+
+        self.obs_and_actor = tf.concat(self.obs, self.actor.model.outputs)
+
+        with tf.variable_scope("critic", reuse=True):
+            self.cn_for_loss = FullyConnectedNetwork(self.obs_and_actor,
+                                                        1, self.config["critic_model"])
 
     def _setup_gradients(self):
         self.grads = tf.gradients(self.critic_loss, self.var_list)
@@ -151,7 +161,8 @@ class DDPGCritic():
         # take samples, concatenate state/action here
         print (samples)
         feed_dict = {
-            self.obs_and_action: None, # TODO: some processing of samples
+            self.obs: None, # TODO: some processing of samples
+            self.act: None,
             # why not just tf.concat(obs, action)
             # advantages?
         }
