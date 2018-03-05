@@ -12,7 +12,7 @@ from ray.tune.result import TrainingResult
 # add more stuff to config as necessary
 DEFAULT_CONFIG = {
     "actor_model": {},
-    "batch_size": 512,
+    "batch_size": 256,
     "buffer_size": 1000000,
     "critic_model": {},
     "env_config": {},
@@ -22,7 +22,7 @@ DEFAULT_CONFIG = {
     "actor_lr": 0.0001,
     "critic_lr": 0.001,
     #"model": {},
-    "num_workers": 4,
+    "num_workers": 1,
     # Arguments to pass to the rllib optimizer
     "optimizer": {
         # Number of gradients applied for each `train` step

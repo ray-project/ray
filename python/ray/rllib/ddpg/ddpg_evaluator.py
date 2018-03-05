@@ -42,19 +42,16 @@ class DDPGEvaluator(Evaluator):
         samples = process_rollout(
                     rollout, NoFilter(),
                     gamma=self.config["gamma"], use_gae=False)
-        # either do what DQN did, and manually step without using the sampler,
-        # or construct new_obs directly from obs
 
         # Add samples to replay buffer.
-        print (samples)
-        #for s in samples:
-        #for row in samples.rows():
-        #    self.replay_buffer.add(
-        #        row["obs"], row["actions"], row["rewards"], row["new_obs"],
-        #        row["dones"])
+        for row in samples.rows():
+            print (row)
+            self.replay_buffer.add(row["observations"],
+                                    row["actions"], row["rewards"],
+                                    row["new_obs"], row['terminal'])
 
-        if no_replay:
-            return SampleBatch.concat_samples(samples)
+        #if no_replay:
+        #    return SampleBatch.concat_samples(samples)
 
         # Then return a batch sampled from the buffer; copied from DQN
         obses_t, actions, rewards, obses_tp1, dones = \
@@ -62,8 +59,11 @@ class DDPGEvaluator(Evaluator):
         batch = SampleBatch({
             "obs": obses_t, "actions": actions, "rewards": rewards,
             "new_obs": obses_tp1, "dones": dones,
-            "weights": np.ones_like(rewards)})
+            })
         return batch
+
+    #def update_target(self):
+    #    self.dqn_graph.update_target(self.sess)
 
     def compute_gradients(self, samples):
         """ Returns gradient w.r.t. samples."""

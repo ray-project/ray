@@ -20,7 +20,7 @@ class PartialRollout(object):
         last_r (float): Value of next state. Used for bootstrapping.
     """
 
-    fields = ["observations", "actions", "rewards", "terminal", "features"]
+    fields = ["observations", "actions", "rewards", "new_obs", "terminal", "features"]
 
     def __init__(self, extra_fields=None):
         """Initializers internals. Maintains a `last_r` field
@@ -237,6 +237,7 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                         rewards=reward,
                         terminal=terminal,
                         features=last_features,
+                        new_obs=observation,
                         **pi_info)
 
             last_observation = observation

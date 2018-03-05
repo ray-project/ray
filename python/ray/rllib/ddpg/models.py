@@ -7,6 +7,7 @@ import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 
+import numpy as np
 import tensorflow as tf
 
 class DDPGModel():
@@ -21,24 +22,102 @@ class DDPGModel():
         self.registry = registry
         self.config = config
 
-        self.critic = DDPGCritic(self.registry, self.env, self.config)
-        self.actor = DDPGActor(self.registry, self.env, self.config, self.critic.critic_eval)
+        # set up actor network
+        with tf.variable_scope("actor"):
+            self._setup_actor_network(env.observation_space, env.action_space)
+
+        # setting up critic
+        with tf.variable_scope("critic"):
+            self._setup_critic_network(env.observation_space, env.action_space)
+            self._setup_critic_loss(env.action_space)
+            self.critic_var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                  tf.get_variable_scope().name)
+
+        # setting up actor
+        with tf.variable_scope("actor"):
+            self._setup_actor_loss()
+            self.actor_var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+            #TODO: Possibly need to fix, make sure you only update variables relevant to actor?
 
         # TODO: create target networks, maybe just copy variables
+        with tf.variable_scope("target_critic"):
+            pass
+
+        with tf.variable_scope("target_actor"):
+            pass
         #self.target_actor = deepcopy(self.actor)
         #self.target_critic = deepcopy(self.critic)
-
         #self._setup_target_updates()
+
         self.initialize()
 
-        self.critic_vars = ray.experimental.TensorFlowVariables(self.critic.critic_loss, self.sess)
-        self.actor_vars = ray.experimental.TensorFlowVariables(self.actor.actor_loss, self.sess)
+        self.critic_vars = ray.experimental.TensorFlowVariables(self.critic_loss, self.sess)
+        self.actor_vars = ray.experimental.TensorFlowVariables(self.actor_loss, self.sess)
         self.setup_gradients()
+
+    def _setup_critic_loss(self, action_space):
+        # y_i = r_i + gamma * Q'(si+1, mu'(si+1))
+        # shouldn't be running anything here
+
+        # what the target Q network gives us
+        self.target_Q = tf.placeholder(tf.float32, [None], name="target_q")
+
+        # compare critic eval to critic_target (squared loss)
+        self.reward = tf.placeholder(tf.float32, [None], name="reward")
+        self.critic_target = self.reward + self.config['gamma'] * self.target_Q
+        self.critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.critic_eval))
+
+    def _setup_critic_network(self, obs_space, ac_space):
+        """Sets up Q network."""
+
+        # In DDPG Paper, actions are not
+        # utilized until the second hidden layer
+        #self.critic_model = ModelCatalog.get_model(
+        #                self.registry, self.x, 1,
+        #                options=self.config["critic_model"])
+
+        # Fix later; apparently tf.reduce_prod wasn't working
+        obs_size = np.prod(obs_space.shape)
+        ac_size = np.prod(ac_space.shape)
+
+        # placeholder concatenating the obs and action
+        self.obs = tf.placeholder(tf.float32, [None, obs_size])
+        self.act = tf.placeholder(tf.float32, [None, ac_size])
+        self.obs_and_action = tf.concat([self.obs, self.act], 1)
+
+        with tf.variable_scope("critic"):
+            self.critic_network = FullyConnectedNetwork(self.obs_and_action,
+                                                        1, self.config["critic_model"])
+        self.critic_eval = self.critic_network.outputs
+        self.obs_and_actor = tf.concat([self.obs, self.output_action], 1) #output_action is output of actor network
+
+        # will this share weights between the two copies of critic?
+        with tf.variable_scope("critic", reuse=True):
+            self.cn_for_loss = FullyConnectedNetwork(self.obs_and_actor,
+                                                        1, self.config["critic_model"])
+
+    def _setup_actor_network(self, ob_space, ac_space):
+        self.x = tf.placeholder(tf.float32, shape=[None]+list(ob_space.shape))
+        dist_class, self.action_dim = ModelCatalog.get_action_dist(ac_space,
+                                     dist_type = 'deterministic')
+        # 1 means one output
+        self.actor_network = ModelCatalog.get_model(
+                        self.registry, self.x, 1, #self.action_dim?
+                        options=self.config["actor_model"])
+        self.output_action = self.actor_network.outputs
+        #self.dist = dist_class(self.actor_network.outputs) # deterministic
+        #self.output_action = self.dist.sample()
+
+    def _setup_actor_loss(self):
+        # takes in output of the critic
+        #self.critic_Q = tf.placeholder(tf.float32, [None], name="critic_Q")
+        self.actor_loss = -tf.reduce_mean(self.critic_eval)
 
     def initialize(self):
         self.sess = tf.Session()
+        self.actor_variables = ray.experimental.TensorFlowVariables(self.output_action, self.sess)
         self.variables = ray.experimental.TensorFlowVariables(
-                            tf.group(self.critic.critic_loss, self.actor.actor_loss), self.sess)
+                            tf.group(self.critic_loss, self.actor_loss), self.sess)
         self.sess.run(tf.global_variables_initializer())
 
     def _setup_target_updates(self):
@@ -64,18 +143,36 @@ class DDPGModel():
 
     def setup_gradients(self):
         # setup critic gradients
-        self.critic._setup_gradients()
+        self.critic_grads = tf.gradients(self.critic_loss, self.critic_var_list)
+        c_grads_and_vars = list(zip(self.critic_grads, self.critic_var_list))
+        c_opt = tf.train.AdamOptimizer(self.config["critic_lr"])
+        self._apply_c_gradients = c_opt.apply_gradients(c_grads_and_vars)
+
         # setup actor gradients
-        self.actor._setup_gradients()
+        self.actor_grads = tf.gradients(self.actor_loss, self.actor_var_list)
+        a_grads_and_vars = list(zip(self.actor_grads, self.actor_var_list))
+        a_opt = tf.train.AdamOptimizer(self.config["actor_lr"])
+        self._apply_a_gradients = a_opt.apply_gradients(a_grads_and_vars)
 
     def compute_gradients(self, samples):
+        #TODO: Fix
+        print (samples)
         # critic gradients
-        critic_grads = self.critic.compute_gradients(samples, self.sess)
+        critic_feed_dict = {
+            self.obs: samples["obs"],
+            self.act: samples["actions"],
+            self.reward: samples["rewards"],
+            self.target_q: None, #TODO:
+        }
+        self.critic_grads = [g for g in self.critic_grads if g is not None]
+        critic_grad = self.sess.run(self.critic_grads, feed_dict=critic_feed_dict)
+        #critic_grads = self.critic.compute_gradients(samples, self.sess)
         # actor gradients
         actor_grads = self.actor.compute_gradients(samples, self.sess)
-        return critic_grads, actor_grads
+        return critic_grad, actor_grad
 
     def apply_gradients(self, grads):
+        #TODO: Fix
         """Applies gradients computed by compute_gradients."""
         critic_grads, actor_grads = grads
         self.critic.apply_gradients(critic_grads, self.sess)
@@ -92,8 +189,14 @@ class DDPGModel():
 
     def compute(self, ob):
         # returns action, given state; this method is needed for sampler
-        # calls the method in DDPGActor
-        return self.actor.act(ob, self.sess)[0], {}
+        flattened_ob = np.reshape(ob, [-1, np.prod(ob.shape)])
+        action = self.sess.run(self.output_action, {self.x: flattened_ob})
+        return action[0], {}
+
+
+
+
+"""Stuff below isn't used anymore."""
 
 class DDPGCritic():
     # Critic: tries to estimate Q(s,a)
@@ -101,12 +204,10 @@ class DDPGCritic():
         self.config = config
         self.registry = registry
         self.env = env
-        self.name = 'DDPGCritic'
-        optimizer = tf.train.AdamOptimizer(learning_rate=config["critic_lr"])
         with tf.variable_scope("critic"):
-            self._setup_network(env.observation_space, env.action_space)
+            self._setup_critic_network(env.observation_space, env.action_space)
         self._setup_critic_loss(env.action_space)
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+        self.critic_var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                                   tf.get_variable_scope().name)
 
     def _setup_critic_loss(self, action_space):
@@ -159,7 +260,7 @@ class DDPGCritic():
 
     def compute_gradients(self, samples):
         # take samples, concatenate state/action here
-        print (samples)
+        #print (samples)
         feed_dict = {
             self.obs: None, # TODO: some processing of samples
             self.act: None,
