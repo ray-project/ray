@@ -161,8 +161,8 @@ void ObjectTableSubscribed(gcs::AsyncGcsClient *client,
 void TestSubscribeAll(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
   // Subscribe to all object table notifications. The registered callback for
   // notifications will check whether the object below is added.
-  RAY_CHECK_OK(client.object_table().Subscribe(
-      job_id, ClientID::nil(), &Lookup, &ObjectTableSubscribed));
+  RAY_CHECK_OK(client.object_table().Subscribe(job_id, ClientID::nil(), &Lookup,
+                                               &ObjectTableSubscribed));
   // Run the event loop. The loop will only stop if the subscription succeeds.
   test->Start();
 
