@@ -176,19 +176,20 @@ class Trial(object):
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
                         stop_tasks, num_returns=2, timeout=250)
-
                 redis_client = ray.worker.global_worker.redis_client
                 actor_key = b"Actor:" + runner_actor_id
                 for sec in range(5):
                     time.sleep(sec)
                     print("Checking if Trial has released resources...")
-                    if not redis_client.hget(actor_key, "removed"):
+                    terminated = (
+                        redis_client.hget(actor_key, "removed") == '"1"')
+                    if not terminated:
                         if sec == 4:
                             print("Trial didn't release resources...")
                         else:
-                            print("Retrying in {} seconds")
+                            print("Retrying in {} seconds".format(sec))
                     else:
-                        print("Released!")
+                        print("Trial released resources!")
                         break
         except Exception:
             print("Error stopping runner:", traceback.format_exc())
