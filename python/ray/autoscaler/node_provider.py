@@ -2,6 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import yaml
+
 
 def import_aws():
     from ray.autoscaler.aws.config import bootstrap_aws
@@ -9,8 +12,23 @@ def import_aws():
     return bootstrap_aws, AWSNodeProvider
 
 
+def load_aws_config():
+    import ray.autoscaler.aws as ray_aws
+    return os.path.join(os.path.dirname(
+        ray_aws.__file__), "example-full.yaml")
+
+
 NODE_PROVIDERS = {
     "aws": import_aws,
+    "gce": None,  # TODO: support more node providers
+    "azure": None,
+    "kubernetes": None,
+    "docker": None,
+    "local_cluster": None,
+}
+
+DEFAULT_CONFIGS = {
+    "aws": load_aws_config,
     "gce": None,  # TODO: support more node providers
     "azure": None,
     "kubernetes": None,
@@ -26,6 +44,18 @@ def get_node_provider(provider_config, cluster_name):
             "Unsupported node provider: {}".format(provider_config["type"]))
     _, provider_cls = importer()
     return provider_cls(provider_config, cluster_name)
+
+
+def get_default_config(provider_config):
+    load_config = DEFAULT_CONFIGS.get(provider_config["type"])
+    if load_config is None:
+        raise NotImplementedError(
+            "Unsupported node provider: {}".format(provider_config["type"]))
+    path_to_default = load_config()
+    with open(path_to_default) as f:
+        defaults = yaml.load(f)
+
+    return defaults
 
 
 class NodeProvider(object):
