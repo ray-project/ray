@@ -28,14 +28,14 @@ void init_pickle_module(void) {
 #else
   pickle_module = PyImport_ImportModuleNoBlock("cPickle");
 #endif
-  CHECK(pickle_module != NULL);
-  CHECK(PyObject_HasAttrString(pickle_module, "loads"));
-  CHECK(PyObject_HasAttrString(pickle_module, "dumps"));
-  CHECK(PyObject_HasAttrString(pickle_module, "HIGHEST_PROTOCOL"));
+  RAY_CHECK(pickle_module != NULL);
+  RAY_CHECK(PyObject_HasAttrString(pickle_module, "loads"));
+  RAY_CHECK(PyObject_HasAttrString(pickle_module, "dumps"));
+  RAY_CHECK(PyObject_HasAttrString(pickle_module, "HIGHEST_PROTOCOL"));
   pickle_loads = PyUnicode_FromString("loads");
   pickle_dumps = PyUnicode_FromString("dumps");
   pickle_protocol = PyObject_GetAttrString(pickle_module, "HIGHEST_PROTOCOL");
-  CHECK(pickle_protocol != NULL);
+  RAY_CHECK(pickle_protocol != NULL);
 }
 
 TaskBuilder *g_task_builder = NULL;
@@ -449,8 +449,8 @@ static PyObject *PyTask_arguments(PyObject *self) {
       assert(count == 1);
       PyList_SetItem(arg_list, i, PyObjectID_make(TaskSpec_arg_id(task, i, 0)));
     } else {
-      CHECK(pickle_module != NULL);
-      CHECK(pickle_loads != NULL);
+      RAY_CHECK(pickle_module != NULL);
+      RAY_CHECK(pickle_loads != NULL);
       PyObject *str =
           PyBytes_FromStringAndSize((char *) TaskSpec_arg_val(task, i),
                                     (Py_ssize_t) TaskSpec_arg_length(task, i));

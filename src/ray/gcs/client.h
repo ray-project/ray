@@ -7,6 +7,7 @@
 #include "plasma/events.h"
 #include "ray/id.h"
 #include "ray/status.h"
+#include "ray/gcs/asio.h"
 #include "ray/gcs/tables.h"
 #include "ray/util/logging.h"
 
@@ -22,7 +23,12 @@ class RAY_EXPORT AsyncGcsClient {
   ~AsyncGcsClient();
 
   Status Connect(const std::string &address, int port);
+  /// Attach this client to a plasma event loop. Note that only
+  /// one event loop should be attached at a time.
   Status Attach(plasma::EventLoop &event_loop);
+  /// Attach this client to an asio event loop. Note that only
+  /// one event loop should be attached at a time.
+  Status Attach(boost::asio::io_service &io_service);
 
   inline FunctionTable &function_table();
   // TODO: Some API for getting the error on the driver
@@ -51,6 +57,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<TaskTable> task_table_;
   std::shared_ptr<RedisContext> context_;
+  std::unique_ptr<RedisAsioClient> asio_client_;
 };
 
 class SyncGcsClient {

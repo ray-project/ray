@@ -9,29 +9,29 @@ Quick start
 First, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials``,
 as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/configuration.html>`__.
 
-Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example.yaml>`__ cluster config file will create a small cluster with a m4.large head node (on-demand), and two m4.large `spot workers <https://aws.amazon.com/ec2/spot/>`__, configured to autoscale up to four m4.large workers.
+Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with a m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
 
 Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node to run Ray programs with ``ray.init(redis_address=ray.services.get_node_ip_address() + ":6379")``.
+SSH into the head node, ``source activate tensorflow_p36``, and then run Ray programs with ``ray.init(redis_address=ray.services.get_node_ip_address() + ":6379")``.
 
 .. code-block:: bash
 
     # Create or update the cluster. When the command finishes, it will print
     # out the command that can be used to SSH into the cluster head node.
-    $ ray create_or_update ray/python/ray/autoscaler/aws/example.yaml
+    $ ray create_or_update ray/python/ray/autoscaler/aws/example-full.yaml
 
     # Reconfigure autoscaling behavior without interrupting running jobs
-    $ ray create_or_update ray/python/ray/autoscaler/aws/example.yaml \
+    $ ray create_or_update ray/python/ray/autoscaler/aws/example-full.yaml \
         --max-workers=N --no-restart
 
     # Teardown the cluster
-    $ ray teardown ray/python/ray/autoscaler/aws/example.yaml
+    $ ray teardown ray/python/ray/autoscaler/aws/example-full.yaml
 
 To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can forward the port to your local machine using SSH:
 
 .. code-block:: bash
 
-    $ ssh -L 8899:localhost:8899 -i <key> <user>@<addr> jupyter notebook --port=8899
+    $ ssh -L 8899:localhost:8899 -i <key> <user>@<addr> 'source ~/anaconda3/bin/activate tensorflow_p36 && jupyter notebook --port=8899'
 
 Updating your cluster
 ---------------------
@@ -57,7 +57,7 @@ The default idle timeout is 5 minutes. This is to prevent excessive node churn w
 Monitoring cluster status
 -------------------------
 
-You can monitor cluster usage and auto-scaling status by tailing the autoscaling logs in ``/tmp/raylogs/monitor-*.log``.
+You can monitor cluster usage and auto-scaling status by tailing the autoscaling logs in ``/tmp/raylogs/monitor-*``.
 
 The Ray autoscaler also reports per-node status in the form of instance tags. In the AWS console, you can click on a Node, go the the "Tags" pane, and add the ``ray:NodeStatus`` tag as a column. This lets you see per-node statuses at a glance:
 
@@ -66,9 +66,13 @@ The Ray autoscaler also reports per-node status in the form of instance tags. In
 Customizing cluster setup
 -------------------------
 
-You are encouraged to copy the example YAML file and modify it to your needs. This may include adding additional setup commands to install libraries or sync local data files. After you have customized the nodes, it is also a good idea to create a new machine image (AMI) and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
+You are encouraged to copy the example YAML file and modify it to your needs. This may include adding additional setup commands to install libraries or sync local data files.
+
+.. note:: After you have customized the nodes, it is also a good idea to create a new machine image (AMI) and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
 
 The setup commands you use should ideally be *idempotent*, that is, can be run more than once. This allows Ray to update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
+
+Most of the example YAML file is optional. Here is a `reference minimal YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-minimal.yaml>`__, and you can find the defaults for `optional fields in this YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__.
 
 Syncing git branches
 --------------------
@@ -94,7 +98,7 @@ This tells ``ray create_or_update`` to sync the current git branch SHA from your
 Common cluster configurations
 -----------------------------
 
-The ``example.yaml`` configuration is enough to get started with Ray, but for more compute intensive workloads you will want to change the instance types to e.g. use GPU or larger compute instance by editing the yaml file. Here are a few common configurations:
+The ``example-full.yaml`` configuration is enough to get started with Ray, but for more compute intensive workloads you will want to change the instance types to e.g. use GPU or larger compute instance by editing the yaml file. Here are a few common configurations:
 
 **GPU single node**: use Ray on a single large GPU instance.
 
@@ -105,7 +109,7 @@ The ``example.yaml`` configuration is enough to get started with Ray, but for mo
         InstanceType: p2.8xlarge
 
 **Docker**: Specify docker image. This executes all commands on all nodes in the docker container,
-and opens all the necessary ports to support the Ray cluster.
+and opens all the necessary ports to support the Ray cluster. This currently does not have GPU support.
 
 .. code-block:: yaml
 

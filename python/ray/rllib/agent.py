@@ -231,6 +231,9 @@ def get_agent_class(alg):
     elif alg == "DQN":
         from ray.rllib import dqn
         return dqn.DQNAgent
+    elif alg == "APEX":
+        from ray.rllib import dqn
+        return dqn.ApexAgent
     elif alg == "A3C":
         from ray.rllib import a3c
         return a3c.A3CAgent

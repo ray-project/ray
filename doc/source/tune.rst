@@ -73,7 +73,7 @@ This script runs a small grid search over the ``my_func`` function using Ray Tun
      - my_func_4_alpha=0.4,beta=2:	RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - my_func_5_alpha=0.6,beta=2:	TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be saved to local disk and optionally uploaded to the specified ``upload_dir`` (e.g. S3 path).
+In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster and optionally uploaded to the specified ``upload_dir`` (e.g. S3 path).
 
 Visualizing Results
 -------------------
@@ -146,8 +146,6 @@ To reduce costs, long-running trials can often be early stopped if their initial
 
 An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
 
-Note that some trial schedulers such as HyperBand and PBT require your Trainable to support checkpointing, which is described in the next section. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
-
 ::
 
     == Status ==
@@ -180,10 +178,15 @@ Note that some trial schedulers such as HyperBand and PBT require your Trainable
      - my_class_31_height=40,width=10:	RUNNING
      - my_class_53_height=28,width=96:	RUNNING
 
+Ray Tune also implements an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__, providing better parallelism and avoids straggler issues during eliminations. An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__. We recommend using this over the vanilla HyperBand scheduler.
+
+.. note:: Some trial schedulers such as HyperBand and PBT require your Trainable to support checkpointing, which is described in the next section. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
+
 Currently we support the following early stopping algorithms, or you can write your own that implements the `TrialScheduler <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_scheduler.py>`__ interface.
 
 .. autoclass:: ray.tune.median_stopping_rule.MedianStoppingRule
 .. autoclass:: ray.tune.hyperband.HyperBandScheduler
+.. autoclass:: ray.tune.async_hyperband.AsyncHyperBandScheduler
 
 Population Based Training
 -------------------------
@@ -198,6 +201,29 @@ Trial Checkpointing
 -------------------
 
 To enable checkpoint / resume, you must subclass ``Trainable`` and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand and PBT.
+
+For TensorFlow model training, this would look something like this `(full tensorflow example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
+
+.. code-block:: python
+
+    class MyClass(Trainable):
+        def _setup(self):
+            self.saver = tf.train.Saver()
+            self.sess = ...
+            self.iteration = 0
+
+        def _train(self):
+            self.sess.run(...)
+            self.iteration += 1
+
+        def _save(self, checkpoint_dir):
+            return self.saver.save(
+                self.sess, checkpoint_dir + "/save",
+                global_step=self.iteration)
+
+        def _restore(self, path):
+            return self.saver.restore(self.sess, path)
+
 
 Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq: N`` and ``max_failures: M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
 

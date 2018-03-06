@@ -5,16 +5,21 @@ set -x
 # Cause the script to exit if a single command fails.
 set -e
 
-TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)/../
 
 CATAPULT_COMMIT=18cd334755701cf0c3b90b7172126c686d2eb787
-CATAPULT_HOME=$TP_DIR/catapult
+CATAPULT_HOME=$TP_DIR/pkg/catapult
 VULCANIZE_BIN=$CATAPULT_HOME/tracing/bin/vulcanize_trace_viewer
 
-CATAPULT_FILES=$TP_DIR/../../python/ray/core/src/catapult_files
+CATAPULT_FILES=$TP_DIR/../python/ray/core/src/catapult_files
 
 # This is where we will copy the files that need to be packaged with the wheels.
 mkdir -p $CATAPULT_FILES
+
+if [[ "$INCLUDE_UI" == "0" ]]; then
+  # Let installation continue without building the UI.
+  exit 0
+fi
 
 if ! type python2 > /dev/null; then
   echo "cannot properly set up UI without a python2 executable"

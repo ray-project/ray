@@ -50,6 +50,7 @@ class RedisContext {
                   uint8_t *data,
                   int64_t length,
                   int64_t callback_index);
+  redisAsyncContext *async_context() { return async_context_; }
 
  private:
   redisContext *context_;

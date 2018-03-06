@@ -80,7 +80,7 @@ def make_parser(**kwargs):
         "many times. Only applies if checkpointing is enabled.")
     parser.add_argument(
         "--scheduler", default="FIFO", type=str,
-        help="FIFO (default), MedianStopping, or HyperBand.")
+        help="FIFO (default), MedianStopping, AsyncHyperBand, or HyperBand.")
     parser.add_argument(
         "--scheduler-config", default="{}", type=json.loads,
         help="Config options to pass to the scheduler.")

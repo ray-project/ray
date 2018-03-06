@@ -9,6 +9,10 @@ from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas.compat import lzip
+from pandas.core.dtypes.common import (
+    is_bool_dtype,
+    is_numeric_dtype,
+    is_timedelta64_dtype)
 
 import warnings
 import numpy as np
@@ -31,22 +35,29 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
-        self._lengths = [_deploy_func.remote(_get_lengths, d)
-                         for d in self._df]
         self.columns = columns
 
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
-        self._index = self._default_index()
+        self._lengths, self._index = _compute_length_and_index.remote(self._df)
 
         if index is not None:
             self.index = index
 
     def __str__(self):
-        return "ray.DataFrame object"
+        return repr(self)
 
     def __repr__(self):
-        return "ray.DataFrame object"
+        if sum(self._lengths) < 40:
+            result = repr(to_pandas(self))
+            return result
+
+        head = repr(to_pandas(self.head(20)))
+        tail = repr(to_pandas(self.tail(20)))
+
+        result = head + "\n...\n" + tail
+
+        return result
 
     def _get_index(self):
         """Get the index for this DataFrame.
@@ -64,21 +75,33 @@ class DataFrame(object):
         """
         self._index.index = new_index
 
-    def _default_index(self):
-        """Create a default index, which is a RangeIndex
+    index = property(_get_index, _set_index)
+
+    def _get__index(self):
+        """Get the _index for this DataFrame.
 
         Returns:
-            The pd.RangeIndex object that represents this DataFrame.
+            The default index.
         """
-        dest_indices = {"partition":
-                        [i for i in range(len(self._lengths))
-                         for j in range(self._lengths[i])],
-                        "index_within_partition":
-                        [j for i in range(len(self._lengths))
-                         for j in range(self._lengths[i])]}
-        return pd.DataFrame(dest_indices)
+        if isinstance(self._index_cache, ray.local_scheduler.ObjectID):
+            self._index_cache = ray.get(self._index_cache)
+        return self._index_cache
 
-    index = property(_get_index, _set_index)
+    def _set__index(self, new__index):
+        """Set the _index for this DataFrame.
+
+        Args:
+            new__index: The new default index to set.
+        """
+        self._index_cache = new__index
+
+    _index = property(_get__index, _set__index)
+
+    def _compute_lengths(self):
+        """Updates the stored lengths of DataFrame partions
+        """
+        self._lengths = [_deploy_func.remote(_get_lengths, d)
+                         for d in self._df]
 
     def _get_lengths(self):
         """Gets the lengths for each partition and caches it if it wasn't.
@@ -86,7 +109,11 @@ class DataFrame(object):
         Returns:
             A list of integers representing the length of each partition.
         """
-        if isinstance(self._length_cache[0], ray.local_scheduler.ObjectID):
+        if isinstance(self._length_cache, ray.local_scheduler.ObjectID):
+            self._length_cache = ray.get(self._length_cache)
+        elif isinstance(self._length_cache, list) and \
+                isinstance(self._length_cache[0],
+                           ray.local_scheduler.ObjectID):
             self._length_cache = ray.get(self._length_cache)
         return self._length_cache
 
@@ -199,6 +226,20 @@ class DataFrame(object):
             index = self.index
 
         return DataFrame(new_df, self.columns, index=index)
+
+    def _update_inplace(self, df=None, columns=None, index=None):
+        """Updates the current DataFrame inplace
+        """
+        assert(len(df) > 0)
+
+        if df:
+            self._df = df
+        if columns:
+            self.columns = columns
+        if index:
+            self.index = index
+
+        self._lengths, self._index = _compute_length_and_index.remote(self._df)
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -373,15 +414,28 @@ class DataFrame(object):
         temp_index = [idx
                       for _ in range(len(self._df))
                       for idx in self.columns]
-
         temp_columns = self.index
         local_transpose = self._map_partitions(
             lambda df: df.transpose(*args, **kwargs), index=temp_index)
         local_transpose.columns = temp_columns
 
         # Sum will collapse the NAs from the groupby
-        return local_transpose.reduce_by_index(
+        df = local_transpose.reduce_by_index(
             lambda df: df.apply(lambda x: x), axis=1)
+
+        # Reassign the columns within partition to self.index.
+        # We have to use _depoly_func instead of _map_partition due to
+        #    new_labels argument
+        def _reassign_columns(df, new_labels):
+            df.columns = new_labels
+            return df
+        df._df = [
+            _deploy_func.remote(
+                _reassign_columns,
+                part,
+                self.index) for part in df._df]
+
+        return df
 
     T = property(transpose)
 
@@ -408,18 +462,26 @@ class DataFrame(object):
             raise ValueError("<how> not correctly set.")
 
     def add(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def agg(self, func, axis=0, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def aggregate(self, func, axis=0, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def align(self, other, join='outer', axis=None, level=None, copy=True,
               fill_value=None, method=None, limit=None, fill_axis=0,
               broadcast_axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def all(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
@@ -464,40 +526,62 @@ class DataFrame(object):
         return to_pandas(mapped)
 
     def append(self, other, ignore_index=False, verify_integrity=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def apply(self, func, axis=0, broadcast=False, raw=False, reduce=None,
               args=(), **kwds):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def as_blocks(self, copy=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def as_matrix(self, columns=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def asfreq(self, freq, method=None, how=None, normalize=False,
                fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def asof(self, where, subset=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def assign(self, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def astype(self, dtype, copy=True, errors='raise', **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def at_time(self, time, asof=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def between_time(self, start_time, end_time, include_start=True,
                      include_end=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def bool(self):
         """Return the bool of a single element PandasObject.
@@ -519,39 +603,61 @@ class DataFrame(object):
     def boxplot(self, column=None, by=None, ax=None, fontsize=None, rot=0,
                 grid=True, figsize=None, layout=None, return_type=None,
                 **kwds):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def clip(self, lower=None, upper=None, axis=None, inplace=False, *args,
              **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def clip_lower(self, threshold, axis=None, inplace=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def clip_upper(self, threshold, axis=None, inplace=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def combine(self, other, func, fill_value=None, overwrite=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def combine_first(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def compound(self, axis=None, skipna=None, level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def consolidate(self, inplace=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def convert_objects(self, convert_dates=True, convert_numeric=False,
                         convert_timedeltas=True, copy=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def corr(self, method='pearson', min_periods=1):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def corrwith(self, other, axis=0, drop=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def count(self, axis=0, level=None, numeric_only=False):
         if axis == 1:
@@ -563,106 +669,198 @@ class DataFrame(object):
                           for _ in range(len(self._df))
                           for idx in self.columns]
 
-            return sum(ray.get(self._map_partitions(lambda df: df.count(
-                axis=axis, level=level, numeric_only=numeric_only
-            ), index=temp_index)._df))
+            collapsed_df = sum(
+                ray.get(
+                    self._map_partitions(
+                        lambda df: df.count(
+                            axis=axis,
+                            level=level,
+                            numeric_only=numeric_only),
+                        index=temp_index)._df))
+            return collapsed_df
 
     def cov(self, min_periods=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def cummax(self, axis=None, skipna=True, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def cummin(self, axis=None, skipna=True, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def cumprod(self, axis=None, skipna=True, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def cumsum(self, axis=None, skipna=True, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def describe(self, percentiles=None, include=None, exclude=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def diff(self, periods=1, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def div(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def divide(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def dot(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def drop(self, labels=None, axis=0, index=None, columns=None, level=None,
              inplace=False, errors='raise'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def drop_duplicates(self, subset=None, keep='first', inplace=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def duplicated(self, subset=None, keep='first'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def eq(self, other, axis='columns', level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def equals(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        """
+        Checks if other DataFrame is elementwise equal to the current one
+
+        Returns:
+            Boolean: True if equal, otherwise False
+        """
+        def helper(df, index, other_series):
+            return df.iloc[index['index_within_partition']] \
+                        .equals(other_series)
+
+        results = []
+        other_partition = None
+        other_df = None
+        for i, idx in other._index.iterrows():
+            if idx['partition'] != other_partition:
+                other_df = ray.get(other._df[idx['partition']])
+                other_partition = idx['partition']
+            # TODO: group series here into full df partitions to reduce
+            # the number of remote calls to helper
+            other_series = other_df.iloc[idx['index_within_partition']]
+            curr_index = self._index.iloc[i]
+            curr_df = self._df[int(curr_index['partition'])]
+            results.append(_deploy_func.remote(helper,
+                                               curr_df,
+                                               curr_index,
+                                               other_series))
+
+        for r in results:
+            if not ray.get(r):
+                return False
+        return True
 
     def eval(self, expr, inplace=False, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def ewm(self, com=None, span=None, halflife=None, alpha=None,
             min_periods=0, freq=None, adjust=True, ignore_na=False, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def expanding(self, min_periods=1, freq=None, center=False, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def ffill(self, axis=None, inplace=False, limit=None, downcast=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def fillna(self, value=None, method=None, axis=None, inplace=False,
                limit=None, downcast=None, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def filter(self, items=None, like=None, regex=None, axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def first(self, offset):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def first_valid_index(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     @classmethod
     def from_csv(self, path, header=0, sep=', ', index_col=0,
                  parse_dates=True, encoding=None, tupleize_cols=None,
                  infer_datetime_format=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     @classmethod
     def from_dict(self, data, orient='columns', dtype=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     @classmethod
     def from_items(self, items, columns=None, orient='columns'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     @classmethod
     def from_records(self, data, index=None, exclude=None, columns=None,
                      coerce_float=False, nrows=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def ge(self, other, axis='columns', level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def get(self, key, default=None):
         """Get item from object for given key (DataFrame column, Panel
@@ -704,13 +902,19 @@ class DataFrame(object):
         )
 
     def get_value(self, index, col, takeable=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def get_values(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def gt(self, other, axis='columns', level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def head(self, n=5):
         """Get the first n rows of the dataframe.
@@ -748,7 +952,9 @@ class DataFrame(object):
     def hist(self, data, column=None, by=None, grid=True, xlabelsize=None,
              xrot=None, ylabelsize=None, yrot=None, ax=None, sharex=False,
              sharey=False, figsize=None, layout=None, bins=10, **kwds):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def idxmax(self, axis=0, skipna=True):
         """Get the index of the first occurrence of the max value of the axis.
@@ -793,11 +999,15 @@ class DataFrame(object):
             return self.T.idxmin(axis=1, skipna=skipna)
 
     def infer_objects(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def info(self, verbose=None, buf=None, max_cols=None, memory_usage=None,
              null_counts=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def insert(self, loc, column, value, allow_duplicates=False):
         """Insert column into DataFrame at specified location.
@@ -849,7 +1059,9 @@ class DataFrame(object):
 
     def interpolate(self, method='linear', axis=0, limit=None, inplace=False,
                     limit_direction='forward', downcast=None, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def iterrows(self):
         """Iterate over DataFrame rows as (index, Series) pairs.
@@ -865,7 +1077,9 @@ class DataFrame(object):
         iters = ray.get([
             _deploy_func.remote(
                 lambda df: list(df.iterrows()), part) for part in self._df])
-        return itertools.chain.from_iterable(iters)
+        iters = itertools.chain.from_iterable(iters)
+        series = map(lambda idx_series_tuple: idx_series_tuple[1], iters)
+        return zip(self.index, series)
 
     def items(self):
         """Iterator over (column name, Series) pairs.
@@ -884,6 +1098,7 @@ class DataFrame(object):
         def concat_iters(iterables):
             for partitions in zip(*iterables):
                 series = pd.concat([_series for _, _series in partitions])
+                series.index = self.index
                 yield (series.name, series)
 
         return concat_iters(iters)
@@ -919,41 +1134,74 @@ class DataFrame(object):
             _deploy_func.remote(
                 lambda df: list(df.itertuples(index=index, name=name)),
                 part) for part in self._df])
-        return itertools.chain.from_iterable(iters)
+        iters = itertools.chain.from_iterable(iters)
+
+        def _replace_index(row_tuple, idx):
+            # We need to use try-except here because
+            # isinstance(row_tuple, namedtuple) won't work.
+            try:
+                row_tuple = row_tuple._replace(Index=idx)
+            except AttributeError:  # Tuple not namedtuple
+                row_tuple = (idx,) + row_tuple[1:]
+            return row_tuple
+
+        if index:
+            iters = itertools.starmap(_replace_index, zip(iters, self.index))
+        return iters
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def kurt(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def kurtosis(self, axis=None, skipna=None, level=None, numeric_only=None,
                  **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def last(self, offset):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def last_valid_index(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def le(self, other, axis='columns', level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def lookup(self, row_labels, col_labels):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def lt(self, other, axis='columns', level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def mad(self, axis=None, skipna=None, level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def mask(self, cond, other=np.nan, inplace=False, axis=None, level=None,
              errors='raise', try_cast=False, raise_on_error=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def max(self, axis=None, skipna=None, level=None, numeric_only=None,
             **kwargs):
@@ -976,24 +1224,34 @@ class DataFrame(object):
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
                **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def melt(self, id_vars=None, value_vars=None, var_name=None,
              value_name='value', col_level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def memory_usage(self, index=True, deep=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def merge(self, right, how='inner', on=None, left_on=None, right_on=None,
               left_index=False, right_index=False, sort=False,
               suffixes=('_x', '_y'), copy=True, indicator=False,
               validate=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def min(self, axis=None, skipna=None, level=None, numeric_only=None,
             **kwargs):
@@ -1015,22 +1273,34 @@ class DataFrame(object):
                               numeric_only=numeric_only, **kwargs)
 
     def mod(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def mode(self, axis=0, numeric_only=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def mul(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def multiply(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def ne(self, other, axis='columns', level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def nlargest(self, n, columns, keep='first'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def notna(self):
         """Perform notna across the DataFrame.
@@ -1057,25 +1327,37 @@ class DataFrame(object):
         return self._map_partitions(lambda df: df.notnull())
 
     def nsmallest(self, n, columns, keep='first'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def nunique(self, axis=0, dropna=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def pct_change(self, periods=1, fill_method='pad', limit=None, freq=None,
                    **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def pipe(self, func, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def pivot(self, index=None, columns=None, values=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def pivot_table(self, values=None, index=None, columns=None,
                     aggfunc='mean', fill_value=None, margins=False,
                     dropna=True, margins_name='All'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def plot(self, x=None, y=None, kind='line', ax=None, subplots=False,
              sharex=None, sharey=False, layout=None, figsize=None,
@@ -1084,7 +1366,9 @@ class DataFrame(object):
              xlim=None, ylim=None, rot=None, fontsize=None, colormap=None,
              table=False, yerr=None, xerr=None, secondary_y=False,
              sort_columns=False, **kwds):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def pop(self, item):
         """Pops an item from this DataFrame and returns it.
@@ -1096,73 +1380,112 @@ class DataFrame(object):
             A Series containing the popped values. Also modifies this
             DataFrame.
         """
-
         popped = to_pandas(self._map_partitions(
             lambda df: df.pop(item)))
         self._df = self._map_partitions(lambda df: df.drop([item], axis=1))._df
-        self.columns = [col for col in self.columns if col != item]
-
+        self.columns = self.columns.drop(item)
         return popped
 
     def pow(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
              min_count=0, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def product(self, axis=None, skipna=None, level=None, numeric_only=None,
                 min_count=0, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def quantile(self, q=0.5, axis=0, numeric_only=True,
                  interpolation='linear'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def query(self, expr, inplace=False, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Queries the Dataframe with a boolean expression
+
+        Returns:
+            A new DataFrame if inplace=False
+        """
+        new_dfs = [_deploy_func.remote(lambda df: df.query(expr, **kwargs),
+                                       part) for part in self._df]
+
+        if inplace:
+            self._update_inplace(new_dfs)
+        else:
+            return DataFrame(new_dfs, self.columns)
 
     def radd(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rank(self, axis=0, method='average', numeric_only=None,
              na_option='keep', ascending=True, pct=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rdiv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def reindex(self, labels=None, index=None, columns=None, axis=None,
                 method=None, copy=True, level=None, fill_value=np.nan,
                 limit=None, tolerance=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def reindex_axis(self, labels, axis=0, method=None, level=None, copy=True,
                      limit=None, fill_value=np.nan):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def reindex_like(self, other, method=None, copy=True, limit=None,
                      tolerance=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rename(self, mapper=None, index=None, columns=None, axis=None,
                copy=True, inplace=False, level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rename_axis(self, mapper, axis=0, copy=True, inplace=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def reorder_levels(self, order, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def replace(self, to_replace=None, value=None, inplace=False, limit=None,
                 regex=False, method='pad', axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def resample(self, rule, how=None, axis=0, fill_method=None, closed=None,
                  label=None, convention='start', kind=None, loffset=None,
                  limit=None, base=0, on=None, level=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def reset_index(self, level=None, drop=False, inplace=False, col_level=0,
                     col_fill=''):
@@ -1216,7 +1539,8 @@ class DataFrame(object):
                             values, mask, np.nan)
             return values
 
-        new_index = new_obj._default_index().index
+        _, new_index = _compute_length_and_index.remote(new_obj._df)
+        new_index = ray.get(new_index).index
         if level is not None:
             if not isinstance(level, (tuple, list)):
                 level = [level]
@@ -1265,17 +1589,25 @@ class DataFrame(object):
             return new_obj
 
     def rfloordiv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rmod(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rmul(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rolling(self, window, min_periods=None, freq=None, center=False,
                 win_type=None, on=None, axis=0, closed=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def round(self, decimals=0, *args, **kwargs):
         return self._map_partitions(lambda df: df.round(decimals=decimals,
@@ -1283,27 +1615,41 @@ class DataFrame(object):
                                                         **kwargs))
 
     def rpow(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rsub(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rtruediv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def sample(self, n=None, frac=None, replace=False, weights=None,
                random_state=None, axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def select(self, crit, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def select_dtypes(self, include=None, exclude=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def sem(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def set_axis(self, labels, axis=0, inplace=None):
         """Assign desired index to given axis.
@@ -1418,52 +1764,80 @@ class DataFrame(object):
             return frame
 
     def set_value(self, index, col, value, takeable=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def shift(self, periods=1, freq=None, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def skew(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def slice_shift(self, periods=1, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def sort_index(self, axis=0, level=None, ascending=True, inplace=False,
                    kind='quicksort', na_position='last', sort_remaining=True,
                    by=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def sort_values(self, by, axis=0, ascending=True, inplace=False,
                     kind='quicksort', na_position='last'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def sortlevel(self, level=0, axis=0, ascending=True, inplace=False,
                   sort_remaining=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def squeeze(self, axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def stack(self, level=-1, dropna=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def std(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def subtract(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def swapaxes(self, axis1, axis2, copy=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def swaplevel(self, i=-2, j=-1, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def tail(self, n=5):
         """Get the last n rows of the dataframe.
@@ -1479,9 +1853,9 @@ class DataFrame(object):
         if n >= sum(sizes):
             return self
 
-        cumulative = np.cumsum(np.array(sizes.reverse()))
+        cumulative = np.cumsum(np.array(sizes[::-1]))
 
-        reverse_dfs = self._df.reverse()
+        reverse_dfs = self._df[::-1]
         new_dfs = [reverse_dfs[i]
                    for i in range(len(cumulative))
                    if cumulative[i] < n]
@@ -1495,16 +1869,22 @@ class DataFrame(object):
             num_to_transfer = n - cumulative[last_index - 1]
 
         new_dfs.append(_deploy_func.remote(lambda df: df.tail(num_to_transfer),
-                                           reverse_dfs[last_index])).reverse()
+                                           reverse_dfs[last_index]))
+
+        new_dfs.reverse()
 
         index = self._index.tail(n).index
         return DataFrame(new_dfs, self.columns, index=index)
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_clipboard(self, excel=None, sep=None, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_csv(self, path_or_buf=None, sep=', ', na_rep='', float_format=None,
                columns=None, header=True, index=True, index_label=None,
@@ -1512,31 +1892,45 @@ class DataFrame(object):
                quotechar='"', line_terminator='\n', chunksize=None,
                tupleize_cols=None, date_format=None, doublequote=True,
                escapechar=None, decimal='.'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_dense(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_dict(self, orient='dict', into=dict):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_excel(self, excel_writer, sheet_name='Sheet1', na_rep='',
                  float_format=None, columns=None, header=True, index=True,
                  index_label=None, startrow=0, startcol=0, engine=None,
                  merge_cells=True, encoding=None, inf_rep='inf', verbose=True,
                  freeze_panes=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_feather(self, fname):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_gbq(self, destination_table, project_id, chunksize=10000,
                verbose=True, reauth=False, if_exists='fail',
                private_key=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_hdf(self, path_or_buf, key, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_html(self, buf=None, columns=None, col_space=None, header=True,
                 index=True, na_rep='np.NaN', formatters=None,
@@ -1544,12 +1938,16 @@ class DataFrame(object):
                 justify=None, bold_rows=True, classes=None, escape=True,
                 max_rows=None, max_cols=None, show_dimensions=False,
                 notebook=False, decimal='.', border=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_json(self, path_or_buf=None, orient=None, date_format=None,
                 double_precision=10, force_ascii=True, date_unit='ms',
                 default_handler=None, lines=False, compression=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_latex(self, buf=None, columns=None, col_space=None, header=True,
                  index=True, na_rep='np.NaN', formatters=None,
@@ -1557,88 +1955,136 @@ class DataFrame(object):
                  bold_rows=False, column_format=None, longtable=None,
                  escape=None, encoding=None, decimal='.', multicolumn=None,
                  multicolumn_format=None, multirow=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_msgpack(self, path_or_buf=None, encoding='utf-8', **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_panel(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_parquet(self, fname, engine='auto', compression='snappy',
                    **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_period(self, freq=None, axis=0, copy=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_pickle(self, path, compression='infer', protocol=4):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_records(self, index=True, convert_datetime64=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_sparse(self, fill_value=None, kind='block'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_sql(self, name, con, flavor=None, schema=None, if_exists='fail',
                index=True, index_label=None, chunksize=None, dtype=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_stata(self, fname, convert_dates=None, write_index=True,
                  encoding='latin-1', byteorder=None, time_stamp=None,
                  data_label=None, variable_labels=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_string(self, buf=None, columns=None, col_space=None, header=True,
                   index=True, na_rep='np.NaN', formatters=None,
                   float_format=None, sparsify=None, index_names=True,
                   justify=None, line_width=None, max_rows=None, max_cols=None,
                   show_dimensions=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_timestamp(self, freq=None, how='start', axis=0, copy=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def to_xarray(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def transform(self, func, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def truediv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def truncate(self, before=None, after=None, axis=None, copy=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def tshift(self, periods=1, freq=None, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def tz_convert(self, tz, axis=0, level=None, copy=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def tz_localize(self, tz, axis=0, level=None, copy=True,
                     ambiguous='raise'):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def unstack(self, level=-1, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def update(self, other, join='left', overwrite=True, filter_func=None,
                raise_conflict=False):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def var(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def xs(self, key, axis=0, level=None, drop_level=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __getitem__(self, key):
         """Get the column specified by key for this DataFrame.
@@ -1654,49 +2100,83 @@ class DataFrame(object):
         return to_pandas(result_column_chunks)
 
     def __setitem__(self, key, value):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __len__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __unicode__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __invert__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __hash__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __iter__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterate over the columns
+
+        Returns:
+            An Iterator over the columns of the dataframe.
+        """
+        return iter(self.columns)
 
     def __contains__(self, key):
         return key in self.columns
 
     def __nonzero__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __bool__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __abs__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Creates a modified DataFrame by elementwise taking the absolute value
+
+        Returns:
+            A modified DataFrame
+        """
+        return self.abs()
 
     def __round__(self, decimals=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __array__(self, dtype=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __array_wrap__(self, result, context=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __getstate__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __setstate__(self, state):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __delitem__(self, key):
         """Delete an item by key. `del a[key]` for example.
@@ -1712,7 +2192,9 @@ class DataFrame(object):
         self.columns = self.columns.drop(key)
 
     def __finalize__(self, other, method=None, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __copy__(self, deep=True):
         """Make a copy using Ray.DataFrame.copy method
@@ -1739,110 +2221,204 @@ class DataFrame(object):
         return self.copy(deep=True)
 
     def __and__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __or__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __xor__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __lt__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __le__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __gt__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __ge__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __eq__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        """Computes the equality of this DataFrame with another
+
+        Returns:
+            True, if the DataFrames are equal. False otherwise.
+        """
+        return self.equals(other)
 
     def __ne__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        """Checks that this DataFrame is not equal to another
+
+        Returns:
+            True, if the DataFrames are not equal. False otherwise.
+        """
+        return not self.equals(other)
 
     def __add__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __iadd__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __mul__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __imul__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __pow__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __ipow__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __sub__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __isub__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __neg__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Computes an element wise negative DataFrame
+
+        Returns:
+            A modified DataFrame where every element is the negation of before
+        """
+        for t in self.dtypes:
+            if not (is_bool_dtype(t)
+                    or is_numeric_dtype(t)
+                    or is_timedelta64_dtype(t)):
+                raise TypeError("Unary negative expects numeric dtype, not {}"
+                                .format(t))
+
+        return self._map_partitions(lambda df: df.__neg__())
 
     def __floordiv__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __truediv__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __mod__(self, other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __sizeof__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     @property
     def __doc__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     @property
     def blocks(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     @property
     def style(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def iat(axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __rsub__(other, axis=None, level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
-    def loc(axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+    @property
+    def loc(self):
+        """Purely label-location based indexer for selection by label.
+
+        We currently support: single label, list array, slice object
+        We do not support: boolean array, callable
+        """
+        from .indexing import _Loc_Indexer
+        return _Loc_Indexer(self)
 
     @property
     def is_copy(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __itruediv__(other):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __div__(other, axis=None, level=None, fill_value=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def at(axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def ix(axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
-    def iloc(axis=None):
-        raise NotImplementedError("Not Yet implemented.")
+    @property
+    def iloc(self):
+        """Purely integer-location based indexing for selection by position.
+
+        We currently support: single label, list array, slice object
+        We do not support: boolean array, callable
+        """
+        from .indexing import _iLoc_Indexer
+        return _iLoc_Indexer(self)
 
 
 def _get_lengths(df):
@@ -1949,13 +2525,14 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     while len(temp_df) > chunksize:
         t_df = temp_df[:chunksize]
         lengths.append(len(t_df))
-        # reindex here because we want a pd.RangeIndex within the partitions.
-        # It is smaller and sometimes faster.
-        t_df.reindex()
+        # reset_index here because we want a pd.RangeIndex
+        # within the partitions. It is smaller and sometimes faster.
+        t_df = t_df.reset_index(drop=True)
         top = ray.put(t_df)
         dataframes.append(top)
         temp_df = temp_df[chunksize:]
     else:
+        temp_df = temp_df.reset_index(drop=True)
         dataframes.append(ray.put(temp_df))
         lengths.append(len(temp_df))
 
@@ -1975,3 +2552,23 @@ def to_pandas(df):
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
+
+
+@ray.remote(num_return_vals=2)
+def _compute_length_and_index(dfs):
+    """Create a default index, which is a RangeIndex
+
+    Returns:
+        The pd.RangeIndex object that represents this DataFrame.
+    """
+    lengths = ray.get([_deploy_func.remote(_get_lengths, d)
+                       for d in dfs])
+
+    dest_indices = {"partition":
+                    [i for i in range(len(lengths))
+                     for j in range(lengths[i])],
+                    "index_within_partition":
+                    [j for i in range(len(lengths))
+                     for j in range(lengths[i])]}
+
+    return lengths, pd.DataFrame(dest_indices)

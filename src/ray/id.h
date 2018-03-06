@@ -44,6 +44,8 @@ struct UniqueIDHasher {
   }
 };
 
+std::ostream &operator<<(std::ostream &os, const UniqueID &id);
+
 typedef UniqueID TaskID;
 typedef UniqueID JobID;
 typedef UniqueID ObjectID;
