@@ -42,7 +42,9 @@ class Table {
   };
 
   Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : context_(context), client_(client){};
+      : context_(context),
+        client_(client),
+        pubsub_channel_(TablePubsub_NO_PUBLISH){};
 
   /// Add an entry to the table.
   ///
@@ -65,7 +67,7 @@ class Table {
     fbb.Finish(Data::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id,
                                          fbb.GetBufferPointer(), fbb.GetSize(),
-                                         callback_index));
+                                         pubsub_channel_, callback_index));
     return Status::OK();
   }
 
@@ -87,16 +89,42 @@ class Table {
         });
     std::vector<uint8_t> nil;
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(),
-                                         nil.size(), callback_index));
+                                         nil.size(), pubsub_channel_,
+                                         callback_index));
     return Status::OK();
   }
 
   /// Subscribe to updates of this table
+  ///
+  /// @param job_id The ID of the job (= driver).
+  /// @param client_id The type of update to listen to. If this is nil, then a
+  ///        message for each Add to the table will be received. Else, only
+  ///        messages for the given client will be received.
+  /// @param subscribe Callback that is called on each received message.
+  /// @param done Callback that is called when subscription is complete and we
+  ///        are ready to receive messages..
+  /// @return Status
   Status Subscribe(const JobID &job_id,
-                   const ID &id,
+                   const ClientID &client_id,
                    const Callback &subscribe,
                    const Callback &done) {
-    return Status::NotImplemented("Table::Subscribe is not implemented");
+    auto d = std::shared_ptr<CallbackData>(
+        new CallbackData({client_id, nullptr, subscribe, this}));
+    int64_t callback_index = RedisCallbackManager::instance().add(
+        [done, d](const std::string &data) {
+          if (data.empty()) {
+            // No data is provided. This is the callback for the initial
+            // subscription request.
+            done(d->client, d->id, nullptr);
+          } else {
+            auto result = std::make_shared<DataT>();
+            auto root = flatbuffers::GetRoot<Data>(data.data());
+            root->UnPackTo(result.get());
+            (d->callback)(d->client, d->id, result);
+          }
+        });
+    std::vector<uint8_t> nil;
+    return context_->SubscribeAsync(client_id, pubsub_channel_, callback_index);
   }
 
   /// Remove and entry from the table
@@ -107,13 +135,16 @@ class Table {
       callback_data_;
   std::shared_ptr<RedisContext> context_;
   AsyncGcsClient *client_;
+  TablePubsub pubsub_channel_;
 };
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
  public:
   ObjectTable(const std::shared_ptr<RedisContext> &context,
               AsyncGcsClient *client)
-      : Table(context, client){};
+      : Table(context, client) {
+    pubsub_channel_ = TablePubsub_OBJECT;
+  };
 
   /// Set up a client-specific channel for receiving notifications about
   /// available
@@ -147,13 +178,16 @@ using FunctionTable = Table<FunctionID, FunctionTableData>;
 
 using ClassTable = Table<ClassID, ClassTableData>;
 
+// TODO(swang): Set the pubsub channel for the actor table.
 using ActorTable = Table<ActorID, ActorTableData>;
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
   TaskTable(const std::shared_ptr<RedisContext> &context,
             AsyncGcsClient *client)
-      : Table(context, client){};
+      : Table(context, client) {
+    pubsub_channel_ = TablePubsub_TASK;
+  };
 
   using TestAndUpdateCallback = std::function<void(AsyncGcsClient *client,
                                                    const TaskID &id,
@@ -192,7 +226,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_TEST_AND_UPDATE", id,
                                          fbb.GetBufferPointer(), fbb.GetSize(),
-                                         callback_index));
+                                         pubsub_channel_, callback_index));
     return Status::OK();
   }
 
