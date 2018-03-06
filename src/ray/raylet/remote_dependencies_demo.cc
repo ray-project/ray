@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
   std::unordered_map<std::string, double> static_resource_conf;
   static_resource_conf = {{"CPU", 1}, {"GPU", 1}};
   ray::ResourceSet resource_config(std::move(static_resource_conf));
-  ray::OMConfig om_config;
+  ray::ObjectManagerConfig om_config;
 
   //  initialize mock gcs & object directory
   shared_ptr<ray::GcsClient> mock_gcs_client = shared_ptr<ray::GcsClient>(new ray::GcsClient());

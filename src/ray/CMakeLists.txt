@@ -36,7 +36,7 @@ set(RAY_SRCS
   gcs/redis_context.cc
   gcs/asio.cc
   common/client_connection.cc
-  object_manager/om_client_connection.cc
+  object_manager/object_manager_client_connection.cc
   object_manager/object_store_client.cc
   object_manager/object_directory.cc
   object_manager/object_manager.cc
@@ -73,6 +73,6 @@ install(
 
 ADD_RAY_LIB(ray
   SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS} ${UTIL_SRCS}
-    DEPENDENCIES gen_gcs_fbs gen_om_fbs gen_nm_fbs
+    DEPENDENCIES gen_gcs_fbs gen_object_manager_fbs gen_node_manager_fbs
     SHARED_LINK_LIBS ""
     STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})

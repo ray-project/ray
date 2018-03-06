@@ -47,7 +47,7 @@ public:
     mock_gcs_client = shared_ptr<GcsClient>(new GcsClient());
 
     // start first server
-    ray::OMConfig om_config_1;
+    ray::ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     server1.reset(new Raylet(io_service,
                                  std::string("hello1"),
@@ -56,7 +56,7 @@ public:
                                  mock_gcs_client));
 
     // start second server
-    ray::OMConfig om_config_2;
+    ray::ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     server2.reset(new Raylet(io_service,
                                  std::string("hello2"),

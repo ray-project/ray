@@ -30,7 +30,7 @@ class Raylet {
   Raylet(boost::asio::io_service& io_service,
              const std::string &socket_name,
              const ResourceSet &resource_config,
-             const OMConfig &object_manager_config,
+             const ObjectManagerConfig &object_manager_config,
              std::shared_ptr<ray::GcsClient> gcs_client);
 
   /// Destroy the NodeServer.

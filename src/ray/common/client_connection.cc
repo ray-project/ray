@@ -6,16 +6,14 @@
 #include <boost/bind.hpp>
 
 #include "common.h"
-#include "ray/status.h"
-#include "ray/raylet/format/nm_generated.h"
+#include "ray/raylet/format/node_manager_generated.h"
 
 using namespace std;
 namespace ray {
 
 template <class T>
 shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
-    ClientManager<T>& manager,
-    boost::asio::basic_stream_socket<T> &&socket) {
+    ClientManager<T> &manager, boost::asio::basic_stream_socket<T> &&socket) {
   shared_ptr<ClientConnection<T>> self(new ClientConnection(manager, std::move(socket)));
   // Let our manager process our new connection.
   self->manager_.ProcessNewClient(self);
@@ -23,12 +21,9 @@ shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
 }
 
 template <class T>
-ClientConnection<T>::ClientConnection(
-        ClientManager<T>& manager,
-        boost::asio::basic_stream_socket<T> &&socket)
-  : socket_(std::move(socket)),
-    manager_(manager) {
-}
+ClientConnection<T>::ClientConnection(ClientManager<T> &manager,
+                                      boost::asio::basic_stream_socket<T> &&socket)
+    : socket_(std::move(socket)), manager_(manager) {}
 
 template <class T>
 void ClientConnection<T>::ProcessMessages() {
@@ -38,11 +33,14 @@ void ClientConnection<T>::ProcessMessages() {
   header.push_back(boost::asio::buffer(&read_version_, sizeof(read_version_)));
   header.push_back(boost::asio::buffer(&read_type_, sizeof(read_type_)));
   header.push_back(boost::asio::buffer(&read_length_, sizeof(read_length_)));
-  boost::asio::async_read(socket_, header, boost::bind(&ClientConnection<T>::processMessageHeader, this->shared_from_this(), boost::asio::placeholders::error));
+  boost::asio::async_read(
+      socket_, header,
+      boost::bind(&ClientConnection<T>::processMessageHeader, this->shared_from_this(),
+                  boost::asio::placeholders::error));
 }
 
 template <class T>
-void ClientConnection<T>::processMessageHeader(const boost::system::error_code& error) {
+void ClientConnection<T>::processMessageHeader(const boost::system::error_code &error) {
   if (error) {
     // If there was an error, disconnect the client.
     read_type_ = MessageType_DisconnectClient;
@@ -56,13 +54,15 @@ void ClientConnection<T>::processMessageHeader(const boost::system::error_code& 
   // Resize the message buffer to match the received length.
   read_message_.resize(read_length_);
   // Wait for the message to be read.
-  boost::asio::async_read(socket_, boost::asio::buffer(read_message_),
-      boost::bind(&ClientConnection<T>::processMessage, this->shared_from_this(), boost::asio::placeholders::error)
-      );
+  boost::asio::async_read(
+      socket_, boost::asio::buffer(read_message_),
+      boost::bind(&ClientConnection<T>::processMessage, this->shared_from_this(),
+                  boost::asio::placeholders::error));
 }
 
 template <class T>
-void ClientConnection<T>::WriteMessage(int64_t type, size_t length, const uint8_t *message) {
+void ClientConnection<T>::WriteMessage(int64_t type, size_t length,
+                                       const uint8_t *message) {
   std::vector<boost::asio::const_buffer> message_buffers;
   write_version_ = RayConfig::instance().ray_protocol_version();
   write_type_ = type;
@@ -74,20 +74,24 @@ void ClientConnection<T>::WriteMessage(int64_t type, size_t length, const uint8_
   message_buffers.push_back(boost::asio::buffer(write_message_));
   boost::system::error_code error;
   // Write the message and then wait for more messages.
-  boost::asio::async_write(socket_, message_buffers, boost::bind(&ClientConnection<T>::processMessages, this->shared_from_this(), boost::asio::placeholders::error));
+  boost::asio::async_write(
+      socket_, message_buffers,
+      boost::bind(&ClientConnection<T>::processMessages, this->shared_from_this(),
+                  boost::asio::placeholders::error));
 }
 
 template <class T>
-void ClientConnection<T>::processMessage(const boost::system::error_code& error) {
+void ClientConnection<T>::processMessage(const boost::system::error_code &error) {
   if (error) {
     // TODO(hme): Disconnect in a different way & remove dependency on nm_generated.h
     read_type_ = MessageType_DisconnectClient;
   }
-  manager_.ProcessClientMessage(this->shared_from_this(), read_type_, read_message_.data());
+  manager_.ProcessClientMessage(this->shared_from_this(), read_type_,
+                                read_message_.data());
 }
 
 template <class T>
-void ClientConnection<T>::processMessages(const boost::system::error_code& error) {
+void ClientConnection<T>::processMessages(const boost::system::error_code &error) {
   if (error) {
     processMessage(error);
   } else {
@@ -99,12 +103,11 @@ template class ClientConnection<boost::asio::local::stream_protocol>;
 template class ClientConnection<boost::asio::ip::tcp>;
 
 template <class T>
-ClientManager<T>::~ClientManager<T>() {
-}
+ClientManager<T>::~ClientManager<T>() {}
 
 template class ClientManager<boost::asio::local::stream_protocol>;
 template class ClientManager<boost::asio::ip::tcp>;
 
-} // end namespace ray
+}  // end namespace ray
 
 #endif

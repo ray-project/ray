@@ -15,7 +15,7 @@ namespace ray {
 Raylet::Raylet(boost::asio::io_service& io_service,
                        const std::string &socket_name,
                        const ResourceSet &resource_config,
-                       const OMConfig &om_config,
+                       const ObjectManagerConfig &om_config,
                        shared_ptr<ray::GcsClient> gcs_client)
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),

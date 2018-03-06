@@ -1,10 +1,11 @@
 #ifndef CLIENT_CONNECTION_H
 #define CLIENT_CONNECTION_H
 
+#include <memory>
+
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/enable_shared_from_this.hpp>
-#include <memory>
 
 namespace ray {
 
@@ -19,7 +20,6 @@ class ClientManager;
 template <class T>
 class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>> {
  public:
-
   /// Allocate a new node client connection.
   ///
   /// \param ClientManager A reference to the manager that will process a
@@ -27,8 +27,7 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
   /// \param socket The client socket.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection<T>> Create(
-      ClientManager<T>& manager,
-      boost::asio::basic_stream_socket<T> &&socket);
+      ClientManager<T> &manager, boost::asio::basic_stream_socket<T> &&socket);
 
   /// Listen for and process messages from the client connection. Once a
   /// message has been fully received, the client manager's
@@ -45,24 +44,23 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
 
  private:
   /// A private constructor for a node client connection.
-  ClientConnection(
-      ClientManager<T>& manager,
-      boost::asio::basic_stream_socket<T> &&socket);
+  ClientConnection(ClientManager<T> &manager,
+                   boost::asio::basic_stream_socket<T> &&socket);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
-  void processMessageHeader(const boost::system::error_code& error);
+  void processMessageHeader(const boost::system::error_code &error);
   /// Process an error from reading the message header, then process the
   /// message from the client.
-  void processMessage(const boost::system::error_code& error);
+  void processMessage(const boost::system::error_code &error);
   /// Process an error from the last operation and then listen for more
   /// messages.
-  void processMessages(const boost::system::error_code& error);
+  void processMessages(const boost::system::error_code &error);
 
   /// The client socket.
   boost::asio::basic_stream_socket<T> socket_;
   /// A reference to the manager for this client. The manager exposes a handler
   /// for all messages processed by this client.
-  ClientManager<T>& manager_;
+  ClientManager<T> &manager_;
   /// Buffers for the current message being read rom the client.
   int64_t read_version_;
   int64_t read_type_;
@@ -88,8 +86,7 @@ class ClientManager {
   /// Process a new client connection.
   ///
   /// \param client A shared pointer to the client that connected.
-  virtual void ProcessNewClient(std::shared_ptr<ClientConnection<T>> client) =
-    0;
+  virtual void ProcessNewClient(std::shared_ptr<ClientConnection<T>> client) = 0;
 
   /// Process a message from a client, then listen for more messages if the
   /// client is still alive.
@@ -97,14 +94,12 @@ class ClientManager {
   /// \param client A shared pointer to the client that sent the message.
   /// \param message_type The message type (e.g., a flatbuffer enum).
   /// \param message A pointer to the message buffer.
-  virtual void ProcessClientMessage(
-      std::shared_ptr<ClientConnection<T>> client,
-      int64_t message_type,
-      const uint8_t *message) = 0;
+  virtual void ProcessClientMessage(std::shared_ptr<ClientConnection<T>> client,
+                                    int64_t message_type, const uint8_t *message) = 0;
 
   virtual ~ClientManager() = 0;
 };
 
-} // end namespace ray
+}  // end namespace ray
 
 #endif

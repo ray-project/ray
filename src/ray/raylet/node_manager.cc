@@ -6,7 +6,7 @@
 #include "ray/status.h"
 #include "ray/util/logging.h"
 #include "common_protocol.h"
-#include "format/nm_generated.h"
+#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/task_spec.h"
 

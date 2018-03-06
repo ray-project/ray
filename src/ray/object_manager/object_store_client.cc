@@ -1,29 +1,28 @@
-#include <iostream>
 #include <future>
+#include <iostream>
 
 #include <boost/asio.hpp>
-#include <boost/function.hpp>
 #include <boost/bind.hpp>
+#include <boost/function.hpp>
 
 #include "common.h"
 #include "common_protocol.h"
-
+// TODO(hme): Figure out what's causing compile time error when following line is moved.
 #include "object_store_client.h"
 
-using namespace std;
+using std::string;
 
 namespace ray {
 
 // TODO(hme): Dedicate this class to notifications.
 // TODO(hme): Create object store client pool for object manager.
-ObjectStoreClient::ObjectStoreClient(
-    boost::asio::io_service &io_service,
-    string &store_socket_name
-) : client_one_(),
-    client_two_(),
-    socket_(io_service){
-  ARROW_CHECK_OK(client_two_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
-  ARROW_CHECK_OK(client_one_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+ObjectStoreClient::ObjectStoreClient(boost::asio::io_service &io_service,
+                                     string &store_socket_name)
+    : client_one_(), client_two_(), socket_(io_service) {
+  ARROW_CHECK_OK(
+      client_two_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(
+      client_one_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
 
   // Connect to two clients, but subscribe to only one.
   ARROW_CHECK_OK(client_one_.Subscribe(&c_socket_));
@@ -39,20 +38,16 @@ void ObjectStoreClient::Terminate() {
 }
 
 void ObjectStoreClient::NotificationWait() {
-  boost::asio::async_read(socket_,
-                          boost::asio::buffer(&length_, sizeof(length_)),
-                          boost::bind(&ObjectStoreClient::ProcessStoreLength,
-                                      this,
+  boost::asio::async_read(socket_, boost::asio::buffer(&length_, sizeof(length_)),
+                          boost::bind(&ObjectStoreClient::ProcessStoreLength, this,
                                       boost::asio::placeholders::error));
 }
 
 void ObjectStoreClient::ProcessStoreLength(const boost::system::error_code &error) {
   notification_.resize(length_);
   boost::asio::async_read(socket_, boost::asio::buffer(notification_),
-                          boost::bind(&ObjectStoreClient::ProcessStoreNotification,
-                                      this,
-                                      boost::asio::placeholders::error)
-  );
+                          boost::bind(&ObjectStoreClient::ProcessStoreNotification, this,
+                                      boost::asio::placeholders::error));
 }
 
 void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code &error) {
@@ -75,32 +70,29 @@ void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code
   NotificationWait();
 }
 
-void ObjectStoreClient::ProcessStoreAdd(const ObjectID& object_id){
-  for (auto handler : add_handlers_){
+void ObjectStoreClient::ProcessStoreAdd(const ObjectID &object_id) {
+  for (auto handler : add_handlers_) {
     handler(object_id);
   }
 };
 
-void ObjectStoreClient::ProcessStoreRemove(const ObjectID& object_id){
-  for (auto handler : rem_handlers_){
+void ObjectStoreClient::ProcessStoreRemove(const ObjectID &object_id) {
+  for (auto handler : rem_handlers_) {
     handler(object_id);
   }
 };
 
-void ObjectStoreClient::SubscribeObjAdded(std::function<void(const ObjectID&)> callback) {
+void ObjectStoreClient::SubscribeObjAdded(
+    std::function<void(const ObjectID &)> callback) {
   add_handlers_.push_back(callback);
 };
 
-void ObjectStoreClient::SubscribeObjDeleted(std::function<void(const ObjectID&)> callback) {
+void ObjectStoreClient::SubscribeObjDeleted(
+    std::function<void(const ObjectID &)> callback) {
   rem_handlers_.push_back(callback);
 };
 
-plasma::PlasmaClient &ObjectStoreClient::GetClient(){
-  return client_one_;
-};
+plasma::PlasmaClient &ObjectStoreClient::GetClient() { return client_one_; };
 
-plasma::PlasmaClient &ObjectStoreClient::GetClientOther(){
-  return client_two_;
-};
-
+plasma::PlasmaClient &ObjectStoreClient::GetClientOther() { return client_two_; };
 }

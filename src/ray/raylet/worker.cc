@@ -6,7 +6,7 @@
 #include <boost/bind.hpp>
 
 #include "common.h"
-#include "format/nm_generated.h"
+#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
 
 using namespace std;
