@@ -222,7 +222,7 @@ def test_int_dataframe():
 
     test_max(ray_df, pandas_df)
     test_min(ray_df, pandas_df)
-    # test_notna(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
 
     test_loc(ray_df, pandas_df)
@@ -317,7 +317,7 @@ def test_float_dataframe():
     test_pop(ray_df, pandas_df)
     test_max(ray_df, pandas_df)
     test_min(ray_df, pandas_df)
-    # test_notna(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
@@ -435,7 +435,7 @@ def test_mixed_dtype_dataframe():
     test_pop(ray_df, pandas_df)
     test_max(ray_df, pandas_df)
     test_min(ray_df, pandas_df)
-    # test_notna(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
@@ -542,7 +542,7 @@ def test_nan_dataframe():
     test_pop(ray_df, pandas_df)
     test_max(ray_df, pandas_df)
     test_min(ray_df, pandas_df)
-    # test_notna(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
@@ -551,7 +551,6 @@ def test_nan_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
-        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
