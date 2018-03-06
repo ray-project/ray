@@ -4,6 +4,15 @@ enum Language:int {
   JAVA = 2
 }
 
+// The channel that Add operations to the Table should be published on, if any.
+enum TablePubsub:int {
+  NO_PUBLISH = 0,
+  TASK,
+  CLIENT,
+  OBJECT,
+  ACTOR
+}
+
 table FunctionTableData {
   language: Language;
   name: string;
