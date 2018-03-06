@@ -47,7 +47,7 @@ class ModelCatalogTest(unittest.TestCase):
         class TupleEnv(object):
             def __init__(self):
                 self.observation_space = Tuple(
-                    [Discrete(5), Box(0, 1, shape=(3,))])
+                    [Discrete(5), Box(0, 1, shape=(3,), dtype=np.float32)])
         p1 = ModelCatalog.get_preprocessor(
             get_registry(), TupleEnv())
         self.assertEqual(p1.shape, (8,))

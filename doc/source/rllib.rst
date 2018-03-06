@@ -113,12 +113,12 @@ An example of evaluating a previously trained DQN agent is as follows:
 
 .. code-block:: bash
 
-    python ray/python/ray/rllib/eval.py \
+    python ray/python/ray/rllib/rollout.py \
           ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1 \
           --run DQN --env CartPole-v0
 
 
-The ``eval.py`` helper script reconstructs a DQN agent from the checkpoint
+The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
 located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
 
@@ -244,12 +244,12 @@ Multi-Agent Models
 ~~~~~~~~~~~~~~~~~~
 RLlib supports multi-agent training with PPO. Currently it supports both
 shared, i.e. all agents have the same model, and non-shared multi-agent models. However, it only supports shared
-rewards and does not yet support individual rewards for each agent. 
+rewards and does not yet support individual rewards for each agent.
 
 
-While Generalized Advantage Estimation is supported in multiagent scenarios, 
-it is assumed that it possible for the estimator to access the observations of 
-all of the agents. 
+While Generalized Advantage Estimation is supported in multiagent scenarios,
+it is assumed that it possible for the estimator to access the observations of
+all of the agents.
 
 
 Important config parameters are described below
@@ -261,16 +261,16 @@ Important config parameters are described below
                "multiagent_act_shapes": [1, 1], # length of each action space
                "multiagent_shared_model": True, # whether the model should be shared
                # list of dimensions of multiagent feedforward nets
-               "multiagent_fcnet_hiddens": [[32, 32]] * 2} 
+               "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
 
-For a full example of a multiagent model in code, see the 
-`MultiAgent Pendulum <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_mountaincar.py>`__. 
+For a full example of a multiagent model in code, see the
+`MultiAgent Pendulum <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_mountaincar.py>`__.
 The ``MultiAgentPendulumEnv`` defined there operates
-over a composite (Tuple) enclosing a list of Boxes; each Box represents the 
-observation of an agent. The action space is a list of Discrete actions, each 
+over a composite (Tuple) enclosing a list of Boxes; each Box represents the
+observation of an agent. The action space is a list of Discrete actions, each
 element corresponding to half of the total torque. The environment will return a list of actions
-that can be iterated over and applied to each agent. 
+that can be iterated over and applied to each agent.
 
 External Data API
 ~~~~~~~~~~~~~~~~~

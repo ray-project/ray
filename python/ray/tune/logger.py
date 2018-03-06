@@ -6,6 +6,7 @@ import csv
 import json
 import numpy as np
 import os
+import yaml
 
 from ray.tune.result import TrainingResult
 from ray.tune.log_sync import get_syncer
@@ -176,3 +177,14 @@ class _CustomEncoder(json.JSONEncoder):
             return float(value)
         if np.issubdtype(value, int):
             return int(value)
+
+
+def pretty_print(result):
+    result = result._replace(config=None)  # drop config from pretty print
+    out = {}
+    for k, v in result._asdict().items():
+        if v is not None:
+            out[k] = v
+
+    cleaned = json.dumps(out, cls=_CustomEncoder)
+    return yaml.dump(json.loads(cleaned), default_flow_style=False)

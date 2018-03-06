@@ -55,7 +55,9 @@ typedef UniqueID ActorID;
 typedef UniqueID ActorHandleID;
 typedef UniqueID WorkerID;
 typedef UniqueID DriverID;
+// TODO(swang): Replace this with ClientID.
 typedef UniqueID DBClientID;
+typedef UniqueID ClientID;
 typedef UniqueID ConfigID;
 
 }  // namespace ray

@@ -4,6 +4,7 @@ import traceback
 import gym
 from gym.spaces import Box, Discrete, Tuple
 from gym.envs.registration import EnvSpec
+import numpy as np
 
 import ray
 from ray.rllib.agent import get_agent_class
@@ -12,19 +13,27 @@ from ray.tune.registry import register_env
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(0.0, 1.0, (5,)),
-    "simple_tuple": Tuple([Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))]),
-    "implicit_tuple": [Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))],
+    "vector": Box(0.0, 1.0, (5,), dtype=np.float32),
+    "simple_tuple": Tuple([
+        Box(0.0, 1.0, (5,), dtype=np.float32),
+        Box(0.0, 1.0, (5,), dtype=np.float32)]),
+    "implicit_tuple": [
+        Box(0.0, 1.0, (5,), dtype=np.float32),
+        Box(0.0, 1.0, (5,), dtype=np.float32)],
 }
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(0.0, 1.0, (5,)),
-    "image": Box(0.0, 1.0, (80, 80, 1)),
-    "atari": Box(0.0, 1.0, (210, 160, 3)),
-    "atari_ram": Box(0.0, 1.0, (128,)),
-    "simple_tuple": Tuple([Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))]),
-    "mixed_tuple": Tuple([Discrete(10), Box(0.0, 1.0, (5,))]),
+    "vector": Box(0.0, 1.0, (5,), dtype=np.float32),
+    "image": Box(0.0, 1.0, (80, 80, 1), dtype=np.float32),
+    "atari": Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
+    "atari_ram": Box(0.0, 1.0, (128,), dtype=np.float32),
+    "simple_tuple": Tuple([
+        Box(0.0, 1.0, (5,), dtype=np.float32),
+        Box(0.0, 1.0, (5,), dtype=np.float32)]),
+    "mixed_tuple": Tuple([
+        Discrete(10),
+        Box(0.0, 1.0, (5,), dtype=np.float32)]),
 }
 
 # (alg, action_space, obs_space)
@@ -59,7 +68,7 @@ def make_stub_env(action_space, obs_space):
         def __init__(self):
             self.action_space = action_space
             self.observation_space = obs_space
-            self._spec = EnvSpec("StubEnv-v0")
+            self.spec = EnvSpec("StubEnv-v0")
 
         def reset(self):
             sample = self.observation_space.sample()
