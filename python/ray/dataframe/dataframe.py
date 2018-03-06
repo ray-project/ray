@@ -27,6 +27,7 @@ from .utils import (
     _compute_length_and_index,
     _prepend_partitions)
 from .shuffle import ShuffleActor
+from .groupby import DataFrameGroupBy
 
 
 class DataFrame(object):
@@ -304,49 +305,42 @@ class DataFrame(object):
 
         @ray.remote
         def assign_partitions(index_df, num_partitions):
-            chunksize = int(len(index_df) / num_partitions) + 1
+            uniques = index_df.index.unique()
+
+            if len(uniques) % num_partitions == 0:
+                chunksize = int(len(uniques) / num_partitions)
+            else:
+                chunksize = int(len(uniques) / num_partitions) + 1
 
             assignments = []
 
-            while len(index_df) > chunksize:
-                temp_df = index_df[:chunksize]
+            while len(uniques) > chunksize:
+                temp_df = uniques[:chunksize]
                 assignments.append(temp_df)
-                index_df = index_df[chunksize:]
+                uniques = uniques[chunksize:]
             else:
-                assignments.append(index_df)
+                assignments.append(uniques)
 
             return assignments
 
-        partition_assignments = ray.get(assign_partitions.remote(self._index,
-                                                         len(self._df)))
-        print(partition_assignments)
+        partition_assignments = assign_partitions.remote(self._index,
+                                                         len(self._df))
+
         shufflers = [ShuffleActor.remote(self._df[i])
                      for i in range(len(self._df))]
 
-        print(shufflers)
+        [shufflers[i].shuffle.remote(self._index[self._index['partition'] == i],
+                                     partition_assignments, i, *shufflers)
+         for i in range(len(shufflers))]
 
-        shuffled = [shufflers[i].shuffle.remote(partition_assignments, i, *shufflers)
-                    for i in range(len(shufflers))]
-
-        print(shuffled)
-        return shufflers
-        # indices = self.index.unique()
-        #
-        # chunksize = int(len(indices) / len(self._df))
-        # partitions = [_shuffle.remote(df, indices, chunksize)
-        #               for df in self._df]
-        # partitions = ray.get(partitions)
-        #
-        # # Transpose the list of dataframes
-        # # TODO find a better way
-        # shuffle = []
-        # for i in range(len(partitions[0])):
-        #     shuffle.append([])
-        #     for j in range(len(partitions)):
-        #         shuffle[i].append(partitions[j][i])
-        # new_dfs = [_local_groupby.remote(part, axis=axis) for part in shuffle]
-        #
-        # return DataFrame(new_dfs, self.columns, index=indices)
+        return DataFrameGroupBy([shuffler.apply_func.remote(
+            lambda df: df.groupby(by=df.index,
+                                  axis=axis,
+                                  sort=sort,
+                                  group_keys=group_keys,
+                                  squeeze=squeeze,
+                                  **kwargs))
+            for shuffler in shufflers])
 
     def reduce_by_index(self, func, axis=0):
         """Perform a reduction based on the row index.
