@@ -25,7 +25,7 @@ class TaskPool(object):
         return len(self._tasks)
 
 
-def keep_non_colocated(actors):
+def drop_colocated(actors):
     colocated, non_colocated = split_colocated(actors)
     for a in colocated:
         a.__ray_terminate__.remote(a._ray_actor_id.id())
