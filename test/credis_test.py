@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import os
@@ -23,7 +24,7 @@ class CredisTest(unittest.TestCase):
         address, port = self.config["credis_address"].split(":")
         redis_client = redis.StrictRedis(host=address,
                                          port=port)
-        assert redis_client.ping() == True
+        assert redis_client.ping() is True
 
 
 if __name__ == "__main__":
