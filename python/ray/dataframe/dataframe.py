@@ -1006,22 +1006,31 @@ class DataFrame(object):
                   .format(expecting=expecting, method=method)
             raise ValueError(msg)
 
+        partition_idx = [
+            self._index.loc[
+                self._index['partition'] == i
+            ].index
+            for i in range(len(self._df))
+        ]
+
+        def fillna_part(df, real_index):
+            old_index = df.index
+            df.index = real_index
+            new_df = df.fillna(value=value, method=method, axis=axis,
+                               limit=limit, downcast=downcast, **kwargs)
+            new_df.index = old_index
+            return new_df
+
         new_df = [
             _deploy_func.remote(
-                lambda df, i, _index: _apply_pd_function_on_partition(
-                    _index, df, i,
-                    lambda df: df.fillna(
-                        value=value, method=method, axis=axis, limit=limit,
-                        downcast=downcast, **kwargs)
-                ),
-                part, i, self._index
+                fillna_part,
+                part, partition_idx[i]
             )
             for i, part in enumerate(self._df)
         ]
 
         new_df = DataFrame(new_df, self.columns, self.index)
 
-        # new_df = DataFrame(dfs, self.columns, self.index)
         is_bfill = method is not None and method in ['backfill', 'bfill']
         is_ffill = method is not None and method in ['pad', 'ffill']
         is_axis_zero = axis is None or axis == 0 or axis == 'index'\
@@ -2854,16 +2863,3 @@ def _compute_length_and_index(dfs):
                      for j in range(lengths[i])]}
 
     return lengths, pd.DataFrame(dest_indices)
-
-
-def _map_partition_index_to_real_index(_index, part, part_idx):
-    part.index = _index\
-            .loc[_index['partition'] == part_idx].index
-    return part
-
-
-def _apply_pd_function_on_partition(_index, part, part_idx, func):
-    part = _map_partition_index_to_real_index(_index, part, part_idx)
-    part = func(part)
-    # part = part.reset_index(drop=True)
-    return part

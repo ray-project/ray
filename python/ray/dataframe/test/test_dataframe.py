@@ -1186,7 +1186,6 @@ def test_fillna_sanity(num_partitions=2):
     # with timezone
     # GH 15855
     """
-    import pdb; pdb.set_trace()
     df = pd.DataFrame({'A': [pd.Timestamp('2012-11-11 00:00:00+01:00'),
                              pd.NaT]})
     ray_df = rdf.from_pandas(df, num_partitions)
@@ -1281,7 +1280,6 @@ def test_frame_fillna_limit(num_partitions=2):
     ray_df = rdf.from_pandas(df[:2].reindex(index), num_partitions).fillna(
         method='pad', limit=5
     )
-    # import pdb; pdb.set_trace()
     assert ray_df_equals_pandas(ray_df, expected)
 
     expected = df[-2:].reindex(index)
