@@ -22,8 +22,8 @@ NodeManager::NodeManager(
                 [this](const TaskID &task_id) {
                   handleWaitingTaskReady(task_id);
                 }) {
-  //// TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
-  //cluster_resource_map_[DBClientID::nil()] = local_resources_;
+  //// TODO(atumanov): need to add the self-knowledge of ClientID, using nill().
+  //cluster_resource_map_[ClientID::nil()] = local_resources_;
 }
 
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
@@ -65,7 +65,7 @@ void NodeManager::ProcessClientMessage(
     }
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(worker);
-    auto scheduled_tasks = local_queues_.scheduled_tasks();
+    auto scheduled_tasks = local_queues_.GetScheduledTasks();
      if (!scheduled_tasks.empty()) {
       const TaskID& scheduled_task_id = scheduled_tasks.front().GetTaskSpecification().TaskId();
       auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});

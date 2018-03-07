@@ -4,23 +4,23 @@
 
 namespace ray {
 
-const std::list<Task> &SchedulingQueue::waiting_tasks() const {
+const std::list<Task> &SchedulingQueue::GetWaitingTasks() const {
   return this->waiting_tasks_;
 }
 
-const std::list<Task> &SchedulingQueue::ready_tasks() const {
+const std::list<Task> &SchedulingQueue::GetReadyTasks() const {
   return this->ready_tasks_;
 }
 
-const std::list<Task> &SchedulingQueue::scheduled_tasks() const {
+const std::list<Task> &SchedulingQueue::GetScheduledTasks() const {
   return this->scheduled_tasks_;
 }
 
-const std::list<Task> &SchedulingQueue::running_tasks() const {
+const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
   return this->running_tasks_;
 }
 
-const std::list<Task>& SchedulingQueue::ready_methods() const {
+const std::list<Task>& SchedulingQueue::GetReadyMethods() const {
   throw std::runtime_error("Method not implemented");
 }
 
@@ -52,7 +52,9 @@ void queueTasks(
   }
 }
 
-std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher> task_ids) {
+std::vector<Task> SchedulingQueue::RemoveTasks(
+    std::unordered_set<TaskID, UniqueIDHasher> task_ids) {
+  // List of removed tasks to be returned.
   std::vector<Task> removed_tasks;
 
   // Try to find the tasks to remove from the waiting tasks.

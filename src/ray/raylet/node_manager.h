@@ -59,7 +59,7 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
   /// The resources local to this node.
   SchedulingResources local_resources_;
   // TODO(alexey): Add resource information from other nodes.
-  //std::unordered_map<DBClientID, SchedulingResources&, UniqueIDHasher> cluster_resource_map_;
+  //std::unordered_map<ClientID, SchedulingResources&, UniqueIDHasher> cluster_resource_map_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// A set of queues to maintain tasks.

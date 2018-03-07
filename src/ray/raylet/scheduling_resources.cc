@@ -11,10 +11,10 @@ ResourceSet::ResourceSet(
 ResourceSet::~ResourceSet() {}
 
 bool ResourceSet::operator==(const ResourceSet &rhs) const {
-  return (this->isSubset(rhs) && rhs.isSubset(*this));
+  return (this->IsSubset(rhs) && rhs.IsSubset(*this));
 }
 
-bool ResourceSet::isSubset(const ResourceSet &other) const {
+bool ResourceSet::IsSubset(const ResourceSet &other) const {
   // Check to make sure all keys of this are in other.
   for (const auto &resource_pair: resource_capacity_) {
     const auto &resource_name = resource_pair.first;
@@ -33,12 +33,12 @@ bool ResourceSet::isSubset(const ResourceSet &other) const {
 }
 
 /// Test whether this ResourceSet is a superset of the other ResourceSet
-bool ResourceSet::isSuperset(const ResourceSet &other) const {
-  return other.isSubset(*this);
+bool ResourceSet::IsSuperset(const ResourceSet &other) const {
+  return other.IsSubset(*this);
 }
 /// Test whether this ResourceSet is precisely equal to the other ResourceSet.
 bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
-  return (this->isSubset(rhs) && rhs.isSubset(*this));
+  return (this->IsSubset(rhs) && rhs.IsSubset(*this));
 }
 
 bool ResourceSet::AddResource(const std::string &resource_name, double capacity) {
@@ -79,11 +79,11 @@ SchedulingResources::~SchedulingResources() {}
 
 ResourceAvailabilityStatus SchedulingResources::CheckResourcesSatisfied(
     ResourceSet &resources) const {
-  if (!resources.isSubset(this->resources_total_)) {
+  if (!resources.IsSubset(this->resources_total_)) {
     return kInfeasible;
   }
   // Resource demand specified is feasible. Check if it's available.
-  if (!resources.isSubset(this->resources_available_)) {
+  if (!resources.IsSubset(this->resources_available_)) {
     return kResourcesUnavailable;
   }
   return kFeasible;

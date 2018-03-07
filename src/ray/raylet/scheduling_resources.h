@@ -5,8 +5,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "ray/raylet/worker_pool.h"
-
 namespace ray {
 
 /// Resource availability status reports whether the resource requirement is
@@ -46,13 +44,13 @@ public:
   /// \param other: The resource set we check being a subset of.
   /// \return True if the current resource set is the subset of other. False
   ///          otherwise.
-  bool isSubset(const ResourceSet &other) const;
+  bool IsSubset(const ResourceSet &other) const;
 
   /// \brief Test if this ResourceSet is a superset of the other ResourceSet.
   /// \param other: The resource set we check being a superset of.
   /// \return True if the current resource set is the superset of other.
   ///         False otherwise.
-  bool isSuperset(const ResourceSet &other) const;
+  bool IsSuperset(const ResourceSet &other) const;
 
 
   /// \brief Add a new resource to the resource set.

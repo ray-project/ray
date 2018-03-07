@@ -31,31 +31,31 @@ class SchedulingQueue {
   ///
   /// \return A const reference to the queue of tasks that are waiting for
   /// object dependencies to become available.
-  const std::list<Task>& waiting_tasks() const;
+  const std::list<Task>& GetWaitingTasks() const;
 
   /// Get the queue of tasks in the ready state.
   ///
   /// \return A const reference to the queue of tasks that have all
   /// dependencies local and that are waiting to be scheduled.
-  const std::list<Task>& ready_tasks() const;
+  const std::list<Task>& GetReadyTasks() const;
 
   /// Get the queue of actor methods in the ready state.
   ///
   /// \return A const reference to the queue of actor methods that have all
   /// dependencies local and that are waiting to be scheduled.
-  const std::list<Task>& ready_methods() const;
+  const std::list<Task>& GetReadyMethods() const;
 
   /// Get the queue of tasks in the scheduled state.
   ///
   /// \return A const reference to the queue of tasks that have been scheduled
   /// to execute but that are waiting for a worker.
-  const std::list<Task>& scheduled_tasks() const;
+  const std::list<Task>& GetScheduledTasks() const;
 
   /// Get the queue of tasks in the running state.
   ///
   /// \return A const reference to the queue of tasks that are currently
   /// executing on a worker.
-  const std::list<Task>& running_tasks() const;
+  const std::list<Task>& GetRunningTasks() const;
 
   /// Remove tasks from the task queue.
   ///

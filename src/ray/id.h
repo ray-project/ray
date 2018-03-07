@@ -58,7 +58,6 @@ typedef UniqueID ActorID;
 typedef UniqueID ActorHandleID;
 typedef UniqueID WorkerID;
 typedef UniqueID DriverID;
-typedef UniqueID DBClientID;
 typedef UniqueID ConfigID;
 typedef UniqueID ClientID;
 

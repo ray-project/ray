@@ -31,7 +31,8 @@ class LineageCacheObjectEntry : public LineageCacheEntry {
 class LineageCache {
  public:
   /// Create a lineage cache policy.
-  LineageCache(/* TODO(swang): Pass in the policy (interface?) and a GCS client. */);
+  /// TODO(swang): Pass in the policy (interface?) and a GCS client.
+  LineageCache();
 
   /// Add a task and its object outputs asynchronously to the GCS. This
   /// overwrites the task’s mutable fields in the execution specification.

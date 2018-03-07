@@ -2,14 +2,13 @@
 
 #include "ray/gcs/client.h"
 
-#include "task.h"
 #include "common_protocol.h"
 
 namespace {
 
 std::shared_ptr<TaskTableDataT> MakeTaskTableData(
     const TaskExecutionSpec &execution_spec,
-    const DBClientID &local_scheduler_id,
+    const ClientID &local_scheduler_id,
     SchedulingState scheduling_state) {
   auto data = std::make_shared<TaskTableDataT>();
   data->scheduling_state = scheduling_state;
@@ -65,8 +64,8 @@ Status TaskTableTestAndUpdate(
                                                 data, callback);
 }
 
-void clientConnected(gcs::AsyncGcsClient *client,
-                     const UniqueID &client_id,
+void ClientConnected(gcs::AsyncGcsClient *client,
+                     const ClientID &client_id,
                      std::shared_ptr<ObjectTableDataT> data) {
 }
 

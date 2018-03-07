@@ -98,9 +98,9 @@ class TestObjectManager : public ::testing::Test {
 
 // TEST_F(TestObjectManager, TestPull) {
 //  ObjectID object_id = ObjectID().from_random();
-//  DBClientID dbc_id = DBClientID().from_random();
+//  ClientID dbc_id = ClientID().from_random();
 //  RAY_LOG(INFO) << "ObjectID: " << object_id.hex().c_str();
-//  RAY_LOG(INFO) << "DBClientID: " << dbc_id.hex().c_str();
+//  RAY_LOG(INFO) << "ClientID: " << dbc_id.hex().c_str();
 //  om->Pull(object_id, dbc_id);
 //  om->Pull(object_id);
 //  ASSERT_TRUE(true);

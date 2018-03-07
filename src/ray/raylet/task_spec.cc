@@ -42,14 +42,13 @@ size_t TaskArgumentByValue::HashDataLength() const {
 }
 
 static const ObjectID task_compute_return_id(TaskID task_id, int64_t return_index) {
-  /* Here, return_indices need to be >= 0, so we can use negative
-   * indices for put. */
+  // Here, return_indices need to be >= 0, so we can use negative indices for put.
   RAY_DCHECK(return_index >= 0);
-  /* TODO(rkn): This line requires object and task IDs to be the same size. */
+  // TODO(rkn): This line requires object and task IDs to be the same size.
   ObjectID return_id = task_id;
   int64_t *first_bytes = (int64_t *) &return_id;
-  /* XOR the first bytes of the object ID with the return index. We add one so
-   * the first return ID is not the same as the task ID. */
+  // XOR the first bytes of the object ID with the return index.
+  // We add one so the first return ID is not the same as the task ID.
   *first_bytes = *first_bytes ^ (return_index + 1);
   return return_id;
 }

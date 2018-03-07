@@ -16,10 +16,10 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
   const auto &resource_supply_set = resource_supply.GetAvailableResources();
 
   // Iterate over running tasks, get their resource demand and try to schedule.
-  for (const auto &t : sched_queue_.ready_tasks()) {
+  for (const auto &t : sched_queue_.GetReadyTasks()) {
     // Get task's resource demand
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
-    bool task_feasible = resource_demand.isSubset(resource_supply_set);
+    bool task_feasible = resource_demand.IsSubset(resource_supply_set);
     if (task_feasible) {
       const TaskID &task_id = t.GetTaskSpecification().TaskId();
       decision[task_id] = local_node_id;
