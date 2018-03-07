@@ -47,12 +47,7 @@ Example Program
 Installation
 ------------
 
-- Ray can be installed on Linux and Mac with ``pip install ray``.
-- To build Ray from source, see the instructions for `Ubuntu`_ and `Mac`_.
-
-.. _`Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
-.. _`Mac`: http://ray.readthedocs.io/en/latest/install-on-macosx.html
-
+Ray can be installed on Linux and Mac with ``pip install ray``.
 
 Here are links to the latest wheels (which are built off of master):
 
@@ -77,6 +72,10 @@ Here are links to the latest wheels (which are built off of master):
 .. _`MacOS Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp34-cp34m-macosx_10_6_intel.whl
 .. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp27-cp27m-macosx_10_6_intel.whl
 
+To build Ray from source, see the instructions for `Ubuntu`_ and `Mac`_.
+
+.. _`Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
+.. _`Mac`: http://ray.readthedocs.io/en/latest/install-on-macosx.html
 
 More Information
 ----------------
