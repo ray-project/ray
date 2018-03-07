@@ -1,5 +1,5 @@
 pong-apex:
-    env: Pong-v0
+    env: PongNoFrameskip-v4
     run: APEX
     resources:
         cpu:
@@ -7,6 +7,6 @@ pong-apex:
         gpu: 1
     config:
         force_evaluators_remote: True  # requires cluster
-        num_workers: 128
+        num_workers: 32
         lr: .0001
         gamma: 0.99
