@@ -199,4 +199,47 @@ TEST_F(TestGcsWithAsio, TestSubscribeAll) {
   TestSubscribeAll(job_id_, client_);
 }
 
+void ClientTableNotification(gcs::AsyncGcsClient *client,
+                             const UniqueID &id,
+                             std::shared_ptr<ClientTableDataT> data,
+                             bool is_insertion) {
+  ClientID added_id = client->client_table().GetLocalClientId();
+  ASSERT_EQ(ClientID::from_binary(data->client_id), added_id);
+  ASSERT_EQ(data->is_insertion, is_insertion);
+
+  auto cached_client = client->client_table().GetClient(added_id);
+  ASSERT_EQ(ClientID::from_binary(cached_client.client_id), added_id);
+  ASSERT_EQ(cached_client.is_insertion, is_insertion);
+}
+
+void ClientTableAdded(gcs::AsyncGcsClient *client,
+                      const UniqueID &id,
+                      std::shared_ptr<ClientTableDataT> data) {
+  ClientTableNotification(client, id, data, true);
+}
+
+void ClientTableRemoved(gcs::AsyncGcsClient *client,
+                        const UniqueID &id,
+                        std::shared_ptr<ClientTableDataT> data) {
+  ClientTableNotification(client, id, data, false);
+  test->Stop();
+}
+
+void TestClientTable(const JobID &job_id, gcs::AsyncGcsClient &client) {
+  // Register callbacks for when a client gets added and removed. The latter
+  // event will stop the event loop.
+  client.client_table().RegisterClientAddedCallback(&ClientTableAdded);
+  client.client_table().RegisterClientRemovedCallback(&ClientTableRemoved);
+  // Connect and disconnect to client table. We should receive notifications
+  // for the addition and removal of our own entry.
+  client.client_table().Connect();
+  client.client_table().Disconnect();
+  test->Start();
+}
+
+TEST_F(TestGcsWithAsio, TestClientTableConnect) {
+  test = this;
+  TestClientTable(job_id_, client_);
+}
+
 }  // namespace
