@@ -406,11 +406,10 @@ def start_credis(node_ip_address,
             node_ip_address=node_ip_address, port=port,
             stdout_file=stdout_file, stderr_file=stderr_file,
             cleanup=cleanup,
-            module=CREDIS_MASTER_MODULE,
+            module=modules[i],
             executable=CREDIS_EXECUTABLE)
 
         ports.append(port)
-
 
     [master_port, head_port, tail_port] = ports
 
