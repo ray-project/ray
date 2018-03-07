@@ -332,8 +332,7 @@ class DataFrame(object):
         [shufflers[i].shuffle.remote(self._index[self._index['partition'] == i],
                                      partition_assignments, i, *shufflers)
          for i in range(len(shufflers))]
-        import time
-        time.sleep(2)
+
         return DataFrameGroupBy([shuffler.apply_func.remote(
             lambda df: df.groupby(by=df.index,
                                   axis=axis,
@@ -341,7 +340,7 @@ class DataFrame(object):
                                   group_keys=group_keys,
                                   squeeze=squeeze,
                                   **kwargs))
-            for shuffler in shufflers])
+            for shuffler in shufflers], self.columns, self.index)
 
     def reduce_by_index(self, func, axis=0):
         """Perform a reduction based on the row index.
@@ -453,8 +452,8 @@ class DataFrame(object):
         local_transpose.columns = temp_columns
 
         # Sum will collapse the NAs from the groupby
-        df = local_transpose.reduce_by_index(
-            lambda df: df.apply(lambda x: x), axis=1)
+        df = local_transpose.groupby(by=self.columns, axis=1).apply(lambda x: x)
+            # lambda df: df.apply(lambda x: x), axis=1)
 
         # Reassign the columns within partition to self.index.
         # We have to use _depoly_func instead of _map_partition due to

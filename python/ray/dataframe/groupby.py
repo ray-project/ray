@@ -7,8 +7,29 @@ import pandas as pd
 
 class DataFrameGroupBy(object):
 
-    def __init__(self, partitions):
+    def __init__(self, partitions, columns, index):
         self._partitions = partitions
+        self._columns = columns
+        self._index = index
+
+    def _map_partitions(self, func, index=None):
+        """Apply a function on each partition.
+
+        Args:
+            func (callable): The function to Apply.
+
+        Returns:
+            A new DataFrame containing the result of the function.
+        """
+        from .dataframe import DataFrame
+        from .dataframe import _deploy_func
+
+        assert(callable(func))
+        new_df = [_deploy_func.remote(func, part) for part in self._partitions]
+        if index is None:
+            index = self._index
+
+        return DataFrame(new_df, self._columns, index=index)
 
     @property
     def ngroups(self):
@@ -84,7 +105,7 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def apply(self, func, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._map_partitions(func)
 
     def rolling(self, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")

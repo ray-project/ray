@@ -23,6 +23,7 @@ class ShuffleActor(object):
     def assign_and_send_data(self, index, partition_assignments, list_of_partitions):
         num_partitions = len(partition_assignments)
         self.partition_data.index = index.index
+
         for i in range(num_partitions):
             if i == self.index_of_self:
                 continue
