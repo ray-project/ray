@@ -8,10 +8,10 @@
 namespace ray {
 
 Raylet::Raylet(boost::asio::io_service& io_service,
-                       const std::string &socket_name,
-                       const ResourceSet &resource_config,
-                       const ObjectManagerConfig &om_config,
-                       std::shared_ptr<ray::GcsClient> gcs_client)
+               const std::string &socket_name,
+               const ResourceSet &resource_config,
+               const ObjectManagerConfig &om_config,
+               std::shared_ptr<ray::GcsClient> gcs_client)
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),
       tcp_acceptor_(io_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
@@ -30,7 +30,7 @@ Raylet::~Raylet(){
   RAY_CHECK_OK(object_manager_.Terminate());
 }
 
-ClientID Raylet::RegisterGcs(){
+ClientID Raylet::RegisterGcs() {
   boost::asio::ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
   std::string ip = endpoint.address().to_string();
   ushort port = endpoint.port();
@@ -47,7 +47,7 @@ void Raylet::DoAcceptTcp() {
 }
 
 void Raylet::HandleAcceptTcp(TCPClientConnection::pointer new_connection,
-                                 const boost::system::error_code& error) {
+                             const boost::system::error_code& error) {
   if (!error) {
     // Pass it off to object manager for now.
     ray::Status status = object_manager_.AcceptConnection(std::move(new_connection));

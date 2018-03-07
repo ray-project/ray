@@ -8,7 +8,7 @@ namespace ray {
 ray::Status ObjectTable::GetObjectClientIDs(const ray::ObjectID &object_id,
                                             const ClientIDsCallback &success,
                                             const FailCallback &fail) {
-  // cout << "GetObjectClientIDs " << object_id.hex() << endl;
+  RAY_LOG(DEBUG) << "GetObjectClientIDs " << object_id.hex();
   if (client_lookup.count(object_id) > 0) {
     if (!client_lookup[object_id].empty()) {
       std::vector<ClientID> v;
@@ -30,12 +30,12 @@ ray::Status ObjectTable::GetObjectClientIDs(const ray::ObjectID &object_id,
 ray::Status ObjectTable::Add(const ObjectID &object_id, const ClientID &client_id,
                              const DoneCallback &done) {
   if (client_lookup.count(object_id) == 0) {
-    // cout << "Add ObjectID set " << object_id.hex() << endl;
+    RAY_LOG(DEBUG) << "Add ObjectID set " << object_id.hex();
     client_lookup[object_id] = std::unordered_set<ClientID, UniqueIDHasher>();
   } else if (client_lookup[object_id].count(client_id) != 0) {
     return ray::Status::KeyError("ClientID already exists.");
   }
-  // cout << "Insert ClientID " << client_id.hex() << endl;
+  RAY_LOG(DEBUG) << "Insert ClientID " << client_id.hex();
   client_lookup[object_id].insert(client_id);
   done();
   return ray::Status::OK();

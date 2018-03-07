@@ -1,10 +1,8 @@
 #include <iostream>
-#include <memory>
 #include <thread>
 
 #include "gtest/gtest.h"
 #include "plasma/client.h"
-#include "plasma/common.h"
 #include "plasma/events.h"
 #include "plasma/plasma.h"
 #include "plasma/protocol.h"
@@ -13,15 +11,15 @@
 
 #include "object_manager.h"
 
-using namespace std;
-
 namespace ray {
 
 std::string test_executable;  // NOLINT
 
 class TestObjectManager : public ::testing::Test {
  public:
-  TestObjectManager() { cout << "TestObjectManager: started." << endl; }
+  TestObjectManager() {
+    RAY_LOG(DEBUG) << "TestObjectManager: started.";
+  }
 
   void SetUp() {
     // start store
@@ -33,31 +31,30 @@ class TestObjectManager : public ::testing::Test {
     int s = system(plasma_command.c_str());
     ASSERT_TRUE(!s);
 
-    // start mock gcs
-    mock_gcs_client_ = shared_ptr<GcsClient>(new GcsClient());
+    // Start mock global control store.
+    mock_gcs_client_ = std::shared_ptr<GcsClient>(new GcsClient());
     // mock_gcs_client_->Register();
 
-    // start nodeserver
+    // Start node server.
 
-    // start om 1
+    // Start object manager 1.
     ObjectManagerConfig config;
     config.store_socket_name = "/tmp/store";
-    object_manager_1_ = unique_ptr<ObjectManager>(
+    object_manager_1_ = std::unique_ptr<ObjectManager>(
         new ObjectManager(io_service_, config, mock_gcs_client_));
 
-    // start om 2
+    // Start object manager 2.
     //    ObjectManagerConfig config2;
     //    config2.store_socket_name = "/tmp/store";
-    //    shared_ptr<ObjectDirectory> od2 = shared_ptr<ObjectDirectory>(new
+    //    std::shared_ptr<ObjectDirectory> od2 = std::shared_ptr<ObjectDirectory>(new
     //    ObjectDirectory());
     //    od2->InitGcs(mock_gcs_client_);
-    //    object_manager_2_ = unique_ptr<ObjectManager>(new ObjectManager(io_service,
+    //    object_manager_2_ = std::unique_ptr<ObjectManager>(new ObjectManager(io_service,
     //    config2, od2));
 
-    // start client connection
+    // Initiate client connection.
     ARROW_CHECK_OK(client_.Connect("/tmp/store", "", PLASMA_DEFAULT_RELEASE_DELAY));
 
-    // start loop
     this->StartLoop();
   }
 
@@ -87,11 +84,12 @@ class TestObjectManager : public ::testing::Test {
   plasma::PlasmaClient client2_;
   boost::asio::io_service io_service_;
 
-  shared_ptr<GcsClient> mock_gcs_client_;
-  unique_ptr<ObjectManager> object_manager_1_;
-  unique_ptr<ObjectManager> object_manager_2_;
+  std::shared_ptr<GcsClient> mock_gcs_client_;
+  std::unique_ptr<ObjectManager> object_manager_1_;
+  std::unique_ptr<ObjectManager> object_manager_2_;
 };
 
+// TODO: get rid of dead code?
 // TEST_F(TestObjectManager, TestPush) {
 //  // test object push between two object managers.
 //  ASSERT_TRUE(true);
@@ -101,8 +99,8 @@ class TestObjectManager : public ::testing::Test {
 // TEST_F(TestObjectManager, TestPull) {
 //  ObjectID object_id = ObjectID().from_random();
 //  DBClientID dbc_id = DBClientID().from_random();
-//  cout << "ObjectID: " << object_id.hex().c_str() << endl;
-//  cout << "DBClientID: " << dbc_id.hex().c_str() << endl;
+//  RAY_LOG(INFO) << "ObjectID: " << object_id.hex().c_str();
+//  RAY_LOG(INFO) << "DBClientID: " << dbc_id.hex().c_str();
 //  om->Pull(object_id, dbc_id);
 //  om->Pull(object_id);
 //  ASSERT_TRUE(true);
@@ -110,7 +108,7 @@ class TestObjectManager : public ::testing::Test {
 //}
 
 void ObjectAdded(const ObjectID &object_id) {
-  cout << "ObjectID Added: " << object_id.hex().c_str() << endl;
+  RAY_LOG(INFO) << "ObjectID Added: " << object_id.hex().c_str();
 }
 
 TEST_F(TestObjectManager, TestNotifications) {
@@ -119,7 +117,7 @@ TEST_F(TestObjectManager, TestNotifications) {
   // put object
   for (int i = 0; i < 10; ++i) {
     ObjectID object_id = ObjectID::from_random();
-    cout << "ObjectID Created: " << object_id.hex().c_str() << endl;
+    RAY_LOG(INFO) << "ObjectID Created: " << object_id.hex().c_str();
     int64_t data_size = 100;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
