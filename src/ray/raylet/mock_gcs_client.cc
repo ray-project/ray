@@ -3,8 +3,6 @@
 
 #include "ray/raylet/mock_gcs_client.h"
 
-using namespace std;
-
 namespace ray {
 
 ray::Status ObjectTable::GetObjectClientIDs(const ray::ObjectID &object_id,
@@ -13,7 +11,7 @@ ray::Status ObjectTable::GetObjectClientIDs(const ray::ObjectID &object_id,
   // cout << "GetObjectClientIDs " << object_id.hex() << endl;
   if (client_lookup.count(object_id) > 0) {
     if (!client_lookup[object_id].empty()) {
-      vector<ClientID> v;
+      std::vector<ClientID> v;
       for (auto client_id : client_lookup[object_id]) {
         v.push_back(client_id);
       }
@@ -65,7 +63,7 @@ ray::Status ClientTable::GetClientIds(ClientIDsCallback callback) {
   return Status::OK();
 };
 
-void ClientTable::GetClientInformationSet(const vector<ClientID> &client_ids,
+void ClientTable::GetClientInformationSet(const std::vector<ClientID> &client_ids,
                                           ManyInfoCallback callback,
                                           FailCallback failcb) {
   std::vector<ClientInformation> info_vec;
@@ -119,4 +117,4 @@ ClientID GcsClient::Register(const std::string &ip, uint16_t port) {
 ObjectTable &GcsClient::object_table() { return *object_table_; };
 
 ClientTable &GcsClient::client_table() { return *client_table_; };
-};
+} // namespace ray

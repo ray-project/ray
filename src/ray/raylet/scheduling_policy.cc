@@ -1,13 +1,5 @@
-#ifndef SCHEDULING_POLICY_CC
-#define SCHEDULING_POLICY_CC
-
 #include "scheduling_policy.h"
 
-#include <unordered_map>
-
-#include "ray/raylet/scheduling_resources.h"
-
-using namespace std;
 namespace ray{
 
 SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &sched_queue)
@@ -39,5 +31,3 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
 SchedulingPolicy::~SchedulingPolicy() {}
 
 } // namespace ray
-
-#endif // SCHEDULING_POLICY_CC

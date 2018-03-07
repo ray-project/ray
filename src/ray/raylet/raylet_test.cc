@@ -1,6 +1,5 @@
 #include <iostream>
 #include <thread>
-#include <algorithm>
 
 #include "gtest/gtest.h"
 

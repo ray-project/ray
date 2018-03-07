@@ -1,14 +1,6 @@
-#ifndef TASK_DEPENDENCY_MANAGER_CC
-#define TASK_DEPENDENCY_MANAGER_CC
-
 #include "task_dependency_manager.h"
 
-#include "ray/status.h"
-#include "ray/util/logging.h"
-
-using namespace std;
 namespace ray {
-
 
 TaskDependencyManager::TaskDependencyManager(
     ObjectManager &object_manager,
@@ -114,6 +106,4 @@ void TaskDependencyManager::MarkDependencyReady(const ObjectID &object) {
   throw std::runtime_error("Method not implemented");
 }
 
-} // end namespace ray
-
-#endif  // TASK_DEPENDENCY_MANAGER_CC
+} // namespace ray

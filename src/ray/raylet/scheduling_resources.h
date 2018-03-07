@@ -1,5 +1,5 @@
-#ifndef SCHEDULING_RESOURCES_H
-#define SCHEDULING_RESOURCES_H
+#ifndef RAY_RAYLET_SCHEDULING_RESOURCES_H
+#define RAY_RAYLET_SCHEDULING_RESOURCES_H
 
 #include <string>
 #include <unordered_map>
@@ -137,4 +137,4 @@ class SchedulingResources {
 
 } // namespace ray
 
-#endif // SCHEDULING_RESOURCES_H
+#endif // RAY_RAYLET_SCHEDULING_RESOURCES_H

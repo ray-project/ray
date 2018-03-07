@@ -1,5 +1,5 @@
-#ifndef SCHEDULING_POLICY_H
-#define SCHEDULING_POLICY_H
+#ifndef RAY_RAYLET_SCHEDULING_POLICY_H
+#define RAY_RAYLET_SCHEDULING_POLICY_H
 
 #include <unordered_map>
 
@@ -37,4 +37,4 @@ private:
 
 } // namespace ray
 
-#endif // SCHEDULING_POLICY_H
+#endif // RAY_RAYLET_SCHEDULING_POLICY_H

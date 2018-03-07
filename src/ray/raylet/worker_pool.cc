@@ -1,12 +1,8 @@
-#ifndef WORKER_POOL_CC
-#define WORKER_POOL_CC
-
 #include "ray/raylet/worker_pool.h"
 
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
-using namespace std;
 namespace ray {
 
 /// A constructor that initializes a worker pool with num_workers workers.
@@ -74,11 +70,9 @@ bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool, std::shared_p
   return false;
 }
 
-bool WorkerPool::DisconnectWorker(shared_ptr<Worker> worker) {
+bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
   RAY_CHECK(removeWorker(registered_workers_, worker));
   return removeWorker(pool_, worker);
 }
 
-} // end namespace ray
-
-#endif // WORKER_POOL_CC
+} // namespace ray

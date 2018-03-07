@@ -1,9 +1,4 @@
-#ifndef LINEAGE_CACHE_CC
-#define LINEAGE_CACHE_CC
-
 #include "lineage_cache.h"
-
-#include <stdexcept>
 
 namespace ray {
 
@@ -35,5 +30,3 @@ Status LineageCache::Flush() {
 }
 
 } // namespace ray
-
-#endif // LINEAGE_CACHE_CC

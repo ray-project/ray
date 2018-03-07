@@ -1,12 +1,8 @@
-#ifndef TASK_SPECIFICATION_CC
-#define TASK_SPECIFICATION_CC
-
 #include "task_spec.h"
 
 #include "common.h"
 #include "common_protocol.h"
 
-using namespace std;
 namespace ray {
 
 TaskArgument::~TaskArgument() {
@@ -77,7 +73,7 @@ TaskSpecification::TaskSpecification(
     FunctionID function_id,
     const std::vector<TaskArgument> &task_arguments,
     int64_t num_returns,
-    const unordered_map<std::string, double> &required_resources) {
+    const std::unordered_map<std::string, double> &required_resources) {
   flatbuffers::FlatBufferBuilder fbb;
 
   // Compute hashes.
@@ -197,6 +193,4 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
   return ResourceSet(required_resources);
 }
 
-}
-
-#endif // TASK_SPECIFICATION_CC
+} // namespace ray

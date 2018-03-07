@@ -1,8 +1,3 @@
-#ifndef TASK_EXECUTION_SPECIFICATION_CC
-#define TASK_EXECUTION_SPECIFICATION_CC
-
-#include <vector>
-
 #include "ray/raylet/task_execution_spec.h"
 
 namespace ray {
@@ -43,6 +38,4 @@ void TaskExecutionSpecification::SetLastTimeStamp(int64_t new_timestamp) {
   last_timestamp_ = new_timestamp;
 }
 
-} // end namespace ray
-
-#endif // TASK_EXECUTION_SPECIFICATION_CC
+} // namespace ray

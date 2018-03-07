@@ -1,11 +1,9 @@
-#ifndef WORKER_H
-#define WORKER_H
-
-#include "ray/common/client_connection.h"
+#ifndef RAY_RAYLET_WORKER_H
+#define RAY_RAYLET_WORKER_H
 
 #include <memory>
-#include <unistd.h>
 
+#include "ray/common/client_connection.h"
 #include "ray/id.h"
 
 namespace ray {
@@ -33,7 +31,6 @@ private:
   TaskID assigned_task_id_;
 };
 
+} // namespace ray
 
-} // end namespace ray
-
-#endif // WORKER_H
+#endif // RAY_RAYLET_WORKER_H

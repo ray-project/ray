@@ -1,5 +1,5 @@
-#ifndef LINEAGE_CACHE_H
-#define LINEAGE_CACHE_H
+#ifndef RAY_RAYLET_LINEAGE_CACHE_H
+#define RAY_RAYLET_LINEAGE_CACHE_H
 
 #include "ray/raylet/task.h"
 #include "ray/id.h"
@@ -80,4 +80,4 @@ class LineageCache {
 
 } // namespace ray
 
-#endif // LINEAGE_CACHE_H
+#endif // RAY_RAYLET_LINEAGE_CACHE_H

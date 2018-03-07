@@ -1,12 +1,7 @@
 #include <iostream>
 
-#include <boost/bind.hpp>
-
 #include "ray/status.h"
-#include "ray/util/logging.h"
 #include "ray/raylet/raylet.h"
-
-using namespace std;
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
@@ -29,7 +24,7 @@ int main(int argc, char *argv[]) {
   om_config.store_socket_name = "/tmp/store";
 
   //  initialize mock gcs & object directory
-  shared_ptr<ray::GcsClient> mock_gcs_client = shared_ptr<ray::GcsClient>(new ray::GcsClient());
+  std::shared_ptr<ray::GcsClient> mock_gcs_client = std::shared_ptr<ray::GcsClient>(new ray::GcsClient());
 
   // Initialize the node manager.
   boost::asio::io_service io_service;

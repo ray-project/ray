@@ -1,5 +1,5 @@
-#ifndef RAY_MOCK_GCS_CLIENT_H
-#define RAY_MOCK_GCS_CLIENT_H
+#ifndef RAY_RAYLET_MOCK_GCS_CLIENT_H
+#define RAY_RAYLET_MOCK_GCS_CLIENT_H
 
 #include <cstdint>
 #include <functional>
@@ -89,6 +89,6 @@ class GcsClient {
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<ClientTable> client_table_;
 };
-}
+} // namespace ray
 
-#endif  // RAY_MOCK_GCS_CLIENT_H
+#endif  // RAY_RAYLET_MOCK_GCS_CLIENT_H

@@ -1,5 +1,5 @@
-#ifndef ACTOR_H
-#define ACTOR_H
+#ifndef RAY_RAYLET_ACTOR_H
+#define RAY_RAYLET_ACTOR_H
 
 #include "ray/id.h"
 
@@ -23,4 +23,4 @@ private:
 
 } // namespace ray
 
-#endif // ACTOR_H
+#endif // RAY_RAYLET_ACTOR_H

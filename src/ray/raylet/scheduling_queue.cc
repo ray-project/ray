@@ -1,12 +1,6 @@
-#ifndef SCHEDULING_QUEUE_CC
-#define SCHEDULING_QUEUE_CC
-
 #include "scheduling_queue.h"
 
-#include <list>
-
 #include "ray/status.h"
-#include "ray/id.h"
 
 namespace ray {
 
@@ -97,5 +91,3 @@ bool SchedulingQueue::RegisterActor(ActorID actor_id,
 }
 
 } // namespace ray
-
-#endif // SCHEDULING_QUEUE_CC

@@ -1,13 +1,13 @@
-#ifndef SCHEDULING_QUEUE_H
-#define SCHEDULING_QUEUE_H
+#ifndef RAY_RAYLET_SCHEDULING_QUEUE_H
+#define RAY_RAYLET_SCHEDULING_QUEUE_H
 
 #include <list>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
 
-#include "ray/raylet/task.h"
 #include "ray/raylet/actor.h"
+#include "ray/raylet/task.h"
 
 namespace ray {
 
@@ -106,4 +106,4 @@ class SchedulingQueue {
 };
 } // namespace ray
 
-#endif // SCHEDULING_QUEUE_H
+#endif // RAY_RAYLET_SCHEDULING_QUEUE_H

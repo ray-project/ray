@@ -1,5 +1,5 @@
-#ifndef WORKER_POOL_H
-#define WORKER_POOL_H
+#ifndef RAY_RAYLET_WORKER_POOL_H
+#define RAY_RAYLET_WORKER_POOL_H
 
 #include <inttypes.h>
 #include <list>
@@ -79,6 +79,6 @@ private:
   // TODO(swang): Make this a map to make GetRegisteredWorker faster.
   std::list<std::shared_ptr<Worker>> registered_workers_;
 };
-} // end namespace ray
+} // namespace ray
 
-#endif // WORKER_POOL_H
+#endif // RAY_RAYLET_WORKER_POOL_H

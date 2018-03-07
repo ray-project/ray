@@ -1,10 +1,10 @@
-#ifndef TASK_H
-#define TASK_H
+#ifndef RAY_RAYLET_TASK_H
+#define RAY_RAYLET_TASK_H
 
 #include <inttypes.h>
 
-#include "ray/raylet/task_spec.h"
 #include "ray/raylet/task_execution_spec.h"
+#include "ray/raylet/task_spec.h"
 
 namespace ray {
 
@@ -64,6 +64,6 @@ private:
 
 };
 
-} // end namespace ray
+} // namespace ray
 
-#endif // TASK_H
+#endif // RAY_RAYLET_TASK_H

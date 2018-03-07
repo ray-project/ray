@@ -1,5 +1,5 @@
-#ifndef TASK_EXECUTION_SPECIFICATION_H
-#define TASK_EXECUTION_SPECIFICATION_H
+#ifndef RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H
+#define RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H
 
 #include <vector>
 
@@ -73,5 +73,5 @@ class TaskExecutionSpecification {
   int spillback_count_;
 };
 
-} // end namespace ray
-#endif // TASK_EXECUTION_SPECIFICATION_H
+} // namespace ray
+#endif // RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H

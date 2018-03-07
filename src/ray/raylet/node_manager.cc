@@ -1,16 +1,8 @@
-#ifndef NODE_MANAGER_CC
-#define NODE_MANAGER_CC
+#include "ray/raylet/node_manager.h"
 
-#include "node_manager.h"
-
-#include "ray/status.h"
-#include "ray/util/logging.h"
 #include "common_protocol.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/task.h"
-#include "ray/raylet/task_spec.h"
 
-using namespace std;
 namespace ray {
 
 NodeManager::NodeManager(
@@ -34,12 +26,13 @@ NodeManager::NodeManager(
   //cluster_resource_map_[DBClientID::nil()] = local_resources_;
 }
 
-void NodeManager::ProcessNewClient(shared_ptr<LocalClientConnection> client) {
+void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
   // The new client is a worker, so begin listening for messages.
   client->ProcessMessages();
 }
 
-void NodeManager::ProcessClientMessage(shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(
+        std::shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message_data) {
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (message_type) {
@@ -180,6 +173,4 @@ void NodeManager::resubmitTask(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
 }
 
-} // end namespace ray
-
-#endif  // NODE_MANAGER_CC
+} // namespace ray

@@ -1,5 +1,5 @@
-#ifndef RECONSTRUCTION_POLICY_H
-#define RECONSTRUCTION_POLICY_H
+#ifndef RAY_RAYLET_RECONSTRUCTION_POLICY_H
+#define RAY_RAYLET_RECONSTRUCTION_POLICY_H
 
 #include <functional>
 
@@ -30,6 +30,6 @@ class ReconstructionPolicy {
  private:
 };
 
-} // end namespace ray
+} // namespace ray
 
-#endif  // RECONSTRUCTION_POLICY_H
+#endif  // RAY_RAYLET_RECONSTRUCTION_POLICY_H

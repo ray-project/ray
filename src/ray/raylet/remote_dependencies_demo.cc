@@ -1,17 +1,10 @@
 #include <iostream>
 
-#include <boost/bind.hpp>
-
-#include "ray/status.h"
-#include "ray/util/logging.h"
 #include "ray/raylet/raylet.h"
 
-using namespace std;
-/**
- * A demo that starts two Raylets, with one object store each. The two Raylets
- * share a mock GCS client for communication between the two (e.g., for
- * ObjectManager::Push).
- */
+/// A demo that starts two Raylets, with one object store each. The two Raylets
+/// share a mock GCS client for communication between the two (e.g., for
+/// ObjectManager::Push).
 int main(int argc, char *argv[]) {
   RAY_CHECK(argc == 3);
   std::string store1 = "/tmp/store1";
@@ -34,7 +27,7 @@ int main(int argc, char *argv[]) {
   ray::ObjectManagerConfig om_config;
 
   //  initialize mock gcs & object directory
-  shared_ptr<ray::GcsClient> mock_gcs_client = shared_ptr<ray::GcsClient>(new ray::GcsClient());
+  std::shared_ptr<ray::GcsClient> mock_gcs_client = std::shared_ptr<ray::GcsClient>(new ray::GcsClient());
 
   // Initialize the node manager.
   boost::asio::io_service io_service;

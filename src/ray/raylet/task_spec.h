@@ -1,5 +1,5 @@
-#ifndef TASK_SPECIFICATION_H
-#define TASK_SPECIFICATION_H
+#ifndef RAY_RAYLET_TASK_SPECIFICATION_H
+#define RAY_RAYLET_TASK_SPECIFICATION_H
 
 #include <cstddef>
 #include <string>
@@ -7,8 +7,8 @@
 #include <unordered_map>
 
 #include "ray/id.h"
-#include "format/common_generated.h"
 #include "ray/raylet/scheduling_resources.h"
+#include "format/common_generated.h"
 
 extern "C" {
 #include "sha256.h"
@@ -147,6 +147,7 @@ private:
   /// The task specification data.
   std::vector<uint8_t> spec_;
 };
-}
 
-#endif // TASK_SPECIFICATION_H
+} // namespace ray
+
+#endif // RAY_RAYLET_TASK_SPECIFICATION_H

@@ -1,6 +1,3 @@
-#ifndef ACTOR_CC
-#define ACTOR_CC
-
 #include "actor.h"
 
 namespace ray {
@@ -14,5 +11,3 @@ const ActorID& ActorInformation::GetActorId() const {
 }
 
 } // namespace ray
-
-#endif // ACTOR_CC

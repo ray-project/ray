@@ -1,6 +1,3 @@
-#ifndef TASK_CC
-#define TASK_CC
-
 #include "task.h"
 
 #include "common.h"
@@ -51,5 +48,4 @@ bool Task::DependsOn(ObjectID object_id) const {
   return false;
 }
 
-} // end namespace ray
-#endif // TASK_CC
+} // namespace ray

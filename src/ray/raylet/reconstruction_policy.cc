@@ -1,9 +1,5 @@
-#ifndef RECONSTRUCTION_POLICY_CC
-#define RECONSTRUCTION_POLICY_CC
-
 #include "reconstruction_policy.h"
 
-using namespace std;
 namespace ray {
 
 void ReconstructionPolicy::CheckObjectReconstruction(const ObjectID &object) {
@@ -11,5 +7,3 @@ void ReconstructionPolicy::CheckObjectReconstruction(const ObjectID &object) {
 }
 
 } // end namespace ray
-
-#endif  // RECONSTRUCTION_POLICY_CC

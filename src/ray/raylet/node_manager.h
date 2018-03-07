@@ -1,5 +1,5 @@
-#ifndef NODE_MANAGER_H
-#define NODE_MANAGER_H
+#ifndef RAY_RAYLET_NODE_MANAGER_H
+#define RAY_RAYLET_NODE_MANAGER_H
 
 #include "ray/common/client_connection.h"
 #include "ray/raylet/scheduling_resources.h"
@@ -75,4 +75,4 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
 
 } // end namespace ray
 
-#endif  // NODE_MANAGER_H
+#endif  // RAY_RAYLET_NODE_MANAGER_H

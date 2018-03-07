@@ -1,5 +1,5 @@
-#ifndef RAYLET_H
-#define RAYLET_H
+#ifndef RAY_RAYLET_RAYLET_H
+#define RAY_RAYLET_RAYLET_H
 
 #include <list>
 
@@ -70,6 +70,6 @@ class Raylet {
   std::shared_ptr<ray::GcsClient> gcs_client_;
 };
 
-} // end namespace ray
+} // namespace ray
 
-#endif  // RAYLET_H
+#endif  // RAY_RAYLET_RAYLET_H

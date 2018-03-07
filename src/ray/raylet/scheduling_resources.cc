@@ -1,9 +1,4 @@
-#ifndef SCHEDULING_RESOURCES_CC
-#define SCHEDULING_RESOURCES_CC
-
 #include "scheduling_resources.h"
-
-#include <cmath>
 
 namespace ray {
 
@@ -109,5 +104,3 @@ bool SchedulingResources::Acquire(const ResourceSet &resources) {
 }
 
 } // namespace ray
-
-#endif // SCHEDULING_RESOURCES_CC

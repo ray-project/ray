@@ -1,5 +1,5 @@
-#ifndef TASK_DEPENDENCY_MANAGER_H
-#define TASK_DEPENDENCY_MANAGER_H
+#ifndef RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
+#define RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
 
 #include "ray/id.h"
 #include "ray/raylet/task.h"
@@ -74,6 +74,6 @@ class TaskDependencyManager {
   std::function<void(const TaskID&)> task_ready_callback_;
 };
 
-} // end namespace ray
+} // namespace ray
 
-#endif  // TASK_DEPENDENCY_MANAGER_H
+#endif  // RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
