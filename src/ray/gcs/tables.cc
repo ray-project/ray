@@ -45,22 +45,26 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
     bool was_inserted = entry->second.is_insertion;
     bool is_deleted = !data->is_insertion;
     is_new = (was_inserted && is_deleted);
+    // Once a client with a given ID has been removed, it should never be added
+    // again. If the entry was in the cache and the client was deleted, check
+    // that this new notification is not an insertion.
+    RAY_CHECK(!entry->second.is_insertion && data->is_insertion)
+        << "Notification for addition of a client that was already removed";
   }
 
   // Add the notification to our cache. Notifications are idempotent.
   client_cache_[client_id] = *data;
 
   // If the notification is new, call any registered callbacks.
-  if (!is_new) {
-    return;
-  }
-  if (data->is_insertion) {
-    if (client_added_callback_ != nullptr) {
-      client_added_callback_(client, client_id, data);
-    }
-  } else {
-    if (client_removed_callback_ != nullptr) {
-      client_removed_callback_(client, client_id, data);
+  if (is_new) {
+    if (data->is_insertion) {
+      if (client_added_callback_ != nullptr) {
+        client_added_callback_(client, client_id, data);
+      }
+    } else {
+      if (client_removed_callback_ != nullptr) {
+        client_removed_callback_(client, client_id, data);
+      }
     }
   }
 }
@@ -83,6 +87,7 @@ const ClientTableDataT &ClientTable::GetLocalClient() {
 Status ClientTable::Connect() {
   RAY_CHECK(local_client_.is_insertion)
       << "Tried to reconnect a disconnected client.";
+
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   // Callback for a notification from the client table.
   auto notification_callback = [this](AsyncGcsClient *client,
@@ -122,6 +127,8 @@ const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
   if (entry != client_cache_.end()) {
     return entry->second;
   } else {
+    // If the requested client was not found, return a reference to the nil
+    // client entry.
     return client_cache_[ClientID::nil()];
   }
 }
