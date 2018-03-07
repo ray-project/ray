@@ -26,6 +26,7 @@ set(RAY_SRCS
   status.cc
   gcs/client.cc
   gcs/tables.cc
+  gcs/task_table.cc
   gcs/redis_context.cc
   gcs/asio.cc
 )

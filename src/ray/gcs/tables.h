@@ -283,6 +283,82 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
+class ClientTable : private Table<ClientID, ClientTableData> {
+ public:
+  ClientTable(const std::shared_ptr<RedisContext> &context,
+              AsyncGcsClient *client,
+              const ClientTableDataT &local_client)
+      : Table(context, client),
+        client_id_(ClientID::from_binary(local_client.client_id)),
+        local_client_(local_client) {
+    local_client_.is_insertion = true;
+    pubsub_channel_ = TablePubsub_CLIENT;
+
+    ClientTableDataT nil_client;
+    nil_client.client_id = ClientID::nil().binary();
+    client_cache_[ClientID::nil()] = nil_client;
+  };
+
+  /// Register a callback to call when a new client is added.
+  ///
+  /// \param callback The callback to register.
+  void RegisterClientAddedCallback(const Callback &callback);
+
+  /// Register a callback to call when a client is removed.
+  ///
+  /// \param callback The callback to register.
+  void RegisterClientRemovedCallback(const Callback &callback);
+
+  /// Connect as a client to the GCS. This registers us in the client table and
+  /// begins subscription to client table notifications.
+  ///
+  /// \param client_id The assigned client ID will be written to this pointer.
+  /// \return Status
+  ray::Status Connect();
+
+  /// Disconnect the client from the GCS. The client ID assigned during
+  /// registration should never be reused after disconnecting.
+  ///
+  /// \return Status
+  ray::Status Disconnect();
+
+  /// Get a client's information from the cache.
+  ///
+  /// \param client The client to get information about.
+  const ClientTableDataT &GetClient(const ClientID &client);
+
+  /// Get the local client's ID.
+  ///
+  /// \return The local client's ID.
+  const ClientID &GetLocalClientId();
+
+  /// Get the local client's information.
+  ///
+  /// \return The local client's information.
+  const ClientTableDataT &GetLocalClient();
+
+ private:
+  /// Handle a client table notification.
+  void HandleNotification(AsyncGcsClient *client,
+                          const ClientID &channel_id,
+                          std::shared_ptr<ClientTableDataT>);
+  /// Handle this client's successful connection to the GCS.
+  void HandleConnected(AsyncGcsClient *client,
+                       const ClientID &client_id,
+                       std::shared_ptr<ClientTableDataT>);
+
+  /// This client's ID.
+  const ClientID client_id_;
+  /// Information about this client.
+  ClientTableDataT local_client_;
+  /// The callback to call when a new client is added.
+  Callback client_added_callback_;
+  /// The callback to call when a client is removed.
+  Callback client_removed_callback_;
+  /// A cache for information about all clients.
+  std::unordered_map<ClientID, ClientTableDataT, UniqueIDHasher> client_cache_;
+};
+
 }  // namespace gcs
 
 }  // namespace ray
