@@ -55,6 +55,26 @@ RUN_LOCAL_SCHEDULER_PROFILER = False
 RUN_PLASMA_MANAGER_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
 
+# Location of the redis server and module.
+REDIS_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/common/thirdparty/redis/src/redis-server")
+REDIS_MODULE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/common/redis_module/libray_redis_module.so")
+
+# Location of the credis server and modules.
+CREDIS_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/credis/redis/src/redis-server")
+CREDIS_MASTER_MODULE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/credis/build/src/libmaster.so")
+CREDIS_MEMBER_MODULE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/credis/build/src/libmember.so")
+
+
 # ObjectStoreAddress tuples contain all information necessary to connect to an
 # object store. The fields are:
 # - name: The socket name for the object store
@@ -367,6 +387,61 @@ def check_version_info(redis_client):
             print(error_message)
 
 
+def start_credis(node_ip_address,
+                 port=None,
+                 redirect_output=False,
+                 cleanup=True):
+    """Start the credis global state store.
+
+    Credis is a chain replicated reliable redis store. It consists
+    of one master process that acts as a controller and a number of
+    chain members (currently two, the head and the tail).
+
+    Args:
+        node_ip_address: The IP address of the current node. This is only used
+            for recording the log filenames in Redis.
+        port (int): If provided, the primary Redis shard will be started on
+            this port.
+        redirect_output (bool): True if output should be redirected to a file
+            and false otherwise.
+        cleanup (bool): True if using Ray in local mode. If cleanup is true,
+            then all Redis processes started by this method will be killed by
+            services.cleanup() when the Python process that imported services
+            exits.
+
+    Returns:
+        The address (ip_address:port) of the credis master process.
+    """
+
+    components = ["credis_master", "credis_head", "credis_tail"]
+    modules = [CREDIS_MASTER_MODULE, CREDIS_MEMBER_MODULE,
+               CREDIS_MEMBER_MODULE]
+    ports = []
+
+    for i, component in enumerate(components):
+        stdout_file, stderr_file = new_log_files(
+            component, redirect_output)
+
+        new_port, _ = start_redis_instance(
+            node_ip_address=node_ip_address, port=port,
+            stdout_file=stdout_file, stderr_file=stderr_file,
+            cleanup=cleanup,
+            module=modules[i],
+            executable=CREDIS_EXECUTABLE)
+
+        ports.append(new_port)
+
+    [master_port, head_port, tail_port] = ports
+
+    # Connect the members to the master
+
+    master_client = redis.StrictRedis(host=node_ip_address, port=master_port)
+    master_client.execute_command("MASTER.ADD", node_ip_address, head_port)
+    master_client.execute_command("MASTER.ADD", node_ip_address, tail_port)
+
+    return address(node_ip_address, master_port)
+
+
 def start_redis(node_ip_address,
                 port=None,
                 redis_shard_ports=None,
@@ -462,7 +537,9 @@ def start_redis_instance(node_ip_address="127.0.0.1",
                          num_retries=20,
                          stdout_file=None,
                          stderr_file=None,
-                         cleanup=True):
+                         cleanup=True,
+                         executable=REDIS_EXECUTABLE,
+                         module=REDIS_MODULE):
     """Start a single Redis server.
 
     Args:
@@ -480,6 +557,9 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
+        executable (str): Full path tho the redis-server executable.
+        module (str): Full path to the redis module that will be loaded in this
+            redis server.
 
     Returns:
         A tuple of the port used by Redis and a handle to the process that was
@@ -489,14 +569,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
-    redis_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "./core/src/common/thirdparty/redis/src/redis-server")
-    redis_module = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "./core/src/common/redis_module/libray_redis_module.so")
-    assert os.path.isfile(redis_filepath)
-    assert os.path.isfile(redis_module)
+    assert os.path.isfile(executable)
+    assert os.path.isfile(module)
     counter = 0
     if port is not None:
         # If a port is specified, then try only once to connect.
@@ -506,10 +580,10 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     while counter < num_retries:
         if counter > 0:
             print("Redis failed to start, retrying now.")
-        p = subprocess.Popen([redis_filepath,
+        p = subprocess.Popen([executable,
                               "--port", str(port),
                               "--loglevel", "warning",
-                              "--loadmodule", redis_module],
+                              "--loadmodule", module],
                              stdout=stdout_file, stderr=stderr_file)
         time.sleep(0.1)
         # Check if Redis successfully started (or at least if it the executable
@@ -1066,6 +1140,10 @@ def start_ray_processes(address_info=None,
             redirect_output=True,
             redirect_worker_output=redirect_output, cleanup=cleanup)
         address_info["redis_address"] = redis_address
+        if "RAY_USE_NEW_GCS" in os.environ:
+            credis_address = start_credis(
+                node_ip_address, cleanup=cleanup)
+            address_info["credis_address"] = credis_address
         time.sleep(0.1)
 
         # Start monitoring the processes.
