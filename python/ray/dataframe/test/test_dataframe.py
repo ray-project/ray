@@ -2427,7 +2427,7 @@ def test_transform():
 @pytest.fixture
 def test_truediv(ray_df, pandas_df, other):
     new_ray_df = ray_df / other
-    new_pandas_df = ray_df / other
+    new_pandas_df = pandas_df / other
     assert(ray_df_equals_pandas(new_ray_df, new_pandas_df))
 
 
