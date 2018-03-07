@@ -18,7 +18,7 @@ class CredisTest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
-    def test_simple_func(self):
+    def test_credis_started(self):
         assert "credis_address" in self.config
         address, port = self.config["credis_address"].split(":")
         redis_client = redis.StrictRedis(host=address,
