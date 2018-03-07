@@ -20,16 +20,6 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 .. _`Ray RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
 
 
-Installation
-------------
-
-- Ray can be installed on Linux and Mac with ``pip install ray``.
-- To build Ray from source, see the instructions for `Ubuntu`_ and `Mac`_.
-
-.. _`Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
-.. _`Mac`: http://ray.readthedocs.io/en/latest/install-on-macosx.html
-
-
 Example Program
 ---------------
 
@@ -54,10 +44,17 @@ Example Program
 +------------------------------------------------+----------------------------------------------+
 
 
-Try the Latest Version
-----------------------
+Installation
+------------
 
-Here are links to the latest wheels.
+- Ray can be installed on Linux and Mac with ``pip install ray``.
+- To build Ray from source, see the instructions for `Ubuntu`_ and `Mac`_.
+
+.. _`Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
+.. _`Mac`: http://ray.readthedocs.io/en/latest/install-on-macosx.html
+
+
+Here are links to the latest wheels (which are built off of master):
 
 ===================  ===================
        Linux                MacOS
