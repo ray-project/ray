@@ -26,6 +26,11 @@ unamestr="$(uname)"
 bash "$TP_SCRIPT_DIR/build_redis.sh"
 
 ##############################################
+# credis
+##############################################
+bash "$TP_SCRIPT_DIR/build_credis.sh"
+
+##############################################
 # boost if necessary
 ##############################################
 if [[ "$unamestr" == "Linux" ]]; then

@@ -821,9 +821,15 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def first_valid_index(self):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Return index for first non-NA/null value.
+
+        Returns:
+            scalar: type of index
+        """
+        idx = self._index
+        if (idx is not None):
+            return idx.first_valid_index()
+        return None
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -1173,9 +1179,15 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def last_valid_index(self):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Return index for last non-NA/null value.
+
+        Returns:
+            scalar: type of index
+        """
+        idx = self._index
+        if (idx is not None):
+            return idx.last_valid_index()
+        return None
 
     def le(self, other, axis='columns', level=None):
         raise NotImplementedError(
@@ -2105,9 +2117,12 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __len__(self):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Gets the length of the dataframe.
+
+        Returns:
+            Returns an integer length of the dataframe object.
+        """
+        return sum(self._lengths)
 
     def __unicode__(self):
         raise NotImplementedError(
@@ -2133,7 +2148,15 @@ class DataFrame(object):
         return iter(self.columns)
 
     def __contains__(self, key):
-        return key in self.columns
+        """Searches columns for specific key
+
+        Args:
+            key : The column name
+
+        Returns:
+            Returns a boolean if the specified key exists as a column name
+        """
+        return self.columns.__contains__(key)
 
     def __nonzero__(self):
         raise NotImplementedError(
