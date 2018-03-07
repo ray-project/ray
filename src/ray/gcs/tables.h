@@ -37,6 +37,9 @@ class Table {
     ID id;
     std::shared_ptr<DataT> data;
     Callback callback;
+    // An optional callback to call for subscription operations, where the
+    // first message is a notification of subscription success.
+    Callback subscription_callback;
     Table<ID, Data> *table;
     AsyncGcsClient *client;
   };
@@ -48,20 +51,24 @@ class Table {
 
   /// Add an entry to the table.
   ///
-  /// @param job_id The ID of the job (= driver).
-  /// @param id The ID of the data that is added to the GCS.
-  /// @param data Data that is added to the GCS.
-  /// @param done Callback that is called once the data has been written to the
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data that is added to the GCS.
+  /// \param done Callback that is called once the data has been written to the
   ///        GCS.
-  /// @return Status
+  /// \return Status
   Status Add(const JobID &job_id,
              const ID &id,
              std::shared_ptr<DataT> data,
              const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, data, done, this, client_}));
-    int64_t callback_index = RedisCallbackManager::instance().add([d](
-        const std::string &data) { (d->callback)(d->client, d->id, d->data); });
+        new CallbackData({id, data, done, nullptr, this, client_}));
+    int64_t callback_index =
+        RedisCallbackManager::instance().add([d](const std::string &data) {
+          if (d->callback != nullptr) {
+            (d->callback)(d->client, d->id, d->data);
+          }
+        });
     flatbuffers::FlatBufferBuilder fbb;
     fbb.ForceDefaults(true);
     fbb.Finish(Data::Pack(fbb, data.get()));
@@ -73,19 +80,21 @@ class Table {
 
   /// Lookup an entry asynchronously.
   ///
-  /// @param job_id The ID of the job (= driver).
-  /// @param id The ID of the data that is looked up in the GCS.
-  /// @param lookup Callback that is called after lookup.
-  /// @return Status
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is looked up in the GCS.
+  /// \param lookup Callback that is called after lookup.
+  /// \return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, nullptr, lookup, this}));
+        new CallbackData({id, nullptr, lookup, nullptr, this, client_}));
     int64_t callback_index =
         RedisCallbackManager::instance().add([d](const std::string &data) {
           auto result = std::make_shared<DataT>();
           auto root = flatbuffers::GetRoot<Data>(data.data());
           root->UnPackTo(result.get());
-          (d->callback)(d->client, d->id, result);
+          if (d->callback != nullptr) {
+            (d->callback)(d->client, d->id, result);
+          }
         });
     std::vector<uint8_t> nil;
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(),
@@ -96,27 +105,30 @@ class Table {
 
   /// Subscribe to updates of this table
   ///
-  /// @param job_id The ID of the job (= driver).
-  /// @param client_id The type of update to listen to. If this is nil, then a
+  /// \param job_id The ID of the job (= driver).
+  /// \param client_id The type of update to listen to. If this is nil, then a
   ///        message for each Add to the table will be received. Else, only
   ///        messages for the given client will be received.
-  /// @param subscribe Callback that is called on each received message.
-  /// @param done Callback that is called when subscription is complete and we
+  /// \param subscribe Callback that is called on each received message.
+  /// \param done Callback that is called when subscription is complete and we
   ///        are ready to receive messages..
-  /// @return Status
+  /// \return Status
   Status Subscribe(const JobID &job_id,
                    const ClientID &client_id,
                    const Callback &subscribe,
                    const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({client_id, nullptr, subscribe, this}));
-    int64_t callback_index = RedisCallbackManager::instance().add(
-        [done, d](const std::string &data) {
+        new CallbackData({client_id, nullptr, subscribe, done, this, client_}));
+    int64_t callback_index =
+        RedisCallbackManager::instance().add([d](const std::string &data) {
           if (data.empty()) {
             // No data is provided. This is the callback for the initial
             // subscription request.
-            done(d->client, d->id, nullptr);
+            if (d->subscription_callback != nullptr) {
+              (d->subscription_callback)(d->client, d->id, nullptr);
+            }
           } else {
+            // Data is provided. This is the callback for a message.
             auto result = std::make_shared<DataT>();
             auto root = flatbuffers::GetRoot<Data>(data.data());
             root->UnPackTo(result.get());
@@ -151,12 +163,12 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// objects from the object table. The callback will be called once per
   /// notification received on this channel.
   ///
-  /// @param subscribe_all
-  /// @param object_available_callback Callback to be called when new object
+  /// \param subscribe_all
+  /// \param object_available_callback Callback to be called when new object
   ///        becomes available.
-  /// @param done_callback Callback to be called when subscription is installed.
+  /// \param done_callback Callback to be called when subscription is installed.
   ///        This is only used for the tests.
-  /// @return Status
+  /// \return Status
   Status SubscribeToNotifications(const JobID &job_id,
                                   bool subscribe_all,
                                   const Callback &object_available,
@@ -168,8 +180,8 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// notification channel, which was set up by the method
   /// ObjectTableSubscribeToNotifications.
   ///
-  /// @param object_ids The object IDs to receive notifications about.
-  /// @return Status
+  /// \param object_ids The object IDs to receive notifications about.
+  /// \return Status
   Status RequestNotifications(const JobID &job_id,
                               const std::vector<ObjectID> &object_ids);
 };
@@ -202,14 +214,14 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   /// this function. This assumes that the task spec already exists in the task
   /// table entry.
   ///
-  /// @param task_id The task ID of the task entry to update.
-  /// @param test_state_bitmask The bitmask to apply to the task entry's current
+  /// \param task_id The task ID of the task entry to update.
+  /// \param test_state_bitmask The bitmask to apply to the task entry's current
   ///        scheduling state.  The update happens if and only if the current
   ///        scheduling state AND-ed with the bitmask is greater than 0.
-  /// @param update_state The value to update the task entry's scheduling state
+  /// \param update_state The value to update the task entry's scheduling state
   ///        with, if the current state matches test_state_bitmask.
-  /// @param callback Function to be called when database returns result.
-  /// @return Status
+  /// \param callback Function to be called when database returns result.
+  /// \return Status
   Status TestAndUpdate(const JobID &job_id,
                        const TaskID &id,
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
@@ -236,19 +248,19 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   /// Events include changes to the task's scheduling state or changes to the
   /// task's local scheduler ID.
   ///
-  /// @param local_scheduler_id The db_client_id of the local scheduler whose
+  /// \param local_scheduler_id The db_client_id of the local scheduler whose
   ///        events we want to listen to. If you want to subscribe to updates
   ///        from
   ///        all local schedulers, pass in NIL_ID.
-  /// @param subscribe_callback Callback that will be called when the task table
+  /// \param subscribe_callback Callback that will be called when the task table
   /// is
   ///        updated.
-  /// @param state_filter Events we want to listen to. Can have values from the
+  /// \param state_filter Events we want to listen to. Can have values from the
   ///        enum "scheduling_state" in task.h.
   ///        TODO(pcm): Make it possible to combine these using flags like
   ///        TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
-  /// @param callback Function to be called when database returns result.
-  /// @return Status
+  /// \param callback Function to be called when database returns result.
+  /// \return Status
   Status SubscribeToTask(const JobID &job_id,
                          const DBClientID &local_scheduler_id,
                          int state_filter,
