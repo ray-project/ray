@@ -8,10 +8,24 @@ namespace gcs {
 
 void ClientTable::RegisterClientAddedCallback(const Callback &callback) {
   client_added_callback_ = callback;
+  // Call the callback for any added clients that are cached.
+  for (const auto &entry : client_cache_) {
+    if (!entry.first.is_nil() && entry.second.is_insertion) {
+      auto data = std::make_shared<ClientTableDataT>(entry.second);
+      client_added_callback_(client_, entry.first, data);
+    }
+  }
 }
 
 void ClientTable::RegisterClientRemovedCallback(const Callback &callback) {
   client_removed_callback_ = callback;
+  // Call the callback for any removed clients that are cached.
+  for (const auto &entry : client_cache_) {
+    if (!entry.first.is_nil() && !entry.second.is_insertion) {
+      auto data = std::make_shared<ClientTableDataT>(entry.second);
+      client_removed_callback_(client_, entry.first, data);
+    }
+  }
 }
 
 void ClientTable::HandleNotification(AsyncGcsClient *client,
@@ -37,11 +51,13 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   client_cache_[client_id] = *data;
 
   // If the notification is new, call any registered callbacks.
-  if (is_new) {
-    if (data->is_insertion)
-      if (client_added_callback_ != nullptr) {
-        client_added_callback_(client, client_id, data);
-      }
+  if (!is_new) {
+    return;
+  }
+  if (data->is_insertion) {
+    if (client_added_callback_ != nullptr) {
+      client_added_callback_(client, client_id, data);
+    }
   } else {
     if (client_removed_callback_ != nullptr) {
       client_removed_callback_(client, client_id, data);
@@ -93,7 +109,11 @@ Status ClientTable::Connect() {
 Status ClientTable::Disconnect() {
   local_client_.is_insertion = false;
   auto data = std::make_shared<ClientTableDataT>(local_client_);
-  return Add(JobID::nil(), client_id_, data, nullptr);
+  auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
+                             std::shared_ptr<ClientTableDataT> data) {
+    HandleConnected(client, id, data);
+  };
+  return Add(JobID::nil(), client_id_, data, add_callback);
 }
 
 const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
