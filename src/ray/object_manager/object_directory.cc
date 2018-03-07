@@ -1,7 +1,5 @@
 #include "object_directory.h"
 
-using std::vector;
-
 namespace ray {
 
 ObjectDirectory::ObjectDirectory(std::shared_ptr<GcsClient> gcs_client) {
@@ -48,13 +46,13 @@ ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
 
 ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
   // TODO(hme): Avoid callback hell.
-  vector<RemoteConnectionInfo> remote_connections;
+  std::vector<RemoteConnectionInfo> remote_connections;
   ray::Status status = gcs_client_->object_table().GetObjectClientIDs(
       object_id,
-      [this, object_id, &remote_connections](const vector<ClientID> &client_ids) {
+      [this, object_id, &remote_connections](const std::vector<ClientID> &client_ids) {
         gcs_client_->client_table().GetClientInformationSet(
             client_ids,
-            [this, object_id, &remote_connections](const vector<ClientInformation>
+            [this, object_id, &remote_connections](const std::vector<ClientInformation>
                                                    &info_vec) {
               for (const auto &client_info : info_vec) {
                 RemoteConnectionInfo info =
@@ -79,7 +77,7 @@ ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
 
 ray::Status ObjectDirectory::GetLocationsComplete(
     const ray::Status &status, const ObjectID &object_id,
-    const vector<RemoteConnectionInfo> &v) {
+    const std::vector<RemoteConnectionInfo> &v) {
   bool success = status.ok();
   // Only invoke a callback if the request was not cancelled.
   if (existing_requests_.count(object_id) > 0) {

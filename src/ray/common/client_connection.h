@@ -1,5 +1,5 @@
-#ifndef CLIENT_CONNECTION_H
-#define CLIENT_CONNECTION_H
+#ifndef RAY_COMMON_CLIENT_CONNECTION_H
+#define RAY_COMMON_CLIENT_CONNECTION_H
 
 #include <memory>
 
@@ -48,13 +48,13 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
                    boost::asio::basic_stream_socket<T> &&socket);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
-  void processMessageHeader(const boost::system::error_code &error);
+  void ProcessMessageHeader(const boost::system::error_code &error);
   /// Process an error from reading the message header, then process the
   /// message from the client.
-  void processMessage(const boost::system::error_code &error);
+  void ProcessMessage(const boost::system::error_code &error);
   /// Process an error from the last operation and then listen for more
   /// messages.
-  void processMessages(const boost::system::error_code &error);
+  void ProcessMessages(const boost::system::error_code &error);
 
   /// The client socket.
   boost::asio::basic_stream_socket<T> socket_;
@@ -100,6 +100,6 @@ class ClientManager {
   virtual ~ClientManager() = 0;
 };
 
-}  // end namespace ray
+}  // namespace ray
 
-#endif
+#endif // RAY_COMMON_CLIENT_CONNECTION_H

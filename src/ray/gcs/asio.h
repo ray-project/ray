@@ -21,18 +21,16 @@
 #ifndef RAY_GCS_ASIO_H
 #define RAY_GCS_ASIO_H
 
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
-
-#include <stdio.h>
 #include <iostream>
+#include <stdio.h>
 #include <string>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-using boost::asio::ip::tcp;
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 
 class RedisAsioClient {
  public:
