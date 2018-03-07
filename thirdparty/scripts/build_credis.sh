@@ -40,4 +40,5 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
       cp build/src/libmaster.so $ROOT_DIR/python/ray/core/src/credis/build/src/libmaster.so
       cp build/src/libmember.so $ROOT_DIR/python/ray/core/src/credis/build/src/libmember.so
     popd
+  fi
 fi
