@@ -18,77 +18,85 @@ import yaml
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
     AUTOSCALER_HEARTBEAT_TIMEOUT_S
-from ray.autoscaler.node_provider import get_node_provider
+from ray.autoscaler.node_provider import get_node_provider, \
+    get_default_config
 from ray.autoscaler.updater import NodeUpdaterProcess
+from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
+REQUIRED, OPTIONAL = True, False
 
+# For (a, b), if a is a dictionary object, then
+# no extra fields can be introduced.
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
-    "cluster_name": str,
+    "cluster_name": (str, REQUIRED),
 
     # The minimum number of workers nodes to launch in addition to the head
     # node. This number should be >= 0.
-    "min_workers": int,
+    "min_workers": (int, OPTIONAL),
 
     # The maximum number of workers nodes to launch in addition to the head
     # node. This takes precedence over min_workers.
-    "max_workers": int,
+    "max_workers": (int, REQUIRED),
 
     # The autoscaler will scale up the cluster to this target fraction of
     # resources usage. For example, if a cluster of 8 nodes is 100% busy
     # and target_utilization was 0.8, it would resize the cluster to 10.
-    "target_utilization_fraction": float,
+    "target_utilization_fraction": (float, OPTIONAL),
 
     # If a node is idle for this many minutes, it will be removed.
-    "idle_timeout_minutes": int,
+    "idle_timeout_minutes": (int, OPTIONAL),
 
     # Cloud-provider specific configuration.
-    "provider": {
-        "type": str,  # e.g. aws
-        "region": str,  # e.g. us-east-1
-        "availability_zone": str,  # e.g. us-east-1a
-    },
+    "provider": ({
+        "type": (str, REQUIRED),  # e.g. aws
+        "region": (str, REQUIRED),  # e.g. us-east-1
+        "availability_zone": (str, REQUIRED),  # e.g. us-east-1a
+    }, REQUIRED),
 
     # How Ray will authenticate with newly launched nodes.
-    "auth": dict,
+    "auth": ({
+        "ssh_user": (str, REQUIRED),  # e.g. ubuntu
+        "ssh_private_key": (str, OPTIONAL),
+    }, REQUIRED),
 
     # Docker configuration. If this is specified, all setup and start commands
     # will be executed in the container.
-    "docker": {
-        "image": str,  # e.g. tensorflow/tensorflow:1.5.0-py3
-        "container_name": str
-    },
+    "docker": ({
+        "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
+        "container_name": (str, OPTIONAL),  # e.g., ray_docker
+    }, OPTIONAL),
 
     # Provider-specific config for the head node, e.g. instance type.
-    "head_node": dict,
+    "head_node": (dict, OPTIONAL),
 
     # Provider-specific config for worker nodes. e.g. instance type.
-    "worker_nodes": dict,
+    "worker_nodes": (dict, OPTIONAL),
 
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
-    "file_mounts": dict,
+    "file_mounts": (dict, OPTIONAL),
 
     # List of common shell commands to run to initialize nodes.
-    "setup_commands": list,
+    "setup_commands": (list, OPTIONAL),
 
     # Commands that will be run on the head node after common setup.
-    "head_setup_commands": list,
+    "head_setup_commands": (list, OPTIONAL),
 
     # Commands that will be run on worker nodes after common setup.
-    "worker_setup_commands": list,
+    "worker_setup_commands": (list, OPTIONAL),
 
     # Command to start ray on the head node. You shouldn't need to modify this.
-    "head_start_ray_commands": list,
+    "head_start_ray_commands": (list, OPTIONAL),
 
     # Command to start ray on worker nodes. You shouldn't need to modify this.
-    "worker_start_ray_commands": list,
+    "worker_start_ray_commands": (list, OPTIONAL),
 
     # Whether to avoid restarting the cluster during updates. This field is
     # controlled by the ray --no-restart flag and cannot be set by the user.
-    "no_restart": None,
+    "no_restart": (None, OPTIONAL),
 }
 
 
@@ -467,28 +475,64 @@ class StandardAutoscaler(object):
             suffix, self.load_metrics.debug_string())
 
 
-def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
+def typename(v):
+    if isinstance(v, type):
+        return v.__name__
+    else:
+        return type(v).__name__
+
+
+def check_required(config, schema):
+    # Check required schema entries
     if type(config) is not dict:
         raise ValueError("Config is not a dictionary")
-    for k, v in schema.items():
+
+    for k, (v, kreq) in schema.items():
         if v is None:
             continue  # None means we don't validate the field
-        if k not in config:
+        if kreq is REQUIRED:
+            if k not in config:
+                type_str = typename(v)
+                raise ValueError(
+                    "Missing required config key `{}` of type {}".format(
+                        k, type_str))
+            if not isinstance(v, type):
+                check_required(config[k], v)
+
+
+def check_extraneous(config, schema):
+    """Make sure all items of config are in schema"""
+    if type(config) is not dict:
+        raise ValueError("Config is not a dictionary")
+    for k in config:
+        if k not in schema:
             raise ValueError(
-                "Missing required config key `{}` of type {}".format(
-                    k, v.__name__))
+                "Unexpected config key `{}` not in {}".format(
+                    k, list(schema.keys())))
+        v, kreq = schema[k]
         if isinstance(v, type):
             if not isinstance(config[k], v):
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
                         k, type(config[k]).__name__, v.__name__))
         else:
-            validate_config(config[k], schema[k])
-    for k in config.keys():
-        if k not in schema:
-            raise ValueError(
-                "Unexpected config key `{}` not in {}".format(
-                    k, schema.keys()))
+            check_extraneous(config[k], v)
+
+
+def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
+    """Required Dicts indicate that no extra fields can be introduced."""
+    if type(config) is not dict:
+        raise ValueError("Config is not a dictionary")
+
+    check_required(config, schema)
+    check_extraneous(config, schema)
+
+
+def fillout_defaults(config):
+    defaults = get_default_config(config["provider"])
+    defaults.update(config)
+    dockerize_if_needed(defaults)
+    return defaults
 
 
 def with_head_node_ip(cmds):

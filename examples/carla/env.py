@@ -143,21 +143,21 @@ class CarlaEnv(gym.Env):
         if config["discrete_actions"]:
             self.action_space = Discrete(len(DISCRETE_ACTIONS))
         else:
-            self.action_space = Box(-1.0, 1.0, shape=(2,))
+            self.action_space = Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
         if config["use_depth_camera"]:
             image_space = Box(
                 -1.0, 1.0, shape=(
                     config["y_res"], config["x_res"],
-                    1 * config["framestack"]))
+                    1 * config["framestack"]), dtype=np.float32)
         else:
             image_space = Box(
-                0.0, 255.0, shape=(
+                0, 255, shape=(
                     config["y_res"], config["x_res"],
-                    3 * config["framestack"]))
-        self.observation_space = Tuple(
+                    3 * config["framestack"]), dtype=np.uint8)
+        self.observation_space = Tuple(  # forward_speed, dist to goal
             [image_space,
              Discrete(len(COMMANDS_ENUM)),  # next_command
-             Box(-128.0, 128.0, shape=(2,))])  # forward_speed, dist to goal
+             Box(-128.0, 128.0, shape=(2,), dtype=np.float32)])
 
         # TODO(ekl) this isn't really a proper gym spec
         self._spec = lambda: None

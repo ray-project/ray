@@ -14,11 +14,12 @@ class AsyncOptimizer(Optimizer):
     evaluators, sending updated weights back as needed. This pipelines the
     gradient computations on the remote workers.
     """
-    def _init(self):
+    def _init(self, grads_per_step=100, batch_size=10):
         self.apply_timer = TimerStat()
         self.wait_timer = TimerStat()
         self.dispatch_timer = TimerStat()
-        self.grads_per_step = self.config.get("grads_per_step", 100)
+        self.grads_per_step = grads_per_step
+        self.batch_size = batch_size
 
     def step(self):
         weights = ray.put(self.local_evaluator.get_weights())
@@ -49,9 +50,12 @@ class AsyncOptimizer(Optimizer):
                     gradient_queue.append((fut, e))
                     num_gradients += 1
 
+        self.num_steps_sampled += self.grads_per_step * self.batch_size
+        self.num_steps_trained += self.grads_per_step * self.batch_size
+
     def stats(self):
-        return {
+        return dict(Optimizer.stats(), **{
             "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
             "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
             "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),
-        }
+        })
