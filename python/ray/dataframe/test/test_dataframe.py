@@ -202,6 +202,8 @@ def test_int_dataframe():
     test_round(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
 
+    test_truediv(ray_df, pandas_df, 2)
+
     test_mean(ray_df, pandas_df)
     test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
@@ -320,6 +322,8 @@ def test_float_dataframe():
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
+
+    test_truediv(ray_df, pandas_df, 2)
 
     test_mean(ray_df, pandas_df)
     test_var(ray_df, pandas_df)
@@ -442,6 +446,8 @@ def test_mixed_dtype_dataframe():
     test_round(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
 
+    test_truediv(ray_df, pandas_df, 2)
+
     test_mean(ray_df, pandas_df)
     test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
@@ -563,6 +569,8 @@ def test_nan_dataframe():
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
+
+    test_truediv(ray_df, pandas_df, 2)
 
     test_mean(ray_df, pandas_df)
     test_var(ray_df, pandas_df)
@@ -2661,11 +2669,11 @@ def test_transform():
         ray_df.transform(None)
 
 
-def test_truediv():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.truediv(None)
+@pytest.fixture
+def test_truediv(ray_df, pandas_df, other):
+    new_ray_df = ray_df / other
+    new_pandas_df = ray_df / other
+    assert(ray_df_equals_pandas(new_ray_df, new_pandas_df))
 
 
 def test_truncate():

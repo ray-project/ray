@@ -1608,10 +1608,10 @@ class DataFrame(object):
             The mean of the DataFrame.
         """
         _sum = self.sum(axis, skipna, level, numeric_only)
-        _count = self.count(axis, level, numeric_only)
+        _count = len(self.index)
 
         if(skipna is False or skipna is None):
-            _count = self.__len__()
+            _count = len(self.index)
 
         return _sum/_count
 >>>>>>> added describe methods
@@ -2970,9 +2970,13 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __truediv__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        '''Floating division of dataframe and other, element-wise (
+            binary operator truediv).
+
+        Returns:
+            A dataframe with elements divided by other
+        '''
+        return self._map_partitions(lambda df: df.__truediv__(other))
 
     def __mod__(self, other):
         raise NotImplementedError(
