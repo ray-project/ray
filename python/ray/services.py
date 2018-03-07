@@ -402,14 +402,14 @@ def start_credis(node_ip_address,
         stdout_file, stderr_file = new_log_files(
             component, redirect_output)
 
-        port, _ = start_redis_instance(
+        new_port, _ = start_redis_instance(
             node_ip_address=node_ip_address, port=port,
             stdout_file=stdout_file, stderr_file=stderr_file,
             cleanup=cleanup,
             module=modules[i],
             executable=CREDIS_EXECUTABLE)
 
-        ports.append(port)
+        ports.append(new_port)
 
     [master_port, head_port, tail_port] = ports
 
