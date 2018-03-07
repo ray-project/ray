@@ -22,7 +22,12 @@ class RAY_EXPORT AsyncGcsClient {
   AsyncGcsClient();
   ~AsyncGcsClient();
 
-  Status Connect(const std::string &address, int port);
+  /// Connect to the GCS.
+  ///
+  /// \param address The GCS IP address.
+  /// \param port The GCS port.
+  /// \param client_info Information about the local client to connect.
+  /// \return Status.
   Status Connect(const std::string &address,
                  int port,
                  const ClientTableDataT &client_info);

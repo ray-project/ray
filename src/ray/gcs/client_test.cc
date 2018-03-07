@@ -15,8 +15,14 @@ namespace ray {
 class TestGcs : public ::testing::Test {
  public:
   TestGcs() {
-    RAY_CHECK_OK(client_.Connect("127.0.0.1", 6379));
-    job_id_ = UniqueID::from_random();
+    ClientTableDataT client_info;
+    client_info.client_id = ClientID::from_random().binary();
+    client_info.node_manager_address = "127.0.0.1";
+    client_info.local_scheduler_port = 0;
+    client_info.object_manager_port = 0;
+    RAY_CHECK_OK(client_.Connect("127.0.0.1", 6379, client_info));
+
+    job_id_ = JobID::from_random();
   }
 
   virtual ~TestGcs(){};
@@ -27,7 +33,7 @@ class TestGcs : public ::testing::Test {
 
  protected:
   gcs::AsyncGcsClient client_;
-  UniqueID job_id_;
+  JobID job_id_;
 };
 
 TestGcs *test;
@@ -48,12 +54,17 @@ class TestGcsWithAe : public TestGcs {
 
 class TestGcsWithAsio : public TestGcs {
  public:
-  TestGcsWithAsio() { RAY_CHECK_OK(client_.Attach(io_service_)); }
+  TestGcsWithAsio() : TestGcs(), io_service_(), work_(io_service_) {
+    RAY_CHECK_OK(client_.Attach(io_service_));
+  }
   void Start() override { io_service_.run(); }
   void Stop() override { io_service_.stop(); }
 
  private:
   boost::asio::io_service io_service_;
+  // Give the event loop some work so that it's forced to run until Stop() is
+  // called.
+  boost::asio::io_service::work work_;
 };
 
 void ObjectAdded(gcs::AsyncGcsClient *client,
@@ -70,7 +81,7 @@ void Lookup(gcs::AsyncGcsClient *client,
   test->Stop();
 }
 
-void TestObjectTable(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
+void TestObjectTable(const JobID &job_id, gcs::AsyncGcsClient &client) {
   auto data = std::make_shared<ObjectTableDataT>();
   data->managers.push_back("A");
   data->managers.push_back("B");
@@ -120,7 +131,7 @@ void TaskUpdateCallback(gcs::AsyncGcsClient *client,
                                            &TaskLookupAfterUpdate));
 }
 
-void TestTaskTable(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
+void TestTaskTable(const JobID &job_id, gcs::AsyncGcsClient &client) {
   auto data = std::make_shared<TaskTableDataT>();
   data->scheduling_state = SchedulingState_SCHEDULED;
   DBClientID local_scheduler_id =
@@ -158,7 +169,7 @@ void ObjectTableSubscribed(gcs::AsyncGcsClient *client,
   test->Stop();
 }
 
-void TestSubscribeAll(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
+void TestSubscribeAll(const JobID &job_id, gcs::AsyncGcsClient &client) {
   // Subscribe to all object table notifications. The registered callback for
   // notifications will check whether the object below is added.
   RAY_CHECK_OK(client.object_table().Subscribe(job_id, ClientID::nil(), &Lookup,

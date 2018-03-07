@@ -10,19 +10,18 @@ AsyncGcsClient::AsyncGcsClient() {}
 
 AsyncGcsClient::~AsyncGcsClient() {}
 
-Status AsyncGcsClient::Connect(const std::string &address, int port) {
+Status AsyncGcsClient::Connect(const std::string &address,
+                               int port,
+                               const ClientTableDataT &client_info) {
   context_.reset(new RedisContext());
   RAY_RETURN_NOT_OK(context_->Connect(address, port));
   object_table_.reset(new ObjectTable(context_, this));
   task_table_.reset(new TaskTable(context_, this));
-  return Status::OK();
-}
-
-Status AsyncGcsClient::Connect(const std::string &address,
-                               int port,
-                               const ClientTableDataT &client_info) {
-  RAY_RETURN_NOT_OK(Connect(address, port));
   client_table_.reset(new ClientTable(context_, this, client_info));
+  // TODO(swang): Call the client table's Connect() method here. To do this,
+  // we need to make sure that we are attached to an event loop first. This
+  // currently isn't possible because the aeEventLoop, which we use for
+  // testing, requires us to connect to Redis first.
   return Status::OK();
 }
 

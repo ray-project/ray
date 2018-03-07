@@ -299,6 +299,18 @@ class ClientTable : private Table<ClientID, ClientTableData> {
     client_cache_[ClientID::nil()] = nil_client;
   };
 
+  /// Connect as a client to the GCS. This registers us in the client table
+  /// and begins subscription to client table notifications.
+  ///
+  /// \return Status
+  ray::Status Connect();
+
+  /// Disconnect the client from the GCS. The client ID assigned during
+  /// registration should never be reused after disconnecting.
+  ///
+  /// \return Status
+  ray::Status Disconnect();
+
   /// Register a callback to call when a new client is added.
   ///
   /// \param callback The callback to register.
@@ -308,19 +320,6 @@ class ClientTable : private Table<ClientID, ClientTableData> {
   ///
   /// \param callback The callback to register.
   void RegisterClientRemovedCallback(const Callback &callback);
-
-  /// Connect as a client to the GCS. This registers us in the client table and
-  /// begins subscription to client table notifications.
-  ///
-  /// \param client_id The assigned client ID will be written to this pointer.
-  /// \return Status
-  ray::Status Connect();
-
-  /// Disconnect the client from the GCS. The client ID assigned during
-  /// registration should never be reused after disconnecting.
-  ///
-  /// \return Status
-  ray::Status Disconnect();
 
   /// Get a client's information from the cache.
   ///
