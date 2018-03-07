@@ -890,7 +890,11 @@ def test_cumsum():
 
 @pytest.fixture
 def test_describe(ray_df, pandas_df):
+<<<<<<< HEAD
     assert(ray_df.describe().equals(pandas_df.describe()))
+=======
+    assert(ray_df_equals_pandas(ray_df.describe(), pandas_df.describe()))
+>>>>>>> added describe methods
 
 
 def test_diff():

@@ -1583,6 +1583,7 @@ class DataFrame(object):
             skipna (bool): True to skip NA values, false otherwise.
 
         Returns:
+<<<<<<< HEAD
             The mean of the DataFrame. (Pandas series)
         """
 
@@ -1603,6 +1604,17 @@ class DataFrame(object):
             _mean = r1.append(r_other)
             
             return _mean
+=======
+            The mean of the DataFrame.
+        """
+        _sum = self.sum(axis, skipna, level, numeric_only)
+        _count = self.count(axis, level, numeric_only)
+
+        if(skipna is False or skipna is None):
+            _count = self.__len__()
+
+        return _sum/_count
+>>>>>>> added describe methods
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
                **kwargs):
@@ -1613,6 +1625,7 @@ class DataFrame(object):
             skipna (bool): True to skip NA values, false otherwise.
 
         Returns:
+<<<<<<< HEAD
             The median of the DataFrame. (Pandas series)
         """
         if axis == 0 or axis is None:
@@ -1633,6 +1646,22 @@ class DataFrame(object):
             _median = r1.append(r_other)
             
             return _median
+=======
+            The median of the DataFrame.
+        """
+        if axis == 1:
+            return self.T.count(axis=0,
+                                level=level,
+                                numeric_only=numeric_only)
+        else:
+            temp_index = [idx
+                          for _ in range(len(self._df))
+                          for idx in self.columns]
+
+            return ray.get(self._map_partitions(lambda df: df.median(
+                axis=axis, level=level, numeric_only=numeric_only
+            ), index=temp_index)._df)
+>>>>>>> added describe methods
 
     def melt(self, id_vars=None, value_vars=None, var_name=None,
              value_name='value', col_level=None):
@@ -1808,6 +1837,7 @@ class DataFrame(object):
         """Return values at the given quantile over requested axis,
             a la numpy.percentile.
 
+<<<<<<< HEAD
         Args:
             q (float): 0 <= q <= 1, the quantile(s) to compute
             axis (int): 0 or ‘index’ for row-wise,
@@ -1815,6 +1845,8 @@ class DataFrame(object):
             interpolation: {'linear’, ‘lower’, ‘higher’, ‘midpoint’, ‘nearest’}
                 Specifies which interpolation method to use
 
+=======
+>>>>>>> added describe methods
         Returns:
             quantiles : Series or DataFrame
                     If q is an array, a DataFrame will be returned where the
@@ -1825,6 +1857,7 @@ class DataFrame(object):
                     index is the columns of self and the values
                     are the quantiles.
         """
+<<<<<<< HEAD
         
         if (type(q) is list):
             return Dataframe([self.quantile(q_i, axis=axis,
@@ -1849,6 +1882,18 @@ class DataFrame(object):
             _quantile = r1.append(r_other)
             
             return _quantile
+=======
+        if axis == 1:
+            return self.T.quantile(axis=0, q=q, numeric_only=numeric_only)
+        else:
+            temp_index = [idx
+                          for _ in range(len(self._df))
+                          for idx in self.columns]
+
+            return ray.get(self._map_partitions(lambda df: df.quantile(
+                axis=axis, q=q, numeric_only=numeric_only
+            ), index=temp_index)._df)
+>>>>>>> added describe methods
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression
@@ -2326,6 +2371,7 @@ class DataFrame(object):
         Args:
             axis (int): The axis to take the std on.
             skipna (bool): True to skip NA values, false otherwise.
+<<<<<<< HEAD
             ddof (int): degrees of freedom
 
         Returns:
@@ -2348,6 +2394,15 @@ class DataFrame(object):
             _std = r1.append(r_other)
             
             return _std
+=======
+
+        Returns:
+            The std of the DataFrame.
+        """
+        _var = self.var(axis, skipna, level, ddof, numeric_only)
+
+        return _var ** (1/2)
+>>>>>>> added describe methods
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -2606,11 +2661,15 @@ class DataFrame(object):
         Args:
             axis (int): The axis to take the variance on.
             skipna (bool): True to skip NA values, false otherwise.
+<<<<<<< HEAD
             ddof (int): degrees of freedom
+=======
+>>>>>>> added describe methods
 
         Returns:
             The variance of the DataFrame.
         """
+<<<<<<< HEAD
         if axis == 0 or axis is None:
             return self.T.var(axis=1, skipna=skipna, level=level, ddof=ddof,
                               numeric_only=numeric_only)
@@ -2627,6 +2686,21 @@ class DataFrame(object):
             _var = r1.append(r_other)
             
             return _var
+=======
+        _mean = self.mean(axis, skipna, level, numeric_only)
+
+        intermediate_index = [idx
+                              for _ in range(len(self._df))
+                              for idx in self.columns]
+
+        squared_sum_of_partitions = self._map_partitions(
+            lambda x: x.sum((lambda df: df.pow(2, axis=axis, level=level))),
+            index=intermediate_index)
+
+        _var = squared_sum_of_partitions / self.length - _mean ** 2
+
+        return _var
+>>>>>>> added describe methods
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):
