@@ -546,12 +546,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
-    redis_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), executable)
-    redis_module = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), module)
-    assert os.path.isfile(redis_filepath)
-    assert os.path.isfile(redis_module)
+    assert os.path.isfile(executable)
+    assert os.path.isfile(module)
     counter = 0
     if port is not None:
         # If a port is specified, then try only once to connect.
@@ -561,10 +557,10 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     while counter < num_retries:
         if counter > 0:
             print("Redis failed to start, retrying now.")
-        p = subprocess.Popen([redis_filepath,
+        p = subprocess.Popen([executable,
                               "--port", str(port),
                               "--loglevel", "warning",
-                              "--loadmodule", redis_module],
+                              "--loadmodule", module],
                              stdout=stdout_file, stderr=stderr_file)
         time.sleep(0.1)
         # Check if Redis successfully started (or at least if it the executable
