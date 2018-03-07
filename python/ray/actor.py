@@ -706,6 +706,10 @@ def actor_handle_from_class(Class, class_id, resources, checkpoint_interval):
 
         @classmethod
         def remote(cls, *args, **kwargs):
+            if ray.worker.global_worker.mode is None:
+                raise Exception("Actors cannot be created before ray.init() "
+                                "has been called.")
+
             actor_id = random_actor_id()
             # The ID for this instance of ActorHandle. These should be unique
             # across instances with the same _ray_actor_id.
