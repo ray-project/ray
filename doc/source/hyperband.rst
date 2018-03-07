@@ -6,7 +6,7 @@ Ray Tune includes distributed implementations of early stopping algorithms such 
 HyperBand
 ---------
 
-The HyperBand scheduler can be plugged in on top of an existing grid or random search. This can be done by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
+The `HyperBand <https://arxiv.org/abs/1603.06560>`__ scheduler can be plugged in on top of an existing grid or random search. This can be done by setting the `scheduler` parameter of `run_experiments`, e.g.
 
 .. code-block:: python
 
@@ -14,7 +14,7 @@ The HyperBand scheduler can be plugged in on top of an existing grid or random s
 
 An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
 
-Note that the HyperBand scheduler requires your trainable to support checkpointing, which is described in `Ray Tune documentation <tune.html#trial-checkpointing>`__. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
+.. note:: Note that the HyperBand scheduler requires your trainable to support checkpointing, which is described in `Ray Tune documentation <tune.html#trial-checkpointing>`__. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
 
 ::
 
@@ -49,6 +49,13 @@ Note that the HyperBand scheduler requires your trainable to support checkpointi
      - my_class_53_height=28,width=96:	RUNNING
 
 .. autoclass:: ray.tune.hyperband.HyperBandScheduler
+
+Asynchronous HyperBand
+----------------------
+
+Ray Tune also implements an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__, providing better parallelism and avoids straggler issues during eliminations. An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__. **We recommend using this over the vanilla HyperBand scheduler.**
+
+.. autoclass:: ray.tune.async_hyperband.AsyncHyperBandScheduler
 
 Median Stopping Rule
 --------------------
