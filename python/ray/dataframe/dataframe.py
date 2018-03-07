@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
-
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
@@ -18,7 +17,6 @@ from pandas.core.dtypes.common import (
 import warnings
 import numpy as np
 import ray
-
 import itertools
 
 
@@ -38,7 +36,6 @@ class DataFrame(object):
 
         self._df = df
         self.columns = columns
-        self._pd_index = None
 
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
@@ -133,23 +130,6 @@ class DataFrame(object):
 
     _lengths = property(_get_lengths, _set_lengths)
 
-    def _map_to_partition_range_index(self, pd_index, partition_idx):
-        try:
-            inter = set.intersection(
-                set(pd_index), set(_index.index)
-            )
-            pd_index = _index\
-                .loc[list(inter)]\
-                .loc[_index['partition'] == i]['index_within_partition']\
-                .tolist()
-        except:
-            if pd_index in _index.index:
-                pd_index = _index\
-                    .loc[[pd_index]]\
-                    .loc[_index['partition'] == i]['index_within_partition']\
-                    .tolist()
-        return pd_index
-
     @property
     def size(self):
         """Get the number of elements in the DataFrame.
@@ -242,7 +222,6 @@ class DataFrame(object):
         """
         assert(callable(func))
         new_df = [_deploy_func.remote(func, part) for part in self._df]
-
         if index is None:
             index = self.index
 
@@ -257,10 +236,11 @@ class DataFrame(object):
             self._df = df
         if columns is not None:
             self.columns = columns
-        if index is not None:
-            self.index = index
 
         self._lengths, self._index = _compute_length_and_index.remote(self._df)
+
+        if index is not None:
+            self.index = index
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -777,95 +757,72 @@ class DataFrame(object):
             dropped : type of caller
         """
         # inplace = validate_bool_kwarg(inplace, "inplace")
-        if errors == 'raise':
-            if labels is not None:
-                if index is not None or columns is not None:
-                    raise ValueError("Cannot specify both 'labels' and "
-                                     "'index'/'columns'")
-            elif index is None and columns is None:
-                raise ValueError("Need to specify at least one of 'labels', "
-                                 "'index' or 'columns'")
-
+        if labels is not None:
+            if index is not None or columns is not None:
+                raise ValueError("Cannot specify both 'labels' and "
+                                 "'index'/'columns'")
+        elif index is None and columns is None:
+            raise ValueError("Need to specify at least one of 'labels', "
+                             "'index' or 'columns'")
+        new_df = self
         is_axis_zero = axis is None or axis == 0 or axis == 'index'\
-            or axis == 'rows'
+                or axis == 'rows'
+        try:
+            if (is_axis_zero and not columns) or index:
+                values = labels if labels is not None else index
+                try:
+                    try:
+                        if len(values) == 0:
+                            if inplace:
+                                return
+                            else:
+                                return self
+                        filtered_index = self._index.loc[list(values)]
+                    except TypeError:
+                        filtered_index = self._index.loc[[values]]
+                except KeyError:
+                    raise ValueError("{} is not contained in the index".format(labels))
 
-        new_df = None
-        if is_axis_zero:
-            # import pdb; pdb.set_trace()
-            try:
-                filtered_index = self._index.loc[labels]
-            except KeyError:
-                raise ValueError("{} is not contained in the index".format(labels))
+                filtered_index.dropna(inplace=True)
 
-            partition_idx = [
-                filtered_index.loc[self._index['partition'] == i]['index_within_partition']
-                for i in range(len(self._df))
-            ]
+                partition_idx = [
+                    filtered_index.loc[filtered_index['partition'] == i]['index_within_partition']
+                    for i in range(len(self._df))
+                ]
 
-            new_df = [
-                _deploy_func.remote(
-                    lambda df, new_labels: df.drop(new_labels, errors='ignore'),
-                    self._df[i], partition_idx[i]
+                new_df = [
+                    _deploy_func.remote(
+                        lambda df, new_labels: df.drop(
+                            new_labels, level=level, errors='ignore'),
+                        self._df[i], partition_idx[i]
+                    )
+                    for i in range(len(self._df))
+                ]
+                new_index = self._index.copy().drop(values, errors=errors)
+                new_df = DataFrame(new_df, self.columns, index=new_index.index)
+        except:
+            if errors == 'raise':
+                raise
+            new_df = self
+
+        try:
+            if not is_axis_zero or columns:
+                values = labels if labels else columns
+                new_df = new_df._map_partitions(
+                    lambda df: df.drop(
+                        values, axis=1, level=level, errors='ignore')
                 )
-                for i in range(len(self._df))
-            ]
-            new_index = self._index.copy().drop(labels)
-            new_df = DataFrame(new_df, self.columns, index=new_index.index)
-        else:
-            new_df = self._map_partitions(
-                lambda df: df.drop(
-                    labels=labels, axis=axis, index=index, columns=columns,
-                    level=level, inplace=inplace, errors='ignore')
-            )
-            new_columns = self.columns.copy().drop(labels)
-            new_df.columns = new_columns
+                new_columns = self.columns.to_series().drop(values, errors=errors)
+                new_df.columns = pd.Index(new_columns)
+        except:
+            if errors == 'raise':
+                raise
+            new_df = self
 
-        # new_columns = self.columns.copy()
-        # if labels is not None and isinstance(labels, list) and 0 in labels and 1 in labels:
-        #     import pdb; pdb.set_trace()
-        # new_index = self.index.copy()
-        # if (labels is not None and is_axis_zero) or index is not None:
-        #     new_index = pd.DataFrame(index=new_index).drop(
-        #         labels=labels, axis=axis, index=index, level=level,
-        #         inplace=False, errors=errors
-        #     ).index
-        # if (labels is not None and not is_axis_zero) or columns is not None:
-        #     new_columns = pd.DataFrame(columns=new_columns).drop(
-        #         labels=labels, axis=axis, columns=columns, level=level,
-        #         inplace=False, errors=errors
-        #     ).columns
-
-        # def drop_part(df, i, labels, index, _index, is_axis_zero):
-        #     if (labels is not None and is_axis_zero) or index is not None:
-        #         df_labels = labels
-        #         df_index = index
-
-        #         if labels is None:
-        #             df_index = self._map_to_partition_range_index(
-        #                 _index.index, i
-        #             )
-        #         else:
-        #             df_labels = self._map_to_partition_range_index(
-        #                 _index.index, i
-        #             )
-        #         return df.drop(labels=df_labels, axis=axis, index=df_index,
-        #                 columns=columns, level=level, inplace=False,
-        #                 errors='ignore')
-        #     return df.drop(labels=labels, axis=axis, index=index,
-        #                    columns=columns, level=level, inplace=False,
-        #                    errors='ignore')
-        # import pdb; pdb.s set_trace()
-        # dfs = [
-        #     _deploy_func.remote(drop_part, part, i, labels, index,
-        #                         self._index, is_axis_zero)
-        #     for i, part in enumerate(self._df)
-        # ]
-        # new_df = DataFrame(dfs, new_columns, index=new_index)
-        # new_df.columns = new_columns
         if inplace:
             self._update_inplace(
                 df=new_df._df,
-                index=new_df._index,
+                index=new_df.index,
                 columns=new_df.columns
             )
         else:
