@@ -18,6 +18,14 @@ Status AsyncGcsClient::Connect(const std::string &address, int port) {
   return Status::OK();
 }
 
+Status AsyncGcsClient::Connect(const std::string &address,
+                               int port,
+                               const ClientTableDataT &client_info) {
+  RAY_RETURN_NOT_OK(Connect(address, port));
+  client_table_.reset(new ClientTable(context_, this, client_info));
+  return Status::OK();
+}
+
 Status Attach(plasma::EventLoop &event_loop) {
   // TODO(pcm): Implement this via
   // context()->AttachToEventLoop(event loop)
@@ -25,8 +33,10 @@ Status Attach(plasma::EventLoop &event_loop) {
 }
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
-  asio_client_.reset(
+  asio_async_client_.reset(
       new RedisAsioClient(io_service, context_->async_context()));
+  asio_subscribe_client_.reset(
+      new RedisAsioClient(io_service, context_->subscribe_context()));
   return Status::OK();
 }
 
@@ -36,6 +46,10 @@ ObjectTable &AsyncGcsClient::object_table() {
 
 TaskTable &AsyncGcsClient::task_table() {
   return *task_table_;
+}
+
+ClientTable &AsyncGcsClient::client_table() {
+  return *client_table_;
 }
 
 FunctionTable &AsyncGcsClient::function_table() {
