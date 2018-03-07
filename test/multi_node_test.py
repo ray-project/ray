@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 
-from test_utils import run_and_get_output
+from ray.test.test_utils import run_and_get_output
 
 
 def run_string_as_driver(driver_script):

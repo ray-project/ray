@@ -10,7 +10,7 @@ import unittest
 
 import ray
 
-from test_utils import run_and_get_output
+from ray.test.test_utils import run_and_get_output
 
 
 class MonitorTest(unittest.TestCase):
