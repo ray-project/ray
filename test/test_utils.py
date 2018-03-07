@@ -7,11 +7,11 @@ import tempfile
 
 
 def run_and_get_output(command):
-    tmp = tempfile.NamedTemporaryFile()
-    p = subprocess.Popen(command, stdout=tmp, stderr=tmp)
-    if p.wait() != 0:
-        raise RuntimeError("ray start did not terminate properly")
-    with open(tmp.name, 'r') as f:
-        result = f.readlines()
-        return "\n".join(result)
-    tmp.close()
+    with tempfile.NamedTemporaryFile() as tmp:
+        p = subprocess.Popen(command, stdout=tmp)
+        if p.wait() != 0:
+            raise RuntimeError("ray start did not terminate properly")
+        with open(tmp.name, 'r') as f:
+            result = f.readlines()
+            return "\n".join(result)
+        tmp.close()

@@ -18,9 +18,6 @@ import setuptools.command.build_ext as _build_ext
 ray_files = [
     "ray/core/src/common/thirdparty/redis/src/redis-server",
     "ray/core/src/common/redis_module/libray_redis_module.so",
-    "ray/core/src/credis/build/src/libmember.so",
-    "ray/core/src/credis/build/src/libmaster.so",
-    "ray/core/src/credis/redis/src/redis-server",
     "ray/core/src/plasma/plasma_store",
     "ray/core/src/plasma/plasma_manager",
     "ray/core/src/local_scheduler/local_scheduler",
@@ -39,6 +36,11 @@ ray_ui_files = [
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml"
 ]
+
+if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
+    ray_files += ["ray/core/src/credis/build/src/libmember.so",
+                  "ray/core/src/credis/build/src/libmaster.so",
+                  "ray/core/src/credis/redis/src/redis-server"]
 
 # The UI files are mandatory if the INCLUDE_UI environment variable equals 1.
 # Otherwise, they are optional.

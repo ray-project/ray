@@ -56,8 +56,24 @@ RUN_PLASMA_MANAGER_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
 
 # Location of the redis server and module.
-REDIS_EXECUTABLE = "./core/src/common/thirdparty/redis/src/redis-server"
-REDIS_MODULE = "./core/src/common/redis_module/libray_redis_module.so"
+REDIS_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/common/thirdparty/redis/src/redis-server")
+REDIS_MODULE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/common/redis_module/libray_redis_module.so")
+
+# Location of the credis server and modules.
+CREDIS_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/credis/redis/src/redis-server")
+CREDIS_MASTER_MODULE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/credis/build/src/libmaster.so")
+CREDIS_MEMBER_MODULE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/credis/build/src/libmember.so")
+
 
 # ObjectStoreAddress tuples contain all information necessary to connect to an
 # object store. The fields are:
@@ -377,35 +393,26 @@ def start_credis(node_ip_address,
                  cleanup=True):
     """Start the credis global state store."""
 
-    stdout_file, stderr_file = new_log_files(
-        "credis_master", redirect_output)
+    components = ["credis_master", "credis_head", "credis_tail"]
+    modules = [CREDIS_MASTER_MODULE, CREDIS_MEMBER_MODULE,
+               CREDIS_MEMBER_MODULE]
+    ports = []
 
-    master_port, _ = start_redis_instance(
-        node_ip_address=node_ip_address, port=port,
-        stdout_file=stdout_file, stderr_file=stderr_file,
-        cleanup=cleanup,
-        module="./core/src/credis/build/src/libmaster.so",
-        executable="./core/src/credis/redis/src/redis-server")
+    for i, component in enumerate(components):
+        stdout_file, stderr_file = new_log_files(
+            component, redirect_output)
 
-    stdout_file, stderr_file = new_log_files(
-        "credis_head", redirect_output)
+        port, _ = start_redis_instance(
+            node_ip_address=node_ip_address, port=port,
+            stdout_file=stdout_file, stderr_file=stderr_file,
+            cleanup=cleanup,
+            module=CREDIS_MASTER_MODULE,
+            executable=CREDIS_EXECUTABLE)
 
-    head_port, _ = start_redis_instance(
-        node_ip_address=node_ip_address, port=port,
-        stdout_file=stdout_file, stderr_file=stderr_file,
-        cleanup=cleanup,
-        module="./core/src/credis/build/src/libmember.so",
-        executable="./core/src/credis/redis/src/redis-server")
+        ports.append(port)
 
-    stdout_file, stderr_file = new_log_files(
-        "credis_tail", redirect_output)
 
-    tail_port, _ = start_redis_instance(
-        node_ip_address=node_ip_address, port=port,
-        stdout_file=stdout_file, stderr_file=stderr_file,
-        cleanup=cleanup,
-        module="./core/src/credis/build/src/libmember.so",
-        executable="./core/src/credis/redis/src/redis-server")
+    [master_port, head_port, tail_port] = ports
 
     # Connect the members to the master
 
