@@ -278,7 +278,7 @@ class CloudPickler(Pickler):
     if not PY3:
         def save_buffer(self, obj):
             self.save(str(obj))
-        dispatch[buffer] = save_buffer
+        dispatch[buffer] = save_buffer  # noqa: F821 'buffer' was removed in Python 3
 
     def save_unsupported(self, obj):
         raise pickle.PicklingError("Cannot pickle objects of type %s" % type(obj))
@@ -805,10 +805,10 @@ class CloudPickler(Pickler):
     def save_not_implemented(self, obj):
         self.save_reduce(_gen_not_implemented, ())
 
-    if PY3:
-        dispatch[io.TextIOWrapper] = save_file
-    else:
+    try:               # Python 2
         dispatch[file] = save_file
+    except NameError:  # Python 3
+        dispatch[io.TextIOWrapper] = save_file
 
     dispatch[type(Ellipsis)] = save_ellipsis
     dispatch[type(NotImplemented)] = save_not_implemented
