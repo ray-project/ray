@@ -1,5 +1,7 @@
 #include "scheduling_resources.h"
 
+#include <cmath>
+
 namespace ray {
 
 ResourceSet::ResourceSet() {}
@@ -60,7 +62,7 @@ bool ResourceSet::GetResource(
     return false;
   }
   if (this->resource_capacity_.count(resource_name) == 0) {
-    *value = nan("");
+    *value = std::nan("");
     return false;
   }
   *value = this->resource_capacity_.at(resource_name);
