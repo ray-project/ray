@@ -766,9 +766,9 @@ class DataFrame(object):
                              "'index' or 'columns'")
         new_df = self
         is_axis_zero = axis is None or axis == 0 or axis == 'index'\
-                or axis == 'rows'
+            or axis == 'rows'
         try:
-            if (is_axis_zero and not columns) or index:
+            if (is_axis_zero and columns is None) or index is not None:
                 values = labels if labels is not None else index
                 try:
                     try:
@@ -781,12 +781,15 @@ class DataFrame(object):
                     except TypeError:
                         filtered_index = self._index.loc[[values]]
                 except KeyError:
-                    raise ValueError("{} is not contained in the index".format(labels))
+                    raise ValueError(
+                        "{} is not contained in the index".format(labels))
 
                 filtered_index.dropna(inplace=True)
 
                 partition_idx = [
-                    filtered_index.loc[filtered_index['partition'] == i]['index_within_partition']
+                    filtered_index.loc[
+                        filtered_index['partition'] == i
+                    ]['index_within_partition']
                     for i in range(len(self._df))
                 ]
 
@@ -800,21 +803,22 @@ class DataFrame(object):
                 ]
                 new_index = self._index.copy().drop(values, errors=errors)
                 new_df = DataFrame(new_df, self.columns, index=new_index.index)
-        except:
+        except (ValueError, KeyError):
             if errors == 'raise':
                 raise
             new_df = self
 
         try:
-            if not is_axis_zero or columns:
+            if not is_axis_zero or columns is not None:
                 values = labels if labels else columns
                 new_df = new_df._map_partitions(
                     lambda df: df.drop(
                         values, axis=1, level=level, errors='ignore')
                 )
-                new_columns = self.columns.to_series().drop(values, errors=errors)
+                new_columns = self.columns.to_series().drop(values,
+                                                            errors=errors)
                 new_df.columns = pd.Index(new_columns)
-        except:
+        except (ValueError, KeyError):
             if errors == 'raise':
                 raise
             new_df = self
@@ -1054,59 +1058,9 @@ class DataFrame(object):
 
         # TODO: Revist this to improve performance
         if limit is not None:
-            # need to do a seperate fillna for each column seperatley
-            # count how many N/As there are in each partition
-            nan_counts = ray.get([_deploy_func.remote(
-                lambda df: df.isnull().sum(),
-                part
-            ) for part in self._df])
-
-            col_len = len(self.columns)
-            stopping_points = [-1] * col_len
-            left_over = [limit] * col_len
-            current_count = pd.Series([0] * col_len)
-
-            count_idx_gen = range(len(nan_counts))
-
-            if is_bfill:
-                count_idx_gen = range(-1, -1 * (len(nan_counts) + 1), -1)
-
-            for i in count_idx_gen:
-                current_count += nan_counts[i]
-                for j in range(col_len):
-                    if stopping_points[j] == -1\
-                       and current_count[j] >= limit:
-                        stopping_points[j] = i
-                        left_over[j] = limit - (
-                            current_count - nan_counts[i]
-                        )[j]
-
-            import pdb; pdb.set_trace()
-            for i in range(col_len):
-                col_val = value
-                if isinstance(value, dict)\
-                   or isinstance(value, pd.Series):
-                    col_val = value[self.columns[i]]
-                elif isinstance(value, pd.DataFrame):
-                    col_val = value[self.columns[i]][0]
-
-                row_gen = range(0, len(self._df) + stopping_points[i])
-                if stopping_points[i] >= 0:
-                    row_gen = range(stopping_points[i], len(self._df))
-
-                # Replace all columns that were not affected b/c of the
-                # limit w/ the original column
-                for j in row_gen:
-                    new_df._df[j] = _copy_part_col.remote(
-                        i, j, new_df._df[j], self._df[j]
-                    )
-
-                # Apply fill w/ limit on partition & column w/ last fills
-                new_df._df[stopping_points[i]] = _update_part_col.remote(
-                    i, stopping_points[i], new_df._df[stopping_points[i]], self._df[stopping_points[i]], left_over,
-                    col_val, is_ffill, is_bfill, method=method,
-                    downcast=downcast
-                )
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
 
         if inplace:
             self._update_inplace(
@@ -2902,69 +2856,11 @@ def _compute_length_and_index(dfs):
     return lengths, pd.DataFrame(dest_indices)
 
 
-@ray.remote
-def _copy_part_col(i, j, new_df, identity):
-    """
-    Args:
-        i: The column index to copy
-        j: The df partition to work on
-        new_df: The ray df w/ non-limited fills
-        identity: The ray df w/ no fills
-
-    Returns:
-        A pandas df with it's ith column replaced with
-        the original column
-    """
-    # import pdb; pdb.set_trace()
-    n_df = new_df.copy()
-    i_df = identity.copy()
-    # n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
-    return n_df
-
-
-@ray.remote
-def _update_part_col(i, j, new_df, identity, left_over, col_val=None,
-                     is_ffill=False, is_bfill=False, method=None,
-                     downcast=None):
-    """
-    Args:
-        i: The column index to copy
-        j: The df partition to work on
-        new_df: The ray df w/ non-limited fills
-        identity: The ray df w/ no fills
-
-    Returns:
-        A pandas df updated with correctly limited fill
-        on its ith column
-    """
-    n_df = new_df.copy()
-    i_df = identity.copy()
-    # if is_ffill:
-    #     if j != 0:
-    #         filled_df = ray.get(new_df._df[j - 1]).copy()
-    #         if (not np.isnan(filled_df.iloc[-1, i]))\
-    #            and np.isnan(i_df.iloc[0, i]):
-    #             left_over[i] -= 1
-    #             i_df.iloc[0, i] = filled_df.iloc[-1, i]
-    #     col_val = None
-    # elif is_bfill:
-    #     if j != -1:
-    #         filled_df = ray.get(new_df._df[j + 1]).copy()
-    #         if (not np.isnan(filled_df.iloc[0, i]))\
-    #            and np.isnan(i_df.iloc[-1, i]):
-    #             left_over[i] -= 1
-    #             i_df.iloc[-1, i] = filled_df.iloc[0, i]
-    #     col_val = None
-    # if left_over[i] > 0:
-    #     i_df = i_df.fillna(value=col_val, method=method,
-    #                        limit=left_over[i], downcast=None)
-    n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
-    return i_df
-
 def _map_partition_index_to_real_index(_index, part, part_idx):
     part.index = _index\
             .loc[_index['partition'] == part_idx].index
     return part
+
 
 def _apply_pd_function_on_partition(_index, part, part_idx, func):
     part = _map_partition_index_to_real_index(_index, part, part_idx)
