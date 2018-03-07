@@ -42,36 +42,35 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
 
  private:
   /// Submit a task to this node.
-  void submitTask(const Task& task);
+  void SubmitTask(const Task &task);
   /// Assign a task.
-  void assignTask(const Task& task);
+  void AssignTask(const Task &task);
   /// Finish a task.
-  void finishTask(const TaskID& task_id);
+  void FinishTask(const TaskID &task_id);
   /// Schedule tasks.
-  void scheduleTasks();
+  void ScheduleTasks();
   /// Handle a task whose local dependencies were missing and are now
   /// available.
-  void handleWaitingTaskReady(const TaskID &task_id);
+  void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
-  void resubmitTask(const TaskID& task_id);
+  void ResubmitTask(const TaskID &task_id);
 
 
   /// The resources local to this node.
   SchedulingResources local_resources_;
-  // TODO(alexey): Add resource information from other nodes.
+  // TODO(atumanov): Add resource information from other nodes.
   //std::unordered_map<ClientID, SchedulingResources&, UniqueIDHasher> cluster_resource_map_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// A set of queues to maintain tasks.
   SchedulingQueue local_queues_;
   /// The scheduling policy in effect for this local scheduler.
-  SchedulingPolicy sched_policy_;
+  SchedulingPolicy scheduling_policy_;
   /// The reconstruction policy for deciding when to re-execute a task.
   ReconstructionPolicy reconstruction_policy_;
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
 };
-
 
 } // end namespace ray
 

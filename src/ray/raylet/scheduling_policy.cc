@@ -1,9 +1,9 @@
 #include "scheduling_policy.h"
 
-namespace ray{
+namespace ray {
 
-SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &sched_queue)
-  : sched_queue_(sched_queue) {}
+SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
+  : scheduling_queue_(scheduling_queue) {}
 
 std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
@@ -16,7 +16,7 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
   const auto &resource_supply_set = resource_supply.GetAvailableResources();
 
   // Iterate over running tasks, get their resource demand and try to schedule.
-  for (const auto &t : sched_queue_.GetReadyTasks()) {
+  for (const auto &t : scheduling_queue_.GetReadyTasks()) {
     // Get task's resource demand
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     bool task_feasible = resource_demand.IsSubset(resource_supply_set);

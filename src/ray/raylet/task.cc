@@ -1,7 +1,5 @@
 #include "task.h"
 
-#include "common.h"
-
 namespace ray {
 
 const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
@@ -20,12 +18,14 @@ const std::vector<ObjectID> Task::GetDependencies() const {
       dependencies.push_back(task_spec_.ArgId(i, j));
     }
   }
+  // TODO(atumanov): why not just return a const reference to ExecutionDependencies() and
+  // avoid a copy.
   auto execution_dependencies = task_execution_spec_.ExecutionDependencies();
   dependencies.insert(dependencies.end(), execution_dependencies.begin(), execution_dependencies.end());
   return dependencies;
 }
 
-bool Task::DependsOn(ObjectID object_id) const {
+bool Task::DependsOn(const ObjectID &object_id) const {
   // Iterate through the task arguments to see if it contains object_id.
   int64_t num_args = task_spec_.NumArgs();
   for (int i = 0; i < num_args; ++i) {
@@ -38,7 +38,7 @@ bool Task::DependsOn(ObjectID object_id) const {
     }
   }
   // Iterate through the execution dependencies to see if it contains object_id.
-  for (auto dependency_id : task_execution_spec_.ExecutionDependencies()) {
+  for (const auto &dependency_id : task_execution_spec_.ExecutionDependencies()) {
     if (dependency_id == object_id) {
       return true;
     }

@@ -44,6 +44,7 @@ public:
   /// arguments and the mutable execution dependencies.
   ///
   /// \return The object dependencies.
+  /// TODO(atumanov): consider returning a constant reference.
   const std::vector<ObjectID> GetDependencies() const;
 
   /// Compute whether the task is dependent on an object ID.
@@ -51,7 +52,7 @@ public:
   /// \param object_id The object ID that the task may be dependent on.
   /// \return Returns true if the task is dependent on the given object ID and
   /// false otherwise.
-  bool DependsOn(ObjectID object_id) const;
+  bool DependsOn(const ObjectID &object_id) const;
 
 private:
   /// Task execution specification, consisting of all dynamic/mutable
