@@ -54,6 +54,34 @@ Example Program
 +------------------------------------------------+----------------------------------------------+
 
 
+Try the Latest Version
+----------------------
+
+You can try out the latest version of Ray with one of the following commands.
+
+.. code-block::
+
+  # Linux, Python 3.6
+  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp36-cp36m-manylinux1_x86_64.whl
+  # Linux, Python 3.5
+  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp35-cp35m-manylinux1_x86_64.whl
+  # Linux, Python 3.4
+  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp34-cp34m-manylinux1_x86_64.whl
+  # Linux, Python 3.3
+  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp33-cp33m-manylinux1_x86_64.whl
+  # Linux, Python 2.7
+  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp27-cp27mu-manylinux1_x86_64.whl
+
+  # MacOS, Python 3.6
+  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp36-cp36m-macosx_10_6_intel.whl
+  # MacOS, Python 3.5
+  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp35-cp35m-macosx_10_6_intel.whl
+  # MacOS, Python 3.4
+  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp34-cp34m-macosx_10_6_intel.whl
+  # MacOS, Python 2.7
+  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp27-cp27m-macosx_10_6_intel.whl
+
+
 More Information
 ----------------
 
