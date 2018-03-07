@@ -1,17 +1,13 @@
 #include "object_manager.h"
 
-using std::shared_ptr;
-using std::unique_ptr;
-using std::vector;
-
 namespace ray {
 
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              ObjectManagerConfig config,
-                             shared_ptr<ray::GcsClient> gcs_client)
+                             std::shared_ptr<ray::GcsClient> gcs_client)
     : object_directory_(new ObjectDirectory(gcs_client)), work_(io_service_) {
   config_ = config;
-  store_client_ = unique_ptr<ObjectStoreClient>(
+  store_client_ = std::unique_ptr<ObjectStoreClient>(
       new ObjectStoreClient(io_service, config.store_socket_name));
   store_client_->SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
@@ -25,7 +21,7 @@ ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              std::unique_ptr<ObjectDirectoryInterface> od)
     : object_directory_(std::move(od)), work_(io_service_) {
   config_ = config;
-  store_client_ = unique_ptr<ObjectStoreClient>(
+  store_client_ = std::unique_ptr<ObjectStoreClient>(
       new ObjectStoreClient(io_service, config.store_socket_name));
   store_client_->SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
@@ -106,7 +102,7 @@ ray::Status ObjectManager::SchedulePullHandler(const ObjectID &object_id) {
   return status_code;
 }
 
-void ObjectManager::GetLocationsSuccess(const vector<ray::RemoteConnectionInfo> &vec,
+void ObjectManager::GetLocationsSuccess(const std::vector<ray::RemoteConnectionInfo> &vec,
                                         const ray::ObjectID &object_id) {
   RemoteConnectionInfo info = vec.front();
   pull_requests_.erase(object_id);
@@ -159,8 +155,10 @@ ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
   return ray::Status::OK();
 };
 
-ray::Status ObjectManager::Wait(const vector<ObjectID> &object_ids, uint64_t timeout_ms,
-                                int num_ready_objects, const WaitCallback &callback) {
+ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
+                                uint64_t timeout_ms,
+                                int num_ready_objects,
+                                const WaitCallback &callback) {
   // TODO: Implement wait.
   return ray::Status::OK();
 };

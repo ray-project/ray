@@ -9,7 +9,7 @@
 
 #include "ray/status.h"
 
-#include "object_manager.h"
+#include "ray/object_manager/object_manager.h"
 
 namespace ray {
 

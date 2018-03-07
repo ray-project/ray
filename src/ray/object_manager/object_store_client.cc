@@ -8,16 +8,14 @@
 #include "common.h"
 #include "common_protocol.h"
 // TODO(hme): Figure out what's causing compile time error when following line is moved.
-#include "object_store_client.h"
-
-using std::string;
+#include "ray/object_manager/object_store_client.h"
 
 namespace ray {
 
 // TODO(hme): Dedicate this class to notifications.
 // TODO(hme): Create object store client pool for object manager.
 ObjectStoreClient::ObjectStoreClient(boost::asio::io_service &io_service,
-                                     string &store_socket_name)
+                                     std::string &store_socket_name)
     : client_one_(), client_two_(), socket_(io_service) {
   ARROW_CHECK_OK(
       client_two_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));

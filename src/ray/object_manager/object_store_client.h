@@ -1,5 +1,5 @@
-#ifndef RAY_OBJECT_STORE_CLIENT_H
-#define RAY_OBJECT_STORE_CLIENT_H
+#ifndef RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
+#define RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
 
 #include <list>
 #include <memory>
@@ -61,6 +61,7 @@ class ObjectStoreClient {
   void ProcessStoreAdd(const ObjectID &object_id);
   void ProcessStoreRemove(const ObjectID &object_id);
 };
-}
 
-#endif  // RAY_OBJECT_STORE_CLIENT_H
+} // namespace ray
+
+#endif  // RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H

@@ -1,5 +1,5 @@
-#ifndef RAY_OBJECT_DIRECTORY_H
-#define RAY_OBJECT_DIRECTORY_H
+#ifndef RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
+#define RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
 
 #include <memory>
 #include <unordered_map>
@@ -27,8 +27,8 @@ class ObjectDirectoryInterface {
   virtual ~ObjectDirectoryInterface() = default;
 
   /// Callbacks for GetInformation.
-  using InfoSuccCB = std::function<void(const ray::RemoteConnectionInfo &info)>;
-  using InfoFailCB = std::function<void(ray::Status status)>;
+  using InfoSuccessCallback = std::function<void(const ray::RemoteConnectionInfo &info)>;
+  using InfoFailureCallback = std::function<void(ray::Status status)>;
 
   /// This is used to establish object manager client connections.
   ///
@@ -37,13 +37,14 @@ class ObjectDirectoryInterface {
   /// \param fail_cb A callback which handles the failure of this method.
   /// \return Status of whether this asynchronous request succeeded.
   virtual ray::Status GetInformation(const ClientID &client_id,
-                                     const InfoSuccCB &success_cb,
-                                     const InfoFailCB &fail_cb) = 0;
+                                     const InfoSuccessCallback &success_cb,
+                                     const InfoFailureCallback &fail_cb) = 0;
 
   // Callbacks for GetLocations.
-  using LocSuccCB = std::function<void(const std::vector<ray::RemoteConnectionInfo> &v,
-                                       const ray::ObjectID &object_id)>;
-  using LocFailCB =
+  using OnLocationsSuccess =
+      std::function<void(const std::vector<ray::RemoteConnectionInfo> &v,
+                         const ray::ObjectID &object_id)>;
+  using OnLocationsFailure =
       std::function<void(ray::Status status, const ray::ObjectID &object_id)>;
 
   /// Asynchronously obtain the locations of an object by ObjectID.
@@ -53,8 +54,9 @@ class ObjectDirectoryInterface {
   /// \param success_cb Invoked upon success with list of remote connection info.
   /// \param fail_cb Invoked upon failure with ray status and object id.
   /// \return Status of whether this asynchronous request succeeded.
-  virtual ray::Status GetLocations(const ObjectID &object_id, const LocSuccCB &success_cb,
-                                   const LocFailCB &fail_cb) = 0;
+  virtual ray::Status GetLocations(const ObjectID &object_id,
+                                   const OnLocationsSuccess &success_cb,
+                                   const OnLocationsFailure &fail_cb) = 0;
 
   /// Cancels the invocation of the callback associated with callback_id.
   ///
@@ -90,10 +92,12 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ObjectDirectory() = default;
   ~ObjectDirectory() override = default;
 
-  ray::Status GetInformation(const ClientID &client_id, const InfoSuccCB &success_cb,
-                             const InfoFailCB &fail_cb) override;
-  ray::Status GetLocations(const ObjectID &object_id, const LocSuccCB &success_cb,
-                           const LocFailCB &fail_cb) override;
+  ray::Status GetInformation(const ClientID &client_id,
+                             const InfoSuccessCallback &success_cb,
+                             const InfoFailureCallback &fail_cb) override;
+  ray::Status GetLocations(const ObjectID &object_id,
+                           const OnLocationsSuccess &success_cb,
+                           const OnLocationsFailure &fail_cb) override;
   ray::Status Cancel(const ObjectID &object_id) override;
   ray::Status Terminate() override;
   ray::Status ReportObjectAdded(const ObjectID &object_id,
@@ -107,8 +111,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// Callbacks associated with a call to GetLocations.
   // TODO(hme): I think these can be removed.
   struct ODCallbacks {
-    LocSuccCB success_cb;
-    LocFailCB fail_cb;
+    OnLocationsSuccess success_cb;
+    OnLocationsFailure fail_cb;
   };
 
   /// Maintain map of in-flight GetLocation requests.
@@ -127,4 +131,4 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
 }  // namespace ray
 
-#endif  // RAY_OBJECT_DIRECTORY_H
+#endif  // RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H

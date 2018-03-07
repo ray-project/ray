@@ -19,8 +19,8 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
 };
 
 ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
-                                            const InfoSuccCB &success_cb,
-                                            const InfoFailCB &fail_cb) {
+                                            const InfoSuccessCallback &success_cb,
+                                            const InfoFailureCallback &fail_cb) {
   gcs_client_->client_table().GetClientInformation(
       client_id,
       [this, success_cb, client_id](ClientInformation client_info) {
@@ -33,8 +33,8 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
 };
 
 ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
-                                          const LocSuccCB &success_cb,
-                                          const LocFailCB &fail_cb) {
+                                          const OnLocationsSuccess &success_cb,
+                                          const OnLocationsFailure &fail_cb) {
   ray::Status status_code = ray::Status::OK();
   if (existing_requests_.count(object_id) == 0) {
     existing_requests_[object_id] = ODCallbacks({success_cb, fail_cb});
@@ -48,36 +48,38 @@ ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
 
 ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
   // TODO(hme): Avoid callback hell.
-  vector<RemoteConnectionInfo> v;
+  vector<RemoteConnectionInfo> remote_connections;
   ray::Status status = gcs_client_->object_table().GetObjectClientIDs(
       object_id,
-      [this, object_id, &v](const vector<ClientID> &client_ids) {
+      [this, object_id, &remote_connections](const vector<ClientID> &client_ids) {
         gcs_client_->client_table().GetClientInformationSet(
             client_ids,
-            [this, object_id, &v](const vector<ClientInformation> &info_vec) {
+            [this, object_id, &remote_connections](const vector<ClientInformation>
+                                                   &info_vec) {
               for (const auto &client_info : info_vec) {
                 RemoteConnectionInfo info =
                     RemoteConnectionInfo(client_info.GetClientId(), client_info.GetIp(),
                                          client_info.GetPort());
-                v.push_back(info);
+                remote_connections.push_back(info);
               }
               ray::Status cb_completion_status =
-                  GetLocationsComplete(Status::OK(), object_id, v);
+                  GetLocationsComplete(Status::OK(), object_id, remote_connections);
             },
-            [this, object_id, &v](const Status &status) {
+            [this, object_id, &remote_connections](const Status &status) {
               ray::Status cb_completion_status =
-                  GetLocationsComplete(status, object_id, v);
+                  GetLocationsComplete(status, object_id, remote_connections);
             });
       },
-      [this, object_id, &v](const Status &status) {
-        ray::Status cb_completion_status = GetLocationsComplete(status, object_id, v);
+      [this, object_id, &remote_connections](const Status &status) {
+        ray::Status cb_completion_status =
+            GetLocationsComplete(status, object_id, remote_connections);
       });
   return status;
 };
 
 ray::Status ObjectDirectory::GetLocationsComplete(
     const ray::Status &status, const ObjectID &object_id,
-    const std::vector<RemoteConnectionInfo> &v) {
+    const vector<RemoteConnectionInfo> &v) {
   bool success = status.ok();
   // Only invoke a callback if the request was not cancelled.
   if (existing_requests_.count(object_id) > 0) {
@@ -97,6 +99,8 @@ ray::Status ObjectDirectory::Cancel(const ObjectID &object_id) {
   return ray::Status::OK();
 };
 
-ray::Status ObjectDirectory::Terminate() { return ray::Status::OK(); };
+ray::Status ObjectDirectory::Terminate() {
+  return ray::Status::OK();
+};
 
 }  // namespace ray

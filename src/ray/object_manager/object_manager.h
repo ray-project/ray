@@ -1,5 +1,5 @@
-#ifndef RAY_OBJECT_MANAGER_H
-#define RAY_OBJECT_MANAGER_H
+#ifndef RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
+#define RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
 
 #include <algorithm>
 #include <cstdint>
@@ -11,7 +11,6 @@
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
-// #include <boost/thread.hpp>
 
 #include "plasma/client.h"
 #include "plasma/events.h"
@@ -266,4 +265,4 @@ class ObjectManager {
 
 }  // end namespace
 
-#endif  // RAY_OBJECT_MANAGER_H
+#endif  // RAY_OBJECT_MANAGER_OBJECT_MANAGER_H

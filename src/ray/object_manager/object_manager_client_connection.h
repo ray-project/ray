@@ -1,5 +1,5 @@
-#ifndef RAY_OM_CLIENT_CONNECTION_H
-#define RAY_OM_CLIENT_CONNECTION_H
+#ifndef RAY_OBJECT_MANAGER_OBJECT_MANAGER_CLIENT_CONNECTION_H
+#define RAY_OBJECT_MANAGER_OBJECT_MANAGER_CLIENT_CONNECTION_H
 
 #include <deque>
 #include <memory>
@@ -65,6 +65,7 @@ class TCPClientConnection : public boost::enable_shared_from_this<TCPClientConne
  private:
   boost::asio::ip::tcp::socket socket_;
 };
-}
 
-#endif  // RAY_OM_CLIENT_CONNECTION_H
+} // namespace ray
+
+#endif  // RAY_OBJECT_MANAGER_OBJECT_MANAGER_CLIENT_CONNECTION_H
