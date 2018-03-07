@@ -28,10 +28,10 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   typedef std::deque<ray::ObjectID> SendQueueType;
 
   static pointer Create(boost::asio::io_service &io_service, const std::string &ip,
-                        ushort port);
+                        uint16_t port);
 
   explicit SenderConnection(boost::asio::io_service &io_service, const std::string &ip,
-                            ushort port);
+                            uint16_t port);
 
   boost::asio::ip::tcp::socket &GetSocket();
 

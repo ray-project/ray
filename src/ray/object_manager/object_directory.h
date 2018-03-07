@@ -13,8 +13,10 @@
 namespace ray {
 
 struct RemoteConnectionInfo {
-  RemoteConnectionInfo(const ClientID &id, const std::string &ipaddr, uint16_t portnum)
-      : client_id(id), ip(ipaddr), port(portnum) {}
+  RemoteConnectionInfo(const ClientID &id,
+                       const std::string &ip_address,
+                       uint16_t port_num)
+      : client_id(id), ip(ip_address), port(port_num) {}
   ClientID client_id;
   std::string ip;
   uint16_t port;

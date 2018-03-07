@@ -36,7 +36,6 @@ ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
   ray::Status status_code = ray::Status::OK();
   if (existing_requests_.count(object_id) == 0) {
     existing_requests_[object_id] = ODCallbacks({success_cb, fail_cb});
-    ;
     status_code = ExecuteGetLocations(object_id);
   } else {
     // Do nothing. A request is in progress.
@@ -77,13 +76,13 @@ ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
 
 ray::Status ObjectDirectory::GetLocationsComplete(
     const ray::Status &status, const ObjectID &object_id,
-    const std::vector<RemoteConnectionInfo> &v) {
+    const std::vector<RemoteConnectionInfo> &remote_connections) {
   bool success = status.ok();
   // Only invoke a callback if the request was not cancelled.
   if (existing_requests_.count(object_id) > 0) {
     ODCallbacks cbs = existing_requests_[object_id];
     if (success) {
-      cbs.success_cb(v, object_id);
+      cbs.success_cb(remote_connections, object_id);
     } else {
       cbs.fail_cb(status, object_id);
     }

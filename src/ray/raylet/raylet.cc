@@ -10,13 +10,13 @@ namespace ray {
 Raylet::Raylet(boost::asio::io_service& io_service,
                const std::string &socket_name,
                const ResourceSet &resource_config,
-               const ObjectManagerConfig &om_config,
+               const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<ray::GcsClient> gcs_client)
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),
       tcp_acceptor_(io_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       tcp_socket_(io_service),
-      object_manager_(io_service, om_config, gcs_client),
+      object_manager_(io_service, object_manager_config, gcs_client),
       node_manager_(socket_name, resource_config, object_manager_),
       gcs_client_(gcs_client) {
   ClientID client_id = RegisterGcs();
@@ -26,14 +26,14 @@ Raylet::Raylet(boost::asio::io_service& io_service,
   DoAcceptTcp();
 }
 
-Raylet::~Raylet(){
+Raylet::~Raylet() {
   RAY_CHECK_OK(object_manager_.Terminate());
 }
 
 ClientID Raylet::RegisterGcs() {
   boost::asio::ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
   std::string ip = endpoint.address().to_string();
-  ushort port = endpoint.port();
+  uint16_t port = endpoint.port();
   ClientID client_id = gcs_client_->Register(ip, port);
   return client_id;
 }

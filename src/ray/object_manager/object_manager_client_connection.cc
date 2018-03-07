@@ -3,15 +3,15 @@
 namespace ray {
 
 SenderConnection::pointer SenderConnection::Create(boost::asio::io_service &io_service,
-                                                   const std::string &ip, ushort port) {
+                                                   const std::string &ip, uint16_t port) {
   return pointer(new SenderConnection(io_service, ip, port));
 };
 
 SenderConnection::SenderConnection(boost::asio::io_service &io_service,
-                                   const std::string &ip, ushort port)
+                                   const std::string &ip, uint16_t port)
     : socket_(io_service), send_queue_() {
-  boost::asio::ip::address addr = boost::asio::ip::address::from_string(ip);
-  boost::asio::ip::tcp::endpoint endpoint(addr, port);
+  boost::asio::ip::address ip_address = boost::asio::ip::address::from_string(ip);
+  boost::asio::ip::tcp::endpoint endpoint(ip_address, port);
   socket_.connect(endpoint);
 };
 

@@ -25,10 +25,10 @@ ray::Status ObjectTable::GetObjectClientIDs(const ray::ObjectID &object_id,
     fail(Status::KeyError("ObjectID doesn't exist."));
     return Status::OK();
   }
-};
+}
 
 ray::Status ObjectTable::Add(const ObjectID &object_id, const ClientID &client_id,
-                             const DoneCallback &done) {
+                             const DoneCallback &done_callback) {
   if (client_lookup.count(object_id) == 0) {
     RAY_LOG(DEBUG) << "Add ObjectID set " << object_id.hex();
     client_lookup[object_id] = std::unordered_set<ClientID, UniqueIDHasher>();
@@ -37,21 +37,21 @@ ray::Status ObjectTable::Add(const ObjectID &object_id, const ClientID &client_i
   }
   RAY_LOG(DEBUG) << "Insert ClientID " << client_id.hex();
   client_lookup[object_id].insert(client_id);
-  done();
+  done_callback();
   return ray::Status::OK();
-};
+}
 
 ray::Status ObjectTable::Remove(const ObjectID &object_id, const ClientID &client_id,
-                                const DoneCallback &done) {
+                                const DoneCallback &done_callback) {
   if (client_lookup.count(object_id) == 0) {
     return ray::Status::KeyError("ObjectID doesn't exist.");
   } else if (client_lookup[object_id].count(client_id) == 0) {
     return ray::Status::KeyError("ClientID doesn't exist.");
   }
   client_lookup[object_id].erase(client_id);
-  done();
+  done_callback();
   return ray::Status::OK();
-};
+}
 
 ray::Status ClientTable::GetClientIds(ClientIDsCallback callback) {
   std::vector<ClientID> keys;
@@ -61,7 +61,7 @@ ray::Status ClientTable::GetClientIds(ClientIDsCallback callback) {
   }
   callback(keys);
   return Status::OK();
-};
+}
 
 void ClientTable::GetClientInformationSet(const std::vector<ClientID> &client_ids,
                                           ManyInfoCallback callback,
@@ -89,32 +89,37 @@ void ClientTable::GetClientInformation(const ClientID &client_id,
 }
 
 ray::Status ClientTable::Add(const ClientID &client_id, const std::string &ip,
-                             uint16_t port, DoneCallback done) {
+                             uint16_t port, DoneCallback done_callback) {
   if (info_lookup.count(client_id) != 0) {
     return ray::Status::KeyError("ClientID already exists.");
   }
   info_lookup.emplace(client_id, ClientInformation(client_id, ip, port));
-  done();
+  done_callback();
   return ray::Status::OK();
-};
+}
 
-ray::Status ClientTable::Remove(const ClientID &client_id, DoneCallback done) {
+ray::Status ClientTable::Remove(const ClientID &client_id, DoneCallback done_callback) {
   if (info_lookup.count(client_id) == 0) {
     return ray::Status::KeyError("ClientID doesn't exist.");
   }
   info_lookup.erase(client_id);
-  done();
+  done_callback();
   return ray::Status::OK();
-};
+}
 
 ClientID GcsClient::Register(const std::string &ip, uint16_t port) {
   ClientID client_id = ClientID().from_random();
   // TODO: handle client registration failure.
   ray::Status status = client_table().Add(std::move(client_id), ip, port, []() {});
   return client_id;
-};
+}
 
-ObjectTable &GcsClient::object_table() { return *object_table_; };
+ObjectTable &GcsClient::object_table() {
+  return *object_table_;
+}
 
-ClientTable &GcsClient::client_table() { return *client_table_; };
+ClientTable &GcsClient::client_table() {
+  return *client_table_;
+}
+
 } // namespace ray

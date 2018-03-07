@@ -3,12 +3,13 @@
 
 #include <cstddef>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
+#include "format/common_generated.h"
 #include "ray/id.h"
 #include "ray/raylet/scheduling_resources.h"
-#include "format/common_generated.h"
+
 
 extern "C" {
 #include "sha256.h"

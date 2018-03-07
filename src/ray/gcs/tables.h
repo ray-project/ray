@@ -95,14 +95,14 @@ class Table {
 
   /// Subscribe to updates of this table
   ///
-  /// @param job_id The ID of the job (= driver).
-  /// @param client_id The type of update to listen to. If this is nil, then a
+  /// \param job_id The ID of the job (= driver).
+  /// \param client_id The type of update to listen to. If this is nil, then a
   ///        message for each Add to the table will be received. Else, only
   ///        messages for the given client will be received.
-  /// @param subscribe Callback that is called on each received message.
-  /// @param done Callback that is called when subscription is complete and we
+  /// \param subscribe Callback that is called on each received message.
+  /// \param done Callback that is called when subscription is complete and we
   ///        are ready to receive messages..
-  /// @return Status
+  /// \return Status
   Status Subscribe(const JobID &job_id,
                    const ClientID &client_id,
                    const Callback &subscribe,
