@@ -6,6 +6,7 @@ import csv
 import json
 import numpy as np
 import os
+import yaml
 
 from ray.tune.result import TrainingResult
 from ray.tune.log_sync import get_syncer
@@ -23,10 +24,6 @@ class Logger(object):
     By default, the UnifiedLogger implementation is used which logs results in
     multiple formats (TensorBoard, rllab/viskit, plain json) at once.
     """
-
-    _attrs_to_log = [
-        "time_this_iter_s", "mean_loss", "mean_accuracy",
-        "episode_reward_mean", "episode_len_mean"]
 
     def __init__(self, config, logdir, upload_uri=None):
         self.config = config
@@ -47,6 +44,11 @@ class Logger(object):
 
         pass
 
+    def flush(self):
+        """Flushes all disk writes to storage."""
+
+        pass
+
 
 class UnifiedLogger(Logger):
     """Unified result logger for TensorBoard, rllab/viskit, plain json.
@@ -60,22 +62,22 @@ class UnifiedLogger(Logger):
                 print("TF not installed - cannot log with {}...".format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
-        if self.uri:
-            self._log_syncer = get_syncer(self.logdir, self.uri)
-        else:
-            self._log_syncer = None
+        self._log_syncer = get_syncer(self.logdir, self.uri)
 
     def on_result(self, result):
         for logger in self._loggers:
             logger.on_result(result)
-        if self._log_syncer:
-            self._log_syncer.sync_if_needed()
+        self._log_syncer.set_worker_ip(result.node_ip)
+        self._log_syncer.sync_if_needed()
 
     def close(self):
         for logger in self._loggers:
             logger.close()
-        if self._log_syncer:
-            self._log_syncer.sync_now(force=True)
+        self._log_syncer.sync_now(force=True)
+
+    def flush(self):
+        self._log_syncer.sync_now(force=True)
+        self._log_syncer.wait()
 
 
 class NoopLogger(Logger):
@@ -103,17 +105,30 @@ class _JsonLogger(Logger):
         self.local_out.close()
 
 
+def to_tf_values(result, path):
+    values = []
+    for attr, value in result.items():
+        if value is not None:
+            if type(value) in [int, float]:
+                values.append(tf.Summary.Value(
+                    tag="/".join(path + [attr]),
+                    simple_value=value))
+            elif type(value) is dict:
+                values.extend(to_tf_values(value, path + [attr]))
+    return values
+
+
 class _TFLogger(Logger):
     def _init(self):
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
-        values = []
-        for attr in Logger._attrs_to_log:
-            if getattr(result, attr) is not None:
-                values.append(tf.Summary.Value(
-                    tag="ray/tune/{}".format(attr),
-                    simple_value=getattr(result, attr)))
+        tmp = result._asdict()
+        for k in [
+                "config", "pid", "timestamp", "time_total_s",
+                "timesteps_total"]:
+            del tmp[k]  # not useful to tf log these
+        values = to_tf_values(tmp, ["ray", "tune"])
         train_stats = tf.Summary(value=values)
         self._file_writer.add_summary(train_stats, result.timesteps_total)
 
@@ -162,3 +177,14 @@ class _CustomEncoder(json.JSONEncoder):
             return float(value)
         if np.issubdtype(value, int):
             return int(value)
+
+
+def pretty_print(result):
+    result = result._replace(config=None)  # drop config from pretty print
+    out = {}
+    for k, v in result._asdict().items():
+        if v is not None:
+            out[k] = v
+
+    cleaned = json.dumps(out, cls=_CustomEncoder)
+    return yaml.dump(json.loads(cleaned), default_flow_style=False)

@@ -8,6 +8,7 @@ import unittest
 import numpy as np
 
 from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.pbt import PopulationBasedTraining, explore
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.result import TrainingResult
@@ -191,10 +192,10 @@ class HyperbandSuite(unittest.TestCase):
 
         Bracketing is placed as follows:
         (5, 81);
-        (8, 27) -> (3, 81);
-        (15, 9) -> (5, 27) -> (2, 81);
-        (34, 3) -> (12, 9) -> (4, 27) -> (2, 81);
-        (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 81);"""
+        (8, 27) -> (3, 54);
+        (15, 9) -> (5, 27) -> (2, 45);
+        (34, 3) -> (12, 9) -> (4, 27) -> (2, 42);
+        (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 41);"""
         sched = HyperBandScheduler()
         for i in range(num_trials):
             t = Trial("__fake")
@@ -327,9 +328,9 @@ class HyperbandSuite(unittest.TestCase):
 
         self.assertEqual(action, TrialScheduler.STOP)
 
-    def testContinueLastOne(self):
+    def testStopsLastOne(self):
         stats = self.default_statistics()
-        num_trials = stats[str(0)]["n"]
+        num_trials = stats[str(0)]["n"]  # setup one bracket
         sched, mock_runner = self.schedulerSetup(num_trials)
         big_bracket = sched._state["bracket"]
         for trl in big_bracket.current_trials():
@@ -342,12 +343,7 @@ class HyperbandSuite(unittest.TestCase):
                 mock_runner, trl, result(cur_units, i))
             mock_runner.process_action(trl, action)
 
-        self.assertEqual(action, TrialScheduler.CONTINUE)
-
-        for x in range(100):
-            action = sched.on_trial_result(
-                mock_runner, trl, result(cur_units + x, 10))
-            self.assertEqual(action, TrialScheduler.CONTINUE)
+        self.assertEqual(action, TrialScheduler.STOP)
 
     def testTrialErrored(self):
         """If a trial errored, make sure successive halving still happens"""
@@ -760,6 +756,106 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             TrialScheduler.CONTINUE)
         self.assertEqual(trials[0].config["id_factor"], 42)
         self.assertEqual(trials[0].config["float_factor"], 43)
+
+
+class AsyncHyperBandSuite(unittest.TestCase):
+    def basicSetup(self, scheduler):
+        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
+        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        scheduler.on_trial_add(None, t1)
+        scheduler.on_trial_add(None, t2)
+        for i in range(10):
+            self.assertEqual(
+                scheduler.on_trial_result(None, t1, result(i, i * 100)),
+                TrialScheduler.CONTINUE)
+        for i in range(5):
+            self.assertEqual(
+                scheduler.on_trial_result(None, t2, result(i, 450)),
+                TrialScheduler.CONTINUE)
+        return t1, t2
+
+    def testAsyncHBOnComplete(self):
+        scheduler = AsyncHyperBandScheduler(
+            max_t=10, brackets=1)
+        t1, t2 = self.basicSetup(scheduler)
+        t3 = Trial("PPO")
+        scheduler.on_trial_add(None, t3)
+        scheduler.on_trial_complete(None, t3, result(10, 1000))
+        self.assertEqual(
+            scheduler.on_trial_result(None, t2, result(101, 0)),
+            TrialScheduler.STOP)
+
+    def testAsyncHBGracePeriod(self):
+        scheduler = AsyncHyperBandScheduler(
+            grace_period=2.5, reduction_factor=3, brackets=1)
+        t1, t2 = self.basicSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, 1000))
+        scheduler.on_trial_complete(None, t2, result(10, 1000))
+        t3 = Trial("PPO")
+        scheduler.on_trial_add(None, t3)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t3, result(1, 10)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t3, result(2, 10)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t3, result(3, 10)),
+            TrialScheduler.STOP)
+
+    def testAsyncHBAllCompletes(self):
+        scheduler = AsyncHyperBandScheduler(
+            max_t=10, brackets=10)
+        trials = [Trial("PPO") for i in range(10)]
+        for t in trials:
+            scheduler.on_trial_add(None, t)
+
+        for t in trials:
+            self.assertEqual(
+                scheduler.on_trial_result(None, t, result(10, -2)),
+                TrialScheduler.STOP)
+
+    def testAsyncHBUsesPercentile(self):
+        scheduler = AsyncHyperBandScheduler(
+            grace_period=1, max_t=10, reduction_factor=2, brackets=1)
+        t1, t2 = self.basicSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, 1000))
+        scheduler.on_trial_complete(None, t2, result(10, 1000))
+        t3 = Trial("PPO")
+        scheduler.on_trial_add(None, t3)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t3, result(1, 260)),
+            TrialScheduler.STOP)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t3, result(2, 260)),
+            TrialScheduler.STOP)
+
+    def testAlternateMetrics(self):
+        def result2(t, rew):
+            return TrainingResult(training_iteration=t, neg_mean_loss=rew)
+
+        scheduler = AsyncHyperBandScheduler(
+            grace_period=1, time_attr='training_iteration',
+            reward_attr='neg_mean_loss', brackets=1)
+        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
+        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        scheduler.on_trial_add(None, t1)
+        scheduler.on_trial_add(None, t2)
+        for i in range(10):
+            self.assertEqual(
+                scheduler.on_trial_result(None, t1, result2(i, i * 100)),
+                TrialScheduler.CONTINUE)
+        for i in range(5):
+            self.assertEqual(
+                scheduler.on_trial_result(None, t2, result2(i, 450)),
+                TrialScheduler.CONTINUE)
+        scheduler.on_trial_complete(None, t1, result2(10, 1000))
+        self.assertEqual(
+            scheduler.on_trial_result(None, t2, result2(5, 450)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            scheduler.on_trial_result(None, t2, result2(6, 0)),
+            TrialScheduler.CONTINUE)
 
 
 if __name__ == "__main__":

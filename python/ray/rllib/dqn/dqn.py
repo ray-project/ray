@@ -9,13 +9,17 @@ import numpy as np
 import tensorflow as tf
 
 import ray
+from ray.rllib import optimizers
 from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
-from ray.rllib.dqn.dqn_replay_evaluator import DQNReplayEvaluator
-from ray.rllib.optimizers import AsyncOptimizer, LocalMultiGPUOptimizer, \
-    LocalSyncOptimizer
+from ray.rllib.utils.actors import split_colocated
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
+
+OPTIMIZER_SHARED_CONFIGS = [
+    "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
+    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
+    "train_batch_size", "learning_starts"]
 
 DEFAULT_CONFIG = dict(
     # === Model ===
@@ -46,44 +50,38 @@ DEFAULT_CONFIG = dict(
     exploration_fraction=0.1,
     # Final value of random action probability
     exploration_final_eps=0.02,
-    # How many steps of the model to sample before learning starts.
-    learning_starts=1000,
     # Update the target network every `target_network_update_freq` steps.
     target_network_update_freq=500,
 
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then each
-    # worker will have a replay buffer of this size.
+    # Size of the replay buffer. Note that if async_updates is set, then
+    # each worker will have a replay buffer of this size.
     buffer_size=50000,
     # If True prioritized replay buffer will be used.
     prioritized_replay=True,
-    # Alpha parameter for prioritized replay buffer
+    # Alpha parameter for prioritized replay buffer.
     prioritized_replay_alpha=0.6,
-    # Initial value of beta for prioritized replay buffer
-    prioritized_replay_beta0=0.4,
-    # Number of iterations over which beta will be annealed from initial
-    # value to 1.0. If set to None equals to schedule_max_timesteps
-    prioritized_replay_beta_iters=None,
+    # Beta parameter for sampling from prioritized replay buffer.
+    prioritized_replay_beta=0.4,
     # Epsilon to add to the TD errors when updating priorities.
     prioritized_replay_eps=1e-6,
 
     # === Optimization ===
     # Learning rate for adam optimizer
     lr=5e-4,
-    # Update the replay buffer with this many samples at once. Note that this
-    # setting applies per-worker if num_workers > 1.
-    sample_batch_size=1,
-    # Size of a batched sampled from replay buffer for training. Note that if
-    # async_updates is set, then each worker returns gradients for a batch of
-    # this size.
-    train_batch_size=32,
-    # SGD minibatch size. Note that this must be << train_batch_size. This
-    # config has no effect if gradients_on_workres is True.
-    sgd_batch_size=32,
     # If not None, clip gradients during optimization at this value
-    grad_norm_clipping=10,
-    # Arguments to pass to the rllib optimizer
-    optimizer={},
+    grad_norm_clipping=40,
+    # How many steps of the model to sample before learning starts.
+    learning_starts=1000,
+    # Update the replay buffer with this many samples at once. Note that
+    # this setting applies per-worker if num_workers > 1.
+    sample_batch_size=4,
+    # Size of a batched sampled from replay buffer for training. Note that
+    # if async_updates is set, then each worker returns gradients for a
+    # batch of this size.
+    train_batch_size=32,
+    # Smooth the current average reward over this many previous episodes.
+    smoothing_num_episodes=100,
 
     # === Tensorflow ===
     # Arguments to pass to tensorflow
@@ -91,23 +89,30 @@ DEFAULT_CONFIG = dict(
         "device_count": {"CPU": 2},
         "log_device_placement": False,
         "allow_soft_placement": True,
+        "gpu_options": {
+            "allow_growth": True
+        },
         "inter_op_parallelism_threads": 1,
         "intra_op_parallelism_threads": 1,
     },
 
     # === Parallelism ===
-    # Number of workers for collecting samples with. Note that the typical
-    # setting is 1 unless your environment is particularly slow to sample.
-    num_workers=1,
+    # Number of workers for collecting samples with. This only makes sense
+    # to increase if your environment is particularly slow to sample, or if
+    # you're using the Ape-X optimizer.
+    num_workers=0,
     # Whether to allocate GPUs for workers (if > 0).
     num_gpus_per_worker=0,
-    # (Experimental) Whether to update the model asynchronously from
-    # workers. In this mode, gradients will be computed on workers instead of
-    # on the driver, and workers will each have their own replay buffer.
-    async_updates=False,
-    # (Experimental) Whether to use multiple GPUs for SGD optimization.
-    # Note that this only helps performance if the SGD batch size is large.
-    multi_gpu=False)
+    # Optimizer class to use.
+    optimizer_class="LocalSyncReplayOptimizer",
+    # Config to pass to the optimizer.
+    optimizer_config=dict(),
+    # Whether to use a distribution of epsilons across workers for exploration.
+    per_worker_exploration=False,
+    # Whether to compute priorities on workers.
+    worker_side_prioritization=False,
+    # Whether to force evaluator actors to be placed on remote machines.
+    force_evaluators_remote=False)
 
 
 class DQNAgent(Agent):
@@ -117,41 +122,43 @@ class DQNAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
-        if self.config["async_updates"]:
-            self.local_evaluator = DQNEvaluator(
-                self.registry, self.env_creator, self.config, self.logdir)
-            remote_cls = ray.remote(
-                num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
-                DQNReplayEvaluator)
-            remote_config = dict(self.config, num_workers=1)
-            # In async mode, we create N remote evaluators, each with their
-            # own replay buffer (i.e. the replay buffer is sharded).
-            self.remote_evaluators = [
-                remote_cls.remote(
-                    self.registry, self.env_creator, remote_config,
-                    self.logdir)
-                for _ in range(self.config["num_workers"])]
-            optimizer_cls = AsyncOptimizer
-        else:
-            self.local_evaluator = DQNReplayEvaluator(
-                self.registry, self.env_creator, self.config, self.logdir)
-            # No remote evaluators. If num_workers > 1, the DQNReplayEvaluator
-            # will internally create more workers for parallelism. This means
-            # there is only one replay buffer regardless of num_workers.
-            self.remote_evaluators = []
-            if self.config["multi_gpu"]:
-                optimizer_cls = LocalMultiGPUOptimizer
-            else:
-                optimizer_cls = LocalSyncOptimizer
+        self.local_evaluator = DQNEvaluator(
+            self.registry, self.env_creator, self.config, self.logdir, 0)
+        remote_cls = ray.remote(
+            num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
+            DQNEvaluator)
+        self.remote_evaluators = [
+            remote_cls.remote(
+                self.registry, self.env_creator, self.config, self.logdir,
+                i)
+            for i in range(self.config["num_workers"])]
 
-        self.optimizer = optimizer_cls(
-            self.config["optimizer"], self.local_evaluator,
+        if self.config["force_evaluators_remote"]:
+            _, self.remote_evaluators = split_colocated(
+                self.remote_evaluators)
+
+        for k in OPTIMIZER_SHARED_CONFIGS:
+            if k not in self.config["optimizer_config"]:
+                self.config["optimizer_config"][k] = self.config[k]
+
+        self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
+            self.config["optimizer_config"], self.local_evaluator,
             self.remote_evaluators)
-        self.saver = tf.train.Saver(max_to_keep=None)
 
-        self.global_timestep = 0
+        self.saver = tf.train.Saver(max_to_keep=None)
         self.last_target_update_ts = 0
         self.num_target_updates = 0
+
+    @property
+    def global_timestep(self):
+        return self.optimizer.num_steps_sampled
+
+    def update_target_if_needed(self):
+        if self.global_timestep - self.last_target_update_ts > \
+                self.config["target_network_update_freq"]:
+            self.local_evaluator.update_target()
+            self.last_target_update_ts = self.global_timestep
+            self.num_target_updates += 1
 
     def _train(self):
         start_timestep = self.global_timestep
@@ -159,43 +166,16 @@ class DQNAgent(Agent):
         while (self.global_timestep - start_timestep <
                self.config["timesteps_per_iteration"]):
 
-            if self.global_timestep < self.config["learning_starts"]:
-                self._populate_replay_buffer()
-            else:
-                self.optimizer.step()
+            self.optimizer.step()
+            self.update_target_if_needed()
 
-            stats = self._update_global_stats()
+        self.local_evaluator.set_global_timestep(self.global_timestep)
+        for e in self.remote_evaluators:
+            e.set_global_timestep.remote(self.global_timestep)
 
-            if self.global_timestep - self.last_target_update_ts > \
-                    self.config["target_network_update_freq"]:
-                self.local_evaluator.update_target()
-                self.last_target_update_ts = self.global_timestep
-                self.num_target_updates += 1
+        return self._train_stats(start_timestep)
 
-        mean_100ep_reward = 0.0
-        mean_100ep_length = 0.0
-        num_episodes = 0
-        exploration = -1
-
-        for s in stats:
-            mean_100ep_reward += s["mean_100ep_reward"] / len(stats)
-            mean_100ep_length += s["mean_100ep_length"] / len(stats)
-            num_episodes += s["num_episodes"]
-            exploration = s["exploration"]
-
-        result = TrainingResult(
-            episode_reward_mean=mean_100ep_reward,
-            episode_len_mean=mean_100ep_length,
-            episodes_total=num_episodes,
-            timesteps_this_iter=self.global_timestep - start_timestep,
-            info=dict({
-                "exploration": exploration,
-                "num_target_updates": self.num_target_updates,
-            }, **self.optimizer.stats()))
-
-        return result
-
-    def _update_global_stats(self):
+    def _train_stats(self, start_timestep):
         if self.remote_evaluators:
             stats = ray.get([
                 e.stats.remote() for e in self.remote_evaluators])
@@ -203,13 +183,40 @@ class DQNAgent(Agent):
             stats = self.local_evaluator.stats()
             if not isinstance(stats, list):
                 stats = [stats]
-        new_timestep = sum(s["local_timestep"] for s in stats)
-        assert new_timestep > self.global_timestep, new_timestep
-        self.global_timestep = new_timestep
-        self.local_evaluator.set_global_timestep(self.global_timestep)
-        for e in self.remote_evaluators:
-            e.set_global_timestep.remote(self.global_timestep)
-        return stats
+
+        mean_100ep_reward = 0.0
+        mean_100ep_length = 0.0
+        num_episodes = 0
+        explorations = []
+
+        if self.config["per_worker_exploration"]:
+            # Return stats from workers with the lowest 20% of exploration
+            test_stats = stats[-int(max(1, len(stats)*0.2)):]
+        else:
+            test_stats = stats
+
+        for s in test_stats:
+            mean_100ep_reward += s["mean_100ep_reward"] / len(test_stats)
+            mean_100ep_length += s["mean_100ep_length"] / len(test_stats)
+
+        for s in stats:
+            num_episodes += s["num_episodes"]
+            explorations.append(s["exploration"])
+
+        opt_stats = self.optimizer.stats()
+
+        result = TrainingResult(
+            episode_reward_mean=mean_100ep_reward,
+            episode_len_mean=mean_100ep_length,
+            episodes_total=num_episodes,
+            timesteps_this_iter=self.global_timestep - start_timestep,
+            info=dict({
+                "min_exploration": min(explorations),
+                "max_exploration": max(explorations),
+                "num_target_updates": self.num_target_updates,
+            }, **opt_stats))
+
+        return result
 
     def _populate_replay_buffer(self):
         if self.remote_evaluators:
@@ -231,7 +238,7 @@ class DQNAgent(Agent):
         extra_data = [
             self.local_evaluator.save(),
             ray.get([e.save.remote() for e in self.remote_evaluators]),
-            self.global_timestep,
+            self.optimizer.save(),
             self.num_target_updates,
             self.last_target_update_ts]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
@@ -244,7 +251,7 @@ class DQNAgent(Agent):
         ray.get([
             e.restore.remote(d) for (d, e)
             in zip(extra_data[1], self.remote_evaluators)])
-        self.global_timestep = extra_data[2]
+        self.optimizer.restore(extra_data[2])
         self.num_target_updates = extra_data[3]
         self.last_target_update_ts = extra_data[4]
 

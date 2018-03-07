@@ -22,8 +22,8 @@ Status PlasmaReceive(int sock,
                      std::vector<uint8_t> &buffer) {
   int64_t type;
   RETURN_NOT_OK(ReadMessage(sock, &type, buffer));
-  ARROW_CHECK(type == message_type) << "type = " << type
-                                    << ", message_type = " << message_type;
+  RAY_CHECK(type == message_type) << "type = " << type
+                                  << ", message_type = " << message_type;
   return Status::OK();
 }
 
@@ -45,7 +45,7 @@ Status ReadCreateRequest(uint8_t *data,
                          ObjectID *object_id,
                          int64_t *data_size,
                          int64_t *metadata_size) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaCreateRequest>(data);
   *data_size = message->data_size();
   *metadata_size = message->metadata_size();
@@ -72,7 +72,7 @@ Status SendCreateReply(int sock,
 Status ReadCreateReply(uint8_t *data,
                        ObjectID *object_id,
                        PlasmaObject *object) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaCreateReply>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
   object->handle.store_fd = message->plasma_object()->segment_index();
@@ -99,10 +99,10 @@ Status SendSealRequest(int sock, ObjectID object_id, unsigned char *digest) {
 Status ReadSealRequest(uint8_t *data,
                        ObjectID *object_id,
                        unsigned char *digest) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaSealRequest>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
-  ARROW_CHECK(message->digest()->size() == kDigestSize);
+  RAY_CHECK(message->digest()->size() == kDigestSize);
   memcpy(digest, message->digest()->data(), kDigestSize);
   return Status::OK();
 }
@@ -117,7 +117,7 @@ Status SendSealReply(int sock, ObjectID object_id, int error) {
 }
 
 Status ReadSealReply(uint8_t *data, ObjectID *object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaSealReply>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
   return plasma_error_status(message->error());
@@ -135,7 +135,7 @@ Status SendReleaseRequest(int sock, ObjectID object_id) {
 }
 
 Status ReadReleaseRequest(uint8_t *data, ObjectID *object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaReleaseRequest>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
   return Status::OK();
@@ -151,7 +151,7 @@ Status SendReleaseReply(int sock, ObjectID object_id, int error) {
 }
 
 Status ReadReleaseReply(uint8_t *data, ObjectID *object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaReleaseReply>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
   return plasma_error_status(message->error());
@@ -169,7 +169,7 @@ Status SendDeleteRequest(int sock, ObjectID object_id) {
 }
 
 Status ReadDeleteRequest(uint8_t *data, ObjectID *object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaReleaseReply>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
   return Status::OK();
@@ -185,7 +185,7 @@ Status SendDeleteReply(int sock, ObjectID object_id, int error) {
 }
 
 Status ReadDeleteReply(uint8_t *data, ObjectID *object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaDeleteReply>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
   return plasma_error_status(message->error());
@@ -205,7 +205,7 @@ Status SendStatusRequest(int sock, ObjectID object_ids[], int64_t num_objects) {
 Status ReadStatusRequest(uint8_t *data,
                          ObjectID object_ids[],
                          int64_t num_objects) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaStatusRequest>(data);
   for (int64_t i = 0; i < num_objects; ++i) {
     object_ids[i] = ObjectID::from_binary(message->object_ids()->Get(i)->str());
@@ -227,7 +227,7 @@ Status SendStatusReply(int sock,
 }
 
 int64_t ReadStatusReply_num_objects(uint8_t *data) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaStatusReply>(data);
   return message->object_ids()->size();
 }
@@ -236,7 +236,7 @@ Status ReadStatusReply(uint8_t *data,
                        ObjectID object_ids[],
                        int object_status[],
                        int64_t num_objects) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaStatusReply>(data);
   for (int64_t i = 0; i < num_objects; ++i) {
     object_ids[i] = ObjectID::from_binary(message->object_ids()->Get(i)->str());
@@ -259,7 +259,7 @@ Status SendContainsRequest(int sock, ObjectID object_id) {
 }
 
 Status ReadContainsRequest(uint8_t *data, ObjectID *object_id) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaContainsRequest>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
   return Status::OK();
@@ -275,7 +275,7 @@ Status SendContainsReply(int sock, ObjectID object_id, int has_object) {
 }
 
 Status ReadContainsReply(uint8_t *data, ObjectID *object_id, int *has_object) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaContainsReply>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
   *has_object = message->has_object();
@@ -305,7 +305,7 @@ Status SendConnectReply(int sock, int64_t memory_capacity) {
 }
 
 Status ReadConnectReply(uint8_t *data, int64_t *memory_capacity) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaConnectReply>(data);
   *memory_capacity = message->memory_capacity();
   return Status::OK();
@@ -322,7 +322,7 @@ Status SendEvictRequest(int sock, int64_t num_bytes) {
 }
 
 Status ReadEvictRequest(uint8_t *data, int64_t *num_bytes) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaEvictRequest>(data);
   *num_bytes = message->num_bytes();
   return Status::OK();
@@ -337,7 +337,7 @@ Status SendEvictReply(int sock, int64_t num_bytes) {
 }
 
 Status ReadEvictReply(uint8_t *data, int64_t &num_bytes) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaEvictReply>(data);
   num_bytes = message->num_bytes();
   return Status::OK();
@@ -360,7 +360,7 @@ Status SendGetRequest(int sock,
 Status ReadGetRequest(uint8_t *data,
                       std::vector<ObjectID> &object_ids,
                       int64_t *timeout_ms) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaGetRequest>(data);
   for (int64_t i = 0; i < message->object_ids()->size(); ++i) {
     auto object_id = message->object_ids()->Get(i)->str();
@@ -396,7 +396,7 @@ Status ReadGetReply(uint8_t *data,
                     ObjectID object_ids[],
                     PlasmaObject plasma_objects[],
                     int64_t num_objects) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaGetReply>(data);
   for (int64_t i = 0; i < num_objects; ++i) {
     object_ids[i] = ObjectID::from_binary(message->object_ids()->Get(i)->str());
@@ -425,7 +425,7 @@ Status SendFetchRequest(int sock, ObjectID object_ids[], int64_t num_objects) {
 }
 
 Status ReadFetchRequest(uint8_t *data, std::vector<ObjectID> &object_ids) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaFetchRequest>(data);
   for (int64_t i = 0; i < message->object_ids()->size(); ++i) {
     object_ids.push_back(
@@ -462,7 +462,7 @@ Status ReadWaitRequest(uint8_t *data,
                        ObjectRequestMap &object_requests,
                        int64_t *timeout_ms,
                        int *num_ready_objects) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaWaitRequest>(data);
   *num_ready_objects = message->num_ready_objects();
   *timeout_ms = message->timeout();
@@ -502,7 +502,7 @@ Status SendWaitReply(int sock,
 Status ReadWaitReply(uint8_t *data,
                      ObjectRequest object_requests[],
                      int *num_ready_objects) {
-  DCHECK(data);
+  RAY_DCHECK(data);
 
   auto message = flatbuffers::GetRoot<PlasmaWaitReply>(data);
   *num_ready_objects = message->num_ready_objects();
@@ -543,9 +543,9 @@ Status ReadDataRequest(uint8_t *data,
                        ObjectID *object_id,
                        char **address,
                        int *port) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaDataRequest>(data);
-  DCHECK(message->object_id()->size() == sizeof(ObjectID));
+  RAY_DCHECK(message->object_id()->size() == sizeof(ObjectID));
   *object_id = ObjectID::from_binary(message->object_id()->str());
   *address = strdup(message->address()->c_str());
   *port = message->port();
@@ -568,7 +568,7 @@ Status ReadDataReply(uint8_t *data,
                      ObjectID *object_id,
                      int64_t *object_size,
                      int64_t *metadata_size) {
-  DCHECK(data);
+  RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaDataReply>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());
   *object_size = (int64_t) message->object_size();
