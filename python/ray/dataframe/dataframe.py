@@ -1608,10 +1608,10 @@ class DataFrame(object):
             The mean of the DataFrame.
         """
         _sum = self.sum(axis, skipna, level, numeric_only)
-        _count = len(self.index)
+        _count = sum(self._lengths)
 
         if(skipna is False or skipna is None):
-            _count = len(self.index)
+             _count = sum(self._lengths)
 
         return _sum/_count
 >>>>>>> added describe methods
