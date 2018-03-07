@@ -22,7 +22,7 @@ class ShuffleActor(object):
 
     def assign_and_send_data(self, index, partition_assignments, list_of_partitions):
         num_partitions = len(partition_assignments)
-
+        self.partition_data.index = index.index
         for i in range(num_partitions):
             if i == self.index_of_self:
                 continue
@@ -31,9 +31,11 @@ class ShuffleActor(object):
                                    for idx in partition_assignments[i]
                                    if idx in index.index]
                 data_to_send = \
-                    self.partition_data.loc[index.loc[indices_to_send]['index_within_partition']]
-                # raise ValueError(str(data_to_send))
-                self.partition_data.drop(data_to_send.index)
+                    self.partition_data.loc[indices_to_send]
+
+                # raise ValueError(str(self.partition_data))
+                self.partition_data = \
+                    self.partition_data.drop(data_to_send.index)
                 list_of_partitions[i].add_to_incoming.remote(data_to_send)
             except KeyError:
                 pass

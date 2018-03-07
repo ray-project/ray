@@ -332,7 +332,8 @@ class DataFrame(object):
         [shufflers[i].shuffle.remote(self._index[self._index['partition'] == i],
                                      partition_assignments, i, *shufflers)
          for i in range(len(shufflers))]
-
+        import time
+        time.sleep(2)
         return DataFrameGroupBy([shuffler.apply_func.remote(
             lambda df: df.groupby(by=df.index,
                                   axis=axis,
