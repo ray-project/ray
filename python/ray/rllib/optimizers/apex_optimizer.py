@@ -69,12 +69,11 @@ class ReplayActor(object):
                 "batch_indexes": batch_indexes})
             return batch
 
-    def update_priorities(self, batch, td_errors):
+    def update_priorities(self, batch_indexes, td_errors):
         with self.update_priorities_timer:
             new_priorities = (
                 np.abs(td_errors) + self.prioritized_replay_eps)
-            self.replay_buffer.update_priorities(
-                batch["batch_indexes"], new_priorities)
+            self.replay_buffer.update_priorities(batch_indexes, new_priorities)
 
     def stats(self):
         stat = {
@@ -231,7 +230,7 @@ class ApexOptimizer(Optimizer):
             while not self.learner.outqueue.empty():
                 i += 1
                 ra, replay, td_error = self.learner.outqueue.get()
-                ra.update_priorities.remote(replay, td_error)
+                ra.update_priorities.remote(replay["batch_indexes"], td_error)
                 train_timesteps += self.train_batch_size
             self.meters["reprios_per_loop"].push(i)
 
