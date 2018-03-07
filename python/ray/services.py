@@ -391,7 +391,27 @@ def start_credis(node_ip_address,
                  port=None,
                  redirect_output=False,
                  cleanup=True):
-    """Start the credis global state store."""
+    """Start the credis global state store.
+
+    Credis is a chain replicated reliable redis store. It consists
+    of one master process that acts as a controller and a number of
+    chain members (currently two, the head and the tail).
+
+    Args:
+        node_ip_address: The IP address of the current node. This is only used
+            for recording the log filenames in Redis.
+        port (int): If provided, the primary Redis shard will be started on
+            this port.
+        redirect_output (bool): True if output should be redirected to a file
+            and false otherwise.
+        cleanup (bool): True if using Ray in local mode. If cleanup is true,
+            then all Redis processes started by this method will be killed by
+            services.cleanup() when the Python process that imported services
+            exits.
+
+    Returns:
+        The address (ip_address:port) of the credis master process.
+    """
 
     components = ["credis_master", "credis_head", "credis_tail"]
     modules = [CREDIS_MASTER_MODULE, CREDIS_MEMBER_MODULE,
@@ -537,6 +557,9 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
+        executable (str): Full path tho the redis-server executable.
+        module (str): Full path to the redis module that will be loaded in this
+            redis server.
 
     Returns:
         A tuple of the port used by Redis and a handle to the process that was
