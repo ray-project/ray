@@ -5,7 +5,7 @@ from __future__ import print_function
 import pandas as pd
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
-from pandas.core.index import _ensure_index_from_sequences
+# from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas.compat import lzip
@@ -1234,10 +1234,10 @@ class DataFrame(object):
             The mean of the DataFrame.
         """
         _sum = self.sum(axis, skipna, level, numeric_only)
-        _count = self.count(axis, level, numeric_only)
+        _count = sum(self._lengths) 
 
         if(skipna is False or skipna is None):
-            _count = self.__len__()
+             _count = sum(self._lengths) 
 
         return _sum/_count
 
