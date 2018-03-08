@@ -47,10 +47,10 @@ void async_redis_socket_test_callback(redisAsyncContext *ac,
   redisReply *reply =
       (redisReply *) redisCommand(context, test_get_format, test_key);
   redisFree(context);
-  CHECK(reply != NULL);
+  RAY_CHECK(reply != NULL);
   if (strcmp(reply->str, test_value)) {
     freeReplyObject(reply);
-    CHECK(0);
+    RAY_CHECK(0);
   }
   freeReplyObject(reply);
 }
@@ -97,7 +97,7 @@ void redis_accept_callback(event_loop *loop,
                            void *context,
                            int events) {
   int accept_fd = accept_client(socket_fd);
-  CHECK(accept_fd >= 0);
+  RAY_CHECK(accept_fd >= 0);
   connections.push_back(accept_fd);
   event_loop_add_file(loop, accept_fd, EVENT_LOOP_READ, redis_read_callback,
                       context);
@@ -155,8 +155,8 @@ void logging_test_callback(redisAsyncContext *ac, void *r, void *privdata) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   redisReply *reply = (redisReply *) redisCommand(context, "KEYS %s", "log:*");
   redisFree(context);
-  CHECK(reply != NULL);
-  CHECK(reply->elements > 0);
+  RAY_CHECK(reply != NULL);
+  RAY_CHECK(reply->elements > 0);
   freeReplyObject(reply);
 }
 
@@ -176,7 +176,7 @@ void logging_accept_callback(event_loop *loop,
                              void *context,
                              int events) {
   int accept_fd = accept_client(socket_fd);
-  CHECK(accept_fd >= 0);
+  RAY_CHECK(accept_fd >= 0);
   connections.push_back(accept_fd);
   event_loop_add_file(loop, accept_fd, EVENT_LOOP_READ, logging_read_callback,
                       context);

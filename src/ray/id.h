@@ -44,6 +44,8 @@ struct UniqueIDHasher {
   }
 };
 
+std::ostream &operator<<(std::ostream &os, const UniqueID &id);
+
 typedef UniqueID TaskID;
 typedef UniqueID JobID;
 typedef UniqueID ObjectID;
@@ -53,7 +55,9 @@ typedef UniqueID ActorID;
 typedef UniqueID ActorHandleID;
 typedef UniqueID WorkerID;
 typedef UniqueID DriverID;
+// TODO(swang): Replace this with ClientID.
 typedef UniqueID DBClientID;
+typedef UniqueID ClientID;
 typedef UniqueID ConfigID;
 
 }  // namespace ray

@@ -1,0 +1,12 @@
+cartpole-dqn:
+    env: CartPole-v0
+    run: DQN
+    stop:
+        episode_reward_mean: 200
+        time_total_s: 600
+    resources:
+        cpu: 1
+    config:
+        n_step: 3
+        gamma: 0.95
+        smoothing_num_episodes: 10

@@ -5,6 +5,8 @@ from __future__ import print_function
 import json
 import os
 import redis
+import subprocess
+import tempfile
 import time
 
 import ray
@@ -130,3 +132,13 @@ def wait_for_pid_to_exit(pid, timeout=20):
             return
         time.sleep(0.1)
     raise Exception("Timed out while waiting for process to exit.")
+
+
+def run_and_get_output(command):
+    with tempfile.NamedTemporaryFile() as tmp:
+        p = subprocess.Popen(command, stdout=tmp)
+        if p.wait() != 0:
+            raise RuntimeError("ray start did not terminate properly")
+        with open(tmp.name, 'r') as f:
+            result = f.readlines()
+            return "\n".join(result)
