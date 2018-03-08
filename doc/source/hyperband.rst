@@ -54,24 +54,24 @@ An example of this can be found in `hyperband_example.py <https://github.com/ray
 HyperBand Implementation Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Our `original implementation of Hyperband <https://github.com/richardliaw/ray/blob/f945ef479fe13dc9012cfe4511cfd0efda7686c0/python/ray/tune/hyperband.py>`__ actually followed the paper, but after using it for a while, we realized that the given parameters led to many unintuitive and impractical bracket configurations. Implementation details may deviate slightly from theory but are focused on increasing usability.
+Implementation details may deviate slightly from theory but are focused on increasing usability.
 
-1. Both `s_max` (representing the ``number of brackets - 1``) and `eta`, representing the downsampling rate, are fixed.  In many practical settings, you may have `R >= 200`. For simplicity, assume `eta = 3`. Between `R = 200` and `R = 1000`, you end up with a huge range of the number trials needed to fill up all brackets.
+1. Both `s_max` (representing the ``number of brackets - 1``) and `eta`, representing the downsampling rate, are fixed.  In many practical settings, `R`, which represents some resource unit and often the number of training iterations, can be set reasonably large, like `R >= 200`. For simplicity, assume `eta = 3`. Varying `R` between `R = 200` and `R = 1000` creates a huge range of the number of trials needed to fill up all brackets.
 
 .. image:: images/hyperband_bracket.png
 
-Now, assume `R = 300`. If you want to find a better `eta`, you realize also that the configurations generated aren't very intuitive:
+On the other hand, holding `R` constant at `R = 300` and varying `eta` also leads to HyperBand configurations that are not very intuitive:
 
 .. image:: images/hyperband_eta.png
 
-We figured that it would be a lot easier for majority of people to use if we fixed the parameters to be the same as the example given in the paper and only exposed `max_t`.
+The implementation takes the same  configuration as the example given in the paper and exposes `max_t`, which is not a parameter in the paper.
 
-2. The example in the post to calculate `n_0` is actually a little different than the algorithm given in the paper. We implement according to the paper:
+2. The example in the `post <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`_ to calculate `n_0` is actually a little different than the algorithm given in the paper. In this implementation, we implement `n_0` according to the paper:
 
 .. image:: images/hyperband_allocation.png
 
 
-3. There are also implementation specific details like how trials are placed into brackets which are not covered in the paper. Our implementation places trials within brackets according to smaller bracket first - meaning that with low number of trials, there will be less early stopping.
+3. There are also implementation specific details like how trials are placed into brackets which are not covered in the paper. This implementation places trials within brackets according to smaller bracket first - meaning that with low number of trials, there will be less early stopping.
 
 
 Asynchronous HyperBand
