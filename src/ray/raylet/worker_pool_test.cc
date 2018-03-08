@@ -1,27 +1,21 @@
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
-#include "ray/raylet/worker_pool.h"
 #include "ray/raylet/node_manager.h"
+#include "ray/raylet/worker_pool.h"
 
 namespace ray {
 
 class MockClientManager : public ClientManager<boost::asio::local::stream_protocol> {
-  public:
-    MOCK_METHOD3(ProcessClientMessage, void(
-      std::shared_ptr<LocalClientConnection>,
-      int64_t,
-      const uint8_t*));
-    MOCK_METHOD1(ProcessNewClient, void(
-      std::shared_ptr<LocalClientConnection>));
+ public:
+  MOCK_METHOD3(ProcessClientMessage,
+               void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *));
+  MOCK_METHOD1(ProcessNewClient, void(std::shared_ptr<LocalClientConnection>));
 };
 
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest()
-    : worker_pool_(0),
-      client_manager_(),
-      io_service_() {}
+  WorkerPoolTest() : worker_pool_(0), client_manager_(), io_service_() {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid) {
     boost::asio::local::stream_protocol::socket socket(io_service_);
@@ -72,9 +66,9 @@ TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   ASSERT_TRUE(workers.count(popped_worker) > 0);
 }
 
-} // namespace ray
+}  // namespace ray
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

@@ -6,9 +6,8 @@ namespace ray {
 
 ResourceSet::ResourceSet() {}
 
-ResourceSet::ResourceSet(
-    const std::unordered_map<std::string, double> &resource_map):
-        resource_capacity_(resource_map) {}
+ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map)
+    : resource_capacity_(resource_map) {}
 
 ResourceSet::~ResourceSet() {}
 
@@ -18,7 +17,7 @@ bool ResourceSet::operator==(const ResourceSet &rhs) const {
 
 bool ResourceSet::IsSubset(const ResourceSet &other) const {
   // Check to make sure all keys of this are in other.
-  for (const auto &resource_pair: resource_capacity_) {
+  for (const auto &resource_pair : resource_capacity_) {
     const auto &resource_name = resource_pair.first;
     const double lhs_quantity = resource_pair.second;
     double rhs_quantity = 0;
@@ -56,8 +55,7 @@ bool ResourceSet::AddResources(const ResourceSet &other) {
   throw std::runtime_error("Method not implemented");
 }
 
-bool ResourceSet::GetResource(
-    const std::string &resource_name, double *value) const {
+bool ResourceSet::GetResource(const std::string &resource_name, double *value) const {
   if (!value) {
     return false;
   }
@@ -74,7 +72,7 @@ bool ResourceSet::GetResource(
 SchedulingResources::SchedulingResources()
     : resources_total_(ResourceSet()), resources_available_(ResourceSet()) {}
 
-SchedulingResources::SchedulingResources(const ResourceSet& total)
+SchedulingResources::SchedulingResources(const ResourceSet &total)
     : resources_total_(total), resources_available_(total) {}
 
 SchedulingResources::~SchedulingResources() {}
@@ -91,7 +89,7 @@ ResourceAvailabilityStatus SchedulingResources::CheckResourcesSatisfied(
   return kFeasible;
 }
 
-const ResourceSet &SchedulingResources::GetAvailableResources() const{
+const ResourceSet &SchedulingResources::GetAvailableResources() const {
   return this->resources_available_;
 }
 
@@ -105,4 +103,4 @@ bool SchedulingResources::Acquire(const ResourceSet &resources) {
   return this->resources_available_.SubtractResources(resources);
 }
 
-} // namespace ray
+}  // namespace ray

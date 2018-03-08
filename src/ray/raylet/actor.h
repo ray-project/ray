@@ -5,7 +5,7 @@
 
 namespace ray {
 class ActorInformation {
-public:
+ public:
   /// \brief ActorInformation constructor.
   ActorInformation();
 
@@ -14,13 +14,13 @@ public:
 
   /// \brief Return the id of this actor.
   /// \return actor id.
-  const ActorID& GetActorId() const;
+  const ActorID &GetActorId() const;
 
-private:
+ private:
   /// Unique identifier for this actor.
   ActorID id_;
-}; // class ActorInformation
+};  // class ActorInformation
 
-} // namespace ray
+}  // namespace ray
 
-#endif // RAY_RAYLET_ACTOR_H
+#endif  // RAY_RAYLET_ACTOR_H

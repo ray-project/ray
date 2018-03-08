@@ -6,10 +6,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "format/common_generated.h"
+#include "ray/../common/format/common_generated.h"
 #include "ray/id.h"
 #include "ray/raylet/scheduling_resources.h"
-
 
 extern "C" {
 #include "sha256.h"
@@ -26,7 +25,8 @@ class TaskArgument {
   ///
   /// \param fbb The flatbuffer builder to serialize with.
   /// \return An offset to the serialized task argument.
-  virtual flatbuffers::Offset<Arg> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const = 0;
+  virtual flatbuffers::Offset<Arg> ToFlatbuffer(
+      flatbuffers::FlatBufferBuilder &fbb) const = 0;
 
   /// Get the hashable byte data.
   ///
@@ -84,7 +84,7 @@ class TaskArgumentByValue : public TaskArgument {
 /// task. These fields are determined at submission time, converse to the
 /// TaskExecutionSpecification that may change at execution time.
 class TaskSpecification {
-public:
+ public:
   /// Deserialize a task specification from a flatbuffer.
   ///
   /// \param string A serialized task specification flatbuffer.
@@ -102,17 +102,13 @@ public:
   /// \param arguments The list of task arguments.
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
-  TaskSpecification(
-      UniqueID driver_id,
-      TaskID parent_task_id,
-      int64_t parent_counter,
-      //UniqueID actor_id,
-      //UniqueID actor_handle_id,
-      //int64_t actor_counter,
-      FunctionID function_id,
-      const std::vector<TaskArgument> &arguments,
-      int64_t num_returns,
-      const std::unordered_map<std::string, double> &required_resources);
+  TaskSpecification(UniqueID driver_id, TaskID parent_task_id, int64_t parent_counter,
+                    // UniqueID actor_id,
+                    // UniqueID actor_handle_id,
+                    // int64_t actor_counter,
+                    FunctionID function_id, const std::vector<TaskArgument> &arguments,
+                    int64_t num_returns,
+                    const std::unordered_map<std::string, double> &required_resources);
 
   ~TaskSpecification() {}
 
@@ -120,7 +116,8 @@ public:
   ///
   /// \param fbb The flatbuffer builder to serialize with.
   /// \return An offset to the serialized task specification.
-  flatbuffers::Offset<flatbuffers::String> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const;
+  flatbuffers::Offset<flatbuffers::String> ToFlatbuffer(
+      flatbuffers::FlatBufferBuilder &fbb) const;
 
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
@@ -137,7 +134,8 @@ public:
   size_t ArgValLength(int64_t arg_index) const;
   double GetRequiredResource(const std::string &resource_name) const;
   const ResourceSet GetRequiredResources() const;
-private:
+
+ private:
   /// Task specification constructor from a pointer.
   TaskSpecification(const uint8_t *spec, size_t spec_size);
   /// Get a pointer to the byte data.
@@ -149,6 +147,6 @@ private:
   std::vector<uint8_t> spec_;
 };
 
-} // namespace ray
+}  // namespace ray
 
-#endif // RAY_RAYLET_TASK_SPECIFICATION_H
+#endif  // RAY_RAYLET_TASK_SPECIFICATION_H

@@ -1,15 +1,16 @@
 #ifndef RAY_RAYLET_LINEAGE_CACHE_H
 #define RAY_RAYLET_LINEAGE_CACHE_H
 
+// clang-format off
 #include "ray/raylet/task.h"
 #include "ray/id.h"
 #include "ray/status.h"
+// clang-format on
 
 namespace ray {
 
 // TODO(swang): Define this class.
-class Lineage {
-};
+class Lineage {};
 
 class LineageCacheEntry {
  private:
@@ -18,10 +19,8 @@ class LineageCacheEntry {
   bool dirty_;
 };
 
-class LineageCacheTaskEntry : public LineageCacheEntry {
-};
-class LineageCacheObjectEntry : public LineageCacheEntry {
-};
+class LineageCacheTaskEntry : public LineageCacheEntry {};
+class LineageCacheObjectEntry : public LineageCacheEntry {};
 
 /// \class LineageCache
 ///
@@ -79,6 +78,6 @@ class LineageCache {
   std::unordered_map<ObjectID, LineageCacheObjectEntry, UniqueIDHasher> object_table_;
 };
 
-} // namespace ray
+}  // namespace ray
 
-#endif // RAY_RAYLET_LINEAGE_CACHE_H
+#endif  // RAY_RAYLET_LINEAGE_CACHE_H

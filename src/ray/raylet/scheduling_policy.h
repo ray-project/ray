@@ -11,7 +11,7 @@ namespace ray {
 /// \class SchedulingPolicy
 /// \brief Implements a scheduling policy for the node manager.
 class SchedulingPolicy {
-public:
+ public:
   /// \brief SchedulingPolicy constructor.
   ///
   /// \param scheduling_queue: reference to a scheduler queues object for access to
@@ -32,11 +32,11 @@ public:
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();
 
-private:
+ private:
   /// An immutable reference to the scheduling task queues.
   const SchedulingQueue &scheduling_queue_;
 };
 
-} // namespace ray
+}  // namespace ray
 
-#endif // RAY_RAYLET_SCHEDULING_POLICY_H
+#endif  // RAY_RAYLET_SCHEDULING_POLICY_H

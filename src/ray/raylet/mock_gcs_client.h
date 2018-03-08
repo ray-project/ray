@@ -89,6 +89,6 @@ class GcsClient {
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<ClientTable> client_table_;
 };
-} // namespace ray
+}  // namespace ray
 
 #endif  // RAY_RAYLET_MOCK_GCS_CLIENT_H

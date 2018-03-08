@@ -15,7 +15,7 @@ namespace ray {
 /// determined at submission time, and mutable fields, determined at execution
 /// time.
 class Task {
-public:
+ public:
   /// Create a task.
   ///
   /// \param execution_spec The execution specification for the task. These are
@@ -24,8 +24,8 @@ public:
   /// \param task_spec The immutable specification for the task. These fields
   /// are determined at task submission time.
   Task(const TaskExecutionSpecification &execution_spec,
-       const TaskSpecification &task_spec):
-      task_execution_spec_(execution_spec), task_spec_(task_spec) {}
+       const TaskSpecification &task_spec)
+      : task_execution_spec_(execution_spec), task_spec_(task_spec) {}
 
   /// Destroy the task.
   virtual ~Task() {}
@@ -54,7 +54,7 @@ public:
   /// false otherwise.
   bool DependsOn(const ObjectID &object_id) const;
 
-private:
+ private:
   /// Task execution specification, consisting of all dynamic/mutable
   /// information about this task determined at execution time..
   TaskExecutionSpecification task_execution_spec_;
@@ -62,9 +62,8 @@ private:
   /// task determined at submission time. Includes resource demand, object
   /// dependencies, etc.
   TaskSpecification task_spec_;
-
 };
 
-} // namespace ray
+}  // namespace ray
 
-#endif // RAY_RAYLET_TASK_H
+#endif  // RAY_RAYLET_TASK_H

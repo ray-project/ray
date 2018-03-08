@@ -114,12 +114,8 @@ ClientID GcsClient::Register(const std::string &ip, uint16_t port) {
   return client_id;
 }
 
-ObjectTable &GcsClient::object_table() {
-  return *object_table_;
-}
+ObjectTable &GcsClient::object_table() { return *object_table_; }
 
-ClientTable &GcsClient::client_table() {
-  return *client_table_;
-}
+ClientTable &GcsClient::client_table() { return *client_table_; }
 
-} // namespace ray
+}  // namespace ray

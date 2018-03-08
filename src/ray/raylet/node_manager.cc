@@ -5,25 +5,20 @@
 
 namespace ray {
 
-NodeManager::NodeManager(
-                       const std::string &socket_name,
-                       const ResourceSet &resource_config,
-                       ObjectManager &object_manager)
-      : local_resources_(resource_config),
-        worker_pool_(WorkerPool(0)),
-        local_queues_(SchedulingQueue()),
-        scheduling_policy_(local_queues_),
-        reconstruction_policy_([this](const TaskID &task_id) {
-          ResubmitTask(task_id);
-          }),
-        task_dependency_manager_(
-                object_manager,
-                //reconstruction_policy_,
-                [this](const TaskID &task_id) {
-                  HandleWaitingTaskReady(task_id);
-                }) {
+NodeManager::NodeManager(const std::string &socket_name,
+                         const ResourceSet &resource_config,
+                         ObjectManager &object_manager)
+    : local_resources_(resource_config),
+      worker_pool_(WorkerPool(0)),
+      local_queues_(SchedulingQueue()),
+      scheduling_policy_(local_queues_),
+      reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); }),
+      task_dependency_manager_(
+          object_manager,
+          // reconstruction_policy_,
+          [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }) {
   //// TODO(atumanov): need to add the self-knowledge of ClientID, using nill().
-  //cluster_resource_map_[ClientID::nil()] = local_resources_;
+  // cluster_resource_map_[ClientID::nil()] = local_resources_;
 }
 
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
@@ -31,8 +26,9 @@ void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client
   client->ProcessMessages();
 }
 
-void NodeManager::ProcessClientMessage(
-        std::shared_ptr<LocalClientConnection> client, int64_t message_type, const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> client,
+                                       int64_t message_type,
+                                       const uint8_t *message_data) {
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (message_type) {
@@ -49,12 +45,12 @@ void NodeManager::ProcessClientMessage(
     // is legacy code and should be removed once actor creation tasks are
     // implemented.
     flatbuffers::FlatBufferBuilder fbb;
-    auto reply =
-        CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
+    auto reply = CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
     fbb.Finish(reply);
     // Reply to the worker's registration request, then listen for more
     // messages.
-    client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(), fbb.GetBufferPointer());
+    client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(),
+                         fbb.GetBufferPointer());
   } break;
   case MessageType_GetTask: {
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
@@ -66,10 +62,11 @@ void NodeManager::ProcessClientMessage(
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(worker);
     auto scheduled_tasks = local_queues_.GetScheduledTasks();
-     if (!scheduled_tasks.empty()) {
-      const TaskID& scheduled_task_id = scheduled_tasks.front().GetTaskSpecification().TaskId();
+    if (!scheduled_tasks.empty()) {
+      const TaskID &scheduled_task_id =
+          scheduled_tasks.front().GetTaskSpecification().TaskId();
       auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});
-       AssignTask(scheduled_tasks.front());
+      AssignTask(scheduled_tasks.front());
     }
   } break;
   case MessageType_DisconnectClient: {
@@ -82,7 +79,8 @@ void NodeManager::ProcessClientMessage(
   case MessageType_SubmitTask: {
     // Read the task submitted by the client.
     auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_data);
-    TaskExecutionSpecification task_execution_spec(from_flatbuf(*message->execution_dependencies()));
+    TaskExecutionSpecification task_execution_spec(
+        from_flatbuf(*message->execution_dependencies()));
     TaskSpecification task_spec(*message->task_spec());
     Task task(task_execution_spec, task_spec);
     // Submit the task to the local scheduler.
@@ -150,15 +148,15 @@ void NodeManager::AssignTask(const Task &task) {
   RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
 
   // TODO(swang): Acquire resources for the task.
-  //local_resources_.Acquire(task.GetTaskSpecification().GetRequiredResources());
+  // local_resources_.Acquire(task.GetTaskSpecification().GetRequiredResources());
 
   flatbuffers::FlatBufferBuilder fbb;
   const TaskSpecification &spec = task.GetTaskSpecification();
-  auto message =
-      CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
-                         fbb.CreateVector(std::vector<int>()));
+  auto message = CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
+                                    fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
-  worker->Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(), fbb.GetBufferPointer());
+  worker->Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(),
+                                     fbb.GetBufferPointer());
   worker->AssignTaskId(spec.TaskId());
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
 }
@@ -173,4 +171,4 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
 }
 
-} // namespace ray
+}  // namespace ray

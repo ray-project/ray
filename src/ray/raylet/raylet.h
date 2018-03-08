@@ -6,9 +6,11 @@
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 
+// clang-format off
 #include "ray/raylet/node_manager.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/scheduling_resources.h"
+// clang-format on
 
 namespace ray {
 
@@ -27,11 +29,10 @@ class Raylet {
   /// \param object_manager_config Configuration to initialize the object
   /// manager.
   /// \param gcs_client A client connection to the GCS.
-  Raylet(boost::asio::io_service& io_service,
-             const std::string &socket_name,
-             const ResourceSet &resource_config,
-             const ObjectManagerConfig &object_manager_config,
-             std::shared_ptr<ray::GcsClient> gcs_client);
+  Raylet(boost::asio::io_service &io_service, const std::string &socket_name,
+         const ResourceSet &resource_config,
+         const ObjectManagerConfig &object_manager_config,
+         std::shared_ptr<ray::GcsClient> gcs_client);
 
   /// Destroy the NodeServer.
   ~Raylet();
@@ -50,7 +51,7 @@ class Raylet {
   void DoAcceptTcp();
   /// Handle an accepted tcp client connection.
   void HandleAcceptTcp(TCPClientConnection::pointer new_connection,
-                       const boost::system::error_code& error);
+                       const boost::system::error_code &error);
 
   /// An acceptor for new clients.
   boost::asio::local::stream_protocol::acceptor acceptor_;
@@ -70,6 +71,6 @@ class Raylet {
   std::shared_ptr<ray::GcsClient> gcs_client_;
 };
 
-} // namespace ray
+}  // namespace ray
 
 #endif  // RAY_RAYLET_RAYLET_H

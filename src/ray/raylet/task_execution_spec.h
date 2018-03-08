@@ -18,8 +18,7 @@ class TaskExecutionSpecification {
   ///
   /// \param execution_dependencies The task's dependencies, determined at
   /// execution time.
-  TaskExecutionSpecification(
-      const std::vector<ObjectID> &&execution_dependencies);
+  TaskExecutionSpecification(const std::vector<ObjectID> &&execution_dependencies);
 
   /// Create a task execution specification.
   ///
@@ -27,9 +26,8 @@ class TaskExecutionSpecification {
   ///        execution time.
   /// \param spillback_count The number of times this task was spilled back by
   ///        local schedulers.
-  TaskExecutionSpecification(
-      const std::vector<ObjectID> &&execution_dependencies,
-      int spillback_count);
+  TaskExecutionSpecification(const std::vector<ObjectID> &&execution_dependencies,
+                             int spillback_count);
 
   /// Get the task's execution dependencies.
   ///
@@ -73,5 +71,5 @@ class TaskExecutionSpecification {
   int spillback_count_;
 };
 
-} // namespace ray
-#endif // RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H
+}  // namespace ray
+#endif  // RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H

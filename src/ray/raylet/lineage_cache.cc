@@ -9,8 +9,7 @@ ray::Status LineageCache::AddTask(const Task &task) {
   return ray::Status::OK();
 }
 
-ray::Status LineageCache::AddTask(const Task &task,
-                                  const Lineage &uncommitted_lineage) {
+ray::Status LineageCache::AddTask(const Task &task, const Lineage &uncommitted_lineage) {
   throw std::runtime_error("method not implemented");
   return ray::Status::OK();
 }
@@ -29,4 +28,4 @@ Status LineageCache::Flush() {
   return ray::Status::OK();
 }
 
-} // namespace ray
+}  // namespace ray

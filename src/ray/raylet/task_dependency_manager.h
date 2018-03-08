@@ -1,10 +1,12 @@
 #ifndef RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
 #define RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
 
+// clang-format off
 #include "ray/id.h"
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"
+// clang-format on
 
 namespace ray {
 
@@ -23,10 +25,9 @@ class TaskDependencyManager {
   /// dependency manager can issue requests to transfer objects.
   /// \param handler The handler to call for subscribed tasks whose
   /// dependencies have become available locally.
-  TaskDependencyManager(
-      ObjectManager &object_manager,
-      // ReconstructionPolicy &reconstruction_policy,
-      std::function<void(const TaskID&)> handler);
+  TaskDependencyManager(ObjectManager &object_manager,
+                        // ReconstructionPolicy &reconstruction_policy,
+                        std::function<void(const TaskID &)> handler);
 
   /// Check whether a task's object dependencies are locally available.
   ///
@@ -58,22 +59,24 @@ class TaskDependencyManager {
   /// Check whether the given list of objects are ready.
   bool argumentsReady(const std::vector<ObjectID> arguments) const;
   /// Handle an object added to the object store.
-  void handleObjectReady(const ray::ObjectID& object_id);
+  void handleObjectReady(const ray::ObjectID &object_id);
   /// A reference to the object manager so that we can issue Pull requests of
   /// missing objects.
   ObjectManager &object_manager_;
   /// A mapping from task ID of each subscribed task to its list of
   /// dependencies.
-  std::unordered_map<ray::TaskID, std::vector<ray::ObjectID>, UniqueIDHasher> task_dependencies_;
+  std::unordered_map<ray::TaskID, std::vector<ray::ObjectID>, UniqueIDHasher>
+      task_dependencies_;
   // A mapping from object ID of each object that is not locally available to
   // the list of subscribed tasks that are dependent on it.
-  std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>, UniqueIDHasher> remote_object_dependencies_;
+  std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>, UniqueIDHasher>
+      remote_object_dependencies_;
   // The set of locally available objects.
   std::unordered_set<ray::ObjectID, UniqueIDHasher> local_objects_;
   // The callback to call when a subscribed task becomes ready.
-  std::function<void(const TaskID&)> task_ready_callback_;
+  std::function<void(const TaskID &)> task_ready_callback_;
 };
 
-} // namespace ray
+}  // namespace ray
 
 #endif  // RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H

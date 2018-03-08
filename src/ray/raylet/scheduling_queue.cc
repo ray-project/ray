@@ -20,18 +20,16 @@ const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
   return this->running_tasks_;
 }
 
-const std::list<Task>& SchedulingQueue::GetReadyMethods() const {
+const std::list<Task> &SchedulingQueue::GetReadyMethods() const {
   throw std::runtime_error("Method not implemented");
 }
 
 // Helper function to remove tasks in the given set of task_ids from a
 // queue, and append them to the given vector removed_tasks.
-void removeTasksFromQueue(
-    std::list<Task> &queue,
-    std::unordered_set<TaskID, UniqueIDHasher> &task_ids,
-    std::vector<Task> &removed_tasks) {
-  for (auto it = queue.begin();
-       it != queue.end(); ) {
+void removeTasksFromQueue(std::list<Task> &queue,
+                          std::unordered_set<TaskID, UniqueIDHasher> &task_ids,
+                          std::vector<Task> &removed_tasks) {
+  for (auto it = queue.begin(); it != queue.end();) {
     auto task_id = task_ids.find(it->GetTaskSpecification().TaskId());
     if (task_id != task_ids.end()) {
       task_ids.erase(task_id);
@@ -44,9 +42,7 @@ void removeTasksFromQueue(
 }
 
 // Helper function to queue the given tasks to the given queue.
-void queueTasks(
-    std::list<Task> &queue,
-    const std::vector<Task> &tasks) {
+void queueTasks(std::list<Task> &queue, const std::vector<Task> &tasks) {
   for (auto &task : tasks) {
     queue.push_back(task);
   }
@@ -87,9 +83,9 @@ void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
 // RegisterActor is responsible for recording provided actor_information
 // in the actor registry.
 bool SchedulingQueue::RegisterActor(ActorID actor_id,
-                            const ActorInformation &actor_information) {
+                                    const ActorInformation &actor_information) {
   actor_registry_[actor_id] = actor_information;
   return true;
 }
 
-} // namespace ray
+}  // namespace ray

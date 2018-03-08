@@ -2,9 +2,9 @@
 #define RAY_RAYLET_SCHEDULING_QUEUE_H
 
 #include <list>
-#include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "ray/raylet/actor.h"
 #include "ray/raylet/task.h"
@@ -31,31 +31,31 @@ class SchedulingQueue {
   ///
   /// \return A const reference to the queue of tasks that are waiting for
   /// object dependencies to become available.
-  const std::list<Task>& GetWaitingTasks() const;
+  const std::list<Task> &GetWaitingTasks() const;
 
   /// Get the queue of tasks in the ready state.
   ///
   /// \return A const reference to the queue of tasks that have all
   /// dependencies local and that are waiting to be scheduled.
-  const std::list<Task>& GetReadyTasks() const;
+  const std::list<Task> &GetReadyTasks() const;
 
   /// Get the queue of actor methods in the ready state.
   ///
   /// \return A const reference to the queue of actor methods that have all
   /// dependencies local and that are waiting to be scheduled.
-  const std::list<Task>& GetReadyMethods() const;
+  const std::list<Task> &GetReadyMethods() const;
 
   /// Get the queue of tasks in the scheduled state.
   ///
   /// \return A const reference to the queue of tasks that have been scheduled
   /// to execute but that are waiting for a worker.
-  const std::list<Task>& GetScheduledTasks() const;
+  const std::list<Task> &GetScheduledTasks() const;
 
   /// Get the queue of tasks in the running state.
   ///
   /// \return A const reference to the queue of tasks that are currently
   /// executing on a worker.
-  const std::list<Task>& GetRunningTasks() const;
+  const std::list<Task> &GetRunningTasks() const;
 
   /// Remove tasks from the task queue.
   ///
@@ -88,8 +88,7 @@ class SchedulingQueue {
   ///
   /// \param actor_id The ID of the actor to register.
   /// \param actor_information Information about the actor.
-  bool RegisterActor(ActorID actor_id,
-                     const ActorInformation &actor_information);
+  bool RegisterActor(ActorID actor_id, const ActorInformation &actor_information);
 
  private:
   /// Tasks that are waiting for an object dependency to appear locally.
@@ -104,6 +103,6 @@ class SchedulingQueue {
   /// The registry of known actors.
   std::unordered_map<ActorID, ActorInformation, UniqueIDHasher> actor_registry_;
 };
-} // namespace ray
+}  // namespace ray
 
-#endif // RAY_RAYLET_SCHEDULING_QUEUE_H
+#endif  // RAY_RAYLET_SCHEDULING_QUEUE_H

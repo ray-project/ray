@@ -17,8 +17,7 @@ class ReconstructionPolicy {
   /// re-executed.
   // TODO(swang): This requires at minimum references to the Raylet's lineage
   // cache and GCS client.
-  ReconstructionPolicy(
-      std::function<void(const TaskID&)> reconstruction_handler) {}
+  ReconstructionPolicy(std::function<void(const TaskID &)> reconstruction_handler) {}
 
   /// Check whether an object requires reconstruction. If this object requires
   /// reconstruction, the registered task reconstruction handler will be called
@@ -30,6 +29,6 @@ class ReconstructionPolicy {
  private:
 };
 
-} // namespace ray
+}  // namespace ray
 
 #endif  // RAY_RAYLET_RECONSTRUCTION_POLICY_H

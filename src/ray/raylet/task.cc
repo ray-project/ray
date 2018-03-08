@@ -6,9 +6,7 @@ const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
   return task_execution_spec_;
 }
 
-const TaskSpecification &Task::GetTaskSpecification() const {
-  return task_spec_;
-}
+const TaskSpecification &Task::GetTaskSpecification() const { return task_spec_; }
 
 const std::vector<ObjectID> Task::GetDependencies() const {
   std::vector<ObjectID> dependencies;
@@ -21,7 +19,8 @@ const std::vector<ObjectID> Task::GetDependencies() const {
   // TODO(atumanov): why not just return a const reference to ExecutionDependencies() and
   // avoid a copy.
   auto execution_dependencies = task_execution_spec_.ExecutionDependencies();
-  dependencies.insert(dependencies.end(), execution_dependencies.begin(), execution_dependencies.end());
+  dependencies.insert(dependencies.end(), execution_dependencies.begin(),
+                      execution_dependencies.end());
   return dependencies;
 }
 
@@ -48,4 +47,4 @@ bool Task::DependsOn(const ObjectID &object_id) const {
   return false;
 }
 
-} // namespace ray
+}  // namespace ray

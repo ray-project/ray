@@ -24,16 +24,15 @@ bool WorkerPool::StartWorker() {
   return true;
 }
 
-uint32_t WorkerPool::PoolSize() const{
-  return pool_.size();
-}
+uint32_t WorkerPool::PoolSize() const { return pool_.size(); }
 
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
-  RAY_LOG(DEBUG) << "Registering worker with pid "<< worker->Pid();
+  RAY_LOG(DEBUG) << "Registering worker with pid " << worker->Pid();
   registered_workers_.push_back(worker);
 }
 
-const std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(std::shared_ptr<LocalClientConnection> connection) const {
+const std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
+    std::shared_ptr<LocalClientConnection> connection) const {
   for (auto it = registered_workers_.begin(); it != registered_workers_.end(); it++) {
     if ((*it)->Connection() == connection) {
       return (*it);
@@ -51,7 +50,7 @@ void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
 
 std::shared_ptr<Worker> WorkerPool::PopWorker() {
   if (pool_.empty()) {
-      return nullptr;
+    return nullptr;
   }
   std::shared_ptr<Worker> worker = std::move(pool_.back());
   pool_.pop_back();
@@ -60,7 +59,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker() {
 
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
-bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool, std::shared_ptr<Worker> worker) {
+bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool,
+                  std::shared_ptr<Worker> worker) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if (*it == worker) {
       worker_pool.erase(it);
@@ -75,4 +75,4 @@ bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
   return removeWorker(pool_, worker);
 }
 
-} // namespace ray
+}  // namespace ray

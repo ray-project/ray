@@ -12,7 +12,7 @@ namespace ray {
 /// is the execution container around a unit of Ray work, such as a task or an
 /// actor. Ray units of work execute in the context of a Worker.
 class Worker {
-public:
+ public:
   /// A constructor that initializes a worker object.
   Worker(pid_t pid, std::shared_ptr<LocalClientConnection> connection);
   /// A destructor responsible for freeing all worker state.
@@ -23,7 +23,8 @@ public:
   const TaskID &GetAssignedTaskId() const;
   /// Return the worker's connection.
   const std::shared_ptr<LocalClientConnection> Connection() const;
-private:
+
+ private:
   /// The worker's PID.
   pid_t pid_;
   /// Connection state of a worker.
@@ -31,6 +32,6 @@ private:
   TaskID assigned_task_id_;
 };
 
-} // namespace ray
+}  // namespace ray
 
-#endif // RAY_RAYLET_WORKER_H
+#endif  // RAY_RAYLET_WORKER_H

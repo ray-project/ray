@@ -16,7 +16,7 @@ class Worker;
 /// The WorkerPool is responsible for managing a pool of Workers. Each Worker
 /// is a container for a unit of work.
 class WorkerPool {
-public:
+ public:
   /// Create a pool and asynchronously start the specified number of workers.
   /// Once each worker process has registered with an external server, the
   /// process should create and register a new Worker, then add itself to the
@@ -51,7 +51,8 @@ public:
   /// \param The client connection owned by a registered worker.
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
-  const std::shared_ptr<Worker> GetRegisteredWorker(std::shared_ptr<LocalClientConnection> connection) const;
+  const std::shared_ptr<Worker> GetRegisteredWorker(
+      std::shared_ptr<LocalClientConnection> connection) const;
 
   /// Disconnect a registered worker.
   ///
@@ -71,7 +72,7 @@ public:
   /// \return An idle worker. Returns nullptr if the pool is empty.
   std::shared_ptr<Worker> PopWorker();
 
-private:
+ private:
   /// The pool of idle workers.
   std::list<std::shared_ptr<Worker>> pool_;
   /// All workers that have registered and are still connected, including both
@@ -79,6 +80,6 @@ private:
   // TODO(swang): Make this a map to make GetRegisteredWorker faster.
   std::list<std::shared_ptr<Worker>> registered_workers_;
 };
-} // namespace ray
+}  // namespace ray
 
-#endif // RAY_RAYLET_WORKER_POOL_H
+#endif  // RAY_RAYLET_WORKER_POOL_H

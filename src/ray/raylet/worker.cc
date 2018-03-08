@@ -10,25 +10,16 @@ namespace ray {
 
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(pid_t pid, std::shared_ptr<LocalClientConnection> connection)
-  : pid_(pid),
-    connection_(connection),
-    assigned_task_id_(TaskID::nil()) {
-}
+    : pid_(pid), connection_(connection), assigned_task_id_(TaskID::nil()) {}
 
-pid_t Worker::Pid() const {
-  return pid_;
-}
+pid_t Worker::Pid() const { return pid_; }
 
-void Worker::AssignTaskId(const TaskID &task_id) {
-  assigned_task_id_ = task_id;
-}
+void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
 
-const TaskID &Worker::GetAssignedTaskId() const {
-  return assigned_task_id_;
-}
+const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
 const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
   return connection_;
 }
 
-} // end namespace ray
+}  // end namespace ray

@@ -2,12 +2,10 @@
 
 namespace ray {
 
-ActorInformation::ActorInformation(): id_(UniqueID::nil()) {}
+ActorInformation::ActorInformation() : id_(UniqueID::nil()) {}
 
 ActorInformation::~ActorInformation() {}
 
-const ActorID& ActorInformation::GetActorId() const {
-  return this->id_;
-}
+const ActorID &ActorInformation::GetActorId() const { return this->id_; }
 
-} // namespace ray
+}  // namespace ray

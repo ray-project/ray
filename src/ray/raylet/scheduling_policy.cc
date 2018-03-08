@@ -3,12 +3,11 @@
 namespace ray {
 
 SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
-  : scheduling_queue_(scheduling_queue) {}
+    : scheduling_queue_(scheduling_queue) {}
 
 std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
-    &cluster_resources) {
-
+        &cluster_resources) {
   static ClientID local_node_id = ClientID::nil();
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
   // TODO(atumanov): consider all cluster resources.
@@ -30,4 +29,4 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
 
 SchedulingPolicy::~SchedulingPolicy() {}
 
-} // namespace ray
+}  // namespace ray

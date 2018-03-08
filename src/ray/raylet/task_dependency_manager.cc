@@ -4,16 +4,14 @@ namespace ray {
 
 TaskDependencyManager::TaskDependencyManager(
     ObjectManager &object_manager,
-    //ReconstructionPolicy &reconstruction_policy,
-    std::function<void(const TaskID&)> handler)
+    // ReconstructionPolicy &reconstruction_policy,
+    std::function<void(const TaskID &)> handler)
     : object_manager_(object_manager),
-      //reconstruction_policy_(reconstruction_policy),
+      // reconstruction_policy_(reconstruction_policy),
       task_ready_callback_(handler) {
   // TODO(swang): Check return status.
   ray::Status status = object_manager_.SubscribeObjAdded(
-      [this](const ObjectID& object_id) {
-        handleObjectReady(object_id);
-      });
+      [this](const ObjectID &object_id) { handleObjectReady(object_id); });
   // TODO(swang): Subscribe to object removed notifications.
 }
 
@@ -28,7 +26,7 @@ bool TaskDependencyManager::argumentsReady(const std::vector<ObjectID> arguments
   return true;
 }
 
-void TaskDependencyManager::handleObjectReady(const ray::ObjectID& object_id) {
+void TaskDependencyManager::handleObjectReady(const ray::ObjectID &object_id) {
   RAY_LOG(DEBUG) << "object ready " << object_id.hex();
   // Add the object to the table of locally available objects.
   RAY_CHECK(local_objects_.count(object_id) == 0);
@@ -106,4 +104,4 @@ void TaskDependencyManager::MarkDependencyReady(const ObjectID &object) {
   throw std::runtime_error("Method not implemented");
 }
 
-} // namespace ray
+}  // namespace ray

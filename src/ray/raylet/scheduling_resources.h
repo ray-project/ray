@@ -10,17 +10,16 @@ namespace ray {
 /// Resource availability status reports whether the resource requirement is
 /// (1) infeasible, (2) feasible but currently unavailable, or (3) available.
 typedef enum {
-  kInfeasible,          ///< Cannot ever satisfy resource requirements.
-  kResourcesUnavailable,///< Feasible, but not currently available.
-  kFeasible             ///< Feasible and currently available.
+  kInfeasible,            ///< Cannot ever satisfy resource requirements.
+  kResourcesUnavailable,  ///< Feasible, but not currently available.
+  kFeasible               ///< Feasible and currently available.
 } ResourceAvailabilityStatus;
 
 /// \class ResourceSet
 /// \brief Encapsulates and operates on a set of resources, including CPUs,
 /// GPUs, and custom labels.
 class ResourceSet {
-public:
-
+ public:
   /// \brief empty ResourceSet constructor.
   ResourceSet();
 
@@ -56,7 +55,6 @@ public:
   ///         False otherwise.
   bool IsSuperset(const ResourceSet &other) const;
 
-
   /// \brief Add a new resource to the resource set.
   ///
   /// \param resource_name: name/label of the resource to add.
@@ -91,7 +89,7 @@ public:
   ///         False otherwise.
   bool GetResource(const std::string &resource_name, double *value) const;
 
-private:
+ private:
   /// Resource capacity map.
   std::unordered_map<std::string, double> resource_capacity_;
 };
@@ -110,7 +108,7 @@ class SchedulingResources {
   /// to the resource set specified.
   ///
   /// \param total: The amount of total configured capacity.
-  SchedulingResources(const ResourceSet& total);
+  SchedulingResources(const ResourceSet &total);
 
   /// \brief SchedulingResources destructor.
   ~SchedulingResources();
@@ -147,6 +145,6 @@ class SchedulingResources {
   /// gpu_map - replace with ResourceMap (for generality).
 };
 
-} // namespace ray
+}  // namespace ray
 
-#endif // RAY_RAYLET_SCHEDULING_RESOURCES_H
+#endif  // RAY_RAYLET_SCHEDULING_RESOURCES_H
