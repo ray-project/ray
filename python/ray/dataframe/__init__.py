@@ -5,6 +5,7 @@ from __future__ import print_function
 import pandas as pd
 import threading
 
+<<<<<<< HEAD
 pd_version = pd.__version__
 pd_major = int(pd_version.split(".")[0])
 pd_minor = int(pd_version.split(".")[1])

@@ -333,6 +333,13 @@ class DataFrame(object):
                                      partition_assignments, i, *shufflers)
          for i in range(len(shufflers))]
 
+        if as_index:
+            new_index = self.index.unique()
+        else:
+            new_index = self.index
+
+        import time
+        time.sleep(5)
         return DataFrameGroupBy([shuffler.apply_func.remote(
             lambda df: df.groupby(by=df.index,
                                   axis=axis,
@@ -340,7 +347,8 @@ class DataFrame(object):
                                   group_keys=group_keys,
                                   squeeze=squeeze,
                                   **kwargs))
-            for shuffler in shufflers], self.columns, self.index)
+                                for shuffler in shufflers],
+                                self.columns, new_index)
 
     def reduce_by_index(self, func, axis=0):
         """Perform a reduction based on the row index.
@@ -443,6 +451,11 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
+        @ray.remote
+        def update_columns(df, columns):
+            df.columns = columns
+            return df
+
         temp_index = [idx
                       for _ in range(len(self._df))
                       for idx in self.columns]
@@ -451,22 +464,23 @@ class DataFrame(object):
             lambda df: df.transpose(*args, **kwargs), index=temp_index)
         local_transpose.columns = temp_columns
 
-        # Sum will collapse the NAs from the groupby
-        df = local_transpose.groupby(by=self.columns, axis=1).apply(lambda x: x)
-            # lambda df: df.apply(lambda x: x), axis=1)
+        l = list(temp_columns)
+        x = [None] * len(self._lengths)
+        cumulative = np.cumsum(self._lengths)
+        print(cumulative)
 
-        # Reassign the columns within partition to self.index.
-        # We have to use _depoly_func instead of _map_partition due to
-        #    new_labels argument
-        def _reassign_columns(df, new_labels):
-            df.columns = new_labels
-            return df
-        df._df = [
-            _deploy_func.remote(
-                _reassign_columns,
-                part,
-                self.index) for part in df._df]
+        for i in range(len(cumulative)):
+            if i == 0:
+                x[i] = (l[:cumulative[i]])
+            elif i == len(cumulative) - 1:
+                x[i] = l[cumulative[i - 1]:]
+            else:
+                x[i] = (l[cumulative[i-1]:cumulative[i]])
 
+        for i in range(len(local_transpose._df)):
+            local_transpose._df[i] = update_columns.remote(local_transpose._df[i], x[i])
+
+        df = local_transpose.groupby(by=self.columns).apply(lambda x: x)
         return df
 
     T = property(transpose)

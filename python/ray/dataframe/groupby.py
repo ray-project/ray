@@ -25,7 +25,9 @@ class DataFrameGroupBy(object):
         from .dataframe import _deploy_func
 
         assert(callable(func))
-        new_df = [_deploy_func.remote(func, part) for part in self._partitions]
+        new_df = [_deploy_func.remote(lambda df: df.apply(func), part)
+                  for part in self._partitions]
+
         if index is None:
             index = self._index
 
