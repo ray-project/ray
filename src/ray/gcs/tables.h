@@ -42,9 +42,7 @@ class Table {
   };
 
   Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : context_(context),
-        client_(client),
-        pubsub_channel_(TablePubsub_NO_PUBLISH){};
+      : context_(context), client_(client), pubsub_channel_(TablePubsub_NO_PUBLISH){};
 
   /// Add an entry to the table.
   ///
@@ -64,9 +62,8 @@ class Table {
     flatbuffers::FlatBufferBuilder fbb;
     fbb.ForceDefaults(true);
     fbb.Finish(Data::Pack(fbb, data.get()));
-    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id,
-                                         fbb.GetBufferPointer(), fbb.GetSize(),
-                                         pubsub_channel_, callback_index));
+    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(),
+                                         fbb.GetSize(), pubsub_channel_, callback_index));
     return Status::OK();
   }
 
@@ -87,9 +84,8 @@ class Table {
           (d->callback)(d->client, d->id, result);
         });
     std::vector<uint8_t> nil;
-    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(),
-                                         nil.size(), pubsub_channel_,
-                                         callback_index));
+    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
+                                         pubsub_channel_, callback_index));
     return Status::OK();
   }
 
@@ -103,14 +99,12 @@ class Table {
   /// \param done Callback that is called when subscription is complete and we
   ///        are ready to receive messages..
   /// \return Status
-  Status Subscribe(const JobID &job_id,
-                   const ClientID &client_id,
-                   const Callback &subscribe,
-                   const Callback &done) {
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const Callback &subscribe, const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({client_id, nullptr, subscribe, this}));
-    int64_t callback_index = RedisCallbackManager::instance().add(
-        [done, d](const std::string &data) {
+    int64_t callback_index =
+        RedisCallbackManager::instance().add([done, d](const std::string &data) {
           if (data.empty()) {
             // No data is provided. This is the callback for the initial
             // subscription request.
@@ -139,8 +133,7 @@ class Table {
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
  public:
-  ObjectTable(const std::shared_ptr<RedisContext> &context,
-              AsyncGcsClient *client)
+  ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
   };
@@ -182,8 +175,7 @@ using ActorTable = Table<ActorID, ActorTableData>;
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
-  TaskTable(const std::shared_ptr<RedisContext> &context,
-            AsyncGcsClient *client)
+  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_TASK;
   };
@@ -247,10 +239,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   ///        TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
   /// \param callback Function to be called when database returns result.
   /// \return Status
-  Status SubscribeToTask(const JobID &job_id,
-                         const ClientID &local_scheduler_id,
-                         int state_filter,
-                         const SubscribeToTaskCallback &callback,
+  Status SubscribeToTask(const JobID &job_id, const ClientID &local_scheduler_id,
+                         int state_filter, const SubscribeToTaskCallback &callback,
                          const Callback &done);
 };
 
@@ -262,10 +252,8 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 
 Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
-Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
-                              const TaskID &task_id,
-                              const ClientID &local_scheduler_id,
-                              int test_state_bitmask,
+Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
+                              const ClientID &local_scheduler_id, int test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
@@ -278,7 +266,7 @@ class ClientInformation {
   /// Create a client information object.
   ///
   /// \param client_table_entry A serialized client table entry flatbuffer.
-  ClientInformation(const ClientTableData& client_table_entry);
+  ClientInformation(const ClientTableData &client_table_entry);
 
   /// Get the client ID.
   ///

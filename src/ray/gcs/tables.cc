@@ -6,10 +6,9 @@
 
 namespace {
 
-std::shared_ptr<TaskTableDataT> MakeTaskTableData(
-    const TaskExecutionSpec &execution_spec,
-    const ClientID &local_scheduler_id,
-    SchedulingState scheduling_state) {
+std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execution_spec,
+                                                  const ClientID &local_scheduler_id,
+                                                  SchedulingState scheduling_state) {
   auto data = std::make_shared<TaskTableDataT>();
   data->scheduling_state = scheduling_state;
   data->task_info =
@@ -49,13 +48,10 @@ Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task) {
 
 // TODO(pcm): This is a helper method that should go away once we get rid of
 // the Task* datastructure and replace it with TaskTableDataT.
-Status TaskTableTestAndUpdate(
-    AsyncGcsClient *gcs_client,
-    const TaskID &task_id,
-    const ClientID &local_scheduler_id,
-    int test_state_bitmask,
-    SchedulingState update_state,
-    const TaskTable::TestAndUpdateCallback &callback) {
+Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
+                              const ClientID &local_scheduler_id, int test_state_bitmask,
+                              SchedulingState update_state,
+                              const TaskTable::TestAndUpdateCallback &callback) {
   auto data = std::make_shared<TaskTableTestAndUpdateT>();
   data->test_scheduler_id = local_scheduler_id.binary();
   data->test_state_bitmask = test_state_bitmask;
@@ -64,15 +60,12 @@ Status TaskTableTestAndUpdate(
                                                 data, callback);
 }
 
-void ClientConnected(gcs::AsyncGcsClient *client,
-                     const ClientID &client_id,
-                     std::shared_ptr<ObjectTableDataT> data) {
-}
+void ClientConnected(gcs::AsyncGcsClient *client, const ClientID &client_id,
+                     std::shared_ptr<ObjectTableDataT> data) {}
 
-ClientTable::ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-    : Table(context, client),
-      client_id_(UniqueID::from_random()) {}
-
+ClientTable::ClientTable(const std::shared_ptr<RedisContext> &context,
+                         AsyncGcsClient *client)
+    : Table(context, client), client_id_(UniqueID::from_random()) {}
 
 Status ClientTable::Connect(ClientID *client_id) {
   auto data = std::make_shared<ClientTableDataT>();

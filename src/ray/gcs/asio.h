@@ -21,8 +21,8 @@
 #ifndef RAY_GCS_ASIO_H
 #define RAY_GCS_ASIO_H
 
-#include <iostream>
 #include <stdio.h>
+#include <iostream>
 #include <string>
 
 #include <boost/asio.hpp>
