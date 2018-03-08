@@ -8,6 +8,7 @@ from ray.rllib.optimizers import LocalSyncOptimizer
 from ray.rllib.agent import Agent
 from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator, RemoteDDPGEvaluator
 from ray.tune.result import TrainingResult
+import numpy as np
 
 # add more stuff to config as necessary
 DEFAULT_CONFIG = {
