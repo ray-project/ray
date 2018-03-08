@@ -3,18 +3,27 @@ HyperBand and Early Stopping
 
 Ray Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__ and `HyperBand <https://arxiv.org/abs/1603.06560>`__. These algorithms are very resource efficient and can outperform Bayesian Optimization methods in `many cases <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`__.
 
-HyperBand
----------
+Asynchronous HyperBand
+----------------------
 
-The `HyperBand <https://arxiv.org/abs/1603.06560>`__ scheduler can be plugged in on top of an existing grid or random search. This can be done by setting the `scheduler` parameter of `run_experiments`, e.g.
+The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be plugged in on top of an existing grid or random search. This can be done by setting the `scheduler` parameter of `run_experiments`, e.g.
 
 .. code-block:: python
 
-    run_experiments({...}, scheduler=HyperBandScheduler())
+    run_experiments({...}, scheduler=AsyncHyperBandScheduler())
 
-An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
+Compared to the original version of HyperBand, this implementation provides better parallelism and avoids straggler issues during eliminations. An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__. **We recommend using this over the standard HyperBand scheduler.**
+
+.. autoclass:: ray.tune.async_hyperband.AsyncHyperBandScheduler
+
+
+HyperBand
+---------
 
 .. note:: Note that the HyperBand scheduler requires your trainable to support checkpointing, which is described in `Ray Tune documentation <tune.html#trial-checkpointing>`__. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
+
+Ray Tune also implements the `vanilla version of HyperBand <https://arxiv.org/abs/1603.06560>`__,
+An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
 
 ::
 
@@ -72,14 +81,6 @@ The implementation takes the same  configuration as the example given in the pap
 
 
 3. There are also implementation specific details like how trials are placed into brackets which are not covered in the paper. This implementation places trials within brackets according to smaller bracket first - meaning that with low number of trials, there will be less early stopping.
-
-
-Asynchronous HyperBand
-----------------------
-
-Ray Tune also implements an `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__, providing better parallelism and avoids straggler issues during eliminations. An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__. **We recommend using this over the vanilla HyperBand scheduler.**
-
-.. autoclass:: ray.tune.async_hyperband.AsyncHyperBandScheduler
 
 Median Stopping Rule
 --------------------
