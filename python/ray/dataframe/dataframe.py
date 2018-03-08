@@ -698,24 +698,146 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def cummax(self, axis=None, skipna=True, *args, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Perform a cumulative product across the DataFrame.
+
+        Args:
+            axis (int): The axis to take product on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The cumulative product of the DataFrame.
+        """
+        if(axis == 1):
+            return self._map_partitions(
+                lambda df: df.cummax(axis=axis, skipna=skipna,
+                                     *args, **kwargs))
+        else:
+            @ray.remote
+            def prepend_partitions(last_vals, index, partition):
+                appended_df = last_vals[:index].append(
+                                              partition).cummax(
+                                              axis=axis, skipna=skipna,
+                                              *args, **kwargs)
+                return appended_df[index:]
+
+            x = [_deploy_func.remote(
+                              lambda df: pd.DataFrame(
+                                         df.max()).T, self._df[i])
+                 for i in range(len(self._df))]
+            new_df = DataFrame(x, self.columns)
+            last_row_df = pd.DataFrame([df.iloc[-1, :]
+                                        for df in ray.get(new_df._df)])
+            cum_df = [prepend_partitions.remote(last_row_df, i, self._df[i])
+                      for i in range(len(self._df))]
+            final_df = DataFrame(cum_df, self.columns)
+            return final_df
 
     def cummin(self, axis=None, skipna=True, *args, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Perform a cumulative minimum across the DataFrame.
+
+        Args:
+            axis (int): The axis to cummin on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The cumulative minimum of the DataFrame.
+        """
+        if(axis == 1):
+            return self._map_partitions(
+                lambda df: df.cummin(axis=axis, skipna=skipna,
+                                     *args, **kwargs))
+        else:
+            @ray.remote
+            def prepend_partitions(last_vals, index, partition):
+                appended_df = last_vals[:index].append(
+                                              partition).cummin(
+                                              axis=axis, skipna=skipna,
+                                              *args, **kwargs)
+                return appended_df[index:]
+
+            x = [_deploy_func.remote(
+                              lambda df: pd.DataFrame(
+                                         df.min()).T, self._df[i])
+                 for i in range(len(self._df))]
+            new_df = DataFrame(x, self.columns)
+            last_row_df = pd.DataFrame([df.iloc[-1, :]
+                                        for df in ray.get(new_df._df)])
+            cum_df = [prepend_partitions.remote(last_row_df, i, self._df[i])
+                      for i in range(len(self._df))]
+            final_df = DataFrame(cum_df, self.columns)
+            return final_df
 
     def cumprod(self, axis=None, skipna=True, *args, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Perform a cumulative product across the DataFrame.
+
+        Args:
+            axis (int): The axis to take product on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The cumulative product of the DataFrame.
+        """
+        if(axis == 1):
+            return self._map_partitions(
+                lambda df: df.cumprod(axis=axis, skipna=skipna,
+                                      *args, **kwargs))
+        else:
+            @ray.remote
+            def prepend_partitions(last_vals, index, partition):
+                appended_df = last_vals[:index].append(
+                                              partition).cumprod(
+                                              axis=axis, skipna=skipna,
+                                              *args, **kwargs)
+                return appended_df[index:]
+
+            x = [_deploy_func.remote(
+                              lambda df: pd.DataFrame(
+                                         df.prod()).T, self._df[i])
+                 for i in range(len(self._df))]
+            new_df = DataFrame(x, self.columns)
+            last_row_df = pd.DataFrame([df.iloc[-1, :]
+                                        for df in ray.get(new_df._df)])
+            cum_df = [prepend_partitions.remote(last_row_df, i, self._df[i])
+                      for i in range(len(self._df))]
+            final_df = DataFrame(cum_df, self.columns)
+            return final_df
 
     def cumsum(self, axis=None, skipna=True, *args, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Perform a cumulative sum across the DataFrame.
+
+        Args:
+            axis (int): The axis to take sum on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The cumulative sum of the DataFrame.
+        """
+        if(axis == 1):
+            return self._map_partitions(
+                lambda df: df.cumsum(axis=axis, skipna=skipna,
+                                     *args, **kwargs))
+        else:
+            # first take the sum of each partition,
+            # append the sums of previous partitions to current partition
+            # take cumsum and remove the appended rows
+            @ray.remote
+            def prepend_partitions(last_vals, index, partition):
+                appended_df = last_vals[:index].append(
+                                              partition).cumsum(
+                                              axis=axis, skipna=skipna,
+                                              *args, **kwargs)
+                return appended_df[index:]
+            x = [_deploy_func.remote(
+                              lambda df: pd.DataFrame(
+                                         df.sum()).T, self._df[i])
+                 for i in range(len(self._df))]
+            new_df = DataFrame(x, self.columns)
+            last_row_df = pd.DataFrame([df.iloc[-1, :]
+                                        for df in ray.get(new_df._df)])
+            cum_df = [prepend_partitions.remote(last_row_df, i, self._df[i])
+                      for i in range(len(self._df))]
+            final_df = DataFrame(cum_df, self.columns)
+            return final_df
 
     def describe(self, percentiles=None, include=None, exclude=None):
         raise NotImplementedError(

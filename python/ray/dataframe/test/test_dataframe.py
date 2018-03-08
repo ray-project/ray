@@ -238,6 +238,10 @@ def test_int_dataframe():
     test_min(ray_df, pandas_df)
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
+    test_cummax(ray_df, pandas_df)
+    test_cummin(ray_df, pandas_df)
+    test_cumprod(ray_df, pandas_df)
+    test_cumsum(ray_df, pandas_df)
 
     test_loc(ray_df, pandas_df)
     test_iloc(ray_df, pandas_df)
@@ -333,6 +337,10 @@ def test_float_dataframe():
     test_min(ray_df, pandas_df)
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
+    test_cummax(ray_df, pandas_df)
+    test_cummin(ray_df, pandas_df)
+    test_cumprod(ray_df, pandas_df)
+    test_cumsum(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
@@ -451,6 +459,10 @@ def test_mixed_dtype_dataframe():
     test_min(ray_df, pandas_df)
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
+    test_cummax(ray_df, pandas_df)
+    test_cummin(ray_df, pandas_df)
+    # test_cumprod(ray_df, pandas_df)
+    test_cumsum(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
@@ -558,6 +570,10 @@ def test_nan_dataframe():
     test_min(ray_df, pandas_df)
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
+    test_cummax(ray_df, pandas_df)
+    test_cummin(ray_df, pandas_df)
+    test_cumprod(ray_df, pandas_df)
+    test_cumsum(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
@@ -824,32 +840,24 @@ def test_cov():
         ray_df.cov()
 
 
-def test_cummax():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.cummax()
+@pytest.fixture
+def test_cummax(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.cummax(), pandas_df.cummax()))
 
 
-def test_cummin():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.cummin()
+@pytest.fixture
+def test_cummin(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.cummin(), pandas_df.cummin()))
 
 
-def test_cumprod():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.cumprod()
+@pytest.fixture
+def test_cumprod(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.cumprod(), pandas_df.cumprod()))
 
 
-def test_cumsum():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.cumsum()
+@pytest.fixture
+def test_cumsum(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.cumsum(), pandas_df.cumsum()))
 
 
 def test_describe():
