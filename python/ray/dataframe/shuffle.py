@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import pandas as pd
 import ray
-from multiprocessing.pool import ThreadPool
 
 
 @ray.remote(num_cpus=2)
@@ -16,7 +15,6 @@ class ShuffleActor(object):
         self.index_of_self = None
 
     def shuffle(self, index, partition_assignments, index_of_self, *list_of_partitions):
-        assert(len(partition_assignments) == len(list(list_of_partitions)))
         self.index_of_self = index_of_self
         self.assign_and_send_data(index, partition_assignments, list(list_of_partitions))
 
@@ -24,20 +22,33 @@ class ShuffleActor(object):
         num_partitions = len(partition_assignments)
         self.partition_data.index = index.index
 
+        indices_to_send = [None] * num_partitions
+        data_to_send = [None] * num_partitions
+        from threading import Thread
+
+        def calc_send(i, indices_to_send, data_to_send):
+            indices_to_send[i] = [idx
+                                  for idx in partition_assignments[i]
+                                  if idx in index.index]
+            data_to_send[i] = \
+                self.partition_data.loc[indices_to_send[i]]
+
+        threads = [Thread(target=calc_send, args=(i, indices_to_send, data_to_send))
+                   for i in range(num_partitions)]
+        for t in threads:
+            t.start()
+
+        for t in threads:
+            t.join()
+
         for i in range(num_partitions):
             if i == self.index_of_self:
                 continue
             try:
-                indices_to_send = [idx
-                                   for idx in partition_assignments[i]
-                                   if idx in index.index]
-                data_to_send = \
-                    self.partition_data.loc[indices_to_send]
+                list_of_partitions[i].add_to_incoming.remote((self.index_of_self, data_to_send[i]))
 
-                # raise ValueError(str(self.partition_data))
                 self.partition_data = \
-                    self.partition_data.drop(data_to_send.index)
-                list_of_partitions[i].add_to_incoming.remote(data_to_send)
+                    self.partition_data.drop(indices_to_send[i])
             except KeyError:
                 pass
 
@@ -45,8 +56,10 @@ class ShuffleActor(object):
         self.incoming.append(data)
 
     def apply_func(self, func, *args):
-        self.incoming.append(self.partition_data)
-        data = pd.concat(self.incoming)
+        self.incoming.append((self.index_of_self, self.partition_data))
+        self.incoming.sort(key=lambda x: x[0])
+        self.incoming = [x[1] for x in self.incoming]
+        data = pd.concat(self.incoming, axis=1)
 
         if len(args) == 0:
             return func(data)
