@@ -9,6 +9,31 @@ Ray
 
 *Ray is a flexible, high-performance distributed execution framework.*
 
+
+Ray is easy to install: ``pip install ray``
+
+Example Use
+-----------
+
++------------------------------------------------+----------------------------------------------------+
+| **Basic Python**                               | **Distributed with Ray**                           |
++------------------------------------------------+----------------------------------------------------+
+|.. code-block:: python                          |.. code-block:: python                              |
+|                                                |                                                    |
+|  # Execute f serially.                         |  # Execute f in parallel.                          |
+|                                                |                                                    |
+|                                                |  @ray.remote                                       |
+|  def f():                                      |  def f():                                          |
+|      time.sleep(1)                             |      time.sleep(1)                                 |
+|      return 1                                  |      return 1                                      |
+|                                                |                                                    |
+|                                                |                                                    |
+|                                                |  ray.init()                                        |
+|  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
++------------------------------------------------+----------------------------------------------------+
+
+
+
 View the `codebase on GitHub`_.
 
 .. _`codebase on GitHub`: https://github.com/ray-project/ray
@@ -21,27 +46,6 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 .. _`Ray Tune`: tune.html
 .. _`Ray RLlib`: rllib.html
 
-Example Program
----------------
-
-+------------------------------------------------+----------------------------------------------------+
-| **Basic Python**                               | **Distributed with Ray**                           |
-+------------------------------------------------+----------------------------------------------------+
-|.. code:: python                                |.. code-block:: python                              |
-|                                                |                                                    |
-|  import time                                   |  import time                                       |
-|                                                |  import ray                                        |
-|                                                |                                                    |
-|                                                |  ray.init()                                        |
-|                                                |                                                    |
-|                                                |  @ray.remote                                       |
-|  def f():                                      |  def f():                                          |
-|      time.sleep(1)                             |      time.sleep(1)                                 |
-|      return 1                                  |      return 1                                      |
-|                                                |                                                    |
-|  # Execute f serially.                         |  # Execute f in parallel.                          |
-|  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
-+------------------------------------------------+----------------------------------------------------+
 
 .. toctree::
    :maxdepth: 1
@@ -60,16 +64,27 @@ Example Program
    api.rst
    actors.rst
    using-ray-with-gpus.rst
+   webui.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Ray Tune
+
    tune.rst
+   hyperband.rst
+   pbt.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Ray RLlib
+
    rllib.rst
    rllib-dev.rst
-   webui.rst
 
 .. toctree::
    :maxdepth: 1
    :caption: Examples
 
-   example-hyperopt.rst
    example-rl-pong.rst
    example-policy-gradient.rst
    example-parameter-server.rst
