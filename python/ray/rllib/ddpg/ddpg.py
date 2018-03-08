@@ -50,8 +50,8 @@ class DDPGAgent(Agent):
 
     def _train(self):
         self.optimizer.step()
-        # update target here?
-        #self.local_evaluator.model.update_target()
+        # update target
+        self.local_evaluator.update_target()
         # generate training result
 
         episode_rewards = []

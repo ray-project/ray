@@ -33,6 +33,7 @@ class DDPGEvaluator(Evaluator):
 
         self.initialize()
         self.setup_gradients()
+        self._setup_target_updates()
 
         self.replay_buffer = ReplayBuffer(config["buffer_size"])
         self.sampler = SyncSampler(
@@ -73,17 +74,17 @@ class DDPGEvaluator(Evaluator):
     def _setup_target_updates(self):
         """Set up actor and critic updates."""
         a_updates = []
-        for var, target_var in zip(self.actor.var_list, self.target_actor.var_list):
-            a_updates.append(tf.assign(self.target_actor.var_list,
-                    (1. - self.config["tau"]) * self.target_actor.var_list
-                    + self.config["tau"] * self.actor.var_list))
+        for var, target_var in zip(self.model.actor_var_list, self.target_model.actor_var_list):
+            a_updates.append(tf.assign(target_var,
+                    (1. - self.config["tau"]) * target_var
+                    + self.config["tau"] * var))
         actor_updates = tf.group(*a_updates)
 
         c_updates = []
-        for var, target_var in zip(self.critic.var_list, self.target_critic.var_list):
-            c_updates.append(tf.assign(self.target_critic.var_list,
-                    (1. - self.config["tau"]) * self.target_critic.var_list
-                    + self.config["tau"] * self.critic.var_list))
+        for var, target_var in zip(self.model.critic_var_list, self.target_model.critic_var_list):
+            c_updates.append(tf.assign(target_var,
+                    (1. - self.config["tau"]) * target_var
+                    + self.config["tau"] * var))
         critic_updates = tf.group(*c_updates)
         self.target_updates = [actor_updates, critic_updates]
 
