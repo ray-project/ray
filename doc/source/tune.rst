@@ -1,31 +1,7 @@
 Ray Tune: Hyperparameter Optimization Framework
 ===============================================
 
-This document describes Ray Tune, a hyperparameter tuning framework for long-running tasks such as RL and deep learning training. Ray Tune makes it easy to go from running one or more experiments on a single machine to running on a large cluster with efficient search algorithms.
-
-It has the following features:
-
--  Scalable implementations of search algorithms such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
-
--  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
-
--  Flexible trial variant generation, including grid search, random search, and conditional parameter distributions.
-
--  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed.
-
-
-You can find the code for Ray Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
-
-Concepts
---------
-
-.. image:: tune-api.svg
-
-Ray Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a json *config* variation passed to the user code.
-
-Ray Tune provides a ``run_experiments(spec)`` function that generates and runs the trials described by the experiment specification. The trials are scheduled and managed by a *trial scheduler* that implements the search algorithm (default is FIFO).
-
-Ray Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
+Ray Tune is a hyperparameter optimization framework for long-running tasks such as RL and deep learning training. Ray Tune makes it easy to go from running one or more experiments on a single machine to running on a large cluster with efficient search algorithms.
 
 Getting Started
 ---------------
@@ -68,14 +44,40 @@ This script runs a small grid search over the ``my_func`` function using Ray Tun
     Using FIFO scheduling algorithm.
     Resources used: 4/8 CPUs, 0/0 GPUs
     Result logdir: ~/ray_results/my_experiment
-     - my_func_0_alpha=0.2,beta=1:	RUNNING [pid=6778], 209 s, 20604 ts, 7.29 acc
-     - my_func_1_alpha=0.4,beta=1:	RUNNING [pid=6780], 208 s, 20522 ts, 53.1 acc
-     - my_func_2_alpha=0.6,beta=1:	TERMINATED [pid=6789], 21 s, 2190 ts, 101 acc
-     - my_func_3_alpha=0.2,beta=2:	RUNNING [pid=6791], 208 s, 41004 ts, 8.37 acc
-     - my_func_4_alpha=0.4,beta=2:	RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
-     - my_func_5_alpha=0.6,beta=2:	TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
+     - my_func_0_alpha=0.2,beta=1:  RUNNING [pid=6778], 209 s, 20604 ts, 7.29 acc
+     - my_func_1_alpha=0.4,beta=1:  RUNNING [pid=6780], 208 s, 20522 ts, 53.1 acc
+     - my_func_2_alpha=0.6,beta=1:  TERMINATED [pid=6789], 21 s, 2190 ts, 101 acc
+     - my_func_3_alpha=0.2,beta=2:  RUNNING [pid=6791], 208 s, 41004 ts, 8.37 acc
+     - my_func_4_alpha=0.4,beta=2:  RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
+     - my_func_5_alpha=0.6,beta=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
 In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster and optionally uploaded to the specified ``upload_dir`` (e.g. S3 path).
+
+Features
+--------
+
+-  Scalable implementations of search algorithms such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
+
+-  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
+
+-  Flexible trial variant generation, including grid search, random search, and conditional parameter distributions.
+
+-  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed.
+
+
+Concepts
+--------
+
+.. image:: tune-api.svg
+
+Ray Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a json *config* variation passed to the user code.
+
+Ray Tune provides a ``run_experiments(spec)`` function that generates and runs the trials described by the experiment specification. The trials are scheduled and managed by a *trial scheduler* that implements the search algorithm (default is FIFO).
+
+Ray Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
+
+You can find the code for Ray Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
+
 
 Trial Schedulers
 ----------------
