@@ -3,7 +3,7 @@ Ray.tune: Hyperparameter Optimization Framework
 
 Ray.tune is a hyperparameter tuning framework for long-running tasks such as RL and deep learning training.
 
-User documentation can be `found here <http://ray.readthedocs.io/en/latest/tune.html>`__.
+User documentation can be `found here <http://ray.readthedocs.io/en/master/tune.html>`__.
 
 Implementation overview
 -----------------------

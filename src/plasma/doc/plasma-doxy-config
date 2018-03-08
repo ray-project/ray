@@ -1518,7 +1518,7 @@ USE_MATHJAX            = NO
 
 # When MathJax is enabled you can set the default output format to be used for
 # the MathJax output. See the MathJax site (see:
-# http://docs.mathjax.org/en/latest/output.html) for more details.
+# http://docs.mathjax.org/en/master/output.html) for more details.
 # Possible values are: HTML-CSS (which is slower, but has the best
 # compatibility), NativeMML (i.e. MathML) and SVG.
 # The default value is: HTML-CSS.
@@ -1548,7 +1548,7 @@ MATHJAX_EXTENSIONS     =
 
 # The MATHJAX_CODEFILE tag can be used to specify a file with javascript pieces
 # of code that will be used on startup of the MathJax code. See the MathJax site
-# (see: http://docs.mathjax.org/en/latest/output.html) for more details. For an
+# (see: http://docs.mathjax.org/en/master/output.html) for more details. For an
 # example see the documentation.
 # This tag requires that the tag USE_MATHJAX is set to YES.
 

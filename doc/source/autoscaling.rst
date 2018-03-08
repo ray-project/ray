@@ -7,7 +7,7 @@ Quick start
 -----------
 
 First, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials``,
-as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/configuration.html>`__.
+as described in `the boto docs <http://boto3.readthedocs.io/en/master/guide/configuration.html>`__.
 
 Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with a m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
 

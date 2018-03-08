@@ -3,12 +3,12 @@ Using Ray on a Cluster
 
 .. note::
 
-    Starting with Ray 0.4.0 if you're using AWS you can use the automated `setup commands <http://ray.readthedocs.io/en/latest/autoscaling.html>`__.
+    Starting with Ray 0.4.0 if you're using AWS you can use the automated `setup commands <http://ray.readthedocs.io/en/master/autoscaling.html>`__.
 
 The instructions in this document work well for small clusters. For larger
 clusters, follow the instructions for `managing a cluster with parallel ssh`_.
 
-.. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/latest/using-ray-on-a-large-cluster.html
+.. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/master/using-ray-on-a-large-cluster.html
 
 Deploying Ray on a Cluster
 --------------------------
@@ -18,7 +18,7 @@ cluster can communicate with each other. It also assumes that Ray is installed
 on each machine. To install Ray, follow the instructions for
 `installation on Ubuntu`_.
 
-.. _`installation on Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
+.. _`installation on Ubuntu`: http://ray.readthedocs.io/en/master/install-on-ubuntu.html
 
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

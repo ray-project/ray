@@ -150,7 +150,7 @@ container shell enter the following commands:
 
 You are now ready to continue with the `tutorial`_.
 
-.. _`tutorial`: http://ray.readthedocs.io/en/latest/tutorial.html
+.. _`tutorial`: http://ray.readthedocs.io/en/master/tutorial.html
 
 Running examples in Docker
 --------------------------

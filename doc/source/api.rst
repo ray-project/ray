@@ -61,7 +61,7 @@ not when your script is started.
 
 View the instructions for how to `start a Ray cluster`_ on multiple nodes.
 
-.. _`start a Ray cluster`: http://ray.readthedocs.io/en/latest/using-ray-on-a-cluster.html
+.. _`start a Ray cluster`: http://ray.readthedocs.io/en/master/using-ray-on-a-cluster.html
 
 .. autofunction:: ray.init
 

@@ -3,14 +3,13 @@ Using Ray with TensorFlow
 
 This document describes best practices for using Ray with TensorFlow.
 
-To see more involved examples using TensorFlow, take a look at `hyperparameter optimization`_,
-`A3C`_, `ResNet`_, `Policy Gradients`_, and `LBFGS`_.
+To see more involved examples using TensorFlow, take a look at `A3C`_, `ResNet`_,
+`Policy Gradients`_, and `LBFGS`_.
 
-.. _`hyperparameter optimization`: http://ray.readthedocs.io/en/latest/example-hyperopt.html
-.. _`A3C`: http://ray.readthedocs.io/en/latest/example-a3c.html
-.. _`ResNet`: http://ray.readthedocs.io/en/latest/example-resnet.html
-.. _`Policy Gradients`: http://ray.readthedocs.io/en/latest/example-policy-gradient.html
-.. _`LBFGS`: http://ray.readthedocs.io/en/latest/example-lbfgs.html
+.. _`A3C`: http://ray.readthedocs.io/en/master/example-a3c.html
+.. _`ResNet`: http://ray.readthedocs.io/en/master/example-resnet.html
+.. _`Policy Gradients`: http://ray.readthedocs.io/en/master/example-policy-gradient.html
+.. _`LBFGS`: http://ray.readthedocs.io/en/master/example-lbfgs.html
 
 
 If you are training a deep network in the distributed setting, you may need to
