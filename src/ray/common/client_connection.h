@@ -102,4 +102,4 @@ class ClientManager {
 
 }  // namespace ray
 
-#endif // RAY_COMMON_CLIENT_CONNECTION_H
+#endif  // RAY_COMMON_CLIENT_CONNECTION_H
