@@ -324,5 +324,5 @@ We are working to address the following issues.
    in the meantime may execute in between re-executed tasks. This could be an
    issue if your application has strict requirements for state consistency.
 
-.. _`asynchronous parameter server example`: http://ray.readthedocs.io/en/latest/example-parameter-server.html
-.. _`fault tolerance`: http://ray.readthedocs.io/en/latest/fault-tolerance.html
+.. _`asynchronous parameter server example`: http://ray.readthedocs.io/en/master/example-parameter-server.html
+.. _`fault tolerance`: http://ray.readthedocs.io/en/master/fault-tolerance.html
