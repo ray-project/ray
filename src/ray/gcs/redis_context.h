@@ -50,14 +50,10 @@ class RedisContext {
   ~RedisContext();
   Status Connect(const std::string &address, int port);
   Status AttachToEventLoop(aeEventLoop *loop);
-  Status RunAsync(const std::string &command,
-                  const UniqueID &id,
-                  uint8_t *data,
-                  int64_t length,
-                  const TablePubsub pubsub_channel,
+  Status RunAsync(const std::string &command, const UniqueID &id, uint8_t *data,
+                  int64_t length, const TablePubsub pubsub_channel,
                   int64_t callback_index);
-  Status SubscribeAsync(const ClientID &client_id,
-                        const TablePubsub pubsub_channel,
+  Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         int64_t callback_index);
   redisAsyncContext *async_context() { return async_context_; }
 
