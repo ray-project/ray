@@ -75,8 +75,7 @@ void TestObjectTable(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
   data->managers.push_back("A");
   data->managers.push_back("B");
   ObjectID object_id = ObjectID::from_random();
-  RAY_CHECK_OK(
-      client.object_table().Add(job_id, object_id, data, &ObjectAdded));
+  RAY_CHECK_OK(client.object_table().Add(job_id, object_id, data, &ObjectAdded));
   RAY_CHECK_OK(client.object_table().Lookup(job_id, object_id, &Lookup));
   // Run the event loop. The loop will only stop if the Lookup callback is
   // called (or an assertion failure).
@@ -123,8 +122,7 @@ void TaskUpdateCallback(gcs::AsyncGcsClient *client,
 void TestTaskTable(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
   auto data = std::make_shared<TaskTableDataT>();
   data->scheduling_state = SchedulingState_SCHEDULED;
-  DBClientID local_scheduler_id =
-      DBClientID::from_binary("abcdefghijklmnopqrst");
+  ClientID local_scheduler_id = ClientID::from_binary("abcdefghijklmnopqrst");
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
   RAY_CHECK_OK(client.task_table().Add(job_id, task_id, data, &TaskAdded));
@@ -135,8 +133,8 @@ void TestTaskTable(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
   update->update_state = SchedulingState_LOST;
   // After test-and-setting, the callback will lookup the current state of the
   // task.
-  RAY_CHECK_OK(client.task_table().TestAndUpdate(job_id, task_id, update,
-                                                 &TaskUpdateCallback));
+  RAY_CHECK_OK(
+      client.task_table().TestAndUpdate(job_id, task_id, update, &TaskUpdateCallback));
   // Run the event loop. The loop will only stop if the lookup after the
   // test-and-set succeeds (or an assertion failure).
   test->Start();
@@ -152,8 +150,7 @@ TEST_F(TestGcsWithAsio, TestTaskTable) {
   TestTaskTable(job_id_, client_);
 }
 
-void ObjectTableSubscribed(gcs::AsyncGcsClient *client,
-                           const UniqueID &id,
+void ObjectTableSubscribed(gcs::AsyncGcsClient *client, const UniqueID &id,
                            std::shared_ptr<ObjectTableDataT> data) {
   test->Stop();
 }
@@ -171,8 +168,7 @@ void TestSubscribeAll(const UniqueID &job_id, gcs::AsyncGcsClient &client) {
   data->managers.push_back("A");
   data->managers.push_back("B");
   ObjectID object_id = ObjectID::from_random();
-  RAY_CHECK_OK(
-      client.object_table().Add(job_id, object_id, data, &ObjectAdded));
+  RAY_CHECK_OK(client.object_table().Add(job_id, object_id, data, &ObjectAdded));
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called (or an assertion failure).
   test->Start();

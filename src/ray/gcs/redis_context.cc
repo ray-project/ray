@@ -62,8 +62,7 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
       data = std::string(message->str, message->len);
       RAY_CHECK(!data.empty()) << "Empty message received on subscribe channel";
     } else {
-      RAY_LOG(FATAL) << "Fatal redis error during subscribe"
-                     << message_type->str;
+      RAY_LOG(FATAL) << "Fatal redis error during subscribe" << message_type->str;
     }
 
     // NOTE(swang): We do not delete the callback after calling it since there
@@ -72,8 +71,8 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
   } else if (reply->type == REDIS_REPLY_ERROR) {
     RAY_LOG(ERROR) << "Redis error " << reply->str;
   } else {
-    RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type
-                   << " and with string " << reply->str;
+    RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type << " and with string "
+                   << reply->str;
   }
 }
 
@@ -144,8 +143,8 @@ Status RedisContext::Connect(const std::string &address, int port) {
   // Connect to subscribe context
   subscribe_context_ = redisAsyncConnect(address.c_str(), port);
   if (subscribe_context_ == nullptr || subscribe_context_->err) {
-    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis "
-                   << address << ":" << port;
+    RAY_LOG(FATAL) << "Could not establish subscribe connection to redis " << address
+                   << ":" << port;
   }
   return Status::OK();
 }
@@ -159,29 +158,24 @@ Status RedisContext::AttachToEventLoop(aeEventLoop *loop) {
   }
 }
 
-Status RedisContext::RunAsync(const std::string &command,
-                              const UniqueID &id,
-                              uint8_t *data,
-                              int64_t length,
-                              const TablePubsub pubsub_channel,
-                              int64_t callback_index) {
+Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
+                              uint8_t *data, int64_t length,
+                              const TablePubsub pubsub_channel, int64_t callback_index) {
   if (length > 0) {
     std::string redis_command = command + " %d %b %b";
     int status = redisAsyncCommand(
-        async_context_,
-        reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-        reinterpret_cast<void *>(callback_index), redis_command.c_str(),
-        pubsub_channel, id.data(), id.size(), data, length);
+        async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+        reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel,
+        id.data(), id.size(), data, length);
     if (status == REDIS_ERR) {
       return Status::RedisError(std::string(async_context_->errstr));
     }
   } else {
     std::string redis_command = command + " %d %b";
     int status = redisAsyncCommand(
-        async_context_,
-        reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-        reinterpret_cast<void *>(callback_index), redis_command.c_str(),
-        pubsub_channel, id.data(), id.size());
+        async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+        reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel,
+        id.data(), id.size());
     if (status == REDIS_ERR) {
       return Status::RedisError(std::string(async_context_->errstr));
     }
@@ -200,19 +194,16 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
     // Subscribe to all messages.
     std::string redis_command = "SUBSCRIBE %d";
     status = redisAsyncCommand(
-        subscribe_context_,
-        reinterpret_cast<redisCallbackFn *>(&SubscribeRedisCallback),
-        reinterpret_cast<void *>(callback_index), redis_command.c_str(),
-        pubsub_channel);
+        subscribe_context_, reinterpret_cast<redisCallbackFn *>(&SubscribeRedisCallback),
+        reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel);
   } else {
     // Subscribe only to messages sent to this client.
     // TODO(swang): Nobody sends on this channel yet.
     std::string redis_command = "SUBSCRIBE %d:%b";
     status = redisAsyncCommand(
-        subscribe_context_,
-        reinterpret_cast<redisCallbackFn *>(&SubscribeRedisCallback),
-        reinterpret_cast<void *>(callback_index), redis_command.c_str(),
-        pubsub_channel, client_id.data(), client_id.size());
+        subscribe_context_, reinterpret_cast<redisCallbackFn *>(&SubscribeRedisCallback),
+        reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel,
+        client_id.data(), client_id.size());
   }
 
   if (status == REDIS_ERR) {

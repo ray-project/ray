@@ -1,8 +1,8 @@
 #include <iostream>
 
-#include "gtest/gtest.h"
-
 #include "asio.h"
+#include "gtest/gtest.h"
+#include "ray/util/logging.h"
 
 boost::asio::io_service io_service;
 
@@ -12,13 +12,11 @@ class TestRedisAsioClient : public ::testing::Test {
  public:
   TestRedisAsioClient() {
     int r = system("redis-server > /dev/null & sleep 1");
-    std::cout << "TestRedisAsioClient: redis-server status code was " << r
-              << std::endl;
+    RAY_LOG(INFO) << "TestRedisAsioClient: redis-server status code was " << r;
   }
   ~TestRedisAsioClient() {
     int r = system("redis-cli -c shutdown");
-    std::cout << "TestRedisAsioClient: redis-cli status code was " << r
-              << std::endl;
+    RAY_LOG(INFO) << "TestRedisAsioClient: redis-cli status code was " << r;
   }
 };
 
