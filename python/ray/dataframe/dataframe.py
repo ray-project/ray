@@ -2,10 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
-
 import pandas as pd
-from pandas.api.types import is_scalar
+from pandas.core.dtypes.common import is_scalar
 from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
@@ -20,12 +18,6 @@ import warnings
 import numpy as np
 import ray
 import itertools
-
-from .index import Index
-from pandas.core.dtypes.common import (
-    is_scalar,
-    is_list_like,
-    is_dict_like)
 
 
 class DataFrame(object):
@@ -246,6 +238,8 @@ class DataFrame(object):
             self.columns = columns
 
         self._lengths, self._index = _compute_length_and_index.remote(self._df)
+        if index is not None:
+            self.index = index
 
         if index is not None:
             self.index = index
@@ -1754,17 +1748,25 @@ class DataFrame(object):
             raise TypeError('must pass an index to rename')
 
         new_df = None
-        # import pdb; pdb.set_trace()
         if axis is None:
-            new_df = self._map_partitions(
-                lambda df: df.rename(mapper=mapper, index=index,
-                                     columns=columns, copy=copy, level=level)
-            )
-            new_df._index.rename(mapper=mapper, index=index, columns=columns,
-                                 copy=copy, level=level, inplace=True)
-            new_df.columns = pd.DataFrame(columns=new_df.columns)\
-                .rename(mapper=mapper, index=index, columns=columns,
-                        copy=copy, level=level).columns
+            if columns is not None:
+                new_df = [
+                    _deploy_func.remote(
+                        lambda df: df.rename(columns=columns,
+                                             copy=copy, level=level),
+                        part
+                    )
+                    for part in self._df
+                ]
+                new_columns = pd.DataFrame(columns=self.columns)\
+                    .rename(columns=columns, copy=copy, level=level)\
+                    .columns
+                new_df = DataFrame(new_df, new_columns, self.index)
+            else:
+                new_df = self.copy()
+            if index is not None:
+                new_df.index = self._index.rename(index=index, copy=copy,
+                                                  level=level).index
         else:
             new_df = self._map_partitions(
                 lambda df: df.rename(mapper=mapper, axis=axis, copy=copy,
@@ -1777,31 +1779,15 @@ class DataFrame(object):
                         level=level).columns
 
         if inplace:
-            self._df = new_df._df
-            self.columns = new_df.columns
-            self._index = new_df._index
+            self._update_inplace(
+                df=new_df._df,
+                columns=new_df.columns,
+                index=new_df.index
+            )
         else:
             return new_df
 
     def rename_axis(self, mapper, axis=0, copy=True, inplace=False):
-        # if inplace:
-        #     self._df = self._map_partitions(
-        #         lambda df: df.rename_axis(mapper, axis=axis, copy=copy)
-        #     )._df
-
-        # non_mapper = is_scalar(mapper) or (is_list_like(mapper) and not
-        #                                    is_dict_like(mapper))
-        # if non_mapper:
-        #     self._set_axis_name(mapper, axis=axis, inplace=inplace)
-        # else:
-        #     msg = ("Using 'rename_axis' to alter labels is deprecated. "
-        #            "Use '.rename' instead")
-        #     warnings.warn(msg, FutureWarning, stacklevel=2)
-        #     axis = "columns" if axis == 1 or axis == "columns" else "index"
-        #     d = {'copy': copy, 'inplace': inplace}
-        #     d[axis] = mapper
-        #     return self.rename(**d)
-
         axes_is_columns = axis == 1 or axis == "columns"
         renamed = self if inplace else self.copy()
         if axes_is_columns:
@@ -1809,7 +1795,6 @@ class DataFrame(object):
         else:
             renamed._index.rename_axis(mapper, axis=axis, copy=copy,
                                        inplace=True)
-
         if not inplace:
             return renamed
 
@@ -2950,6 +2935,7 @@ def to_pandas(df):
     pd_df.columns = df.columns
     return pd_df
 
+
 @ray.remote(num_return_vals=2)
 def _compute_length_and_index(dfs):
     """Create a default index, which is a RangeIndex
@@ -2968,8 +2954,3 @@ def _compute_length_and_index(dfs):
                      for j in range(lengths[i])]}
 
     return lengths, pd.DataFrame(dest_indices)
-
-@ray.remote
-def _get_index_as_list(df, i):
-    return df.index.tolist()
-
