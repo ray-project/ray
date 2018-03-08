@@ -6,7 +6,7 @@ Ray Tune includes distributed implementations of early stopping algorithms such 
 Asynchronous HyperBand
 ----------------------
 
-The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be plugged in on top of an existing grid or random search. This can be done by setting the `scheduler` parameter of `run_experiments`, e.g.
+The `asynchronous version of HyperBand <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be plugged in on top of an existing grid or random search. This can be done by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
 
 .. code-block:: python
 
@@ -16,14 +16,19 @@ Compared to the original version of HyperBand, this implementation provides bett
 
 .. autoclass:: ray.tune.async_hyperband.AsyncHyperBandScheduler
 
-
 HyperBand
 ---------
 
 .. note:: Note that the HyperBand scheduler requires your trainable to support checkpointing, which is described in `Ray Tune documentation <tune.html#trial-checkpointing>`__. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
 
-Ray Tune also implements the `vanilla version of HyperBand <https://arxiv.org/abs/1603.06560>`__,
+Ray Tune also implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__. You can use it as such:
+
+.. code-block:: python
+
+    run_experiments({...}, scheduler=HyperBandScheduler())
+
 An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
+
 
 ::
 
@@ -63,19 +68,19 @@ An example of this can be found in `hyperband_example.py <https://github.com/ray
 HyperBand Implementation Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Implementation details may deviate slightly from theory but are focused on increasing usability.
+Implementation details may deviate slightly from theory but are focused on increasing usability. Note: ``R``, ``s_max``, and ``eta`` are parameters of HyperBand given by the paper. See `this post <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`_ for context.
 
-1. Both `s_max` (representing the ``number of brackets - 1``) and `eta`, representing the downsampling rate, are fixed.  In many practical settings, `R`, which represents some resource unit and often the number of training iterations, can be set reasonably large, like `R >= 200`. For simplicity, assume `eta = 3`. Varying `R` between `R = 200` and `R = 1000` creates a huge range of the number of trials needed to fill up all brackets.
+1. Both ``s_max`` (representing the ``number of brackets - 1``) and ``eta``, representing the downsampling rate, are fixed.  In many practical settings, ``R``, which represents some resource unit and often the number of training iterations, can be set reasonably large, like ``R >= 200``. For simplicity, assume ``eta = 3``. Varying ``R`` between ``R = 200`` and ``R = 1000`` creates a huge range of the number of trials needed to fill up all brackets.
 
 .. image:: images/hyperband_bracket.png
 
-On the other hand, holding `R` constant at `R = 300` and varying `eta` also leads to HyperBand configurations that are not very intuitive:
+On the other hand, holding ``R`` constant at ``R = 300`` and varying ``eta`` also leads to HyperBand configurations that are not very intuitive:
 
 .. image:: images/hyperband_eta.png
 
-The implementation takes the same  configuration as the example given in the paper and exposes `max_t`, which is not a parameter in the paper.
+The implementation takes the same configuration as the example given in the paper and exposes ``max_t``, which is not a parameter in the paper.
 
-2. The example in the `post <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`_ to calculate `n_0` is actually a little different than the algorithm given in the paper. In this implementation, we implement `n_0` according to the paper:
+2. The example in the `post <https://people.eecs.berkeley.edu/~kjamieson/hyperband.html>`_ to calculate ``n_0`` is actually a little different than the algorithm given in the paper. In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
 
 .. image:: images/hyperband_allocation.png
 
@@ -85,6 +90,10 @@ The implementation takes the same  configuration as the example given in the pap
 Median Stopping Rule
 --------------------
 
-The Median Stopping Rule implements the simple strategy of stopping a trial if it's performance falls below the median of other trials at similar points in time.
+The Median Stopping Rule implements the simple strategy of stopping a trial if its performance falls below the median of other trials at similar points in time. You can set the ``scheduler`` parameter as such:
+
+.. code-block:: python
+
+    run_experiments({...}, scheduler=MedianStoppingRule())
 
 .. autoclass:: ray.tune.median_stopping_rule.MedianStoppingRule
