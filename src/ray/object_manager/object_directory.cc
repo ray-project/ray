@@ -51,8 +51,8 @@ ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
       [this, object_id, &remote_connections](const std::vector<ClientID> &client_ids) {
         gcs_client_->client_table().GetClientInformationSet(
             client_ids,
-            [this, object_id, &remote_connections](const std::vector<ClientInformation>
-                                                   &info_vec) {
+            [this, object_id,
+             &remote_connections](const std::vector<ClientInformation> &info_vec) {
               for (const auto &client_info : info_vec) {
                 RemoteConnectionInfo info =
                     RemoteConnectionInfo(client_info.GetClientId(), client_info.GetIp(),
@@ -96,8 +96,6 @@ ray::Status ObjectDirectory::Cancel(const ObjectID &object_id) {
   return ray::Status::OK();
 };
 
-ray::Status ObjectDirectory::Terminate() {
-  return ray::Status::OK();
-};
+ray::Status ObjectDirectory::Terminate() { return ray::Status::OK(); };
 
 }  // namespace ray

@@ -62,6 +62,6 @@ class ObjectStoreClient {
   void ProcessStoreRemove(const ObjectID &object_id);
 };
 
-} // namespace ray
+}  // namespace ray
 
 #endif  // RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H

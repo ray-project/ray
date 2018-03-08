@@ -156,8 +156,7 @@ ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
 };
 
 ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
-                                uint64_t timeout_ms,
-                                int num_ready_objects,
+                                uint64_t timeout_ms, int num_ready_objects,
                                 const WaitCallback &callback) {
   // TODO: Implement wait.
   return ray::Status::OK();
@@ -446,4 +445,4 @@ void ObjectManager::ReceivePullRequest(TCPClientConnection::pointer conn) {
   ray::Status wait_status = WaitMessage(conn);
 }
 
-}  // end ray
+}  // namespace ray

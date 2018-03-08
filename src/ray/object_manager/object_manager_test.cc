@@ -17,9 +17,7 @@ std::string test_executable;  // NOLINT
 
 class TestObjectManager : public ::testing::Test {
  public:
-  TestObjectManager() {
-    RAY_LOG(DEBUG) << "TestObjectManager: started.";
-  }
+  TestObjectManager() { RAY_LOG(DEBUG) << "TestObjectManager: started."; }
 
   void SetUp() {
     // start store

@@ -263,6 +263,6 @@ class ObjectManager {
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
 };
 
-}  // end namespace
+}  // namespace ray
 
 #endif  // RAY_OBJECT_MANAGER_OBJECT_MANAGER_H

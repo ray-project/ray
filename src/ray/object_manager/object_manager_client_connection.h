@@ -66,6 +66,6 @@ class TCPClientConnection : public boost::enable_shared_from_this<TCPClientConne
   boost::asio::ip::tcp::socket socket_;
 };
 
-} // namespace ray
+}  // namespace ray
 
 #endif  // RAY_OBJECT_MANAGER_OBJECT_MANAGER_CLIENT_CONNECTION_H

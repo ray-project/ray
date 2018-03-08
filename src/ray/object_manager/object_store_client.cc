@@ -7,7 +7,6 @@
 
 #include "common.h"
 #include "common_protocol.h"
-// TODO(hme): Figure out what's causing compile time error when following line is moved.
 #include "ray/object_manager/object_store_client.h"
 
 namespace ray {
@@ -93,4 +92,4 @@ void ObjectStoreClient::SubscribeObjDeleted(
 plasma::PlasmaClient &ObjectStoreClient::GetClient() { return client_one_; };
 
 plasma::PlasmaClient &ObjectStoreClient::GetClientOther() { return client_two_; };
-}
+}  // namespace ray

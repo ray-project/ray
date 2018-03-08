@@ -56,4 +56,4 @@ TCPClientConnection::pointer TCPClientConnection::Create(
 }
 
 boost::asio::ip::tcp::socket &TCPClientConnection::GetSocket() { return socket_; }
-}
+}  // namespace ray
