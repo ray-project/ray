@@ -89,3 +89,18 @@ table ClientTableData {
   // about the deletion of a client.
   is_insertion: bool;
 }
+
+table Resource {
+  // The type of the resource.
+  resource_name: string;
+  // The total capacity of this resource type.
+  resource_capacity: double;
+}
+
+table NodeManagerHeartbeat {
+  // The available resources on this node manager. This information may be
+  // stale.
+  resources_available: [Resource];
+  // The total resources on this node manager.
+  resources_total: [Resource];
+}
