@@ -85,7 +85,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
   pull_requests_[object_id] = Timer(new boost::asio::deadline_timer(
       io_service_, boost::posix_time::milliseconds(wait_ms)));
-  pull_requests_[object_id]->async_wait([this, object_id](const boost::system::error_code& error_code) {
+  pull_requests_[object_id]->async_wait(
+      [this, object_id](const boost::system::error_code& error_code) {
         RAY_CHECK_OK(SchedulePullHandler(object_id));
       });
 }
