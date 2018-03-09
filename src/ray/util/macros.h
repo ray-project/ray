@@ -33,7 +33,7 @@
 #define RAY_PREFETCH(addr)
 #endif
 
-#if (!defined(__APPLE__) && defined(__GNUC__))
+#if (defined(__GNUC__) || defined(__APPLE__))
 #define RAY_MUST_USE_RESULT __attribute__((warn_unused_result))
 #elif defined(_MSC_VER)
 #define RAY_MUST_USE_RESULT
