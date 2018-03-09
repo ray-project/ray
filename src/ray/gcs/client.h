@@ -22,7 +22,15 @@ class RAY_EXPORT AsyncGcsClient {
   AsyncGcsClient();
   ~AsyncGcsClient();
 
-  Status Connect(const std::string &address, int port);
+  /// Connect to the GCS.
+  ///
+  /// \param address The GCS IP address.
+  /// \param port The GCS port.
+  /// \param client_info Information about the local client to connect.
+  /// \return Status.
+  Status Connect(const std::string &address,
+                 int port,
+                 const ClientTableDataT &client_info);
   /// Attach this client to a plasma event loop. Note that only
   /// one event loop should be attached at a time.
   Status Attach(plasma::EventLoop &event_loop);
@@ -38,6 +46,7 @@ class RAY_EXPORT AsyncGcsClient {
   inline ConfigTable &config_table();
   ObjectTable &object_table();
   TaskTable &task_table();
+  ClientTable &client_table();
   inline ErrorTable &error_table();
 
   // We also need something to export generic code to run on workers from the
@@ -56,8 +65,10 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ClassTable> class_table_;
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<TaskTable> task_table_;
+  std::unique_ptr<ClientTable> client_table_;
   std::shared_ptr<RedisContext> context_;
-  std::unique_ptr<RedisAsioClient> asio_client_;
+  std::unique_ptr<RedisAsioClient> asio_async_client_;
+  std::unique_ptr<RedisAsioClient> asio_subscribe_client_;
 };
 
 class SyncGcsClient {

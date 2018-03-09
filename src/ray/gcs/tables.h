@@ -37,33 +37,44 @@ class Table {
     ID id;
     std::shared_ptr<DataT> data;
     Callback callback;
+    // An optional callback to call for subscription operations, where the
+    // first message is a notification of subscription success.
+    Callback subscription_callback;
     Table<ID, Data> *table;
     AsyncGcsClient *client;
   };
 
   Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : context_(context), client_(client), pubsub_channel_(TablePubsub_NO_PUBLISH){};
+      : context_(context),
+        client_(client),
+        pubsub_channel_(TablePubsub_NO_PUBLISH){};
 
   /// Add an entry to the table.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
   /// \param data Data that is added to the GCS.
-  /// \param done Callback that is called once the data has been written to the GCS.
+  /// \param done Callback that is called once the data has been written to the
+  ///        GCS.
   /// \return Status
   Status Add(const JobID &job_id,
              const ID &id,
              std::shared_ptr<DataT> data,
              const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, data, done, this, client_}));
-    int64_t callback_index = RedisCallbackManager::instance().add([d](
-        const std::string &data) { (d->callback)(d->client, d->id, d->data); });
+        new CallbackData({id, data, done, nullptr, this, client_}));
+    int64_t callback_index =
+        RedisCallbackManager::instance().add([d](const std::string &data) {
+          if (d->callback != nullptr) {
+            (d->callback)(d->client, d->id, d->data);
+          }
+        });
     flatbuffers::FlatBufferBuilder fbb;
     fbb.ForceDefaults(true);
     fbb.Finish(Data::Pack(fbb, data.get()));
-    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(),
-                                         fbb.GetSize(), pubsub_channel_, callback_index));
+    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id,
+                                         fbb.GetBufferPointer(), fbb.GetSize(),
+                                         pubsub_channel_, callback_index));
     return Status::OK();
   }
 
@@ -75,17 +86,20 @@ class Table {
   /// \return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, nullptr, lookup, this}));
+        new CallbackData({id, nullptr, lookup, nullptr, this, client_}));
     int64_t callback_index =
         RedisCallbackManager::instance().add([d](const std::string &data) {
           auto result = std::make_shared<DataT>();
           auto root = flatbuffers::GetRoot<Data>(data.data());
           root->UnPackTo(result.get());
-          (d->callback)(d->client, d->id, result);
+          if (d->callback != nullptr) {
+            (d->callback)(d->client, d->id, result);
+          }
         });
     std::vector<uint8_t> nil;
-    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
-                                         pubsub_channel_, callback_index));
+    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(),
+                                         nil.size(), pubsub_channel_,
+                                         callback_index));
     return Status::OK();
   }
 
@@ -99,17 +113,22 @@ class Table {
   /// \param done Callback that is called when subscription is complete and we
   ///        are ready to receive messages..
   /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const Callback &subscribe, const Callback &done) {
+  Status Subscribe(const JobID &job_id,
+                   const ClientID &client_id,
+                   const Callback &subscribe,
+                   const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({client_id, nullptr, subscribe, this}));
+        new CallbackData({client_id, nullptr, subscribe, done, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([done, d](const std::string &data) {
+        RedisCallbackManager::instance().add([d](const std::string &data) {
           if (data.empty()) {
             // No data is provided. This is the callback for the initial
             // subscription request.
-            done(d->client, d->id, nullptr);
+            if (d->subscription_callback != nullptr) {
+              (d->subscription_callback)(d->client, d->id, nullptr);
+            }
           } else {
+            // Data is provided. This is the callback for a message.
             auto result = std::make_shared<DataT>();
             auto root = flatbuffers::GetRoot<Data>(data.data());
             root->UnPackTo(result.get());
@@ -133,7 +152,8 @@ class Table {
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
  public:
-  ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+  ObjectTable(const std::shared_ptr<RedisContext> &context,
+              AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
   };
@@ -175,7 +195,8 @@ using ActorTable = Table<ActorID, ActorTableData>;
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
-  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+  TaskTable(const std::shared_ptr<RedisContext> &context,
+            AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_TASK;
   };
@@ -231,7 +252,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   ///        events we want to listen to. If you want to subscribe to updates
   ///        from
   ///        all local schedulers, pass in NIL_ID.
-  /// \param subscribe_callback Callback that will be called when the task table is
+  /// \param subscribe_callback Callback that will be called when the task table
+  /// is
   ///        updated.
   /// \param state_filter Events we want to listen to. Can have values from the
   ///        enum "scheduling_state" in task.h.
@@ -239,8 +261,10 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   ///        TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
   /// \param callback Function to be called when database returns result.
   /// \return Status
-  Status SubscribeToTask(const JobID &job_id, const ClientID &local_scheduler_id,
-                         int state_filter, const SubscribeToTaskCallback &callback,
+  Status SubscribeToTask(const JobID &job_id,
+                         const ClientID &local_scheduler_id,
+                         int state_filter,
+                         const SubscribeToTaskCallback &callback,
                          const Callback &done);
 };
 
@@ -252,55 +276,36 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 
 Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
-Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
-                              const ClientID &local_scheduler_id, int test_state_bitmask,
+Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
+                              const TaskID &task_id,
+                              const ClientID &local_scheduler_id,
+                              int test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
-/// \class ClientInformation
-///
-/// Represents information in the client table about a particular client. Each
-/// client has an associated node manager.
-class ClientInformation {
- public:
-  /// Create a client information object.
-  ///
-  /// \param client_table_entry A serialized client table entry flatbuffer.
-  ClientInformation(const ClientTableData &client_table_entry);
-
-  /// Get the client ID.
-  ///
-  /// \return The ID of this client.
-  const ClientID &GetClientId() const;
-
-  /// Get the IP address of the client's node manager.
-  ///
-  /// \return The IP address of the client's node manager.
-  const std::string GetIpAddress() const;
-
-  /// Get the port at which the client's node manager is listening for
-  /// TCP connections.
-  ///
-  /// \return The client's TCP port.
-  int GetPort() const;
-
-  /// Get whether the client is alive.
-  ///
-  /// \return Whether the client is alive.
-  bool IsAlive() const;
-};
-
 class ClientTable : private Table<ClientID, ClientTableData> {
  public:
-  ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client);
+  ClientTable(const std::shared_ptr<RedisContext> &context,
+              AsyncGcsClient *client,
+              const ClientTableDataT &local_client)
+      : Table(context, client),
+        client_id_(ClientID::from_binary(local_client.client_id)),
+        local_client_(local_client) {
+    local_client_.is_insertion = true;
+    pubsub_channel_ = TablePubsub_CLIENT;
 
-  /// Connect as a client to the GCS. This registers us in the client table and
-  /// begins subscription to client table notifications.
+    // Add a nil client to the cache so that we can serve requests for clients
+    // that we have not heard about.
+    ClientTableDataT nil_client;
+    nil_client.client_id = ClientID::nil().binary();
+    client_cache_[ClientID::nil()] = nil_client;
+  };
+
+  /// Connect as a client to the GCS. This registers us in the client table
+  /// and begins subscription to client table notifications.
   ///
-  /// \param[out] client_id The assigned client ID will be written to this pointer.
   /// \return Status
-  // TODO(swang): Call this from AsyncGcsClient::Connect?
-  ray::Status Connect(ClientID *client_id);
+  ray::Status Connect();
 
   /// Disconnect the client from the GCS. The client ID assigned during
   /// registration should never be reused after disconnecting.
@@ -308,16 +313,54 @@ class ClientTable : private Table<ClientID, ClientTableData> {
   /// \return Status
   ray::Status Disconnect();
 
-  /// Get a client's information from the cache.
+  /// Register a callback to call when a new client is added.
+  ///
+  /// \param callback The callback to register.
+  void RegisterClientAddedCallback(const Callback &callback);
+
+  /// Register a callback to call when a client is removed.
+  ///
+  /// \param callback The callback to register.
+  void RegisterClientRemovedCallback(const Callback &callback);
+
+  /// Get a client's information from the cache. The cache only contains
+  /// information for clients that we've heard a notification for.
   ///
   /// \param client The client to get information about.
-  const ClientInformation &GetClientInformation(const ClientID &client);
+  /// \return A reference to the requested client. If the client is not in the
+  ///         cache, then an entry with a nil ClientID will be returned.
+  const ClientTableDataT &GetClient(const ClientID &client);
+
+  /// Get the local client's ID.
+  ///
+  /// \return The local client's ID.
+  const ClientID &GetLocalClientId();
+
+  /// Get the local client's information.
+  ///
+  /// \return The local client's information.
+  const ClientTableDataT &GetLocalClient();
 
  private:
+  /// Handle a client table notification.
+  void HandleNotification(AsyncGcsClient *client,
+                          const ClientID &channel_id,
+                          std::shared_ptr<ClientTableDataT>);
+  /// Handle this client's successful connection to the GCS.
+  void HandleConnected(AsyncGcsClient *client,
+                       const ClientID &client_id,
+                       std::shared_ptr<ClientTableDataT>);
+
   /// This client's ID.
-  ClientID client_id_;
+  const ClientID client_id_;
+  /// Information about this client.
+  ClientTableDataT local_client_;
+  /// The callback to call when a new client is added.
+  Callback client_added_callback_;
+  /// The callback to call when a client is removed.
+  Callback client_removed_callback_;
   /// A cache for information about all clients.
-  std::unordered_map<ClientID, ClientInformation, UniqueIDHasher> client_cache_;
+  std::unordered_map<ClientID, ClientTableDataT, UniqueIDHasher> client_cache_;
 };
 
 }  // namespace gcs
