@@ -16,7 +16,7 @@ class LineageCacheEntry {
  private:
   // TODO(swang): This should be an enum of the state of the entry - goes from
   // completely local, to dirty, to in flight, to committed.
-  bool dirty_;
+  // bool dirty_;
 };
 
 class LineageCacheTaskEntry : public LineageCacheEntry {};
