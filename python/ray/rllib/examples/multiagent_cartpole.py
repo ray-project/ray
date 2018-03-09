@@ -20,7 +20,6 @@ env_name = env_name + '-v' + str(env_version_num)
 def pass_params_to_gym(env_name):
     global env_version_num
 
-    import ipdb; ipdb.set_trace()
     register(
         id=env_name,
         entry_point='ray.rllib.examples:' + "MultiAgentCartPoleEnv",
@@ -59,7 +58,5 @@ if __name__ == '__main__':
                 "max_failures": 999,
                 "stop": {"training_iteration": 100},
                 "resources": {"cpu": num_cpus}
-                #"local_dir": "/home/ubuntu"
-
             },
         })
