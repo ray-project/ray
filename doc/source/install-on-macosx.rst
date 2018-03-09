@@ -26,7 +26,7 @@ To build Ray, first install the following dependencies. We recommend using
 .. code-block:: bash
 
   brew update
-  brew install cmake pkg-config automake autoconf libtool boost openssl bison wget
+  brew install cmake pkg-config automake autoconf libtool openssl bison wget
 
   pip install cython
 
