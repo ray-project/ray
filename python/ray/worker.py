@@ -822,19 +822,18 @@ class Worker(object):
                                              "function_name": function_name})
 
     def _become_actor(self, task):
-        """"""
+        """Turn this worker into an actor.
+
+        Args:
+            task: The actor creation task.
+        """
         assert self.actor_id == NIL_ACTOR_ID
-        self.actor_id = task.arguments()[0]
-        class_id = task.arguments()[1]
-        # self.local_scheduler_client.register_as_actor()
+        arguments = task.arguments()
+        self.actor_id = arguments[0]
+        class_id = arguments[1]
 
         key = b"ActorClass:" + class_id
         self.fetch_and_register_actor(key, task.required_resources(), self)
-
-        # # Need to do a lot more cleanup on this method.............................
-        # self._store_outputs_in_objstore(task.returns(), ["THIS IS A DUMMY OBJECT"])
-
-
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.

@@ -12,8 +12,8 @@ import ray.cloudpickle as pickle
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (binary_to_hex, FunctionProperties, random_string,
-                       is_cython, push_error_to_driver)
+from ray.utils import (FunctionProperties, random_string, is_cython,
+                       push_error_to_driver)
 
 
 def random_actor_id():
@@ -44,6 +44,18 @@ def compute_actor_handle_id(actor_handle_id, num_forks):
     handle_id = handle_id_hash.digest()
     assert len(handle_id) == 20
     return ray.local_scheduler.ObjectID(handle_id)
+
+
+def compute_actor_creation_function_id(class_id):
+    """Compute the function ID for an actor creation task.
+
+    Args:
+        class_id: The ID of the actor class.
+
+    Returns:
+        The function ID of the actor creation event.
+    """
+    return ray.local_scheduler.ObjectID(class_id)
 
 
 def compute_actor_method_function_id(class_name, attr):
@@ -229,7 +241,9 @@ def fetch_and_register_actor(actor_class_key, resources, worker):
     class.
 
     Args:
-    TODO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        actor_class_key: The key in Redis to use to fetch the actor.
+        resources: The resources required for this actor's lifetime.
+        worker: The worker to use.
     """
     actor_id_str = worker.actor_id
     (driver_id, class_id, class_name,
@@ -260,7 +274,7 @@ def fetch_and_register_actor(actor_class_key, resources, worker):
         raise Exception("The actor with name {} failed to be imported, and so "
                         "cannot execute this method".format(actor_name))
     # Register the actor method signatures.
-    register_actor_signatures(worker, driver_id, class_name,
+    register_actor_signatures(worker, driver_id, class_id, class_name,
                               actor_method_names, actor_method_num_return_vals)
     # Register the actor method executors.
     for actor_method_name in actor_method_names:
@@ -309,7 +323,7 @@ def fetch_and_register_actor(actor_class_key, resources, worker):
             # for the actor.
 
 
-def register_actor_signatures(worker, driver_id, class_name,
+def register_actor_signatures(worker, driver_id, class_id, class_name,
                               actor_method_names,
                               actor_method_num_return_vals, resources=None):
     """Register an actor's method signatures in the worker.
@@ -317,7 +331,8 @@ def register_actor_signatures(worker, driver_id, class_name,
     Args:
         worker: The worker to register the signatures on.
         driver_id: The ID of the driver that this actor is associated with.
-        actor_id: The ID of the actor.
+        class_id: The ID of the actor class.
+        class_name: The name of the actor class.
         actor_method_names: The names of the methods to register.
         actor_method_num_return_vals: A list of the number of return values for
             each of the actor's methods.
@@ -339,8 +354,8 @@ def register_actor_signatures(worker, driver_id, class_name,
 
     if resources is not None:
         # Also register the actor creation task.
-        function_id = 20 * b"\xab"
-        worker.function_properties[driver_id][function_id] = (
+        function_id = compute_actor_creation_function_id(class_id)
+        worker.function_properties[driver_id][function_id.id()] = (
             # The extra return value is an actor dummy object.
             FunctionProperties(num_return_vals=0 + 1,
                                resources=resources,
@@ -419,12 +434,12 @@ def export_actor(actor_id, class_id, class_name, actor_method_names,
                         "started. You can start Ray with 'ray.init()'.")
 
     driver_id = worker.task_driver_id.id()
-    register_actor_signatures(worker, driver_id, class_name,
+    register_actor_signatures(worker, driver_id, class_id, class_name,
                               actor_method_names, actor_method_num_return_vals,
                               resources=resources)
 
     args = [actor_id.id(), class_id]
-    function_id = ray.local_scheduler.ObjectID(20 * b"\xab")
+    function_id = compute_actor_creation_function_id(class_id)
     return worker.submit_task(function_id, args, actor_creation_id=actor_id)[0]
 
 
@@ -466,11 +481,13 @@ class ActorHandleWrapper(object):
     This is essentially just a dictionary, but it is used so that the recipient
     can tell that an argument is an ActorHandle.
     """
-    def __init__(self, actor_id, actor_handle_id, actor_cursor, actor_counter,
-                 actor_method_names, actor_method_num_return_vals,
-                 method_signatures, checkpoint_interval, class_name,
+    def __init__(self, actor_id, class_id, actor_handle_id, actor_cursor,
+                 actor_counter, actor_method_names,
+                 actor_method_num_return_vals, method_signatures,
+                 checkpoint_interval, class_name,
                  ray_actor_creation_dummy_object_id):
         self.actor_id = actor_id
+        self.class_id = class_id
         self.actor_handle_id = actor_handle_id
         self.actor_cursor = actor_cursor
         self.actor_counter = actor_counter
@@ -496,6 +513,7 @@ def wrap_actor_handle(actor_handle):
     """
     wrapper = ActorHandleWrapper(
         actor_handle._ray_actor_id,
+        actor_handle._ray_class_id,
         compute_actor_handle_id(actor_handle._ray_actor_handle_id,
                                 actor_handle._ray_actor_forks),
         actor_handle._ray_actor_cursor,
@@ -521,14 +539,15 @@ def unwrap_actor_handle(worker, wrapper):
         The unwrapped ActorHandle instance.
     """
     driver_id = worker.task_driver_id.id()
-    register_actor_signatures(worker, driver_id, wrapper.class_name,
-                              wrapper.actor_method_names,
+    register_actor_signatures(worker, driver_id, wrapper.class_id,
+                              wrapper.class_name, wrapper.actor_method_names,
                               wrapper.actor_method_num_return_vals)
 
     actor_handle_class = make_actor_handle_class(wrapper.class_name)
     actor_object = actor_handle_class.__new__(actor_handle_class)
     actor_object._manual_init(
         wrapper.actor_id,
+        wrapper.class_id,
         wrapper.actor_handle_id,
         wrapper.actor_cursor,
         wrapper.actor_counter,
@@ -561,11 +580,12 @@ def make_actor_handle_class(class_name):
             raise NotImplementedError("The classmethod remote() can only be "
                                       "called on the original Class.")
 
-        def _manual_init(self, actor_id, actor_handle_id, actor_cursor,
-                         actor_counter, actor_method_names,
+        def _manual_init(self, actor_id, class_id, actor_handle_id,
+                         actor_cursor, actor_counter, actor_method_names,
                          actor_method_num_return_vals, method_signatures,
                          checkpoint_interval, actor_creation_dummy_object_id):
             self._ray_actor_id = actor_id
+            self._ray_class_id = class_id
             self._ray_actor_handle_id = actor_handle_id
             self._ray_actor_cursor = actor_cursor
             self._ray_actor_counter = actor_counter
@@ -687,7 +707,8 @@ def make_actor_handle_class(class_name):
             # with Class.remote().
             if (ray.worker.global_worker.connected and
                     self._ray_actor_handle_id.id() == ray.worker.NIL_ACTOR_ID):
-                # TODO(rkn): Should we be passing in the actor cursor as a dependency here?
+                # TODO(rkn): Should we be passing in the actor cursor as a
+                # dependency here?
                 self._actor_method_call("__ray_terminate__",
                                         args=[self._ray_actor_id.id()])
 
@@ -769,8 +790,9 @@ def actor_handle_from_class(Class, class_id, resources, checkpoint_interval):
 
             # Instantiate the actor handle.
             actor_object = cls.__new__(cls)
-            actor_object._manual_init(actor_id, actor_handle_id, actor_cursor,
-                                      actor_counter, actor_method_names,
+            actor_object._manual_init(actor_id, class_id, actor_handle_id,
+                                      actor_cursor, actor_counter,
+                                      actor_method_names,
                                       actor_method_num_return_vals,
                                       method_signatures, checkpoint_interval,
                                       actor_cursor)
