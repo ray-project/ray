@@ -1,6 +1,6 @@
-""" Run script for multiagent pendulum env. Each agent outputs a
-torque which is summed to form the total torque. This is a
-continuous multiagent example
+""" Run script for multiagent cartpole env. Each agent outputs a
+action whose mean is the actual action. This is a multiagent
+example of an extremely simple task meant to be used for testing
 """
 
 import gym
@@ -11,7 +11,7 @@ import ray.rllib.ppo as ppo
 from ray.tune.registry import register_env
 from ray.tune import run_experiments
 
-env_name = "MultiAgentPendulumEnv"
+env_name = "MultiAgentCartPoleEnv"
 
 env_version_num = 0
 env_name = env_name + '-v' + str(env_version_num)
@@ -20,9 +20,10 @@ env_name = env_name + '-v' + str(env_version_num)
 def pass_params_to_gym(env_name):
     global env_version_num
 
+    import ipdb; ipdb.set_trace()
     register(
         id=env_name,
-        entry_point='ray.rllib.examples:' + "MultiAgentPendulumEnv",
+        entry_point='ray.rllib.examples:' + "MultiAgentCartPoleEnv",
         max_episode_steps=config['horizon'],
         kwargs={}
     )
@@ -37,37 +38,27 @@ def create_env(env_config):
 if __name__ == '__main__':
     register_env(env_name, lambda env_config: create_env(env_config))
     config = ppo.DEFAULT_CONFIG.copy()
-    num_cpus = 4
+    config["timesteps_per_batch"] = 4096
+    num_cpus = 2
     ray.init(num_cpus=num_cpus, redirect_output=False)
-    config["num_workers"] = num_cpus
-    config["timesteps_per_batch"] = 10
-    config["num_sgd_iter"] = 10
-    config["gamma"] = 0.95
-    config["horizon"] = 10
-    config["use_gae"] = False
-    config["lambda"] = 0.1
-    config["sgd_stepsize"] = .0003
-    config["sgd_batchsize"] = 128
-    config["min_steps_per_task"] = 100
-    config["model"].update({"fcnet_hiddens": [32, 32]})
-    options = {"multiagent_obs_shapes": [3, 3],
+    options = {"multiagent_obs_shapes": [4, 4],
                "multiagent_act_shapes": [1, 1],
-               "multiagent_shared_model": True,
-               "multiagent_fcnet_hiddens": [[4, 4]] * 2}
+               "multiagent_shared_model": False,
+               "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
-    register_env("MultiAgentPendulumEnv-v0", create_env)
-
+    config["horizon"] = 200
+    register_env("MultiAgentCartPoleEnv-v0", create_env)
     trials = run_experiments({
             "pendulum_tests": {
                 "run": "PPO",
-                "env": "MultiAgentPendulumEnv-v0",
+                "env": "MultiAgentCartPoleEnv-v0",
                 "config": {
                    **config
                 },
                 "checkpoint_freq": 20,
                 "max_failures": 999,
-                "stop": {"training_iteration": 1},
-                "resources": {"cpu": 4, "gpu": 0}
+                "stop": {"training_iteration": 100},
+                "resources": {"cpu": num_cpus}
                 #"local_dir": "/home/ubuntu"
 
             },
