@@ -10,11 +10,27 @@ from threading import Thread
 @ray.remote(num_cpus=2)
 class ShuffleActor(object):
 
-    def __init__(self, partition_data, axis=1):
+    def __init__(self, partition_data, partition_axis=0, shuffle_axis=0):
+        """Actor for facilitating distributed dataframe shuffle
+        operations. Each partition in a Ray DataFrame will have be wrapped
+        by a ShuffleActor, and during a shuffle, a collection of
+        ShuffleActors will shuffle data onto each other together.
+
+        Args:
+            partition_data (ObjectID): The ObjectID of the partition this
+                ShuffleActor is wrapped around.
+            partition_axis (int): The axis on which the data was partitioned.
+            shuffle_axis (int): The axis to index on for the shuffle.
+        """
+        if partition_axis != 0 and partition_axis != 1:
+            raise TypeError('partition_axis must be 0 or 1. Got %s' % str(self.partition_axis))
+        if shuffle_axis != 0 and shuffle_axis != 1:
+            raise TypeError('shuffle_axis must be 0 or 1. Got %s' % str(self.shuffle_axis))
         self.incoming = []
         self.partition_data = partition_data
         self.index_of_self = None
-        self.axis = axis
+        self.partition_axis = partition_axis
+        self.shuffle_axis = shuffle_axis
 
     def shuffle(self, index, partition_assignments, index_of_self,
                 *list_of_partitions):
@@ -56,20 +72,35 @@ class ShuffleActor(object):
             """Separates the data to send into a list based on assignments.
 
             Args:
-                i: The index within the list of Threads generated.
-                indices_to_send: The indices containing data to send.
-                data_to_send: An empty list to fill with the destination data
-                    for a given index (i).
+                i: 
+                    The index within the list of Threads generated.
+                indices_to_send: 
+                    The indices containing data to send.
+                data_to_send: 
+                    An empty list to fill with the destination data for a given index (i).
             """
 
             indices_to_send[i] = [idx
                                   for idx in partition_assignments[i]
-                                  if idx in index.index]
-            data_to_send[i] = self.partition_data.loc[indices_to_send[i]]
+                                  if idx in index]
+
+            if self.shuffle_axis:
+                data_to_send[i] = \
+                    self.partition_data.loc[:, indices_to_send[i]]
+            else:
+                data_to_send[i] = \
+                    self.partition_data.loc[indices_to_send[i], :]
+
+        # Support both RangeIndex and pandas.Index
+        if isinstance(index, pd.DataFrame):
+            index = index.index
 
         num_partitions = len(partition_assignments)
         # Reindexing here to properly drop the data.
-        self.partition_data.index = index.index
+        if self.partition_axis:
+            self.partition_data.index = index
+        else:
+            self.partition_data.columns = index
 
         indices_to_send = [None] * num_partitions
         data_to_send = [None] * num_partitions
@@ -84,6 +115,7 @@ class ShuffleActor(object):
         for t in threads:
             t.join()
 
+        # Append data to other new partitions' ShuffleActor's `add_to_incoming` lists
         for i in range(num_partitions):
             if i == self.index_of_self:
                 continue
@@ -91,7 +123,8 @@ class ShuffleActor(object):
                 list_of_partitions[i].add_to_incoming.remote((
                     self.index_of_self, data_to_send[i]))
                 # Drop the data once it's been sent.
-                self.partition_data.drop(indices_to_send[i], inplace=True)
+                self.partition_data.drop(indices_to_send[i], inplace=True,
+                                         axis=self.shuffle_axis)
             except KeyError:
                 pass
 
@@ -99,6 +132,13 @@ class ShuffleActor(object):
         return None
 
     def add_to_incoming(self, data):
+        """Add data to the list of data to be coalesced into. Note that `self.incoming` is a 
+        list of Pandas DataFrames, which will eventually all be concatenated together.
+
+        Args:
+            data (pd.DataFrame): A DataFrame containing the rows to be coalesced.
+        """
+
         self.incoming.append(data)
 
     def apply_func(self, func, *args):
@@ -121,8 +161,8 @@ class ShuffleActor(object):
         self.incoming.sort(key=lambda x: x[0])
         # After we drop the partition indices we use pd.concat with the axis
         # provided in the constructor.
-        self.incoming = [x[1] for x in self.incoming]
-        data = pd.concat(self.incoming, axis=self.axis)
+        _, self.incoming = zip(*self.incoming)
+        data = pd.concat(self.incoming, axis=(self.partition_axis))
 
         if len(args) == 0:
             return func(data)

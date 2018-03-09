@@ -54,7 +54,7 @@ class _Location_Indexer_Base():
                 return df.iloc[idx_lst, col_idx]
 
         retrieved_rows_remote = [
-            _deploy_func.remote(retrieve_func, self.df._df[partition],
+            _deploy_func.remote(retrieve_func, self.df._row_partitions[partition],
                                 idx_to_lookup, col_lst)
             for partition, idx_to_lookup in lookup_dict.items()
         ]
@@ -65,7 +65,7 @@ class _Loc_Indexer(_Location_Indexer_Base):
     """A indexer for ray_df.loc[] functionality"""
 
     def locate_2d(self, row_label, col_label):
-        index_loc = self.df._index.loc[row_label]
+        index_loc = self.df._row_index.loc[row_label]
         lookup_dict = self._get_lookup_dict(index_loc)
         retrieved_rows_remote = self._map_partition(
             lookup_dict, col_label, indexer='loc')
@@ -86,7 +86,7 @@ class _iLoc_Indexer(_Location_Indexer_Base):
     """A indexer for ray_df.iloc[] functionality"""
 
     def locate_2d(self, row_idx, col_idx):
-        index_loc = self.df._index.iloc[row_idx]
+        index_loc = self.df._row_index.iloc[row_idx]
         lookup_dict = self._get_lookup_dict(index_loc)
         retrieved_rows_remote = self._map_partition(
             lookup_dict, col_idx, indexer='iloc')
