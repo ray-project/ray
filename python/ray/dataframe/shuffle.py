@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import pandas as pd
 import ray
+from threading import Thread
 
 
 @ray.remote(num_cpus=2)
@@ -19,12 +20,6 @@ class ShuffleActor(object):
         self.assign_and_send_data(index, partition_assignments, list(list_of_partitions))
 
     def assign_and_send_data(self, index, partition_assignments, list_of_partitions):
-        num_partitions = len(partition_assignments)
-        self.partition_data.index = index.index
-
-        indices_to_send = [None] * num_partitions
-        data_to_send = [None] * num_partitions
-        from threading import Thread
 
         def calc_send(i, indices_to_send, data_to_send):
             indices_to_send[i] = [idx
@@ -32,6 +27,12 @@ class ShuffleActor(object):
                                   if idx in index.index]
             data_to_send[i] = \
                 self.partition_data.loc[indices_to_send[i]]
+
+        num_partitions = len(partition_assignments)
+        self.partition_data.index = index.index
+
+        indices_to_send = [None] * num_partitions
+        data_to_send = [None] * num_partitions
 
         threads = [Thread(target=calc_send, args=(i, indices_to_send, data_to_send))
                    for i in range(num_partitions)]

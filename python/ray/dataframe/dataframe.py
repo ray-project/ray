@@ -338,8 +338,6 @@ class DataFrame(object):
         else:
             new_index = self.index
 
-        import time
-        time.sleep(5)
         return DataFrameGroupBy([shuffler.apply_func.remote(
             lambda df: df.groupby(by=df.index,
                                   axis=axis,
@@ -373,18 +371,16 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
-        intermediate_index = [idx
-                              for _ in range(len(self._df))
-                              for idx in self.columns]
-
-        sum_of_partitions = self._map_partitions(
-            lambda df: df.sum(axis=axis, skipna=skipna, level=level,
-                              numeric_only=numeric_only),
-            index=intermediate_index)
-
-        return sum_of_partitions.reduce_by_index(
-            lambda df: df.sum(axis=axis, skipna=skipna, level=level,
-                              numeric_only=numeric_only))
+        if axis == 0 or axis is None:
+            self._map_partitions(lambda df: df.sum(axis=axis,
+                                                   skipna=skipna,
+                                                   level=level,
+                                                   numeric_only=numeric_only))
+        elif axis == 1:
+            self.T.sum(axis=0, skipna=skipna, level=level,
+                       numeric_only=numeric_only)
+        else:
+            raise ValueError("axis parameter must be 0 or 1.")
 
     def abs(self):
         """Apply an absolute value function to all numberic columns.
@@ -467,8 +463,7 @@ class DataFrame(object):
         l = list(temp_columns)
         x = [None] * len(self._lengths)
         cumulative = np.cumsum(self._lengths)
-        print(cumulative)
-
+        
         for i in range(len(cumulative)):
             if i == 0:
                 x[i] = (l[:cumulative[i]])

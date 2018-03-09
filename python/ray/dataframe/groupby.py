@@ -182,7 +182,7 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def sum(self, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        self._map_partitions(lambda df: df.sum())
 
     def __unicode__(self):
         raise NotImplementedError("Not Yet implemented.")
