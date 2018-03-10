@@ -296,13 +296,13 @@ class DataFrame(object):
             axis: The axis to groupby.
             level: The level of the groupby.
             as_index: Whether or not to store result as index.
+            sort: Whether or not to sort the result by the index.
             group_keys: Whether or not to group the keys.
             squeeze: Whether or not to squeeze.
 
         Returns:
             A new DataFrame resulting from the groupby.
         """
-
         @ray.remote
         def assign_partitions(index_df, num_partitions):
             uniques = index_df.index.unique()
@@ -323,9 +323,44 @@ class DataFrame(object):
 
             return assignments
 
-        partition_assignments = assign_partitions.remote(self._index,
-                                                         len(self._df))
+        if by is None:
+            raise TypeError("You have to supply one of 'by' and 'level'")
+        elif axis != 0 and axis != 1:
+            raise TypeError("")
+        elif not as_index and axis == 1 or axis == 'columns':
+            raise ValueError("as_index=False only valid for axis=0")
 
+        # The easy one. Everything for columns can be handled by the partitions.
+        if axis == 1 or axis == 'columns':
+            if sort:
+                new_cols = sorted(self.columns)
+            else:
+                new_cols = self.columns
+            return DataFrameGroupBy([self._map_partitions(
+                lambda df: df.groupby(by=by,
+                                      axis=axis,
+                                      level=level,
+                                      as_index=as_index,
+                                      sort=sort,
+                                      group_keys=group_keys,
+                                      squeeze=squeeze,
+                                      **kwargs))._df],
+                                    new_cols, self.index)
+
+        # Begin groupby for rows. Requires shuffle.
+        # We perform the groupby on the index first to assign the partitions
+        # for the shuffle.
+        assignments_df = self._index.groupby(by=by, axis=axis, level=level,
+                                             as_index=as_index, sort=sort,
+                                             group_keys=group_keys,
+                                             squeeze=squeeze, **kwargs)\
+            .apply(lambda x: x[:])
+
+        # We did a gropuby, now we have to drop the outermost layer of the
+        # grouped index to get the index we will use.
+        assignments_df.index = assignments_df.index.droplevel()
+        partition_assignments = assign_partitions.remote(assignments_df,
+                                                         len(self._df))
         shufflers = [ShuffleActor.remote(self._df[i])
                      for i in range(len(self._df))]
 
@@ -334,10 +369,12 @@ class DataFrame(object):
          for i in range(len(shufflers))]
 
         if as_index:
-            new_index = self.index.unique()
+            new_index = assignments_df.index.unique()
         else:
             new_index = self.index
 
+        import time
+        time.sleep(2)
         return DataFrameGroupBy([shuffler.apply_func.remote(
             lambda df: df.groupby(by=df.index,
                                   axis=axis,
@@ -347,19 +384,6 @@ class DataFrame(object):
                                   **kwargs))
                                 for shuffler in shufflers],
                                 self.columns, new_index)
-
-    def reduce_by_index(self, func, axis=0):
-        """Perform a reduction based on the row index.
-
-        Args:
-            func (callable): The function to call on the partition
-                after the groupby.
-
-        Returns:
-            A new DataFrame with the result of the reduction.
-        """
-        return self.groupby(axis=axis)._map_partitions(
-            func, index=pd.unique(self.index))
 
     def sum(self, axis=None, skipna=True, level=None, numeric_only=None):
         """Perform a sum across the DataFrame.
@@ -371,14 +395,14 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
-        if axis == 0 or axis is None:
-            self._map_partitions(lambda df: df.sum(axis=axis,
-                                                   skipna=skipna,
-                                                   level=level,
-                                                   numeric_only=numeric_only))
-        elif axis == 1:
-            self.T.sum(axis=0, skipna=skipna, level=level,
-                       numeric_only=numeric_only)
+        if axis == 1:
+            return self._map_partitions(lambda df: df.sum(axis=axis,
+                                                          skipna=skipna,
+                                                          level=level,
+                                                          numeric_only=numeric_only))
+        elif axis == 0 or axis is None:
+            return self.T.sum(axis=1, skipna=skipna, level=level,
+                              numeric_only=numeric_only)
         else:
             raise ValueError("axis parameter must be 0 or 1.")
 
@@ -460,22 +484,25 @@ class DataFrame(object):
             lambda df: df.transpose(*args, **kwargs), index=temp_index)
         local_transpose.columns = temp_columns
 
-        l = list(temp_columns)
+        column_names = list(temp_columns)
         x = [None] * len(self._lengths)
         cumulative = np.cumsum(self._lengths)
-        
+
         for i in range(len(cumulative)):
             if i == 0:
-                x[i] = (l[:cumulative[i]])
+                x[i] = (column_names[:cumulative[i]])
             elif i == len(cumulative) - 1:
-                x[i] = l[cumulative[i - 1]:]
+                x[i] = column_names[cumulative[i - 1]:]
             else:
-                x[i] = (l[cumulative[i-1]:cumulative[i]])
+                x[i] = (column_names[cumulative[i-1]:cumulative[i]])
 
         for i in range(len(local_transpose._df)):
-            local_transpose._df[i] = update_columns.remote(local_transpose._df[i], x[i])
+            local_transpose._df[i] = \
+                update_columns.remote(local_transpose._df[i], x[i])
 
-        df = local_transpose.groupby(by=self.columns).apply(lambda x: x)
+        df = local_transpose.groupby(by=local_transpose.index,
+                                     sort=False)\
+            .apply(lambda x: x)
         return df
 
     T = property(transpose)
