@@ -35,15 +35,23 @@ class Experiment():
                 name of a built-on algorithm (e.g. RLLib’s DQN or PPO), or a
                 user-defined trainable function or class
                 registered in the tune registry.
-            stop (dict): The stopping criteria, specified in JSON. The keys
-                may be any field in TrainingResult, e.g. ‘{“time_total_s”: 600, “timesteps_total”: 100000}’ to stop after 600 seconds or 100k timesteps, whichever is reached first.
-            config (dict): Algorithm-specific configuration (e.g. env, hyperparams), specified in JSON.
-            resources (dict): Machine resources to allocate per trial, e.g. ‘{“cpu”: 64, “gpu”: 8}’. Note that GPUs will not be assigned unless you specify them here.
+            stop (dict): The stopping criteria. The keys
+                may be any field in TrainingResult, whichever is reached first.
+            config (dict): Algorithm-specific configuration
+                (e.g. env, hyperparams).
+            resources (dict): Machine resources to allocate per trial,
+                e.g. {“cpu”: 64, “gpu”: 8}. Note that GPUs will not be
+                assigned unless you specify them here.
             repeat (int): Number of times to repeat each trial.
-            local_dir (str): Local dir to save training results to. Defaults to `~/ray_results`.
-            upload_dir (str): Optional URI to sync training results to (e.g. s3://bucket).
-            checkpoint_freq (int): How many training iterations between checkpoints. A value of 0 (default) disables checkpointing.
-            max_failures (int): Try to recover a trial from its last checkpoint at least this many times. Only applies if checkpointing is enabled.
+            local_dir (str): Local dir to save training results to.
+                Defaults to `~/ray_results`.
+            upload_dir (str): Optional URI to sync training results
+                to (e.g. s3://bucket).
+            checkpoint_freq (int): How many training iterations between
+                checkpoints. A value of 0 (default) disables checkpointing.
+            max_failures (int): Try to recover a trial from its last
+                checkpoint at least this many times. Only applies if
+                checkpointing is enabled.
         """
         spec = {
             "run": run,
@@ -61,6 +69,7 @@ class Experiment():
     def trials():
         for trial in self._trials:
             yield trial
+
 
 def _make_scheduler(args):
     if args.scheduler in _SCHEDULERS:
