@@ -219,7 +219,7 @@ class ObjectManager {
                                    SenderConnection::pointer client);
 
   /// Private callback implementation for success on get location. Called inside OD.
-  void GetLocationsSuccess(const std::vector<RemoteConnectionInfo> &vec,
+  void GetLocationsSuccess(const std::vector<ClientID> &client_ids,
                            const ObjectID &object_id);
 
   /// Private callback implementation for failure on get location. Called inside OD.

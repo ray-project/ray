@@ -42,19 +42,19 @@ class TestRaylet : public ::testing::Test {
     static_resource_config = {{"num_cpus", 1}, {"num_gpus", 1}};
     ray::raylet::ResourceSet resource_config(std::move(static_resource_config));
 
-    // start mock gcs
-    gcs_client = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     // start first server
+    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ray::ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     server1.reset(new Raylet(io_service, std::string("hello1"), resource_config,
-                             om_config_1, gcs_client));
+                             om_config_1, gcs_client_1));
 
     // start second server
+    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ray::ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     server2.reset(new Raylet(io_service, std::string("hello2"), resource_config,
-                             om_config_2, gcs_client));
+                             om_config_2, gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -68,8 +68,8 @@ class TestRaylet : public ::testing::Test {
     arrow::Status client2_status = client2.Disconnect();
     ASSERT_TRUE(client1_status.ok() && client2_status.ok());
 
-//    this->server1.reset();
-//    this->server2.reset();
+    this->server1.reset();
+    this->server2.reset();
 
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
@@ -115,7 +115,8 @@ class TestRaylet : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service io_service;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client;
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
   std::unique_ptr<ray::raylet::Raylet> server1;
   std::unique_ptr<ray::raylet::Raylet> server2;
 
@@ -129,6 +130,54 @@ class TestRaylet : public ::testing::Test {
 };
 
 TEST_F(TestRaylet, TestRayletCommands) {
+  ray::Status status = ray::Status::OK();
+
+  RAY_LOG(INFO) << "\n"
+                << "Server client ids:"
+                << "\n";
+
+  sleep(1);
+
+  ClientID client_id_1 = server1->GetObjectManager().GetClientID();
+  ClientID client_id_2 = server2->GetObjectManager().GetClientID();
+  RAY_LOG(INFO) << "Server 1: " << client_id_1.hex();
+  RAY_LOG(INFO) << "Server 2: " << client_id_2.hex();
+
+  RAY_LOG(INFO) << "\n"
+                << "All connected clients:"
+                << "\n";
+
+  const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
+  RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+  RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
+  RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
+  RAY_LOG(INFO) << "ClientPort=" << data.local_scheduler_port;
+  const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
+  RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id);
+  RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
+  RAY_LOG(INFO) << "ClientPort=" << data2.local_scheduler_port;
+
+  status = server1->GetObjectManager().SubscribeObjAdded(
+      [this](const ObjectID &object_id) { object_added_handler_1(object_id); });
+  ASSERT_TRUE(status.ok());
+
+  status = server2->GetObjectManager().SubscribeObjAdded(
+      [this](const ObjectID &object_id) { object_added_handler_2(object_id); });
+  ASSERT_TRUE(status.ok());
+
+  ObjectID oid3 = WriteDataToClient(client2, 100);
+  status = server1->GetObjectManager().Pull(oid3);
+
+  ObjectID oid1 = WriteDataToClient(client1, 100);
+  status = server1->GetObjectManager().Push(oid1, client_id_2);
+
+//  ObjectID oid2 = WriteDataToClient(client2, 100);
+//  status = server2->GetObjectManager().Push(oid2, client_id_1);
+
+//  ObjectID oid4 = WriteDataToClient(client1, 100);
+//  status = server2->GetObjectManager().Pull(oid4);
+
+  sleep(1);
 
 }
 

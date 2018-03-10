@@ -44,7 +44,7 @@ class ObjectDirectoryInterface {
 
   // Callbacks for GetLocations.
   using OnLocationsSuccess = std::function<void(
-      const std::vector<ray::RemoteConnectionInfo> &v, const ray::ObjectID &object_id)>;
+      const std::vector<ray::ClientID> &v, const ray::ObjectID &object_id)>;
   using OnLocationsFailure =
       std::function<void(ray::Status status, const ray::ObjectID &object_id)>;
 
@@ -127,7 +127,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ExecuteGetLocations(const ObjectID &object_id);
   /// Invoked when call to ExecuteGetLocations completes.
   ray::Status GetLocationsComplete(const ray::Status &status, const ObjectID &object_id,
-                                   const std::vector<RemoteConnectionInfo> &v);
+                                   const std::vector<ClientID> &v);
 };
 
 }  // namespace ray

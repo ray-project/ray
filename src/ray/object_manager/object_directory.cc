@@ -8,27 +8,56 @@ ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client
 
 ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
                                                const ClientID &client_id) {
-//  return gcs_client_->object_table().Add(object_id, client_id, [] {});
-  return ray::Status::OK();
+  // TODO(hme): Determine whether we need to do lookup to append.
+  JobID job_id = JobID::from_random();
+  auto data = std::make_shared<ObjectTableDataT>();
+  data->managers.push_back(client_id.binary());
+  ray::Status status = gcs_client_->object_table().Add(
+      job_id,
+      object_id,
+      data,
+      [](
+      gcs::AsyncGcsClient *client,
+      const UniqueID &id,
+      std::shared_ptr<ObjectTableDataT> data){
+        // Do nothing.
+      });
+  return status;
 };
 
 ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
                                                  const ClientID &client_id) {
-//  return gcs_client_->object_table().Remove(object_id, client_id, [] {});
-  return ray::Status::OK();
+  //TODO(hme): uncomment when Remove is implemented.
+//  JobID job_id = JobID::from_random();
+//  auto data = std::make_shared<ObjectTableDataT>();
+//  data->managers.push_back(client_id.binary());
+//  ray::Status status = gcs_client_->object_table().Remove(
+//      job_id,
+//      object_id,
+//      [](
+//          gcs::AsyncGcsClient *client,
+//          const UniqueID &id,
+//          std::shared_ptr<ObjectTableDataT> data){
+//        std::cout << "Removed: " << id << std::endl;
+//      });
+//  return status;
+  return Status::OK();
 };
 
 ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
                                             const InfoSuccessCallback &success_cb,
                                             const InfoFailureCallback &fail_cb) {
-//  gcs_client_->client_table().GetClientInformation(
-//      client_id,
-//      [this, success_cb, client_id](ClientInformation client_info) {
-//        const auto &info =
-//            RemoteConnectionInfo(client_id, client_info.GetIp(), client_info.GetPort());
-//        success_cb(info);
-//      },
-//      fail_cb);
+  const ClientTableDataT &data = gcs_client_->client_table().GetClient(client_id);
+  ClientID result_client_id = ClientID::from_binary(data.client_id);
+  if(result_client_id == ClientID::nil()){
+    fail_cb(ray::Status::RedisError("ClientID not found."));
+  } else {
+    const auto &info =
+        RemoteConnectionInfo(client_id,
+                             data.node_manager_address,
+                             (uint16_t) data.object_manager_port);
+    success_cb(info);
+  }
   return ray::Status::OK();
 };
 
@@ -46,40 +75,26 @@ ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
 };
 
 ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
-  // TODO(hme): Avoid callback hell.
-//  std::vector<RemoteConnectionInfo> remote_connections;
-//  ray::Status status = gcs_client_->object_table().GetObjectClientIDs(
-//      object_id,
-//      [this, object_id, &remote_connections](const std::vector<ClientID> &client_ids) {
-//        gcs_client_->client_table().GetClientInformationSet(
-//            client_ids,
-//            [this, object_id,
-//             &remote_connections](const std::vector<ClientInformation> &info_vec) {
-//              for (const auto &client_info : info_vec) {
-//                RemoteConnectionInfo info =
-//                    RemoteConnectionInfo(client_info.GetClientId(), client_info.GetIp(),
-//                                         client_info.GetPort());
-//                remote_connections.push_back(info);
-//              }
-//              ray::Status cb_completion_status =
-//                  GetLocationsComplete(Status::OK(), object_id, remote_connections);
-//            },
-//            [this, object_id, &remote_connections](const Status &status) {
-//              ray::Status cb_completion_status =
-//                  GetLocationsComplete(status, object_id, remote_connections);
-//            });
-//      },
-//      [this, object_id, &remote_connections](const Status &status) {
-//        ray::Status cb_completion_status =
-//            GetLocationsComplete(status, object_id, remote_connections);
-//      });
-//  return status;
-  return ray::Status::OK();
+  std::vector<ClientID> remote_connections;
+  JobID job_id = JobID::from_random();
+  ray::Status status = gcs_client_->object_table().Lookup(
+  job_id,
+  object_id,
+  [this, object_id, &remote_connections](gcs::AsyncGcsClient *client,
+                                         const UniqueID &id,
+                                         std::shared_ptr<ObjectTableDataT> data){
+    for(auto client_id_binary : data->managers){
+      ClientID client_id = ClientID::from_binary(client_id_binary);
+      remote_connections.push_back(client_id);
+    }
+    GetLocationsComplete(Status::OK(), object_id, remote_connections);
+  });
+  return status;
 };
 
 ray::Status ObjectDirectory::GetLocationsComplete(
     const ray::Status &status, const ObjectID &object_id,
-    const std::vector<RemoteConnectionInfo> &remote_connections) {
+    const std::vector<ClientID> &remote_connections) {
   bool success = status.ok();
   // Only invoke a callback if the request was not cancelled.
   if (existing_requests_.count(object_id) > 0) {

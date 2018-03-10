@@ -21,16 +21,19 @@ Raylet::Raylet(boost::asio::io_service &io_service, const std::string &socket_na
       object_manager_(io_service, object_manager_config, gcs_client),
       node_manager_(socket_name, resource_config, object_manager_),
       gcs_client_(gcs_client) {
-  ClientID client_id = RegisterGcs();
+  ClientID client_id = RegisterGcs(io_service);
   object_manager_.SetClientID(client_id);
   // Start listening for clients.
   DoAccept();
   DoAcceptTcp();
 }
 
-Raylet::~Raylet() { RAY_CHECK_OK(object_manager_.Terminate()); }
+Raylet::~Raylet() {
+  gcs_client_->client_table().Disconnect();
+  RAY_CHECK_OK(object_manager_.Terminate());
+}
 
-ClientID Raylet::RegisterGcs() {
+ClientID Raylet::RegisterGcs(boost::asio::io_service &io_service) {
   boost::asio::ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
   std::string ip = endpoint.address().to_string();
   uint16_t port = endpoint.port();
@@ -43,6 +46,8 @@ ClientID Raylet::RegisterGcs() {
   client_info.local_scheduler_port = port;
   client_info.object_manager_port = port;
   RAY_CHECK_OK(gcs_client_->Connect("127.0.0.1", 6379, client_info));
+  RAY_CHECK_OK(gcs_client_->Attach(io_service));
+  RAY_CHECK_OK(gcs_client_->client_table().Connect());
 
   return client_id;
 }

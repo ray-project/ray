@@ -93,8 +93,8 @@ ray::Status ObjectManager::SchedulePullHandler(const ObjectID &object_id) {
   pull_requests_.erase(object_id);
   ray::Status status_code = object_directory_->GetLocations(
       object_id,
-      [this](const std::vector<RemoteConnectionInfo> &vec, const ObjectID &object_id) {
-        return GetLocationsSuccess(vec, object_id);
+      [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
+        return GetLocationsSuccess(client_ids, object_id);
       },
       [this](ray::Status status, const ObjectID &object_id) {
         return GetLocationsFailed(status, object_id);
@@ -102,11 +102,11 @@ ray::Status ObjectManager::SchedulePullHandler(const ObjectID &object_id) {
   return status_code;
 }
 
-void ObjectManager::GetLocationsSuccess(const std::vector<ray::RemoteConnectionInfo> &vec,
+void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
                                         const ray::ObjectID &object_id) {
-  RemoteConnectionInfo info = vec.front();
+  ClientID client_id = client_ids.front();
   pull_requests_.erase(object_id);
-  ray::Status status_code = Pull(object_id, info.client_id);
+  ray::Status status_code = Pull(object_id, client_id);
 };
 
 void ObjectManager::GetLocationsFailed(ray::Status status, const ObjectID &object_id) {

@@ -40,20 +40,19 @@ class TestRaylet : public ::testing::Test {
     static_resource_config = {{"num_cpus", 1}, {"num_gpus", 1}};
     ray::raylet::ResourceSet resource_config(std::move(static_resource_config));
 
-    // start mock gcs
-    gcs_client = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
-
     // start first server
+    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ray::ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     server1.reset(new Raylet(io_service, std::string("hello1"), resource_config,
-                             om_config_1, gcs_client));
+                             om_config_1, gcs_client_1));
 
     // start second server
+    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ray::ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     server2.reset(new Raylet(io_service, std::string("hello2"), resource_config,
-                             om_config_2, gcs_client));
+                             om_config_2, gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -114,7 +113,8 @@ class TestRaylet : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service io_service;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client;
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
   std::unique_ptr<ray::raylet::Raylet> server1;
   std::unique_ptr<ray::raylet::Raylet> server2;
 
@@ -127,29 +127,33 @@ class TestRaylet : public ::testing::Test {
 TEST_F(TestRaylet, TestRayletCommands) {
   ray::Status status = ray::Status::OK();
   // TODO(atumanov): assert status is OK everywhere it's returned.
-  // TODO(hme): Uncomment once gcs integration is completed.
+  // TODO(hme): fix these tests (post gcs integration).
+
 //  RAY_LOG(INFO) << "\n"
-//                << "All connected clients:"
+//                << "Server client ids:"
 //                << "\n";
-//  status = gcs_client->client_table().GetClientIds(
-//      [this](const std::vector<ClientID> &client_ids) {
-//        gcs_client->client_table().GetClientInformationSet(
-//            client_ids,
-//            [this](const std::vector<ClientInformation> &info_vec) {
-//              for (const auto &info : info_vec) {
-//                RAY_LOG(INFO) << "ClientID=" << info.GetClientId().hex();
-//                RAY_LOG(INFO) << "ClientIp=" << info.GetIp();
-//                RAY_LOG(INFO) << "ClientPort=" << info.GetPort();
-//              }
-//            },
-//            [](Status status) {});
-//      });
+//  ClientID client_id_1 = server1->GetObjectManager().GetClientID();
+//  ClientID client_id_2 = server2->GetObjectManager().GetClientID();
+//  RAY_LOG(INFO) << "Server 1: " << client_id_1.hex();
+//  RAY_LOG(INFO) << "Server 2: " << client_id_2.hex();
 //
 //  sleep(1);
 //
 //  RAY_LOG(INFO) << "\n"
-//                << "Server client ids:"
+//                << "All connected clients:"
 //                << "\n";
+//  const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
+//  RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+//  RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
+//  RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
+//  RAY_LOG(INFO) << "ClientPort=" << data.local_scheduler_port;
+//
+//  const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
+//  RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id);
+//  RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
+//  RAY_LOG(INFO) << "ClientPort=" << data2.local_scheduler_port;
+//
+//  sleep(1);
 //
 //  status = server1->GetObjectManager().SubscribeObjAdded(
 //      [this](const ObjectID &object_id) { object_added_handler_1(object_id); });
@@ -158,11 +162,6 @@ TEST_F(TestRaylet, TestRayletCommands) {
 //  status = server2->GetObjectManager().SubscribeObjAdded(
 //      [this](const ObjectID &object_id) { object_added_handler_2(object_id); });
 //  ASSERT_TRUE(status.ok());
-//
-//  ClientID client_id_1 = server1->GetObjectManager().GetClientID();
-//  ClientID client_id_2 = server2->GetObjectManager().GetClientID();
-//  RAY_LOG(INFO) << "Server 1: " << client_id_1.hex();
-//  RAY_LOG(INFO) << "Server 2: " << client_id_2.hex();
 //
 //  sleep(1);
 //
