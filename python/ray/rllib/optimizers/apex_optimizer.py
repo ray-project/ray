@@ -122,8 +122,9 @@ class ApexOptimizer(Optimizer):
             prioritized_replay_beta=0.4, prioritized_replay_eps=1e-6,
             train_batch_size=512, sample_batch_size=50,
             num_replay_buffer_shards=1, max_weight_sync_delay=400,
-            clip_rewards=True):
+            clip_rewards=True, debug=False):
 
+        self.debug = debug
         self.replay_starts = learning_starts
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
@@ -146,9 +147,6 @@ class ApexOptimizer(Optimizer):
         self.timers = {k: TimerStat() for k in [
             "put_weights", "get_samples", "enqueue", "sample_processing",
             "replay_processing", "update_priorities", "train", "sample"]}
-        self.meters = {k: WindowStat(k, 10) for k in [
-            "samples_per_loop", "replays_per_loop", "reprios_per_loop",
-            "reweights_per_loop"]}
         self.num_weight_syncs = 0
         self.learning_started = False
 
@@ -213,8 +211,6 @@ class ApexOptimizer(Optimizer):
 
                 # Kick off another sample request
                 self.sample_tasks.add(ev, ev.sample.remote())
-            self.meters["samples_per_loop"].push(i)
-            self.meters["reweights_per_loop"].push(num_weight_syncs)
 
         with self.timers["replay_processing"]:
             i = 0
@@ -225,7 +221,6 @@ class ApexOptimizer(Optimizer):
                     samples = ray.get(replay)
                 with self.timers["enqueue"]:
                     self.learner.inqueue.put((ra, samples))
-            self.meters["replays_per_loop"].push(i)
 
         with self.timers["update_priorities"]:
             i = 0
@@ -234,7 +229,6 @@ class ApexOptimizer(Optimizer):
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay["batch_indexes"], td_error)
                 train_timesteps += self.train_batch_size
-            self.meters["reprios_per_loop"].push(i)
 
         return sample_timesteps, train_timesteps
 
@@ -249,18 +243,18 @@ class ApexOptimizer(Optimizer):
         timing["learner_dequeue_time_ms"] = round(
             1000 * self.learner.queue_timer.mean, 3)
         stats = {
-            "replay_shard_0": replay_stats,
-            "timing_breakdown": timing,
             "sample_throughput": round(
                 self.timers["sample"].mean_throughput, 3),
             "train_throughput": round(self.timers["train"].mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
+        }
+        debug_stats = {
+            "replay_shard_0": replay_stats,
+            "timing_breakdown": timing,
             "pending_sample_tasks": self.sample_tasks.count,
             "pending_replay_tasks": self.replay_tasks.count,
             "learner_queue": self.learner.learner_queue_size.stats(),
-            "samples": self.meters["samples_per_loop"].stats(),
-            "replays": self.meters["replays_per_loop"].stats(),
-            "reprios": self.meters["reprios_per_loop"].stats(),
-            "reweights": self.meters["reweights_per_loop"].stats(),
         }
+        if self.debug:
+            stats.update(debug_stats)
         return dict(Optimizer.stats(self), **stats)

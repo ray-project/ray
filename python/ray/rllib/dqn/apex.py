@@ -9,6 +9,7 @@ APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
     optimizer_config=dict(DQN_CONFIG["optimizer_config"], **dict(
         max_weight_sync_delay=400,
         num_replay_buffer_shards=4,
+        debug=False,
     )),
     n_step=3,
     num_workers=32,
