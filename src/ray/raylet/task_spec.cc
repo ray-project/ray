@@ -5,6 +5,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 TaskArgument::~TaskArgument() {}
 
 TaskArgumentByReference::TaskArgumentByReference(const std::vector<ObjectID> &references)
@@ -44,7 +46,7 @@ static const ObjectID task_compute_return_id(TaskID task_id, int64_t return_inde
   RAY_DCHECK(return_index >= 0);
   // TODO(rkn): This line requires object and task IDs to be the same size.
   ObjectID return_id = task_id;
-  int64_t *first_bytes = (int64_t *)&return_id;
+  int64_t *first_bytes = (int64_t *) &return_id;
   // XOR the first bytes of the object ID with the return index.
   // We add one so the first return ID is not the same as the task ID.
   *first_bytes = *first_bytes ^ (return_index + 1);
@@ -71,20 +73,20 @@ TaskSpecification::TaskSpecification(
   // Compute hashes.
   SHA256_CTX ctx;
   sha256_init(&ctx);
-  sha256_update(&ctx, (BYTE *)&driver_id, sizeof(driver_id));
-  sha256_update(&ctx, (BYTE *)&parent_task_id, sizeof(parent_task_id));
-  sha256_update(&ctx, (BYTE *)&parent_counter, sizeof(parent_counter));
+  sha256_update(&ctx, (BYTE *) &driver_id, sizeof(driver_id));
+  sha256_update(&ctx, (BYTE *) &parent_task_id, sizeof(parent_task_id));
+  sha256_update(&ctx, (BYTE *) &parent_counter, sizeof(parent_counter));
   // sha256_update(&ctx, (BYTE *) &actor_id, sizeof(actor_id));
   // sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
   // sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
   //              sizeof(is_actor_checkpoint_method));
-  sha256_update(&ctx, (BYTE *)&function_id, sizeof(function_id));
+  sha256_update(&ctx, (BYTE *) &function_id, sizeof(function_id));
 
   // Serialize and hash the arguments.
   std::vector<flatbuffers::Offset<Arg>> arguments;
   for (auto &argument : task_arguments) {
     arguments.push_back(argument.ToFlatbuffer(fbb));
-    sha256_update(&ctx, (BYTE *)argument.HashData(), argument.HashDataLength());
+    sha256_update(&ctx, (BYTE *) argument.HashData(), argument.HashDataLength());
   }
 
   // Compute the final task ID from the hash.
@@ -178,5 +180,7 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
   auto required_resources = map_from_flatbuf(*message->required_resources());
   return ResourceSet(required_resources);
 }
+
+} // namespace raylet
 
 }  // namespace ray

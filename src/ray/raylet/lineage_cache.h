@@ -9,6 +9,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 // TODO(swang): Define this class.
 class Lineage {};
 
@@ -77,6 +79,8 @@ class LineageCache {
   std::unordered_map<TaskID, LineageCacheTaskEntry, UniqueIDHasher> task_table_;
   std::unordered_map<ObjectID, LineageCacheObjectEntry, UniqueIDHasher> object_table_;
 };
+
+} // namespace raylet
 
 }  // namespace ray
 

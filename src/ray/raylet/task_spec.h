@@ -16,6 +16,8 @@ extern "C" {
 
 namespace ray {
 
+namespace raylet {
+
 /// \class TaskArgument
 ///
 /// A virtual class that represents an argument to a task.
@@ -103,9 +105,9 @@ class TaskSpecification {
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
   TaskSpecification(UniqueID driver_id, TaskID parent_task_id, int64_t parent_counter,
-                    // UniqueID actor_id,
-                    // UniqueID actor_handle_id,
-                    // int64_t actor_counter,
+      // UniqueID actor_id,
+      // UniqueID actor_handle_id,
+      // int64_t actor_counter,
                     FunctionID function_id, const std::vector<TaskArgument> &arguments,
                     int64_t num_returns,
                     const std::unordered_map<std::string, double> &required_resources);
@@ -146,6 +148,8 @@ class TaskSpecification {
   /// The task specification data.
   std::vector<uint8_t> spec_;
 };
+
+} // namespace raylet
 
 }  // namespace ray
 

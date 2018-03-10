@@ -4,6 +4,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map)
@@ -101,6 +103,8 @@ bool SchedulingResources::Release(const ResourceSet &resources) {
 // Take specified resources from SchedulingResources.
 bool SchedulingResources::Acquire(const ResourceSet &resources) {
   return this->resources_available_.SubtractResources(resources);
+}
+
 }
 
 }  // namespace ray

@@ -8,6 +8,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 /// \class Task
 ///
 /// A Task represents a Ray task and a specification of its execution (e.g.,
@@ -63,6 +65,8 @@ class Task {
   /// dependencies, etc.
   TaskSpecification task_spec_;
 };
+
+} // namespace raylet
 
 }  // namespace ray
 

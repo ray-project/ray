@@ -7,6 +7,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 Raylet::Raylet(boost::asio::io_service &io_service, const std::string &socket_name,
                const ResourceSet &resource_config,
                const ObjectManagerConfig &object_manager_config,
@@ -69,5 +71,7 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
 }
 
 ObjectManager &Raylet::GetObjectManager() { return object_manager_; }
+
+} // namespace raylet
 
 }  // namespace ray

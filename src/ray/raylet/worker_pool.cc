@@ -5,6 +5,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 /// A constructor that initializes a worker pool with num_workers workers.
 WorkerPool::WorkerPool(int num_workers) {
   for (int i = 0; i < num_workers; i++) {
@@ -74,5 +76,7 @@ bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
   RAY_CHECK(removeWorker(registered_workers_, worker));
   return removeWorker(pool_, worker);
 }
+
+} // namespace raylet
 
 }  // namespace ray

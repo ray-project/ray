@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
   // configure
   std::unordered_map<std::string, double> static_resource_conf;
   static_resource_conf = {{"CPU", 1}, {"GPU", 1}};
-  ray::ResourceSet resource_config(std::move(static_resource_conf));
+  ray::raylet::ResourceSet resource_config(std::move(static_resource_conf));
   ray::ObjectManagerConfig om_config;
 
   //  initialize mock gcs & object directory
@@ -33,10 +33,10 @@ int main(int argc, char *argv[]) {
   // Initialize the node manager.
   boost::asio::io_service io_service;
   om_config.store_socket_name = store1;
-  ray::Raylet server1(io_service, std::string(argv[1]), resource_config, om_config,
+  ray::raylet::Raylet server1(io_service, std::string(argv[1]), resource_config, om_config,
                       mock_gcs_client);
   om_config.store_socket_name = store2;
-  ray::Raylet server2(io_service, std::string(argv[2]), resource_config, om_config,
+  ray::raylet::Raylet server2(io_service, std::string(argv[2]), resource_config, om_config,
                       mock_gcs_client);
   io_service.run();
 }

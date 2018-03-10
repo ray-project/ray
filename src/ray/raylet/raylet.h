@@ -14,6 +14,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 class Task;
 class NodeManager;
 
@@ -70,6 +72,8 @@ class Raylet {
   /// A client connection to the GCS.
   std::shared_ptr<ray::GcsClient> gcs_client_;
 };
+
+} // namespace raylet
 
 }  // namespace ray
 

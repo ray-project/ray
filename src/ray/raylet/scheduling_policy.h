@@ -8,6 +8,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 /// \class SchedulingPolicy
 /// \brief Implements a scheduling policy for the node manager.
 class SchedulingPolicy {
@@ -27,7 +29,7 @@ class SchedulingPolicy {
   /// \return Scheduling decision, mapping tasks to node managers for placement.
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> Schedule(
       const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
-          &cluster_resources);
+      &cluster_resources);
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();
@@ -36,6 +38,8 @@ class SchedulingPolicy {
   /// An immutable reference to the scheduling task queues.
   const SchedulingQueue &scheduling_queue_;
 };
+
+} // namespace raylet
 
 }  // namespace ray
 

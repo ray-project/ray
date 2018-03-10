@@ -5,6 +5,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 NodeManager::NodeManager(const std::string &socket_name,
                          const ResourceSet &resource_config,
                          ObjectManager &object_manager)
@@ -32,64 +34,67 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (message_type) {
-  case MessageType_RegisterClientRequest: {
-    auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_data);
-    if (message->is_worker()) {
-      // Create a new worker from the registration request.
-      std::shared_ptr<Worker> worker(new Worker(message->worker_pid(), client));
-      // Register the new worker.
-      worker_pool_.RegisterWorker(std::move(worker));
-    }
+    case MessageType_RegisterClientRequest: {
+      auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_data);
+      if (message->is_worker()) {
+        // Create a new worker from the registration request.
+        std::shared_ptr<Worker> worker(new Worker(message->worker_pid(), client));
+        // Register the new worker.
+        worker_pool_.RegisterWorker(std::move(worker));
+      }
 
-    // Build the reply to the worker's registration request. TODO(swang): This
-    // is legacy code and should be removed once actor creation tasks are
-    // implemented.
-    flatbuffers::FlatBufferBuilder fbb;
-    auto reply = CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
-    fbb.Finish(reply);
-    // Reply to the worker's registration request, then listen for more
-    // messages.
-    client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(),
-                         fbb.GetBufferPointer());
-  } break;
-  case MessageType_GetTask: {
-    const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-    RAY_CHECK(worker);
-    // If the worker was assigned a task, mark it as finished.
-    if (!worker->GetAssignedTaskId().is_nil()) {
-      FinishTask(worker->GetAssignedTaskId());
+      // Build the reply to the worker's registration request. TODO(swang): This
+      // is legacy code and should be removed once actor creation tasks are
+      // implemented.
+      flatbuffers::FlatBufferBuilder fbb;
+      auto reply = CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
+      fbb.Finish(reply);
+      // Reply to the worker's registration request, then listen for more
+      // messages.
+      client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(),
+                           fbb.GetBufferPointer());
     }
-    // Return the worker to the idle pool.
-    worker_pool_.PushWorker(worker);
-    auto scheduled_tasks = local_queues_.GetScheduledTasks();
-    if (!scheduled_tasks.empty()) {
-      const TaskID &scheduled_task_id =
-          scheduled_tasks.front().GetTaskSpecification().TaskId();
-      auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});
-      AssignTask(scheduled_tasks.front());
+      break;
+    case MessageType_GetTask: {
+      const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+      RAY_CHECK(worker);
+      // If the worker was assigned a task, mark it as finished.
+      if (!worker->GetAssignedTaskId().is_nil()) {
+        FinishTask(worker->GetAssignedTaskId());
+      }
+      // Return the worker to the idle pool.
+      worker_pool_.PushWorker(worker);
+      auto scheduled_tasks = local_queues_.GetScheduledTasks();
+      if (!scheduled_tasks.empty()) {
+        const TaskID &scheduled_task_id =
+            scheduled_tasks.front().GetTaskSpecification().TaskId();
+        auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});
+        AssignTask(scheduled_tasks.front());
+      }
     }
-  } break;
-  case MessageType_DisconnectClient: {
-    // Remove the dead worker from the pool and stop listening for messages.
-    const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-    if (worker) {
-      worker_pool_.DisconnectWorker(worker);
+      break;
+    case MessageType_DisconnectClient: {
+      // Remove the dead worker from the pool and stop listening for messages.
+      const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+      if (worker) {
+        worker_pool_.DisconnectWorker(worker);
+      }
     }
-  } break;
-  case MessageType_SubmitTask: {
-    // Read the task submitted by the client.
-    auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_data);
-    TaskExecutionSpecification task_execution_spec(
-        from_flatbuf(*message->execution_dependencies()));
-    TaskSpecification task_spec(*message->task_spec());
-    Task task(task_execution_spec, task_spec);
-    // Submit the task to the local scheduler.
-    SubmitTask(task);
-    // Listen for more messages.
-    client->ProcessMessages();
-  } break;
-  default:
-    RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
+      break;
+    case MessageType_SubmitTask: {
+      // Read the task submitted by the client.
+      auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_data);
+      TaskExecutionSpecification task_execution_spec(
+          from_flatbuf(*message->execution_dependencies()));
+      TaskSpecification task_spec(*message->task_spec());
+      Task task(task_execution_spec, task_spec);
+      // Submit the task to the local scheduler.
+      SubmitTask(task);
+      // Listen for more messages.
+      client->ProcessMessages();
+    }
+      break;
+    default:RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
 }
 
@@ -170,5 +175,7 @@ void NodeManager::FinishTask(const TaskID &task_id) {
 void NodeManager::ResubmitTask(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
 }
+
+} // namespace raylet
 
 }  // namespace ray

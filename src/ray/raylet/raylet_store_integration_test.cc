@@ -7,6 +7,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 std::string test_executable;  // NOLINT
 
 class TestRaylet : public ::testing::Test {
@@ -19,7 +21,7 @@ class TestRaylet : public ::testing::Test {
     std::string test_dir = test_executable.substr(0, test_executable.find_last_of("/"));
     std::string plasma_dir = test_dir + "./../plasma";
     std::string plasma_command = plasma_dir + "/plasma_store -m 1000000000 -s " +
-                                 store_id + " 1> /dev/null 2> /dev/null &";
+        store_id + " 1> /dev/null 2> /dev/null &";
     RAY_LOG(INFO) << plasma_command;
     int ec = system(plasma_command.c_str());
     if (ec != 0) {
@@ -36,7 +38,7 @@ class TestRaylet : public ::testing::Test {
     // configure
     std::unordered_map<std::string, double> static_resource_config;
     static_resource_config = {{"num_cpus", 1}, {"num_gpus", 1}};
-    ray::ResourceSet resource_config(std::move(static_resource_config));
+    ray::raylet::ResourceSet resource_config(std::move(static_resource_config));
 
     // start mock gcs
     mock_gcs_client = std::shared_ptr<GcsClient>(new GcsClient());
@@ -113,8 +115,8 @@ class TestRaylet : public ::testing::Test {
   std::thread p;
   boost::asio::io_service io_service;
   std::shared_ptr<ray::GcsClient> mock_gcs_client;
-  std::unique_ptr<ray::Raylet> server1;
-  std::unique_ptr<ray::Raylet> server2;
+  std::unique_ptr<ray::raylet::Raylet> server1;
+  std::unique_ptr<ray::raylet::Raylet> server2;
 
   plasma::PlasmaClient client1;
   plasma::PlasmaClient client2;
@@ -175,7 +177,7 @@ TEST_F(TestRaylet, TestRayletCommands) {
   sleep(1);
   RAY_LOG(INFO) << v1.size() << " " << v2.size();
   ASSERT_TRUE(v1.size() == v2.size());
-  for (int i = -1; ++i < (int)v1.size();) {
+  for (int i = -1; ++i < (int) v1.size();) {
     ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
   }
   v1.clear();
@@ -191,7 +193,7 @@ TEST_F(TestRaylet, TestRayletCommands) {
   sleep(1);
   RAY_LOG(INFO) << v1.size() << " " << v2.size();
   ASSERT_TRUE(v1.size() == v2.size());
-  for (int i = -1; ++i < (int)v1.size();) {
+  for (int i = -1; ++i < (int) v1.size();) {
     ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
   }
   v1.clear();
@@ -207,7 +209,7 @@ TEST_F(TestRaylet, TestRayletCommands) {
   sleep(1);
   RAY_LOG(INFO) << v1.size() << " " << v2.size();
   ASSERT_TRUE(v1.size() == v2.size());
-  for (int i = -1; ++i < (int)v1.size();) {
+  for (int i = -1; ++i < (int) v1.size();) {
     ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
   }
   v1.clear();
@@ -223,7 +225,7 @@ TEST_F(TestRaylet, TestRayletCommands) {
   sleep(1);
   RAY_LOG(INFO) << v1.size() << " " << v2.size();
   ASSERT_TRUE(v1.size() == v2.size());
-  for (int i = -1; ++i < (int)v1.size();) {
+  for (int i = -1; ++i < (int) v1.size();) {
     ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
   }
   v1.clear();
@@ -239,7 +241,7 @@ TEST_F(TestRaylet, TestRayletCommands) {
   sleep(1);
   RAY_LOG(INFO) << v1.size() << " " << v2.size();
   ASSERT_TRUE(v1.size() == v2.size());
-  for (int i = -1; ++i < (int)v1.size();) {
+  for (int i = -1; ++i < (int) v1.size();) {
     ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
   }
   v1.clear();
@@ -257,7 +259,7 @@ TEST_F(TestRaylet, TestRayletCommands) {
   sleep(1);
   RAY_LOG(INFO) << v1.size() << " " << v2.size();
   ASSERT_TRUE(v1.size() == v2.size());
-  for (int i = -1; ++i < (int)v1.size();) {
+  for (int i = -1; ++i < (int) v1.size();) {
     ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
   }
   v1.clear();
@@ -266,10 +268,12 @@ TEST_F(TestRaylet, TestRayletCommands) {
   ASSERT_TRUE(true);
 }
 
+} // namespace raylet
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ray::test_executable = std::string(argv[0]);
+  ray::raylet::test_executable = std::string(argv[0]);
   return RUN_ALL_TESTS();
 }

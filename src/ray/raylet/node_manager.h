@@ -14,6 +14,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
  public:
   /// Create a node manager.
@@ -69,6 +71,8 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
 };
+
+} // namespace raylet
 
 }  // end namespace ray
 

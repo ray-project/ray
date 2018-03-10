@@ -2,6 +2,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 LineageCache::LineageCache() {}
 
 ray::Status LineageCache::AddTask(const Task &task) {
@@ -27,5 +29,7 @@ Status LineageCache::Flush() {
   throw std::runtime_error("method not implemented");
   return ray::Status::OK();
 }
+
+} // namespace raylet
 
 }  // namespace ray

@@ -7,6 +7,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 /// Resource availability status reports whether the resource requirement is
 /// (1) infeasible, (2) feasible but currently unavailable, or (3) available.
 typedef enum {
@@ -144,6 +146,8 @@ class SchedulingResources {
   ResourceSet resources_available_;
   /// gpu_map - replace with ResourceMap (for generality).
 };
+
+} // namespace raylet
 
 }  // namespace ray
 

@@ -7,6 +7,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 /// \class TaskExecutionSpecification
 ///
 /// The task execution specification encapsulates all mutable information about
@@ -71,5 +73,8 @@ class TaskExecutionSpecification {
   int spillback_count_;
 };
 
+} // namespace raylet
+
 }  // namespace ray
+
 #endif  // RAY_RAYLET_TASK_EXECUTION_SPECIFICATION_H

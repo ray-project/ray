@@ -2,6 +2,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 TaskExecutionSpecification::TaskExecutionSpecification(
     const std::vector<ObjectID> &&execution_dependencies)
     : execution_dependencies_(std::move(execution_dependencies)),
@@ -32,5 +34,7 @@ int64_t TaskExecutionSpecification::LastTimeStamp() const { return last_timestam
 void TaskExecutionSpecification::SetLastTimeStamp(int64_t new_timestamp) {
   last_timestamp_ = new_timestamp;
 }
+
+} // namespace raylet
 
 }  // namespace ray

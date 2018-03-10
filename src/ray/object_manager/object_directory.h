@@ -8,6 +8,7 @@
 
 #include "ray/id.h"
 #include "ray/raylet/mock_gcs_client.h"
+#include "ray/gcs/client.h"
 #include "ray/status.h"
 
 namespace ray {

@@ -9,6 +9,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 class Worker;
 
 /// \class WorkerPool
@@ -80,6 +82,9 @@ class WorkerPool {
   // TODO(swang): Make this a map to make GetRegisteredWorker faster.
   std::list<std::shared_ptr<Worker>> registered_workers_;
 };
+
+} // namespace raylet
+
 }  // namespace ray
 
 #endif  // RAY_RAYLET_WORKER_POOL_H

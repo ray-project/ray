@@ -6,10 +6,13 @@
 
 namespace ray {
 
+namespace raylet {
+
 class MockClientManager : public ClientManager<boost::asio::local::stream_protocol> {
  public:
   MOCK_METHOD3(ProcessClientMessage,
-               void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *));
+               void(std::shared_ptr<LocalClientConnection>, int64_t,
+                   const uint8_t *));
   MOCK_METHOD1(ProcessNewClient, void(std::shared_ptr<LocalClientConnection>));
 };
 
@@ -65,6 +68,8 @@ TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   ASSERT_NE(popped_worker, nullptr);
   ASSERT_TRUE(workers.count(popped_worker) > 0);
 }
+
+} // namespace raylet
 
 }  // namespace ray
 
