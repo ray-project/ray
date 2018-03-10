@@ -34,7 +34,7 @@ class Raylet {
   Raylet(boost::asio::io_service &io_service, const std::string &socket_name,
          const ResourceSet &resource_config,
          const ObjectManagerConfig &object_manager_config,
-         std::shared_ptr<ray::GcsClient> gcs_client);
+         std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
   /// Destroy the NodeServer.
   ~Raylet();
@@ -70,7 +70,7 @@ class Raylet {
   /// Manages client requests for task submission and execution.
   NodeManager node_manager_;
   /// A client connection to the GCS.
-  std::shared_ptr<ray::GcsClient> gcs_client_;
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
 };
 
 } // namespace raylet

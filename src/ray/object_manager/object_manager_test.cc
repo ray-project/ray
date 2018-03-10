@@ -30,8 +30,8 @@ class TestObjectManager : public ::testing::Test {
     ASSERT_TRUE(!s);
 
     // Start mock global control store.
-    mock_gcs_client_ = std::shared_ptr<GcsClient>(new GcsClient());
-    // mock_gcs_client_->Register();
+    gcs_client_ = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    // gcs_client_->Register();
 
     // Start node server.
 
@@ -39,14 +39,14 @@ class TestObjectManager : public ::testing::Test {
     ObjectManagerConfig config;
     config.store_socket_name = "/tmp/store";
     object_manager_1_ = std::unique_ptr<ObjectManager>(
-        new ObjectManager(io_service_, config, mock_gcs_client_));
+        new ObjectManager(io_service_, config, gcs_client_));
 
     // Start object manager 2.
     //    ObjectManagerConfig config2;
     //    config2.store_socket_name = "/tmp/store";
     //    std::shared_ptr<ObjectDirectory> od2 = std::shared_ptr<ObjectDirectory>(new
     //    ObjectDirectory());
-    //    od2->InitGcs(mock_gcs_client_);
+    //    od2->InitGcs(gcs_client_);
     //    object_manager_2_ = std::unique_ptr<ObjectManager>(new ObjectManager(io_service,
     //    config2, od2));
 
@@ -82,7 +82,7 @@ class TestObjectManager : public ::testing::Test {
   plasma::PlasmaClient client2_;
   boost::asio::io_service io_service_;
 
-  std::shared_ptr<GcsClient> mock_gcs_client_;
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   std::unique_ptr<ObjectManager> object_manager_1_;
   std::unique_ptr<ObjectManager> object_manager_2_;
 };

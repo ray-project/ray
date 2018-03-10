@@ -33,7 +33,6 @@ struct ObjectManagerConfig {
   std::string store_socket_name;
 };
 
-// TODO(hme): Comment everything doxygen-style.
 // TODO(hme): Implement connection cleanup.
 // TODO(hme): Add success/failure callbacks for push and pull.
 // TODO(hme): Use boost thread pool.
@@ -46,7 +45,7 @@ class ObjectManager {
   /// \param config ObjectManager configuration.
   /// \param gcs_client A client connection to the Ray GCS.
   explicit ObjectManager(boost::asio::io_service &io_service, ObjectManagerConfig config,
-                         std::shared_ptr<ray::GcsClient> gcs_client);
+                         std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
   /// Takes user-defined ObjectDirectoryInterface implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of

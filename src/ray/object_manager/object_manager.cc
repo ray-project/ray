@@ -4,7 +4,7 @@ namespace ray {
 
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              ObjectManagerConfig config,
-                             std::shared_ptr<ray::GcsClient> gcs_client)
+                             std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : object_directory_(new ObjectDirectory(gcs_client)), work_(io_service_) {
   config_ = config;
   store_client_ = std::unique_ptr<ObjectStoreClient>(

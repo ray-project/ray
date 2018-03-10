@@ -44,19 +44,18 @@ class TestRaylet : public ::testing::Test {
 
     // start mock gcs
     gcs_client = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
+    // start first server
+    ray::ObjectManagerConfig om_config_1;
+    om_config_1.store_socket_name = store_sock_1;
+    server1.reset(new Raylet(io_service, std::string("hello1"), resource_config,
+                             om_config_1, gcs_client));
 
-//    // start first server
-//    ray::ObjectManagerConfig om_config_1;
-//    om_config_1.store_socket_name = store_sock_1;
-//    server1.reset(new Raylet(io_service, std::string("hello1"), resource_config,
-//                             om_config_1, mock_gcs_client));
-//
-//    // start second server
-//    ray::ObjectManagerConfig om_config_2;
-//    om_config_2.store_socket_name = store_sock_2;
-//    server2.reset(new Raylet(io_service, std::string("hello2"), resource_config,
-//                             om_config_2, mock_gcs_client));
-//
+    // start second server
+    ray::ObjectManagerConfig om_config_2;
+    om_config_2.store_socket_name = store_sock_2;
+    server2.reset(new Raylet(io_service, std::string("hello2"), resource_config,
+                             om_config_2, gcs_client));
+
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
     ARROW_CHECK_OK(client2.Connect(store_sock_2, "", PLASMA_DEFAULT_RELEASE_DELAY));

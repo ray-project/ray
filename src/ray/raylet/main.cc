@@ -26,13 +26,13 @@ int main(int argc, char *argv[]) {
   om_config.store_socket_name = "/tmp/store";
 
   //  initialize mock gcs & object directory
-  std::shared_ptr<ray::GcsClient> mock_gcs_client =
-      std::shared_ptr<ray::GcsClient>(new ray::GcsClient());
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client =
+      std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
 
   // Initialize the node manager.
   boost::asio::io_service io_service;
   ray::raylet::Raylet server(io_service, std::string(argv[1]), resource_config, om_config,
-                     mock_gcs_client);
+                     gcs_client);
   io_service.run();
 }
 #endif

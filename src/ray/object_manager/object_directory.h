@@ -6,9 +6,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/id.h"
-#include "ray/raylet/mock_gcs_client.h"
 #include "ray/gcs/client.h"
+// #include "ray/raylet/mock_gcs_client.h"
+#include "ray/id.h"
 #include "ray/status.h"
 
 namespace ray {
@@ -106,7 +106,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).
-  ObjectDirectory(std::shared_ptr<GcsClient> gcs_client);
+  ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
  private:
   /// Callbacks associated with a call to GetLocations.
@@ -120,7 +120,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
 
   /// Reference to the gcs client.
-  std::shared_ptr<GcsClient> gcs_client_;
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
 
   /// GetLocations registers a request for locations.
   /// This function actually carries out that request.
