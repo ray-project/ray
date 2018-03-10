@@ -373,6 +373,8 @@ class DataFrame(object):
         else:
             new_index = self.index
 
+        # TODO Remove once the actor joining is merged:
+        # https://github.com/ray-project/ray/pull/1536
         import time
         time.sleep(2)
         return DataFrameGroupBy([shuffler.apply_func.remote(
