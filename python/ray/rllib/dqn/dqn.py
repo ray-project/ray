@@ -52,6 +52,8 @@ DEFAULT_CONFIG = dict(
     exploration_final_eps=0.02,
     # Update the target network every `target_network_update_freq` steps.
     target_network_update_freq=500,
+    # Whether to start with random actions instead of noops.
+    random_starts=True,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -65,6 +67,8 @@ DEFAULT_CONFIG = dict(
     prioritized_replay_beta=0.4,
     # Epsilon to add to the TD errors when updating priorities.
     prioritized_replay_eps=1e-6,
+    # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
+    clip_rewards=True,
 
     # === Optimization ===
     # Learning rate for adam optimizer

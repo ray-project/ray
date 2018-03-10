@@ -7,7 +7,7 @@ cv2.ocl.setUseOpenCL(False)
 
 
 class NoopResetEnv(gym.Wrapper):
-    def __init__(self, env, noop_max=30):
+    def __init__(self, env, noop_max=30, random_starts=False):
         """Sample initial states by taking random number of no-ops on reset.
         No-op is assumed to be action 0.
         """
@@ -15,6 +15,7 @@ class NoopResetEnv(gym.Wrapper):
         self.noop_max = noop_max
         self.override_num_noops = None
         self.noop_action = 0
+        self.random_starts = random_starts
         assert env.unwrapped.get_action_meanings()[0] == 'NOOP'
 
     def reset(self, **kwargs):
@@ -28,7 +29,12 @@ class NoopResetEnv(gym.Wrapper):
         assert noops > 0
         obs = None
         for _ in range(noops):
-            obs, _, done, _ = self.env.step(self.noop_action)
+            if self.random_starts:
+                print("rand start")
+                action = np.random.randint(self.env.action_space.n)
+            else:
+                action = self.noop_action
+            obs, _, done, _ = self.env.step(action)
             if done:
                 obs = self.env.reset(**kwargs)
         return obs
@@ -187,18 +193,18 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
-def wrap_deepmind(env):
+def wrap_deepmind(env, random_starts):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
     """
-    env = NoopResetEnv(env, noop_max=30)
+    env = NoopResetEnv(env, noop_max=30, random_starts=random_starts)
     if 'NoFrameskip' in env.spec.id:
         env = MaxAndSkipEnv(env, skip=4)
     env = EpisodicLifeEnv(env)
     if 'FIRE' in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     env = WarpFrame(env)
-    env = ClipRewardEnv(env)
+    # env = ClipRewardEnv(env)  # reward clipping is handled by DQN replay
     env = FrameStack(env, 4)
     return env
