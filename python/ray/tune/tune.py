@@ -24,6 +24,44 @@ _SCHEDULERS = {
 }
 
 
+class Experiment():
+    def __init__(self, name, run, stop, config, resources, repeat, local_dir,
+                 upload_dir, checkpoint_freq, max_failures):
+        """Initializes object to track experiment specs.
+
+        Args:
+            name (str): Name of experiment.
+            run (str): The algorithm or model to train. This may refer to the
+                name of a built-on algorithm (e.g. RLLib’s DQN or PPO), or a
+                user-defined trainable function or class
+                registered in the tune registry.
+            stop (dict): The stopping criteria, specified in JSON. The keys
+                may be any field in TrainingResult, e.g. ‘{“time_total_s”: 600, “timesteps_total”: 100000}’ to stop after 600 seconds or 100k timesteps, whichever is reached first.
+            config (dict): Algorithm-specific configuration (e.g. env, hyperparams), specified in JSON.
+            resources (dict): Machine resources to allocate per trial, e.g. ‘{“cpu”: 64, “gpu”: 8}’. Note that GPUs will not be assigned unless you specify them here.
+            repeat (int): Number of times to repeat each trial.
+            local_dir (str): Local dir to save training results to. Defaults to `~/ray_results`.
+            upload_dir (str): Optional URI to sync training results to (e.g. s3://bucket).
+            checkpoint_freq (int): How many training iterations between checkpoints. A value of 0 (default) disables checkpointing.
+            max_failures (int): Try to recover a trial from its last checkpoint at least this many times. Only applies if checkpointing is enabled.
+        """
+        spec = {
+            "run": run,
+            "stop": stop,
+            "config": config,
+            "resources": resources,
+            "repeat": repeat,
+            "local_dir": local_dir,
+            "upload_dir": upload_dir,
+            "checkpoint_freq": checkpoint_freq,
+            "max_failures": max_failures
+        }
+        self._trials = generate_trials(spec, name)
+
+    def trials():
+        for trial in self._trials:
+            yield trial
+
 def _make_scheduler(args):
     if args.scheduler in _SCHEDULERS:
         return _SCHEDULERS[args.scheduler](**args.scheduler_config)
@@ -45,10 +83,22 @@ def run_experiments(experiments, scheduler=None, with_server=False,
     runner = TrialRunner(
         scheduler, launch_web_server=with_server, server_port=server_port)
 
-    for name, spec in experiments.items():
-        for trial in generate_trials(spec, name):
+    if type(experiments) is dict:
+        for name, spec in experiments.items():
+            for trial in generate_trials(spec, name):
+                trial.set_verbose(verbose)
+                runner.add_trial(trial)
+    elif (type(experiments) is list and
+          all(isinstance(exp, Experiment) for exp in experiments)):
+        for experiment in experiments:
+            for trial in experiments.trials():
+                trial.set_verbose(verbose)
+                runner.add_trial(trial)
+    elif isinstance(experiments, Experiment):
+        for trial in experiments.trials():
             trial.set_verbose(verbose)
             runner.add_trial(trial)
+
     print(runner.debug_string(max_debug=99999))
 
     last_debug = 0
@@ -67,3 +117,6 @@ def run_experiments(experiments, scheduler=None, with_server=False,
 
     wait_for_log_sync()
     return runner.get_trials()
+
+if __name__ == '__main__':
+    run_experiments()
