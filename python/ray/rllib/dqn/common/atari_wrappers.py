@@ -30,7 +30,6 @@ class NoopResetEnv(gym.Wrapper):
         obs = None
         for _ in range(noops):
             if self.random_starts:
-                print("rand start")
                 action = np.random.randint(self.env.action_space.n)
             else:
                 action = self.noop_action
