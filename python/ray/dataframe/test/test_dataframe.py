@@ -890,15 +890,7 @@ def test_cumsum():
 
 @pytest.fixture
 def test_describe(ray_df, pandas_df):
-<<<<<<< HEAD
-<<<<<<< HEAD
     assert(ray_df.describe().equals(pandas_df.describe()))
-=======
-    assert(ray_df_equals_pandas(ray_df.describe(), pandas_df.describe()))
->>>>>>> added describe methods
-=======
-    assert(ray_df.describe().equals(pandas_df.describe()))
->>>>>>> hacky solution for describe, mean, median, quantile by transposing df
 
 
 def test_diff():
@@ -2665,12 +2657,11 @@ def test_transform():
         ray_df.transform(None)
 
 
-@pytest.fixture
 def test_truediv():
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
-        ray_df.rtruediv(None)
+        ray_df.truediv(None)
 
 
 def test_truncate():

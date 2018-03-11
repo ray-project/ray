@@ -5,7 +5,7 @@ from __future__ import print_function
 import pandas as pd
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
-# from pandas.core.index import _ensure_index_from_sequences
+from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas.compat import lzip
@@ -1602,6 +1602,7 @@ class DataFrame(object):
             r_other = [items[i] for i in range(1, len(items))]
             _mean = r1.append(r_other)
 
+
             return _mean
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
@@ -1849,9 +1850,10 @@ class DataFrame(object):
 
             return _quantile
         else:
-            quantile_of_partitions = self._map_partitions(lambda df: df.quantile(q,
-                axis=1, numeric_only=numeric_only
-            ))
+            quantile_of_partitions = self._map_partitions(
+                    lambda df: df.quantile(q,
+                                           axis=1, numeric_only=numeric_only
+                                           ))
 
             return ray.get(self._map_partitions(lambda df: df.quantile(
                 axis=axis, q=q, numeric_only=numeric_only
