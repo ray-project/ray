@@ -1167,7 +1167,7 @@ void give_task_to_local_scheduler_retry(UniqueID id,
                   << " that was running actor " << actor_id << " died.";
     RAY_CHECK(state->actor_mapping.count(actor_id) == 1);
     // Update the actor mapping.
-    state->actor_mapping[actor_id].local_scheduler_id = DBClientID::nil();
+    state->actor_mapping.erase(actor_id);
     // Process the actor task submission again. This will cache the task
     // locally until a new actor creation notification is broadcast. We will
     // attempt to reissue the actor creation tasks for all cached actor tasks
