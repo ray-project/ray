@@ -28,8 +28,7 @@ void ClientTable::RegisterClientRemovedCallback(const Callback &callback) {
   }
 }
 
-void ClientTable::HandleNotification(AsyncGcsClient *client,
-                                     const ClientID &channel_id,
+void ClientTable::HandleNotification(AsyncGcsClient *client, const ClientID &channel_id,
                                      std::shared_ptr<ClientTableDataT> data) {
   ClientID client_id = ClientID::from_binary(data->client_id);
   // It's possible to get duplicate notifications from the client table, so
@@ -72,20 +71,14 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   }
 }
 
-void ClientTable::HandleConnected(AsyncGcsClient *client,
-                                  const ClientID &client_id,
+void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientID &client_id,
                                   std::shared_ptr<ClientTableDataT> data) {
-  RAY_CHECK(client_id == client_id_) << client_id.hex() << " "
-                                     << client_id_.hex();
+  RAY_CHECK(client_id == client_id_) << client_id.hex() << " " << client_id_.hex();
 }
 
-const ClientID &ClientTable::GetLocalClientId() {
-  return client_id_;
-}
+const ClientID &ClientTable::GetLocalClientId() { return client_id_; }
 
-const ClientTableDataT &ClientTable::GetLocalClient() {
-  return local_client_;
-}
+const ClientTableDataT &ClientTable::GetLocalClient() { return local_client_; }
 
 Status ClientTable::Connect() {
   RAY_CHECK(!disconnected_) << "Tried to reconnect a disconnected client.";
@@ -93,8 +86,7 @@ Status ClientTable::Connect() {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   data->is_insertion = true;
   // Callback for a notification from the client table.
-  auto notification_callback = [this](AsyncGcsClient *client,
-                                      const ClientID &channel_id,
+  auto notification_callback = [this](AsyncGcsClient *client, const ClientID &channel_id,
                                       std::shared_ptr<ClientTableDataT> data) {
     return HandleNotification(client, channel_id, data);
   };

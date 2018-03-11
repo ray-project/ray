@@ -30,8 +30,8 @@ template <typename ID, typename Data>
 class Table {
  public:
   using DataT = typename Data::NativeTableType;
-  using Callback = std::function<
-      void(AsyncGcsClient *client, const ID &id, std::shared_ptr<DataT> data)>;
+  using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                      std::shared_ptr<DataT> data)>;
 
   struct CallbackData {
     ID id;
@@ -45,9 +45,7 @@ class Table {
   };
 
   Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : context_(context),
-        client_(client),
-        pubsub_channel_(TablePubsub_NO_PUBLISH){};
+      : context_(context), client_(client), pubsub_channel_(TablePubsub_NO_PUBLISH){};
 
   /// Add an entry to the table.
   ///
@@ -57,9 +55,7 @@ class Table {
   /// \param done Callback that is called once the data has been written to the
   ///        GCS.
   /// \return Status
-  Status Add(const JobID &job_id,
-             const ID &id,
-             std::shared_ptr<DataT> data,
+  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
              const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({id, data, done, nullptr, this, client_}));
@@ -72,9 +68,8 @@ class Table {
     flatbuffers::FlatBufferBuilder fbb;
     fbb.ForceDefaults(true);
     fbb.Finish(Data::Pack(fbb, data.get()));
-    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id,
-                                         fbb.GetBufferPointer(), fbb.GetSize(),
-                                         pubsub_channel_, callback_index));
+    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(),
+                                         fbb.GetSize(), pubsub_channel_, callback_index));
     return Status::OK();
   }
 
@@ -97,9 +92,8 @@ class Table {
           }
         });
     std::vector<uint8_t> nil;
-    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(),
-                                         nil.size(), pubsub_channel_,
-                                         callback_index));
+    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
+                                         pubsub_channel_, callback_index));
     return Status::OK();
   }
 
@@ -113,10 +107,8 @@ class Table {
   /// \param done Callback that is called when subscription is complete and we
   ///        are ready to receive messages..
   /// \return Status
-  Status Subscribe(const JobID &job_id,
-                   const ClientID &client_id,
-                   const Callback &subscribe,
-                   const Callback &done) {
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const Callback &subscribe, const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({client_id, nullptr, subscribe, done, this, client_}));
     int64_t callback_index =
@@ -143,8 +135,7 @@ class Table {
   Status Remove(const JobID &job_id, const ID &id, const Callback &done);
 
  protected:
-  std::unordered_map<ID, std::unique_ptr<CallbackData>, UniqueIDHasher>
-      callback_data_;
+  std::unordered_map<ID, std::unique_ptr<CallbackData>, UniqueIDHasher> callback_data_;
   std::shared_ptr<RedisContext> context_;
   AsyncGcsClient *client_;
   TablePubsub pubsub_channel_;
@@ -152,8 +143,7 @@ class Table {
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
  public:
-  ObjectTable(const std::shared_ptr<RedisContext> &context,
-              AsyncGcsClient *client)
+  ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
   };
@@ -169,10 +159,8 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// \param done_callback Callback to be called when subscription is installed.
   ///        This is only used for the tests.
   /// \return Status
-  Status SubscribeToNotifications(const JobID &job_id,
-                                  bool subscribe_all,
-                                  const Callback &object_available,
-                                  const Callback &done);
+  Status SubscribeToNotifications(const JobID &job_id, bool subscribe_all,
+                                  const Callback &object_available, const Callback &done);
 
   /// Request notifications about the availability of some objects from the
   /// object
@@ -195,16 +183,14 @@ using ActorTable = Table<ActorID, ActorTableData>;
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
-  TaskTable(const std::shared_ptr<RedisContext> &context,
-            AsyncGcsClient *client)
+  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_TASK;
   };
 
-  using TestAndUpdateCallback = std::function<void(AsyncGcsClient *client,
-                                                   const TaskID &id,
-                                                   const TaskTableDataT &task,
-                                                   bool updated)>;
+  using TestAndUpdateCallback =
+      std::function<void(AsyncGcsClient *client, const TaskID &id,
+                         const TaskTableDataT &task, bool updated)>;
   using SubscribeToTaskCallback =
       std::function<void(std::shared_ptr<TaskTableDataT> task)>;
   /// Update a task's scheduling information in the task table, if the current
@@ -222,8 +208,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   ///        with, if the current state matches test_state_bitmask.
   /// \param callback Function to be called when database returns result.
   /// \return Status
-  Status TestAndUpdate(const JobID &job_id,
-                       const TaskID &id,
+  Status TestAndUpdate(const JobID &job_id, const TaskID &id,
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
     int64_t callback_index = RedisCallbackManager::instance().add(
@@ -260,10 +245,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   ///        TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
   /// \param callback Function to be called when database returns result.
   /// \return Status
-  Status SubscribeToTask(const JobID &job_id,
-                         const ClientID &local_scheduler_id,
-                         int state_filter,
-                         const SubscribeToTaskCallback &callback,
+  Status SubscribeToTask(const JobID &job_id, const ClientID &local_scheduler_id,
+                         int state_filter, const SubscribeToTaskCallback &callback,
                          const Callback &done);
 };
 
@@ -275,10 +258,8 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 
 Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
-Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
-                              const TaskID &task_id,
-                              const ClientID &local_scheduler_id,
-                              int test_state_bitmask,
+Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
+                              const ClientID &local_scheduler_id, int test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
@@ -341,12 +322,10 @@ class ClientTable : private Table<ClientID, ClientTableData> {
 
  private:
   /// Handle a client table notification.
-  void HandleNotification(AsyncGcsClient *client,
-                          const ClientID &channel_id,
+  void HandleNotification(AsyncGcsClient *client, const ClientID &channel_id,
                           std::shared_ptr<ClientTableDataT>);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(AsyncGcsClient *client,
-                       const ClientID &client_id,
+  void HandleConnected(AsyncGcsClient *client, const ClientID &client_id,
                        std::shared_ptr<ClientTableDataT>);
 
   /// Whether this client has called Disconnect().

@@ -10,8 +10,7 @@ AsyncGcsClient::AsyncGcsClient() {}
 
 AsyncGcsClient::~AsyncGcsClient() {}
 
-Status AsyncGcsClient::Connect(const std::string &address,
-                               int port,
+Status AsyncGcsClient::Connect(const std::string &address, int port,
                                const ClientTableDataT &client_info) {
   context_.reset(new RedisContext());
   RAY_RETURN_NOT_OK(context_->Connect(address, port));
@@ -32,32 +31,21 @@ Status Attach(plasma::EventLoop &event_loop) {
 }
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
-  asio_async_client_.reset(
-      new RedisAsioClient(io_service, context_->async_context()));
+  asio_async_client_.reset(new RedisAsioClient(io_service, context_->async_context()));
   asio_subscribe_client_.reset(
       new RedisAsioClient(io_service, context_->subscribe_context()));
   return Status::OK();
 }
 
-ObjectTable &AsyncGcsClient::object_table() {
-  return *object_table_;
-}
+ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
 
-TaskTable &AsyncGcsClient::task_table() {
-  return *task_table_;
-}
+TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
 
-ClientTable &AsyncGcsClient::client_table() {
-  return *client_table_;
-}
+ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 
-FunctionTable &AsyncGcsClient::function_table() {
-  return *function_table_;
-}
+FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
 
-ClassTable &AsyncGcsClient::class_table() {
-  return *class_table_;
-}
+ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 
 }  // namespace gcs
 

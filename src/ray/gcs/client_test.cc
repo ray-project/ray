@@ -2,9 +2,9 @@
 
 // TODO(pcm): get rid of this and replace with the type safe plasma event loop
 extern "C" {
+#include "hiredis/adapters/ae.h"
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
-#include "hiredis/adapters/ae.h"
 }
 
 #include "ray/gcs/client.h"
@@ -86,14 +86,12 @@ class TestGcsWithAsio : public TestGcs {
   boost::asio::io_service::work work_;
 };
 
-void ObjectAdded(gcs::AsyncGcsClient *client,
-                 const UniqueID &id,
+void ObjectAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
                  std::shared_ptr<ObjectTableDataT> data) {
   ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
 }
 
-void Lookup(gcs::AsyncGcsClient *client,
-            const UniqueID &id,
+void Lookup(gcs::AsyncGcsClient *client, const UniqueID &id,
             std::shared_ptr<ObjectTableDataT> data) {
   // Check that the object entry was added.
   ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
@@ -122,31 +120,26 @@ TEST_F(TestGcsWithAsio, TestObjectTable) {
   TestObjectTable(job_id_, client_);
 }
 
-void TaskAdded(gcs::AsyncGcsClient *client,
-               const TaskID &id,
+void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
                std::shared_ptr<TaskTableDataT> data) {
   ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);
 }
 
-void TaskLookup(gcs::AsyncGcsClient *client,
-                const TaskID &id,
+void TaskLookup(gcs::AsyncGcsClient *client, const TaskID &id,
                 std::shared_ptr<TaskTableDataT> data) {
   ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);
 }
 
-void TaskLookupAfterUpdate(gcs::AsyncGcsClient *client,
-                           const TaskID &id,
+void TaskLookupAfterUpdate(gcs::AsyncGcsClient *client, const TaskID &id,
                            std::shared_ptr<TaskTableDataT> data) {
   ASSERT_EQ(data->scheduling_state, SchedulingState_LOST);
   test->Stop();
 }
 
-void TaskUpdateCallback(gcs::AsyncGcsClient *client,
-                        const TaskID &task_id,
-                        const TaskTableDataT &task,
-                        bool updated) {
-  RAY_CHECK_OK(client->task_table().Lookup(DriverID::nil(), task_id,
-                                           &TaskLookupAfterUpdate));
+void TaskUpdateCallback(gcs::AsyncGcsClient *client, const TaskID &task_id,
+                        const TaskTableDataT &task, bool updated) {
+  RAY_CHECK_OK(
+      client->task_table().Lookup(DriverID::nil(), task_id, &TaskLookupAfterUpdate));
 }
 
 void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -214,10 +207,8 @@ TEST_F(TestGcsWithAsio, TestSubscribeAll) {
   TestSubscribeAll(job_id_, client_);
 }
 
-void ClientTableNotification(gcs::AsyncGcsClient *client,
-                             const UniqueID &id,
-                             std::shared_ptr<ClientTableDataT> data,
-                             bool is_insertion) {
+void ClientTableNotification(gcs::AsyncGcsClient *client, const UniqueID &id,
+                             std::shared_ptr<ClientTableDataT> data, bool is_insertion) {
   ClientID added_id = client->client_table().GetLocalClientId();
   ASSERT_EQ(ClientID::from_binary(data->client_id), added_id);
   ASSERT_EQ(data->is_insertion, is_insertion);
