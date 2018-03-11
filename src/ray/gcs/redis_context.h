@@ -21,7 +21,7 @@ namespace gcs {
 
 class RedisCallbackManager {
  public:
-  using RedisCallback = std::function<void(const std::string &)>;
+  using RedisCallback = std::function<void(const std::string &, bool is_nil)>;
 
   static RedisCallbackManager &instance() {
     static RedisCallbackManager instance;

@@ -46,10 +46,12 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
     bool is_deleted = !data->is_insertion;
     is_new = (was_inserted && is_deleted);
     // Once a client with a given ID has been removed, it should never be added
-    // again. If the entry was in the cache and the client was deleted, check
+    // again. If a client is cached as deleted, check
     // that this new notification is not an insertion.
-    RAY_CHECK(!entry->second.is_insertion && data->is_insertion)
-        << "Notification for addition of a client that was already removed";
+    if(!entry->second.is_insertion){
+      RAY_CHECK(!data->is_insertion)
+      << "Notification for addition of a client that was already removed";
+    }
   }
 
   // Add the notification to our cache. Notifications are idempotent.
@@ -124,7 +126,7 @@ Status ClientTable::Disconnect() {
 const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
   RAY_CHECK(!client_id.is_nil());
   auto entry = client_cache_.find(client_id);
-  if (entry != client_cache_.end()) {
+  if (entry != client_cache_.end() && entry->second.is_insertion) {
     return entry->second;
   } else {
     // If the requested client was not found, return a reference to the nil

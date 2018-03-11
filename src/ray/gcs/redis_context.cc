@@ -26,11 +26,14 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
   redisReply *reply = reinterpret_cast<redisReply *>(r);
   std::string data = "";
   if (reply->type == REDIS_REPLY_NIL) {
+    RedisCallbackManager::instance().get(callback_index)(data, true);
   } else if (reply->type == REDIS_REPLY_STRING) {
     data = std::string(reply->str, reply->len);
+    RedisCallbackManager::instance().get(callback_index)(data, false);
   } else if (reply->type == REDIS_REPLY_ARRAY) {
     reply = reply->element[reply->elements - 1];
     data = std::string(reply->str, reply->len);
+    RedisCallbackManager::instance().get(callback_index)(data, false);
   } else if (reply->type == REDIS_REPLY_STATUS) {
   } else if (reply->type == REDIS_REPLY_ERROR) {
     RAY_LOG(ERROR) << "Redis error " << reply->str;
@@ -38,7 +41,6 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
     RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type
                    << " and with string " << reply->str;
   }
-  RedisCallbackManager::instance().get(callback_index)(data);
   // Delete the callback.
   RedisCallbackManager::instance().remove(callback_index);
 }
@@ -67,7 +69,7 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
 
     // NOTE(swang): We do not delete the callback after calling it since there
     // may be more subscription messages.
-    RedisCallbackManager::instance().get(callback_index)(data);
+    RedisCallbackManager::instance().get(callback_index)(data, false);
   } else if (reply->type == REDIS_REPLY_ERROR) {
     RAY_LOG(ERROR) << "Redis error " << reply->str;
   } else {
@@ -77,13 +79,15 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
 }
 
 int64_t RedisCallbackManager::add(const RedisCallback &function) {
+  num_callbacks += 1;
   callbacks_.emplace(num_callbacks, std::unique_ptr<RedisCallback>(
                                         new RedisCallback(function)));
-  return num_callbacks++;
+  return num_callbacks;
 }
 
 RedisCallbackManager::RedisCallback &RedisCallbackManager::get(
     int64_t callback_index) {
+  RAY_CHECK(callbacks_.find(callback_index) != callbacks_.end());
   return *callbacks_[callback_index];
 }
 
