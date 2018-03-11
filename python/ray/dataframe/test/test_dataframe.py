@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pandas.util.testing as tm
 import ray.dataframe as rdf
+import os
 
 from pandas.tests.frame.common import TestData
 
@@ -992,6 +993,23 @@ def test_eq():
 
     with pytest.raises(NotImplementedError):
         ray_df.eq(None)
+
+@pytest.fixture
+def test_files_eq(path1, path2):
+    with open(path1, 'rb') as file1, open(path2, 'rb') as file2:
+        file1_content = file1.read()
+        file2_content = file2.read()
+
+        if file1_content == file2_content:
+            return True
+        else:
+            return False
+
+
+@pytest.fixture
+def teardown_test_file(test_path):
+    if os.path.exists(test_path):
+        os.remove(test_path)
 
 
 def test_equals():
@@ -2231,9 +2249,19 @@ def test_to_clipboard():
 
 def test_to_csv():
     ray_df = create_test_dataframe()
+    pandas_df = rdf.to_pandas(ray_df)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.to_csv()
+    TEST_CSV_DF_FILENAME = "test_df.csv"
+    TEST_CSV_PD_FILENAME = "test_pd.csv"
+
+    ray_df.to_csv(TEST_CSV_DF_FILENAME)
+    pandas_df.to_csv(TEST_CSV_PD_FILENAME)
+
+    assert(test_files_eq(TEST_CSV_DF_FILENAME,
+                TEST_CSV_PD_FILENAME))
+
+    teardown_test_file(TEST_CSV_PD_FILENAME)
+    teardown_test_file(TEST_CSV_DF_FILENAME)
 
 
 def test_to_dense():
