@@ -276,10 +276,7 @@ def read_json(path_or_buf=None,
                 encoding=None,
                 lines=False,
                 chunksize=None,
-                compression='infer',
-                npartitions=None,
-                raychunksize=None,
-                sort=True):
+                compression='infer'):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
@@ -288,8 +285,7 @@ def read_json(path_or_buf=None,
                   convert_axes, convert_dates, keep_default_dates,
                   numpy, precise_float, date_unit, encoding,
                   lines, chunksize, compression)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    raychunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -308,10 +304,7 @@ def read_html(io,
                 decimal='.',
                 converters=None,
                 na_values=None,
-                keep_default_na=True,
-                npartitions=None,
-                chunksize=None,
-                sort=True):
+                keep_default_na=True):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
@@ -319,23 +312,18 @@ def read_html(io,
     port_frame = pd.read_html(io, match, flavor, header, index_col,
               skiprows, attrs, parse_dates, tupleize_cols, thousands,
               encoding, decimal, converters, na_values, keep_default_na)
-    ray_frame = ray.dataframe.from_pandas(port_frame[0], npartitions,
-                    chunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame[0], get_npartitions())
 
     return ray_frame
 
 
-def read_clipboard(sep=r'\s+',
-                    npartitions=None,
-                    chunksize=None,
-                    sort=True):
+def read_clipboard(sep=r'\s+'):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
 
     port_frame = pd.read_clipboard(sep)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    chunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -358,10 +346,7 @@ def read_excel(io,
                 true_values=None,
                 false_values=None,
                 engine=None,
-                squeeze=False,
-                npartitions=None,
-                chunksize=None,
-                sort=True):
+                squeeze=False):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
@@ -370,58 +355,45 @@ def read_excel(io,
                index_col, names, usecols, parse_dates, date_parser, na_values,
                thousands, convert_float, converters, dtype, true_values,
                false_values, engine, squeeze)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    chunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
 
 def read_hdf(path_or_buf,
                 key=None,
-                mode='r',
-                npartitions=None,
-                chunksize=None,
-                sort=True):
+                mode='r'):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
 
     port_frame = pd.read_hdf(path_or_buf, key, mode)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    chunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
 
 def read_feather(path,
-                    nthreads=1,
-                    npartitions=None,
-                    chunksize=None,
-                    sort=True):
+                    nthreads=1):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
 
     port_frame = pd.read_feather(path)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    chunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
 
 def read_msgpack(path_or_buf,
                     encoding='utf-8',
-                    iterator=False,
-                    npartitions=None,
-                    chunksize=None,
-                    sort=True):
+                    iterator=False):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
 
     port_frame = pd.read_msgpack(path_or_buf, encoding, iterator)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    chunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -436,10 +408,7 @@ def read_stata(filepath_or_buffer,
                 columns=None,
                 order_categoricals=True,
                 chunksize=None,
-                iterator=False,
-                npartitions=None,
-                raychunksize=None,
-                sort=True):
+                iterator=False):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
@@ -448,8 +417,7 @@ def read_stata(filepath_or_buffer,
                convert_categoricals, encoding, index_col,
                convert_missing, preserve_dtypes, columns,
                order_categoricals, chunksize, iterator)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    raychunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -459,34 +427,26 @@ def read_sas(filepath_or_buffer,
                 index=None,
                 encoding=None,
                 chunksize=None,
-                iterator=False,
-                npartitions=None,
-                raychunksize=None,
-                sort=True):
+                iterator=False):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
 
     port_frame = pd.read_sas(filepath_or_buffer, format, index, encoding,
                     chunksize, iterator)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    raychunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
 
 def read_pickle(path,
-                    compression='infer',
-                    npartitions=None,
-                    chunksize=None,
-                    sort=True):
+                    compression='infer'):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
 
     port_frame = pd.read_pickle(path, compression)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    chunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -498,17 +458,13 @@ def read_sql(sql,
                 params=None,
                 parse_dates=None,
                 columns=None,
-                chunksize=None,
-                npartitions=None,
-                raychunksize=None,
-                sort=True):
+                chunksize=None):
 
     warnings.warn("Defaulting to Pandas implementation",
                             PendingDeprecationWarning)
 
     port_frame = pd.read_sql(sql, con, index_col, coerce_float, params,
              parse_dates, columns, chunksize)
-    ray_frame = ray.dataframe.from_pandas(port_frame, npartitions,
-                    raychunksize, sort)
+    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
 
     return ray_frame
