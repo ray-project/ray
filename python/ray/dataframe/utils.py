@@ -1,6 +1,8 @@
-import pandas as pd
-from . import dataframe
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
+import pandas as pd
 import ray
 
 
@@ -22,18 +24,20 @@ def _get_lengths(df):
         return 0
 
 
-def from_pandas(df, npartitions=None, chunksize=None, sort=True):
+def from_pandas(df, npartitions=None, chunksize=None):
     """Converts a pandas DataFrame to a Ray DataFrame.
+
     Args:
         df (pandas.DataFrame): The pandas DataFrame to convert.
         npartitions (int): The number of partitions to split the DataFrame
             into. Has priority over chunksize.
         chunksize (int): The number of rows to put in each partition.
-        sort (bool): Whether or not to sort the df as it is being converted.
+
     Returns:
         A new Ray DataFrame object.
     """
     from .dataframe import DataFrame
+
     if npartitions is not None:
         chunksize = int(len(df) / npartitions)
     elif chunksize is None:
@@ -62,8 +66,10 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
 
 def to_pandas(df):
     """Converts a Ray DataFrame to a pandas DataFrame/Series.
+
     Args:
         df (ray.DataFrame): The Ray DataFrame to convert.
+
     Returns:
         A new pandas DataFrame.
     """
