@@ -202,6 +202,8 @@ class ApexOptimizer(Optimizer):
                 # Update weights if needed
                 self.steps_since_update[ev] += self.sample_batch_size
                 if self.steps_since_update[ev] >= self.max_weight_sync_delay:
+                    # Note that it's important to pull new weights once
+                    # updated to avoid excessive correlation between actors
                     if weights is None or self.learner.weights_updated:
                         self.learner.weights_updated = False
                         with self.timers["put_weights"]:
