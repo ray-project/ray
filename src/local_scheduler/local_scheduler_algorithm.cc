@@ -1124,10 +1124,6 @@ void give_task_to_local_scheduler_retry(UniqueID id,
   RAY_CHECK(TaskSpec_is_actor_task(spec));
 
   ActorID actor_id = TaskSpec_actor_id(spec);
-  RAY_CHECK(state->actor_mapping.count(actor_id) == 1);
-
-  DBClientID remote_local_scheduler_id =
-      state->actor_mapping[actor_id].local_scheduler_id;
 
 // THIS FAILED!!!!!!!!!!!
 //   RAY_CHECK(!(remote_local_scheduler_id == get_db_client_id(state->db)));
@@ -1135,7 +1131,7 @@ void give_task_to_local_scheduler_retry(UniqueID id,
 //
 //   }
 
-  if (remote_local_scheduler_id.is_nil()) {
+  if (state->actor_mapping.count(actor_id) == 0) {
     // THIS IS REPEATED, CLEAN THIS UP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // Process the actor task submission again. This will cache the task
     // locally until a new actor creation notification is broadcast. We will
@@ -1145,6 +1141,9 @@ void give_task_to_local_scheduler_retry(UniqueID id,
                                 *execution_spec);
     return;
   }
+
+  DBClientID remote_local_scheduler_id =
+      state->actor_mapping[actor_id].local_scheduler_id;
 
   // TODO(rkn): db_client_table_cache_get is a blocking call, is this a
   // performance issue?
