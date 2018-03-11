@@ -203,10 +203,10 @@ class ApexOptimizer(Optimizer):
                 self.steps_since_update[ev] += self.sample_batch_size
                 if self.steps_since_update[ev] >= self.max_weight_sync_delay:
                     if weights is None or self.learner.weights_updated:
+                        self.learner.weights_updated = False
                         with self.timers["put_weights"]:
                             weights = ray.put(
                                 self.local_evaluator.get_weights())
-                        self.learner.weights_updated = False
                     ev.set_weights.remote(weights)
                     self.num_weight_syncs += 1
                     num_weight_syncs += 1
