@@ -5,7 +5,7 @@ from __future__ import print_function
 import pandas as pd
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
-# from pandas.core.index import _ensure_index_from_sequences
+from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas.compat import lzip
@@ -709,9 +709,38 @@ class DataFrame(object):
         Generates descriptive statistics that summarize the central tendency,
         dispersion and shape of a dataset’s distribution, excluding NaN values.
 
-        Analyzes both numeric and object series, as well as DataFrame column sets of mixed data types.
-        The output will vary depending on what is provided. Refer to the notes below for more detail.
+        Analyzes both numeric and object series, as well as DataFrame column
+        sets of mixed data types.
+        The output will vary depending on what is provided. Refer to the notes
+        below for more detail.
 
+        For numeric data, the result’s index will include
+        count, mean, std, min, max as well as lower, 50 and upper percentiles.
+        By default the lower percentile is 25 and the upper percentile is 75.
+        The 50 percentile is the same as the median.
+
+        For object data (e.g. strings or timestamps), the result’s index will
+        include count, unique, top, and freq. The top is the most common value.
+        The freq is the most common value’s frequency. Timestamps also include
+        the first and last items.
+
+        If multiple object values have the highest count,
+        then the count and top results will be arbitrarily chosen from
+        among those with the highest count.
+
+        For mixed data types provided via a DataFrame,
+        the default is to return only an analysis of numeric columns.
+        If the dataframe consists only of object and
+        categorical data without any numeric columns,
+        the default is to return an analysis of both the object and
+        categorical columns. If include='all' is provided as an option,
+        the result will include a union of attributes of each type.
+
+        The include and exclude parameters can be used to limit which columns
+        in a DataFrame are analyzed for the output.
+        The parameters are ignored when analyzing a Series.
+
+        Returns: Series/DataFrame of summary statistics
         """
         transposed = self.T
 
@@ -721,9 +750,11 @@ class DataFrame(object):
         min_df = to_pandas(self.min())
 
         if percentiles is None:
-            percentiles=[.25, .50, .75]
+            percentiles = [.25, .50, .75]
 
-        percentiles_dfs = [to_pandas(transposed.quantile(q, axis=1)) for q in percentiles]
+        percentiles_dfs = [to_pandas(
+                           transposed.quantile(q, axis=1))
+                           for q in percentiles]
 
         max_df = to_pandas(self.max())
 
@@ -1266,12 +1297,17 @@ class DataFrame(object):
         Returns:
             The mean of the DataFrame.
         """
-        if axis == 0 or axis == None:
-            return self.T.mean(axis=1, skipna=skipna, level=level, numeric_only=numeric_only)
+        if axis == 0 or axis is None:
+            return self.T.mean(
+                                axis=1, skipna=skipna,
+                                level=level, numeric_only=numeric_only
+                              )
         else:
-            mean_of_partitions = self._map_partitions(lambda df: df.mean(axis=1,
-                skipna=skipna, level=level, numeric_only=numeric_only
-            ))
+            mean_of_partitions = self._map_partitions(
+                lambda df: df.mean(
+                        axis=1, skipna=skipna,
+                        level=level, numeric_only=numeric_only
+                        ))
 
             return mean_of_partitions
 
@@ -1286,8 +1322,10 @@ class DataFrame(object):
         Returns:
             The median of the DataFrame.
         """
-        if axis == 0 or axis == None:
-            return self.T.median(axis=1, level=level, numeric_only=numeric_only)
+        if axis == 0 or axis is None:
+            return self.T.median(
+                                axis=1, level=level, numeric_only=numeric_only
+                                )
         else:
             median_of_partitions = self._map_partitions(lambda df: df.median(
                 axis=1, level=level, numeric_only=numeric_only
@@ -1469,6 +1507,13 @@ class DataFrame(object):
         """Return values at the given quantile over requested axis,
             a la numpy.percentile.
 
+        Args:
+            q (float): 0 <= q <= 1, the quantile(s) to compute
+            axis (int): 0 or ‘index’ for row-wise,
+                        1 or ‘columns’ for column-wise
+            interpolation: {'linear’, ‘lower’, ‘higher’, ‘midpoint’, ‘nearest’}
+                Specifies which interpolation method to use
+
         Returns:
             quantiles : Series or DataFrame
                     If q is an array, a DataFrame will be returned where the
@@ -1479,12 +1524,13 @@ class DataFrame(object):
                     index is the columns of self and the values
                     are the quantiles.
         """
-        if axis == 0 or axis == None:
+        if axis == 0 or axis is None:
             return self.T.quantile(q, axis=1, numeric_only=numeric_only)
         else:
-            quantile_of_partitions = self._map_partitions(lambda df: df.quantile(q,
-                axis=1, numeric_only=numeric_only
-            ))
+            quantile_of_partitions = self._map_partitions(
+                    lambda df: df.quantile(q,
+                                           axis=1, numeric_only=numeric_only
+                                           ))
 
         return quantile_of_partitions
 
@@ -1899,16 +1945,20 @@ class DataFrame(object):
         Args:
             axis (int): The axis to take the std on.
             skipna (bool): True to skip NA values, false otherwise.
+            ddof (int): degrees of freedom
 
         Returns:
-            The std of the DataFrame.
+            The std of the DataFrame (Ray Dataframe)
         """
-        if axis == 0 or axis == None:
-            return self.T.std(axis=1, skipna=skipna, level=level, ddof=ddof, numeric_only=numeric_only)
+        if axis == 0 or axis is None:
+            return self.T.std(
+                        axis=1, skipna=skipna, level=level,
+                        ddof=ddof, numeric_only=numeric_only)
         else:
-            std_of_partitions = self._map_partitions(lambda df: df.std(axis=1,
-                skipna=skipna, level=level, ddof=ddof, numeric_only=numeric_only
-            ))
+            std_of_partitions = self._map_partitions(lambda df: df.std(
+                                        axis=1, skipna=skipna, level=level,
+                                        ddof=ddof, numeric_only=numeric_only
+                                        ))
 
             return std_of_partitions
 
@@ -2169,16 +2219,19 @@ class DataFrame(object):
         Args:
             axis (int): The axis to take the variance on.
             skipna (bool): True to skip NA values, false otherwise.
+            ddof (int): degrees of freedom
 
         Returns:
             The variance of the DataFrame.
         """
-        if axis == 0 or axis == None:
-            return self.T.var(axis=1, skipna=skipna, level=level, ddof=ddof, numeric_only=numeric_only)
+        if axis == 0 or axis is None:
+            return self.T.var(axis=1, skipna=skipna, level=level, ddof=ddof,
+                              numeric_only=numeric_only)
         else:
-            var_of_partitions = self._map_partitions(lambda df: df.var(axis=1,
-                skipna=skipna, level=level, ddof=ddof, numeric_only=numeric_only
-            ))
+            var_of_partitions = self._map_partitions(lambda df: df.var(
+                                        axis=1, skipna=skipna, level=level,
+                                        ddof=ddof, numeric_only=numeric_only
+                                        ))
 
             return var_of_partitions
 
