@@ -112,7 +112,7 @@ with the Plasma store via messages serialized using [Google Flatbuffers][4].
 
 Plasma is a work in progress, and the API is currently unstable. Today Plasma is
 primarily used in [Ray][2] as an in-memory cache for Arrow serialized objects.
-We are looking for a broader set of use cases to help refine Plasma’s API. In
+We are looking for a broader set of use cases to help refine Plasma's API. In
 addition, we are looking for contributions in a variety of areas including
 improving performance and building other language bindings. Please let us know
 if you are interested in getting involved with the project.

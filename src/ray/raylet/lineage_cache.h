@@ -34,7 +34,7 @@ class LineageCache {
   LineageCache();
 
   /// Add a task and its object outputs asynchronously to the GCS. This
-  /// overwrites the task’s mutable fields in the execution specification.
+  /// overwrites the task's mutable fields in the execution specification.
   ///
   /// \param task The task to add.
   /// \return Status.

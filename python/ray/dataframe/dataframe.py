@@ -741,8 +741,8 @@ class DataFrame(object):
         Args:
             labels: Index or column labels to drop.
 
-            axis: Whether to drop labels from the index (0 / ‘index’) or
-                columns (1 / ‘columns’).
+            axis: Whether to drop labels from the index (0 / 'index') or
+                columns (1 / 'columns').
 
             index, columns: Alternative to specifying axis (labels, axis=1 is
                 equivalent to columns=labels).
@@ -751,7 +751,7 @@ class DataFrame(object):
 
             inplace: If True, do operation inplace and return None.
 
-            errors: If ‘ignore’, suppress error and existing labels are
+            errors: If 'ignore', suppress error and existing labels are
                 dropped.
         Returns:
             dropped : type of caller
@@ -972,7 +972,7 @@ class DataFrame(object):
                 backfill.
                 bfill: use NEXT valid observation to fill gap.
 
-            axis: 0 or ‘index’, 1 or ‘columns’.
+            axis: 0 or 'index', 1 or 'columns'.
 
             inplace: If True, fill in place. Note: this will modify any other
                 views on this object.
@@ -986,7 +986,7 @@ class DataFrame(object):
                 than 0 if not None.
 
             downcast: A dict of item->dtype of what to downcast if possible,
-                or the string ‘infer’ which will try to downcast to an
+                or the string 'infer' which will try to downcast to an
                 appropriate equal type.
 
         Returns:
