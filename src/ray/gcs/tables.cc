@@ -88,10 +88,10 @@ const ClientTableDataT &ClientTable::GetLocalClient() {
 }
 
 Status ClientTable::Connect() {
-  RAY_CHECK(local_client_.is_insertion)
-      << "Tried to reconnect a disconnected client.";
+  RAY_CHECK(!disconnected_) << "Tried to reconnect a disconnected client.";
 
   auto data = std::make_shared<ClientTableDataT>(local_client_);
+  data->is_insertion = true;
   // Callback for a notification from the client table.
   auto notification_callback = [this](AsyncGcsClient *client,
                                       const ClientID &channel_id,
@@ -106,8 +106,12 @@ Status ClientTable::Connect() {
   };
   // Callback to add ourselves once we've successfully subscribed.
   auto subscription_callback = [this, data, add_callback](
-      AsyncGcsClient *c, const ClientID &id,
-      std::shared_ptr<ClientTableDataT> d) {
+      AsyncGcsClient *c, const ClientID &id, std::shared_ptr<ClientTableDataT> d) {
+    // Mark ourselves as deleted if we called Disconnect() since the last
+    // Connect() call.
+    if (disconnected_) {
+      data->is_insertion = false;
+    }
     return Add(JobID::nil(), client_id_, data, add_callback);
   };
   return Subscribe(JobID::nil(), ClientID::nil(), notification_callback,
@@ -115,13 +119,16 @@ Status ClientTable::Connect() {
 }
 
 Status ClientTable::Disconnect() {
-  local_client_.is_insertion = false;
   auto data = std::make_shared<ClientTableDataT>(local_client_);
+  data->is_insertion = true;
   auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
                              std::shared_ptr<ClientTableDataT> data) {
     HandleConnected(client, id, data);
   };
-  return Add(JobID::nil(), client_id_, data, add_callback);
+  RAY_RETURN_NOT_OK(Add(JobID::nil(), client_id_, data, add_callback));
+  // We successfully added the deletion entry. Mark ourselves as disconnected.
+  disconnected_ = true;
+  return Status::OK();
 }
 
 const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {

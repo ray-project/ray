@@ -12,6 +12,13 @@ extern "C" {
 
 namespace ray {
 
+/* Flush redis. */
+static inline void flushall_redis(void) {
+  redisContext *context = redisConnect("127.0.0.1", 6379);
+  freeReplyObject(redisCommand(context, "FLUSHALL"));
+  redisFree(context);
+}
+
 class TestGcs : public ::testing::Test {
  public:
   TestGcs() {
@@ -26,7 +33,10 @@ class TestGcs : public ::testing::Test {
     job_id_ = JobID::from_random();
   }
 
-  virtual ~TestGcs(){};
+  virtual ~TestGcs() {
+    // Clear all keys in the GCS.
+    flushall_redis();
+  };
 
   virtual void Start() = 0;
 
@@ -46,6 +56,7 @@ class TestGcsWithAe : public TestGcs {
     RAY_CHECK_OK(client_->context()->AttachToEventLoop(loop_));
   }
   ~TestGcsWithAe() override {
+    // Destroy the client first since it has a reference to the event loop.
     client_.reset();
     aeDeleteEventLoop(loop_);
   }
@@ -61,7 +72,10 @@ class TestGcsWithAsio : public TestGcs {
   TestGcsWithAsio() : TestGcs(), io_service_(), work_(io_service_) {
     RAY_CHECK_OK(client_->Attach(io_service_));
   }
-  ~TestGcsWithAsio() { client_.reset(); }
+  ~TestGcsWithAsio() {
+    // Destroy the client first since it has a reference to the event loop.
+    client_.reset();
+  }
   void Start() override { io_service_.run(); }
   void Stop() override { io_service_.stop(); }
 
@@ -213,24 +227,42 @@ void ClientTableNotification(gcs::AsyncGcsClient *client,
   ASSERT_EQ(cached_client.is_insertion, is_insertion);
 }
 
-void ClientTableAdded(gcs::AsyncGcsClient *client,
-                      const UniqueID &id,
-                      std::shared_ptr<ClientTableDataT> data) {
-  ClientTableNotification(client, id, data, true);
-}
-
-void ClientTableRemoved(gcs::AsyncGcsClient *client,
-                        const UniqueID &id,
-                        std::shared_ptr<ClientTableDataT> data) {
-  ClientTableNotification(client, id, data, false);
-  test->Stop();
-}
-
-void TestClientTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+void TestClientTableConnect(const JobID &job_id,
+                            std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
-  client->client_table().RegisterClientAddedCallback(&ClientTableAdded);
-  client->client_table().RegisterClientRemovedCallback(&ClientTableRemoved);
+  client->client_table().RegisterClientAddedCallback(
+      [](gcs::AsyncGcsClient *client, const UniqueID &id,
+         std::shared_ptr<ClientTableDataT> data) {
+        ClientTableNotification(client, id, data, true);
+        test->Stop();
+      });
+  // Connect and disconnect to client table. We should receive notifications
+  // for the addition and removal of our own entry.
+  RAY_CHECK_OK(client->client_table().Connect());
+  test->Start();
+}
+
+TEST_F(TestGcsWithAsio, TestClientTableConnect) {
+  test = this;
+  TestClientTableConnect(job_id_, client_);
+}
+
+void TestClientTableDisconnect(const JobID &job_id,
+                               std::shared_ptr<gcs::AsyncGcsClient> client) {
+  // Register callbacks for when a client gets added and removed. The latter
+  // event will stop the event loop.
+  client->client_table().RegisterClientAddedCallback(
+      [](gcs::AsyncGcsClient *client, const UniqueID &id,
+         std::shared_ptr<ClientTableDataT> data) {
+        ClientTableNotification(client, id, data, true);
+      });
+  client->client_table().RegisterClientRemovedCallback(
+      [](gcs::AsyncGcsClient *client, const UniqueID &id,
+         std::shared_ptr<ClientTableDataT> data) {
+        ClientTableNotification(client, id, data, false);
+        test->Stop();
+      });
   // Connect and disconnect to client table. We should receive notifications
   // for the addition and removal of our own entry.
   RAY_CHECK_OK(client->client_table().Connect());
@@ -238,9 +270,9 @@ void TestClientTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   test->Start();
 }
 
-TEST_F(TestGcsWithAsio, TestClientTableConnect) {
+TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
   test = this;
-  TestClientTable(job_id_, client_);
+  TestClientTableDisconnect(job_id_, client_);
 }
 
 }  // namespace

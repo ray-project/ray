@@ -284,13 +284,12 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
 
 class ClientTable : private Table<ClientID, ClientTableData> {
  public:
-  ClientTable(const std::shared_ptr<RedisContext> &context,
-              AsyncGcsClient *client,
+  ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
               const ClientTableDataT &local_client)
       : Table(context, client),
+        disconnected_(false),
         client_id_(ClientID::from_binary(local_client.client_id)),
         local_client_(local_client) {
-    local_client_.is_insertion = true;
     pubsub_channel_ = TablePubsub_CLIENT;
 
     // Add a nil client to the cache so that we can serve requests for clients
@@ -350,6 +349,8 @@ class ClientTable : private Table<ClientID, ClientTableData> {
                        const ClientID &client_id,
                        std::shared_ptr<ClientTableDataT>);
 
+  /// Whether this client has called Disconnect().
+  bool disconnected_;
   /// This client's ID.
   const ClientID client_id_;
   /// Information about this client.
