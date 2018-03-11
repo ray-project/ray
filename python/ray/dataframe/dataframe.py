@@ -2732,13 +2732,9 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __truediv__(self, other):
-        '''Floating division of dataframe and other, element-wise (
-            binary operator truediv).
-
-        Returns:
-            A dataframe with elements divided by other
-        '''
-        return self._map_partitions(lambda df: df.__truediv__(other))
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __mod__(self, other):
         raise NotImplementedError(
