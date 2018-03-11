@@ -2503,11 +2503,22 @@ def remote(*args, **kwargs):
                                                  function_properties)
             if inspect.isclass(func_or_class):
                 # Set the actor default resources.
-                resources["CPU"] = 0 if num_cpus is None else num_cpus
-                resources["GPU"] = 0 if num_gpus is None else num_gpus
+                if num_cpus is None and num_gpus is None and resources == {}:
+                    # In the default case, actors acquire no resources for
+                    # their lifetime, and actor methods will require 1 CPU.
+                    resources["CPU"] = 0
+                    actor_method_cpus = 1
+                else:
+                    # If any resources are specified, then all resources are
+                    # acquired for the actor's lifetime and no resources are
+                    # associated with methods.
+                    resources["CPU"] = 1 if num_cpus is None else num_cpus
+                    resources["GPU"] = 0 if num_gpus is None else num_gpus
+                    actor_method_cpus = 0
 
                 return worker.make_actor(func_or_class, resources,
-                                         checkpoint_interval)
+                                         checkpoint_interval,
+                                         actor_method_cpus)
             raise Exception("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
 

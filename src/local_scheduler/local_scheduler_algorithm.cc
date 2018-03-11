@@ -947,10 +947,13 @@ void dispatch_all_tasks(LocalSchedulerState *state,
   /* Attempt to dispatch actor tasks. */
   auto it = algorithm_state->actors_with_pending_tasks.begin();
   while (it != algorithm_state->actors_with_pending_tasks.end()) {
-    /* Terminate early if there are no more resources available. */
-    if (!resources_available(state)) {
-      break;
-    }
+    // The below short circuiting is commented out because actor methods may
+    // require 0 CPUs.
+    // /* Terminate early if there are no more resources available. */
+    // if (!resources_available(state)) {
+    //   break;
+    // }
+
     /* We increment the iterator ahead of time because the call to
      * dispatch_actor_task may invalidate the current iterator. */
     ActorID actor_id = *it;

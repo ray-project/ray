@@ -854,7 +854,8 @@ class ActorsWithGPUs(unittest.TestCase):
         # Test that we can create actors on two nodes that have different
         # numbers of GPUs.
         ray.worker._init(start_ray_local=True, num_workers=0,
-                         num_local_schedulers=3, num_gpus=[0, 5, 10])
+                         num_local_schedulers=3, num_cpus=[10, 10, 10],
+                         num_gpus=[0, 5, 10])
 
         @ray.remote(num_gpus=1)
         class Actor1(object):
@@ -1795,6 +1796,30 @@ class ActorPlacementAndResources(unittest.TestCase):
 
     def tearDown(self):
         ray.worker.cleanup()
+
+    def testLifetimeAndTransientResources(self):
+        ray.init(num_cpus=1)
+
+        # This actor acquires resources only when running methods.
+        @ray.remote
+        class Actor1(object):
+            def method(self):
+                pass
+
+        # This actor acquires resources for its lifetime.
+        @ray.remote(num_cpus=1)
+        class Actor2(object):
+            def method(self):
+                pass
+
+        actor1s = [Actor1.remote() for _ in range(10)]
+        ray.get([a.method.remote() for a in actor1s])
+
+        actor2s = [Actor2.remote() for _ in range(2)]
+        results = [a.method.remote() for a in actor2s]
+        ready_ids, remaining_ids = ray.wait(results, num_returns=len(results),
+                                            timeout=1000)
+        self.assertEqual(len(ready_ids), 1)
 
     def testCustomLabelPlacement(self):
         ray.worker._init(start_ray_local=True, num_local_schedulers=2,

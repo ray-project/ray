@@ -465,9 +465,11 @@ void acquire_resources(
       RAY_CHECK(state->dynamic_resources[resource_name] >= resource_quantity);
     }
     state->dynamic_resources[resource_name] -= resource_quantity;
-    if (resource_name == std::string("CPU")) {
-      RAY_CHECK(worker->resources_in_use[resource_name] == 0);
-    }
+    // The below check is commented out because now actors are allowed to
+    // acquire CPU resources for their entire lifetime.
+    // if (resource_name == std::string("CPU")) {
+    //   RAY_CHECK(worker->resources_in_use[resource_name] == 0);
+    // }
     worker->resources_in_use[resource_name] += resource_quantity;
   }
 
@@ -496,9 +498,13 @@ void release_resources(
     }
 
     // Do bookkeeping for general resources types.
-    if (resource_name == std::string("CPU")) {
-      RAY_CHECK(resource_quantity == worker->resources_in_use[resource_name]);
-    }
+
+    // The below check is commented out because actors do not need to release
+    // all of their CPU resources.
+    // if (resource_name == std::string("CPU")) {
+    //   RAY_CHECK(resource_quantity == worker->resources_in_use[resource_name]);
+    // }
+
     state->dynamic_resources[resource_name] += resource_quantity;
     worker->resources_in_use[resource_name] -= resource_quantity;
   }
@@ -624,14 +630,16 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
       release_resources(state, worker, worker->resources_in_use);
     } else {
       // Return dynamic resources back for the task in progress.
-      RAY_CHECK(worker->resources_in_use["CPU"] ==
-                TaskSpec_get_required_resource(spec, "CPU"));
+
+      // The check below is commented out because now it is possible for actors
+      // to acquire CPU resources for their entire lifetime.
+      // RAY_CHECK(worker->resources_in_use["CPU"] ==
+      //           TaskSpec_get_required_resource(spec, "CPU"));
+
       // Actor tasks should only specify CPU requirements.
       RAY_CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
       std::unordered_map<std::string, double> cpu_resources;
-      cpu_resources["CPU"] = worker->resources_in_use["CPU"];
-      std::unordered_map<std::string, double> resources_to_release =
-          worker->resources_in_use;
+      cpu_resources["CPU"] = TaskSpec_get_required_resource(spec, "CPU");
       release_resources(state, worker, cpu_resources);
     }
     /* If we're connected to Redis, update tables. */
