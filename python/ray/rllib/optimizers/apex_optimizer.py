@@ -99,6 +99,7 @@ class GenericLearner(threading.Thread):
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.daemon = True
+        self.weights_updated = False
 
     def run(self):
         while True:
@@ -112,6 +113,7 @@ class GenericLearner(threading.Thread):
                 td_error = self.local_evaluator.compute_apply(replay)
             self.outqueue.put((ra, replay, td_error))
         self.learner_queue_size.push(self.inqueue.qsize())
+        self.weights_updated = True
 
 
 class ApexOptimizer(Optimizer):
@@ -200,10 +202,11 @@ class ApexOptimizer(Optimizer):
                 # Update weights if needed
                 self.steps_since_update[ev] += self.sample_batch_size
                 if self.steps_since_update[ev] >= self.max_weight_sync_delay:
-                    if weights is None:
+                    if weights is None or self.learner.weights_updated:
                         with self.timers["put_weights"]:
                             weights = ray.put(
                                 self.local_evaluator.get_weights())
+                        self.learner.weights_updated = False
                     ev.set_weights.remote(weights)
                     self.num_weight_syncs += 1
                     num_weight_syncs += 1
