@@ -2344,15 +2344,23 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_csv(self, path_or_buf=None, sep=', ', na_rep='', float_format=None,
+    def to_csv(self, path_or_buf=None, sep=',', na_rep='', float_format=None,
                columns=None, header=True, index=True, index_label=None,
                mode='w', encoding=None, compression=None, quoting=None,
                quotechar='"', line_terminator='\n', chunksize=None,
                tupleize_cols=None, date_format=None, doublequote=True,
                escapechar=None, decimal='.'):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_csv(path_or_buf, sep, na_rep, float_format,
+                   columns, header, index, index_label,
+                   mode, encoding, compression, quoting,
+                   quotechar, line_terminator, chunksize,
+                   tupleize_cols, date_format, doublequote,
+                   escapechar, decimal)
 
     def to_dense(self):
         raise NotImplementedError(
