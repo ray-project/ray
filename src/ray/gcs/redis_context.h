@@ -9,6 +9,8 @@
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
+#include "ray/gcs/format/gcs_generated.h"
+
 struct redisContext;
 struct redisAsyncContext;
 struct aeEventLoop;
@@ -30,6 +32,9 @@ class RedisCallbackManager {
 
   RedisCallback &get(int64_t callback_index);
 
+  /// Remove a callback.
+  void remove(int64_t callback_index);
+
  private:
   RedisCallbackManager() : num_callbacks(0){};
 
@@ -45,16 +50,17 @@ class RedisContext {
   ~RedisContext();
   Status Connect(const std::string &address, int port);
   Status AttachToEventLoop(aeEventLoop *loop);
-  Status RunAsync(const std::string &command,
-                  const UniqueID &id,
-                  uint8_t *data,
-                  int64_t length,
+  Status RunAsync(const std::string &command, const UniqueID &id, uint8_t *data,
+                  int64_t length, const TablePubsub pubsub_channel,
                   int64_t callback_index);
+  Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
+                        int64_t callback_index);
   redisAsyncContext *async_context() { return async_context_; }
 
  private:
   redisContext *context_;
   redisAsyncContext *async_context_;
+  redisAsyncContext *subscribe_context_;
 };
 
 }  // namespace gcs

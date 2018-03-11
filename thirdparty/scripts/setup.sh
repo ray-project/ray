@@ -26,12 +26,14 @@ unamestr="$(uname)"
 bash "$TP_SCRIPT_DIR/build_redis.sh"
 
 ##############################################
-# boost if necessary
+# credis
 ##############################################
-if [[ "$unamestr" == "Linux" ]]; then
-  echo "building boost"
-  bash "$TP_SCRIPT_DIR/build_boost.sh"
-fi
+bash "$TP_SCRIPT_DIR/build_credis.sh"
+
+##############################################
+# boost
+##############################################
+bash "$TP_SCRIPT_DIR/build_boost.sh"
 
 ##############################################
 # flatbuffers if necessary

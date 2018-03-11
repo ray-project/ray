@@ -1,7 +1,17 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import pandas as pd
 import threading
+
+pd_version = pd.__version__
+pd_major = int(pd_version.split(".")[0])
+pd_minor = int(pd_version.split(".")[1])
+
+if pd_major == 0 and pd_minor < 22:
+    raise Exception("In order to use Pandas on Ray, please upgrade your Pandas"
+                    " version to >= 0.22.")
 
 DEFAULT_NPARTITIONS = 4
 
