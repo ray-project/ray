@@ -50,7 +50,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
     // that this new notification is not an insertion.
     if (!entry->second.is_insertion) {
       RAY_CHECK(!data->is_insertion)
-          << "Notification for addition of a client that was already removed";
+          << "Notification for addition of a client that was already removed:"
+          << client_id.hex();
     }
   }
 
@@ -97,13 +98,13 @@ Status ClientTable::Connect() {
                                       std::shared_ptr<ClientTableDataT> data) {
     return HandleNotification(client, channel_id, data);
   };
-  // Callback to subscribe to the client table once we've successfully added
+  // Callback to handle our own successful connection once we've added
   // ourselves.
   auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
                              std::shared_ptr<ClientTableDataT> data) {
     HandleConnected(client, id, data);
   };
-  // Callback for subscription success.
+  // Callback to add ourselves once we've successfully subscribed.
   auto subscription_callback = [this, data, add_callback](
       AsyncGcsClient *c, const ClientID &id,
       std::shared_ptr<ClientTableDataT> d) {

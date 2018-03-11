@@ -234,7 +234,6 @@ class TaskTable : public Table<TaskID, TaskTableData> {
           callback(client_, id, *result, root->updated());
         });
     flatbuffers::FlatBufferBuilder fbb;
-    TaskTableTestAndUpdateBuilder builder(fbb);
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_TEST_AND_UPDATE", id,
                                          fbb.GetBufferPointer(), fbb.GetSize(),
