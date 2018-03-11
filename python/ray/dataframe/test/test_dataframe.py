@@ -2416,12 +2416,11 @@ def test_transform():
         ray_df.transform(None)
 
 
-@pytest.fixture
 def test_truediv():
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
-        ray_df.rtruediv(None)
+        ray_df.truediv(None)
 
 
 def test_truncate():
