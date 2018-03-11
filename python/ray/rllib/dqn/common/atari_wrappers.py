@@ -161,14 +161,7 @@ class WarpFrame(gym.ObservationWrapper):
 
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
-        """Stack k last frames.
-
-        Returns lazy array, which is much more memory efficient.
-
-        See Also
-        --------
-        baselines.common.atari_wrappers.LazyFrames
-        """
+        """Stack k last frames."""
         gym.Wrapper.__init__(self, env)
         self.k = k
         self.frames = deque([], maxlen=k)
