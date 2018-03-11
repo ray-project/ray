@@ -5,7 +5,8 @@ namespace ray {
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              ObjectManagerConfig config,
                              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-    : object_directory_(new ObjectDirectory(gcs_client)), work_(io_service_) {
+    : object_directory_(new ObjectDirectory(gcs_client)), work_(io_service) {
+  io_service_ = &io_service;
   config_ = config;
   store_client_ = std::unique_ptr<ObjectStoreClient>(
       new ObjectStoreClient(io_service, config.store_socket_name));
@@ -19,7 +20,8 @@ ObjectManager::ObjectManager(boost::asio::io_service &io_service,
 ObjectManager::ObjectManager(boost::asio::io_service &io_service,
                              ObjectManagerConfig config,
                              std::unique_ptr<ObjectDirectoryInterface> od)
-    : object_directory_(std::move(od)), work_(io_service_) {
+    : object_directory_(std::move(od)), work_(io_service) {
+  io_service_ = &io_service;
   config_ = config;
   store_client_ = std::unique_ptr<ObjectStoreClient>(
       new ObjectStoreClient(io_service, config.store_socket_name));
@@ -31,16 +33,19 @@ ObjectManager::ObjectManager(boost::asio::io_service &io_service,
 };
 
 void ObjectManager::StartIOService() {
-  io_thread_ = std::thread(&ObjectManager::IOServiceLoop, this);
-  //  thread_group_.create_thread(boost::bind(&boost::asio::io_service::run,
-  //  &io_service_));
+  // TODO(hme): Reintroduce threading.
+  // io_thread_ = std::thread(&ObjectManager::IOServiceLoop, this);
+  // thread_group_.create_thread(boost::bind(&boost::asio::io_service::run,
+  // &io_service_));
 }
 
-void ObjectManager::IOServiceLoop() { io_service_.run(); }
+void ObjectManager::IOServiceLoop() {
+  // io_service_->run();
+}
 
 void ObjectManager::StopIOService() {
-  io_service_.stop();
-  io_thread_.join();
+   // io_service_->stop();
+   // io_thread_.join();
   //  thread_group_.join_all();
 }
 
@@ -84,7 +89,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
   pull_requests_[object_id] = Timer(new boost::asio::deadline_timer(
-      io_service_, boost::posix_time::milliseconds(wait_ms)));
+      *io_service_, boost::posix_time::milliseconds(wait_ms)));
   pull_requests_[object_id]->async_wait(
       boost::bind(&ObjectManager::SchedulePullHandler, this, object_id));
 }
@@ -104,6 +109,7 @@ ray::Status ObjectManager::SchedulePullHandler(const ObjectID &object_id) {
 
 void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
                                         const ray::ObjectID &object_id) {
+  RAY_CHECK(!client_ids.empty());
   ClientID client_id = client_ids.front();
   pull_requests_.erase(object_id);
   ray::Status status_code = Pull(object_id, client_id);
@@ -184,7 +190,7 @@ ray::Status ObjectManager::CreateMsgConnection(
     const RemoteConnectionInfo &info,
     std::function<void(SenderConnection::pointer)> callback) {
   message_send_connections_.emplace(
-      info.client_id, SenderConnection::Create(io_service_, info.ip, info.port));
+      info.client_id, SenderConnection::Create(*io_service_, info.ip, info.port));
   // Prepare client connection info buffer.
   flatbuffers::FlatBufferBuilder fbb;
   bool is_transfer = false;
@@ -227,7 +233,7 @@ ray::Status ObjectManager::CreateTransferConnection(
     const RemoteConnectionInfo &info,
     std::function<void(SenderConnection::pointer)> callback) {
   transfer_send_connections_.emplace(
-      info.client_id, SenderConnection::Create(io_service_, info.ip, info.port));
+      info.client_id, SenderConnection::Create(*io_service_, info.ip, info.port));
   // Prepare client connection info buffer.
   flatbuffers::FlatBufferBuilder fbb;
   bool is_transfer = true;

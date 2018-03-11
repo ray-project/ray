@@ -168,14 +168,14 @@ TEST_F(TestRaylet, TestRayletCommands) {
   ObjectID oid3 = WriteDataToClient(client2, 100);
   status = server1->GetObjectManager().Pull(oid3);
 
-  ObjectID oid1 = WriteDataToClient(client1, 100);
-  status = server1->GetObjectManager().Push(oid1, client_id_2);
+  ObjectID oid4 = WriteDataToClient(client1, 100);
+  status = server2->GetObjectManager().Pull(oid4);
+
+//  ObjectID oid1 = WriteDataToClient(client1, 100);
+//  status = server1->GetObjectManager().Push(oid1, client_id_2);
 
 //  ObjectID oid2 = WriteDataToClient(client2, 100);
 //  status = server2->GetObjectManager().Push(oid2, client_id_1);
-
-//  ObjectID oid4 = WriteDataToClient(client1, 100);
-//  status = server2->GetObjectManager().Pull(oid4);
 
   sleep(1);
 

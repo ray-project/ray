@@ -43,8 +43,10 @@ ClientID Raylet::RegisterGcs(boost::asio::io_service &io_service) {
   ClientTableDataT client_info;
   client_info.client_id = client_id.binary();
   client_info.node_manager_address = ip;
+  // TODO(hme): Update port when we add new acceptor for local scheduler connections.
   client_info.local_scheduler_port = port;
   client_info.object_manager_port = port;
+  // TODO(hme): Clean up constants.
   RAY_CHECK_OK(gcs_client_->Connect("127.0.0.1", 6379, client_info));
   RAY_CHECK_OK(gcs_client_->Attach(io_service));
   RAY_CHECK_OK(gcs_client_->client_table().Connect());
