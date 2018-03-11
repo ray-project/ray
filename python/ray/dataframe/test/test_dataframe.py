@@ -5,8 +5,8 @@ from __future__ import print_function
 import pytest
 import numpy as np
 import pandas as pd
-import ray.dataframe as rdf
 import pandas.util.testing as tm
+import ray.dataframe as rdf
 
 from pandas.tests.frame.common import TestData
 

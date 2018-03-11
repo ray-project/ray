@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
-from pandas.core.dtypes.common import is_scalar
+from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
@@ -238,8 +238,6 @@ class DataFrame(object):
             self.columns = columns
 
         self._lengths, self._index = _compute_length_and_index.remote(self._df)
-        if index is not None:
-            self.index = index
 
         if index is not None:
             self.index = index
@@ -1747,7 +1745,6 @@ class DataFrame(object):
         if mapper is None and index is None and columns is None:
             raise TypeError('must pass an index to rename')
 
-        new_df = None
         if axis is None:
             if columns is not None:
                 new_df = [
@@ -1801,37 +1798,14 @@ class DataFrame(object):
     def _set_axis_name(self, name, axis=0, inplace=False):
         """
         Alter the name or names of the axis.
-        Parameters
-        ----------
-        name : str or list of str
-            Name for the Index, or list of names for the MultiIndex
-        axis : int or str
-           0 or 'index' for the index; 1 or 'columns' for the columns
-        inplace : bool
-            whether to modify `self` directly or return a copy
-        Returns
-        -------
-        renamed : type of caller or None if inplace=True
-        See Also
-        --------
-        ray.DataFrame.rename
-        ray.Series.rename
-        ray.Index.rename
-        Examples
-        --------
-        >>> df._set_axis_name("foo")
-             A
-        foo
-        0    1
-        1    2
-        2    3
-        >>> df.index = pd.MultiIndex.from_product([['A'], ['a', 'b', 'c']])
-        >>> df._set_axis_name(["bar", "baz"])
-                 A
-        bar baz
-        A   a    1
-            b    2
-            c    3
+
+        Args:
+            name: Name for the Index, or list of names for the MultiIndex
+            axis: 0 or 'index' for the index; 1 or 'columns' for the columns
+            inplace: Whether to modify `self` directly or return a copy
+
+        Returns:
+            Type of caller or None if inplace=True.
         """
         axes_is_columns = axis == 1 or axis == "columns"
         renamed = self if inplace else self.copy()
@@ -2895,6 +2869,7 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     Returns:
         A new Ray DataFrame object.
     """
+
     if npartitions is not None:
         chunksize = int(len(df) / npartitions)
     elif chunksize is None:
