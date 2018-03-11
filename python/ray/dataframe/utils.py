@@ -3,22 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
-from pandas.api.types import is_scalar
-from pandas.util._validators import validate_bool_kwarg
-from pandas.core.index import _ensure_index_from_sequences
-from pandas._libs import lib
-from pandas.core.dtypes.cast import maybe_upcast_putmask
-from pandas.compat import lzip
-from pandas.core.dtypes.common import (
-    is_bool_dtype,
-    is_numeric_dtype,
-    is_timedelta64_dtype)
-
-import warnings
-import numpy as np
 import ray
-import itertools
-
 
 
 def _get_lengths(df):
@@ -77,6 +62,8 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
         temp_df = temp_df.reset_index(drop=True)
         dataframes.append(ray.put(temp_df))
         lengths.append(len(temp_df))
+
+    from .dataframe import DataFrame
 
     return DataFrame(dataframes, df.columns, index=df.index)
 

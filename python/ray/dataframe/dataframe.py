@@ -18,7 +18,13 @@ import warnings
 import numpy as np
 import ray
 import itertools
-import df_utils
+from .utils import (
+    _get_lengths,
+    to_pandas,
+    _shuffle,
+    _local_groupby,
+    _deploy_func,
+    _compute_length_and_index)
 
 
 class DataFrame(object):
