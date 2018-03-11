@@ -369,7 +369,7 @@ class ActorMethods(unittest.TestCase):
             # If we can successfully create an actor, that means that enough
             # GPU resources are available.
             a = Actor.remote()
-            pid = ray.get(a.getpid.remote())
+            ray.get(a.getpid.remote())
 
     def testActorState(self):
         ray.init()
