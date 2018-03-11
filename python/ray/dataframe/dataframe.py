@@ -711,9 +711,42 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def describe(self, percentiles=None, include=None, exclude=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """
+        Generates descriptive statistics that summarize the central tendency,
+        dispersion and shape of a dataset’s distribution, excluding NaN values.
+
+        Analyzes both numeric and object series, as well as DataFrame column sets of mixed data types.
+        The output will vary depending on what is provided. Refer to the notes below for more detail.
+
+        """
+        transposed = self.T
+
+        count_df = self.count()
+        mean_df = to_pandas(transposed.mean(axis=1))
+        std_df = to_pandas(transposed.std(axis=1))
+        min_df = to_pandas(self.min())
+
+        if percentiles is None:
+            percentiles=[.25, .50, .75]
+
+        percentiles_dfs = [to_pandas(transposed.quantile(q, axis=1)) for q in percentiles]
+
+        max_df = to_pandas(self.max())
+
+        describe_df = pd.DataFrame()
+        describe_df['count'] = count_df
+        describe_df['mean'] = mean_df
+        describe_df['std'] = std_df
+        describe_df['min'] = min_df
+
+        for i in range(len(percentiles)):
+            percentile_str = "{0:.0f}%".format(percentiles[i]*100)
+
+            describe_df[percentile_str] = percentiles_dfs[i]
+
+        describe_df['max'] = max_df
+
+        return describe_df.T
 
     def diff(self, periods=1, axis=0):
         raise NotImplementedError(
@@ -1515,13 +1548,14 @@ class DataFrame(object):
         Returns:
             The mean of the DataFrame.
         """
-        _sum = self.sum(axis, skipna, level, numeric_only)
-        _count = sum(self._lengths)
+        if axis == 0 or axis == None:
+            return self.T.mean(axis=1, skipna=skipna, level=level, numeric_only=numeric_only)
+        else:
+            mean_of_partitions = self._map_partitions(lambda df: df.mean(axis=1,
+                skipna=skipna, level=level, numeric_only=numeric_only
+            ))
 
-        if(skipna is False or skipna is None):
-             _count = sum(self._lengths)
-
-        return _sum/_count
+            return mean_of_partitions
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
                **kwargs):
@@ -1534,18 +1568,14 @@ class DataFrame(object):
         Returns:
             The median of the DataFrame.
         """
-        if axis == 1:
-            return self.T.count(axis=0,
-                                level=level,
-                                numeric_only=numeric_only)
+        if axis == 0 or axis == None:
+            return self.T.median(axis=1, level=level, numeric_only=numeric_only)
         else:
-            temp_index = [idx
-                          for _ in range(len(self._df))
-                          for idx in self.columns]
+            median_of_partitions = self._map_partitions(lambda df: df.median(
+                axis=1, level=level, numeric_only=numeric_only
+            ))
 
-            return ray.get(self._map_partitions(lambda df: df.median(
-                axis=axis, level=level, numeric_only=numeric_only
-            ), index=temp_index)._df)
+            return median_of_partitions
 
     def melt(self, id_vars=None, value_vars=None, var_name=None,
              value_name='value', col_level=None):
@@ -1731,16 +1761,14 @@ class DataFrame(object):
                     index is the columns of self and the values
                     are the quantiles.
         """
-        if axis == 1:
-            return self.T.quantile(axis=0, q=q, numeric_only=numeric_only)
+        if axis == 0 or axis == None:
+            return self.T.quantile(q, axis=1, numeric_only=numeric_only)
         else:
-            temp_index = [idx
-                          for _ in range(len(self._df))
-                          for idx in self.columns]
+            quantile_of_partitions = self._map_partitions(lambda df: df.quantile(q,
+                axis=1, numeric_only=numeric_only
+            ))
 
-            return ray.get(self._map_partitions(lambda df: df.quantile(
-                axis=axis, q=q, numeric_only=numeric_only
-            ), index=temp_index)._df)
+        return quantile_of_partitions
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression
@@ -2157,9 +2185,14 @@ class DataFrame(object):
         Returns:
             The std of the DataFrame.
         """
-        _var = self.var(axis, skipna, level, ddof, numeric_only)
+        if axis == 0 or axis == None:
+            return self.T.std(axis=1, skipna=skipna, level=level, ddof=ddof, numeric_only=numeric_only)
+        else:
+            std_of_partitions = self._map_partitions(lambda df: df.std(axis=1,
+                skipna=skipna, level=level, ddof=ddof, numeric_only=numeric_only
+            ))
 
-        return _var ** (1/2)
+            return std_of_partitions
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -2422,19 +2455,14 @@ class DataFrame(object):
         Returns:
             The variance of the DataFrame.
         """
-        _mean = self.mean(axis, skipna, level, numeric_only)
+        if axis == 0 or axis == None:
+            return self.T.var(axis=1, skipna=skipna, level=level, ddof=ddof, numeric_only=numeric_only)
+        else:
+            var_of_partitions = self._map_partitions(lambda df: df.var(axis=1,
+                skipna=skipna, level=level, ddof=ddof, numeric_only=numeric_only
+            ))
 
-        intermediate_index = [idx
-                              for _ in range(len(self._df))
-                              for idx in self.columns]
-
-        squared_sum_of_partitions = self._map_partitions(
-            lambda x: x.sum((lambda df: df.pow(2, axis=axis, level=level))),
-            index=intermediate_index)
-
-        _var = squared_sum_of_partitions / self.length - _mean ** 2
-
-        return _var
+            return var_of_partitions
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):
