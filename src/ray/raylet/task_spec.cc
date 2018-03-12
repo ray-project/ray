@@ -29,18 +29,6 @@ flatbuffers::Offset<Arg> TaskArgumentByValue::ToFlatbuffer(
   return CreateArg(fbb, empty_ids, arg);
 }
 
-static const ObjectID task_compute_return_id(TaskID task_id, int64_t return_index) {
-  // Here, return_indices need to be >= 0, so we can use negative indices for put.
-  RAY_DCHECK(return_index >= 0);
-  // TODO(rkn): This line requires object and task IDs to be the same size.
-  ObjectID return_id = task_id;
-  int64_t *first_bytes = (int64_t *) &return_id;
-  // XOR the first bytes of the object ID with the return index.
-  // We add one so the first return ID is not the same as the task ID.
-  *first_bytes = *first_bytes ^ (return_index + 1);
-  return return_id;
-}
-
 TaskSpecification::TaskSpecification(const uint8_t *spec, size_t spec_size)
     : spec_(spec, spec + spec_size) {}
 
@@ -75,7 +63,7 @@ TaskSpecification::TaskSpecification(
   TaskID task_id;
   RAY_DCHECK(sizeof(task_id) <= DIGEST_SIZE);
   memcpy(&task_id, buff, sizeof(task_id));
-
+  task_id = FinishTaskId(task_id);
   // Add argument object IDs.
   std::vector<flatbuffers::Offset<Arg>> arguments;
   for (auto &argument : task_arguments) {
@@ -84,8 +72,8 @@ TaskSpecification::TaskSpecification(
 
   // Add return object IDs.
   std::vector<flatbuffers::Offset<flatbuffers::String>> returns;
-  for (int64_t i = 0; i < num_returns; i++) {
-    ObjectID return_id = task_compute_return_id(task_id, i);
+  for (int64_t i = 1; i < num_returns + 1; i++) {
+    ObjectID return_id = ComputeReturnId(task_id, i);
     returns.push_back(to_flatbuf(fbb, return_id));
   }
 
