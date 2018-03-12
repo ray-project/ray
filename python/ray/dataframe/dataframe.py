@@ -364,19 +364,21 @@ class DataFrame(object):
         shufflers = [ShuffleActor.remote(self._df[i])
                      for i in range(len(self._df))]
 
-        [shufflers[i].shuffle.remote(self._index[self._index['partition'] == i],
-                                     partition_assignments, i, *shufflers)
-         for i in range(len(shufflers))]
+        shuffles_done = \
+            [shufflers[i].shuffle.remote(
+                self._index[self._index['partition'] == i],
+                partition_assignments,
+                i,
+                *shufflers)
+             for i in range(len(shufflers))]
 
         if as_index:
             new_index = assignments_df.index.unique()
         else:
             new_index = self.index
 
-        # TODO Remove once the actor joining is merged:
-        # https://github.com/ray-project/ray/pull/1536
-        import time
-        time.sleep(2)
+        ray.get(shuffles_done)
+
         return DataFrameGroupBy([shuffler.apply_func.remote(
             lambda df: df.groupby(by=df.index,
                                   axis=axis,

@@ -17,7 +17,9 @@ class ShuffleActor(object):
 
     def shuffle(self, index, partition_assignments, index_of_self, *list_of_partitions):
         self.index_of_self = index_of_self
-        self.assign_and_send_data(index, partition_assignments, list(list_of_partitions))
+        return self.assign_and_send_data(index,
+                                         partition_assignments,
+                                         list(list_of_partitions))
 
     def assign_and_send_data(self, index, partition_assignments, list_of_partitions):
 
@@ -52,6 +54,9 @@ class ShuffleActor(object):
                     self.partition_data.drop(indices_to_send[i])
             except KeyError:
                 pass
+
+        # Returning here to guarantee scheduling consistency.
+        return None
 
     def add_to_incoming(self, data):
         self.incoming.append(data)
