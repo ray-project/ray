@@ -1905,7 +1905,7 @@ def test_prod():
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
-        ray_df.prod()
+        ray_df.prod(None)
 
 
 def test_product():
