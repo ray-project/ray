@@ -32,11 +32,13 @@ class Table {
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       std::shared_ptr<DataT> data)>;
+  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
 
   struct CallbackData {
     ID id;
     std::shared_ptr<DataT> data;
     Callback callback;
+    FailureCallback failure;
     // An optional callback to call for subscription operations, where the
     // first message is a notification of subscription success.
     Callback subscription_callback;
@@ -58,9 +60,9 @@ class Table {
   Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
              const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, data, done, nullptr, this, client_}));
+        new CallbackData({id, data, done, nullptr, nullptr, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data) {
+        RedisCallbackManager::instance().add([d](const std::string &data, bool is_nil) {
           if (d->callback != nullptr) {
             (d->callback)(d->client, d->id, d->data);
           }
@@ -79,16 +81,23 @@ class Table {
   /// \param id The ID of the data that is looked up in the GCS.
   /// \param lookup Callback that is called after lookup.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
+                const FailureCallback &failure) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, nullptr, lookup, nullptr, this, client_}));
+        new CallbackData({id, nullptr, lookup, failure, nullptr, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data) {
-          auto result = std::make_shared<DataT>();
-          auto root = flatbuffers::GetRoot<Data>(data.data());
-          root->UnPackTo(result.get());
-          if (d->callback != nullptr) {
-            (d->callback)(d->client, d->id, result);
+        RedisCallbackManager::instance().add([d](const std::string &data, bool is_nil) {
+          if (is_nil) {
+            if (d->failure != nullptr) {
+              (d->failure)(d->client, d->id);
+            }
+          } else {
+            auto result = std::make_shared<DataT>();
+            auto root = flatbuffers::GetRoot<Data>(data.data());
+            root->UnPackTo(result.get());
+            if (d->callback != nullptr) {
+              (d->callback)(d->client, d->id, result);
+            }
           }
         });
     std::vector<uint8_t> nil;
@@ -110,9 +119,9 @@ class Table {
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const Callback &subscribe, const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({client_id, nullptr, subscribe, done, this, client_}));
+        new CallbackData({client_id, nullptr, subscribe, nullptr, done, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data) {
+        RedisCallbackManager::instance().add([d](const std::string &data, bool is_nil) {
           if (data.empty()) {
             // No data is provided. This is the callback for the initial
             // subscription request.
@@ -212,7 +221,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
     int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, callback, id](const std::string &data) {
+        [this, callback, id](const std::string &data, bool is_nil) {
           auto result = std::make_shared<TaskTableDataT>();
           auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
           root->UnPackTo(result.get());
