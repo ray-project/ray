@@ -316,7 +316,7 @@ class DataFrame(object):
                 new_cols = sorted(self.columns)
             else:
                 new_cols = self.columns
-            return DataFrameGroupBy([self._map_partitions(
+            return DataFrameGroupBy(self._map_partitions(
                 lambda df: df.groupby(by=by,
                                       axis=axis,
                                       level=level,
@@ -324,7 +324,7 @@ class DataFrame(object):
                                       sort=sort,
                                       group_keys=group_keys,
                                       squeeze=squeeze,
-                                      **kwargs))._df],
+                                      **kwargs))._df,
                                     new_cols, self.index)
 
         # Begin groupby for rows. Requires shuffle.
