@@ -11,6 +11,30 @@ Ray
 
 Ray is a flexible, high-performance distributed execution framework.
 
+
+Ray is easy to install: ``pip install ray``
+
+Example Use
+-----------
+
++------------------------------------------------+----------------------------------------------------+
+| **Basic Python**                               | **Distributed with Ray**                           |
++------------------------------------------------+----------------------------------------------------+
+|.. code-block:: python                          |.. code-block:: python                              |
+|                                                |                                                    |
+|  # Execute f serially.                         |  # Execute f in parallel.                          |
+|                                                |                                                    |
+|                                                |  @ray.remote                                       |
+|  def f():                                      |  def f():                                          |
+|      time.sleep(1)                             |      time.sleep(1)                                 |
+|      return 1                                  |      return 1                                      |
+|                                                |                                                    |
+|                                                |                                                    |
+|                                                |  ray.init()                                        |
+|  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
++------------------------------------------------+----------------------------------------------------+
+
+
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
 - `Ray Tune`_: Hyperparameter Optimization Framework
@@ -19,63 +43,14 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 .. _`Ray Tune`: http://ray.readthedocs.io/en/latest/tune.html
 .. _`Ray RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
 
-
-Example Program
----------------
-
-+------------------------------------------------+----------------------------------------------+
-| **Basic Python**                               | **Distributed with Ray**                     |
-+------------------------------------------------+----------------------------------------------+
-|.. code:: python                                |.. code-block:: python                        |
-|                                                |                                              |
-|  import time                                   |  import time                                 |
-|                                                |  import ray                                  |
-|                                                |                                              |
-|                                                |  ray.init()                                  |
-|                                                |                                              |
-|                                                |  @ray.remote                                 |
-|  def f():                                      |  def f():                                    |
-|      time.sleep(1)                             |      time.sleep(1)                           |
-|      return 1                                  |      return 1                                |
-|                                                |                                              |
-|  # Execute f serially.                         |  # Execute f in parallel.                    |
-|  results = [f() for i in range(4)]             |  object_ids = [f.remote() for i in range(4)] |
-|                                                |  results = ray.get(object_ids)               |
-+------------------------------------------------+----------------------------------------------+
-
-
 Installation
 ------------
 
 Ray can be installed on Linux and Mac with ``pip install ray``.
 
-Here are links to the latest wheels (which are built off of master):
+To build Ray from source or to install the nightly versions, see the `installation documentation`_.
 
-===================  ===================
-       Linux                MacOS
-===================  ===================
-`Linux Python 3.6`_  `MacOS Python 3.6`_
-`Linux Python 3.5`_  `MacOS Python 3.5`_
-`Linux Python 3.4`_  `MacOS Python 3.4`_
-`Linux Python 3.3`_
-`Linux Python 2.7`_  `MacOS Python 2.7`_
-===================  ===================
-
-
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp36-cp36m-manylinux1_x86_64.whl
-.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp35-cp35m-manylinux1_x86_64.whl
-.. _`Linux Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp34-cp34m-manylinux1_x86_64.whl
-.. _`Linux Python 3.3`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp33-cp33m-manylinux1_x86_64.whl
-.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp27-cp27mu-manylinux1_x86_64.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp36-cp36m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp35-cp35m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp34-cp34m-macosx_10_6_intel.whl
-.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp27-cp27m-macosx_10_6_intel.whl
-
-To build Ray from source, see the instructions for `Ubuntu`_ and `Mac`_.
-
-.. _`Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
-.. _`Mac`: http://ray.readthedocs.io/en/latest/install-on-macosx.html
+.. _`installation documentation`: http://ray.readthedocs.io/en/latest/installation.html
 
 More Information
 ----------------
