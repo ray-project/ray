@@ -17,14 +17,6 @@ flatbuffers::Offset<Arg> TaskArgumentByReference::ToFlatbuffer(
   return CreateArg(fbb, to_flatbuf(fbb, references_));
 }
 
-const BYTE *TaskArgumentByReference::HashData() const {
-  return reinterpret_cast<const BYTE *>(references_.data());
-}
-
-size_t TaskArgumentByReference::HashDataLength() const {
-  return references_.size() * sizeof(ObjectID);
-}
-
 TaskArgumentByValue::TaskArgumentByValue(const uint8_t *value, size_t length) {
   value_.assign(value, value + length);
 }
@@ -36,10 +28,6 @@ flatbuffers::Offset<Arg> TaskArgumentByValue::ToFlatbuffer(
   auto empty_ids = fbb.CreateVectorOfStrings({});
   return CreateArg(fbb, empty_ids, arg);
 }
-
-const BYTE *TaskArgumentByValue::HashData() const { return value_.data(); }
-
-size_t TaskArgumentByValue::HashDataLength() const { return value_.size(); }
 
 static const ObjectID task_compute_return_id(TaskID task_id, int64_t return_index) {
   // Here, return_indices need to be >= 0, so we can use negative indices for put.
@@ -80,14 +68,6 @@ TaskSpecification::TaskSpecification(
   // sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
   // sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
   //              sizeof(is_actor_checkpoint_method));
-  sha256_update(&ctx, (BYTE *) &function_id, sizeof(function_id));
-
-  // Serialize and hash the arguments.
-  std::vector<flatbuffers::Offset<Arg>> arguments;
-  for (auto &argument : task_arguments) {
-    arguments.push_back(argument.ToFlatbuffer(fbb));
-    sha256_update(&ctx, (BYTE *) argument.HashData(), argument.HashDataLength());
-  }
 
   // Compute the final task ID from the hash.
   BYTE buff[DIGEST_SIZE];
@@ -95,6 +75,12 @@ TaskSpecification::TaskSpecification(
   TaskID task_id;
   RAY_DCHECK(sizeof(task_id) <= DIGEST_SIZE);
   memcpy(&task_id, buff, sizeof(task_id));
+
+  // Add argument object IDs.
+  std::vector<flatbuffers::Offset<Arg>> arguments;
+  for (auto &argument : task_arguments) {
+    arguments.push_back(argument.ToFlatbuffer(fbb));
+  }
 
   // Add return object IDs.
   std::vector<flatbuffers::Offset<flatbuffers::String>> returns;

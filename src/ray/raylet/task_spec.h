@@ -30,16 +30,6 @@ class TaskArgument {
   virtual flatbuffers::Offset<Arg> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb) const = 0;
 
-  /// Get the hashable byte data.
-  ///
-  /// \return A pointer to the byte data.
-  virtual const BYTE *HashData() const = 0;
-
-  /// Get the hashable byte data length.
-  ///
-  /// \return The length of the hashable byte data.
-  virtual size_t HashDataLength() const = 0;
-
   virtual ~TaskArgument() = 0;
 };
 
@@ -53,8 +43,6 @@ class TaskArgumentByReference : virtual public TaskArgument {
   TaskArgumentByReference(const std::vector<ObjectID> &references);
 
   flatbuffers::Offset<Arg> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const;
-  const BYTE *HashData() const;
-  size_t HashDataLength() const;
 
  private:
   /// The object IDs.
@@ -72,8 +60,6 @@ class TaskArgumentByValue : public TaskArgument {
   TaskArgumentByValue(const uint8_t *value, size_t length);
 
   flatbuffers::Offset<Arg> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const;
-  const BYTE *HashData() const;
-  size_t HashDataLength() const;
 
  private:
   /// The raw value.
