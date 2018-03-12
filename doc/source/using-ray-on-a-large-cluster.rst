@@ -12,8 +12,7 @@ commands and scripts on many machines simultaneously.
 Booting up a cluster on EC2
 ---------------------------
 
-* Create an EC2 instance running Ray following instructions for
-  `installation on Ubuntu`_.
+* Create an EC2 instance running Ray following the `installation instructions`_.
 
     * Add any packages that you may need for running your application.
     * Install the pssh package: ``sudo apt-get install pssh``.
@@ -23,7 +22,7 @@ Booting up a cluster on EC2
 * Configure the instance security groups so that they machines can all
   communicate with one another.
 
-.. _`installation on Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
+.. _`installation instructions`: http://ray.readthedocs.io/en/latest/installation.html
 .. _`Create an AMI`: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/creating-an-ami-ebs.html
 
 Deploying Ray on a Cluster
