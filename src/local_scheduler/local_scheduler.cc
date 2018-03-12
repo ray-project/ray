@@ -465,11 +465,6 @@ void acquire_resources(
       RAY_CHECK(state->dynamic_resources[resource_name] >= resource_quantity);
     }
     state->dynamic_resources[resource_name] -= resource_quantity;
-    // The below check is commented out because now actors are allowed to
-    // acquire CPU resources for their entire lifetime.
-    // if (resource_name == std::string("CPU")) {
-    //   RAY_CHECK(worker->resources_in_use[resource_name] == 0);
-    // }
     worker->resources_in_use[resource_name] += resource_quantity;
   }
 
@@ -498,13 +493,6 @@ void release_resources(
     }
 
     // Do bookkeeping for general resources types.
-
-    // The below check is commented out because actors do not need to release
-    // all of their CPU resources.
-    // if (resource_name == std::string("CPU")) {
-    //   RAY_CHECK(resource_quantity == worker->resources_in_use[resource_name]);
-    // }
-
     state->dynamic_resources[resource_name] += resource_quantity;
     worker->resources_in_use[resource_name] -= resource_quantity;
   }
@@ -598,10 +586,6 @@ void assign_task_to_worker(LocalSchedulerState *state,
                                    actor_creation_id,
                                    initial_execution_dependency, worker);
 
-    // // Acquire the relevant resources for the lifetime of the actor. These
-    // // resources will be released when the actor process exits.
-    // acquire_resources(state, worker, TaskSpec_get_required_resources(spec));
-
     // Publish the actor creation notification.
     publish_actor_creation_notification(state->db, actor_creation_id, driver_id,
                                         get_db_client_id(state->db));
@@ -611,6 +595,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
 void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
+    // Return dynamic resources back for the task in progress.
     if (TaskSpec_is_actor_creation_task(spec)) {
       // Resources required by the actor creation task are acquired for the
       // actor's lifetime, so don't return anything here. TODO(rkn): Should the
@@ -629,13 +614,6 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
                 TaskSpec_get_required_resource(spec, "GPU"));
       release_resources(state, worker, worker->resources_in_use);
     } else {
-      // Return dynamic resources back for the task in progress.
-
-      // The check below is commented out because now it is possible for actors
-      // to acquire CPU resources for their entire lifetime.
-      // RAY_CHECK(worker->resources_in_use["CPU"] ==
-      //           TaskSpec_get_required_resource(spec, "CPU"));
-
       // Actor tasks should only specify CPU requirements.
       RAY_CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
       std::unordered_map<std::string, double> cpu_resources;
@@ -1358,11 +1336,6 @@ void handle_actor_creation_callback(const ActorID &actor_id,
   entry.driver_id = driver_id;
   state->actor_mapping[actor_id] = entry;
 
-  // /* If this local scheduler is responsible for the actor, then start a new
-  //  * worker for the actor. */
-  // if (local_scheduler_id == get_db_client_id(state->db)) {
-  //   start_worker(state, actor_id, reconstruct);
-  // }
   /* Let the scheduling algorithm process the fact that a new actor has been
    * created. */
   handle_actor_creation_notification(state, state->algorithm_state, actor_id);

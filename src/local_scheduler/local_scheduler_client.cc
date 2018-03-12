@@ -99,8 +99,7 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
 
   // Set the GPU IDs for this task. We only do this for non-actor tasks because
   // for actors the GPUs are associated with the actor itself and not with the
-  // actor methods. TODO(rkn): This also processes GPUs for actor creation
-  // tasks. This probably needs to be revisited...................................
+  // actor methods. Note that this also processes GPUs for actor creation tasks.
   if (!TaskSpec_is_actor_task(spec)) {
     conn->gpu_ids.clear();
     for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {

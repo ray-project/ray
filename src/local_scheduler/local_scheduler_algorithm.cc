@@ -206,7 +206,8 @@ void provide_scheduler_info(LocalSchedulerState *state,
  *
  * @param algorithm_state The state of the scheduling algorithm.
  * @param actor_id The actor ID of the actor being created.
- * @param initial_execution_dependency .......................................................
+ * @param initial_execution_dependency The dummy object ID of the actor
+ *        creation task.
  * @param worker The worker struct for the worker that is running this actor.
  *        If the worker struct has not been created yet (meaning that the worker
  *        that is running this actor has not registered with the local scheduler
@@ -318,14 +319,8 @@ bool dispatch_actor_task(LocalSchedulerState *state,
    * deterministic reconstruction ordering for tasks whose updates are
    * reflected in the task table. */
   std::vector<ObjectID> ordered_execution_dependencies;
-  // /* Only overwrite execution dependencies for tasks that have a
-  //  * submission-time dependency (meaning it is not the initial task). */
-  // if (!entry.execution_dependency.is_nil()) {
-    ordered_execution_dependencies.push_back(entry.execution_dependency);
-  // }
+  ordered_execution_dependencies.push_back(entry.execution_dependency);
   task->SetExecutionDependencies(ordered_execution_dependencies);
-
-// Why do we even need to pass execution dependencies into submit_task in the first place?
 
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
@@ -425,16 +420,6 @@ void insert_actor_task_queue(LocalSchedulerState *state,
     return;
   }
 
-  /* Handle the case in which there is no LocalActorInfo struct yet. */
-  if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
-    // TODO(rkn): I THINK THIS CASE IS IMPOSSIBLE NOW.. DOUBLE CHECK!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    RAY_CHECK(false);
-    /* Create the actor struct with a NULL worker because the worker struct has
-     * not been created yet. The correct worker struct will be inserted when the
-     * actor worker connects to the local scheduler. */
-    create_actor(algorithm_state, actor_id, ObjectID::nil(), NULL);
-    RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
-  }
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
   if (entry.task_counters.count(task_handle_id) == 0) {
@@ -811,8 +796,6 @@ int rerun_actor_creation_tasks_timeout_handler(event_loop *loop,
                                                void *context) {
   int64_t start_time = current_time_ms();
 
-  //TODO reconstruction is probably being surpressed!!!! need to set task status to done or lost or something.
-
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
   // Create a set of the dummy object IDs for the actor creation tasks to
@@ -947,12 +930,8 @@ void dispatch_all_tasks(LocalSchedulerState *state,
   /* Attempt to dispatch actor tasks. */
   auto it = algorithm_state->actors_with_pending_tasks.begin();
   while (it != algorithm_state->actors_with_pending_tasks.end()) {
-    // The below short circuiting is commented out because actor methods may
-    // require 0 CPUs.
-    // /* Terminate early if there are no more resources available. */
-    // if (!resources_available(state)) {
-    //   break;
-    // }
+    // We cannot short-circuit and exit here if there are no resources
+    // available because actor methods may require 0 CPUs.
 
     /* We increment the iterator ahead of time because the call to
      * dispatch_actor_task may invalidate the current iterator. */
@@ -1125,14 +1104,7 @@ void give_task_to_local_scheduler_retry(UniqueID id,
 
   ActorID actor_id = TaskSpec_actor_id(spec);
 
-// THIS FAILED!!!!!!!!!!!
-//   RAY_CHECK(!(remote_local_scheduler_id == get_db_client_id(state->db)));
-//   if (remote_local_scheduler_id == get_db_client_id(state->db)) {
-//
-//   }
-
   if (state->actor_mapping.count(actor_id) == 0) {
-    // THIS IS REPEATED, CLEAN THIS UP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // Process the actor task submission again. This will cache the task
     // locally until a new actor creation notification is broadcast. We will
     // attempt to reissue the actor creation tasks for all cached actor tasks

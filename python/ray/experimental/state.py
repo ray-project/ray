@@ -279,6 +279,10 @@ class GlobalState(object):
             for i in range(
                 execution_dependencies_message.ExecutionDependenciesLength())]
 
+        # TODO(rkn): The return fields ExecutionDependenciesString and
+        # ExecutionDependencies are redundant, so we should remove
+        # ExecutionDependencies. However, it is currently used in monitor.py.
+
         return {"State": task_table_message.State(),
                 "LocalSchedulerID": binary_to_hex(
                     task_table_message.LocalSchedulerId()),

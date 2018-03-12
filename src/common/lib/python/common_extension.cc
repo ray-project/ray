@@ -302,13 +302,10 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
                         &driver_id, &PyObjectToUniqueID, &function_id,
                         &arguments, &num_returns, &PyObjectToUniqueID,
                         &parent_task_id, &parent_counter, &PyObjectToUniqueID,
-                        &actor_creation_id,
-
-                        &PyObjectToUniqueID, &actor_creation_dummy_object_id,
-
-                        &PyObjectToUniqueID, &actor_id,
-                        &PyObjectToUniqueID, &actor_handle_id, &actor_counter,
-                        &is_actor_checkpoint_method_object,
+                        &actor_creation_id, &PyObjectToUniqueID,
+                        &actor_creation_dummy_object_id, &PyObjectToUniqueID,
+                        &actor_id, &PyObjectToUniqueID, &actor_handle_id,
+                        &actor_counter, &is_actor_checkpoint_method_object,
                         &execution_arguments, &resource_map)) {
     return -1;
   }

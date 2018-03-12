@@ -384,9 +384,9 @@ def publish_actor_class_to_key(key, actor_class_info, worker):
     # actor class was defined.
     actor_class_info["driver_id"] = worker.task_driver_id.id()
     worker.redis_client.hmset(key, actor_class_info)
-    # TODO(rkn): We probably need to reenable this because we can't safely import the actor class
-    # until we've imported all prior imports.
-    #worker.redis_client.rpush("Exports", key)
+    # TODO(rkn): We probably need to reenable this because we can't safely
+    # import the actor class until we've imported all prior imports.
+    # worker.redis_client.rpush("Exports", key)
 
 
 def export_actor_class(class_id, Class, actor_method_names,
@@ -448,7 +448,7 @@ def export_actor(actor_id, class_id, class_name, actor_method_names,
         actor_creation_resources=actor_creation_resources,
         actor_method_cpus=actor_method_cpus)
 
-    args = [actor_id.id(), class_id]
+    args = [class_id]
     function_id = compute_actor_creation_function_id(class_id)
     return worker.submit_task(function_id, args, actor_creation_id=actor_id)[0]
 

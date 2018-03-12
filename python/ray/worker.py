@@ -489,7 +489,7 @@ class Worker(object):
                     actor_handle_id=None, actor_counter=0,
                     is_actor_checkpoint_method=False, actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
-                    execution_dependencies=None, resources=None):
+                    execution_dependencies=None):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -505,12 +505,15 @@ class Worker(object):
             actor_counter: The counter of the actor task.
             is_actor_checkpoint_method: True if this is an actor checkpoint
                 task and false otherwise.
+            actor_creation_id: The ID of the actor to create, if this is an
+                actor creation task.
+            actor_creation_dummy_object_id: If this task is an actor method,
+                then this argument is the dummy object ID associated with the
+                actor creation task for the corresponding actor.
+            execution_dependencies: The execution dependencies for this task.
 
-
-            actor_creation_id:
-            actor_creation_dummy_object_id
-            execution_dependencies:
-            resources:
+        Returns:
+            The return object IDs for this task.
         """
         with log_span("ray:submit_task", worker=self):
             check_main_thread()
@@ -829,8 +832,9 @@ class Worker(object):
         """
         assert self.actor_id == NIL_ACTOR_ID
         arguments = task.arguments()
-        self.actor_id = arguments[0]
-        class_id = arguments[1]
+        assert len(arguments) == 0
+        self.actor_id = task.actor_creation_id()
+        class_id = arguments[0]
 
         key = b"ActorClass:" + class_id
         self.fetch_and_register_actor(key, task.required_resources(), self)
@@ -843,7 +847,8 @@ class Worker(object):
         """
         function_id = task.function_id()
 
-        # TODO(rkn): FIX THIS!
+        # TODO(rkn): It would be preferable for actor creation tasks to share
+        # more of the code path with regular task execution.
         if (task.actor_creation_id() !=
                 ray.local_scheduler.ObjectID(NIL_ACTOR_ID)):
             self._become_actor(task)
@@ -1718,14 +1723,8 @@ def import_thread(worker, mode):
                 fetch_and_register_remote_function(key, worker=worker)
             elif key.startswith(b"FunctionsToRun"):
                 fetch_and_execute_function_to_run(key, worker=worker)
-            # elif key.startswith(b"ActorClass"):
-            #     # If this worker is an actor that is supposed to construct this
-            #     # class, fetch the actor and class information and construct
-            #     # the class.
-            #     class_id = key.split(b":", 1)[1]
-            #     if (worker.actor_id != NIL_ACTOR_ID and
-            #             worker.class_id == class_id):
-            #         worker.fetch_and_register_actor(key, worker)
+            # TODO(rkn): We may need to bring back the case of fetching actor
+            # classes here.
             else:
                 raise Exception("This code should be unreachable.")
 
@@ -1762,13 +1761,8 @@ def import_thread(worker, mode):
                                       worker=worker):
                             fetch_and_execute_function_to_run(key,
                                                               worker=worker)
-                    # elif key.startswith(b"Actor"):
-                    #     # Only get the actor if the actor ID matches the actor
-                    #     # ID of this worker.
-                    #     actor_id, = worker.redis_client.hmget(key, "actor_id")
-                    #     if worker.actor_id == actor_id:
-                    #         raise Exception("!!!!")
-                    #         worker.fetch_and_register["Actor"](key, worker)  # IS THIS USED?????
+                    # TODO(rkn): We may need to bring back the case of fetching
+                    # actor classes here.
                     else:
                         raise Exception("This code should be unreachable.")
     except redis.ConnectionError:
@@ -2584,9 +2578,6 @@ def remote(*args, **kwargs):
         return remote_decorator
 
     # Handle resource arguments
-
-    # TODO: WHEN CREATING AN ACTOR, DEFAULT RESOURCES SHOULD BE {"CPU": 0, "GPU": 0}
-
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
     resources = kwargs.get("resources", {})

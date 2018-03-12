@@ -175,7 +175,8 @@ void handle_actor_worker_available(LocalSchedulerState *state,
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param actor_id The ID of the actor running on the worker.
- * @param initial_execution_dependency .............................................
+ * @param initial_execution_dependency The dummy object ID of the actor
+ *        creation task.
  * @param worker The worker that was converted to an actor.
  * @return Void.
  */
