@@ -13,8 +13,12 @@
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/gcs/redis_context.h"
 
+namespace legacy {
 // TODO(pcm): Remove this
 #include "task.h"
+
+using Task = Task;
+}
 
 struct redisAsyncContext;
 
@@ -283,7 +287,7 @@ using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
 
 using ConfigTable = Table<ConfigID, ConfigTableData>;
 
-Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
+Status TaskTableAdd(AsyncGcsClient *gcs_client, legacy::Task *task);
 
 Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
                               const TaskID &task_id,
