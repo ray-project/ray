@@ -1796,8 +1796,7 @@ class DataFrame(object):
             return renamed
 
     def _set_axis_name(self, name, axis=0, inplace=False):
-        """
-        Alter the name or names of the axis.
+        """Alter the name or names of the axis.
 
         Args:
             name: Name for the Index, or list of names for the MultiIndex
