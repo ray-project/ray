@@ -2340,9 +2340,12 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def to_clipboard(self, excel=None, sep=None, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_clipboard(excel, sep, **kwargs)
 
     def to_csv(self, path_or_buf=None, sep=',', na_rep='', float_format=None,
                columns=None, header=True, index=True, index_label=None,
@@ -2377,26 +2380,43 @@ class DataFrame(object):
                  index_label=None, startrow=0, startcol=0, engine=None,
                  merge_cells=True, encoding=None, inf_rep='inf', verbose=True,
                  freeze_panes=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_excel(excel_writer, sheet_name, na_rep,
+                     float_format, columns, header, index,
+                     index_label, startrow, startcol, engine,
+                     merge_cells, encoding, inf_rep, verbose,
+                     freeze_panes)
 
     def to_feather(self, fname):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_feather(fname)
 
     def to_gbq(self, destination_table, project_id, chunksize=10000,
                verbose=True, reauth=False, if_exists='fail',
                private_key=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_gbq(destination_table, project_id, chunksize,
+                   verbose, reauth, if_exists, private_key)
 
     def to_hdf(self, path_or_buf, key, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_hdf(path_or_buf, key, **kwargs)
 
     def to_html(self, buf=None, columns=None, col_space=None, header=True,
                 index=True, na_rep='np.NaN', formatters=None,
@@ -2404,16 +2424,29 @@ class DataFrame(object):
                 justify=None, bold_rows=True, classes=None, escape=True,
                 max_rows=None, max_cols=None, show_dimensions=False,
                 notebook=False, decimal='.', border=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_html(buf, columns, col_space, header,
+                    index, na_rep, formatters,
+                    float_format, sparsify, index_names,
+                    justify, bold_rows, classes, escape,
+                    max_rows, max_cols, show_dimensions,
+                    notebook, decimal, border)
 
     def to_json(self, path_or_buf=None, orient=None, date_format=None,
                 double_precision=10, force_ascii=True, date_unit='ms',
                 default_handler=None, lines=False, compression=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_json(path_or_buf, orient, date_format,
+                    double_precision, force_ascii, date_unit,
+                    default_handler, lines, compression)
 
     def to_latex(self, buf=None, columns=None, col_space=None, header=True,
                  index=True, na_rep='np.NaN', formatters=None,
@@ -2426,9 +2459,12 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def to_msgpack(self, path_or_buf=None, encoding='utf-8', **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_msgpack(path_or_buf, encoding, **kwargs)
 
     def to_panel(self):
         raise NotImplementedError(
@@ -2437,9 +2473,13 @@ class DataFrame(object):
 
     def to_parquet(self, fname, engine='auto', compression='snappy',
                    **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_parquet(fname, engine, compression,
+                       **kwargs)
 
     def to_period(self, freq=None, axis=0, copy=True):
         raise NotImplementedError(
@@ -2447,9 +2487,12 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def to_pickle(self, path, compression='infer', protocol=4):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_pickle(path, compression, protocol)
 
     def to_records(self, index=True, convert_datetime64=True):
         raise NotImplementedError(
@@ -2463,16 +2506,25 @@ class DataFrame(object):
 
     def to_sql(self, name, con, flavor=None, schema=None, if_exists='fail',
                index=True, index_label=None, chunksize=None, dtype=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_sql(name, con, flavor, schema, if_exists,
+                   index, index_label, chunksize, dtype)
 
     def to_stata(self, fname, convert_dates=None, write_index=True,
                  encoding='latin-1', byteorder=None, time_stamp=None,
                  data_label=None, variable_labels=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        warnings.warn("Defaulting to Pandas implementation",
+                        PendingDeprecationWarning)
+
+        port_frame = to_pandas(self)
+        port_frame.to_stata(fname, convert_dates, write_index,
+                     encoding, byteorder, time_stamp,
+                     data_label, variable_labels)
 
     def to_string(self, buf=None, columns=None, col_space=None, header=True,
                   index=True, na_rep='np.NaN', formatters=None,
