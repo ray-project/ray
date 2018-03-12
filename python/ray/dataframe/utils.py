@@ -162,3 +162,24 @@ def _prepend_partitions(last_vals, index, partition, func):
     appended_df = last_vals[:index].append(partition)
     cum_df = func(appended_df)
     return cum_df[index:]
+
+
+@ray.remote
+def assign_partitions(index_df, num_partitions):
+    uniques = index_df.index.unique()
+
+    if len(uniques) % num_partitions == 0:
+        chunksize = int(len(uniques) / num_partitions)
+    else:
+        chunksize = int(len(uniques) / num_partitions) + 1
+
+    assignments = []
+
+    while len(uniques) > chunksize:
+        temp_df = uniques[:chunksize]
+        assignments.append(temp_df)
+        uniques = uniques[chunksize:]
+    else:
+        assignments.append(uniques)
+
+    return assignments
