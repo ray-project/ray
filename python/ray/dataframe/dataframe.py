@@ -2166,7 +2166,7 @@ class DataFrame(object):
     def to_clipboard(self, excel=None, sep=None, **kwargs):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_clipboard(excel, sep, **kwargs)
@@ -2179,15 +2179,15 @@ class DataFrame(object):
                escapechar=None, decimal='.'):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_csv(path_or_buf, sep, na_rep, float_format,
-                   columns, header, index, index_label,
-                   mode, encoding, compression, quoting,
-                   quotechar, line_terminator, chunksize,
-                   tupleize_cols, date_format, doublequote,
-                   escapechar, decimal)
+                          columns, header, index, index_label,
+                          mode, encoding, compression, quoting,
+                          quotechar, line_terminator, chunksize,
+                          tupleize_cols, date_format, doublequote,
+                          escapechar, decimal)
 
     def to_dense(self):
         raise NotImplementedError(
@@ -2206,19 +2206,19 @@ class DataFrame(object):
                  freeze_panes=None):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_excel(excel_writer, sheet_name, na_rep,
-                     float_format, columns, header, index,
-                     index_label, startrow, startcol, engine,
-                     merge_cells, encoding, inf_rep, verbose,
-                     freeze_panes)
+                            float_format, columns, header, index,
+                            index_label, startrow, startcol, engine,
+                            merge_cells, encoding, inf_rep, verbose,
+                            freeze_panes)
 
     def to_feather(self, fname):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_feather(fname)
@@ -2228,16 +2228,16 @@ class DataFrame(object):
                private_key=None):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_gbq(destination_table, project_id, chunksize,
-                   verbose, reauth, if_exists, private_key)
+                          verbose, reauth, if_exists, private_key)
 
     def to_hdf(self, path_or_buf, key, **kwargs):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_hdf(path_or_buf, key, **kwargs)
@@ -2250,27 +2250,27 @@ class DataFrame(object):
                 notebook=False, decimal='.', border=None):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_html(buf, columns, col_space, header,
-                    index, na_rep, formatters,
-                    float_format, sparsify, index_names,
-                    justify, bold_rows, classes, escape,
-                    max_rows, max_cols, show_dimensions,
-                    notebook, decimal, border)
+                           index, na_rep, formatters,
+                           float_format, sparsify, index_names,
+                           justify, bold_rows, classes, escape,
+                           max_rows, max_cols, show_dimensions,
+                           notebook, decimal, border)
 
     def to_json(self, path_or_buf=None, orient=None, date_format=None,
                 double_precision=10, force_ascii=True, date_unit='ms',
                 default_handler=None, lines=False, compression=None):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_json(path_or_buf, orient, date_format,
-                    double_precision, force_ascii, date_unit,
-                    default_handler, lines, compression)
+                           double_precision, force_ascii, date_unit,
+                           default_handler, lines, compression)
 
     def to_latex(self, buf=None, columns=None, col_space=None, header=True,
                  index=True, na_rep='np.NaN', formatters=None,
@@ -2285,7 +2285,7 @@ class DataFrame(object):
     def to_msgpack(self, path_or_buf=None, encoding='utf-8', **kwargs):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_msgpack(path_or_buf, encoding, **kwargs)
@@ -2299,11 +2299,10 @@ class DataFrame(object):
                    **kwargs):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
-        port_frame.to_parquet(fname, engine, compression,
-                       **kwargs)
+        port_frame.to_parquet(fname, engine, compression, **kwargs)
 
     def to_period(self, freq=None, axis=0, copy=True):
         raise NotImplementedError(
@@ -2313,7 +2312,7 @@ class DataFrame(object):
     def to_pickle(self, path, compression='infer', protocol=4):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_pickle(path, compression, protocol)
@@ -2332,23 +2331,23 @@ class DataFrame(object):
                index=True, index_label=None, chunksize=None, dtype=None):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_sql(name, con, flavor, schema, if_exists,
-                   index, index_label, chunksize, dtype)
+                          index, index_label, chunksize, dtype)
 
     def to_stata(self, fname, convert_dates=None, write_index=True,
                  encoding='latin-1', byteorder=None, time_stamp=None,
                  data_label=None, variable_labels=None):
 
         warnings.warn("Defaulting to Pandas implementation",
-                        PendingDeprecationWarning)
+                      PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_stata(fname, convert_dates, write_index,
-                     encoding, byteorder, time_stamp,
-                     data_label, variable_labels)
+                            encoding, byteorder, time_stamp,
+                            data_label, variable_labels)
 
     def to_string(self, buf=None, columns=None, col_space=None, header=True,
                   index=True, na_rep='np.NaN', formatters=None,
