@@ -28,7 +28,7 @@ class ReplayActor(object):
     def __init__(
             self, num_shards, learning_starts, buffer_size, train_batch_size,
             prioritized_replay_alpha, prioritized_replay_beta,
-            prioritized_replay_eps):
+            prioritized_replay_eps, clip_rewards):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.train_batch_size = train_batch_size
@@ -36,7 +36,8 @@ class ReplayActor(object):
         self.prioritized_replay_eps = prioritized_replay_eps
 
         self.replay_buffer = PrioritizedReplayBuffer(
-            buffer_size, alpha=prioritized_replay_alpha)
+            self.buffer_size, alpha=prioritized_replay_alpha,
+            clip_rewards=clip_rewards)
 
         # Metrics
         self.add_batch_timer = TimerStat()
@@ -98,6 +99,7 @@ class GenericLearner(threading.Thread):
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.daemon = True
+        self.weights_updated = False
 
     def run(self):
         while True:
@@ -111,6 +113,7 @@ class GenericLearner(threading.Thread):
                 td_error = self.local_evaluator.compute_apply(replay)
             self.outqueue.put((ra, replay, td_error))
         self.learner_queue_size.push(self.inqueue.qsize())
+        self.weights_updated = True
 
 
 class ApexOptimizer(Optimizer):
@@ -121,7 +124,7 @@ class ApexOptimizer(Optimizer):
             prioritized_replay_beta=0.4, prioritized_replay_eps=1e-6,
             train_batch_size=512, sample_batch_size=50,
             num_replay_buffer_shards=1, max_weight_sync_delay=400,
-            debug=False):
+            clip_rewards=True, debug=False):
 
         self.debug = debug
         self.replay_starts = learning_starts
@@ -138,7 +141,7 @@ class ApexOptimizer(Optimizer):
             ReplayActor,
             [num_replay_buffer_shards, learning_starts, buffer_size,
              train_batch_size, prioritized_replay_alpha,
-             prioritized_replay_beta, prioritized_replay_eps],
+             prioritized_replay_beta, prioritized_replay_eps, clip_rewards],
             num_replay_buffer_shards)
         assert len(self.remote_evaluators) > 0
 
@@ -199,7 +202,10 @@ class ApexOptimizer(Optimizer):
                 # Update weights if needed
                 self.steps_since_update[ev] += self.sample_batch_size
                 if self.steps_since_update[ev] >= self.max_weight_sync_delay:
-                    if weights is None:
+                    # Note that it's important to pull new weights once
+                    # updated to avoid excessive correlation between actors
+                    if weights is None or self.learner.weights_updated:
+                        self.learner.weights_updated = False
                         with self.timers["put_weights"]:
                             weights = ray.put(
                                 self.local_evaluator.get_weights())

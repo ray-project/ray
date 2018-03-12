@@ -187,4 +187,4 @@ def pretty_print(result):
             out[k] = v
 
     cleaned = json.dumps(out, cls=_CustomEncoder)
-    return yaml.dump(json.loads(cleaned), default_flow_style=False)
+    return yaml.safe_dump(json.loads(cleaned), default_flow_style=False)
