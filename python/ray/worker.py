@@ -223,6 +223,10 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
+        # A set of all of the actor class keys that have been imported by the
+        # import thread. It is safe to convert this worker into an actor of
+        # these types.
+        self.imported_actor_classes = set()
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
@@ -837,6 +841,14 @@ class Worker(object):
         class_id = arguments[0]
 
         key = b"ActorClass:" + class_id
+
+        # Wait for the actor class key to have been imported by the import
+        # thread. TODO(rkn): It shouldn't be possible to end up in an infinite
+        # loop here, but we should push an error to the driver if too much time
+        # is spent here.
+        while key not in self.imported_actor_classes:
+            time.sleep(0.001)
+
         self.fetch_and_register_actor(key, task.required_resources(), self)
 
     def _wait_for_and_process_task(self, task):
@@ -1723,8 +1735,11 @@ def import_thread(worker, mode):
                 fetch_and_register_remote_function(key, worker=worker)
             elif key.startswith(b"FunctionsToRun"):
                 fetch_and_execute_function_to_run(key, worker=worker)
-            # TODO(rkn): We may need to bring back the case of fetching actor
-            # classes here.
+            elif key.startswith(b"ActorClass"):
+                # Keep track of the fact that this actor class has been
+                # exported so that we know it is safe to turn this worker into
+                # an actor of that class.
+                worker.imported_actor_classes.add(key)
             else:
                 raise Exception("This code should be unreachable.")
 
@@ -1761,6 +1776,12 @@ def import_thread(worker, mode):
                                       worker=worker):
                             fetch_and_execute_function_to_run(key,
                                                               worker=worker)
+                    elif key.startswith(b"ActorClass"):
+                        # Keep track of the fact that this actor class has been
+                        # exported so that we know it is safe to turn this
+                        # worker into an actor of that class.
+                        worker.imported_actor_classes.add(key)
+
                     # TODO(rkn): We may need to bring back the case of fetching
                     # actor classes here.
                     else:

@@ -384,9 +384,7 @@ def publish_actor_class_to_key(key, actor_class_info, worker):
     # actor class was defined.
     actor_class_info["driver_id"] = worker.task_driver_id.id()
     worker.redis_client.hmset(key, actor_class_info)
-    # TODO(rkn): We probably need to reenable this because we can't safely
-    # import the actor class until we've imported all prior imports.
-    # worker.redis_client.rpush("Exports", key)
+    worker.redis_client.rpush("Exports", key)
 
 
 def export_actor_class(class_id, Class, actor_method_names,
