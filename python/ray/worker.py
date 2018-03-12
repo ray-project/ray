@@ -832,8 +832,8 @@ class Worker(object):
         """
         assert self.actor_id == NIL_ACTOR_ID
         arguments = task.arguments()
-        assert len(arguments) == 0
-        self.actor_id = task.actor_creation_id()
+        assert len(arguments) == 1
+        self.actor_id = task.actor_creation_id().id()
         class_id = arguments[0]
 
         key = b"ActorClass:" + class_id
