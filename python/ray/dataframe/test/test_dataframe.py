@@ -1105,7 +1105,7 @@ def test_fillna_sanity(num_partitions=2):
 
     padded = test_data.tsframe.fillna(method='pad')
     ray_df = from_pandas(test_data.tsframe,
-                             num_partitions).fillna(method='pad')
+                         num_partitions).fillna(method='pad')
     assert ray_df_equals_pandas(ray_df, padded)
 
     # mixed type
@@ -1115,17 +1115,17 @@ def test_fillna_sanity(num_partitions=2):
 
     result = test_data.mixed_frame.fillna(value=0)
     ray_df = from_pandas(test_data.mixed_frame,
-                             num_partitions).fillna(value=0)
+                         num_partitions).fillna(value=0)
     assert ray_df_equals_pandas(ray_df, result)
 
     result = test_data.mixed_frame.fillna(method='pad')
     ray_df = from_pandas(test_data.mixed_frame,
-                             num_partitions).fillna(method='pad')
+                         num_partitions).fillna(method='pad')
     assert ray_df_equals_pandas(ray_df, result)
 
     pytest.raises(ValueError, test_data.tsframe.fillna)
     pytest.raises(ValueError, from_pandas(test_data.tsframe,
-                                              num_partitions).fillna)
+                                          num_partitions).fillna)
     with pytest.raises(ValueError):
         from_pandas(test_data.tsframe, num_partitions).fillna(
             5, method='ffill'
@@ -1259,7 +1259,7 @@ def test_fillna_inplace(num_partitions=2):
     assert ray_df_equals_pandas(ray_df, df)
 
     ray_df = from_pandas(df, num_partitions).fillna(value={0: 0},
-                                                        inplace=True)
+                                                    inplace=True)
     assert ray_df is None
 
     df[1][:4] = np.nan
