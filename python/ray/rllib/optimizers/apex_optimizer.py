@@ -30,7 +30,7 @@ LEARNER_QUEUE_MAX_SIZE = 16
 @ray.remote
 class ReplayActor(object):
     """A replay buffer shard.
-    
+
     Ray actors are single-threaded, so for scalability multiple replay actors
     may be created to increase parallelism."""
 
