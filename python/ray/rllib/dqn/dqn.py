@@ -221,13 +221,6 @@ class DQNAgent(Agent):
 
         return result
 
-    def _populate_replay_buffer(self):
-        if self.remote_evaluators:
-            for e in self.remote_evaluators:
-                e.sample.remote(no_replay=True)
-        else:
-            self.local_evaluator.sample(no_replay=True)
-
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for ev in self.remote_evaluators:

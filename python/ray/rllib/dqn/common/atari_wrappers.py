@@ -185,7 +185,7 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
-def wrap_deepmind(env, random_starts):
+def wrap_deepmind(env, random_starts=True):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
