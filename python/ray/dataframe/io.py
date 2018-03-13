@@ -286,11 +286,7 @@ def read_json(path_or_buf=None,
                               convert_axes, convert_dates, keep_default_dates,
                               numpy, precise_float, date_unit, encoding,
                               lines, chunksize, compression)
-<<<<<<< HEAD
     ray_frame = from_pandas(port_frame, get_npartitions())
-=======
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
->>>>>>> 7bb798b1e6b3eca9bf172f785437a2d82898cd2f
 
     return ray_frame
 
