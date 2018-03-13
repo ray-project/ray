@@ -9,6 +9,7 @@ from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler
@@ -25,8 +26,9 @@ _SCHEDULERS = {
 
 
 class Experiment():
-    def __init__(self, name, run, stop, config, resources, repeat, local_dir,
-                 upload_dir, checkpoint_freq, max_failures):
+    def __init__(self, name, run, stop, config,
+                 resources=None, repeat=1, local_dir=DEFAULT_RESULTS_DIR,
+                 upload_dir="", checkpoint_freq=0, max_failures=3):
         """Initializes object to track experiment specs.
 
         Args:
@@ -35,14 +37,15 @@ class Experiment():
                 name of a built-on algorithm (e.g. RLLib’s DQN or PPO), or a
                 user-defined trainable function or class
                 registered in the tune registry.
-            stop (dict): The stopping criteria. The keys
-                may be any field in TrainingResult, whichever is reached first.
+            stop (dict): The stopping criteria. The keys may be any field in
+                TrainingResult, whichever is reached first.
             config (dict): Algorithm-specific configuration
                 (e.g. env, hyperparams).
             resources (dict): Machine resources to allocate per trial,
                 e.g. {“cpu”: 64, “gpu”: 8}. Note that GPUs will not be
-                assigned unless you specify them here.
-            repeat (int): Number of times to repeat each trial.
+                assigned unless you specify them here. Defaults to 1 CPU and 0
+                GPUs.
+            repeat (int): Number of times to repeat each trial. Defaults to 1.
             local_dir (str): Local dir to save training results to.
                 Defaults to `~/ray_results`.
             upload_dir (str): Optional URI to sync training results
@@ -51,7 +54,7 @@ class Experiment():
                 checkpoints. A value of 0 (default) disables checkpointing.
             max_failures (int): Try to recover a trial from its last
                 checkpoint at least this many times. Only applies if
-                checkpointing is enabled.
+                checkpointing is enabled. Defaults to 3.
         """
         spec = {
             "run": run,
