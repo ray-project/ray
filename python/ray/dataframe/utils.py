@@ -7,6 +7,7 @@ import numpy as np
 import ray
 
 from .shuffle import ShuffleActor
+from . import get_npartitions
 
 
 @ray.remote
@@ -156,8 +157,9 @@ def _rebuild_cols(row_partitions, index, columns):
     Returns:
         [ObjectID]: List of new column partitions.
     """
-    partition_assignments = assign_partitions.remote(columns,
-                                                     len(row_partitions))
+    # NOTE: Reexamine if this is the correct number of columns solution
+    n_cols = min(max(get_npartitions(), len(row_partitions)), len(columns))
+    partition_assignments = assign_partitions.remote(columns, n_cols)
     shufflers = [ShuffleActor.remote(x, partition_axis=0, shuffle_axis=1)
                  for x in row_partitions]
 
@@ -174,13 +176,11 @@ def _rebuild_cols(row_partitions, index, columns):
 
     # TODO: Determine if this is the right place to reset the index
     def fix_indexes(df):
-        if df.empty:
-            return pd.DataFrame(index=index, columns=np.arange(len(df.columns)))
         df.index = index
         df.columns = np.arange(len(df.columns))
         return df
 
-    return [shuffler.apply_func.remote(fix_indexes) for shuffler in shufflers]
+    return [shuffler.apply_func.remote(fix_indexes) for shuffler in shufflers[:n_cols]]
 
 
 @ray.remote
@@ -193,8 +193,8 @@ def _rebuild_rows(col_partitions, index, columns):
     Returns:
         [ObjectID]: List of new row Partitions.
     """
-    partition_assignments = assign_partitions.remote(index,
-                                                     len(col_partitions))
+    n_rows = min(max(get_npartitions(), len(col_partitions)), len(index))
+    partition_assignments = assign_partitions.remote(index, n_rows)
     shufflers = [ShuffleActor.remote(x, partition_axis=1, shuffle_axis=0)
                  for x in col_partitions]
 
@@ -215,7 +215,7 @@ def _rebuild_rows(col_partitions, index, columns):
         df.columns = columns
         return df.reset_index(drop=True)
 
-    return [shuffler.apply_func.remote(fix_indexes) for shuffler in shufflers]
+    return [shuffler.apply_func.remote(fix_indexes) for shuffler in shufflers[:n_rows]]
 
 
 @ray.remote
