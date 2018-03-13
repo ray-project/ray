@@ -139,7 +139,10 @@ class ApexOptimizer(PolicyOptimizer):
 
     This class coordinates the data transfers between the learner thread,
     remote evaluators (Ape-X actors), and replay buffer actors.
-    """
+
+    This optimizer requires that policy evaluators return an additional
+    "td_error" array in the info return of compute_gradients(). This error
+    term will be used for sample prioritization."""
 
     def _init(
             self, learning_starts=1000, buffer_size=10000,

@@ -14,7 +14,11 @@ from ray.rllib.utils.timer import TimerStat
 
 
 class LocalSyncReplayOptimizer(PolicyOptimizer):
-    """Variant of the local sync optimizer that supports replay (for DQN)."""
+    """Variant of the local sync optimizer that supports replay (for DQN).
+
+    This optimizer requires that policy evaluators return an additional
+    "td_error" array in the info return of compute_gradients(). This error
+    term will be used for sample prioritization."""
 
     def _init(
             self, learning_starts=1000, buffer_size=10000,
