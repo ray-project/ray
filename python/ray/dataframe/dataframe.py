@@ -1603,12 +1603,12 @@ class DataFrame(object):
             func = (lambda df: df.T.mean(axis=0,
                 skipna=None, level=None, numeric_only=None))
 
-            new_df = [_deploy_func.remote(func, part) for part in self._df]
+            computed_means = [
+                    _deploy_func.remote(func, part) for part in self._df]
 
-            items =  [ray.get(item) for item in new_df]
-            r1 = items[0]
-            r_other = [items[i] for i in range(1, len(items))]
-            _mean = r1.append(r_other)
+            items = ray.get(computed_means)
+
+            _mean = [item for sublist in items for item in sublist]
 
 
             return _mean
@@ -1633,13 +1633,12 @@ class DataFrame(object):
             func = (lambda df: df.T.median(axis=0, level=level,
                                            numeric_only=numeric_only))
 
+            computed_medians = [
+                    _deploy_func.remote(func, part) for part in self._df]
 
-            new_df = [_deploy_func.remote(func, part) for part in self._df]
+            items = ray.get(computed_medians)
 
-            items =  [ray.get(item) for item in new_df]
-            r1 = items[0]
-            r_other = [items[i] for i in range(1, len(items))]
-            _median = r1.append(r_other)
+            _median = [item for sublist in items for item in sublist]
 
             return _median
 
@@ -1836,20 +1835,10 @@ class DataFrame(object):
         """
 
         if (type(q) is list):
-            return DataFrame([quantile(q_i, axis=axis,
+            return Dataframe([self.quantile(q_i, axis=axis,
                                             numeric_only=numeric_only,
                                             interpolation=interpolation)
-                    for q_i in q], q, index=self.index)
-
-        # this section can be replaced with select_dtypes()
-
-        obj_columns = []
-
-        for i, t in enumerate(self.dtypes):
-            if np.dtype('O') == t:
-                obj_columns.append(self.columns[i])
-
-        rdf = self.drop(columns=obj_columns)
+                              for q_i in q], q)
 
         if axis == 0 or axis is None:
             return rdf.T.quantile(q, axis=1, numeric_only=numeric_only,
@@ -2364,17 +2353,18 @@ class DataFrame(object):
                         ddof=ddof, numeric_only=numeric_only)
         else:
 
-            func = lambda df: df.T.std(axis=0, skipna=skipna, level=level,
-                                     ddof=ddof, numeric_only=numeric_only)
+            computed_stds = [_deploy_func.remote(
+                                        lambda df: df.T.std(
+                                            axis=0, skipna=skipna, level=level,
+                                            ddof=ddof,
+                                            numeric_only=numeric_only), part)
+                             for part in self._df]
 
-            new_df = [_deploy_func.remote(func, part) for part in self._df]
+            items = ray.get(computed_stds)
 
-            items =  [ray.get(item) for item in new_df]
-            r1 = items[0]
-            r_other = [items[i] for i in range(1, len(items))]
-            _std = r1.append(r_other)
+            _stds = [item for sublist in items for item in sublist]
 
-            return _std
+            return _stds
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -2642,16 +2632,16 @@ class DataFrame(object):
             return self.T.var(axis=1, skipna=skipna, level=level, ddof=ddof,
                               numeric_only=numeric_only)
         else:
-            func = lambda df: df.T.var(axis=0, skipna=skipna, level=level,
-                                     ddof=ddof, numeric_only=numeric_only
-                                    )
+            computed_vars = [_deploy_func.remote(lambda df: df.T.var(
+                                            axis=0, skipna=skipna, level=level,
+                                            ddof=ddof,
+                                            numeric_only=numeric_only),
+                                          part)
+                             for part in self._df]
 
-            new_df = [_deploy_func.remote(func, part) for part in self._df]
+            items = ray.get(computed_vars)
 
-            items =  [ray.get(item) for item in new_df]
-            r1 = items[0]
-            r_other = [items[i] for i in range(1, len(items))]
-            _var = r1.append(r_other)
+            _var = [item for sublist in items for item in sublist]
 
             return _var
 
