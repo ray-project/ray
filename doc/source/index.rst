@@ -41,7 +41,7 @@ View the `codebase on GitHub`_.
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
 - `Ray Tune`_: Hyperparameter Optimization Framework
-- `Ray RLlib`_: A Scalable Reinforcement Learning Library
+- `Ray RLlib`_: Scalable Reinforcement Learning
 
 .. _`Ray Tune`: tune.html
 .. _`Ray RLlib`: rllib.html
