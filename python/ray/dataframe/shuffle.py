@@ -10,7 +10,7 @@ from threading import Thread
 @ray.remote(num_cpus=2)
 class ShuffleActor(object):
 
-    def __init__(self, partition_data, axis=1):
+    def __init__(self, partition_data, axis=0):
         self.incoming = []
         self.partition_data = partition_data
         self.index_of_self = None
@@ -99,6 +99,12 @@ class ShuffleActor(object):
         return None
 
     def add_to_incoming(self, data):
+        """Append to the incoming data.
+
+        Args:
+            data (int, pd.DataFrame): A tuple containing the source index and
+                the data that is being sent.
+        """
         self.incoming.append(data)
 
     def apply_func(self, func, *args):
@@ -122,7 +128,9 @@ class ShuffleActor(object):
         # After we drop the partition indices we use pd.concat with the axis
         # provided in the constructor.
         self.incoming = [x[1] for x in self.incoming]
-        data = pd.concat(self.incoming, axis=self.axis)
+        # We need the opposite of the axis here (1 -> 0 or 0 -> 1) so that we
+        # concatenated properly.
+        data = pd.concat(self.incoming, axis=self.axis ^ 1)
 
         if len(args) == 0:
             return func(data)
