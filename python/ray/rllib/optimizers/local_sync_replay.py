@@ -7,13 +7,13 @@ import numpy as np
 import ray
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
     PrioritizedReplayBuffer
-from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
 
-class LocalSyncReplayOptimizer(Optimizer):
+class LocalSyncReplayOptimizer(PolicyOptimizer):
     """Variant of the local sync optimizer that supports replay (for DQN)."""
 
     def _init(
@@ -99,7 +99,7 @@ class LocalSyncReplayOptimizer(Optimizer):
         self.num_steps_trained += samples.count
 
     def stats(self):
-        return dict(Optimizer.stats(self), **{
+        return dict(PolicyOptimizer.stats(self), **{
             "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
             "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),

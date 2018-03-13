@@ -103,7 +103,7 @@ DEFAULT_CONFIG = dict(
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
     # to increase if your environment is particularly slow to sample, or if
-    # you're using the Ape-X optimizer.
+    # you're using the Async or Ape-X optimizers.
     num_workers=0,
     # Whether to allocate GPUs for workers (if > 0).
     num_gpus_per_worker=0,

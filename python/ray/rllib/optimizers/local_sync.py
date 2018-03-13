@@ -3,13 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.optimizer import PolicyOptimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
 
-class LocalSyncOptimizer(Optimizer):
+class LocalSyncOptimizer(PolicyOptimizer):
     """A simple synchronous RL optimizer.
 
     In each step, this optimizer pulls samples from a number of remote
@@ -48,7 +48,7 @@ class LocalSyncOptimizer(Optimizer):
         self.num_steps_trained += samples.count
 
     def stats(self):
-        return dict(Optimizer.stats(self), **{
+        return dict(PolicyOptimizer.stats(self), **{
             "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
             "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),

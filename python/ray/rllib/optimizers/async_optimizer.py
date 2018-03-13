@@ -3,11 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.timer import TimerStat
 
 
-class AsyncOptimizer(Optimizer):
+class AsyncOptimizer(PolicyOptimizer):
     """An asynchronous RL optimizer, e.g. for implementing A3C.
 
     This optimizer asynchronously pulls and applies gradients from remote
@@ -54,7 +54,7 @@ class AsyncOptimizer(Optimizer):
         self.num_steps_trained += self.grads_per_step * self.batch_size
 
     def stats(self):
-        return dict(Optimizer.stats(), **{
+        return dict(PolicyOptimizer.stats(), **{
             "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
             "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
             "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),

@@ -11,7 +11,7 @@ import threading
 import numpy as np
 
 import ray
-from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.actors import TaskPool, create_colocated
@@ -116,7 +116,7 @@ class GenericLearner(threading.Thread):
         self.weights_updated = True
 
 
-class ApexOptimizer(Optimizer):
+class ApexOptimizer(PolicyOptimizer):
 
     def _init(
             self, learning_starts=1000, buffer_size=10000,
@@ -262,4 +262,4 @@ class ApexOptimizer(Optimizer):
         }
         if self.debug:
             stats.update(debug_stats)
-        return dict(Optimizer.stats(self), **stats)
+        return dict(PolicyOptimizer.stats(self), **stats)
