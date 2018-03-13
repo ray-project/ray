@@ -4,6 +4,13 @@ namespace ray {
 
 namespace raylet {
 
+flatbuffers::Offset<TaskFlatbuffer> Task::ToFlatbuffer(
+    flatbuffers::FlatBufferBuilder &fbb) const {
+  auto task = CreateTask(fbb, task_spec_.ToFlatbuffer(fbb),
+                         task_execution_spec_.ToFlatbuffer(fbb));
+  return task;
+}
+
 const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
   return task_execution_spec_;
 }

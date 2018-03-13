@@ -39,6 +39,17 @@ class TaskExecutionSpecification {
   TaskExecutionSpecification(const std::vector<ObjectID> &&dependencies,
                              int num_forwards);
 
+  /// Create a task execution specification from a serialized flatbuffer.
+  ///
+  /// \param spec_flatbuffer The serialized specification.
+  TaskExecutionSpecification(const TaskExecSpecFlatbuffer &spec_flatbuffer) {
+    spec_flatbuffer.UnPackTo(&execution_spec_);
+  }
+
+  /// Serialize a task execution specification to a flatbuffer.
+  ///
+  /// \param fbb The flatbuffer builder.
+  /// \return An offset to the serialized task execution specification.
   flatbuffers::Offset<TaskExecSpecFlatbuffer> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb) const;
 

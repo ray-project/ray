@@ -36,15 +36,22 @@ class Task {
        const TaskSpecification &task_spec)
       : task_execution_spec_(execution_spec), task_spec_(task_spec) {}
 
+  /// Create a task from a serialized flatbuffer.
+  ///
+  /// \param task_flatbuffer The serialized task.
+  Task(const TaskFlatbuffer &task_flatbuffer) :
+    task_execution_spec_(*task_flatbuffer.task_execution_spec()),
+    task_spec_(*task_flatbuffer.task_specification()) {}
+
   /// Destroy the task.
   virtual ~Task() {}
 
+  /// Serialize a task to a flatbuffer.
+  ///
+  /// \param fbb The flatbuffer builder.
+  /// \return An offset to the serialized task.
   flatbuffers::Offset<TaskFlatbuffer> ToFlatbuffer(
-      flatbuffers::FlatBufferBuilder &fbb) const {
-    auto task = CreateTask(fbb, task_spec_.ToFlatbuffer(fbb),
-                           task_execution_spec_.ToFlatbuffer(fbb));
-    return task;
-  }
+      flatbuffers::FlatBufferBuilder &fbb) const;
 
   /// Get the execution specification for the task.
   ///
