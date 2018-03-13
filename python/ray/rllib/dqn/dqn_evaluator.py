@@ -11,7 +11,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
-from ray.rllib.optimizers import SampleBatch, Evaluator
+from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.compression import pack
 
 
@@ -43,7 +43,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
         del arr[new_len:]
 
 
-class DQNEvaluator(Evaluator):
+class DQNEvaluator(PolicyEvaluator):
     """The DQN Evaluator.
 
     TODO(rliaw): Support observation/reward filters?"""
