@@ -247,6 +247,8 @@ def test_int_dataframe():
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
 
+    test___setitem__(ray_df, pandas_df)
+
 
 def test_float_dataframe():
 
@@ -348,6 +350,8 @@ def test_float_dataframe():
         test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+
+    test___setitem__(ray_df, pandas_df)
 
 
 def test_mixed_dtype_dataframe():
@@ -458,6 +462,8 @@ def test_mixed_dtype_dataframe():
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
 
+    test___setitem__(ray_df, pandas_df)
+
 
 def test_nan_dataframe():
     pandas_df = pd.DataFrame({
@@ -556,6 +562,8 @@ def test_nan_dataframe():
         test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+
+    test___setitem__(ray_df, pandas_df)
 
 
 def test_add():
@@ -1915,11 +1923,49 @@ def test___getitem__(ray_df, pd_df):
     assert pd_col.equals(ray_col)
 
 
-def test___setitem__():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test___setitem__(ray_df, pandas_df):
+    # test key = Index, value = int
+    col0 = pandas_df.columns[0]
+    val = 1
+    ray_df[col0] = val
+    pandas_df[col0] = val
+    assert ray_df_equals_pandas(ray_df, pandas_df)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.__setitem__(None, None)
+    # test key = Index, value = int
+    col1 = pandas_df.columns[0]
+    array = ['a', 'b', 'c', 'd']
+    ray_df[col1] = array
+    pandas_df[col1] = array
+    assert ray_df_equals_pandas(ray_df, pandas_df)
+
+    # test key = new_col string, value = list
+    new_col = 'new_col'
+    new_val = [1, 2, 3, 4]
+    ray_df[new_col] = new_val
+    pandas_df[new_col] = new_val
+    assert ray_df_equals_pandas(ray_df, pandas_df)
+
+    # test key = new_col string, value = string
+    new_col = 'another_new_col'
+    new_val = 'no'
+    ray_df[new_col] = new_val
+    pandas_df[new_col] = new_val
+    assert ray_df_equals_pandas(ray_df, pandas_df)
+
+    # test key = Index, value = pandas DataFrame
+    columns1 = pandas_df.columns[0:2]
+    columns2 = pandas_df.columns[2:4]
+
+    pandas_df[columns1] = pandas_df[columns2]
+    ray_df[columns1] = pandas_df[columns2]
+    assert ray_df_equals_pandas(ray_df, pandas_df)
+
+    # test key = Index, value = pandas Series
+    columns = pandas_df.columns
+    pandas_df[columns[0]] = pandas_df[columns[3]]
+    ray_df[columns[0]] = pandas_df[columns[3]]
+    assert ray_df_equals_pandas(ray_df, pandas_df)
 
 
 def test___len__():

@@ -2100,9 +2100,48 @@ class DataFrame(object):
         return to_pandas(result_column_chunks)
 
     def __setitem__(self, key, value):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Set the key specified to the value for this DataFrame.
+
+        Args:
+            key : currently only Index, MultiIndex, List,
+                  single value
+            value : curretnly only pd.Series, pd.DataFrame, ndarray,
+                    list, single value
+        """
+        def value_helper(i):
+            # given partition number, return slice of value corresponding
+            # to this partition
+            start = sum(self._lengths[:i])
+            end = start + self._lengths[i]
+            return value[start:end]
+
+        def set_value(df, key, value):
+            # set single values
+            df = df.copy()
+            df.__setitem__(key, value)
+            return df
+
+        if isinstance(key, (pd.Series, pd.DataFrame)):
+            raise NotImplementedError("To contribute to Pandas on Ray, \
+                please visit " "github.com/ray-project/ray.")
+            return
+        elif isinstance(value, (list, np.ndarray, pd.DataFrame, pd.Series)):
+            value_partitions = [value_helper(i) for i in range(len(self._df))]
+            if isinstance(value, (pd.DataFrame, pd.Series)):
+                value_partitions = [val.reset_index(drop='True')
+                                    for val in value_partitions]
+            new_df = [_deploy_func.remote(
+                    set_value, part, key, _value)
+                    for part, _value in zip(self._df, value_partitions)]
+        else:
+            new_df = [_deploy_func.remote(set_value, part, key, value)
+                      for part in self._df]
+        self._df = new_df
+
+        # in case any new columns may have been set
+        new_columns = ray.get(
+            _deploy_func.remote(lambda df: df.columns, self._df[0]))
+        self.columns = new_columns
 
     def __len__(self):
         raise NotImplementedError(
