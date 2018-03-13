@@ -69,7 +69,7 @@ class Experiment():
         }
         self._trials = generate_trials(spec, name)
 
-    def trials():
+    def trials(self):
         for trial in self._trials:
             yield trial
 
