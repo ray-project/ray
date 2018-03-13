@@ -18,6 +18,13 @@ import warnings
 import numpy as np
 import ray
 import itertools
+from .utils import (
+    _get_lengths,
+    to_pandas,
+    _shuffle,
+    _local_groupby,
+    _deploy_func,
+    _compute_length_and_index)
 
 
 class DataFrame(object):
@@ -232,14 +239,15 @@ class DataFrame(object):
         """
         assert(len(df) > 0)
 
-        if df:
+        if df is not None:
             self._df = df
-        if columns:
+        if columns is not None:
             self.columns = columns
-        if index:
-            self.index = index
 
         self._lengths, self._index = _compute_length_and_index.remote(self._df)
+
+        if index is not None:
+            self.index = index
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -458,8 +466,6 @@ class DataFrame(object):
             DataFrame with the dropna applied.
         """
         raise NotImplementedError("Not yet")
-        if how != 'any' and how != 'all':
-            raise ValueError("<how> not correctly set.")
 
     def add(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -579,9 +585,16 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Synonym for DataFrame.fillna(method='bfill')
+        """
+        new_df = self.fillna(
+            method='bfill', axis=axis, limit=limit, downcast=downcast
+        )
+        if inplace:
+            self._df = new_df._df
+            self.columns = new_df.columns
+        else:
+            return new_df
 
     def bool(self):
         """Return the bool of a single element PandasObject.
@@ -731,9 +744,100 @@ class DataFrame(object):
 
     def drop(self, labels=None, axis=0, index=None, columns=None, level=None,
              inplace=False, errors='raise'):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Return new object with labels in requested axis removed.
+        Args:
+            labels: Index or column labels to drop.
+
+            axis: Whether to drop labels from the index (0 / 'index') or
+                columns (1 / 'columns').
+
+            index, columns: Alternative to specifying axis (labels, axis=1 is
+                equivalent to columns=labels).
+
+            level: For MultiIndex
+
+            inplace: If True, do operation inplace and return None.
+
+            errors: If 'ignore', suppress error and existing labels are
+                dropped.
+        Returns:
+            dropped : type of caller
+        """
+        # inplace = validate_bool_kwarg(inplace, "inplace")
+        if labels is not None:
+            if index is not None or columns is not None:
+                raise ValueError("Cannot specify both 'labels' and "
+                                 "'index'/'columns'")
+        elif index is None and columns is None:
+            raise ValueError("Need to specify at least one of 'labels', "
+                             "'index' or 'columns'")
+        new_df = self
+        is_axis_zero = axis is None or axis == 0 or axis == 'index'\
+            or axis == 'rows'
+        try:
+            if (is_axis_zero and columns is None) or index is not None:
+                values = labels if labels is not None else index
+                try:
+                    try:
+                        if len(values) == 0:
+                            if inplace:
+                                return
+                            else:
+                                return self
+                        filtered_index = self._index.loc[list(values)]
+                    except TypeError:
+                        filtered_index = self._index.loc[[values]]
+                except KeyError:
+                    raise ValueError(
+                        "{} is not contained in the index".format(labels))
+
+                filtered_index.dropna(inplace=True)
+
+                partition_idx = [
+                    filtered_index.loc[
+                        filtered_index['partition'] == i
+                    ]['index_within_partition']
+                    for i in range(len(self._df))
+                ]
+
+                new_df = [
+                    _deploy_func.remote(
+                        lambda df, new_labels: df.drop(
+                            new_labels, level=level, errors='ignore'),
+                        self._df[i], partition_idx[i]
+                    )
+                    for i in range(len(self._df))
+                ]
+                new_index = self._index.copy().drop(values, errors=errors)
+                new_df = DataFrame(new_df, self.columns, index=new_index.index)
+        except (ValueError, KeyError):
+            if errors == 'raise':
+                raise
+            new_df = self
+
+        try:
+            if not is_axis_zero or columns is not None:
+                values = labels if labels else columns
+                new_df = new_df._map_partitions(
+                    lambda df: df.drop(
+                        values, axis=1, level=level, errors='ignore')
+                )
+                new_columns = self.columns.to_series().drop(values,
+                                                            errors=errors)
+                new_df.columns = pd.Index(new_columns)
+        except (ValueError, KeyError):
+            if errors == 'raise':
+                raise
+            new_df = self
+
+        if inplace:
+            self._update_inplace(
+                df=new_df._df,
+                index=new_df.index,
+                columns=new_df.columns
+            )
+        else:
+            return new_df
 
     def drop_duplicates(self, subset=None, keep='first', inplace=False):
         raise NotImplementedError(
@@ -784,9 +888,61 @@ class DataFrame(object):
         return True
 
     def eval(self, expr, inplace=False, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Evaluate a Python expression as a string using various backends.
+        Args:
+            expr: The expression to evaluate. This string cannot contain any
+                Python statements, only Python expressions.
+
+            parser: The parser to use to construct the syntax tree from the
+                expression. The default of 'pandas' parses code slightly
+                different than standard Python. Alternatively, you can parse
+                an expression using the 'python' parser to retain strict
+                Python semantics. See the enhancing performance documentation
+                for more details.
+
+            engine: The engine used to evaluate the expression.
+
+            truediv: Whether to use true division, like in Python >= 3
+
+            local_dict: A dictionary of local variables, taken from locals()
+                by default.
+
+            global_dict: A dictionary of global variables, taken from
+                globals() by default.
+
+            resolvers: A list of objects implementing the __getitem__ special
+                method that you can use to inject an additional collection
+                of namespaces to use for variable lookup. For example, this is
+                used in the query() method to inject the index and columns
+                variables that refer to their respective DataFrame instance
+                attributes.
+
+            level: The number of prior stack frames to traverse and add to
+                the current scope. Most users will not need to change this
+                parameter.
+
+            target: This is the target object for assignment. It is used when
+                there is variable assignment in the expression. If so, then
+                target must support item assignment with string keys, and if a
+                copy is being returned, it must also support .copy().
+
+            inplace: If target is provided, and the expression mutates target,
+                whether to modify target inplace. Otherwise, return a copy of
+                target with the mutation.
+        Returns:
+            ndarray, numeric scalar, DataFrame, Series
+        """
+        inplace = validate_bool_kwarg(inplace, "inplace")
+        new_df = self._map_partitions(lambda df: df.eval(expr, inplace=False,
+                                      **kwargs))
+        new_df.columns = new_df.columns.insert(self.columns.size, 'e')
+        if inplace:
+            # TODO: return ray series instead of ray df
+            self.e = new_df.drop(columns=self.columns)
+            self._df = new_df._df
+            self.columns = new_df.columns
+        else:
+            return new_df
 
     def ewm(self, com=None, span=None, halflife=None, alpha=None,
             min_periods=0, freq=None, adjust=True, ignore_na=False, axis=0):
@@ -800,15 +956,136 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def ffill(self, axis=None, inplace=False, limit=None, downcast=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Synonym for DataFrame.fillna(method='ffill')
+        """
+        new_df = self.fillna(
+            method='ffill', axis=axis, limit=limit, downcast=downcast
+        )
+        if inplace:
+            self._df = new_df._df
+            self.columns = new_df.columns
+        else:
+            return new_df
 
     def fillna(self, value=None, method=None, axis=None, inplace=False,
                limit=None, downcast=None, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Fill NA/NaN values using the specified method.
+
+        Args:
+            value: Value to use to fill holes. This value cannot be a list.
+
+            method: Method to use for filling holes in reindexed Series pad.
+                ffill: propagate last valid observation forward to next valid
+                backfill.
+                bfill: use NEXT valid observation to fill gap.
+
+            axis: 0 or 'index', 1 or 'columns'.
+
+            inplace: If True, fill in place. Note: this will modify any other
+                views on this object.
+
+            limit: If method is specified, this is the maximum number of
+                consecutive NaN values to forward/backward fill. In other
+                words, if there is a gap with more than this number of
+                consecutive NaNs, it will only be partially filled. If method
+                is not specified, this is the maximum number of entries along
+                the entire axis where NaNs will be filled. Must be greater
+                than 0 if not None.
+
+            downcast: A dict of item->dtype of what to downcast if possible,
+                or the string 'infer' which will try to downcast to an
+                appropriate equal type.
+
+        Returns:
+            filled: DataFrame
+        """
+        if isinstance(value, (list, tuple)):
+            raise TypeError('"value" parameter must be a scalar or dict, but '
+                            'you passed a "{0}"'.format(type(value).__name__))
+        if value is None and method is None:
+            raise ValueError('must specify a fill method or value')
+        if value is not None and method is not None:
+            raise ValueError('cannot specify both a fill method and value')
+        if method is not None and method not in ['backfill', 'bfill', 'pad',
+                                                 'ffill']:
+            expecting = 'pad (ffill) or backfill (bfill)'
+            msg = 'Invalid fill method. Expecting {expecting}. Got {method}'\
+                  .format(expecting=expecting, method=method)
+            raise ValueError(msg)
+
+        partition_idx = [
+            self._index.loc[
+                self._index['partition'] == i
+            ].index
+            for i in range(len(self._df))
+        ]
+
+        def fillna_part(df, real_index):
+            old_index = df.index
+            df.index = real_index
+            new_df = df.fillna(value=value, method=method, axis=axis,
+                               limit=limit, downcast=downcast, **kwargs)
+            new_df.index = old_index
+            return new_df
+
+        new_df = [
+            _deploy_func.remote(
+                fillna_part,
+                part, partition_idx[i]
+            )
+            for i, part in enumerate(self._df)
+        ]
+
+        new_df = DataFrame(new_df, self.columns, self.index)
+
+        is_bfill = method is not None and method in ['backfill', 'bfill']
+        is_ffill = method is not None and method in ['pad', 'ffill']
+        is_axis_zero = axis is None or axis == 0 or axis == 'index'\
+            or axis == 'rows'
+
+        if is_axis_zero and (is_bfill or is_ffill):
+            def fill_in_part(part, row):
+                return part.fillna(value=row, axis=axis, limit=limit,
+                                   downcast=downcast, **kwargs)
+            last_row_df = None
+            if is_ffill:
+                last_row_df = pd.DataFrame(
+                    [df.iloc[-1, :] for df in ray.get(new_df._df[:-1])]
+                )
+            else:
+                last_row_df = pd.DataFrame(
+                    [df.iloc[0, :] for df in ray.get(new_df._df[1:])]
+                )
+            last_row_df.fillna(value=value, method=method, axis=axis,
+                               inplace=True, limit=limit,
+                               downcast=downcast, **kwargs)
+            if is_ffill:
+                new_df._df[1:] = [
+                    _deploy_func.remote(fill_in_part, new_df._df[i + 1],
+                                        last_row_df.iloc[i, :])
+                    for i in range(len(self._df) - 1)
+                ]
+            else:
+                new_df._df[:-1] = [
+                    _deploy_func.remote(fill_in_part, new_df._df[i],
+                                        last_row_df.iloc[i])
+                    for i in range(len(self._df) - 1)
+                ]
+
+        # TODO: Revist this to improve performance
+        if limit is not None:
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+
+        if inplace:
+            self._update_inplace(
+                df=new_df._df,
+                columns=new_df.columns,
+                index=new_df.index
+            )
+        else:
+            return new_df
 
     def filter(self, items=None, like=None, regex=None, axis=None):
         raise NotImplementedError(
@@ -1472,14 +1749,79 @@ class DataFrame(object):
 
     def rename(self, mapper=None, index=None, columns=None, axis=None,
                copy=True, inplace=False, level=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if mapper is None and index is None and columns is None:
+            raise TypeError('must pass an index to rename')
+
+        if axis is None:
+            if columns is not None:
+                new_df = [
+                    _deploy_func.remote(
+                        lambda df: df.rename(columns=columns,
+                                             copy=copy, level=level),
+                        part
+                    )
+                    for part in self._df
+                ]
+                new_columns = pd.DataFrame(columns=self.columns)\
+                    .rename(columns=columns, copy=copy, level=level)\
+                    .columns
+                new_df = DataFrame(new_df, new_columns, self.index)
+            else:
+                new_df = self.copy()
+            if index is not None:
+                new_df.index = self._index.rename(index=index, copy=copy,
+                                                  level=level).index
+        else:
+            new_df = self._map_partitions(
+                lambda df: df.rename(mapper=mapper, axis=axis, copy=copy,
+                                     level=level)
+            )
+            new_df._index = new_df._index.rename(mapper=mapper, axis=axis,
+                                                 copy=copy, level=level)
+            new_df.columns = pd.DataFrame(columns=new_df.columns)\
+                .rename(mapper=mapper, axis=axis, copy=copy,
+                        level=level).columns
+
+        if inplace:
+            self._update_inplace(
+                df=new_df._df,
+                columns=new_df.columns,
+                index=new_df.index
+            )
+        else:
+            return new_df
 
     def rename_axis(self, mapper, axis=0, copy=True, inplace=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        axes_is_columns = axis == 1 or axis == "columns"
+        renamed = self if inplace else self.copy()
+        if axes_is_columns:
+            renamed.columns.name = mapper
+        else:
+            renamed._index.rename_axis(mapper, axis=axis, copy=copy,
+                                       inplace=True)
+        if not inplace:
+            return renamed
+
+    def _set_axis_name(self, name, axis=0, inplace=False):
+        """Alter the name or names of the axis.
+
+        Args:
+            name: Name for the Index, or list of names for the MultiIndex
+            axis: 0 or 'index' for the index; 1 or 'columns' for the columns
+            inplace: Whether to modify `self` directly or return a copy
+
+        Returns:
+            Type of caller or None if inplace=True.
+        """
+        axes_is_columns = axis == 1 or axis == "columns"
+        renamed = self if inplace else self.copy()
+        if axes_is_columns:
+            renamed.columns.set_names(name)
+        else:
+            renamed._index.set_names(name)
+
+        if not inplace:
+            return renamed
 
     def reorder_levels(self, order, axis=0):
         raise NotImplementedError(
@@ -2442,156 +2784,3 @@ class DataFrame(object):
         """
         from .indexing import _iLoc_Indexer
         return _iLoc_Indexer(self)
-
-
-def _get_lengths(df):
-    """Gets the length of the dataframe.
-
-    Args:
-        df: A remote pd.DataFrame object.
-
-    Returns:
-        Returns an integer length of the dataframe object. If the attempt
-            fails, returns 0 as the length.
-    """
-    try:
-        return len(df)
-    # Because we sometimes have cases where we have summary statistics in our
-    # DataFrames
-    except TypeError:
-        return 0
-
-
-@ray.remote
-def _shuffle(df, indices, chunksize):
-    """Shuffle data by sending it through the Ray Store.
-
-    Args:
-        df (pd.DataFrame): The pandas DataFrame to shuffle.
-        indices ([any]): The list of indices for the DataFrame.
-        chunksize (int): The number of indices to send.
-
-    Returns:
-        The list of pd.DataFrame objects in order of their assignment. This
-        order is important because it determines which task will get the data.
-    """
-    i = 0
-    partition = []
-    while len(indices) > chunksize:
-        oids = df.reindex(indices[:chunksize])
-        partition.append(oids)
-        indices = indices[chunksize:]
-        i += 1
-    else:
-        oids = df.reindex(indices)
-        partition.append(oids)
-    return partition
-
-
-@ray.remote
-def _local_groupby(df_rows, axis=0):
-    """Apply a groupby on this partition for the blocks sent to it.
-
-    Args:
-        df_rows ([pd.DataFrame]): A list of dataframes for this partition. Goes
-            through the Ray object store.
-
-    Returns:
-        A DataFrameGroupBy object from the resulting groupby.
-    """
-    concat_df = pd.concat(df_rows, axis=axis)
-    return concat_df.groupby(concat_df.index)
-
-
-@ray.remote
-def _deploy_func(func, dataframe, *args):
-    """Deploys a function for the _map_partitions call.
-
-    Args:
-        dataframe (pandas.DataFrame): The pandas DataFrame for this partition.
-
-    Returns:
-        A futures object representing the return value of the function
-        provided.
-    """
-    if len(args) == 0:
-        return func(dataframe)
-    else:
-        return func(dataframe, *args)
-
-
-def from_pandas(df, npartitions=None, chunksize=None, sort=True):
-    """Converts a pandas DataFrame to a Ray DataFrame.
-
-    Args:
-        df (pandas.DataFrame): The pandas DataFrame to convert.
-        npartitions (int): The number of partitions to split the DataFrame
-            into. Has priority over chunksize.
-        chunksize (int): The number of rows to put in each partition.
-        sort (bool): Whether or not to sort the df as it is being converted.
-
-    Returns:
-        A new Ray DataFrame object.
-    """
-    if sort and not df.index.is_monotonic_increasing:
-        df = df.sort_index(ascending=True)
-
-    if npartitions is not None:
-        chunksize = int(len(df) / npartitions)
-    elif chunksize is None:
-        raise ValueError("The number of partitions or chunksize must be set.")
-
-    temp_df = df
-
-    dataframes = []
-    lengths = []
-    while len(temp_df) > chunksize:
-        t_df = temp_df[:chunksize]
-        lengths.append(len(t_df))
-        # reset_index here because we want a pd.RangeIndex
-        # within the partitions. It is smaller and sometimes faster.
-        t_df = t_df.reset_index(drop=True)
-        top = ray.put(t_df)
-        dataframes.append(top)
-        temp_df = temp_df[chunksize:]
-    else:
-        temp_df = temp_df.reset_index(drop=True)
-        dataframes.append(ray.put(temp_df))
-        lengths.append(len(temp_df))
-
-    return DataFrame(dataframes, df.columns, index=df.index)
-
-
-def to_pandas(df):
-    """Converts a Ray DataFrame to a pandas DataFrame/Series.
-
-    Args:
-        df (ray.DataFrame): The Ray DataFrame to convert.
-
-    Returns:
-        A new pandas DataFrame.
-    """
-    pd_df = pd.concat(ray.get(df._df))
-    pd_df.index = df.index
-    pd_df.columns = df.columns
-    return pd_df
-
-
-@ray.remote(num_return_vals=2)
-def _compute_length_and_index(dfs):
-    """Create a default index, which is a RangeIndex
-
-    Returns:
-        The pd.RangeIndex object that represents this DataFrame.
-    """
-    lengths = ray.get([_deploy_func.remote(_get_lengths, d)
-                       for d in dfs])
-
-    dest_indices = {"partition":
-                    [i for i in range(len(lengths))
-                     for j in range(lengths[i])],
-                    "index_within_partition":
-                    [j for i in range(len(lengths))
-                     for j in range(lengths[i])]}
-
-    return lengths, pd.DataFrame(dest_indices)

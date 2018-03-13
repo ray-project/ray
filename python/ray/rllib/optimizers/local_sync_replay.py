@@ -20,7 +20,7 @@ class LocalSyncReplayOptimizer(Optimizer):
             self, learning_starts=1000, buffer_size=10000,
             prioritized_replay=True, prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4, prioritized_replay_eps=1e-6,
-            train_batch_size=32, sample_batch_size=4):
+            train_batch_size=32, sample_batch_size=4, clip_rewards=True):
 
         self.replay_starts = learning_starts
         self.prioritized_replay_beta = prioritized_replay_beta
@@ -37,10 +37,10 @@ class LocalSyncReplayOptimizer(Optimizer):
         # Set up replay buffer
         if prioritized_replay:
             self.replay_buffer = PrioritizedReplayBuffer(
-                buffer_size,
-                alpha=prioritized_replay_alpha)
+                buffer_size, alpha=prioritized_replay_alpha,
+                clip_rewards=clip_rewards)
         else:
-            self.replay_buffer = ReplayBuffer(buffer_size)
+            self.replay_buffer = ReplayBuffer(buffer_size, clip_rewards)
 
         assert buffer_size >= self.replay_starts
 

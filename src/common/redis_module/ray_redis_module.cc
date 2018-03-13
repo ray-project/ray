@@ -420,9 +420,7 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 
   // Publish a message on the requested pubsub channel if necessary.
   if (pubsub_channel == TablePubsub_TASK) {
-    size_t len = 0;
-    const char *buf = RedisModule_StringPtrLen(data, &len);
-
+    const char *buf = RedisModule_StringPtrLen(data, NULL);
     auto message = flatbuffers::GetRoot<TaskTableData>(buf);
 
     if (message->scheduling_state() == SchedulingState_WAITING ||
@@ -462,6 +460,46 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
       RedisModule_FreeString(ctx, publish_message);
       RedisModule_FreeString(ctx, publish_topic);
     }
+  } else if (pubsub_channel == TablePubsub_CLIENT) {
+    const char *buf = RedisModule_StringPtrLen(data, NULL);
+    auto client_data = flatbuffers::GetRoot<ClientTableData>(buf);
+
+    RedisModuleKey *clients_key = (RedisModuleKey *) RedisModule_OpenKey(
+        ctx, pubsub_channel_str, REDISMODULE_READ | REDISMODULE_WRITE);
+    // If this is a client addition, send all previous notifications, in order.
+    // NOTE(swang): This will go to all clients, so some clients will get
+    // duplicate notifications.
+    if (client_data->is_insertion() &&
+        RedisModule_KeyType(clients_key) != REDISMODULE_KEYTYPE_EMPTY) {
+      // NOTE(swang): Sets are not implemented yet, so we use ZSETs instead.
+      CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
+                      clients_key, REDISMODULE_NEGATIVE_INFINITE,
+                      REDISMODULE_POSITIVE_INFINITE, 1, 1),
+                  "Unable to initialize zset iterator");
+      do {
+        RedisModuleString *message =
+            RedisModule_ZsetRangeCurrentElement(clients_key, NULL);
+        RedisModuleCallReply *reply =
+            RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, message);
+        if (reply == NULL) {
+          RedisModule_CloseKey(clients_key);
+          RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+        }
+      } while (RedisModule_ZsetRangeNext(clients_key));
+    }
+
+    // Append this notification to the past notifications so that it will get
+    // sent to new clients in the future.
+    size_t index = RedisModule_ValueLength(key);
+    RedisModule_ZsetAdd(clients_key, index, data, NULL);
+    // Publish the notification about this client.
+    RedisModuleCallReply *reply =
+        RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, data);
+    if (reply == NULL) {
+      RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+    }
+
+    RedisModule_CloseKey(clients_key);
   } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the channel.
     RedisModuleCallReply *reply =
