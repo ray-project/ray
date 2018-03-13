@@ -43,7 +43,7 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
 
  private:
   /// Submit a task to this node.
-  void SubmitTask(const Task &task);
+  void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
   /// Assign a task.
   void AssignTask(const Task &task);
   /// Finish a task.

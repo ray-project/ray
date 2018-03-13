@@ -89,8 +89,9 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
           from_flatbuf(*message->execution_dependencies()));
       TaskSpecification task_spec(*message->task_spec());
       Task task(task_execution_spec, task_spec);
-      // Submit the task to the local scheduler.
-      SubmitTask(task);
+      // Submit the task to the local scheduler. Since the task was submitted
+      // locally, there is no uncommitted lineage.
+      SubmitTask(task, Lineage());
       // Listen for more messages.
       client->ProcessMessages();
     }
@@ -129,7 +130,10 @@ void NodeManager::ScheduleTasks() {
   }
 }
 
-void NodeManager::SubmitTask(const Task &task) {
+void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage) {
+  // Add the task and its uncommitted lineage to the lineage cache.
+  lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
+  // Queue the task according to the availability of its arguments.
   if (task_dependency_manager_.TaskReady(task)) {
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
     ScheduleTasks();
@@ -165,12 +169,24 @@ void NodeManager::AssignTask(const Task &task) {
                                      fbb.GetBufferPointer());
   worker->AssignTaskId(spec.TaskId());
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
+
+  // We started running the task, so the task is ready to write to GCS.
+  lineage_cache_.AddReadyTask(task);
 }
 
 void NodeManager::FinishTask(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Finished task " << task_id.hex();
-  local_queues_.RemoveTasks({task_id});
+  auto tasks = local_queues_.RemoveTasks({task_id});
+  RAY_CHECK(tasks.size() == 1);
+  auto task = *tasks.begin();
+
   // TODO(swang): Release resources that were held for the task.
+
+  // Mark the task's return values as ready to be written to the GCS.
+  for (int64_t i = 0; i < task.GetTaskSpecification().NumReturns(); i++) {
+    ObjectID return_id = task.GetTaskSpecification().ReturnId(i);
+    lineage_cache_.AddReadyObject(return_id, false);
+  }
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
