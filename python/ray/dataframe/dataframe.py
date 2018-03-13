@@ -1583,7 +1583,7 @@ class DataFrame(object):
 
             items = ray.get(computed_means)
 
-            _mean = [item for sublist in items for item in sublist]
+            _mean = items.flatten()
 
             return _mean
 
@@ -1612,7 +1612,7 @@ class DataFrame(object):
 
             items = ray.get(computed_medians)
 
-            _median = [item for sublist in items for item in sublist]
+            _median = items.flatten()
 
             return _median
 
@@ -1836,7 +1836,7 @@ class DataFrame(object):
 
             items = ray.get(computed_quantiles)
 
-            _quantile = [item for sublist in items for item in sublist]
+            _quantile = items.flatten()
 
             return _quantile
 
@@ -2336,7 +2336,7 @@ class DataFrame(object):
 
             items = ray.get(computed_stds)
 
-            _stds = [item for sublist in items for item in sublist]
+            _stds = items.flatten()
 
             return _stds
 
@@ -2615,7 +2615,7 @@ class DataFrame(object):
 
             items = ray.get(computed_vars)
 
-            _var = [item for sublist in items for item in sublist]
+            _var = items.flatten()
 
             return _var
 
