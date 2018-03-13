@@ -12,7 +12,7 @@ RLlib currently provides the following algorithms:
 
 - `Deep Q Networks (DQN) <https://arxiv.org/abs/1312.5602>`__.
 
-- `The Distributed Prioritized Experience Replay variant of DQN (Ape-X) <https://arxiv.org/abs/1803.00933>`__.
+- `Ape-X Distributed Prioritized Experience Replay <https://arxiv.org/abs/1803.00933>`__.
 
 -  Evolution Strategies, as described in `this
    paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
