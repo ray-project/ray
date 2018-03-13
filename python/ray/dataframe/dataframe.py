@@ -737,7 +737,6 @@ class DataFrame(object):
                 obj_columns.append(self.columns[i])
 
         rdf = self.drop(columns=obj_columns)
-        rdf = self.drop(columns=exclude)
 
         transposed = rdf.T
 
