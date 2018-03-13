@@ -5,6 +5,11 @@ from __future__ import print_function
 import pytest
 import numpy as np
 import pandas as pd
+import ray.dataframe as rdf
+from ray.dataframe.utils import (
+    to_pandas,
+    from_pandas
+)
 import ray.dataframe.io as io
 import os
 
