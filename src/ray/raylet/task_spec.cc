@@ -29,11 +29,12 @@ flatbuffers::Offset<Arg> TaskArgumentByValue::ToFlatbuffer(
   return CreateArg(fbb, empty_ids, arg);
 }
 
-TaskSpecification::TaskSpecification(const uint8_t *spec, size_t spec_size)
-    : spec_(spec, spec + spec_size) {}
+void TaskSpecification::AssignSpecification(const uint8_t *spec, size_t spec_size) {
+  spec_.assign(spec, spec + spec_size);
+}
 
-TaskSpecification::TaskSpecification(const flatbuffers::String &string)
-    : TaskSpecification(reinterpret_cast<const uint8_t *>(string.data()), string.size()) {
+TaskSpecification::TaskSpecification(const flatbuffers::String &string) {
+  AssignSpecification(reinterpret_cast<const uint8_t *>(string.data()), string.size());
 }
 
 TaskSpecification::TaskSpecification(
@@ -41,9 +42,10 @@ TaskSpecification::TaskSpecification(
     // UniqueID actor_id,
     // UniqueID actor_handle_id,
     // int64_t actor_counter,
-    FunctionID function_id, const std::vector<TaskArgument> &task_arguments,
-    int64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources) {
+    FunctionID function_id,
+    const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
+    const std::unordered_map<std::string, double> &required_resources)
+    : spec_() {
   flatbuffers::FlatBufferBuilder fbb;
 
   // Compute hashes.
@@ -67,7 +69,7 @@ TaskSpecification::TaskSpecification(
   // Add argument object IDs.
   std::vector<flatbuffers::Offset<Arg>> arguments;
   for (auto &argument : task_arguments) {
-    arguments.push_back(argument.ToFlatbuffer(fbb));
+    arguments.push_back(argument->ToFlatbuffer(fbb));
   }
 
   // Add return object IDs.
@@ -85,7 +87,7 @@ TaskSpecification::TaskSpecification(
       fbb.CreateVector(arguments), fbb.CreateVector(returns),
       map_to_flatbuf(fbb, required_resources));
   fbb.Finish(spec);
-  TaskSpecification(fbb.GetBufferPointer(), fbb.GetSize());
+  AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
 
 flatbuffers::Offset<flatbuffers::String> TaskSpecification::ToFlatbuffer(
@@ -123,7 +125,13 @@ int64_t TaskSpecification::NumArgs() const {
 }
 
 int64_t TaskSpecification::NumReturns() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->returns()->size();
+}
+
+ObjectID TaskSpecification::ReturnId(int64_t return_index) const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->returns()->Get(return_index));
 }
 
 bool TaskSpecification::ArgByRef(int64_t arg_index) const {
