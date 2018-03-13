@@ -1,5 +1,5 @@
 Pandas on Ray
-======
+=============
 
 Pandas on Ray is an early stage DataFrame library that wraps Pandas and
 transparently distributes the data and computation. The user does not need to
@@ -19,7 +19,7 @@ Currently, we have part of the Pandas API implemented and are working toward
 full functional parity with Pandas.
 
 Using Pandas on Ray on a Single Node
-------------------------------
+------------------------------------
 
 In order to use the most up-to-date version of Pandas on Ray, please follow
 the instructions on the `installation page`_
@@ -55,17 +55,17 @@ If you would like to request a particular method be implemented, feel free to
 has not already requested that functionality.
 
 Using Pandas on Ray on a Cluster
-------------------------------
+--------------------------------
 
 Currently, we do not yet support running Pandas on Ray on a cluster. Coming
 Soon!
 
 Examples
-------------------------------
+--------
 You can find an example on our recent `blog post`_ or on the
 `Jupyter Notebook`_ that we used to create the blog post.
 
 .. _`installation page`: http://ray.readthedocs.io/en/latest/installation.html
 .. _`open an issue`: http://github.com/ray-project/ray/issues
 .. _`blog post`: http://rise.cs.berkeley.edu/blog/pandas-on-ray
-.. _`GitHub gist`: http://gist.github.com/devin-petersohn/f424d9fb5579a96507c709a36d487f24#file-pandas_on_ray_blog_post_0-ipynb
+.. _`Jupyter Notebook`: http://gist.github.com/devin-petersohn/f424d9fb5579a96507c709a36d487f24#file-pandas_on_ray_blog_post_0-ipynb
