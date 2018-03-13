@@ -1724,6 +1724,18 @@ void handle_driver_removed(LocalSchedulerState *state,
     }
   }
 
+  // Remove this driver's tasks from the cached actor tasks. Note that this loop
+  // could be very slow if the vector of cached actor tasks is very long.
+  for (auto it = algorithm_state->cached_submitted_actor_tasks.begin();
+       it != algorithm_state->cached_submitted_actor_tasks.end();) {
+    TaskSpec *spec = (*it).Spec();
+    if (TaskSpec_driver_id(spec) == driver_id) {
+      it = algorithm_state->cached_submitted_actor_tasks.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
   /* TODO(rkn): Should we clean up the actor data structures? */
 }
 
