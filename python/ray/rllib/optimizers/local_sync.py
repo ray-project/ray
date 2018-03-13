@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.optimizers.optimizer import PolicyOptimizer
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
@@ -40,7 +40,7 @@ class LocalSyncOptimizer(PolicyOptimizer):
                 samples = self.local_evaluator.sample()
 
         with self.grad_timer:
-            grad = self.local_evaluator.compute_gradients(samples)
+            grad, _ = self.local_evaluator.compute_gradients(samples)
             self.local_evaluator.apply_gradients(grad)
             self.grad_timer.push_units_processed(samples.count)
 

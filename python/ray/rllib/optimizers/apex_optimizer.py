@@ -110,7 +110,8 @@ class GenericLearner(threading.Thread):
             ra, replay = self.inqueue.get()
         if replay is not None:
             with self.grad_timer:
-                td_error = self.local_evaluator.compute_apply(replay)
+                td_error = self.local_evaluator.compute_apply(replay)[
+                    "td_error"]
             self.outqueue.put((ra, replay, td_error))
         self.learner_queue_size.push(self.inqueue.qsize())
         self.weights_updated = True

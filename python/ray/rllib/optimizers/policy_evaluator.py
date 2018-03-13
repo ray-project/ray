@@ -14,21 +14,20 @@ class PolicyEvaluator(object):
     e.g. async SGD, Ape-X, local multi-GPU SGD, etc.
     """
 
-    def sample(self, **options):
+    def sample(self):
         """Returns a batch of experience sampled from this evaluator.
 
         Returns:
             SampleBatch: A columnar batch of experiences (e.g., tensors).
-            info: dictionary of extra metadata.
 
         Examples:
             >>> print(ev.sample())
-            (SampleBatch({"obs": [1, 2, 3], "action": [0, 1, 0], ...}), {})
+            SampleBatch({"obs": [1, 2, 3], "action": [0, 1, 0], ...})
         """
 
         raise NotImplementedError
 
-    def compute_gradients(self, samples, **options):
+    def compute_gradients(self, samples):
         """Returns a gradient computed w.r.t the specified samples.
 
         Returns:
@@ -36,21 +35,18 @@ class PolicyEvaluator(object):
             info: dictionary of extra metadata.
 
         Examples:
-            >>> batch, _ = ev.sample()
-            >>> grads, _ = ev2.compute_gradients(samples)
+            >>> batch = ev.sample()
+            >>> grads, info = ev2.compute_gradients(samples)
         """
 
         raise NotImplementedError
 
-    def apply_gradients(self, grads, **options):
+    def apply_gradients(self, grads):
         """Applies the given gradients to this evaluator's weights.
 
-        Returns:
-            info: dictionary of extra metadata.
-
         Examples:
-            >>> samples, _ = ev1.sample()
-            >>> grads, _ = ev2.compute_gradients(samples)
+            >>> samples = ev1.sample()
+            >>> grads, info = ev2.compute_gradients(samples)
             >>> ev1.apply_gradients(grads)
         """
 
@@ -86,7 +82,7 @@ class PolicyEvaluator(object):
             info: dictionary of extra metadata.
 
         Examples:
-            >>> batch, _ = ev.sample()
+            >>> batch = ev.sample()
             >>> ev.compute_apply(samples)
         """
 
