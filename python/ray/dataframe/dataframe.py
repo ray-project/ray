@@ -713,11 +713,10 @@ class DataFrame(object):
                 lambda df: df.cummax(axis=axis, skipna=skipna,
                                      *args, **kwargs))
         else:
-            x = [_deploy_func.remote(
-                              lambda df: pd.DataFrame(
-                                         df.max()).T, self._df[i])
-                 for i in range(len(self._df))]
-            new_df = DataFrame(x, self.columns)
+            local_max = [_deploy_func.remote(
+                lambda df: pd.DataFrame(df.max()).T, self._df[i])
+                for i in range(len(self._df))]
+            new_df = DataFrame(local_max, self.columns)
             last_row_df = pd.DataFrame([df.iloc[-1, :]
                                         for df in ray.get(new_df._df)])
             cum_df = [_prepend_partitions.remote(last_row_df, i, self._df[i],
@@ -744,11 +743,10 @@ class DataFrame(object):
                 lambda df: df.cummin(axis=axis, skipna=skipna,
                                      *args, **kwargs))
         else:
-            x = [_deploy_func.remote(
-                              lambda df: pd.DataFrame(
-                                         df.min()).T, self._df[i])
-                 for i in range(len(self._df))]
-            new_df = DataFrame(x, self.columns)
+            local_min = [_deploy_func.remote(
+                lambda df: pd.DataFrame(df.min()).T, self._df[i])
+                for i in range(len(self._df))]
+            new_df = DataFrame(local_min, self.columns)
             last_row_df = pd.DataFrame([df.iloc[-1, :]
                                         for df in ray.get(new_df._df)])
             cum_df = [_prepend_partitions.remote(last_row_df, i, self._df[i],
@@ -775,11 +773,10 @@ class DataFrame(object):
                 lambda df: df.cumprod(axis=axis, skipna=skipna,
                                       *args, **kwargs))
         else:
-            x = [_deploy_func.remote(
-                              lambda df: pd.DataFrame(
-                                         df.prod()).T, self._df[i])
-                 for i in range(len(self._df))]
-            new_df = DataFrame(x, self.columns)
+            local_prod = [_deploy_func.remote(
+                lambda df: pd.DataFrame(df.prod()).T, self._df[i])
+                for i in range(len(self._df))]
+            new_df = DataFrame(local_prod, self.columns)
             last_row_df = pd.DataFrame([df.iloc[-1, :]
                                         for df in ray.get(new_df._df)])
             cum_df = [_prepend_partitions.remote(last_row_df, i, self._df[i],
@@ -809,11 +806,10 @@ class DataFrame(object):
             # first take the sum of each partition,
             # append the sums of all previous partitions to current partition
             # take cumsum and remove the appended rows
-            x = [_deploy_func.remote(
-                              lambda df: pd.DataFrame(
-                                         df.sum()).T, self._df[i])
-                 for i in range(len(self._df))]
-            new_df = DataFrame(x, self.columns)
+            local_sum = [_deploy_func.remote(
+                lambda df: pd.DataFrame(df.sum()).T, self._df[i])
+                for i in range(len(self._df))]
+            new_df = DataFrame(local_sum, self.columns)
             last_row_df = pd.DataFrame([df.iloc[-1, :]
                                         for df in ray.get(new_df._df)])
             cum_df = [_prepend_partitions.remote(last_row_df, i, self._df[i],
