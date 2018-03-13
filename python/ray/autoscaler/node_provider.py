@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import importlib
+import os
 import yaml
 
 
@@ -40,7 +40,7 @@ DEFAULT_CONFIGS = {
 
 
 def get_node_provider(provider_config, cluster_name):
-    if provider_config["type"] == 'external':
+    if provider_config["type"] == "external":
         provider_cls = importlib.import_module(name=provider_config["module"])
         return provider_cls(provider_config, cluster_name)
 
