@@ -519,7 +519,7 @@ class AutoscalingTest(unittest.TestCase):
     def testExternalNodeScaler(self):
         EXTERNAL_PROVIDER["provider"] = {
             "type": "external",
-            "path": "test.autoscaler_test.MockProvider",
+            "module": "test.autoscaler_test.MockProvider",
             },
         config_path = self.write_config(EXTERNAL_PROVIDER)
         self.provider = MockProvider()
@@ -531,12 +531,12 @@ class AutoscalingTest(unittest.TestCase):
     def testExternalNodeScalerWrongImport(self):
         EXTERNAL_PROVIDER["provider"] = {
             "type": "external",
-            "path": "does-not-exist",
+            "module": "does-not-exist",
             },
         invalid_provider = self.write_config(EXTERNAL_PROVIDER)
         self.provider = MockProvider()
         self.assertRaises(
-            ValueError,
+            ImportError,
             lambda: StandardAutoscaler(
                 invalid_provider, LoadMetrics(), update_interval_s=0))
 
