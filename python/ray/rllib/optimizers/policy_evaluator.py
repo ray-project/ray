@@ -76,10 +76,10 @@ class PolicyEvaluator(object):
         raise NotImplementedError
 
     def compute_apply(self, samples):
-        """Fused compute and apply gradients on given samples.
+        """Fused compute gradients and apply gradients call.
 
         Returns:
-            info: dictionary of extra metadata.
+            info: dictionary of extra metadata from compute_gradients().
 
         Examples:
             >>> batch = ev.sample()
