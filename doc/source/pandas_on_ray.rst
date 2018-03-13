@@ -57,8 +57,15 @@ has not already requested that functionality.
 Using Pandas on Ray on a Cluster
 ------------------------------
 
-Currently, we do not yet support running Pandas on Ray on a Cluster. Coming
+Currently, we do not yet support running Pandas on Ray on a cluster. Coming
 Soon!
+
+Examples
+------------------------------
+You can find an example on our recent `blog post`_ or on the
+`Jupyter Notebook`_ that we used to create the blog post.
 
 .. _`installation page`: http://ray.readthedocs.io/en/latest/installation.html
 .. _`open an issue`: http://github.com/ray-project/ray/issues
+.. _`blog post`: http://rise.cs.berkeley.edu/blog/pandas-on-ray
+.. _`GitHub gist`: http://gist.github.com/devin-petersohn/f424d9fb5579a96507c709a36d487f24#file-pandas_on_ray_blog_post_0-ipynb
