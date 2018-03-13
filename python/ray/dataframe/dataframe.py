@@ -1576,11 +1576,7 @@ class DataFrame(object):
             skipna (bool): True to skip NA values, false otherwise.
 
         Returns:
-<<<<<<< HEAD
-            The mean of the DataFrame.
-=======
             The mean of the DataFrame. (Pandas series)
->>>>>>> e78a6b53d321472ca08f5a03d1acb87ab1ec789a
         """
         if axis == 0 or axis is None:
             return self.T.mean(
@@ -1591,12 +1587,12 @@ class DataFrame(object):
             func = (lambda df: df.T.mean(axis=0,
                     skipna=None, level=None, numeric_only=None))
 
-            new_df = [_deploy_func.remote(func, part) for part in self._df]
+            computed_means = [
+                    _deploy_func.remote(func, part) for part in self._df]
 
-            items = [ray.get(item) for item in new_df]
-            r1 = items[0]
-            r_other = [items[i] for i in range(1, len(items))]
-            _mean = r1.append(r_other)
+            items = ray.get(computed_means)
+
+            _mean = [item for sublist in items for item in sublist]
 
             return _mean
 
@@ -1620,12 +1616,12 @@ class DataFrame(object):
             func = (lambda df: df.T.median(axis=0, level=level,
                                            numeric_only=numeric_only))
 
-            new_df = [_deploy_func.remote(func, part) for part in self._df]
+            computed_medians = [
+                    _deploy_func.remote(func, part) for part in self._df]
 
-            items = [ray.get(item) for item in new_df]
-            r1 = items[0]
-            r_other = [items[i] for i in range(1, len(items))]
-            _median = r1.append(r_other)
+            items = ray.get(computed_medians)
+
+            _median = [item for sublist in items for item in sublist]
 
             return _median
 
@@ -1821,11 +1817,11 @@ class DataFrame(object):
                     are the quantiles.
         """
 
-        # if (type(q) is list):
-        #     return Dataframe([self.quantile(q_i, axis=axis,
-        #                                     numeric_only=numeric_only,
-        #                                     interpolation=interpolation)
-        #                       for q_i in q], q)
+        if (type(q) is list):
+            return Dataframe([self.quantile(q_i, axis=axis,
+                                            numeric_only=numeric_only,
+                                            interpolation=interpolation)
+                              for q_i in q], q)
 
         if axis == 0 or axis is None:
             return self.T.quantile(q, axis=1, numeric_only=numeric_only,
@@ -2268,19 +2264,18 @@ class DataFrame(object):
                         ddof=ddof, numeric_only=numeric_only)
         else:
 
-            new_df = [_deploy_func.remote(
+            computed_stds = [_deploy_func.remote(
                                         lambda df: df.T.std(
                                             axis=0, skipna=skipna, level=level,
                                             ddof=ddof,
                                             numeric_only=numeric_only), part)
-                      for part in self._df]
+                             for part in self._df]
 
-            items = [ray.get(item) for item in new_df]
-            r1 = items[0]
-            r_other = [items[i] for i in range(1, len(items))]
-            _std = r1.append(r_other)
+            items = ray.get(computed_stds)
 
-            return _std
+            _stds = [item for sublist in items for item in sublist]
+
+            return _stds
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -2548,17 +2543,16 @@ class DataFrame(object):
             return self.T.var(axis=1, skipna=skipna, level=level, ddof=ddof,
                               numeric_only=numeric_only)
         else:
-            new_df = [_deploy_func.remote(lambda df: df.T.var(
+            computed_vars = [_deploy_func.remote(lambda df: df.T.var(
                                             axis=0, skipna=skipna, level=level,
                                             ddof=ddof,
                                             numeric_only=numeric_only),
                                           part)
-                      for part in self._df]
+                             for part in self._df]
 
-            items = [ray.get(item) for item in new_df]
-            r1 = items[0]
-            r_other = [items[i] for i in range(1, len(items))]
-            _var = r1.append(r_other)
+            items = ray.get(computed_vars)
+
+            _var = [item for sublist in items for item in sublist]
 
             return _var
 
