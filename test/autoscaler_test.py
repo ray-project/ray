@@ -121,6 +121,15 @@ SMALL_CLUSTER = {
     "worker_start_ray_commands": ["start_ray_worker"],
 }
 
+EXTERNAL_PROVIDER = {
+    "cluster_name": "default",
+    "max_workers": 2,
+    "auth": {
+        "ssh_user": "ubuntu",
+        "ssh_private_key": "/dev/null",
+    },
+}
+
 
 class LoadMetricsTest(unittest.TestCase):
     def testUpdate(self):
@@ -506,6 +515,30 @@ class AutoscalingTest(unittest.TestCase):
         num_calls = len(runner.calls)
         autoscaler.update()
         self.waitFor(lambda: len(runner.calls) > num_calls)
+
+    def testExternalNodeScaler(self):
+        EXTERNAL_PROVIDER["provider"] = {
+            "type": "external",
+            "path": "test.autoscaler_test.MockProvider",
+            },
+        config_path = self.write_config(EXTERNAL_PROVIDER)
+        self.provider = MockProvider()
+        autoscaler = StandardAutoscaler(
+            config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
+
+        self.assertIsInstance(autoscaler.provider, MockProvider)
+
+    def testExternalNodeScalerWrongImport(self):
+        EXTERNAL_PROVIDER["provider"] = {
+            "type": "external",
+            "path": "does-not-exist",
+            },
+        invalid_provider = self.write_config(EXTERNAL_PROVIDER)
+        self.provider = MockProvider()
+        self.assertRaises(
+            ValueError,
+            lambda: StandardAutoscaler(
+                invalid_provider, LoadMetrics(), update_interval_s=0))
 
 
 if __name__ == "__main__":

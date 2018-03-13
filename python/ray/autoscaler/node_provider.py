@@ -41,7 +41,9 @@ DEFAULT_CONFIGS = {
 
 def get_node_provider(provider_config, cluster_name):
     if provider_config["type"] == "external":
-        provider_cls = importlib.import_module(name=provider_config["module"])
+        provider_cls = importlib.import_module(
+            name=provider_config["module"]
+            )
         return provider_cls(provider_config, cluster_name)
 
     importer = NODE_PROVIDERS.get(provider_config["type"])
