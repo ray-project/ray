@@ -13,6 +13,7 @@ import pandas as pd
 
 from .dataframe import ray, DataFrame
 from . import get_npartitions
+from .utils import from_pandas
 
 
 # Parquet
@@ -285,7 +286,7 @@ def read_json(path_or_buf=None,
                               convert_axes, convert_dates, keep_default_dates,
                               numpy, precise_float, date_unit, encoding,
                               lines, chunksize, compression)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -313,7 +314,7 @@ def read_html(io,
                               skiprows, attrs, parse_dates, tupleize_cols,
                               thousands, encoding, decimal, converters,
                               na_values, keep_default_na)
-    ray_frame = ray.dataframe.from_pandas(port_frame[0], get_npartitions())
+    ray_frame = from_pandas(port_frame[0], get_npartitions())
 
     return ray_frame
 
@@ -324,7 +325,7 @@ def read_clipboard(sep=r'\s+'):
                   PendingDeprecationWarning)
 
     port_frame = pd.read_clipboard(sep)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -357,7 +358,7 @@ def read_excel(io,
                                date_parser, na_values, thousands,
                                convert_float, converters, dtype, true_values,
                                false_values, engine, squeeze)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -370,7 +371,7 @@ def read_hdf(path_or_buf,
                   PendingDeprecationWarning)
 
     port_frame = pd.read_hdf(path_or_buf, key, mode)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -382,7 +383,7 @@ def read_feather(path,
                   PendingDeprecationWarning)
 
     port_frame = pd.read_feather(path)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -395,7 +396,7 @@ def read_msgpack(path_or_buf,
                   PendingDeprecationWarning)
 
     port_frame = pd.read_msgpack(path_or_buf, encoding, iterator)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -419,7 +420,7 @@ def read_stata(filepath_or_buffer,
                                convert_categoricals, encoding, index_col,
                                convert_missing, preserve_dtypes, columns,
                                order_categoricals, chunksize, iterator)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -436,7 +437,7 @@ def read_sas(filepath_or_buffer,
 
     port_frame = pd.read_sas(filepath_or_buffer, format, index, encoding,
                              chunksize, iterator)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -448,7 +449,7 @@ def read_pickle(path,
                   PendingDeprecationWarning)
 
     port_frame = pd.read_pickle(path, compression)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
 
@@ -467,6 +468,6 @@ def read_sql(sql,
 
     port_frame = pd.read_sql(sql, con, index_col, coerce_float, params,
                              parse_dates, columns, chunksize)
-    ray_frame = ray.dataframe.from_pandas(port_frame, get_npartitions())
+    ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
