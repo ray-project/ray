@@ -65,6 +65,7 @@ class Raylet {
   boost::asio::ip::tcp::socket tcp_socket_;
 
   // TODO(swang): Lineage cache.
+  LineageCache lineage_cache_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// Manages client requests for task submission and execution.

@@ -9,7 +9,7 @@ namespace raylet {
 
 NodeManager::NodeManager(const std::string &socket_name,
                          const ResourceSet &resource_config,
-                         ObjectManager &object_manager)
+                         ObjectManager &object_manager, LineageCache &lineage_cache)
     : local_resources_(resource_config),
       worker_pool_(WorkerPool(0)),
       local_queues_(SchedulingQueue()),
@@ -18,7 +18,8 @@ NodeManager::NodeManager(const std::string &socket_name,
       task_dependency_manager_(
           object_manager,
           // reconstruction_policy_,
-          [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }) {
+          [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
+      lineage_cache_(lineage_cache) {
   //// TODO(atumanov): need to add the self-knowledge of ClientID, using nill().
   // cluster_resource_map_[ClientID::nil()] = local_resources_;
 }
@@ -174,6 +175,24 @@ void NodeManager::FinishTask(const TaskID &task_id) {
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
+}
+
+ray::Status NodeManager::ForwardTask(const TaskID &task_id, const ClientID &node_id) {
+  // Remove the task from the local queue.
+  auto tasks = local_queues_.RemoveTasks({task_id});
+  RAY_CHECK(tasks.size() == 1);
+  auto task = *tasks.begin();
+
+  // Get and serialize the task's uncommitted lineage.
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
+  flatbuffers::FlatBufferBuilder fbb;
+  auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
+  fbb.Finish(request);
+
+  // TODO(swang): Send the request to the client at node_id.
+  // TODO(swang): Clean up the lineage cache if possible.
+
+  return ray::Status::OK();
 }
 
 } // namespace raylet

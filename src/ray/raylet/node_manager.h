@@ -3,6 +3,7 @@
 
 // clang-format off
 #include "ray/common/client_connection.h"
+#include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/scheduling_resources.h"
@@ -25,7 +26,7 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
   NodeManager(const std::string &socket_name, const ResourceSet &resource_config,
-              ObjectManager &object_manager);
+              ObjectManager &object_manager, LineageCache &lineage_cache);
 
   /// Process a new client connection.
   void ProcessNewClient(std::shared_ptr<LocalClientConnection> client);
@@ -54,6 +55,7 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
   void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
+  ray::Status ForwardTask(const TaskID &task_id, const ClientID &node_id);
 
   /// The resources local to this node.
   SchedulingResources local_resources_;
@@ -70,6 +72,8 @@ class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
   ReconstructionPolicy reconstruction_policy_;
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
+  /// The lineage cache for the GCS object and task tables.
+  LineageCache &lineage_cache_;
 };
 
 } // namespace raylet

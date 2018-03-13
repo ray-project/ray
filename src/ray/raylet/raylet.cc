@@ -18,8 +18,9 @@ Raylet::Raylet(boost::asio::io_service &io_service, const std::string &socket_na
       tcp_acceptor_(io_service,
                     boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       tcp_socket_(io_service),
+      lineage_cache_(),
       object_manager_(io_service, object_manager_config, gcs_client),
-      node_manager_(socket_name, resource_config, object_manager_),
+      node_manager_(socket_name, resource_config, object_manager_, lineage_cache_),
       gcs_client_(gcs_client) {
   ClientID client_id = RegisterGcs(io_service);
   object_manager_.SetClientID(client_id);
