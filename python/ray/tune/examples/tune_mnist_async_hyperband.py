@@ -223,6 +223,7 @@ if __name__ == '__main__':
 
     if args.smoke_test:
         mnist_spec['stop']['training_iteration'] = 2
+        mnist_spec['repeat'] = 1
 
     ray.init()
 
