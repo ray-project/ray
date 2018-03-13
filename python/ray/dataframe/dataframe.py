@@ -722,9 +722,9 @@ class DataFrame(object):
                                         for df in ray.get(new_df._df)])
             cum_df = [_prepend_partitions.remote(last_row_df, i, self._df[i],
                                                  lambda df:
-                                                df.cummax(axis=axis,
-                                                          skipna=skipna,
-                                                          *args, **kwargs))
+                                                 df.cummax(axis=axis,
+                                                           skipna=skipna,
+                                                           *args, **kwargs))
                       for i in range(len(self._df))]
             final_df = DataFrame(cum_df, self.columns)
             return final_df
@@ -753,9 +753,9 @@ class DataFrame(object):
                                         for df in ray.get(new_df._df)])
             cum_df = [_prepend_partitions.remote(last_row_df, i, self._df[i],
                                                  lambda df:
-                                                df.cummin(axis=axis,
-                                                          skipna=skipna,
-                                                          *args, **kwargs))
+                                                 df.cummin(axis=axis,
+                                                           skipna=skipna,
+                                                           *args, **kwargs))
                       for i in range(len(self._df))]
             final_df = DataFrame(cum_df, self.columns)
             return final_df
@@ -784,9 +784,9 @@ class DataFrame(object):
                                         for df in ray.get(new_df._df)])
             cum_df = [_prepend_partitions.remote(last_row_df, i, self._df[i],
                                                  lambda df:
-                                                df.cumprod(axis=axis,
-                                                           skipna=skipna,
-                                                           *args, **kwargs))
+                                                 df.cumprod(axis=axis,
+                                                            skipna=skipna,
+                                                            *args, **kwargs))
                       for i in range(len(self._df))]
             final_df = DataFrame(cum_df, self.columns)
             return final_df
@@ -818,9 +818,9 @@ class DataFrame(object):
                                         for df in ray.get(new_df._df)])
             cum_df = [_prepend_partitions.remote(last_row_df, i, self._df[i],
                                                  lambda df:
-                                                df.cumsum(axis=axis,
-                                                          skipna=skipna,
-                                                          *args, **kwargs))
+                                                 df.cumsum(axis=axis,
+                                                           skipna=skipna,
+                                                           *args, **kwargs))
                       for i in range(len(self._df))]
             final_df = DataFrame(cum_df, self.columns)
             return final_df
