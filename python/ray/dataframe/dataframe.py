@@ -1583,7 +1583,7 @@ class DataFrame(object):
 
             items = ray.get(computed_means)
 
-            _mean = items.flatten()
+            _mean = pd.concat(items)
 
             return _mean
 
@@ -1612,7 +1612,7 @@ class DataFrame(object):
 
             items = ray.get(computed_medians)
 
-            _median = items.flatten()
+            _median = pd.concat(items)
 
             return _median
 
@@ -1836,7 +1836,7 @@ class DataFrame(object):
 
             items = ray.get(computed_quantiles)
 
-            _quantile = items.flatten()
+            _quantile = pd.concat(items)
 
             return _quantile
 
@@ -2336,7 +2336,7 @@ class DataFrame(object):
 
             items = ray.get(computed_stds)
 
-            _stds = items.flatten()
+            _stds = pd.concat(items)
 
             return _stds
 
@@ -2615,7 +2615,7 @@ class DataFrame(object):
 
             items = ray.get(computed_vars)
 
-            _var = items.flatten()
+            _var = pd.concat(items)
 
             return _var
 
