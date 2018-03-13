@@ -3,7 +3,7 @@ Ray RLlib: Scalable Reinforcement Learning
 
 Ray RLlib is an RL execution toolkit built on the Ray distributed execution framework. RLlib implements a collection of distributed *policy optimizers* that make it easy to use a variety of training strategies with existing RL algorithms written in frameworks such as PyTorch, TensorFlow, and Theano. This enables complex architectures for RL training (e.g., Ape-X, IMPALA), to be implemented once and reused many times across different RL algorithms and libraries.
 
-You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the NIPS symposium paper `here <https://arxiv.org/abs/1712.09381>`__.
+You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the paper `here <https://arxiv.org/abs/1712.09381>`__.
 
 .. note::
 
