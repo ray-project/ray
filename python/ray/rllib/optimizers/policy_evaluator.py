@@ -17,6 +17,8 @@ class PolicyEvaluator(object):
     def sample(self):
         """Returns a batch of experience sampled from this evaluator.
 
+        This method must be implemented by subclasses.
+
         Returns:
             SampleBatch: A columnar batch of experiences (e.g., tensors).
 
@@ -29,6 +31,8 @@ class PolicyEvaluator(object):
 
     def compute_gradients(self, samples):
         """Returns a gradient computed w.r.t the specified samples.
+
+        This method must be implemented by subclasses.
 
         Returns:
             object: A gradient that can be applied on a compatible evaluator.
@@ -44,6 +48,8 @@ class PolicyEvaluator(object):
     def apply_gradients(self, grads):
         """Applies the given gradients to this evaluator's weights.
 
+        This method must be implemented by subclasses.
+
         Examples:
             >>> samples = ev1.sample()
             >>> grads, info = ev2.compute_gradients(samples)
@@ -54,6 +60,8 @@ class PolicyEvaluator(object):
 
     def get_weights(self):
         """Returns the model weights of this Evaluator.
+
+        This method must be implemented by subclasses.
 
         Returns:
             object: weights that can be set on a compatible evaluator.
@@ -67,6 +75,8 @@ class PolicyEvaluator(object):
 
     def set_weights(self, weights):
         """Sets the model weights of this Evaluator.
+
+        This method must be implemented by subclasses.
 
         Examples:
             >>> weights = ev1.get_weights()
