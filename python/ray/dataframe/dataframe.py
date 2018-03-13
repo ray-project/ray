@@ -751,15 +751,14 @@ class DataFrame(object):
         transposed = self.T
 
         count_df = self.count()
-        mean_df = to_pandas(transposed.mean(axis=1))
-        std_df = to_pandas(transposed.std(axis=1))
+        mean_df = transposed.mean(axis=1)
+        std_df = transposed.std(axis=1)
         min_df = to_pandas(self.min())
 
         if percentiles is None:
             percentiles = [.25, .50, .75]
 
-        percentiles_dfs = [to_pandas(
-                           transposed.quantile(q, axis=1))
+        percentiles_dfs = [transposed.quantile(q, axis=1)
                            for q in percentiles]
 
         max_df = to_pandas(self.max())
@@ -1577,7 +1576,11 @@ class DataFrame(object):
             skipna (bool): True to skip NA values, false otherwise.
 
         Returns:
+<<<<<<< HEAD
             The mean of the DataFrame.
+=======
+            The mean of the DataFrame. (Pandas series)
+>>>>>>> e78a6b53d321472ca08f5a03d1acb87ab1ec789a
         """
         if axis == 0 or axis is None:
             return self.T.mean(
@@ -1585,13 +1588,17 @@ class DataFrame(object):
                                 level=level, numeric_only=numeric_only
                               )
         else:
-            mean_of_partitions = self._map_partitions(
-                lambda df: df.mean(
-                        axis=1, skipna=skipna,
-                        level=level, numeric_only=numeric_only
-                        ))
+            func = (lambda df: df.T.mean(axis=0,
+                    skipna=None, level=None, numeric_only=None))
 
-            return mean_of_partitions
+            new_df = [_deploy_func.remote(func, part) for part in self._df]
+
+            items = [ray.get(item) for item in new_df]
+            r1 = items[0]
+            r_other = [items[i] for i in range(1, len(items))]
+            _mean = r1.append(r_other)
+
+            return _mean
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
                **kwargs):
@@ -1602,18 +1609,25 @@ class DataFrame(object):
             skipna (bool): True to skip NA values, false otherwise.
 
         Returns:
-            The median of the DataFrame.
+            The median of the DataFrame. (Pandas series)
         """
         if axis == 0 or axis is None:
             return self.T.median(
                                 axis=1, level=level, numeric_only=numeric_only
                                 )
         else:
-            median_of_partitions = self._map_partitions(lambda df: df.median(
-                axis=1, level=level, numeric_only=numeric_only
-            ))
 
-            return median_of_partitions
+            func = (lambda df: df.T.median(axis=0, level=level,
+                                           numeric_only=numeric_only))
+
+            new_df = [_deploy_func.remote(func, part) for part in self._df]
+
+            items = [ray.get(item) for item in new_df]
+            r1 = items[0]
+            r_other = [items[i] for i in range(1, len(items))]
+            _median = r1.append(r_other)
+
+            return _median
 
     def melt(self, id_vars=None, value_vars=None, var_name=None,
              value_name='value', col_level=None):
@@ -1806,15 +1820,31 @@ class DataFrame(object):
                     index is the columns of self and the values
                     are the quantiles.
         """
-        if axis == 0 or axis is None:
-            return self.T.quantile(q, axis=1, numeric_only=numeric_only)
-        else:
-            quantile_of_partitions = self._map_partitions(
-                    lambda df: df.quantile(q,
-                                           axis=1, numeric_only=numeric_only
-                                           ))
 
-        return quantile_of_partitions
+        # if (type(q) is list):
+        #     return Dataframe([self.quantile(q_i, axis=axis,
+        #                                     numeric_only=numeric_only,
+        #                                     interpolation=interpolation)
+        #                       for q_i in q], q)
+
+        if axis == 0 or axis is None:
+            return self.T.quantile(q, axis=1, numeric_only=numeric_only,
+                                   interpolation=interpolation)
+        else:
+
+            new_df = [_deploy_func.remote(lambda df: df.T.quantile(
+                                                q, axis=0,
+                                                numeric_only=numeric_only,
+                                                interpolation=interpolation),
+                                          part)
+                      for part in self._df]
+
+            items = [ray.get(item) for item in new_df]
+            r1 = items[0]
+            r_other = [items[i] for i in range(1, len(items))]
+            _quantile = r1.append(r_other)
+
+            return _quantile
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression
@@ -2230,19 +2260,27 @@ class DataFrame(object):
             ddof (int): degrees of freedom
 
         Returns:
-            The std of the DataFrame (Ray Dataframe)
+            The std of the DataFrame (Pandas Series)
         """
         if axis == 0 or axis is None:
             return self.T.std(
                         axis=1, skipna=skipna, level=level,
                         ddof=ddof, numeric_only=numeric_only)
         else:
-            std_of_partitions = self._map_partitions(lambda df: df.std(
-                                        axis=1, skipna=skipna, level=level,
-                                        ddof=ddof, numeric_only=numeric_only
-                                        ))
 
-            return std_of_partitions
+            new_df = [_deploy_func.remote(
+                                        lambda df: df.T.std(
+                                            axis=0, skipna=skipna, level=level,
+                                            ddof=ddof,
+                                            numeric_only=numeric_only), part)
+                      for part in self._df]
+
+            items = [ray.get(item) for item in new_df]
+            r1 = items[0]
+            r_other = [items[i] for i in range(1, len(items))]
+            _std = r1.append(r_other)
+
+            return _std
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -2510,12 +2548,19 @@ class DataFrame(object):
             return self.T.var(axis=1, skipna=skipna, level=level, ddof=ddof,
                               numeric_only=numeric_only)
         else:
-            var_of_partitions = self._map_partitions(lambda df: df.var(
-                                        axis=1, skipna=skipna, level=level,
-                                        ddof=ddof, numeric_only=numeric_only
-                                        ))
+            new_df = [_deploy_func.remote(lambda df: df.T.var(
+                                            axis=0, skipna=skipna, level=level,
+                                            ddof=ddof,
+                                            numeric_only=numeric_only),
+                                          part)
+                      for part in self._df]
 
-            return var_of_partitions
+            items = [ray.get(item) for item in new_df]
+            r1 = items[0]
+            r_other = [items[i] for i in range(1, len(items))]
+            _var = r1.append(r_other)
+
+            return _var
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):
