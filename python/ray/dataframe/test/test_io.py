@@ -6,6 +6,7 @@ import pytest
 import numpy as np
 import pandas as pd
 import ray.dataframe as rdf
+from ray.dataframe.utils import to_pandas
 import ray.dataframe.io as io
 import os
 
@@ -17,7 +18,7 @@ LARGE_ROW_SIZE = 7e6
 
 @pytest.fixture
 def ray_df_equals_pandas(ray_df, pandas_df):
-    return rdf.to_pandas(ray_df).sort_index().equals(pandas_df.sort_index())
+    return to_pandas(ray_df).sort_index().equals(pandas_df.sort_index())
 
 
 @pytest.fixture
