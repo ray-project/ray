@@ -158,7 +158,7 @@ def _rebuild_cols(row_partitions, index, columns):
         [ObjectID]: List of new column partitions.
     """
     # NOTE: Reexamine if this is the correct number of columns solution
-    n_cols = min(max(get_npartitions(), len(row_partitions)), len(columns))
+    n_cols = min(get_npartitions(), len(row_partitions), len(columns))
     partition_assignments = assign_partitions.remote(columns, n_cols)
     shufflers = [ShuffleActor.remote(x, partition_axis=0, shuffle_axis=1)
                  for x in row_partitions]
@@ -244,6 +244,20 @@ def _deploy_func(func, dataframe, *args):
         return func(dataframe)
     else:
         return func(dataframe, *args)
+
+
+def _map_partitions(func, partitions):
+    """Apply a function across the specified axis
+
+    Args:
+        func (callable): The function to apply
+        partitions ([ObjectID]): The list of partitions to map func on.
+
+    Returns:
+        A new Dataframe containing the result of the function
+    """
+    assert(callable(func))
+    return [_deploy_func.remote(func, part) for part in partitions]
 
 
 @ray.remote(num_return_vals=2)

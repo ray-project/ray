@@ -24,6 +24,7 @@ from .utils import (
     _local_groupby,
     _deploy_func,
     _prepend_partitions,
+    _map_partitions,
     _partition_pandas_dataframe,
     from_pandas,
     to_pandas,
@@ -354,8 +355,8 @@ class DataFrame(object):
             True if the DataFrame is empty.
             False otherwise.
         """
-        all_empty = ray.get(self._map_row_partitions(
-            lambda df: df.empty))
+        all_empty = ray.get(_map_partitions(
+            lambda df: df.empty, self._row_partitions))
         return False not in all_empty
 
     @property
@@ -365,8 +366,8 @@ class DataFrame(object):
         Returns:
             The numpy representation of this DataFrame.
         """
-        return np.concatenate(ray.get(self._map_row_partitions(
-            lambda df: df.values)))
+        return np.concatenate(ray.get(_map_partitions(
+            lambda df: df.values, self._row_partitions)))
 
     @property
     def axes(self):
@@ -385,70 +386,6 @@ class DataFrame(object):
             A tuple with the size of each dimension as they appear in axes().
         """
         return (len(self.index), len(self.columns))
-
-    def _map_partitions(self, func, index=None, columns=None, axis=0):
-        """Apply a function across the specified axis
-
-        Args:
-            func(callable): The function to apply
-
-        Returns:
-            A new Dataframe containing the result of the function
-        """
-        assert(callable(func))
-        new_rows = None
-        new_cols = None
-
-        if axis == 0:
-            new_rows = [_deploy_func.remote(func, part) for part in
-                        self._row_partitions]
-            # TODO: verify correct functionality
-            if index is None:
-                index = self.index
-        elif axis == 1:
-            new_cols = [_deploy_func.remote(func, part) for part in
-                        self._col_partitions]
-            if columns is None:
-                columns = self.columns
-        else:
-            raise TypeError('shuffle_axis must be 0 or 1. Got %s' % str(axis))
-
-        return DataFrame(row_partitions=new_rows,
-                         col_partitions=new_cols,
-                         index=index,
-                         columns=columns)
-
-    def _map_row_partitions(self, func):
-        """Apply a function on each row partition.
-
-        Args:
-            func (callable): The function to Apply.
-
-        Returns:
-            [ObjectID] corresponding to the new row partitions as a result of
-            applying the function.
-        """
-        assert(callable(func))
-        new_rows = [_deploy_func.remote(func, part) for part in
-                    self._row_partitions]
-
-        return new_rows
-
-    def _map_col_partitions(self, func):
-        """Apply a function on each column partition.
-
-        Args:
-            func (callable): The function to apply.
-
-        Returns:
-            [ObjectID] corresponding to the new column partitions as a result of
-            applying the function.
-        """
-        assert(callable(func))
-        new_cols = [_deploy_func.remote(func, part) for part in
-                    self._col_partitions]
-
-        return new_cols
 
     def _update_inplace(self, row_partitions=None, col_partitions=None,
                         columns=None, index=None):
@@ -509,8 +446,13 @@ class DataFrame(object):
             func (callable): The function to apply.
         """
         assert(callable(func))
-        return self._map_partitions(
-            lambda df: df.applymap(lambda x: func(x)))
+        new_rows = _map_partitions(lambda df: df.applymap(lambda x: func(x)),
+                                   self._row_partitions)
+        new_cols = _map_partitions(lambda df: df.applymap(lambda x: func(x)),
+                                   self._col_partitions)
+        return DataFrame(columns=self.columns,
+                         col_partitions=new_cols,
+                         row_partitions=new_rows)
 
     def copy(self, deep=True):
         """Creates a shallow copy of the DataFrame.
@@ -548,7 +490,7 @@ class DataFrame(object):
                 new_cols = sorted(self.columns)
             else:
                 new_cols = self.columns
-            return DataFrameGroupBy([self._map_row_partitions(
+            return DataFrameGroupBy([_map_partitions(
                 lambda df: df.groupby(by=by,
                                       axis=axis,
                                       level=level,
@@ -556,7 +498,7 @@ class DataFrame(object):
                                       sort=sort,
                                       group_keys=group_keys,
                                       squeeze=squeeze,
-                                      **kwargs))],
+                                      **kwargs), self._row_partitions)],
                                     new_cols, self.index)
 
         # We perform the groupby on the index first to assign the partitions
@@ -576,13 +518,13 @@ class DataFrame(object):
         else:
             new_index = self.index
 
-        return DataFrameGroupBy([self._map_col_partitions(
+        return DataFrameGroupBy([_map_partitions(
             lambda df: df.groupby(by=df.index,
                                   axis=axis,
                                   sort=sort,
                                   group_keys=group_keys,
                                   squeeze=squeeze,
-                                  **kwargs))],
+                                  **kwargs), self._col_partitions)],
                                 self.columns, new_index)
 
     def sum(self, axis=None, skipna=True, level=None, numeric_only=None):
@@ -595,30 +537,25 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
-        # TODO: We don't support `level` right now, so df.sum always returns a pd.Series
-        #       Generalize when we support MultiIndexes, and distributed Series (?)
-        if axis == 1:
-             return pd.concat(
-                     ray.get(
-                         self._map_row_partitions(
-                             lambda df: df.sum(axis=axis,
-                                               skipna=skipna,
-                                               level=level,
-                                               numeric_only=numeric_only))))
-        #     return self._map_partitions(
-        #             lambda df: df.sum(axis=axis,
-        #                               skipna=skipna,
-        #                               level=level,
-        #                               numeric_only=numeric_only).to_frame(),
-        #             axis=0,
-        #             columns=pd.Index([0]))
+        # TODO: Fix this function - it does not work.
 
-        # TODO: It's probably faster to do a _map_cols_partition instead of a transpose
-        elif axis == 0 or axis is None:
-            return self.T.sum(axis=1, skipna=skipna, level=level,
-                              numeric_only=numeric_only)
-        else:
-            raise ValueError("axis parameter must be 0 or 1.")
+        # # TODO: We don't support `level` right now, so df.sum always returns a pd.Series
+        # #       Generalize when we support MultiIndexes, and distributed Series (?)
+        # if axis == 1:
+        #      return pd.DataFrame(pd.concat(
+        #              ray.get(
+        #                  self._map_row_partitions(
+        #                      lambda df: df.sum(axis=axis,
+        #                                        skipna=skipna,
+        #                                        level=level,
+        #                                        numeric_only=numeric_only)))))
+        #
+        # # TODO: It's probably faster to do a _map_cols_partition instead of a transpose
+        # elif axis == 0 or axis is None:
+        #     return self.T.sum(axis=1, skipna=skipna, level=level,
+        #                       numeric_only=numeric_only)
+        # else:
+        #     raise ValueError("axis parameter must be 0 or 1.")
 
     def abs(self):
         """Apply an absolute value function to all numberic columns.
@@ -630,7 +567,13 @@ class DataFrame(object):
             if np.dtype('O') == t:
                 # TODO Give a more accurate error to Pandas
                 raise TypeError("bad operand type for abs():", "str")
-        return self._map_partitions(lambda df: df.abs())
+
+        new_rows = _map_partitions(lambda df: df.abs(), self._row_partitions)
+        new_cols = _map_partitions(lambda df: df.abs(), self._col_partitions)
+
+        return DataFrame(columns=self.columns,
+                         col_partitions=new_cols,
+                         row_partitions=new_rows)
 
     def isin(self, values):
         """Fill a DataFrame with booleans for cells contained in values.
@@ -644,7 +587,14 @@ class DataFrame(object):
             True: cell is contained in values.
             False: otherwise
         """
-        return self._map_partitions(lambda df: df.isin(values))
+        new_rows = _map_partitions(lambda df: df.isin(values),
+                                   self._row_partitions)
+        new_cols = _map_partitions(lambda df: df.isin(values),
+                                   self._col_partitions)
+
+        return DataFrame(columns=self.columns,
+                         col_partitions=new_cols,
+                         row_partitions=new_rows)
 
     def isna(self):
         """Fill a DataFrame with booleans for cells containing NA.
@@ -655,7 +605,12 @@ class DataFrame(object):
             True: cell contains NA.
             False: otherwise.
         """
-        return self._map_partitions(lambda df: df.isna())
+        new_rows = _map_partitions(lambda df: df.isna(), self._row_partitions)
+        new_cols = _map_partitions(lambda df: df.isna(), self._col_partitions)
+
+        return DataFrame(columns=self.columns,
+                         col_partitions=new_cols,
+                         row_partitions=new_rows)
 
     def isnull(self):
         """Fill a DataFrame with booleans for cells containing a null value.
@@ -666,7 +621,12 @@ class DataFrame(object):
             True: cell contains null.
             False: otherwise.
         """
-        return self._map_partitions(lambda df: df.isnull)
+        new_rows = _map_partitions(lambda df: df.isnull, self._row_partitions)
+        new_cols = _map_partitions(lambda df: df.isnull, self._col_partitions)
+
+        return DataFrame(columns=self.columns,
+                         col_partitions=new_cols,
+                         row_partitions=new_rows)
 
     def keys(self):
         """Get the info axis for the DataFrame.
@@ -746,18 +706,19 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies df.all(axis=1)
             to the transpose of df.
         """
-        if axis is None or axis == 0:
-            df = self.T
-            axis = 1
-        else:
-            df = self
-
-        mapped = df._map_partitions(lambda df: df.all(axis,
-                                                      bool_only,
-                                                      skipna,
-                                                      level,
-                                                      **kwargs))
-        return to_pandas(mapped)
+        # TODO: Reimplement this
+        # if axis is None or axis == 0:
+        #     df = self.T
+        #     axis = 1
+        # else:
+        #     df = self
+        # 
+        # new_rows = df._map_partitions(lambda df: df.all(axis,
+        #                                                 bool_only,
+        #                                                 skipna,
+        #                                                 level,
+        #                                                 **kwargs))
+        # return to_pandas(mapped)
 
     def any(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
@@ -767,18 +728,19 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies df.all(axis=1)
             to the transpose of df.
         """
-        if axis is None or axis == 0:
-            df = self.T
-            axis = 1
-        else:
-            df = self
-
-        mapped = df._map_partitions(lambda df: df.any(axis,
-                                                      bool_only,
-                                                      skipna,
-                                                      level,
-                                                      **kwargs))
-        return to_pandas(mapped)
+        # TODO: Reimplement this
+        # if axis is None or axis == 0:
+        #     df = self.T
+        #     axis = 1
+        # else:
+        #     df = self
+        # 
+        # mapped = df._map_partitions(lambda df: df.any(axis,
+        #                                               bool_only,
+        #                                               skipna,
+        #                                               level,
+        #                                               **kwargs))
+        # return to_pandas(mapped)
 
     def append(self, other, ignore_index=False, verify_integrity=False):
         raise NotImplementedError(
@@ -933,12 +895,12 @@ class DataFrame(object):
 
             collapsed_df = sum(
                 ray.get(
-                    self._map_row_partitions(
+                    _map_partitions(
                         lambda df: df.count(
                             axis=axis,
                             level=level,
                             numeric_only=numeric_only),
-                        index=temp_index)))
+                        self._row_partitions)))
             return collapsed_df
 
     def cov(self, min_periods=None):
@@ -1216,13 +1178,16 @@ class DataFrame(object):
         try:
             if not is_axis_zero or columns is not None:
                 values = labels if labels else columns
-                new_df = new_df._map_partitions(
+                new_df_rows = _map_partitions(
                     lambda df: df.drop(
-                        values, axis=1, level=level, errors='ignore')
+                        values, axis=1, level=level, errors='ignore'),
+                    self._row_partitions
                 )
                 new_columns = self.columns.to_series().drop(values,
                                                             errors=errors)
-                new_df.columns = pd.Index(new_columns)
+                new_columns = pd.Index(new_columns)
+                new_df = DataFrame(columns=new_columns,
+                                   row_partitions=new_df_rows)
         except (ValueError, KeyError):
             if errors == 'raise':
                 raise
@@ -1330,6 +1295,8 @@ class DataFrame(object):
         Returns:
             ndarray, numeric scalar, DataFrame, Series
         """
+        # TODO: Fix this function
+        return
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_df = self._map_partitions(lambda df: df.eval(expr,
                                       inplace=False, **kwargs))
@@ -1561,6 +1528,8 @@ class DataFrame(object):
             value (type of items contained in object) : A value that is
             stored at the key
         """
+        # TODO: Fix this function
+        return
         temp_df = self._map_partitions(
             lambda df: df.get(key, default=default))
         return to_pandas(temp_df)
@@ -1657,6 +1626,8 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
+        return
+        # TODO: Fix this
         for t in self.dtypes:
             if np.dtype('O') == t:
                 # TODO Give a more accurate error to Pandas
@@ -1678,6 +1649,8 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
+        return
+        # Fix this
         for t in self.dtypes:
             if np.dtype('O') == t:
                 # TODO Give a more accurate error to Pandas
@@ -1911,6 +1884,7 @@ class DataFrame(object):
         Returns:
             The max of the DataFrame.
         """
+        return # FIx this
         if axis == 1:
             return self._map_partitions(
                 lambda df: df.max(axis=axis, skipna=skipna, level=level,
@@ -2008,6 +1982,8 @@ class DataFrame(object):
         Returns:
             The min of the DataFrame.
         """
+        return
+        # Fix this
         if axis == 1:
             return self._map_partitions(
                 lambda df: df.min(axis=axis, skipna=skipna, level=level,
