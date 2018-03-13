@@ -1742,14 +1742,79 @@ class DataFrame(object):
 
     def rename(self, mapper=None, index=None, columns=None, axis=None,
                copy=True, inplace=False, level=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if mapper is None and index is None and columns is None:
+            raise TypeError('must pass an index to rename')
+
+        if axis is None:
+            if columns is not None:
+                new_df = [
+                    _deploy_func.remote(
+                        lambda df: df.rename(columns=columns,
+                                             copy=copy, level=level),
+                        part
+                    )
+                    for part in self._df
+                ]
+                new_columns = pd.DataFrame(columns=self.columns)\
+                    .rename(columns=columns, copy=copy, level=level)\
+                    .columns
+                new_df = DataFrame(new_df, new_columns, self.index)
+            else:
+                new_df = self.copy()
+            if index is not None:
+                new_df.index = self._index.rename(index=index, copy=copy,
+                                                  level=level).index
+        else:
+            new_df = self._map_partitions(
+                lambda df: df.rename(mapper=mapper, axis=axis, copy=copy,
+                                     level=level)
+            )
+            new_df._index = new_df._index.rename(mapper=mapper, axis=axis,
+                                                 copy=copy, level=level)
+            new_df.columns = pd.DataFrame(columns=new_df.columns)\
+                .rename(mapper=mapper, axis=axis, copy=copy,
+                        level=level).columns
+
+        if inplace:
+            self._update_inplace(
+                df=new_df._df,
+                columns=new_df.columns,
+                index=new_df.index
+            )
+        else:
+            return new_df
 
     def rename_axis(self, mapper, axis=0, copy=True, inplace=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        axes_is_columns = axis == 1 or axis == "columns"
+        renamed = self if inplace else self.copy()
+        if axes_is_columns:
+            renamed.columns.name = mapper
+        else:
+            renamed._index.rename_axis(mapper, axis=axis, copy=copy,
+                                       inplace=True)
+        if not inplace:
+            return renamed
+
+    def _set_axis_name(self, name, axis=0, inplace=False):
+        """Alter the name or names of the axis.
+
+        Args:
+            name: Name for the Index, or list of names for the MultiIndex
+            axis: 0 or 'index' for the index; 1 or 'columns' for the columns
+            inplace: Whether to modify `self` directly or return a copy
+
+        Returns:
+            Type of caller or None if inplace=True.
+        """
+        axes_is_columns = axis == 1 or axis == "columns"
+        renamed = self if inplace else self.copy()
+        if axes_is_columns:
+            renamed.columns.set_names(name)
+        else:
+            renamed._index.set_names(name)
+
+        if not inplace:
+            return renamed
 
     def reorder_levels(self, order, axis=0):
         raise NotImplementedError(
