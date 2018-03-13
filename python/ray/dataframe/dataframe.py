@@ -748,12 +748,20 @@ class DataFrame(object):
 
         Returns: Series/DataFrame of summary statistics
         """
-        transposed = self.T
 
-        count_df = self.count()
+        obj_columns = []
+        for i, t in enumerate(self.dtypes):
+            if np.dtype('O') == t:
+                obj_columns.append(self.columns[i])
+                
+        rdf = self.drop(columns=obj_columns)
+        
+        transposed = rdf.T
+
+        count_df = rdf.count()
         mean_df = transposed.mean(axis=1)
         std_df = transposed.std(axis=1)
-        min_df = to_pandas(self.min())
+        min_df = to_pandas(rdf.min())
 
         if percentiles is None:
             percentiles = [.25, .50, .75]
@@ -761,7 +769,7 @@ class DataFrame(object):
         percentiles_dfs = [transposed.quantile(q, axis=1)
                            for q in percentiles]
 
-        max_df = to_pandas(self.max())
+        max_df = to_pandas(rdf.max())
 
         describe_df = pd.DataFrame()
         describe_df['count'] = count_df
@@ -1821,29 +1829,37 @@ class DataFrame(object):
                     are the quantiles.
         """
 
-        # if (type(q) is list):
-        #     return Dataframe([self.quantile(q_i, axis=axis,
-        #                                     numeric_only=numeric_only,
-        #                                     interpolation=interpolation)
-        #                       for q_i in q], q)
+        if (type(q) is list):
+            return DataFrame([quantile(q_i, axis=axis,
+                                            numeric_only=numeric_only,
+                                            interpolation=interpolation)
+                    for q_i in q], q, index=self.index)
 
+        # this section can be replaced with select_dtypes()
+        
+        obj_columns = []
+        
+        for i, t in enumerate(self.dtypes):
+            if np.dtype('O') == t:
+                obj_columns.append(self.columns[i])
+                
+        rdf = self.drop(columns=obj_columns)
+        
         if axis == 0 or axis is None:
-            return self.T.quantile(q, axis=1, numeric_only=numeric_only,
+            return rdf.T.quantile(q, axis=1, numeric_only=numeric_only,
                                    interpolation=interpolation)
-        else:
-
-            new_df = [_deploy_func.remote(lambda df: df.T.quantile(
-                                                q, axis=0,
-                                                numeric_only=numeric_only,
-                                                interpolation=interpolation),
-                                          part)
+        else:           
+            new_df = [_deploy_func.remote(lambda df: df.quantile(q, axis=1,
+                                              numeric_only=numeric_only,
+                                              interpolation=interpolation),
+                                              part)
                       for part in self._df]
-
-            items = [ray.get(item) for item in new_df]
+        
+            items =  [ray.get(item) for item in new_df]
             r1 = items[0]
             r_other = [items[i] for i in range(1, len(items))]
             _quantile = r1.append(r_other)
-
+            
             return _quantile
 
     def query(self, expr, inplace=False, **kwargs):
