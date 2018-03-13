@@ -708,7 +708,7 @@ class DataFrame(object):
         Returns:
             The cumulative maximum of the DataFrame.
         """
-        if(axis == 1):
+        if axis == 1:
             return self._map_partitions(
                 lambda df: df.cummax(axis=axis, skipna=skipna,
                                      *args, **kwargs))
@@ -738,7 +738,7 @@ class DataFrame(object):
         Returns:
             The cumulative minimum of the DataFrame.
         """
-        if(axis == 1):
+        if axis == 1:
             return self._map_partitions(
                 lambda df: df.cummin(axis=axis, skipna=skipna,
                                      *args, **kwargs))
@@ -768,7 +768,7 @@ class DataFrame(object):
         Returns:
             The cumulative product of the DataFrame.
         """
-        if(axis == 1):
+        if axis == 1:
             return self._map_partitions(
                 lambda df: df.cumprod(axis=axis, skipna=skipna,
                                       *args, **kwargs))
@@ -798,7 +798,7 @@ class DataFrame(object):
         Returns:
             The cumulative sum of the DataFrame.
         """
-        if(axis == 1):
+        if axis == 1:
             return self._map_partitions(
                 lambda df: df.cumsum(axis=axis, skipna=skipna,
                                      *args, **kwargs))
@@ -1607,7 +1607,7 @@ class DataFrame(object):
         Returns:
             The max of the DataFrame.
         """
-        if(axis == 1):
+        if axis == 1:
             return self._map_partitions(
                 lambda df: df.max(axis=axis, skipna=skipna, level=level,
                                   numeric_only=numeric_only, **kwargs))
@@ -1657,7 +1657,7 @@ class DataFrame(object):
         Returns:
             The min of the DataFrame.
         """
-        if(axis == 1):
+        if axis == 1:
             return self._map_partitions(
                 lambda df: df.min(axis=axis, skipna=skipna, level=level,
                                   numeric_only=numeric_only, **kwargs))
