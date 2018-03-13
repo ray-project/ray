@@ -1,5 +1,5 @@
-Ray RLlib: A Scalable Reinforcement Learning Library
-====================================================
+Ray RLlib: Scalable Reinforcement Learning
+==========================================
 
 Ray RLlib is an RL execution toolkit built on the Ray distributed execution framework. RLlib implements a collection of distributed *policy optimizers* that make it easy to use a variety of training strategies with existing RL algorithms written in frameworks such as PyTorch, TensorFlow, and Theano. This enables complex architectures for RL training (e.g., Ape-X, IMPALA), to be implemented once and reused many times across different RL algorithms and libraries.
 
@@ -77,7 +77,7 @@ The ``train.py`` script has a number of options you can show by running
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``A3C``, ``ES`` and ``DQN``).
+(available options are ``PPO``, ``A3C``, ``ES``, ``DQN`` and ``APEX``).
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
@@ -86,8 +86,9 @@ Each algorithm has specific hyperparameters that can be set with ``--config`` - 
 ``DEFAULT_CONFIG`` variable in
 `PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ppo/ppo.py>`__,
 `A3C <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c.py>`__,
-`ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__ and
-`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__.
+`ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__,
+`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__ and
+`APEX <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__.
 
 In an example below, we train A3C by specifying 8 workers through the config flag.
 function that creates the env to refer to it by name. The contents of the env_config agent config field will be passed to that function to allow the environment to be configured. The return type should be an OpenAI gym.Env. For example:

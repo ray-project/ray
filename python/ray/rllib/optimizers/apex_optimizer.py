@@ -1,3 +1,7 @@
+"""Implements Distributed Prioritized Experience Replay.
+
+https://arxiv.org/abs/1803.00933"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,6 +29,11 @@ LEARNER_QUEUE_MAX_SIZE = 16
 
 @ray.remote
 class ReplayActor(object):
+    """A replay buffer shard.
+    
+    Ray actors are single-threaded, so for scalability multiple replay actors
+    may be created to increase parallelism."""
+
     def __init__(
             self, num_shards, learning_starts, buffer_size, train_batch_size,
             prioritized_replay_alpha, prioritized_replay_beta,
@@ -89,7 +98,15 @@ class ReplayActor(object):
         return stat
 
 
-class GenericLearner(threading.Thread):
+class LearnerThread(threading.Thread):
+    """Background thread that updates the local model from replay data.
+
+    The learner thread communicates with the main thread through Queues. This
+    is needed since Ray operations can only be run on the main thread. In
+    addition, moving heavyweight gradient ops session runs off the main thread
+    improves overall throughput.
+    """
+
     def __init__(self, local_evaluator):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
@@ -118,6 +135,11 @@ class GenericLearner(threading.Thread):
 
 
 class ApexOptimizer(PolicyOptimizer):
+    """Main event loop of the Ape-X optimizer.
+
+    This class coordinates the data transfers between the learner thread,
+    remote evaluators (Ape-X actors), and replay buffer actors.
+    """
 
     def _init(
             self, learning_starts=1000, buffer_size=10000,
@@ -135,7 +157,7 @@ class ApexOptimizer(PolicyOptimizer):
         self.sample_batch_size = sample_batch_size
         self.max_weight_sync_delay = max_weight_sync_delay
 
-        self.learner = GenericLearner(self.local_evaluator)
+        self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
 
         self.replay_actors = create_colocated(
