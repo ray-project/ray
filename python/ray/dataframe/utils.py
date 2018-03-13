@@ -80,47 +80,6 @@ def to_pandas(df):
 
 
 @ray.remote
-def _shuffle(df, indices, chunksize):
-    """Shuffle data by sending it through the Ray Store.
-
-    Args:
-        df (pd.DataFrame): The pandas DataFrame to shuffle.
-        indices ([any]): The list of indices for the DataFrame.
-        chunksize (int): The number of indices to send.
-
-    Returns:
-        The list of pd.DataFrame objects in order of their assignment. This
-        order is important because it determines which task will get the data.
-    """
-    i = 0
-    partition = []
-    while len(indices) > chunksize:
-        oids = df.reindex(indices[:chunksize])
-        partition.append(oids)
-        indices = indices[chunksize:]
-        i += 1
-    else:
-        oids = df.reindex(indices)
-        partition.append(oids)
-    return partition
-
-
-@ray.remote
-def _local_groupby(df_rows, axis=0):
-    """Apply a groupby on this partition for the blocks sent to it.
-
-    Args:
-        df_rows ([pd.DataFrame]): A list of dataframes for this partition. Goes
-            through the Ray object store.
-
-    Returns:
-        A DataFrameGroupBy object from the resulting groupby.
-    """
-    concat_df = pd.concat(df_rows, axis=axis)
-    return concat_df.groupby(concat_df.index)
-
-
-@ray.remote
 def _deploy_func(func, dataframe, *args):
     """Deploys a function for the _map_partitions call.
 

@@ -21,8 +21,6 @@ import itertools
 from .utils import (
     _get_lengths,
     to_pandas,
-    _shuffle,
-    _local_groupby,
     _deploy_func,
     _compute_length_and_index,
     _prepend_partitions,
