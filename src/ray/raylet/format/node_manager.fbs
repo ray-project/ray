@@ -104,10 +104,11 @@ table Task {
 }
 
 table ForwardTaskRequest {
-  // The task to be forwarded.
-  // TODO(swang): Replace with a Task flatbuffer type.
-  task: Task;
-  // The uncommitted lineage of the forwarded task, according to the sending
-  // node manager.
-  uncommitted_lineage: [Task];
+  // The ID of the task to be forwarded.
+  task_id: string;
+  // The tasks in the uncommitted lineage of the forwarded task. This
+  // should include task_id.
+  uncommitted_tasks: [Task];
+  // The objects in the uncommitted lineage of the forwarded task.
+  uncommitted_objects: [string];
 }

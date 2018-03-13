@@ -47,6 +47,40 @@ const std::vector<UniqueID> LineageCacheEntry::GetParentIds() const {
   return parent_ids;
 }
 
+bool LineageCacheEntry::IsTask() const { return (task_ != nullptr); }
+
+flatbuffers::Offset<TaskFlatbuffer> LineageCacheEntry::ToTaskFlatbuffer(
+    flatbuffers::FlatBufferBuilder &fbb) const {
+  RAY_CHECK(IsTask());
+  return task_->ToFlatbuffer(fbb);
+}
+
+flatbuffers::Offset<flatbuffers::String> LineageCacheEntry::ToObjectFlatbuffer(
+    flatbuffers::FlatBufferBuilder &fbb) const {
+  RAY_CHECK(!IsTask());
+  return to_flatbuf(fbb, object_->GetObjectId());
+}
+
+Lineage::Lineage() {}
+
+Lineage::Lineage(const ForwardTaskRequest &task_request) {
+  // Deserialize and set entries for the uncommitted tasks.
+  auto tasks = task_request.uncommitted_tasks();
+  for (auto it = tasks->begin(); it != tasks->end(); it++) {
+    auto task = Task(**it);
+    LineageCacheEntry entry(task.GetTaskSpecification().TaskId(), task,
+                            GcsStatus_UNCOMMITTED_REMOTE);
+    RAY_CHECK(SetEntry(std::move(entry)));
+  }
+  // Deserialize and set entries for the uncommitted objects.
+  auto objects = task_request.uncommitted_objects();
+  for (auto it = objects->begin(); it != objects->end(); it++) {
+    auto object_id = from_flatbuf(**it);
+    LineageCacheEntry entry(object_id, Object(object_id), GcsStatus_UNCOMMITTED_REMOTE);
+    RAY_CHECK(SetEntry(std::move(entry)));
+  }
+}
+
 boost::optional<const LineageCacheEntry &> Lineage::GetEntry(
     const UniqueID &entry_id) const {
   auto entry = entries_.find(entry_id);
@@ -92,6 +126,26 @@ boost::optional<LineageCacheEntry> Lineage::PopEntry(const UniqueID &entry_id) {
 const std::unordered_map<const UniqueID, LineageCacheEntry, UniqueIDHasher>
     &Lineage::GetEntries() const {
   return entries_;
+}
+
+flatbuffers::Offset<ForwardTaskRequest> Lineage::ToFlatbuffer(
+    flatbuffers::FlatBufferBuilder &fbb, const TaskID &task_id) const {
+  RAY_CHECK(GetEntry(task_id));
+  // Serialize the task and object entries.
+  std::vector<flatbuffers::Offset<TaskFlatbuffer>> uncommitted_tasks;
+  std::vector<flatbuffers::Offset<flatbuffers::String>> uncommitted_objects;
+  for (const auto &entry : entries_) {
+    if (entry.second.IsTask()) {
+      uncommitted_tasks.push_back(entry.second.ToTaskFlatbuffer(fbb));
+    } else {
+      uncommitted_objects.push_back(entry.second.ToObjectFlatbuffer(fbb));
+    }
+  }
+
+  auto request = CreateForwardTaskRequest(fbb, to_flatbuf(fbb, task_id),
+                                          fbb.CreateVector(uncommitted_tasks),
+                                          fbb.CreateVector(uncommitted_objects));
+  return request;
 }
 
 LineageCache::LineageCache() {}

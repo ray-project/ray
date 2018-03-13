@@ -4,6 +4,7 @@
 #include <boost/optional.hpp>
 
 // clang-format off
+#include "common_protocol.h"
 #include "ray/raylet/task.h"
 #include "ray/id.h"
 #include "ray/status.h"
@@ -97,6 +98,25 @@ class LineageCacheEntry {
   /// \return The IDs of the parent entries.
   const std::vector<UniqueID> GetParentIds() const;
 
+  /// Get whether this entry is a task or an object.
+  ///
+  /// \return True if the entry is a task and false if the entry is an object.
+  bool IsTask() const;
+
+  /// Serialize this task entry to a flatbuffer. The entry must contain task
+  /// data.
+  ///
+  /// \return An offset to the serialized task.
+  flatbuffers::Offset<TaskFlatbuffer> ToTaskFlatbuffer(
+      flatbuffers::FlatBufferBuilder &fbb) const;
+
+  /// Serialize this object entry to a flatbuffer. The entry must contain
+  /// object data.
+  ///
+  /// \return An offset to the object task.
+  flatbuffers::Offset<flatbuffers::String> ToObjectFlatbuffer(
+      flatbuffers::FlatBufferBuilder &fbb) const;
+
  private:
   /// The entry ID. For tasks, this is the TaskID. For objects, this is the
   /// ObjectID.
@@ -120,6 +140,16 @@ class LineageCacheEntry {
 /// GCS for that task or object.
 class Lineage {
  public:
+  /// Construct an empty Lineage.
+  Lineage();
+
+  /// Construct a Lineage from a ForwardTaskRequest.
+  ///
+  /// \param task_request The request to construct the lineage from. All
+  ///        uncommitted tasks and objects included in the request will be
+  ///        added to the lineage.
+  Lineage(const ForwardTaskRequest &task_request);
+
   /// Get an entry from the lineage.
   ///
   /// \param entry_id The ID of the entry to get.
@@ -149,6 +179,15 @@ class Lineage {
   /// \return A const reference to the lineage entries.
   const std::unordered_map<const UniqueID, LineageCacheEntry, UniqueIDHasher>
       &GetEntries() const;
+
+  /// Serialize this lineage to a ForwardTaskRequest flatbuffer.
+  ///
+  /// \param task_id The task ID to include in the ForwardTaskRequest
+  ///        flatbuffer.
+  /// \return An offset to the serialized lineage. The serialization includes
+  ///         all task and object entries in the lineage.
+  flatbuffers::Offset<ForwardTaskRequest> ToFlatbuffer(
+      flatbuffers::FlatBufferBuilder &fbb, const TaskID &task_id) const;
 
  private:
   /// The lineage entries.
