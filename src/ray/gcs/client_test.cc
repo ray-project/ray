@@ -247,8 +247,8 @@ void TestClientTable(const JobID &job_id, gcs::AsyncGcsClient &client) {
   client.client_table().RegisterClientRemovedCallback(&ClientTableRemoved);
   // Connect and disconnect to client table. We should receive notifications
   // for the addition and removal of our own entry.
-  client.client_table().Connect();
-  client.client_table().Disconnect();
+  (void)client.client_table().Connect();
+  (void)client.client_table().Disconnect();
   test->Start();
 }
 

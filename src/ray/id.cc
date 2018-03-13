@@ -92,7 +92,7 @@ const ObjectID ComputeObjectId(TaskID task_id, int64_t object_index) {
   int64_t *first_bytes = (int64_t *)&return_id;
   // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
   // object ID.
-  int64_t bitmask = -1 << kObjectIdIndexSize;
+  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
   *first_bytes = *first_bytes & (bitmask);
   // OR the first byte of the object ID with the return index.
   *first_bytes = *first_bytes | (object_index & ~bitmask);
@@ -116,14 +116,14 @@ const TaskID ComputeTaskId(const ObjectID &object_id) {
   int64_t *first_bytes = (int64_t *)&task_id;
   // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
   // object ID.
-  int64_t bitmask = -1 << kObjectIdIndexSize;
+  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
   *first_bytes = *first_bytes & (bitmask);
   return task_id;
 }
 
 int64_t ComputeObjectIndex(const ObjectID &object_id) {
   int64_t *first_bytes = (int64_t *)&object_id;
-  int64_t bitmask = -1 << kObjectIdIndexSize;
+  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
   int64_t index = *first_bytes & (~bitmask);
   index <<= (8 * sizeof(int64_t) - kObjectIdIndexSize);
   index >>= (8 * sizeof(int64_t) - kObjectIdIndexSize);

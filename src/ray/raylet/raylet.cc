@@ -29,7 +29,7 @@ Raylet::Raylet(boost::asio::io_service &io_service, const std::string &socket_na
 }
 
 Raylet::~Raylet() {
-  gcs_client_->client_table().Disconnect();
+  (void)gcs_client_->client_table().Disconnect();
   RAY_CHECK_OK(object_manager_.Terminate());
 }
 

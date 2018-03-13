@@ -94,12 +94,12 @@ ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
       ClientID client_id = ClientID::from_binary(client_id_binary);
       remote_connections.push_back(client_id);
     }
-    GetLocationsComplete(Status::OK(), object_id, remote_connections);
+    (void)GetLocationsComplete(Status::OK(), object_id, remote_connections);
   },
   [this, object_id](gcs::AsyncGcsClient *client,
                                          const UniqueID &id){
     std::vector<ClientID> remote_connections;
-    GetLocationsComplete(Status::RedisError("Key not found."), object_id, remote_connections);
+    (void)GetLocationsComplete(Status::RedisError("Key not found."), object_id, remote_connections);
   }
   );
   return status;
