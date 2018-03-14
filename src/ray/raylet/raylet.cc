@@ -18,6 +18,9 @@ Raylet::Raylet(boost::asio::io_service &io_service, const std::string &socket_na
       tcp_acceptor_(io_service,
                     boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       tcp_socket_(io_service),
+      node_manager_acceptor_(
+          io_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+      node_manager_socket_(io_service),
       lineage_cache_(),
       object_manager_(io_service, object_manager_config, gcs_client),
       node_manager_(socket_name, resource_config, object_manager_, lineage_cache_),
@@ -37,7 +40,10 @@ Raylet::~Raylet() {
 ClientID Raylet::RegisterGcs(boost::asio::io_service &io_service) {
   boost::asio::ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
   std::string ip = endpoint.address().to_string();
-  uint16_t port = endpoint.port();
+  unsigned short object_manager_port = endpoint.port();
+
+  endpoint = node_manager_acceptor_.local_endpoint();
+  unsigned short node_manager_port = endpoint.port();
 
   ClientID client_id = ClientID::from_random();
 
@@ -45,8 +51,8 @@ ClientID Raylet::RegisterGcs(boost::asio::io_service &io_service) {
   client_info.client_id = client_id.binary();
   client_info.node_manager_address = ip;
   // TODO(hme): Update port when we add new acceptor for local scheduler connections.
-  client_info.local_scheduler_port = port;
-  client_info.object_manager_port = port;
+  client_info.local_scheduler_port = node_manager_port;
+  client_info.object_manager_port = object_manager_port;
   // TODO(hme): Clean up constants.
   RAY_CHECK_OK(gcs_client_->Connect("127.0.0.1", 6379, client_info));
   RAY_CHECK_OK(gcs_client_->Attach(io_service));
@@ -61,6 +67,32 @@ void Raylet::DoAcceptTcp() {
   tcp_acceptor_.async_accept(new_connection->GetSocket(),
                              boost::bind(&Raylet::HandleAcceptTcp, this, new_connection,
                                          boost::asio::placeholders::error));
+}
+
+void Raylet::DoAcceptNodeManager() {
+  node_manager_acceptor_.async_accept(node_manager_socket_,
+                                      boost::bind(&Raylet::HandleAcceptNodeManager, this,
+                                                  boost::asio::placeholders::error));
+}
+
+void Raylet::HandleAcceptNodeManager(const boost::system::error_code &error) {
+  if (!error) {
+    // TODO: typedef these handlers.
+    std::function<void(std::shared_ptr<TcpClientConnection>)> client_handler =
+        [this](std::shared_ptr<TcpClientConnection> client) {
+          node_manager_.ProcessNewNodeManager(client);
+        };
+    std::function<void(std::shared_ptr<TcpClientConnection>, int64_t, const uint8_t *)>
+        message_handler = [this](std::shared_ptr<TcpClientConnection> client,
+                                 int64_t message_type, const uint8_t *message) {
+          node_manager_.ProcessNodeManagerMessage(client, message_type, message);
+        };
+    // Accept a new local client and dispatch it to the node manager.
+    auto new_connection = TcpClientConnection::Create(
+        client_handler, std::move(message_handler), std::move(node_manager_socket_));
+  }
+  // We're ready to accept another client.
+  DoAccept();
 }
 
 void Raylet::HandleAcceptTcp(TCPClientConnection::pointer new_connection,

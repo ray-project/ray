@@ -100,6 +100,23 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
   }
 }
 
+void NodeManager::ProcessNewNodeManager(
+    std::shared_ptr<TcpClientConnection> node_manager_client) {
+  node_manager_client->ProcessMessages();
+}
+
+void NodeManager::ProcessNodeManagerMessage(
+    std::shared_ptr<TcpClientConnection> node_manager_client, int64_t message_type,
+    const uint8_t *message) {
+  switch (message_type) {
+  case MessageType_ForwardTaskRequest: {
+    RAY_LOG(INFO) << "HELLO";
+  } break;
+  default:
+    RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
+  }
+}
+
 void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
   auto ready_tasks = local_queues_.RemoveTasks({task_id});
   local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));

@@ -54,6 +54,8 @@ class Raylet {
   /// Handle an accepted tcp client connection.
   void HandleAcceptTcp(TCPClientConnection::pointer new_connection,
                        const boost::system::error_code &error);
+  void DoAcceptNodeManager();
+  void HandleAcceptNodeManager(const boost::system::error_code &error);
 
   /// An acceptor for new clients.
   boost::asio::local::stream_protocol::acceptor acceptor_;
@@ -63,6 +65,10 @@ class Raylet {
   boost::asio::ip::tcp::acceptor tcp_acceptor_;
   /// The socket to listen on for new tcp clients.
   boost::asio::ip::tcp::socket tcp_socket_;
+  /// An acceptor for new tcp clients.
+  boost::asio::ip::tcp::acceptor node_manager_acceptor_;
+  /// The socket to listen on for new tcp clients.
+  boost::asio::ip::tcp::socket node_manager_socket_;
 
   // TODO(swang): Lineage cache.
   LineageCache lineage_cache_;

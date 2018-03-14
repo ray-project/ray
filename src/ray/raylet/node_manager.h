@@ -41,6 +41,11 @@ class NodeManager {
   void ProcessClientMessage(std::shared_ptr<LocalClientConnection> client,
                             int64_t message_type, const uint8_t *message);
 
+  void ProcessNewNodeManager(std::shared_ptr<TcpClientConnection> node_manager_client);
+
+  void ProcessNodeManagerMessage(std::shared_ptr<TcpClientConnection> node_manager_client,
+                                 int64_t message_type, const uint8_t *message);
+
  private:
   /// Submit a task to this node.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
