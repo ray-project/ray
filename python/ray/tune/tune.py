@@ -26,43 +26,43 @@ _SCHEDULERS = {
 
 
 class Experiment():
-    def __init__(self, name, run, stop, config,
-                 resources=None, repeat=1, local_dir=DEFAULT_RESULTS_DIR,
-                 upload_dir="", checkpoint_freq=0, max_failures=3):
-        """Initializes object to track experiment specs.
+    """Tracks experiment specifications.
 
-        Args:
-            name (str): Name of experiment.
-            run (str): The algorithm or model to train. This may refer to the
-                name of a built-on algorithm (e.g. RLLib’s DQN or PPO), or a
-                user-defined trainable function or class
-                registered in the tune registry.
-            stop (dict): The stopping criteria. The keys may be any field in
-                TrainingResult, whichever is reached first.
-            config (dict): Algorithm-specific configuration
-                (e.g. env, hyperparams).
-            resources (dict): Machine resources to allocate per trial,
-                e.g. {“cpu”: 64, “gpu”: 8}. Note that GPUs will not be
-                assigned unless you specify them here. Defaults to 1 CPU and 0
-                GPUs.
-            repeat (int): Number of times to repeat each trial. Defaults to 1.
-            local_dir (str): Local dir to save training results to.
-                Defaults to `~/ray_results`.
-            upload_dir (str): Optional URI to sync training results
-                to (e.g. s3://bucket).
-            checkpoint_freq (int): How many training iterations between
-                checkpoints. A value of 0 (default) disables checkpointing.
-            max_failures (int): Try to recover a trial from its last
-                checkpoint at least this many times. Only applies if
-                checkpointing is enabled. Defaults to 3.
-        """
+    Parameters:
+        name (str): Name of experiment.
+        run (str): The algorithm or model to train. This may refer to the
+            name of a built-on algorithm (e.g. RLLib’s DQN or PPO), or a
+            user-defined trainable function or class
+            registered in the tune registry.
+        stop (dict): The stopping criteria. The keys may be any field in
+            TrainingResult, whichever is reached first.
+        config (dict): Algorithm-specific configuration
+            (e.g. env, hyperparams).
+        resources (dict): Machine resources to allocate per trial,
+            e.g. ``{“cpu”: 64, “gpu”: 8}``. Note that GPUs will not be
+            assigned unless you specify them here. Defaults to 1 CPU and 0
+            GPUs.
+        repeat (int): Number of times to repeat each trial. Defaults to 1.
+        local_dir (str): Local dir to save training results to.
+            Defaults to ``~/ray_results``.
+        upload_dir (str): Optional URI to sync training results
+            to (e.g. ``s3://bucket``).
+        checkpoint_freq (int): How many training iterations between
+            checkpoints. A value of 0 (default) disables checkpointing.
+        max_failures (int): Try to recover a trial from its last
+            checkpoint at least this many times. Only applies if
+            checkpointing is enabled. Defaults to 3.
+    """
+    def __init__(self, name, run, stop, config,
+                 resources=None, repeat=1, local_dir=None,
+                 upload_dir=None, checkpoint_freq=0, max_failures=3):
         spec = {
             "run": run,
             "stop": stop,
             "config": config,
-            "resources": resources,
+            "resources": resources or {"cpu": 1, "gpu": 0},
             "repeat": repeat,
-            "local_dir": local_dir,
+            "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir,
             "checkpoint_freq": checkpoint_freq,
             "max_failures": max_failures
@@ -85,6 +85,18 @@ def _make_scheduler(args):
 
 def run_experiments(experiments, scheduler=None, with_server=False,
                     server_port=TuneServer.DEFAULT_PORT, verbose=True):
+    """Tunes experiments.
+
+    Args:
+        experiments (Experiment | list | dict): Experiment data.
+        scheduler (TrialScheduler): Scheduler for executing
+            the experiment. Choose among FIFO (default), MedianStopping,
+            AsyncHyperBand, or HyperBand.
+        with_server (bool): Starts a background Tune server. Needed for
+            using the Client API.
+        server_port (int): Port number for launching TuneServer.
+        verbose (bool): How much output should be printed for each trial.
+    """
 
     # Make sure rllib agents are registered
     from ray import rllib  # noqa # pylint: disable=unused-import
