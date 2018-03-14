@@ -11,6 +11,30 @@ Ray
 
 Ray is a flexible, high-performance distributed execution framework.
 
+
+Ray is easy to install: ``pip install ray``
+
+Example Use
+-----------
+
++------------------------------------------------+----------------------------------------------------+
+| **Basic Python**                               | **Distributed with Ray**                           |
++------------------------------------------------+----------------------------------------------------+
+|.. code-block:: python                          |.. code-block:: python                              |
+|                                                |                                                    |
+|  # Execute f serially.                         |  # Execute f in parallel.                          |
+|                                                |                                                    |
+|                                                |  @ray.remote                                       |
+|  def f():                                      |  def f():                                          |
+|      time.sleep(1)                             |      time.sleep(1)                                 |
+|      return 1                                  |      return 1                                      |
+|                                                |                                                    |
+|                                                |                                                    |
+|                                                |  ray.init()                                        |
+|  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
++------------------------------------------------+----------------------------------------------------+
+
+
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
 - `Ray Tune`_: Hyperparameter Optimization Framework
@@ -19,40 +43,14 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 .. _`Ray Tune`: http://ray.readthedocs.io/en/latest/tune.html
 .. _`Ray RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
 
-
 Installation
 ------------
 
-- Ray can be installed on Linux and Mac with ``pip install ray``.
-- To build Ray from source, see the instructions for `Ubuntu`_ and `Mac`_.
+Ray can be installed on Linux and Mac with ``pip install ray``.
 
-.. _`Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
-.. _`Mac`: http://ray.readthedocs.io/en/latest/install-on-macosx.html
+To build Ray from source or to install the nightly versions, see the `installation documentation`_.
 
-
-Example Program
----------------
-
-+------------------------------------------------+----------------------------------------------+
-| **Basic Python**                               | **Distributed with Ray**                     |
-+------------------------------------------------+----------------------------------------------+
-|.. code:: python                                |.. code-block:: python                        |
-|                                                |                                              |
-|  import time                                   |  import time                                 |
-|                                                |  import ray                                  |
-|                                                |                                              |
-|                                                |  ray.init()                                  |
-|                                                |                                              |
-|                                                |  @ray.remote                                 |
-|  def f():                                      |  def f():                                    |
-|      time.sleep(1)                             |      time.sleep(1)                           |
-|      return 1                                  |      return 1                                |
-|                                                |                                              |
-|  # Execute f serially.                         |  # Execute f in parallel.                    |
-|  results = [f() for i in range(4)]             |  object_ids = [f.remote() for i in range(4)] |
-|                                                |  results = ray.get(object_ids)               |
-+------------------------------------------------+----------------------------------------------+
-
+.. _`installation documentation`: http://ray.readthedocs.io/en/latest/installation.html
 
 More Information
 ----------------

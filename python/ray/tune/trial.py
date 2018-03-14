@@ -11,9 +11,9 @@ import ray
 import os
 
 from ray.tune import TuneError
-from ray.tune.logger import NoopLogger, UnifiedLogger
+from ray.tune.logger import NoopLogger, UnifiedLogger, pretty_print
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
-from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
+from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR
 from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5

@@ -42,13 +42,13 @@ void lookup_done_callback(ObjectID object_id,
                           const std::vector<DBClientID> &manager_ids,
                           void *user_context) {
   DBHandle *db = (DBHandle *) user_context;
-  CHECK(manager_ids.size() == 2);
+  RAY_CHECK(manager_ids.size() == 2);
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(db, manager_ids);
-  CHECK(parse_ip_addr_port(managers.at(0).c_str(), received_addr1,
-                           &received_port1) == 0);
-  CHECK(parse_ip_addr_port(managers.at(1).c_str(), received_addr2,
-                           &received_port2) == 0);
+  RAY_CHECK(parse_ip_addr_port(managers.at(0).c_str(), received_addr1,
+                               &received_port1) == 0);
+  RAY_CHECK(parse_ip_addr_port(managers.at(1).c_str(), received_addr2,
+                               &received_port2) == 0);
 }
 
 /* Entry added to database successfully. */
@@ -57,7 +57,7 @@ void add_done_callback(ObjectID object_id, bool success, void *user_context) {}
 /* Test if we got a timeout callback if we couldn't connect database. */
 void timeout_callback(ObjectID object_id, void *context, void *user_data) {
   user_context *uc = (user_context *) context;
-  CHECK(uc->test_number == TEST_NUMBER)
+  RAY_CHECK(uc->test_number == TEST_NUMBER);
 }
 
 int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
@@ -136,9 +136,9 @@ int64_t task_table_delayed_add_task(event_loop *loop,
 
 void task_table_test_callback(Task *callback_task, void *user_data) {
   task_table_test_callback_called = 1;
-  CHECK(Task_state(callback_task) == TASK_STATUS_SCHEDULED);
-  CHECK(Task_size(callback_task) == Task_size(task_table_test_task));
-  CHECK(Task_equals(callback_task, task_table_test_task));
+  RAY_CHECK(Task_state(callback_task) == TASK_STATUS_SCHEDULED);
+  RAY_CHECK(Task_size(callback_task) == Task_size(task_table_test_task));
+  RAY_CHECK(Task_equals(callback_task, task_table_test_task));
   event_loop *loop = (event_loop *) user_data;
   event_loop_stop(loop);
 }

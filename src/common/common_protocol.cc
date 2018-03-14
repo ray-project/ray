@@ -9,7 +9,7 @@ flatbuffers::Offset<flatbuffers::String> to_flatbuf(
 
 ray::ObjectID from_flatbuf(const flatbuffers::String &string) {
   ray::ObjectID object_id;
-  CHECK(string.size() == sizeof(ray::ObjectID));
+  RAY_CHECK(string.size() == sizeof(ray::ObjectID));
   memcpy(object_id.mutable_data(), string.data(), sizeof(ray::ObjectID));
   return object_id;
 }

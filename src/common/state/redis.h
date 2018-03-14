@@ -11,11 +11,13 @@
 #include "hiredis/hiredis.h"
 #include "hiredis/async.h"
 
-#define LOG_REDIS_ERROR(context, M, ...) \
-  LOG_ERROR("Redis error %d %s; %s", context->err, context->errstr, M)
+#define LOG_REDIS_ERROR(context, M, ...)                                     \
+  RAY_LOG(ERROR) << "Redis error " << context->err << " " << context->errstr \
+                 << "; " << M
 
-#define LOG_REDIS_DEBUG(context, M, ...) \
-  LOG_DEBUG("Redis error %d %s; %s", context->err, context->errstr, M)
+#define LOG_REDIS_DEBUG(context, M, ...)                                     \
+  RAY_LOG(DEBUG) << "Redis error " << context->err << " " << context->errstr \
+                 << "; " << M;
 
 struct DBHandle {
   /** String that identifies this client type. */

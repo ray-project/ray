@@ -5,7 +5,7 @@ This document describes Ray Tune, a hyperparameter tuning framework for long-run
 
 It has the following features:
 
--  Scalable implementations of search algorithms such as `Population Based Training (PBT) <#population-based-training>`__, `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, and `HyperBand <https://arxiv.org/abs/1603.06560>`__.
+-  Scalable implementations of search algorithms such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
 
 -  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
 
@@ -18,6 +18,8 @@ You can find the code for Ray Tune `here on GitHub <https://github.com/ray-proje
 
 Concepts
 --------
+
+.. image:: tune-api.svg
 
 Ray Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a json *config* variation passed to the user code.
 
@@ -73,7 +75,12 @@ This script runs a small grid search over the ``my_func`` function using Ray Tun
      - my_func_4_alpha=0.4,beta=2:	RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - my_func_5_alpha=0.6,beta=2:	TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be saved to local disk and optionally uploaded to the specified ``upload_dir`` (e.g. S3 path).
+In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster and optionally uploaded to the specified ``upload_dir`` (e.g. S3 path).
+
+Trial Schedulers
+----------------
+
+By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler`` class. However, you can also specify a custom scheduling algorithm that can early stop trials, perturb parameters, or incorporate suggestions from an external service. Currently implemented trial schedulers include `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, and `HyperBand <hyperband.html>`__.
 
 Visualizing Results
 -------------------
@@ -135,69 +142,33 @@ By default, each random variable and grid search point is sampled once. To take 
 
 For more information on variant generation, see `variant_generator.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/variant_generator.py>`__.
 
-Early Stopping
---------------
-
-To reduce costs, long-running trials can often be early stopped if their initial performance is not promising. Ray Tune allows early stopping algorithms to be plugged in on top of existing grid or random searches. This can be enabled by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
-
-.. code-block:: python
-
-    run_experiments({...}, scheduler=HyperBandScheduler())
-
-An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
-
-Note that some trial schedulers such as HyperBand and PBT require your Trainable to support checkpointing, which is described in the next section. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
-
-::
-
-    == Status ==
-    Using HyperBand: num_stopped=0 total_brackets=5
-    Round #0:
-      Bracket(n=5, r=100, completed=80%): {'PAUSED': 4, 'PENDING': 1}
-      Bracket(n=8, r=33, completed=23%): {'PAUSED': 4, 'PENDING': 4}
-      Bracket(n=15, r=11, completed=4%): {'RUNNING': 2, 'PAUSED': 2, 'PENDING': 11}
-      Bracket(n=34, r=3, completed=0%): {'RUNNING': 2, 'PENDING': 32}
-      Bracket(n=81, r=1, completed=0%): {'PENDING': 38}
-    Resources used: 4/4 CPUs, 0/0 GPUs
-    Result logdir: ~/ray_results/hyperband_test
-    PAUSED trials:
-     - my_class_0_height=99,width=43:	PAUSED [pid=11664], 0 s, 100 ts, 97.1 rew
-     - my_class_11_height=85,width=81:	PAUSED [pid=11771], 0 s, 33 ts, 32.8 rew
-     - my_class_12_height=0,width=52:	PAUSED [pid=11785], 0 s, 33 ts, 0 rew
-     - my_class_19_height=44,width=88:	PAUSED [pid=11811], 0 s, 11 ts, 5.47 rew
-     - my_class_27_height=96,width=84:	PAUSED [pid=11840], 0 s, 11 ts, 12.5 rew
-      ... 5 more not shown
-    PENDING trials:
-     - my_class_10_height=12,width=25:	PENDING
-     - my_class_13_height=90,width=45:	PENDING
-     - my_class_14_height=69,width=45:	PENDING
-     - my_class_15_height=41,width=11:	PENDING
-     - my_class_16_height=57,width=69:	PENDING
-      ... 81 more not shown
-    RUNNING trials:
-     - my_class_23_height=75,width=51:	RUNNING [pid=11843], 0 s, 1 ts, 1.47 rew
-     - my_class_26_height=16,width=48:	RUNNING
-     - my_class_31_height=40,width=10:	RUNNING
-     - my_class_53_height=28,width=96:	RUNNING
-
-Currently we support the following early stopping algorithms, or you can write your own that implements the `TrialScheduler <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_scheduler.py>`__ interface.
-
-.. autoclass:: ray.tune.median_stopping_rule.MedianStoppingRule
-.. autoclass:: ray.tune.hyperband.HyperBandScheduler
-
-Population Based Training
--------------------------
-
-Ray Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__. PBT also requires your Trainable to support checkpointing. You can run this `toy PBT example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`__ to get an idea of how how PBT operates. When training in PBT mode, the set of trial variations is treated as the population, so a single trial may see many different hyperparameters over its lifetime, which is recorded in the ``result.json`` file. The following figure generated by the example shows PBT discovering new hyperparams over the course of a single experiment:
-
-.. image:: pbt.png
-
-.. autoclass:: ray.tune.pbt.PopulationBasedTraining
-
 Trial Checkpointing
 -------------------
 
-To enable checkpoint / resume, you must subclass ``Trainable`` and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand and PBT.
+To enable checkpointing, you must implement a Trainable class (Trainable functions are not checkpointable, since they never return control back to their caller). The easiest way to do this is to subclass the pre-defined ``Trainable`` class and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand and PBT.
+
+For TensorFlow model training, this would look something like this `(full tensorflow example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__:
+
+.. code-block:: python
+
+    class MyClass(Trainable):
+        def _setup(self):
+            self.saver = tf.train.Saver()
+            self.sess = ...
+            self.iteration = 0
+
+        def _train(self):
+            self.sess.run(...)
+            self.iteration += 1
+
+        def _save(self, checkpoint_dir):
+            return self.saver.save(
+                self.sess, checkpoint_dir + "/save",
+                global_step=self.iteration)
+
+        def _restore(self, path):
+            return self.saver.restore(self.sess, path)
+
 
 Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq: N`` and ``max_failures: M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
 
@@ -237,7 +208,7 @@ To use the Client API, you can start your experiment with ``with_server=True``:
 
     run_experiments({...}, with_server=True, server_port=4321)
 
-Then, on the client side, you can use the following class. The server address defaults to ``localhost:4321``. If on a cluster, you may want to forward this port (e.g. ``ssh -L <port>:localhost:<port> <address>``) so that you can use the Client on your local machine.
+Then, on the client side, you can use the following class. The server address defaults to ``localhost:4321``. If on a cluster, you may want to forward this port (e.g. ``ssh -L <local_port>:localhost:<remote_port> <address>``) so that you can use the Client on your local machine.
 
 .. autoclass:: ray.tune.web_server.TuneClient
     :members:

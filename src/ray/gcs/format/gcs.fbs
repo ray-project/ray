@@ -4,6 +4,15 @@ enum Language:int {
   JAVA = 2
 }
 
+// The channel that Add operations to the Table should be published on, if any.
+enum TablePubsub:int {
+  NO_PUBLISH = 0,
+  TASK,
+  CLIENT,
+  OBJECT,
+  ACTOR
+}
+
 table FunctionTableData {
   language: Language;
   name: string;
@@ -63,4 +72,35 @@ table CustomSerializerData {
 }
 
 table ConfigTableData {
+}
+
+table ClientTableData {
+  // The client ID of the client that the message is about.
+  client_id: string;
+  // The IP address of the client's node manager.
+  node_manager_address: string;
+  // The port at which the client's node manager is listening for TCP
+  // connections from other node managers.
+  local_scheduler_port: int;
+  // The port at which the client's object manager is listening for TCP
+  // connections from other object managers.
+  object_manager_port: int;
+  // True if the message is about the addition of a client and false if it is
+  // about the deletion of a client.
+  is_insertion: bool;
+}
+
+table Resource {
+  // The type of the resource.
+  resource_name: string;
+  // The total capacity of this resource type.
+  resource_capacity: double;
+}
+
+table NodeManagerHeartbeat {
+  // The available resources on this node manager. This information may be
+  // stale.
+  resources_available: [Resource];
+  // The total resources on this node manager.
+  resources_total: [Resource];
 }

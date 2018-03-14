@@ -4,12 +4,13 @@ Cython
 Getting Started
 ---------------
 
-This document provides examples of using Cython-generated code in ``ray``. To get started, run the following from directory ``$RAY_HOME/examples/cython``:
+This document provides examples of using Cython-generated code in ``ray``. To
+get started, run the following from directory ``$RAY_HOME/examples/cython``:
 
 .. code-block:: bash
 
    pip install scipy # For BLAS example
-   python setup.py develop
+   pip install -e .
    python cython_main.py --help
 
 You can import the ``cython_examples`` module from a Python script or interpreter.

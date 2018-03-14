@@ -6,7 +6,7 @@ void object_table_lookup(DBHandle *db_handle,
                          RetryInfo *retry,
                          object_table_lookup_done_callback done_callback,
                          void *user_context) {
-  CHECK(db_handle != NULL);
+  RAY_CHECK(db_handle != NULL);
   init_table_callback(db_handle, object_id, __func__,
                       new CommonCallbackData(NULL), retry,
                       (table_done_callback) done_callback,
@@ -20,7 +20,7 @@ void object_table_add(DBHandle *db_handle,
                       RetryInfo *retry,
                       object_table_done_callback done_callback,
                       void *user_context) {
-  CHECK(db_handle != NULL);
+  RAY_CHECK(db_handle != NULL);
 
   ObjectTableAddData *info =
       (ObjectTableAddData *) malloc(sizeof(ObjectTableAddData));
@@ -38,7 +38,7 @@ void object_table_remove(DBHandle *db_handle,
                          RetryInfo *retry,
                          object_table_done_callback done_callback,
                          void *user_context) {
-  CHECK(db_handle != NULL);
+  RAY_CHECK(db_handle != NULL);
   /* Copy the client ID, if one was provided. */
   DBClientID *client_id_copy = NULL;
   if (client_id != NULL) {
@@ -59,7 +59,7 @@ void object_table_subscribe_to_notifications(
     RetryInfo *retry,
     object_table_lookup_done_callback done_callback,
     void *user_context) {
-  CHECK(db_handle != NULL);
+  RAY_CHECK(db_handle != NULL);
   ObjectTableSubscribeData *sub_data =
       (ObjectTableSubscribeData *) malloc(sizeof(ObjectTableSubscribeData));
   sub_data->object_available_callback = object_available_callback;
@@ -76,8 +76,8 @@ void object_table_request_notifications(DBHandle *db_handle,
                                         int num_object_ids,
                                         ObjectID object_ids[],
                                         RetryInfo *retry) {
-  CHECK(db_handle != NULL);
-  CHECK(num_object_ids > 0);
+  RAY_CHECK(db_handle != NULL);
+  RAY_CHECK(num_object_ids > 0);
   ObjectTableRequestNotificationsData *data =
       (ObjectTableRequestNotificationsData *) malloc(
           sizeof(ObjectTableRequestNotificationsData) +
