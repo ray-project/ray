@@ -12,7 +12,7 @@ to use Pandas on Ray just like you would Pandas.
 
 .. code-block:: python
 
-  #import pandas as pd
+  # import pandas as pd
   import ray.dataframe as pd
 
 Currently, we have part of the Pandas API implemented and are working toward
@@ -27,7 +27,7 @@ the instructions on the `installation page`_
 Once you import the library, you should see something similar to the following
 output:
 
-.. code-block::
+.. code-block:: text
 
   >>> import ray.dataframe as pd
 
@@ -46,7 +46,7 @@ One you have executed  ``import ray.dataframe as pd``, you're ready to begin
 running your Pandas pipeline as you were before. Please note, the API is not
 yet complete. For some methods, you may see the following:
 
-.. code-block::
+.. code-block:: text
 
   NotImplementedError: To contribute to Pandas on Ray, please visit github.com/ray-project/ray.
 
