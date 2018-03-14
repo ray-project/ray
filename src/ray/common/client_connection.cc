@@ -7,8 +7,7 @@
 
 namespace ray {
 
-template <class T>
-ServerConnection<T>::ServerConnection(boost::asio::io_service io_service,
+ServerConnection::ServerConnection(boost::asio::io_service &io_service,
                                       const std::string &ip, int port)
     : socket_(io_service) {
   boost::asio::ip::address ip_address = boost::asio::ip::address::from_string(ip);
@@ -17,8 +16,7 @@ ServerConnection<T>::ServerConnection(boost::asio::io_service io_service,
   socket_.connect(endpoint);
 }
 
-template <class T>
-void ServerConnection<T>::WriteMessage(int64_t type, size_t length,
+void ServerConnection::WriteMessage(int64_t type, size_t length,
                                        const uint8_t *message) {
   // TODO(swang): Split out this code to share with ClientConnection.
   std::vector<boost::asio::const_buffer> message_buffers;

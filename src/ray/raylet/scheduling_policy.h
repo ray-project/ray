@@ -29,7 +29,9 @@ class SchedulingPolicy {
   /// \return Scheduling decision, mapping tasks to node managers for placement.
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> Schedule(
       const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
-      &cluster_resources);
+      &cluster_resources,
+      const ClientID &me,
+      const std::vector<ClientID> &others);
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();

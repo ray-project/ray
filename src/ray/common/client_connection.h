@@ -9,10 +9,9 @@
 
 namespace ray {
 
-template <class T>
 class ServerConnection {
  public:
-  ServerConnection(boost::asio::io_service io_service, const std::string &ip, int port);
+  ServerConnection(boost::asio::io_service &io_service, const std::string &ip, int port);
 
   void WriteMessage(int64_t type, size_t length, const uint8_t *message);
 

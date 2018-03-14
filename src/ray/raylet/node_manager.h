@@ -25,7 +25,7 @@ class NodeManager {
   ///        for local connections.
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(const std::string &socket_name, const ResourceSet &resource_config,
+  NodeManager(boost::asio::io_service &io_service, const std::string &socket_name, const ResourceSet &resource_config,
               ObjectManager &object_manager, LineageCache &lineage_cache,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
@@ -47,6 +47,9 @@ class NodeManager {
   void ProcessNodeManagerMessage(std::shared_ptr<TcpClientConnection> node_manager_client,
                                  int64_t message_type, const uint8_t *message);
 
+  void ClientAdded(gcs::AsyncGcsClient *client,
+                      const UniqueID &id,
+                      std::shared_ptr<ClientTableDataT> data);
  private:
   /// Submit a task to this node.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
@@ -63,6 +66,7 @@ class NodeManager {
   void ResubmitTask(const TaskID &task_id);
   ray::Status ForwardTask(const TaskID &task_id, const ClientID &node_id);
 
+  boost::asio::io_service &io_service_;
   /// The resources local to this node.
   SchedulingResources local_resources_;
   // TODO(atumanov): Add resource information from other nodes.

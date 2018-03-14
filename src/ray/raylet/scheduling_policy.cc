@@ -9,11 +9,12 @@ SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
 
 std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
-    &cluster_resources) {
-  static ClientID local_node_id = ClientID::nil();
+    &cluster_resources,
+      const ClientID &me,
+      const std::vector<ClientID> &others) {
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
   // TODO(atumanov): consider all cluster resources.
-  SchedulingResources resource_supply = cluster_resources.at(local_node_id);
+  SchedulingResources resource_supply = cluster_resources.at(me);
   const auto &resource_supply_set = resource_supply.GetAvailableResources();
 
   // Iterate over running tasks, get their resource demand and try to schedule.
@@ -22,8 +23,12 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     bool task_feasible = resource_demand.IsSubset(resource_supply_set);
     if (task_feasible) {
+      ClientID node = me;
+      if (scheduling_queue_.GetScheduledTasks().size() > 0 && others.size() > 0) {
+        node = others.front();
+      }
       const TaskID &task_id = t.GetTaskSpecification().TaskId();
-      decision[task_id] = local_node_id;
+      decision[task_id] = node;
     }
   }
   return decision;

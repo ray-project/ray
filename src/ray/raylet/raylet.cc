@@ -24,7 +24,7 @@ Raylet::Raylet(boost::asio::io_service &io_service, const std::string &socket_na
       gcs_client_(gcs_client),
       lineage_cache_(),
       object_manager_(io_service, object_manager_config, gcs_client),
-      node_manager_(socket_name, resource_config, object_manager_, lineage_cache_,
+      node_manager_(io_service, socket_name, resource_config, object_manager_, lineage_cache_,
                     gcs_client_) {
   ClientID client_id = RegisterGcs(io_service);
   object_manager_.SetClientID(client_id);
@@ -59,6 +59,15 @@ ClientID Raylet::RegisterGcs(boost::asio::io_service &io_service) {
   RAY_CHECK_OK(gcs_client_->Connect("127.0.0.1", 6379, client_info));
   RAY_CHECK_OK(gcs_client_->Attach(io_service));
   RAY_CHECK_OK(gcs_client_->client_table().Connect());
+
+
+  auto node_manager_client_added = [this](gcs::AsyncGcsClient *client,
+                      const UniqueID &id,
+                      std::shared_ptr<ClientTableDataT> data) {
+    node_manager_.ClientAdded(client, id, data);
+  };
+  gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
+  RAY_LOG(INFO) << "Registering as " << client_id.hex();
 
   return client_id;
 }

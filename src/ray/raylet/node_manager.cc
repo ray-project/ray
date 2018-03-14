@@ -7,11 +7,12 @@ namespace ray {
 
 namespace raylet {
 
-NodeManager::NodeManager(const std::string &socket_name,
+NodeManager::NodeManager(boost::asio::io_service &io_service, const std::string &socket_name,
                          const ResourceSet &resource_config,
                          ObjectManager &object_manager, LineageCache &lineage_cache,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-    : local_resources_(resource_config),
+    : io_service_(io_service),
+      local_resources_(resource_config),
       worker_pool_(WorkerPool(0)),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
@@ -25,6 +26,19 @@ NodeManager::NodeManager(const std::string &socket_name,
       remote_clients_() {
   //// TODO(atumanov): need to add the self-knowledge of ClientID, using nill().
   // cluster_resource_map_[ClientID::nil()] = local_resources_;
+}
+
+void NodeManager::ClientAdded(gcs::AsyncGcsClient *client,
+                      const UniqueID &id,
+                      std::shared_ptr<ClientTableDataT> data) {
+  ClientID client_id = ClientID::from_binary(data->client_id);
+  if (client_id == gcs_client_->client_table().GetLocalClientId()) {
+    return;
+  }
+  if (std::find(remote_clients_.begin(), remote_clients_.end(), client_id) == remote_clients_.end()) {
+    RAY_LOG(INFO) << "a new client: " << client_id.hex();
+    remote_clients_.push_back(client_id);
+  }
 }
 
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
@@ -105,6 +119,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
 
 void NodeManager::ProcessNewNodeManager(
     std::shared_ptr<TcpClientConnection> node_manager_client) {
+  RAY_LOG(INFO) << "a new node manager connected!";
   node_manager_client->ProcessMessages();
 }
 
@@ -132,14 +147,16 @@ void NodeManager::ScheduleTasks() {
   // TODO(alexey): Give the policy all cluster resources instead of just the
   // local one.
   std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> cluster_resource_map;
-  cluster_resource_map[ClientID::nil()] = local_resources_;
-  const auto &policy_decision = scheduling_policy_.Schedule(cluster_resource_map);
+  cluster_resource_map[gcs_client_->client_table().GetLocalClientId()] = local_resources_;
+  const auto &policy_decision = scheduling_policy_.Schedule(cluster_resource_map, gcs_client_->client_table().GetLocalClientId(), remote_clients_);
   // Extract decision for this local scheduler.
   // TODO(alexey): Check for this node's own client ID, not for nil.
   std::unordered_set<TaskID, UniqueIDHasher> task_ids;
   for (auto &task_schedule : policy_decision) {
-    if (task_schedule.second.is_nil()) {
+    if (task_schedule.second == gcs_client_->client_table().GetLocalClientId()) {
       task_ids.insert(task_schedule.first);
+    } else {
+      RAY_CHECK_OK(ForwardTask(task_schedule.first, task_schedule.second));
     }
   }
 
@@ -214,6 +231,7 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
 }
 
 ray::Status NodeManager::ForwardTask(const TaskID &task_id, const ClientID &node_id) {
+  RAY_LOG(INFO) << "Forwarding task " << task_id.hex() << " to " << node_id.hex();
   // Remove the task from the local queue.
   auto tasks = local_queues_.RemoveTasks({task_id});
   RAY_CHECK(tasks.size() == 1);
@@ -225,6 +243,9 @@ ray::Status NodeManager::ForwardTask(const TaskID &task_id, const ClientID &node
   auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
   fbb.Finish(request);
 
+  auto client_info = gcs_client_->client_table().GetClient(node_id);
+  auto server_conn = ServerConnection(io_service_, client_info.node_manager_address, client_info.local_scheduler_port);
+  server_conn.WriteMessage(MessageType_ForwardTaskRequest, fbb.GetSize(), fbb.GetBufferPointer());
   // TODO(swang): Send the request to the client at node_id.
   // TODO(swang): Clean up the lineage cache if possible.
 
