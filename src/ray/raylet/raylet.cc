@@ -31,6 +31,7 @@ Raylet::Raylet(boost::asio::io_service &io_service, const std::string &socket_na
   // Start listening for clients.
   DoAccept();
   DoAcceptTcp();
+  DoAcceptNodeManager();
 }
 
 Raylet::~Raylet() {
@@ -93,7 +94,7 @@ void Raylet::HandleAcceptNodeManager(const boost::system::error_code &error) {
         client_handler, std::move(message_handler), std::move(node_manager_socket_));
   }
   // We're ready to accept another client.
-  DoAccept();
+  DoAcceptNodeManager();
 }
 
 void Raylet::HandleAcceptTcp(TCPClientConnection::pointer new_connection,
