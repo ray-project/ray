@@ -826,52 +826,18 @@ class DataFrame(object):
         Generates descriptive statistics that summarize the central tendency,
         dispersion and shape of a dataset’s distribution, excluding NaN values.
 
-<<<<<<< HEAD
-        Analyzes both numeric and object series, as well as DataFrame column
-        sets of mixed data types.
-        The output will vary depending on what is provided. Refer to the notes
-        below for more detail.
-
-        For numeric data, the result’s index will include
-        count, mean, std, min, max as well as lower, 50 and upper percentiles.
-        By default the lower percentile is 25 and the upper percentile is 75.
-        The 50 percentile is the same as the median.
-
-        For object data (e.g. strings or timestamps), the result’s index will
-        include count, unique, top, and freq. The top is the most common value.
-        The freq is the most common value’s frequency. Timestamps also include
-        the first and last items.
-
-        If multiple object values have the highest count,
-        then the count and top results will be arbitrarily chosen from
-        among those with the highest count.
-
-        For mixed data types provided via a DataFrame,
-        the default is to return only an analysis of numeric columns.
-        If the dataframe consists only of object and
-        categorical data without any numeric columns,
-        the default is to return an analysis of both the object and
-        categorical columns. If include='all' is provided as an option,
-        the result will include a union of attributes of each type.
-
-        The include and exclude parameters can be used to limit which columns
-        in a DataFrame are analyzed for the output.
-        The parameters are ignored when analyzing a Series.
-=======
         Args:
             percentiles (list-like of numbers, optional):
                 The percentiles to include in the output.
             include: White-list of data types to include in results
             exclude: Black-list of data types to exclude in results
->>>>>>> bcc515216cf5d4bce0f5cff8127d400e289d16e2
 
         Returns: Series/DataFrame of summary statistics
         """
 
-        obj_columns = []
-        for i, t in enumerate(self.dtypes):
-            if np.dtype('O') == t:
-                obj_columns.append(self.columns[i])
+        obj_columns = [self.columns[i]
+                       for i, t in enumerate(self.dtypes)
+                       if t == np.dtype('O')]
 
         rdf = self.drop(columns=obj_columns)
 
