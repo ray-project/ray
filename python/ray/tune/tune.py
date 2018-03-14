@@ -39,7 +39,7 @@ class Experiment():
         config (dict): Algorithm-specific configuration
             (e.g. env, hyperparams).
         resources (dict): Machine resources to allocate per trial,
-            e.g. ``{“cpu”: 64, “gpu”: 8}``. Note that GPUs will not be
+            e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
             assigned unless you specify them here. Defaults to 1 CPU and 0
             GPUs.
         repeat (int): Number of times to repeat each trial. Defaults to 1.
