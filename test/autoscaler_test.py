@@ -511,7 +511,7 @@ class AutoscalingTest(unittest.TestCase):
         config = SMALL_CLUSTER.copy()
         config["provider"] = {
             "type": "external",
-            "module": "test.autoscaler_test.MockProvider",
+            "module": "ray.test.autoscaler_test.MockProvider",
             }
         config_path = self.write_config(config)
         self.provider = MockProvider()
