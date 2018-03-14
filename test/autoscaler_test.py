@@ -121,15 +121,6 @@ SMALL_CLUSTER = {
     "worker_start_ray_commands": ["start_ray_worker"],
 }
 
-EXTERNAL_PROVIDER = {
-    "cluster_name": "default",
-    "max_workers": 2,
-    "auth": {
-        "ssh_user": "ubuntu",
-        "ssh_private_key": "/dev/null",
-    },
-}
-
 
 class LoadMetricsTest(unittest.TestCase):
     def testUpdate(self):
@@ -517,11 +508,12 @@ class AutoscalingTest(unittest.TestCase):
         self.waitFor(lambda: len(runner.calls) > num_calls)
 
     def testExternalNodeScaler(self):
-        EXTERNAL_PROVIDER["provider"] = {
+        config = SMALL_CLUSTER.copy()
+        config["provider"] = {
             "type": "external",
             "module": "test.autoscaler_test.MockProvider",
-            },
-        config_path = self.write_config(EXTERNAL_PROVIDER)
+            }
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         autoscaler = StandardAutoscaler(
             config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
@@ -529,11 +521,12 @@ class AutoscalingTest(unittest.TestCase):
         self.assertIsInstance(autoscaler.provider, MockProvider)
 
     def testExternalNodeScalerWrongImport(self):
-        EXTERNAL_PROVIDER["provider"] = {
+        config = SMALL_CLUSTER.copy()
+        config["provider"] = {
             "type": "external",
             "module": "does-not-exist",
-            },
-        invalid_provider = self.write_config(EXTERNAL_PROVIDER)
+            }
+        invalid_provider = self.write_config(config)
         self.provider = MockProvider()
         self.assertRaises(
             ImportError,
