@@ -246,7 +246,7 @@ def _deploy_func(func, dataframe, *args):
         return func(dataframe, *args)
 
 
-def _map_partitions(func, partitions):
+def _map_partitions(func, partitions, *argslists):
     """Apply a function across the specified axis
 
     Args:
@@ -257,7 +257,11 @@ def _map_partitions(func, partitions):
         A new Dataframe containing the result of the function
     """
     assert(callable(func))
-    return [_deploy_func.remote(func, part) for part in partitions]
+    if argslists is None:
+        return [_deploy_func.remote(func, part) for part in partitions]
+    else:
+        assert(all([len(args) == len(partitions) for args in argslists]))
+        return [_deploy_func.remote(func, part, *args) for part, *args in zip(partitions, *argslists)]
 
 
 @ray.remote(num_return_vals=2)
