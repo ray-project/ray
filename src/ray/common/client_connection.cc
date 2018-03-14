@@ -7,49 +7,59 @@
 
 namespace ray {
 
-ServerConnection::ServerConnection(boost::asio::io_service &io_service,
-                                      const std::string &ip, int port)
-    : socket_(io_service) {
-  boost::asio::ip::address ip_address = boost::asio::ip::address::from_string(ip);
+ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
+                       const std::string &ip_address_string, int port) {
+  boost::asio::ip::address ip_address =
+      boost::asio::ip::address::from_string(ip_address_string);
   boost::asio::ip::tcp::endpoint endpoint(ip_address, port);
-  // TODO(swang): Use async connect.
-  socket_.connect(endpoint);
+  boost::system::error_code error;
+  socket.connect(endpoint, error);
+  if (error) {
+    return ray::Status::IOError(error.message());
+  } else {
+    return ray::Status::OK();
+  }
 }
 
-void ServerConnection::WriteMessage(int64_t type, size_t length,
-                                       const uint8_t *message) {
-  // TODO(swang): Split out this code to share with ClientConnection.
+template <class T>
+ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&socket)
+    : socket_(std::move(socket)) {}
+
+template <class T>
+ray::Status ServerConnection<T>::WriteMessage(int64_t type, size_t length,
+                                              const uint8_t *message) {
   std::vector<boost::asio::const_buffer> message_buffers;
-  write_version_ = RayConfig::instance().ray_protocol_version();
-  write_type_ = type;
-  write_length_ = length;
-  write_message_.assign(message, message + length);
-  message_buffers.push_back(boost::asio::buffer(&write_version_, sizeof(write_version_)));
-  message_buffers.push_back(boost::asio::buffer(&write_type_, sizeof(write_type_)));
-  message_buffers.push_back(boost::asio::buffer(&write_length_, sizeof(write_length_)));
-  message_buffers.push_back(boost::asio::buffer(write_message_));
-  boost::system::error_code error;
+  auto write_version = RayConfig::instance().ray_protocol_version();
+  message_buffers.push_back(boost::asio::buffer(&write_version, sizeof(write_version)));
+  message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
+  message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
+  message_buffers.push_back(boost::asio::buffer(message, length));
   // Write the message and then wait for more messages.
-  // TODO(swang): Use async write.
-  size_t written = boost::asio::write(socket_, message_buffers);
-  RAY_CHECK(written > 0);
+  // TODO(swang): Does this need to be an async write?
+  boost::system::error_code error;
+  boost::asio::write(socket_, message_buffers, error);
+  if (error) {
+    return ray::Status::IOError(error.message());
+  } else {
+    return ray::Status::OK();
+  }
 }
 
 template <class T>
 std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
-    ClientHandler &client_handler, MessageHandler &&message_handler,
+    ClientHandler<T> &client_handler, MessageHandler<T> &message_handler,
     boost::asio::basic_stream_socket<T> &&socket) {
   std::shared_ptr<ClientConnection<T>> self(
-      new ClientConnection(std::move(message_handler), std::move(socket)));
+      new ClientConnection(message_handler, std::move(socket)));
   // Let our manager process our new connection.
   client_handler(self);
   return self;
 }
 
 template <class T>
-ClientConnection<T>::ClientConnection(MessageHandler &&message_handler,
+ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
                                       boost::asio::basic_stream_socket<T> &&socket)
-    : socket_(std::move(socket)), message_handler_(std::move(message_handler)) {}
+    : ServerConnection<T>(std::move(socket)), message_handler_(message_handler) {}
 
 template <class T>
 void ClientConnection<T>::ProcessMessages() {
@@ -60,7 +70,7 @@ void ClientConnection<T>::ProcessMessages() {
   header.push_back(boost::asio::buffer(&read_type_, sizeof(read_type_)));
   header.push_back(boost::asio::buffer(&read_length_, sizeof(read_length_)));
   boost::asio::async_read(
-      socket_, header,
+      ServerConnection<T>::socket_, header,
       boost::bind(&ClientConnection<T>::ProcessMessageHeader, this->shared_from_this(),
                   boost::asio::placeholders::error));
 }
@@ -81,28 +91,8 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
   read_message_.resize(read_length_);
   // Wait for the message to be read.
   boost::asio::async_read(
-      socket_, boost::asio::buffer(read_message_),
+      ServerConnection<T>::socket_, boost::asio::buffer(read_message_),
       boost::bind(&ClientConnection<T>::ProcessMessage, this->shared_from_this(),
-                  boost::asio::placeholders::error));
-}
-
-template <class T>
-void ClientConnection<T>::WriteMessage(int64_t type, size_t length,
-                                       const uint8_t *message) {
-  std::vector<boost::asio::const_buffer> message_buffers;
-  write_version_ = RayConfig::instance().ray_protocol_version();
-  write_type_ = type;
-  write_length_ = length;
-  write_message_.assign(message, message + length);
-  message_buffers.push_back(boost::asio::buffer(&write_version_, sizeof(write_version_)));
-  message_buffers.push_back(boost::asio::buffer(&write_type_, sizeof(write_type_)));
-  message_buffers.push_back(boost::asio::buffer(&write_length_, sizeof(write_length_)));
-  message_buffers.push_back(boost::asio::buffer(write_message_));
-  boost::system::error_code error;
-  // Write the message and then wait for more messages.
-  boost::asio::async_write(
-      socket_, message_buffers,
-      boost::bind(&ClientConnection<T>::ProcessMessages, this->shared_from_this(),
                   boost::asio::placeholders::error));
 }
 
@@ -115,15 +105,8 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   message_handler_(this->shared_from_this(), read_type_, read_message_.data());
 }
 
-template <class T>
-void ClientConnection<T>::ProcessMessages(const boost::system::error_code &error) {
-  if (error) {
-    ProcessMessage(error);
-  } else {
-    ProcessMessages();
-  }
-}
-
+template class ServerConnection<boost::asio::local::stream_protocol>;
+template class ServerConnection<boost::asio::ip::tcp>;
 template class ClientConnection<boost::asio::local::stream_protocol>;
 template class ClientConnection<boost::asio::ip::tcp>;
 

@@ -97,6 +97,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       if (worker) {
         worker_pool_.DisconnectWorker(worker);
       }
+      return;
     }
       break;
     case MessageType_SubmitTask: {
@@ -110,11 +111,13 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       // locally, there is no uncommitted lineage.
       SubmitTask(task, Lineage());
       // Listen for more messages.
-      client->ProcessMessages();
     }
       break;
     default:RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
+
+  RAY_CHECK(message_type != MessageType_DisconnectClient);
+  client->ProcessMessages();
 }
 
 void NodeManager::ProcessNewNodeManager(
@@ -250,9 +253,15 @@ ray::Status NodeManager::ForwardTask(const TaskID &task_id, const ClientID &node
   fbb.Finish(request);
 
   auto client_info = gcs_client_->client_table().GetClient(node_id);
-  auto server_conn = ServerConnection(io_service_, client_info.node_manager_address, client_info.local_scheduler_port);
+
+  // Send the request to the client at node_id.
+  // TODO: Store this connection for later usage.
+  boost::asio::ip::tcp::socket socket(io_service_);
+  RAY_CHECK_OK(TcpConnect(socket, client_info.node_manager_address,
+                          client_info.local_scheduler_port));
+  auto server_conn = TcpServerConnection(std::move(socket));
   server_conn.WriteMessage(MessageType_ForwardTaskRequest, fbb.GetSize(), fbb.GetBufferPointer());
-  // TODO(swang): Send the request to the client at node_id.
+
   // TODO(swang): Clean up the lineage cache if possible.
 
   return ray::Status::OK();
