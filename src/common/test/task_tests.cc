@@ -105,7 +105,8 @@ TEST deterministic_ids_test(void) {
   /* Construct a task with a different function ID. */
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ObjectID::nil(), ActorID::nil(),
-                           ActorID::nil(), 0, false, FunctionID::from_random(), 3);
+                           ActorID::nil(), 0, false, FunctionID::from_random(),
+                           3);
   TaskSpec_args_add_ref(builder, &arg1, 1);
   TaskSpec_args_add_val(builder, arg2, 11);
   int64_t size5;

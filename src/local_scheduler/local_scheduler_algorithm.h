@@ -180,11 +180,12 @@ void handle_actor_worker_available(LocalSchedulerState *state,
  * @param worker The worker that was converted to an actor.
  * @return Void.
  */
-void handle_convert_worker_to_actor(LocalSchedulerState *state,
-                                    SchedulingAlgorithmState *algorithm_state,
-                                    const ActorID &actor_id,
-                                    const ObjectID &initial_execution_dependency,
-                                    LocalSchedulerClient *worker);
+void handle_convert_worker_to_actor(
+    LocalSchedulerState *state,
+    SchedulingAlgorithmState *algorithm_state,
+    const ActorID &actor_id,
+    const ObjectID &initial_execution_dependency,
+    LocalSchedulerClient *worker);
 
 /**
  * Handle the fact that a worker running an actor has disconnected.

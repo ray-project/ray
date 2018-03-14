@@ -124,9 +124,8 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
       std::thread(register_clients, num_mock_workers, mock);
 
   for (int i = 0; i < num_mock_workers; ++i) {
-    mock->conns[i] =
-        LocalSchedulerConnection_init(local_scheduler_socket_name.c_str(),
-                                      WorkerID::nil(), true);
+    mock->conns[i] = LocalSchedulerConnection_init(
+        local_scheduler_socket_name.c_str(), WorkerID::nil(), true);
   }
 
   background_thread.join();

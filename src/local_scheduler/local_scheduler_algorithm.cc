@@ -342,13 +342,15 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   return true;
 }
 
-void handle_convert_worker_to_actor(LocalSchedulerState *state,
-                                    SchedulingAlgorithmState *algorithm_state,
-                                    const ActorID &actor_id,
-                                    const ObjectID &initial_execution_dependency,
-                                    LocalSchedulerClient *worker) {
+void handle_convert_worker_to_actor(
+    LocalSchedulerState *state,
+    SchedulingAlgorithmState *algorithm_state,
+    const ActorID &actor_id,
+    const ObjectID &initial_execution_dependency,
+    LocalSchedulerClient *worker) {
   if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
-    create_actor(algorithm_state, actor_id, initial_execution_dependency, worker);
+    create_actor(algorithm_state, actor_id, initial_execution_dependency,
+                 worker);
   } else {
     /* In this case, the LocalActorInfo struct was already been created by the
      * first call to add_task_to_actor_queue. However, the worker field was not
@@ -1109,8 +1111,7 @@ void give_task_to_local_scheduler_retry(UniqueID id,
     // locally until a new actor creation notification is broadcast. We will
     // attempt to reissue the actor creation tasks for all cached actor tasks
     // in rerun_actor_creation_tasks_timeout_handler.
-    handle_actor_task_submitted(state, state->algorithm_state,
-                                *execution_spec);
+    handle_actor_task_submitted(state, state->algorithm_state, *execution_spec);
     return;
   }
 
@@ -1143,8 +1144,7 @@ void give_task_to_local_scheduler_retry(UniqueID id,
     // locally until a new actor creation notification is broadcast. We will
     // attempt to reissue the actor creation tasks for all cached actor tasks
     // in rerun_actor_creation_tasks_timeout_handler.
-    handle_actor_task_submitted(state, state->algorithm_state,
-                                *execution_spec);
+    handle_actor_task_submitted(state, state->algorithm_state, *execution_spec);
   }
 }
 
@@ -1280,10 +1280,9 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
 
   if (state->actor_mapping.count(actor_id) == 0) {
     // Create a copy of the task to write to the task table.
-    Task *task = Task_alloc(task_spec, execution_spec.SpecSize(),
-                            TASK_STATUS_ACTOR_CACHED,
-                            get_db_client_id(state->db),
-                            execution_spec.ExecutionDependencies());
+    Task *task = Task_alloc(
+        task_spec, execution_spec.SpecSize(), TASK_STATUS_ACTOR_CACHED,
+        get_db_client_id(state->db), execution_spec.ExecutionDependencies());
 
     /* Add this task to a queue of tasks that have been submitted but the local
      * scheduler doesn't know which actor is responsible for them. These tasks
@@ -1298,6 +1297,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     // it to the task table. TODO(rkn): There's no need to do this more than
     // once, and we could run into problems if we have very large numbers of
     // tasks in this cache.
+
 #if !RAY_USE_NEW_GCS
     task_table_add_task(state->db, task, NULL, NULL, NULL);
 #else

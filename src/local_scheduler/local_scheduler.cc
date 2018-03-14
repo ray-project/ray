@@ -1324,7 +1324,7 @@ void handle_actor_creation_callback(const ActorID &actor_id,
       // We should kill the actor here if it is still around. Also, if it hasn't
       // registered yet, we should keep track of its PID so we can kill it
       // anyway.
-      //TODO(swang): Evict actor dummy objects as part of actor cleanup.
+      // TODO(swang): Evict actor dummy objects as part of actor cleanup.
     }
   }
 

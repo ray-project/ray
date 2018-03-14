@@ -190,8 +190,9 @@ void TaskSpec_start_construct(TaskBuilder *builder,
                               FunctionID function_id,
                               int64_t num_returns) {
   builder->Start(driver_id, parent_task_id, parent_counter, actor_creation_id,
-                 actor_creation_dummy_object_id, actor_id, actor_handle_id, actor_counter,
-                 is_actor_checkpoint_method, function_id, num_returns);
+                 actor_creation_dummy_object_id, actor_id, actor_handle_id,
+                 actor_counter, is_actor_checkpoint_method, function_id,
+                 num_returns);
 }
 
 TaskSpec *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {

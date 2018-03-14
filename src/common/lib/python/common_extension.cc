@@ -318,12 +318,11 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   Py_ssize_t size = PyList_Size(arguments);
   /* Construct the task specification. */
-  TaskSpec_start_construct(g_task_builder, driver_id, parent_task_id,
-                           parent_counter, actor_creation_id,
-                           actor_creation_dummy_object_id, actor_id,
-                           actor_handle_id, actor_counter,
-                           is_actor_checkpoint_method, function_id,
-                           num_returns);
+  TaskSpec_start_construct(
+      g_task_builder, driver_id, parent_task_id, parent_counter,
+      actor_creation_id, actor_creation_dummy_object_id, actor_id,
+      actor_handle_id, actor_counter, is_actor_checkpoint_method, function_id,
+      num_returns);
   /* Add the task arguments. */
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);

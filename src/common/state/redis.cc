@@ -1568,8 +1568,8 @@ void redis_publish_actor_creation_notification(
 
   int status = redisAsyncCommand(
       db->context, redis_publish_actor_creation_notification_callback,
-      (void *) callback_data->timer_id,
-      "PUBLISH actor_notifications %b", &data->flatbuffer_data[0], data->size);
+      (void *) callback_data->timer_id, "PUBLISH actor_notifications %b",
+      &data->flatbuffer_data[0], data->size);
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context,
                     "error in redis_publish_actor_creation_notification");
@@ -1595,8 +1595,8 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     ActorNotificationTableSubscribeData *data =
         (ActorNotificationTableSubscribeData *) callback_data->data->Get();
 
-    auto message = flatbuffers::GetRoot<ActorCreationNotification>(
-        payload->str);
+    auto message =
+        flatbuffers::GetRoot<ActorCreationNotification>(payload->str);
     ActorID actor_id = from_flatbuf(*message->actor_id());
     WorkerID driver_id = from_flatbuf(*message->driver_id());
     DBClientID local_scheduler_id =

@@ -11,9 +11,9 @@
 
 /* Callback for subscribing to the local scheduler table. */
 typedef void (*actor_notification_table_subscribe_callback)(
-    const ActorID& actor_id,
-    const WorkerID& driver_id,
-    const DBClientID& local_scheduler_id,
+    const ActorID &actor_id,
+    const WorkerID &driver_id,
+    const DBClientID &local_scheduler_id,
     void *user_context);
 
 /// Publish an actor creation notification. This is published by a local
