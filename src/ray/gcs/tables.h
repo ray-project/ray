@@ -298,12 +298,13 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
 
 class ClientTable : private Table<ClientID, ClientTableData> {
  public:
-  ClientTable(const std::shared_ptr<RedisContext> &context,
-              AsyncGcsClient *client,
+  ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
               const ClientTableDataT &local_client)
       : Table(context, client),
         client_id_(ClientID::from_binary(local_client.client_id)),
-        local_client_(local_client) {
+        local_client_(local_client),
+        client_added_callback_(nullptr),
+        client_removed_callback_(nullptr) {
     local_client_.is_insertion = true;
     pubsub_channel_ = TablePubsub_CLIENT;
 

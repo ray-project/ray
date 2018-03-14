@@ -26,7 +26,8 @@ class NodeManager {
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
   NodeManager(const std::string &socket_name, const ResourceSet &resource_config,
-              ObjectManager &object_manager, LineageCache &lineage_cache);
+              ObjectManager &object_manager, LineageCache &lineage_cache,
+              std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
   /// Process a new client connection.
   void ProcessNewClient(std::shared_ptr<LocalClientConnection> client);
@@ -79,6 +80,9 @@ class NodeManager {
   TaskDependencyManager task_dependency_manager_;
   /// The lineage cache for the GCS object and task tables.
   LineageCache &lineage_cache_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  std::vector<ClientID> remote_clients_;
 };
 
 } // namespace raylet

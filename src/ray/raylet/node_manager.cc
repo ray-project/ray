@@ -9,7 +9,8 @@ namespace raylet {
 
 NodeManager::NodeManager(const std::string &socket_name,
                          const ResourceSet &resource_config,
-                         ObjectManager &object_manager, LineageCache &lineage_cache)
+                         ObjectManager &object_manager, LineageCache &lineage_cache,
+                         std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : local_resources_(resource_config),
       worker_pool_(WorkerPool(0)),
       local_queues_(SchedulingQueue()),
@@ -19,7 +20,9 @@ NodeManager::NodeManager(const std::string &socket_name,
           object_manager,
           // reconstruction_policy_,
           [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
-      lineage_cache_(lineage_cache) {
+      lineage_cache_(lineage_cache),
+      gcs_client_(gcs_client),
+      remote_clients_() {
   //// TODO(atumanov): need to add the self-knowledge of ClientID, using nill().
   // cluster_resource_map_[ClientID::nil()] = local_resources_;
 }
