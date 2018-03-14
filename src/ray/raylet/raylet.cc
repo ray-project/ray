@@ -90,8 +90,8 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
           node_manager_.ProcessClientMessage(client, message_type, message);
         };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = LocalClientConnection::Create(client_handler, message_handler,
-                                                        std::move(socket_));
+    auto new_connection = LocalClientConnection::Create(
+        client_handler, std::move(message_handler), std::move(socket_));
   }
   // We're ready to accept another client.
   DoAccept();

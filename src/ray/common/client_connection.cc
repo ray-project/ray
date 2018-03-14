@@ -39,19 +39,19 @@ void ServerConnection<T>::WriteMessage(int64_t type, size_t length,
 
 template <class T>
 std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
-    ClientHandler &client_handler, MessageHandler &message_handler,
+    ClientHandler &client_handler, MessageHandler &&message_handler,
     boost::asio::basic_stream_socket<T> &&socket) {
   std::shared_ptr<ClientConnection<T>> self(
-      new ClientConnection(message_handler, std::move(socket)));
+      new ClientConnection(std::move(message_handler), std::move(socket)));
   // Let our manager process our new connection.
   client_handler(self);
   return self;
 }
 
 template <class T>
-ClientConnection<T>::ClientConnection(MessageHandler &message_handler,
+ClientConnection<T>::ClientConnection(MessageHandler &&message_handler,
                                       boost::asio::basic_stream_socket<T> &&socket)
-    : socket_(std::move(socket)), message_handler_(message_handler) {}
+    : socket_(std::move(socket)), message_handler_(std::move(message_handler)) {}
 
 template <class T>
 void ClientConnection<T>::ProcessMessages() {

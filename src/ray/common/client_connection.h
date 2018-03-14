@@ -44,7 +44,7 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
   /// \param socket The client socket.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection<T>> Create(
-      ClientHandler &new_client_handler, MessageHandler &message_handler,
+      ClientHandler &new_client_handler, MessageHandler &&message_handler,
       boost::asio::basic_stream_socket<T> &&socket);
 
   /// Listen for and process messages from the client connection. Once a
@@ -62,7 +62,7 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
 
  private:
   /// A private constructor for a node client connection.
-  ClientConnection(MessageHandler &message_handler,
+  ClientConnection(MessageHandler &&message_handler,
                    boost::asio::basic_stream_socket<T> &&socket);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
@@ -76,7 +76,7 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
 
   /// The client socket.
   boost::asio::basic_stream_socket<T> socket_;
-  MessageHandler &message_handler_;
+  MessageHandler message_handler_;
   /// Buffers for the current message being read rom the client.
   int64_t read_version_;
   int64_t read_type_;
