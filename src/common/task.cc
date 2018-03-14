@@ -255,7 +255,7 @@ ActorID TaskSpec_actor_creation_id(TaskSpec *spec) {
 ObjectID TaskSpec_actor_creation_dummy_object_id(TaskSpec *spec) {
   RAY_CHECK(spec);
   // The task must be an actor method.
-  RAY_CHECK(!TaskSpec_actor_id(spec).is_nil());
+  RAY_CHECK(TaskSpec_is_actor_task(spec));
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->actor_creation_dummy_object_id());
 }

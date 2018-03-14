@@ -479,7 +479,7 @@ static PyObject *PyTask_actor_creation_id(PyObject *self) {
 
 static PyObject *PyTask_actor_creation_dummy_object_id(PyObject *self) {
   ActorID actor_creation_dummy_object_id = ActorID::nil();
-  if (TaskSpec_is_actor_creation_task(((PyTask *) self)->spec)) {
+  if (TaskSpec_is_actor_task(((PyTask *) self)->spec)) {
     actor_creation_dummy_object_id =
         TaskSpec_actor_creation_dummy_object_id(((PyTask *) self)->spec);
   }
