@@ -17,7 +17,7 @@ namespace ray {
 
 namespace raylet {
 
-class NodeManager : public ClientManager<boost::asio::local::stream_protocol> {
+class NodeManager {
  public:
   /// Create a node manager.
   ///

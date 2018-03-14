@@ -10,7 +10,20 @@
 namespace ray {
 
 template <class T>
-class ClientManager;
+class ServerConnection {
+ public:
+  ServerConnection(boost::asio::io_service io_service, const std::string &ip, int port);
+
+  void WriteMessage(int64_t type, size_t length, const uint8_t *message);
+
+ private:
+  boost::asio::ip::tcp::socket socket_;
+  /// Buffers for the current message being written to the client.
+  int64_t write_version_;
+  int64_t write_type_;
+  uint64_t write_length_;
+  std::vector<uint8_t> write_message_;
+};
 
 /// \class ClientConnection
 ///
@@ -19,6 +32,10 @@ class ClientManager;
 /// client.
 template <class T>
 class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>> {
+  using ClientHandler = std::function<void(std::shared_ptr<ClientConnection<T>>)>;
+  using MessageHandler =
+      std::function<void(std::shared_ptr<ClientConnection<T>>, int64_t, const uint8_t *)>;
+
  public:
   /// Allocate a new node client connection.
   ///
@@ -27,7 +44,8 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
   /// \param socket The client socket.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection<T>> Create(
-      ClientManager<T> &manager, boost::asio::basic_stream_socket<T> &&socket);
+      ClientHandler &new_client_handler, MessageHandler &message_handler,
+      boost::asio::basic_stream_socket<T> &&socket);
 
   /// Listen for and process messages from the client connection. Once a
   /// message has been fully received, the client manager's
@@ -44,7 +62,7 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
 
  private:
   /// A private constructor for a node client connection.
-  ClientConnection(ClientManager<T> &manager,
+  ClientConnection(MessageHandler &message_handler,
                    boost::asio::basic_stream_socket<T> &&socket);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
@@ -58,9 +76,7 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
 
   /// The client socket.
   boost::asio::basic_stream_socket<T> socket_;
-  /// A reference to the manager for this client. The manager exposes a handler
-  /// for all messages processed by this client.
-  ClientManager<T> &manager_;
+  MessageHandler &message_handler_;
   /// Buffers for the current message being read rom the client.
   int64_t read_version_;
   int64_t read_type_;
@@ -75,30 +91,6 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
 
 using LocalClientConnection = ClientConnection<boost::asio::local::stream_protocol>;
 using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
-
-/// \class ClientManager
-///
-/// A virtual cliant manager. Derived classes should define a method for
-/// processing a message on the server sent by the client.
-template <class T>
-class ClientManager {
- public:
-  /// Process a new client connection.
-  ///
-  /// \param client A shared pointer to the client that connected.
-  virtual void ProcessNewClient(std::shared_ptr<ClientConnection<T>> client) = 0;
-
-  /// Process a message from a client, then listen for more messages if the
-  /// client is still alive.
-  ///
-  /// \param client A shared pointer to the client that sent the message.
-  /// \param message_type The message type (e.g., a flatbuffer enum).
-  /// \param message A pointer to the message buffer.
-  virtual void ProcessClientMessage(std::shared_ptr<ClientConnection<T>> client,
-                                    int64_t message_type, const uint8_t *message) = 0;
-
-  virtual ~ClientManager() = 0;
-};
 
 }  // namespace ray
 

@@ -79,9 +79,19 @@ void Raylet::DoAccept() {
 
 void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
+    // TODO: typedef these handlers.
+    std::function<void(std::shared_ptr<LocalClientConnection>)> client_handler =
+        [this](std::shared_ptr<LocalClientConnection> client) {
+          node_manager_.ProcessNewClient(client);
+        };
+    std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
+        message_handler = [this](std::shared_ptr<LocalClientConnection> client,
+                                 int64_t message_type, const uint8_t *message) {
+          node_manager_.ProcessClientMessage(client, message_type, message);
+        };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection =
-        LocalClientConnection::Create(node_manager_, std::move(socket_));
+    auto new_connection = LocalClientConnection::Create(client_handler, message_handler,
+                                                        std::move(socket_));
   }
   // We're ready to accept another client.
   DoAccept();
