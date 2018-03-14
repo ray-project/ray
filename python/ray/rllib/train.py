@@ -9,6 +9,7 @@ import sys
 import yaml
 
 import ray
+import ray.rllib
 from ray.tune.config_parser import make_parser, resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 

@@ -7,6 +7,8 @@ from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.timer import TimerStat
 
+# TO DO: make the optimizer pluggable
+#from ray.rllib.ddpg.ddpg_replay_evaluator import DDPGReplayEvaluator
 
 class LocalSyncOptimizer(Optimizer):
     """A simple synchronous RL optimizer.
@@ -37,8 +39,14 @@ class LocalSyncOptimizer(Optimizer):
                 samples = self.local_evaluator.sample()
 
         with self.grad_timer:
-            grad = self.local_evaluator.compute_gradients(samples)
-            self.local_evaluator.apply_gradients(grad)
+            #if isinstance(self.local_evaluator, DDPGReplayEvaluator):
+            grad = self.local_evaluator.compute_critic_gradients(samples)
+            self.local_evaluator.apply_critic_gradients(grad)
+            grad = self.local_evaluator.compute_actor_gradients(samples)
+            self.local_evaluator.apply_actor_gradients(grad)
+            #else:
+            #    grad = self.local_evaluator.compute_gradients(samples)
+            #    self.local_evaluator.apply_gradients(grad)
 
     def stats(self):
         return {
