@@ -20,6 +20,8 @@ a single experiment or a list of experiments to `run_experiments`, as follows:
 
 .. autoclass:: ray.tune.Experiment
 
+An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__.
+
 Alternatively, you can pass in a JSON object. This uses the same fields as
 the `ray.tune.Experiment`, except the experiment name is the key of the top level
 dictionary.
@@ -40,6 +42,8 @@ dictionary.
             "max_failures": 2
         }
     })
+
+An example of this can be found in `async_hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/async_hyperband_example.py>`__.
 
 
 Trial Variant Generation
