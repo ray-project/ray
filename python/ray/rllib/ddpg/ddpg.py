@@ -4,7 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.optimizers import LocalSyncOptimizer
+from ray.rllib.optimizers import LocalSyncReplayOptimizer, LocalSyncOptimizer
 from ray.rllib.agent import Agent
 from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator, RemoteDDPGEvaluator
 from ray.tune.result import TrainingResult
@@ -15,6 +15,7 @@ DEFAULT_CONFIG = {
     "actor_model": {},
     "batch_size": 256,
     "buffer_size": 1000000,
+    "clip_rewards": False,
     "critic_model": {},
     "env_config": {},
     # Discount factor
@@ -26,11 +27,10 @@ DEFAULT_CONFIG = {
     "num_workers": 1,
     # Arguments to pass to the rllib optimizer
     "optimizer": {
-        # Number of gradients applied for each `train` step
-        "grads_per_step": 1,
+        "prioritized_replay": False,
     },
-    "train_batch_size": 10,
-    "tau": 0.01,
+    "train_batch_size": 100,
+    "tau": 0.001,
 }
 
 class DDPGAgent(Agent):
@@ -44,7 +44,7 @@ class DDPGAgent(Agent):
             RemoteDDPGEvaluator.remote(
                 self.registry, self.env_creator, self.config)
             for _ in range(self.config["num_workers"])]
-        self.optimizer = LocalSyncOptimizer(
+        self.optimizer = LocalSyncReplayOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
 

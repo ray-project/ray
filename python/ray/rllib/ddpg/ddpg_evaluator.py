@@ -5,7 +5,7 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.ddpg.models import DDPGModel
-from ray.rllib.ddpg.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import SampleBatch
 from ray.rllib.optimizers import Evaluator
@@ -14,6 +14,7 @@ from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
 from ray.tune.registry import get_registry
 
+import numpy as np
 import tensorflow as tf
 
 
@@ -28,14 +29,29 @@ class DDPGEvaluator(Evaluator):
 
         self.sess = tf.Session()
 
-        self.model = DDPGModel(self.registry, self.env, self.config, self.sess)
-        self.target_model = DDPGModel(self.registry, self.env, self.config, self.sess)
+        with tf.variable_scope("model"):
+            self.model = DDPGModel(self.registry, self.env, self.config, self.sess)
+        with tf.variable_scope("target_model"):
+            self.target_model = DDPGModel(self.registry, self.env, self.config, self.sess)
 
-        self.initialize()
         self.setup_gradients()
         self._setup_target_updates()
 
-        self.replay_buffer = ReplayBuffer(config["buffer_size"])
+        self.initialize()
+
+        # set initial target weights to match model weights
+        a_updates = []
+        for var, target_var in zip(self.model.actor_var_list, self.target_model.actor_var_list):
+            a_updates.append(tf.assign(target_var, var))
+        actor_updates = tf.group(*a_updates)
+
+        c_updates = []
+        for var, target_var in zip(self.model.critic_var_list, self.target_model.critic_var_list):
+            c_updates.append(tf.assign(target_var, var))
+        critic_updates = tf.group(*c_updates)
+        self.sess.run([actor_updates, critic_updates])
+
+        self.replay_buffer = ReplayBuffer(config["buffer_size"], config["clip_rewards"])
         self.sampler = SyncSampler(
                         self.env, self.model, NoFilter(),
                         config["batch_size"], horizon=config["horizon"])
@@ -46,29 +62,15 @@ class DDPGEvaluator(Evaluator):
     #TODO: (not critical) Add batch normalization?
     def sample(self, no_replay = True):
         """Returns a batch of samples."""
-        # act in the environment, generate new samples
+
         rollout = self.sampler.get_data()
+        rollout.data["weights"] = np.ones_like(rollout.data["rewards"])
+
         samples = process_rollout(
                     rollout, NoFilter(),
                     gamma=self.config["gamma"], use_gae=False)
 
-        # Add samples to replay buffer.
-        for row in samples.rows():
-            self.replay_buffer.add(row["observations"],
-                                    row["actions"], row["rewards"],
-                                    row["new_obs"], row['terminal'])
-
-        #if no_replay:
-        #    return SampleBatch.concat_samples(samples)
-
-        # Then return a batch sampled from the buffer; copied from DQN
-        obses_t, actions, rewards, obses_tp1, dones = \
-            self.replay_buffer.sample(self.config["train_batch_size"])
-        batch = SampleBatch({
-            "obs": obses_t, "actions": actions, "rewards": rewards,
-            "new_obs": obses_tp1, "dones": dones,
-            })
-        return batch
+        return samples
 
     #TODO: Update this
     def _setup_target_updates(self):
@@ -97,15 +99,13 @@ class DDPGEvaluator(Evaluator):
         # setup critic gradients
         self.critic_grads = tf.gradients(self.model.critic_loss, self.model.critic_var_list)
         c_grads_and_vars = list(zip(self.critic_grads, self.model.critic_var_list))
-        #c_opt = tf.train.AdamOptimizer(self.config["critic_lr"])
-        c_opt = tf.train.GradientDescentOptimizer(self.config["critic_lr"])
+        c_opt = tf.train.AdamOptimizer(self.config["critic_lr"])
         self._apply_c_gradients = c_opt.apply_gradients(c_grads_and_vars)
 
         # setup actor gradients
         self.actor_grads = tf.gradients(self.model.actor_loss, self.model.actor_var_list)
         a_grads_and_vars = list(zip(self.actor_grads, self.model.actor_var_list))
-        #a_opt = tf.train.AdamOptimizer(self.config["actor_lr"])
-        a_opt = tf.train.GradientDescentOptimizer(self.config["actor_lr"])
+        a_opt = tf.train.AdamOptimizer(self.config["actor_lr"])
         self._apply_a_gradients = a_opt.apply_gradients(a_grads_and_vars)
 
     def compute_gradients(self, samples):
@@ -161,10 +161,3 @@ class DDPGEvaluator(Evaluator):
         return self.sampler.get_metrics()
 
 RemoteDDPGEvaluator = ray.remote(DDPGEvaluator)
-
-if __name__ == '__main__':
-    ray.init()
-    import gym
-    config = ray.rllib.ddpg.DEFAULT_CONFIG.copy()
-    DDPGEvaluator(get_registry(), lambda config: gym.make("CartPole-v0"),
-        config)

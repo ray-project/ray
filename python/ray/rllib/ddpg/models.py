@@ -15,9 +15,6 @@ class DDPGModel():
     is_recurrent = False
 
     def __init__(self, registry, env, config, sess):
-        # Actor: given a state, makes a deterministic choice for what action
-        # we should take.
-        # Critic: estimates Q(s,a)
         self.env = env
         self.registry = registry
         self.config = config
@@ -32,21 +29,22 @@ class DDPGModel():
         self.act = tf.placeholder(tf.float32, [None, ac_size])
 
         # set up actor network
-        #with tf.variable_scope("actor", reuse=tf.AUTO_REUSE):
         self._setup_actor_network(obs_space, ac_space)
 
         # setting up critic
-        #with tf.variable_scope("critic", reuse=tf.AUTO_REUSE):
-
         self._setup_critic_network(obs_space, ac_space)
         self._setup_critic_loss(ac_space)
-        self.critic_var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                  tf.get_variable_scope().name)
 
         # setting up actor loss
-        #with tf.variable_scope("actor", reuse=tf.AUTO_REUSE):
         self._setup_actor_loss()
-        self.actor_var_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="actor")
+
+        with tf.variable_scope("critic"):
+            self.critic_var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                    tf.get_variable_scope().name)
+
+        with tf.variable_scope("actor"):
+            self.actor_var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                    tf.get_variable_scope().name)
 
         self.critic_vars = ray.experimental.TensorFlowVariables(self.critic_loss, self.sess)
         self.actor_vars = ray.experimental.TensorFlowVariables(self.actor_loss, self.sess)
@@ -80,7 +78,7 @@ class DDPGModel():
         self.obs_and_actor = tf.concat([self.obs, self.output_action], 1) #output_action is output of actor network
 
         # will this share weights between the two copies of critic?
-        with tf.variable_scope("critic", reuse=tf.AUTO_REUSE):
+        with tf.variable_scope("critic", reuse=True):
             self.cn_for_loss = FullyConnectedNetwork(self.obs_and_actor,
                                                         1, self.config["critic_model"])
 
@@ -90,8 +88,8 @@ class DDPGModel():
         # 1 means one output
         with tf.variable_scope("actor", reuse=tf.AUTO_REUSE):
             self.actor_network = ModelCatalog.get_model(
-                        self.registry, self.obs, 1, #self.action_dim?
-                        options=self.config["actor_model"])
+                                    self.registry, self.obs, 1, #self.action_dim?
+                                    options=self.config["actor_model"])
         self.output_action = self.actor_network.outputs
         #self.dist = dist_class(self.actor_network.outputs) # deterministic
         #self.output_action = self.dist.sample()
