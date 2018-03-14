@@ -477,6 +477,15 @@ static PyObject *PyTask_actor_creation_id(PyObject *self) {
   return PyObjectID_make(actor_creation_id);
 }
 
+static PyObject *PyTask_actor_creation_dummy_object_id(PyObject *self) {
+  ActorID actor_creation_dummy_object_id = ActorID::nil();
+  if (TaskSpec_is_actor_creation_task(((PyTask *) self)->spec)) {
+    actor_creation_dummy_object_id =
+        TaskSpec_actor_creation_dummy_object_id(((PyTask *) self)->spec);
+  }
+  return PyObjectID_make(actor_creation_dummy_object_id);
+}
+
 static PyObject *PyTask_required_resources(PyObject *self) {
   TaskSpec *task = ((PyTask *) self)->spec;
   PyObject *required_resources = PyDict_New();
@@ -536,6 +545,9 @@ static PyMethodDef PyTask_methods[] = {
      "Return the arguments for the task."},
     {"actor_creation_id", (PyCFunction) PyTask_actor_creation_id, METH_NOARGS,
      "Return the actor creation ID for the task."},
+    {"actor_creation_dummy_object_id",
+     (PyCFunction) PyTask_actor_creation_dummy_object_id, METH_NOARGS,
+     "Return the actor creation dummy object ID for the task."},
     {"required_resources", (PyCFunction) PyTask_required_resources, METH_NOARGS,
      "Return the resource vector of the task."},
     {"returns", (PyCFunction) PyTask_returns, METH_NOARGS,

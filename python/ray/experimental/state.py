@@ -264,6 +264,10 @@ class GlobalState(object):
             "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
             "ParentCounter": task_spec.parent_counter(),
             "ActorID": binary_to_hex(task_spec.actor_id().id()),
+            "ActorCreationID":
+                binary_to_hex(task_spec.actor_creation_id().id()),
+            "ActorCreationDummyObjectID":
+                binary_to_hex(task_spec.actor_creation_dummy_object_id().id()),
             "ActorCounter": task_spec.actor_counter(),
             "FunctionID": binary_to_hex(task_spec.function_id().id()),
             "Args": task_spec.arguments(),
