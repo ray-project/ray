@@ -1293,12 +1293,11 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     algorithm_state->cached_submitted_actor_tasks.push_back(
         std::move(task_entry));
 
+#if !RAY_USE_NEW_GCS
     // Even if the task can't be assigned to a worker yet, we should still write
     // it to the task table. TODO(rkn): There's no need to do this more than
     // once, and we could run into problems if we have very large numbers of
     // tasks in this cache.
-
-#if !RAY_USE_NEW_GCS
     task_table_add_task(state->db, task, NULL, NULL, NULL);
 #else
     RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
