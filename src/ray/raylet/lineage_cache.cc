@@ -47,6 +47,11 @@ const std::vector<UniqueID> LineageCacheEntry::GetParentIds() const {
   return parent_ids;
 }
 
+const Task &LineageCacheEntry::TaskData() const {
+  RAY_CHECK(IsTask());
+  return *task_.get();
+}
+
 bool LineageCacheEntry::IsTask() const { return (task_ != nullptr); }
 
 flatbuffers::Offset<TaskFlatbuffer> LineageCacheEntry::ToTaskFlatbuffer(

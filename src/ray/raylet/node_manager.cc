@@ -125,10 +125,16 @@ void NodeManager::ProcessNewNodeManager(
 
 void NodeManager::ProcessNodeManagerMessage(
     std::shared_ptr<TcpClientConnection> node_manager_client, int64_t message_type,
-    const uint8_t *message) {
+    const uint8_t *message_data) {
   switch (message_type) {
   case MessageType_ForwardTaskRequest: {
     RAY_LOG(INFO) << "HELLO";
+    auto message = flatbuffers::GetRoot<ForwardTaskRequest>(message_data);
+    TaskID task_id = from_flatbuf(*message->task_id());
+    Lineage uncommitted_lineage(*message);
+    const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
+    RAY_LOG(INFO) << "got task " << task.GetTaskSpecification().TaskId();
+    SubmitTask(task, uncommitted_lineage);
   } break;
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;

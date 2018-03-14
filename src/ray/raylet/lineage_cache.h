@@ -103,6 +103,8 @@ class LineageCacheEntry {
   /// \return True if the entry is a task and false if the entry is an object.
   bool IsTask() const;
 
+  const Task &TaskData() const;
+
   /// Serialize this task entry to a flatbuffer. The entry must contain task
   /// data.
   ///
