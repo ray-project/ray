@@ -39,7 +39,8 @@ def from_pandas(df, npartitions=None, chunksize=None):
     from .dataframe import DataFrame
 
     if npartitions is not None:
-        chunksize = int(len(df) / npartitions)
+        chunksize = len(df) // npartitions if len(df) % npartitions == 0 \
+            else len(df) // npartitions + 1
     elif chunksize is None:
         raise ValueError("The number of partitions or chunksize must be set.")
 

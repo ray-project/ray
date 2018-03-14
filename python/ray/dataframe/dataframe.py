@@ -717,24 +717,23 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def count(self, axis=0, level=None, numeric_only=False):
-        if axis == 1:
-            return self.T.count(axis=0,
+        if axis == 0:
+            return self.T.count(axis=1,
                                 level=level,
                                 numeric_only=numeric_only)
-        else:
-            temp_index = [idx
-                          for _ in range(len(self._df))
-                          for idx in self.columns]
 
-            collapsed_df = sum(
+        else:
+            collapsed_df = \
                 ray.get(
                     self._map_partitions(
                         lambda df: df.count(
                             axis=axis,
                             level=level,
                             numeric_only=numeric_only),
-                        index=temp_index)._df))
-            return collapsed_df
+                        index=self.index)._df)
+            series = pd.concat(collapsed_df)
+            series.index = self.index
+            return series
 
     def cov(self, min_periods=None):
         raise NotImplementedError(
