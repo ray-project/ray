@@ -722,6 +722,7 @@ class DataFrame(object):
         Generates descriptive statistics that summarize the central tendency,
         dispersion and shape of a dataset’s distribution, excluding NaN values.
 
+<<<<<<< HEAD
         Analyzes both numeric and object series, as well as DataFrame column
         sets of mixed data types.
         The output will vary depending on what is provided. Refer to the notes
@@ -752,6 +753,13 @@ class DataFrame(object):
         The include and exclude parameters can be used to limit which columns
         in a DataFrame are analyzed for the output.
         The parameters are ignored when analyzing a Series.
+=======
+        Args:
+            percentiles (list-like of numbers, optional):
+                The percentiles to include in the output.
+            include: White-list of data types to include in results
+            exclude: Black-list of data types to exclude in results
+>>>>>>> bcc515216cf5d4bce0f5cff8127d400e289d16e2
 
         Returns: Series/DataFrame of summary statistics
         """
@@ -1601,7 +1609,7 @@ class DataFrame(object):
                               )
         else:
             func = (lambda df: df.T.mean(axis=0,
-                skipna=None, level=None, numeric_only=None))
+                    skipna=None, level=None, numeric_only=None))
 
             computed_means = [
                     _deploy_func.remote(func, part) for part in self._df]
@@ -1609,7 +1617,6 @@ class DataFrame(object):
             items = ray.get(computed_means)
 
             _mean = pd.concat(items)
-
 
             return _mean
 
@@ -1835,35 +1842,36 @@ class DataFrame(object):
         """
 
         if (type(q) is list):
-            return Dataframe([self.quantile(q_i, axis=axis,
+            return DataFrame([self.quantile(q_i, axis=axis,
                                             numeric_only=numeric_only,
                                             interpolation=interpolation)
-                              for q_i in q], q)
+                              for q_i in q], q, self.index)
+
+        # this section can be replaced with select_dtypes()
+
+        obj_columns = [self.columns[i]
+                       for i, t in enumerate(self.dtypes)
+                       if t == np.dtype('O')]
+
+        rdf = self.drop(columns=obj_columns)
 
         if axis == 0 or axis is None:
             return rdf.T.quantile(q, axis=1, numeric_only=numeric_only,
-                                   interpolation=interpolation)
+                                  interpolation=interpolation)
         else:
-            new_df = [_deploy_func.remote(lambda df: df.quantile(q, axis=1,
-                                              numeric_only=numeric_only,
-                                              interpolation=interpolation),
-                                              part)
-                      for part in self._df]
+            computed_quantiles = [
+                _deploy_func.remote(
+                        lambda df: df.quantile(q, axis=1,
+                                               numeric_only=numeric_only,
+                                               interpolation=interpolation
+                                               ), part)
+                for part in self._df]
 
             items = ray.get(computed_quantiles)
 
             _quantile = pd.concat(items)
 
             return _quantile
-        else:
-            quantile_of_partitions = self._map_partitions(
-                    lambda df: df.quantile(q,
-                                           axis=1, numeric_only=numeric_only
-                                           ))
-
-            return ray.get(self._map_partitions(lambda df: df.quantile(
-                axis=axis, q=q, numeric_only=numeric_only
-            ), index=temp_index)._df)
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression
