@@ -157,7 +157,25 @@ with GPU worker nodes instead.
             MarketType: spot
         InstanceType: p2.xlarge
 
+
+External Node Provider
+--------------------------
+
+Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
+You can specify the external node provider using the yaml config:
+
+.. code-block:: yaml
+
+    provider:
+        type: external
+        module: mypackage.myclass
+
 Additional Cloud providers
 --------------------------
 
 To use Ray autoscaling on other Cloud providers or cluster management systems, you can implement the ``NodeProvider`` interface (~100 LOC) and register it in `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__. Contributions are welcome!
+
+"provider"] = {
+            "type": "external",
+            "module": "does-not-exist",
+            }
