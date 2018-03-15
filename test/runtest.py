@@ -1358,7 +1358,7 @@ class ResourcesTest(unittest.TestCase):
         ray.get(a1.test.remote())
 
     def testZeroCPUs(self):
-        address_info = ray.worker._init(
+        ray.worker._init(
             start_ray_local=True,
             num_local_schedulers=2,
             num_cpus=[0, 2])
