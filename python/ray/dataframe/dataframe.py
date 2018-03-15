@@ -651,12 +651,17 @@ class DataFrame(object):
             The sum of the DataFrame.
         """
         # TODO: Fix this function - it does not work.
-        return ray.get(
+        self._row_index._get_axis_name(axis)
+        
+        sum_df = pd.concat(ray.get(
             _map_partitions(lambda df: df.sum(axis=axis,
                                               skipna=skipna,
                                               level=level,
                                               numeric_only=numeric_only),
-                            self._col_partitions))
+                            self._row_partitions if axis == 1 or axis == 'rows'
+                            else self._col_partitions)))
+        sum_df.index = self.columns
+        return sum_df
 
         # # TODO: We don't support `level` right now, so df.sum always returns a pd.Series
         # #       Generalize when we support MultiIndexes, and distributed Series (?)
