@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.models import ModelCatalog
-from ray.rllib.dqn.common.atari_wrappers import wrap_deepmind
+from ray.rllib.utils.atari_wrappers import wrap_deepmind
 
 
 def wrap_dqn(registry, env, options, random_starts):
