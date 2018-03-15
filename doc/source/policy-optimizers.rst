@@ -3,6 +3,23 @@ Policy Optimizers
 
 RLlib supports using its distributed policy optimizer implementations from external algorithms.
 
+Example of constructing and using a policy optimizer `(link to full example) <https://github.com/ericl/baselines/blob/rllib-example/baselines/deepq/run_simple_loop.py>`__:
+
+.. code-block:: python
+
+    ray.init()
+    env_creator = lambda env_config: gym.make("PongNoFrameskip-v4")
+    optimizer = LocalSyncReplayOptimizer.make(
+        YourEvaluatorClass, [env_creator], num_workers=0, optimizer_config={})
+
+    i = 0
+    while optimizer.num_steps_sampled < 100000:
+        i += 1
+        print("== optimizer step {} ==".format(i))
+        optimizer.step()
+        print("optimizer stats", optimizer.stats())
+        print("local evaluator stats", optimizer.local_evaluator.stats())
+
 Here are the steps for using a RLlib policy optimizer with an existing algorithm.
 
 1. Implement the `Policy evaluator interface <rllib-dev.html#policy-evaluators-and-optimizers>`__.
@@ -22,24 +39,6 @@ Here are the steps for using a RLlib policy optimizer with an existing algorithm
     - Option 1: call ``optimizer.step()`` from some existing training code. Training statistics can be retrieved by querying the ``optimizer.local_evaluator`` evaluator instance, or mapping over the remote evaluators (e.g., ``ray.get([ev.some_fn.remote() for ev in optimizer.remote_evaluators])``) if you are running with multiple workers.
 
     - Option 2: define a full RLlib `Agent class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agent.py>`__. This might be preferable if you don't have an existing training harness or want to use features provided by `Ray Tune <tune.html>`__.
-
-
-Example of constructing and using a policy optimizer `(link to full example) <https://github.com/ericl/baselines/blob/rllib-example/baselines/deepq/run_simple_loop.py>`__:
-
-.. code-block:: python
-
-    ray.init()
-    env_creator = lambda env_config: gym.make("PongNoFrameskip-v4")
-    optimizer = LocalSyncReplayOptimizer.make(
-        YourEvaluatorClass, [env_creator], num_workers=0, optimizer_config={})
-
-    i = 0
-    while optimizer.num_steps_sampled < 100000:
-        i += 1
-        print("== optimizer step {} ==".format(i))
-        optimizer.step()
-        print("optimizer stats", optimizer.stats())
-        print("local evaluator stats", optimizer.local_evaluator.stats())
 
 Available Policy Optimizers
 ---------------------------
