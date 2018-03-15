@@ -4,15 +4,14 @@ namespace ray {
 
 namespace raylet {
 
-LineageCacheEntry::LineageCacheEntry(const TaskID &entry_id, const Task &task,
-                                     GcsStatus status)
+LineageEntry::LineageEntry(const TaskID &entry_id, const Task &task, GcsStatus status)
     : entry_id_(entry_id), status_(status), task_(new Task(task)) {}
 
-LineageCacheEntry::LineageCacheEntry(const ObjectID &entry_id, const Object &object,
-                                     GcsStatus status)
+LineageEntry::LineageEntry(const ObjectID &entry_id, const Object &object,
+                           GcsStatus status)
     : entry_id_(entry_id), status_(status), object_(new Object(object)) {}
 
-LineageCacheEntry::LineageCacheEntry(const LineageCacheEntry &entry)
+LineageEntry::LineageEntry(const LineageEntry &entry)
     : entry_id_(entry.entry_id_), status_(entry.status_) {
   if (entry.task_ != nullptr) {
     task_ = std::unique_ptr<Task>(new Task(*entry.task_.get()));
@@ -22,9 +21,9 @@ LineageCacheEntry::LineageCacheEntry(const LineageCacheEntry &entry)
   }
 }
 
-GcsStatus LineageCacheEntry::GetStatus() const { return status_; }
+GcsStatus LineageEntry::GetStatus() const { return status_; }
 
-bool LineageCacheEntry::SetStatus(GcsStatus new_status) {
+bool LineageEntry::SetStatus(GcsStatus new_status) {
   if (status_ < new_status) {
     status_ = new_status;
     return true;
@@ -33,9 +32,9 @@ bool LineageCacheEntry::SetStatus(GcsStatus new_status) {
   }
 }
 
-const UniqueID &LineageCacheEntry::GetUniqueId() const { return entry_id_; }
+const UniqueID &LineageEntry::GetUniqueId() const { return entry_id_; }
 
-const std::vector<UniqueID> LineageCacheEntry::GetParentIds() const {
+const std::vector<UniqueID> LineageEntry::GetParentIds() const {
   std::vector<UniqueID> parent_ids;
   if (task_ != nullptr) {
     // A task entry's parents are the task's arguments.
@@ -47,20 +46,20 @@ const std::vector<UniqueID> LineageCacheEntry::GetParentIds() const {
   return parent_ids;
 }
 
-const Task &LineageCacheEntry::TaskData() const {
+const Task &LineageEntry::TaskData() const {
   RAY_CHECK(IsTask());
   return *task_.get();
 }
 
-bool LineageCacheEntry::IsTask() const { return (task_ != nullptr); }
+bool LineageEntry::IsTask() const { return (task_ != nullptr); }
 
-flatbuffers::Offset<TaskFlatbuffer> LineageCacheEntry::ToTaskFlatbuffer(
+flatbuffers::Offset<TaskFlatbuffer> LineageEntry::ToTaskFlatbuffer(
     flatbuffers::FlatBufferBuilder &fbb) const {
   RAY_CHECK(IsTask());
   return task_->ToFlatbuffer(fbb);
 }
 
-flatbuffers::Offset<flatbuffers::String> LineageCacheEntry::ToObjectFlatbuffer(
+flatbuffers::Offset<flatbuffers::String> LineageEntry::ToObjectFlatbuffer(
     flatbuffers::FlatBufferBuilder &fbb) const {
   RAY_CHECK(!IsTask());
   return to_flatbuf(fbb, object_->GetObjectId());
@@ -73,30 +72,29 @@ Lineage::Lineage(const ForwardTaskRequest &task_request) {
   auto tasks = task_request.uncommitted_tasks();
   for (auto it = tasks->begin(); it != tasks->end(); it++) {
     auto task = Task(**it);
-    LineageCacheEntry entry(task.GetTaskSpecification().TaskId(), task,
-                            GcsStatus_UNCOMMITTED_REMOTE);
+    LineageEntry entry(task.GetTaskSpecification().TaskId(), task,
+                       GcsStatus_UNCOMMITTED_REMOTE);
     RAY_CHECK(SetEntry(std::move(entry)));
   }
   // Deserialize and set entries for the uncommitted objects.
   auto objects = task_request.uncommitted_objects();
   for (auto it = objects->begin(); it != objects->end(); it++) {
     auto object_id = from_flatbuf(**it);
-    LineageCacheEntry entry(object_id, Object(object_id), GcsStatus_UNCOMMITTED_REMOTE);
+    LineageEntry entry(object_id, Object(object_id), GcsStatus_UNCOMMITTED_REMOTE);
     RAY_CHECK(SetEntry(std::move(entry)));
   }
 }
 
-boost::optional<const LineageCacheEntry &> Lineage::GetEntry(
-    const UniqueID &entry_id) const {
+boost::optional<const LineageEntry &> Lineage::GetEntry(const UniqueID &entry_id) const {
   auto entry = entries_.find(entry_id);
   if (entry != entries_.end()) {
     return entry->second;
   } else {
-    return boost::optional<const LineageCacheEntry &>();
+    return boost::optional<const LineageEntry &>();
   }
 }
 
-bool Lineage::SetEntry(LineageCacheEntry &&new_entry) {
+bool Lineage::SetEntry(LineageEntry &&new_entry) {
   // Get the status of the current entry at the key.
   auto entry_id = new_entry.GetUniqueId();
   GcsStatus current_status = GcsStatus_NONE;
@@ -117,18 +115,18 @@ bool Lineage::SetEntry(LineageCacheEntry &&new_entry) {
   }
 }
 
-boost::optional<LineageCacheEntry> Lineage::PopEntry(const UniqueID &entry_id) {
+boost::optional<LineageEntry> Lineage::PopEntry(const UniqueID &entry_id) {
   auto entry = entries_.find(entry_id);
   if (entry != entries_.end()) {
-    LineageCacheEntry entry = std::move(entries_.at(entry_id));
+    LineageEntry entry = std::move(entries_.at(entry_id));
     entries_.erase(entry_id);
     return entry;
   } else {
-    return boost::optional<LineageCacheEntry>();
+    return boost::optional<LineageEntry>();
   }
 }
 
-const std::unordered_map<const UniqueID, LineageCacheEntry, UniqueIDHasher>
+const std::unordered_map<const UniqueID, LineageEntry, UniqueIDHasher>
     &Lineage::GetEntries() const {
   return entries_;
 }
@@ -181,7 +179,7 @@ void MergeLineageHelper(const UniqueID &entry_id, const Lineage &lineage_from,
   }
 
   // Insert a copy of the entry into lineage_to.
-  auto entry_copy = LineageCacheEntry(*entry);
+  auto entry_copy = LineageEntry(*entry);
   auto parent_ids = entry_copy.GetParentIds();
   // If the insert is successful, then continue the DFS. The insert will fail
   // if the new entry has an equal or lower GCS status than the current entry
@@ -209,29 +207,29 @@ void LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
 
   // Add the submitted task to the lineage cache as UNCOMMITTED_WAITING. It
   // should be marked as UNCOMMITTED_READY once the task starts execution.
-  LineageCacheEntry task_entry(task_id, task, GcsStatus_UNCOMMITTED_WAITING);
+  LineageEntry task_entry(task_id, task, GcsStatus_UNCOMMITTED_WAITING);
   RAY_CHECK(lineage_.SetEntry(std::move(task_entry)));
   // Add the return values of the task to the lineage cache as
   // UNCOMMITTED_WAITING. They should be marked as UNCOMMITTED_READY once the
   // task completes.
   for (int64_t i = 0; i < task.GetTaskSpecification().NumReturns(); i++) {
     ObjectID return_id = task.GetTaskSpecification().ReturnId(i);
-    LineageCacheEntry object_entry(return_id, Object(return_id),
-                                   GcsStatus_UNCOMMITTED_WAITING);
+    LineageEntry object_entry(return_id, Object(return_id),
+                              GcsStatus_UNCOMMITTED_WAITING);
     RAY_CHECK(lineage_.SetEntry(std::move(object_entry)));
   }
 }
 
 void LineageCache::AddReadyTask(const Task &task) {
   auto task_id = task.GetTaskSpecification().TaskId();
-  auto new_entry = LineageCacheEntry(task_id, task, GcsStatus_UNCOMMITTED_READY);
+  auto new_entry = LineageEntry(task_id, task, GcsStatus_UNCOMMITTED_READY);
   RAY_CHECK(lineage_.SetEntry(std::move(new_entry)));
 }
 
 void LineageCache::AddReadyObject(const ObjectID &object_id, bool remote) {
   RAY_CHECK(remote == false)
       << "Lineage cache AddReadyObject for remote transfers not implemented";
-  LineageCacheEntry entry(object_id, Object(object_id), GcsStatus_UNCOMMITTED_READY);
+  LineageEntry entry(object_id, Object(object_id), GcsStatus_UNCOMMITTED_READY);
   RAY_CHECK(lineage_.SetEntry(std::move(entry)));
 }
 
