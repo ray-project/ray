@@ -3,22 +3,18 @@
 #include "ray/gcs/client.h"
 #include "ray/id.h"
 
-namespace legacy {
-#include "common_protocol.h"
-// TODO(pcm): Remove this
-#include "task.h"
-
-using Task = Task;
-}
-
 // TODO(swang): This file extends tables.cc so that we can separate out the
 // part that depends on the legacy::Task* data structure from the build. This
 // should be merged with tables.cc once we get rid of the legacy::Task*
 // datastructure.
 
-namespace {
+namespace ray {
 
-using namespace legacy;
+namespace gcs {
+
+namespace legacy {
+#include "common_protocol.h"
+// TODO(pcm): Remove this
 
 std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execution_spec,
                                                   const ClientID &local_scheduler_id,
@@ -39,12 +35,6 @@ std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execu
 
   return data;
 }
-
-}  // namespace
-
-namespace ray {
-
-namespace gcs {
 
 // TODO(pcm): This is a helper method that should go away once we get rid of
 // the Task* datastructure and replace it with TaskTableDataT.
@@ -71,6 +61,8 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
   return gcs_client->task_table().TestAndUpdate(ray::JobID::nil(), task_id, data,
                                                 callback);
 }
+
+}  // namespace legacy
 
 }  // namespace gcs
 

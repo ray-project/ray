@@ -13,18 +13,21 @@
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/gcs/redis_context.h"
 
+struct redisAsyncContext;
+
+namespace ray {
+
+namespace gcs {
+// TODO(swang): We only need the Task flatbuffer from this file. Separate
+// it into a common flatbuffer file for all raylet components.
+#include "ray/raylet/format/node_manager_generated.h"
+
 namespace legacy {
 // TODO(pcm): Remove this
 #include "task.h"
 
 using Task = Task;
 }
-
-struct redisAsyncContext;
-
-namespace ray {
-
-namespace gcs {
 
 class RedisContext;
 
@@ -206,6 +209,10 @@ using ClassTable = Table<ClassID, ClassTableData>;
 // TODO(swang): Set the pubsub channel for the actor table.
 using ActorTable = Table<ActorID, ActorTableData>;
 
+using TaskTable = Table<TaskID, Task>;
+
+namespace legacy {
+
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
   TaskTable(const std::shared_ptr<RedisContext> &context,
@@ -281,13 +288,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                          const Callback &done);
 };
 
-using ErrorTable = Table<TaskID, ErrorTableData>;
-
-using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
-
-using ConfigTable = Table<ConfigID, ConfigTableData>;
-
-Status TaskTableAdd(AsyncGcsClient *gcs_client, legacy::Task *task);
+Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
 Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
                               const TaskID &task_id,
@@ -295,6 +296,14 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
                               int test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
+
+}  // namespace legacy
+
+using ErrorTable = Table<TaskID, ErrorTableData>;
+
+using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
+
+using ConfigTable = Table<ConfigID, ConfigTableData>;
 
 class ClientTable : private Table<ClientID, ClientTableData> {
  public:

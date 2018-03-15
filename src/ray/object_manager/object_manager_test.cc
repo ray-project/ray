@@ -5,7 +5,6 @@
 #include "plasma/client.h"
 #include "plasma/events.h"
 #include "plasma/plasma.h"
-#include "plasma/protocol.h"
 
 #include "ray/status.h"
 
