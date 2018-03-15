@@ -251,8 +251,100 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id) const {
 }
 
 Status LineageCache::Flush() {
-  throw std::runtime_error("method not implemented");
+  std::vector<TaskID> ready_task_ids;
+  for (const auto &pair : lineage_.GetEntries()) {
+    auto entry_id = pair.first;
+    auto entry = pair.second;
+    if (entry.IsTask() && entry.GetStatus() == GcsStatus_UNCOMMITTED_READY) {
+      bool all_parents_committed = true;
+      for (const auto &parent_id : entry.GetParentIds()) {
+        auto parent = lineage_.GetEntry(parent_id);
+        if (parent && parent->GetStatus() != GcsStatus_COMMITTED) {
+          all_parents_committed = false;
+        }
+      }
+      if (all_parents_committed) {
+        ready_task_ids.push_back(entry_id);
+      }
+    }
+  }
+
+  gcs::TaskTable::Callback task_callback = [this](
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id, std::shared_ptr<TaskT> data) {
+    HandleEntryCommitted(id);
+  };
+  for (const auto &ready_task_id : ready_task_ids) {
+    // TODO(swang): Make this better...
+    auto task = lineage_.GetEntry(ready_task_id);
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message = task->TaskData().ToFlatbuffer(fbb);
+    fbb.Finish(message);
+
+    auto task_data = std::make_shared<TaskT>();
+    auto root = flatbuffers::GetRoot<TaskFlatbuffer>(fbb.GetBufferPointer());
+    root->UnPackTo(task_data.get());
+    RAY_CHECK_OK(task_storage_.Add(task->TaskData().GetTaskSpecification().DriverId(),
+                                   ready_task_id, task_data, task_callback));
+
+    auto entry = lineage_.PopEntry(ready_task_id);
+    RAY_CHECK(entry->SetStatus(GcsStatus_COMMITTING));
+    RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
+  }
+
+  std::vector<ObjectID> ready_object_ids;
+  for (const auto &pair : lineage_.GetEntries()) {
+    auto entry_id = pair.first;
+    auto entry = pair.second;
+    if (!entry.IsTask() && entry.GetStatus() == GcsStatus_UNCOMMITTED_READY) {
+      auto parent_ids = entry.GetParentIds();
+      RAY_CHECK(parent_ids.size() == 1);
+      auto parent = lineage_.GetEntry(parent_ids[0]);
+      if (!parent || parent->GetStatus() >= GcsStatus_COMMITTED) {
+        ready_object_ids.push_back(entry_id);
+      }
+    }
+  }
+
+  gcs::ObjectTable::Callback object_callback = [this](
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id,
+      std::shared_ptr<ObjectTableDataT> data) { HandleEntryCommitted(id); };
+  for (const auto &ready_object_id : ready_object_ids) {
+    // TODO(swang): Fill out object metadata.
+    auto data = std::make_shared<ObjectTableDataT>();
+    data->managers.push_back(client_id_.hex());
+    RAY_CHECK_OK(
+        object_storage_.Add(JobID::nil(), ready_object_id, data, object_callback));
+
+    auto entry = lineage_.PopEntry(ready_object_id);
+    RAY_CHECK(entry->SetStatus(GcsStatus_COMMITTING));
+    RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
+  }
+
   return ray::Status::OK();
+}
+
+boost::optional<LineageEntry> PopAncestors(
+    const UniqueID &entry_id, Lineage &lineage,
+    std::function<bool(GcsStatus)> check_condition) {
+  auto entry = lineage.PopEntry(entry_id);
+  if (!entry) {
+    return boost::optional<LineageEntry>();
+  }
+  RAY_CHECK(check_condition(entry->GetStatus()));
+  check_condition = [](GcsStatus status) {
+    return (status == GcsStatus_UNCOMMITTED_REMOTE || status == GcsStatus_COMMITTED);
+  };
+  for (const auto &parent_id : entry->GetParentIds()) {
+    PopAncestors(parent_id, lineage, check_condition);
+  }
+  return entry;
+}
+
+void LineageCache::HandleEntryCommitted(const UniqueID &entry_id) {
+  auto first_condition = [](GcsStatus status) { return status == GcsStatus_COMMITTING; };
+  auto entry = PopAncestors(entry_id, lineage_, first_condition);
+  RAY_CHECK(entry->SetStatus(GcsStatus_COMMITTED));
+  RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
 }
 
 } // namespace raylet
