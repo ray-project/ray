@@ -1,5 +1,5 @@
-Using Policy Optimizers outside RLlib
-=====================================
+Policy Optimizers
+=================
 
 RLlib supports using its distributed policy optimizer implementations from external algorithms.
 
@@ -11,7 +11,7 @@ Here are the steps for using a RLlib policy optimizer with an existing algorithm
 
     - Another example porting a `TensorFlow DQN implementation <https://github.com/ericl/baselines/blob/rllib-example/baselines/deepq/dqn_evaluator.py>`__.
 
-2. Pick a `Policy optimizer class <https://github.com/ray-project/ray/tree/master/python/ray/rllib/optimizers>`__. The `LocalSyncOptimizer <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/local_sync.py>`__ is a reasonable choice for local testing. You can also implement your own. Policy optimizers can be constructed using their ``make`` method (e.g., ``LocalSyncOptimizer.make(evaluator_cls, evaluator_args, num_workers, conf)``), or you can construct them by passing in a list of evaluators instantiated as Ray actors.
+2. Pick a `Policy optimizer class <https://github.com/ray-project/ray/tree/master/python/ray/rllib/optimizers>`__. The `LocalSyncOptimizer <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/local_sync.py>`__ is a reasonable choice for local testing. You can also implement your own. Policy optimizers can be constructed using their ``make`` method (e.g., ``LocalSyncOptimizer.make(evaluator_cls, evaluator_args, num_workers, optimizer_config)``), or you can construct them by passing in a list of evaluators instantiated as Ray actors.
 
     - Here is code showing the `simple Policy Gradient agent <https://github.com/ray-project/ray/blob/master/python/ray/rllib/pg/pg.py>`__ using ``make()``.
 
@@ -24,8 +24,25 @@ Here are the steps for using a RLlib policy optimizer with an existing algorithm
     - Option 2: define a full RLlib `Agent class <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agent.py>`__. This might be preferable if you don't have an existing training harness or want to use features provided by `Ray Tune <tune.html>`__.
 
 
-Policy Optimizers
------------------
+Example of constructing and using a policy optimizer `(link to full example) <https://github.com/ericl/baselines/blob/rllib-example/baselines/deepq/run_simple_loop.py>`__:
+
+.. code-block:: python
+
+    ray.init()
+    env_creator = lambda env_config: gym.make("PongNoFrameskip-v4")
+    optimizer = LocalSyncReplayOptimizer.make(
+        YourEvaluatorClass, [env_creator], num_workers=0, optimizer_config={})
+
+    i = 0
+    while optimizer.num_steps_sampled < 100000:
+        i += 1
+        print("== optimizer step {} ==".format(i))
+        optimizer.step()
+        print("optimizer stats", optimizer.stats())
+        print("local evaluator stats", optimizer.local_evaluator.stats())
+
+Available Policy Optimizers
+---------------------------
 
 +-----------------------------+---------------------+-----------------+------------------------------+
 | **Policy optimizer class**  | **Operating range** | **Works with**  | **Description**              |

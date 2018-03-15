@@ -7,7 +7,7 @@ You can find the code for RLlib `here on GitHub <https://github.com/ray-project/
 
 .. note::
 
-    To use RLlib's policy optimizers outside of RLlib, see the `RLlib policy optimizers documentation <rllib-optimizers.html>`__.
+    To use RLlib's policy optimizers outside of RLlib, see the `RLlib policy optimizers documentation <policy-optimizers.html>`__.
 
 
 RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, which include:
@@ -326,7 +326,7 @@ see the `PPO + PBT Walker2D training example <https://github.com/ray-project/ray
 Using Policy Optimizers outside of RLlib
 ----------------------------------------
 
-See the `RLlib policy optimizers documentation <rllib-optimizers.html>`__.
+See the `RLlib policy optimizers documentation <policy-optimizers.html>`__.
 
 Contributing to RLlib
 ---------------------
