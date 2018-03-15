@@ -53,6 +53,7 @@ def load_class(path):
     print(module)
     print(module_path)
     print(class_str)
+
     return getattr(module, class_str)
 
 
