@@ -3,14 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.optimizers import Evaluator
+from ray.rllib.optimizers import PolicyEvaluator
 from ray.rllib.pg.policy import PGPolicy
 from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
 
 
-class PGEvaluator(Evaluator):
+class PGEvaluator(PolicyEvaluator):
     """Evaluator for simple policy gradient."""
 
     def __init__(self, registry, env_creator, config):
@@ -41,7 +41,7 @@ class PGEvaluator(Evaluator):
     def compute_gradients(self, samples):
         """ Returns gradient w.r.t. samples."""
         gradient, info = self.policy.compute_gradients(samples)
-        return gradient
+        return gradient, {}
 
     def apply_gradients(self, grads):
         """Applies gradients to evaluator weights."""

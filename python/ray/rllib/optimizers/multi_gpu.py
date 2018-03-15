@@ -7,14 +7,14 @@ import os
 import tensorflow as tf
 
 import ray
-from ray.rllib.optimizers.evaluator import TFMultiGPUSupport
-from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.policy_evaluator import TFMultiGPUSupport
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.timer import TimerStat
 
 
-class LocalMultiGPUOptimizer(Optimizer):
+class LocalMultiGPUOptimizer(PolicyOptimizer):
     """A synchronous optimizer that uses multiple local GPUs.
 
     Samples are pulled synchronously from multiple remote evaluators,
@@ -102,7 +102,7 @@ class LocalMultiGPUOptimizer(Optimizer):
         self.num_steps_trained += samples.count
 
     def stats(self):
-        return dict(Optimizer.stats(), **{
+        return dict(PolicyOptimizer.stats(), **{
             "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
             "load_time_ms": round(1000 * self.load_timer.mean, 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),

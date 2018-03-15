@@ -144,11 +144,11 @@ class MaxAndSkipEnv(gym.Wrapper):
 
 
 class WarpFrame(gym.ObservationWrapper):
-    def __init__(self, env):
-        """Warp frames to 84x84 as done in the Nature paper and later work."""
+    def __init__(self, env, dim):
+        """Warp frames to the specified size (dim x dim)."""
         gym.ObservationWrapper.__init__(self, env)
-        self.width = 80  # in rllib we use 80
-        self.height = 80
+        self.width = dim  # in rllib we use 80
+        self.height = dim
         self.observation_space = spaces.Box(
             low=0, high=255, shape=(self.height, self.width, 1))
 
@@ -185,10 +185,14 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
-def wrap_deepmind(env, random_starts):
+def wrap_deepmind(env, random_starts=True, dim=80):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
+
+    Args:
+        random_starts (bool): Start with random actions instead of noops.
+        dim (int): Dimension to resize observations to (dim x dim).
     """
     env = NoopResetEnv(env, noop_max=30, random_starts=random_starts)
     if 'NoFrameskip' in env.spec.id:
@@ -196,7 +200,7 @@ def wrap_deepmind(env, random_starts):
     env = EpisodicLifeEnv(env)
     if 'FIRE' in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
-    env = WarpFrame(env)
+    env = WarpFrame(env, dim)
     # env = ClipRewardEnv(env)  # reward clipping is handled by DQN replay
     env = FrameStack(env, 4)
     return env
