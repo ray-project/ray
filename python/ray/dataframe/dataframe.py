@@ -65,30 +65,32 @@ class DataFrame(object):
 
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
-            row_partitions = \
+            row_partitions, col_partitions = \
                 _partition_pandas_dataframe(pd_df,
-                                            npartitions=get_npartitions())
+                                            num_partitions=get_npartitions())
             columns = pd_df.columns
             index = pd_df.index
 
-        if col_partitions is None:
+        elif col_partitions is None:
             col_partitions = _rebuild_cols.remote(row_partitions,
                                                   index,
                                                   columns)
-        if row_partitions is None:
+
+        elif row_partitions is None:
             row_partitions = _rebuild_rows.remote(col_partitions,
                                                   index,
                                                   columns)
 
-        self._col_partitions = col_partitions
-        self._row_partitions = row_partitions
 
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
         self._row_lengths, self._row_index = \
-            _compute_length_and_index.remote(self._row_partitions)
+            _compute_length_and_index.remote(row_partitions, index)
         self._col_lengths, self._col_index = \
-            _compute_width_and_index.remote(self._col_partitions)
+            _compute_width_and_index.remote(col_partitions, columns)
+
+        self._col_partitions = col_partitions
+        self._row_partitions = row_partitions
 
         # TODO: Remove testing print code comments
         # print("row partitions")
@@ -101,11 +103,12 @@ class DataFrame(object):
         # print(self._row_lengths, "\n", self._row_index)
         # print("col items")
         # print(self._col_lengths, "\n", self._col_index)
-
-        if index is not None:
-            self.index = index
-
-        self.columns = columns
+        #
+        # if index is not None:
+        #     self.index = index
+        #
+        # if columns is not None:
+        #     self.columns = columns
 
     def __str__(self):
         return repr(self)
@@ -115,8 +118,68 @@ class DataFrame(object):
             result = repr(to_pandas(self))
             return result
 
-        head = repr(to_pandas(self.head(20)))
-        tail = repr(to_pandas(self.tail(20)))
+        def head(df, n):
+            """Compute the head for this without creating a new DataFrame"""
+
+            sizes = df._row_lengths
+            cumulative = np.cumsum(np.array(sizes))
+            new_dfs = [df._row_partitions[i]
+                       for i in range(len(cumulative))
+                       if cumulative[i] < n]
+
+            last_index = len(new_dfs)
+
+            # this happens when we only need from the first partition
+            if last_index == 0:
+                num_to_transfer = n
+            else:
+                num_to_transfer = n - cumulative[last_index - 1]
+
+            new_dfs.append(_deploy_func.remote(lambda df: df.head(num_to_transfer),
+                                               df._row_partitions[last_index]))
+
+            index = df._row_index.head(n).index
+            pd_head = pd.concat(ray.get(new_dfs))
+            pd_head.index = index
+            pd_head.columns = df.columns
+            return pd_head
+
+        def tail(df, n):
+            """Compute the tail for this without creating a new DataFrame"""
+
+            sizes = self._row_lengths
+
+            if n >= sum(sizes):
+                return self
+
+            cumulative = np.cumsum(np.array(sizes[::-1]))
+
+            reverse_dfs = self._row_partitions[::-1]
+            new_dfs = [reverse_dfs[i]
+                       for i in range(len(cumulative))
+                       if cumulative[i] < n]
+
+            last_index = len(new_dfs)
+
+            # this happens when we only need from the last partition
+            if last_index == 0:
+                num_to_transfer = n
+            else:
+                num_to_transfer = n - cumulative[last_index - 1]
+
+            new_dfs.append(_deploy_func.remote(lambda df: df.tail(num_to_transfer),
+                                               reverse_dfs[last_index]))
+
+            new_dfs.reverse()
+
+            index = self._row_index.tail(n).index
+            pd_tail = pd.concat(ray.get(new_dfs))
+            pd_tail.index = index
+            pd_tail.columns = df.columns
+            return pd_tail
+
+        head = repr(head(self, 20))
+        tail = repr(tail(self, 20))
 
         result = head + "\n...\n" + tail
 
@@ -445,6 +508,7 @@ class DataFrame(object):
         # Perform rollback if length mismatch, since operations occur inplace here
         # Since we want to keep the existing DF in a usable state, we need to carefully catch
         # and handle this error
+        # TODO Make this asynchronous
         if index is not None and len(index) != len(new_row_index):
             self._row_partitions = old_row_parts
             self._col_partitions = old_col_parts
@@ -587,6 +651,12 @@ class DataFrame(object):
             The sum of the DataFrame.
         """
         # TODO: Fix this function - it does not work.
+        return ray.get(
+            _map_partitions(lambda df: df.sum(axis=axis,
+                                              skipna=skipna,
+                                              level=level,
+                                              numeric_only=numeric_only),
+                            self._col_partitions))
 
         # # TODO: We don't support `level` right now, so df.sum always returns a pd.Series
         # #       Generalize when we support MultiIndexes, and distributed Series (?)

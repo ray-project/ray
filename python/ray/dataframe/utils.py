@@ -32,10 +32,9 @@ def assign_partitions(index, num_partitions):
         raise TypeError("Unexpected value of type {0} assigned to ShuffleActor"
                         .format(type(index).__name__))
 
-    if len(uniques) % num_partitions == 0:
-        chunksize = int(len(uniques) / num_partitions)
-    else:
-        chunksize = int(len(uniques) / num_partitions) + 1
+    chunksize = len(uniques) // num_partitions \
+        if len(uniques) % num_partitions == 0 \
+        else len(uniques) // num_partitions + 1
 
     assignments = []
 
@@ -81,45 +80,71 @@ def _get_widths(df):
         return 0
 
 
-def _partition_pandas_dataframe(df, npartitions=None, chunksize=None):
+def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None,
+                                col_chunksize=None):
     """Partitions a Pandas DataFrame object.
     Args:
         df (pandas.DataFrame): The pandas DataFrame to convert.
         npartitions (int): The number of partitions to split the DataFrame
             into. Has priority over chunksize.
-        chunksize (int): The number of rows to put in each partition.
+        row_chunksize (int): The number of rows to put in each partition.
     Returns:
         [ObjectID]: A list of object IDs corresponding to the dataframe
         partitions
     """
-    if npartitions is not None:
-        chunksize = len(df) // npartitions + 1
-    elif chunksize is None:
-        raise ValueError("The number of partitions or chunksize must be set.")
+    if num_partitions is not None:
+        row_chunksize = len(df) // num_partitions \
+            if len(df) % num_partitions == 0 \
+            else len(df) // num_partitions + 1
+
+        col_chunksize = len(df.columns) // num_partitions \
+            if len(df.columns) % num_partitions == 0 \
+            else len(df.columns) // num_partitions + 1
+    else:
+        assert row_chunksize is not None and col_chunksize is not None
 
     temp_df = df
 
-    dataframes = []
-    while len(temp_df) > chunksize:
-        t_df = temp_df[:chunksize]
+    row_partitions = []
+    while len(temp_df) > row_chunksize:
+        t_df = temp_df[:row_chunksize]
         # reset_index here because we want a pd.RangeIndex
         # within the partitions. It is smaller and sometimes faster.
-        t_df = t_df.reset_index(drop=True)
+        t_df.reset_index(drop=True, inplace=True)
+        t_df.columns = pd.RangeIndex(0, len(t_df.columns))
         top = ray.put(t_df)
-        dataframes.append(top)
-        temp_df = temp_df[chunksize:]
+        row_partitions.append(top)
+        temp_df = temp_df[row_chunksize:]
     else:
-        temp_df = temp_df.reset_index(drop=True)
-        dataframes.append(ray.put(temp_df))
+        temp_df.reset_index(drop=True, inplace=True)
+        temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
+        row_partitions.append(ray.put(temp_df))
 
-    return dataframes
+    temp_df = df
+
+    col_partitions = []
+    while len(temp_df.columns) > col_chunksize:
+        t_df = temp_df.iloc[:, 0:col_chunksize]
+        # reset_index here because we want a pd.RangeIndex
+        # within the partitions. It is smaller and sometimes faster.
+        t_df.reset_index(drop=True, inplace=True)
+        t_df.columns = pd.RangeIndex(0, len(t_df.columns))
+        top = ray.put(t_df)
+        col_partitions.append(top)
+        temp_df = temp_df.iloc[:, col_chunksize:]
+    else:
+        temp_df.reset_index(drop=True, inplace=True)
+        temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
+        col_partitions.append(ray.put(temp_df))
+
+    return row_partitions, col_partitions
 
 
-def from_pandas(df, npartitions=None, chunksize=None):
+def from_pandas(df, num_partitions=None, chunksize=None):
     """Converts a pandas DataFrame to a Ray DataFrame.
     Args:
         df (pandas.DataFrame): The pandas DataFrame to convert.
-        npartitions (int): The number of partitions to split the DataFrame
+        num_partitions (int): The number of partitions to split the DataFrame
             into. Has priority over chunksize.
         chunksize (int): The number of rows to put in each partition.
     Returns:
@@ -127,9 +152,11 @@ def from_pandas(df, npartitions=None, chunksize=None):
     """
     from .dataframe import DataFrame
 
-    dataframes = _partition_pandas_dataframe(df, npartitions, chunksize)
+    row_partitions, col_partitions = \
+        _partition_pandas_dataframe(df, num_partitions, chunksize)
 
-    return DataFrame(row_partitions=dataframes,
+    return DataFrame(row_partitions=row_partitions,
+                     col_partitions=col_partitions,
                      columns=df.columns,
                      index=df.index)
 
@@ -158,10 +185,13 @@ def _rebuild_cols(row_partitions, index, columns):
         [ObjectID]: List of new column partitions.
     """
     # NOTE: Reexamine if this is the correct number of columns solution
-    n_cols = min(get_npartitions(), len(row_partitions), len(columns))
+    n_cols = min(max(get_npartitions(), len(row_partitions)), len(columns))
     partition_assignments = assign_partitions.remote(columns, n_cols)
-    shufflers = [ShuffleActor.remote(x, partition_axis=0, shuffle_axis=1)
-                 for x in row_partitions]
+    shufflers = [ShuffleActor.remote(
+        row_partitions[i] if i < len(row_partitions) else pd.DataFrame(),
+        partition_axis=0,
+        shuffle_axis=1)
+                 for i in range(n_cols)]
 
     shufflers_done = \
         [shufflers[i].shuffle.remote(
@@ -176,11 +206,12 @@ def _rebuild_cols(row_partitions, index, columns):
 
     # TODO: Determine if this is the right place to reset the index
     def fix_indexes(df):
-        df.index = index
-        df.columns = np.arange(len(df.columns))
+        df.columns = pd.RangeIndex(0, len(df.columns))
+        df.reset_index(drop=True, inplace=True)
         return df
 
-    return [shuffler.apply_func.remote(fix_indexes) for shuffler in shufflers[:n_cols]]
+    return [shuffler.apply_func.remote(fix_indexes)
+            for shuffler in shufflers[:n_cols]]
 
 
 @ray.remote
@@ -212,8 +243,9 @@ def _rebuild_rows(col_partitions, index, columns):
     # TODO: Determine if this is the right place to reset the index
     # TODO: Determine if this needs the same changes as above
     def fix_indexes(df):
-        df.columns = columns
-        return df.reset_index(drop=True)
+        df.columns = pd.RangeIndex(0, len(df.columns))
+        df.reset_index(drop=True, inplace=True)
+        return df
 
     return [shuffler.apply_func.remote(fix_indexes) for shuffler in shufflers[:n_rows]]
 
@@ -265,7 +297,7 @@ def _map_partitions(func, partitions, *argslists):
 
 
 @ray.remote(num_return_vals=2)
-def _compute_length_and_index(dfs):
+def _compute_length_and_index(dfs, index):
     """Create a default index, which is a RangeIndex
     Returns:
         The pd.RangeIndex object that represents this DataFrame.
@@ -278,11 +310,12 @@ def _compute_length_and_index(dfs):
 
     idx_df_col_names = ("partition", "index_within_partition")
 
-    return lengths, pd.DataFrame(dest_indices, columns=idx_df_col_names)
+    return lengths, pd.DataFrame(dest_indices, index=index,
+                                 columns=idx_df_col_names)
 
 
 @ray.remote(num_return_vals=2)
-def _compute_width_and_index(dfs):
+def _compute_width_and_index(dfs, columns):
     """Create a default index, which is a RangeIndex
     Returns:
         The pd.RangeIndex object that represents this DataFrame.
@@ -295,7 +328,8 @@ def _compute_width_and_index(dfs):
 
     idx_df_col_names = ("partition", "index_within_partition")
 
-    return widths, pd.DataFrame(dest_indices, columns=idx_df_col_names)
+    return widths, pd.DataFrame(dest_indices, index=columns,
+                                columns=idx_df_col_names)
 
 
 @ray.remote

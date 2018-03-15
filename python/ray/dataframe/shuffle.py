@@ -67,6 +67,8 @@ class ShuffleActor(object):
              A value to be used with ray.get() to ensure proper scheduling
              order.
         """
+        if len(self.partition_data) == 0:
+            return None
 
         def calc_send(i, indices_to_send, data_to_send):
             """Separates the data to send into a list based on assignments.
