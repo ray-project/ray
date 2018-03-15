@@ -39,11 +39,22 @@ DEFAULT_CONFIGS = {
 }
 
 
+def load_class(path):
+    """
+    Load a class at runtime given a full path.
+
+    Example of the path: mypkg.mysubpkg.myclass
+    """
+    class_data = path.split(".")
+    module_path = ".".join(class_data[:-1])
+    class_str = class_data[-1]
+    module = importlib.import_module(module_path)
+    return getattr(module, class_str)
+
+
 def get_node_provider(provider_config, cluster_name):
     if provider_config["type"] == "external":
-        provider_cls = importlib.import_module(
-            name=provider_config["module"]
-            )
+        provider_cls = load_class(path=provider_config["module"])
         return provider_cls(provider_config, cluster_name)
 
     importer = NODE_PROVIDERS.get(provider_config["type"])
