@@ -16,7 +16,8 @@ Status AsyncGcsClient::Connect(const std::string &address,
   context_.reset(new RedisContext());
   RAY_RETURN_NOT_OK(context_->Connect(address, port));
   object_table_.reset(new ObjectTable(context_, this));
-  task_table_.reset(new legacy::TaskTable(context_, this));
+  task_table_.reset(new TaskTable(context_, this));
+  legacy_task_table_.reset(new legacy::TaskTable(context_, this));
   client_table_.reset(new ClientTable(context_, this, client_info));
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
@@ -43,7 +44,9 @@ ObjectTable &AsyncGcsClient::object_table() {
   return *object_table_;
 }
 
-legacy::TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
+TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
+
+legacy::TaskTable &AsyncGcsClient::legacy_task_table() { return *legacy_task_table_; }
 
 ClientTable &AsyncGcsClient::client_table() {
   return *client_table_;
