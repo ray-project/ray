@@ -6,6 +6,7 @@
 // clang-format off
 #include "common_protocol.h"
 #include "ray/raylet/task.h"
+#include "ray/gcs/tables.h"
 #include "ray/id.h"
 #include "ray/status.h"
 // clang-format on
@@ -205,7 +206,9 @@ class LineageCache {
  public:
   /// Create a lineage cache policy.
   /// TODO(swang): Pass in the policy (interface?) and a GCS client.
-  LineageCache();
+  LineageCache(const ClientID &client_id,
+               gcs::Storage<TaskID, TaskFlatbuffer> &task_storage,
+               gcs::Storage<ObjectID, ObjectTableData> &object_storage);
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
   /// These entries will not be written to the GCS until set to ready.
@@ -248,6 +251,10 @@ class LineageCache {
   Status Flush();
 
  private:
+  void HandleEntryCommitted(const UniqueID &unique_id);
+  ClientID client_id_;
+  gcs::Storage<TaskID, TaskFlatbuffer> &task_storage_;
+  gcs::Storage<ObjectID, ObjectTableData> &object_storage_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;

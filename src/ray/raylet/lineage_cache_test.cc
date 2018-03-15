@@ -12,6 +12,58 @@ namespace ray {
 
 namespace raylet {
 
+class MockGcs : virtual public gcs::Storage<TaskID, TaskFlatbuffer>,
+                virtual public gcs::Storage<ObjectID, ObjectTableData> {
+ public:
+  MockGcs(){};
+  Status Add(const JobID &job_id, const TaskID &task_id, std::shared_ptr<TaskT> task_data,
+             const gcs::Storage<TaskID, TaskFlatbuffer>::Callback &done) {
+    task_table_[task_id] = task_data;
+    task_callbacks_.push_back(std::pair<gcs::TaskTable::Callback, TaskID>(done, task_id));
+    return ray::Status::OK();
+  };
+
+  Status Add(const JobID &job_id, const ObjectID &object_id,
+             std::shared_ptr<ObjectTableDataT> object_data,
+             const gcs::Storage<ObjectID, ObjectTableData>::Callback &done) {
+    object_table_[object_id] = object_data;
+    object_callbacks_.push_back(
+        std::pair<gcs::ObjectTable::Callback, ObjectID>(done, object_id));
+    return ray::Status::OK();
+  };
+
+  void Flush() {
+    for (auto &callback : task_callbacks_) {
+      callback.first(NULL, callback.second, nullptr);
+    }
+    for (auto &callback : object_callbacks_) {
+      callback.first(NULL, callback.second, nullptr);
+    }
+  };
+
+ private:
+  std::unordered_map<TaskID, std::shared_ptr<TaskT>, UniqueIDHasher> task_table_;
+  std::unordered_map<ObjectID, std::shared_ptr<ObjectTableDataT>, UniqueIDHasher>
+      object_table_;
+  std::vector<std::pair<gcs::TaskTable::Callback, TaskID>> task_callbacks_;
+  std::vector<std::pair<gcs::ObjectTable::Callback, ObjectID>> object_callbacks_;
+};
+
+class LineageCacheTest : public ::testing::Test {
+ public:
+  LineageCacheTest()
+      : client_id_(ObjectID::from_random()),
+        mock_gcs_(),
+        lineage_cache_(client_id_, mock_gcs_, mock_gcs_) {}
+
+ private:
+  ClientID client_id_;
+  MockGcs mock_gcs_;
+
+ protected:
+  LineageCache lineage_cache_;
+};
+
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                int64_t num_returns) {
   std::unordered_map<std::string, double> required_resources;
@@ -46,20 +98,18 @@ std::vector<ObjectID> InsertTaskChain(LineageCache &lineage_cache,
   return arguments;
 }
 
-TEST(LineageCacheTest, TestGetUncommittedLineage) {
-  LineageCache lineage_cache;
-
+TEST_F(LineageCacheTest, TestGetUncommittedLineage) {
   // Insert two independent chains of tasks.
   std::vector<TaskID> task_ids1;
   auto return_values1 =
-      InsertTaskChain(lineage_cache, task_ids1, 3, std::vector<ObjectID>());
+      InsertTaskChain(lineage_cache_, task_ids1, 3, std::vector<ObjectID>());
   std::vector<TaskID> task_ids2;
   auto return_values2 =
-      InsertTaskChain(lineage_cache, task_ids2, 2, std::vector<ObjectID>());
+      InsertTaskChain(lineage_cache_, task_ids2, 2, std::vector<ObjectID>());
 
   // Get the uncommitted lineage for the last task (the leaf) of one of the
   // chains.
-  auto uncommitted_lineage = lineage_cache.GetUncommittedLineage(task_ids1.back());
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_ids1.back());
   // Check that every task in that chain is in the uncommitted lineage.
   for (auto &task_id : task_ids1) {
     ASSERT_TRUE(uncommitted_lineage.GetEntry(task_id));
@@ -83,10 +133,10 @@ TEST(LineageCacheTest, TestGetUncommittedLineage) {
   std::vector<ObjectID> combined_arguments = return_values1;
   combined_arguments.insert(combined_arguments.end(), return_values2.begin(),
                             return_values2.end());
-  InsertTaskChain(lineage_cache, combined_task_ids, 1, combined_arguments);
+  InsertTaskChain(lineage_cache_, combined_task_ids, 1, combined_arguments);
 
   // Get the uncommitted lineage for the inserted task.
-  uncommitted_lineage = lineage_cache.GetUncommittedLineage(combined_task_ids.back());
+  uncommitted_lineage = lineage_cache_.GetUncommittedLineage(combined_task_ids.back());
   // Check that every task inserted so far is in the uncommitted lineage.
   for (auto &task_id : combined_task_ids) {
     ASSERT_TRUE(uncommitted_lineage.GetEntry(task_id));
