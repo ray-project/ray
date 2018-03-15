@@ -652,7 +652,7 @@ class DataFrame(object):
         """
         # TODO: Fix this function - it does not work.
         self._row_index._get_axis_name(axis)
-        
+
         sum_df = pd.concat(ray.get(
             _map_partitions(lambda df: df.sum(axis=axis,
                                               skipna=skipna,
