@@ -142,6 +142,7 @@ class ObjectManager {
   std::unique_ptr<ObjectStoreClient> store_client_;
 
   /// An io service for creating connections to other object managers.
+  // TODO(hme): make unique ptr once om_service is being passed in.
   boost::asio::io_service *io_service_;
 
   /// Used to create "work" for an io service, so when it's run, it doesn't exit.
