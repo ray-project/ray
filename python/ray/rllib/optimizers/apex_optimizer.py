@@ -215,10 +215,7 @@ class ApexOptimizer(PolicyOptimizer):
         weights = None
 
         with self.timers["sample_processing"]:
-            i = 0
-            num_weight_syncs = 0
             for ev, sample_batch in self.sample_tasks.completed():
-                i += 1
                 sample_timesteps += self.sample_batch_size
 
                 # Send the data to the replay buffer
@@ -237,16 +234,13 @@ class ApexOptimizer(PolicyOptimizer):
                                 self.local_evaluator.get_weights())
                     ev.set_weights.remote(weights)
                     self.num_weight_syncs += 1
-                    num_weight_syncs += 1
                     self.steps_since_update[ev] = 0
 
                 # Kick off another sample request
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         with self.timers["replay_processing"]:
-            i = 0
             for ra, replay in self.replay_tasks.completed():
-                i += 1
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.timers["get_samples"]:
                     samples = ray.get(replay)
@@ -254,9 +248,7 @@ class ApexOptimizer(PolicyOptimizer):
                     self.learner.inqueue.put((ra, samples))
 
         with self.timers["update_priorities"]:
-            i = 0
             while not self.learner.outqueue.empty():
-                i += 1
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay["batch_indexes"], td_error)
                 train_timesteps += self.train_batch_size

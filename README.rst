@@ -38,7 +38,7 @@ Example Use
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
 - `Ray Tune`_: Hyperparameter Optimization Framework
-- `Ray RLlib`_: A Scalable Reinforcement Learning Library
+- `Ray RLlib`_: Scalable Reinforcement Learning
 
 .. _`Ray Tune`: http://ray.readthedocs.io/en/latest/tune.html
 .. _`Ray RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
