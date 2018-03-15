@@ -34,7 +34,18 @@ class RedisContext;
 class AsyncGcsClient;
 
 template <typename ID, typename Data>
-class Table {
+class Storage {
+ public:
+  using DataT = typename Data::NativeTableType;
+  using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                      std::shared_ptr<DataT> data)>;
+  virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<DataT> data,
+                     const Callback &done) = 0;
+  virtual ~Storage(){};
+};
+
+template <typename ID, typename Data>
+class Table : public Storage<ID, Data> {
  public:
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<
