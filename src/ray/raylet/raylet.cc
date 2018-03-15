@@ -88,16 +88,15 @@ void Raylet::DoAcceptNodeManager() {
 
 void Raylet::HandleAcceptNodeManager(const boost::system::error_code &error) {
   if (!error) {
-    // TODO: typedef these handlers.
-    std::function<void(std::shared_ptr<TcpClientConnection>)> client_handler =
+    ClientHandler<boost::asio::ip::tcp> client_handler =
         [this](std::shared_ptr<TcpClientConnection> client) {
           node_manager_.ProcessNewNodeManager(client);
         };
-    std::function<void(std::shared_ptr<TcpClientConnection>, int64_t, const uint8_t *)>
-        message_handler = [this](std::shared_ptr<TcpClientConnection> client,
-                                 int64_t message_type, const uint8_t *message) {
-          node_manager_.ProcessNodeManagerMessage(client, message_type, message);
-        };
+    MessageHandler<boost::asio::ip::tcp> message_handler = [this](
+        std::shared_ptr<TcpClientConnection> client, int64_t message_type,
+        const uint8_t *message) {
+      node_manager_.ProcessNodeManagerMessage(client, message_type, message);
+    };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(client_handler, message_handler,
                                                       std::move(node_manager_socket_));
@@ -123,15 +122,15 @@ void Raylet::DoAccept() {
 void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
     // TODO: typedef these handlers.
-    std::function<void(std::shared_ptr<LocalClientConnection>)> client_handler =
+    ClientHandler<boost::asio::local::stream_protocol> client_handler =
         [this](std::shared_ptr<LocalClientConnection> client) {
           node_manager_.ProcessNewClient(client);
         };
-    std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
-        message_handler = [this](std::shared_ptr<LocalClientConnection> client,
-                                 int64_t message_type, const uint8_t *message) {
-          node_manager_.ProcessClientMessage(client, message_type, message);
-        };
+    MessageHandler<boost::asio::local::stream_protocol> message_handler = [this](
+        std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+        const uint8_t *message) {
+      node_manager_.ProcessClientMessage(client, message_type, message);
+    };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = LocalClientConnection::Create(client_handler, message_handler,
                                                         std::move(socket_));
