@@ -59,6 +59,19 @@ PUT_RECONSTRUCTION_ERROR_TYPE = b"put_reconstruction"
 # This must be kept in sync with the `scheduling_state` enum in common/task.h.
 TASK_STATUS_RUNNING = 8
 
+# Default resource requirements for remote functions.
+DEFAULT_REMOTE_FUNCTION_CPUS = 1
+DEFAULT_REMOTE_FUNCTION_GPUS = 0
+# Default resource requirements for actors when no resource requirements are
+# specified.
+DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
+DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
+# Default resource requirements for actors when some resource requirements are
+# specified.
+DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
+DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
+DEFAULT_ACTOR_CREATION_GPUS_SPECIFIED_CASE = 0
+
 
 class FunctionID(object):
     def __init__(self, function_id):
@@ -2507,8 +2520,10 @@ def remote(*args, **kwargs):
         def remote_decorator(func_or_class):
             if inspect.isfunction(func_or_class) or is_cython(func_or_class):
                 # Set the remote function default resources.
-                resources["CPU"] = 1 if num_cpus is None else num_cpus
-                resources["GPU"] = 0 if num_gpus is None else num_gpus
+                resources["CPU"] = (DEFAULT_REMOTE_FUNCTION_CPUS
+                                    if num_cpus is None else num_cpus)
+                resources["GPU"] = (DEFAULT_REMOTE_FUNCTION_GPUS
+                                    if num_gpus is None else num_gpus)
 
                 function_properties = FunctionProperties(
                     num_return_vals=num_return_vals,
@@ -2521,15 +2536,20 @@ def remote(*args, **kwargs):
                 if num_cpus is None and num_gpus is None and resources == {}:
                     # In the default case, actors acquire no resources for
                     # their lifetime, and actor methods will require 1 CPU.
-                    resources["CPU"] = 0
-                    actor_method_cpus = 1
+                    resources["CPU"] = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE
+                    actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE
                 else:
                     # If any resources are specified, then all resources are
                     # acquired for the actor's lifetime and no resources are
                     # associated with methods.
-                    resources["CPU"] = 1 if num_cpus is None else num_cpus
-                    resources["GPU"] = 0 if num_gpus is None else num_gpus
-                    actor_method_cpus = 0
+                    resources["CPU"] = (
+                        DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
+                        if num_cpus is None else num_cpus)
+                    resources["GPU"] = (
+                        DEFAULT_ACTOR_CREATION_GPUS_SPECIFIED_CASE
+                        if num_gpus is None else num_gpus)
+                    actor_method_cpus = (
+                        DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE)
 
                 return worker.make_actor(func_or_class, resources,
                                          checkpoint_interval,

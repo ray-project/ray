@@ -153,10 +153,6 @@ class Monitor(object):
                             log.warn("Failed to remove object location for "
                                      "dead plasma manager.")
 
-            # TODO(rkn): Analogously to the above loop, we may want to remove
-            # the dummy object IDs of the actor creation tasks from the object
-            # table.
-
             # If the task is scheduled on a dead local scheduler, mark the
             # task as lost.
             key = binary_to_object_id(hex_to_binary(task_id))

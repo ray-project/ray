@@ -564,32 +564,6 @@ void assign_task_to_worker(LocalSchedulerState *state,
   } else {
     Task_free(task);
   }
-
-  // If the task was an actor creation task, then do some extra bookkeeping.
-  if (TaskSpec_is_actor_creation_task(spec)) {
-    ActorID actor_creation_id = TaskSpec_actor_creation_id(spec);
-
-    ActorMapEntry entry;
-    entry.local_scheduler_id = get_db_client_id(state->db);
-    entry.driver_id = driver_id;
-    state->actor_mapping[actor_creation_id] = entry;
-
-    // Update the worker struct with this actor ID.
-    RAY_CHECK(worker->actor_id.is_nil());
-    worker->actor_id = actor_creation_id;
-
-    // Extract the initial execution dependency from the actor creation task.
-    RAY_CHECK(TaskSpec_num_returns(spec) == 1);
-    ObjectID initial_execution_dependency = TaskSpec_return(spec, 0);
-    // Let the scheduling algorithm process the presence of this new worker.
-    handle_convert_worker_to_actor(state, state->algorithm_state,
-                                   actor_creation_id,
-                                   initial_execution_dependency, worker);
-
-    // Publish the actor creation notification.
-    publish_actor_creation_notification(state->db, actor_creation_id, driver_id,
-                                        get_db_client_id(state->db));
-  }
 }
 
 void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
@@ -605,6 +579,28 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
       // they don't acquire any resources for their entire lifetime). In
       // practice this will usually be rate-limited by the rate at which we can
       // create new workers.
+
+      ActorID actor_creation_id = TaskSpec_actor_creation_id(spec);
+      WorkerID driver_id = TaskSpec_driver_id(spec);
+
+      // TODO(rkn): If the driver corresponding to this actor has died, we
+      // really ought to kill the actor here. However, finish_task does not have
+      // ownership of the worker struct.
+
+      // Update the worker struct with this actor ID.
+      RAY_CHECK(worker->actor_id.is_nil());
+      worker->actor_id = actor_creation_id;
+      // Extract the initial execution dependency from the actor creation task.
+      RAY_CHECK(TaskSpec_num_returns(spec) == 1);
+      ObjectID initial_execution_dependency = TaskSpec_return(spec, 0);
+      // Let the scheduling algorithm process the presence of this new worker.
+      handle_convert_worker_to_actor(state, state->algorithm_state,
+                                     actor_creation_id,
+                                     initial_execution_dependency, worker);
+      // Publish the actor creation notification. The corresponding callback
+      // handle_actor_creation_callback will update state->actor_mapping.
+      publish_actor_creation_notification(
+          state->db, actor_creation_id, driver_id, get_db_client_id(state->db));
     } else if (worker->actor_id.is_nil()) {
       // Return dynamic resources back for the task in progress.
       RAY_CHECK(worker->resources_in_use["CPU"] ==

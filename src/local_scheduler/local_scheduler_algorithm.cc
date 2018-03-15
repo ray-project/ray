@@ -1243,6 +1243,12 @@ bool resource_constraints_satisfied(LocalSchedulerState *state,
       return false;
     }
   }
+
+  if (TaskSpec_is_actor_creation_task(spec) &&
+      state->static_resources["CPU"] != 0) {
+    return false;
+  }
+
   return true;
 }
 
@@ -1257,15 +1263,10 @@ void handle_task_submitted(LocalSchedulerState *state,
   // If this task's constraints are satisfied, dependencies are available
   // locally, and there is an available worker, then enqueue the task in the
   // dispatch queue and trigger task dispatch. Otherwise, pass the task along to
-  // the global scheduler if there is one. Note that if there are no CPUs on
-  // this machine, then we automatically give the task to the global scheduler.
-  // This is here to to prevent actor creation tasks which require 0 CPUs from
-  // being scheduled here because subsequent actor methods may require more
-  // CPUs.
+  // the global scheduler if there is one.
   if (resource_constraints_satisfied(state, spec) &&
       (algorithm_state->available_workers.size() > 0) &&
-      can_run(algorithm_state, execution_spec) &&
-      state->static_resources["CPU"] != 0) {
+      can_run(algorithm_state, execution_spec)) {
     queue_dispatch_task(state, algorithm_state, execution_spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */
@@ -1358,14 +1359,13 @@ void handle_task_scheduled(LocalSchedulerState *state,
   RAY_CHECK(state->db != NULL);
   RAY_CHECK(state->config.global_scheduler_exists);
 
-  if (state->static_resources["CPU"] == 0) {
-    // Give the task to the global scheduler to schedule.
-    give_task_to_global_scheduler(state, algorithm_state, execution_spec);
-  } else {
-    // Push the task to the appropriate queue.
-    queue_task_locally(state, algorithm_state, execution_spec, true);
-    dispatch_tasks(state, algorithm_state);
-  }
+  // Currently, the global scheduler will never assign a task to a local
+  // scheduler that has 0 CPUs.
+  RAY_CHECK(state->static_resources["CPU"] != 0);
+
+  // Push the task to the appropriate queue.
+  queue_task_locally(state, algorithm_state, execution_spec, true);
+  dispatch_tasks(state, algorithm_state);
 }
 
 void handle_actor_task_scheduled(LocalSchedulerState *state,
