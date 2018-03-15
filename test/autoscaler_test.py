@@ -511,10 +511,9 @@ class AutoscalingTest(unittest.TestCase):
         config = SMALL_CLUSTER.copy()
         config["provider"] = {
             "type": "external",
-            "module": "ray.test.autoscaler_test.MockProvider",
+            "module": "test.autoscaler_test.MockProvider",
             }
         config_path = self.write_config(config)
-        self.provider = MockProvider()
         autoscaler = StandardAutoscaler(
             config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
 
@@ -527,7 +526,6 @@ class AutoscalingTest(unittest.TestCase):
             "module": "does-not-exist",
             }
         invalid_provider = self.write_config(config)
-        self.provider = MockProvider()
         self.assertRaises(
             ImportError,
             lambda: StandardAutoscaler(
