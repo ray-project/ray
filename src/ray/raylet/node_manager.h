@@ -64,7 +64,7 @@ class NodeManager {
   void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
-  ray::Status ForwardTask(const TaskID &task_id, const ClientID &node_id);
+  ray::Status ForwardTask(const Task &task, const ClientID &node_id);
 
   boost::asio::io_service &io_service_;
   /// The resources local to this node.

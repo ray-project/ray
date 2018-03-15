@@ -69,8 +69,12 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       fbb.Finish(reply);
       // Reply to the worker's registration request, then listen for more
       // messages.
-      client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(),
-                           fbb.GetBufferPointer());
+      auto status = client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(),
+                                         fbb.GetBufferPointer());
+      if (!status.ok()) {
+        const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+        worker_pool_.DisconnectWorker(worker);
+      }
     }
       break;
     case MessageType_GetTask: {
@@ -95,6 +99,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       // Remove the dead worker from the pool and stop listening for messages.
       const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
       if (worker) {
+        // TODO(swang): Clean up any tasks that were assigned to the worker.
         worker_pool_.DisconnectWorker(worker);
       }
       return;
@@ -165,7 +170,11 @@ void NodeManager::ScheduleTasks() {
     if (task_schedule.second == gcs_client_->client_table().GetLocalClientId()) {
       task_ids.insert(task_schedule.first);
     } else {
-      RAY_CHECK_OK(ForwardTask(task_schedule.first, task_schedule.second));
+      auto tasks = local_queues_.RemoveTasks({task_schedule.first});
+      RAY_CHECK(tasks.size() == 1);
+      const Task &task = *tasks.begin();
+      // TODO(swang): Handle forward task failure.
+      RAY_CHECK_OK(ForwardTask(task, task_schedule.second));
     }
   }
 
@@ -200,24 +209,30 @@ void NodeManager::AssignTask(const Task &task) {
     return;
   }
 
+  const TaskSpecification &spec = task.GetTaskSpecification();
   std::shared_ptr<Worker> worker = worker_pool_.PopWorker();
   RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
 
   // TODO(swang): Acquire resources for the task.
   // local_resources_.Acquire(task.GetTaskSpecification().GetRequiredResources());
 
-  flatbuffers::FlatBufferBuilder fbb;
-  const TaskSpecification &spec = task.GetTaskSpecification();
-  auto message = CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
-                                    fbb.CreateVector(std::vector<int>()));
-  fbb.Finish(message);
-  worker->Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(),
-                                     fbb.GetBufferPointer());
   worker->AssignTaskId(spec.TaskId());
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
 
-  // We started running the task, so the task is ready to write to GCS.
-  lineage_cache_.AddReadyTask(task);
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
+                                    fbb.CreateVector(std::vector<int>()));
+  fbb.Finish(message);
+  auto status = worker->Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(),
+                                                   fbb.GetBufferPointer());
+  if (status.ok()) {
+    // We started running the task, so the task is ready to write to GCS.
+    lineage_cache_.AddReadyTask(task);
+  } else {
+    // We failed to send the task to the worker, so disconnect the worker. The
+    // task will get queued again during cleanup.
+    ProcessClientMessage(worker->Connection(), MessageType_DisconnectClient, NULL);
+  }
 }
 
 void NodeManager::FinishTask(const TaskID &task_id) {
@@ -239,12 +254,9 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
 }
 
-ray::Status NodeManager::ForwardTask(const TaskID &task_id, const ClientID &node_id) {
+ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) {
+  auto task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(INFO) << "Forwarding task " << task_id.hex() << " to " << node_id.hex();
-  // Remove the task from the local queue.
-  auto tasks = local_queues_.RemoveTasks({task_id});
-  RAY_CHECK(tasks.size() == 1);
-  auto task = *tasks.begin();
 
   // Get and serialize the task's uncommitted lineage.
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
@@ -260,11 +272,9 @@ ray::Status NodeManager::ForwardTask(const TaskID &task_id, const ClientID &node
   RAY_CHECK_OK(TcpConnect(socket, client_info.node_manager_address,
                           client_info.local_scheduler_port));
   auto server_conn = TcpServerConnection(std::move(socket));
-  server_conn.WriteMessage(MessageType_ForwardTaskRequest, fbb.GetSize(), fbb.GetBufferPointer());
-
   // TODO(swang): Clean up the lineage cache if possible.
-
-  return ray::Status::OK();
+  return server_conn.WriteMessage(MessageType_ForwardTaskRequest, fbb.GetSize(),
+                                  fbb.GetBufferPointer());
 }
 
 } // namespace raylet
