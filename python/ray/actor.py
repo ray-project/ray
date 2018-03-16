@@ -801,11 +801,6 @@ def make_actor(cls, resources, checkpoint_interval):
     # terminating the worker.
     class Class(cls):
         def __ray_terminate__(self, actor_id):
-            # Record that this actor has been removed so that if this node
-            # dies later, the actor won't be recreated. Alternatively, we could
-            # remove the actor key from Redis here.
-            ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
-                                                       "removed", True)
             # Release the GPUs that this worker was using.
             if len(ray.get_gpu_ids()) > 0:
                 release_gpus_in_use(
@@ -813,6 +808,11 @@ def make_actor(cls, resources, checkpoint_interval):
                     ray.worker.global_worker.local_scheduler_id,
                     ray.get_gpu_ids(),
                     ray.worker.global_worker.redis_client)
+            # Record that this actor has been removed so that if this node
+            # dies later, the actor won't be recreated. Alternatively, we could
+            # remove the actor key from Redis here.
+            ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
+                                                       "removed", True)
             # Disconnect the worker from the local scheduler. The point of this
             # is so that when the worker kills itself below, the local
             # scheduler won't push an error message to the driver.
