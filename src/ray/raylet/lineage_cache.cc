@@ -32,6 +32,11 @@ bool LineageEntry::SetStatus(GcsStatus new_status) {
   }
 }
 
+void LineageEntry::ResetStatus(GcsStatus new_status) {
+  RAY_CHECK(new_status < status_);
+  status_ = new_status;
+}
+
 const UniqueID &LineageEntry::GetUniqueId() const { return entry_id_; }
 
 const std::vector<UniqueID> LineageEntry::GetParentIds() const {
@@ -236,6 +241,28 @@ void LineageCache::AddReadyObject(const ObjectID &object_id, bool remote) {
       << "Lineage cache AddReadyObject for remote transfers not implemented";
   LineageEntry entry(object_id, Object(object_id), GcsStatus_UNCOMMITTED_READY);
   RAY_CHECK(lineage_.SetEntry(std::move(entry)));
+}
+
+void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
+  auto entry = lineage_.PopEntry(task_id);
+  const Task &task = entry->TaskData();
+  // It's only okay to remove a task that is waiting for execution.
+  // TODO(swang): Is this necessarily true when there is reconstruction?
+  RAY_CHECK(entry->GetStatus() == GcsStatus_UNCOMMITTED_WAITING);
+  // Reset the status to REMOTE. We keep the task instead of removing it
+  // completely in case another task is submitted locally that depends on this
+  // one.
+  entry->ResetStatus(GcsStatus_UNCOMMITTED_REMOTE);
+  RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
+  // Remove the return values of the task.
+  for (int64_t i = 0; i < task.GetTaskSpecification().NumReturns(); i++) {
+    ObjectID return_id = task.GetTaskSpecification().ReturnId(i);
+    auto entry = lineage_.PopEntry(return_id);
+    RAY_CHECK(entry->GetStatus() == GcsStatus_UNCOMMITTED_WAITING);
+    // Reset the status to REMOTE for the return values, too.
+    entry->ResetStatus(GcsStatus_UNCOMMITTED_REMOTE);
+    RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
+  }
 }
 
 Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id) const {

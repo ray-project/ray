@@ -281,6 +281,26 @@ TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
   CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed, num_objects_flushed);
 }
 
+TEST_F(LineageCacheTest, TestRemoveWaitingTask) {
+  // Insert a chain of dependent tasks.
+  std::vector<Task> tasks;
+  auto return_values1 =
+      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+
+  auto task_to_remove = tasks[0];
+  auto task_id_to_remove = task_to_remove.GetTaskSpecification().TaskId();
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id_to_remove);
+  flatbuffers::FlatBufferBuilder fbb;
+  auto uncommitted_lineage_message =
+      uncommitted_lineage.ToFlatbuffer(fbb, task_id_to_remove);
+  fbb.Finish(uncommitted_lineage_message);
+  uncommitted_lineage =
+      Lineage(*flatbuffers::GetRoot<ForwardTaskRequest>(fbb.GetBufferPointer()));
+
+  lineage_cache_.RemoveWaitingTask(task_id_to_remove);
+  lineage_cache_.AddWaitingTask(task_to_remove, uncommitted_lineage);
+}
+
 }  // namespace raylet
 
 }  // namespace ray

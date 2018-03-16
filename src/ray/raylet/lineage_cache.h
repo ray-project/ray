@@ -87,6 +87,12 @@ class LineageEntry {
   /// \return Whether the entry was set to the new status.
   bool SetStatus(GcsStatus new_status);
 
+  /// Reset this entry's GCS status to a lower status. The new status must
+  /// be lower than the current status.
+  ///
+  /// \param new_status This must be lower than the current status.
+  void ResetStatus(GcsStatus new_status);
+
   /// Get this entry's ID.
   ///
   /// \return The entry's ID.
@@ -233,6 +239,8 @@ class LineageCache {
   /// \param object_id The object to add.
   /// \param remote Whether the object was created at a remote node.
   void AddReadyObject(const ObjectID &object_id, bool remote);
+
+  void RemoveWaitingTask(const TaskID &task_id);
 
   /// Get the uncommitted lineage of a task. The uncommitted lineage consists
   /// of all tasks and objects in the given task's lineage that have not been
