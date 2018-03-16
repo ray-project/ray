@@ -822,9 +822,54 @@ class DataFrame(object):
             return final_df
 
     def describe(self, percentiles=None, include=None, exclude=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """
+        Generates descriptive statistics that summarize the central tendency,
+        dispersion and shape of a dataset’s distribution, excluding NaN values.
+
+        Args:
+            percentiles (list-like of numbers, optional):
+                The percentiles to include in the output.
+            include: White-list of data types to include in results
+            exclude: Black-list of data types to exclude in results
+
+        Returns: Series/DataFrame of summary statistics
+        """
+
+        obj_columns = [self.columns[i]
+                       for i, t in enumerate(self.dtypes)
+                       if t == np.dtype('O')]
+
+        rdf = self.drop(columns=obj_columns)
+
+        transposed = rdf.T
+
+        count_df = rdf.count()
+        mean_df = transposed.mean(axis=1)
+        std_df = transposed.std(axis=1)
+        min_df = to_pandas(rdf.min())
+
+        if percentiles is None:
+            percentiles = [.25, .50, .75]
+
+        percentiles_dfs = [transposed.quantile(q, axis=1)
+                           for q in percentiles]
+
+        max_df = to_pandas(rdf.max())
+
+        describe_df = pd.DataFrame()
+        describe_df['count'] = count_df
+        describe_df['mean'] = mean_df
+        describe_df['std'] = std_df
+        describe_df['min'] = min_df
+
+        for i in range(len(percentiles)):
+            percentile_str = "{0:.0f}%".format(percentiles[i]*100)
+
+            describe_df[percentile_str] = percentiles_dfs[i]
+
+        describe_df['max'] = max_df
+
+        return describe_df.T
 
     def diff(self, periods=1, axis=0):
         raise NotImplementedError(
@@ -1617,15 +1662,62 @@ class DataFrame(object):
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Computes mean across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the mean on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The mean of the DataFrame. (Pandas series)
+        """
+
+        if axis == 0 or axis is None:
+            return self.T.mean(
+                                axis=1, skipna=skipna,
+                                level=level, numeric_only=numeric_only
+                              )
+        else:
+            func = (lambda df: df.T.mean(axis=0,
+                    skipna=None, level=None, numeric_only=None))
+
+            computed_means = [
+                    _deploy_func.remote(func, part) for part in self._df]
+
+            items = ray.get(computed_means)
+
+            _mean = pd.concat(items)
+
+            return _mean
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
                **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Computes median across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the median on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The median of the DataFrame. (Pandas series)
+        """
+        if axis == 0 or axis is None:
+            return self.T.median(
+                                axis=1, level=level, numeric_only=numeric_only
+                                )
+        else:
+
+            func = (lambda df: df.T.median(axis=0, level=level,
+                                           numeric_only=numeric_only))
+
+            computed_medians = [
+                    _deploy_func.remote(func, part) for part in self._df]
+
+            items = ray.get(computed_medians)
+
+            _median = pd.concat(items)
+
+            return _median
 
     def melt(self, id_vars=None, value_vars=None, var_name=None,
              value_name='value', col_level=None):
@@ -1798,9 +1890,58 @@ class DataFrame(object):
 
     def quantile(self, q=0.5, axis=0, numeric_only=True,
                  interpolation='linear'):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Return values at the given quantile over requested axis,
+            a la numpy.percentile.
+
+        Args:
+            q (float): 0 <= q <= 1, the quantile(s) to compute
+            axis (int): 0 or ‘index’ for row-wise,
+                        1 or ‘columns’ for column-wise
+            interpolation: {'linear’, ‘lower’, ‘higher’, ‘midpoint’, ‘nearest’}
+                Specifies which interpolation method to use
+
+        Returns:
+            quantiles : Series or DataFrame
+                    If q is an array, a DataFrame will be returned where the
+                    index is q, the columns are the columns of self, and the
+                    values are the quantiles.
+
+                    If q is a float, a Series will be returned where the
+                    index is the columns of self and the values
+                    are the quantiles.
+        """
+
+        if (type(q) is list):
+            return DataFrame([self.quantile(q_i, axis=axis,
+                                            numeric_only=numeric_only,
+                                            interpolation=interpolation)
+                              for q_i in q], q, self.index)
+
+        # this section can be replaced with select_dtypes()
+
+        obj_columns = [self.columns[i]
+                       for i, t in enumerate(self.dtypes)
+                       if t == np.dtype('O')]
+
+        rdf = self.drop(columns=obj_columns)
+
+        if axis == 0 or axis is None:
+            return rdf.T.quantile(q, axis=1, numeric_only=numeric_only,
+                                  interpolation=interpolation)
+        else:
+            computed_quantiles = [
+                _deploy_func.remote(
+                        lambda df: df.quantile(q, axis=1,
+                                               numeric_only=numeric_only,
+                                               interpolation=interpolation
+                                               ), part)
+                for part in self._df]
+
+            items = ray.get(computed_quantiles)
+
+            _quantile = pd.concat(items)
+
+            return _quantile
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression
@@ -2273,9 +2414,34 @@ class DataFrame(object):
 
     def std(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Computes standard deviation across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the std on.
+            skipna (bool): True to skip NA values, false otherwise.
+            ddof (int): degrees of freedom
+
+        Returns:
+            The std of the DataFrame (Pandas Series)
+        """
+        if axis == 0 or axis is None:
+            return self.T.std(
+                        axis=1, skipna=skipna, level=level,
+                        ddof=ddof, numeric_only=numeric_only)
+        else:
+
+            computed_stds = [_deploy_func.remote(
+                                        lambda df: df.T.std(
+                                            axis=0, skipna=skipna, level=level,
+                                            ddof=ddof,
+                                            numeric_only=numeric_only), part)
+                             for part in self._df]
+
+            items = ray.get(computed_stds)
+
+            _stds = pd.concat(items)
+
+            return _stds
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -2529,9 +2695,32 @@ class DataFrame(object):
 
     def var(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Computes variance across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the variance on.
+            skipna (bool): True to skip NA values, false otherwise.
+            ddof (int): degrees of freedom
+
+        Returns:
+            The variance of the DataFrame.
+        """
+        if axis == 0 or axis is None:
+            return self.T.var(axis=1, skipna=skipna, level=level, ddof=ddof,
+                              numeric_only=numeric_only)
+        else:
+            computed_vars = [_deploy_func.remote(lambda df: df.T.var(
+                                            axis=0, skipna=skipna, level=level,
+                                            ddof=ddof,
+                                            numeric_only=numeric_only),
+                                          part)
+                             for part in self._df]
+
+            items = ray.get(computed_vars)
+
+            _var = pd.concat(items)
+
+            return _var
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):

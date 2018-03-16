@@ -202,6 +202,15 @@ def test_int_dataframe():
     test_round(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
 
+    test_mean(ray_df, pandas_df)
+    test_var(ray_df, pandas_df)
+    test_std(ray_df, pandas_df)
+    test_median(ray_df, pandas_df)
+    test_quantile(ray_df, pandas_df, .25)
+    test_quantile(ray_df, pandas_df, .5)
+    test_quantile(ray_df, pandas_df, .75)
+    test_describe(ray_df, pandas_df)
+
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -315,6 +324,15 @@ def test_float_dataframe():
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
+
+    test_mean(ray_df, pandas_df)
+    test_var(ray_df, pandas_df)
+    test_std(ray_df, pandas_df)
+    test_median(ray_df, pandas_df)
+    test_quantile(ray_df, pandas_df, .25)
+    test_quantile(ray_df, pandas_df, .5)
+    test_quantile(ray_df, pandas_df, .75)
+    test_describe(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -432,6 +450,15 @@ def test_mixed_dtype_dataframe():
     test_round(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
 
+    test_mean(ray_df, pandas_df)
+    test_var(ray_df, pandas_df)
+    test_std(ray_df, pandas_df)
+    test_median(ray_df, pandas_df)
+    test_quantile(ray_df, pandas_df, .25)
+    test_quantile(ray_df, pandas_df, .5)
+    test_quantile(ray_df, pandas_df, .75)
+    test_describe(ray_df, pandas_df)
+
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -548,6 +575,15 @@ def test_nan_dataframe():
     test_transpose(ray_df, pandas_df)
     test_round(ray_df, pandas_df)
     test_query(ray_df, pandas_df, query_funcs)
+
+    test_mean(ray_df, pandas_df)
+    test_var(ray_df, pandas_df)
+    test_std(ray_df, pandas_df)
+    test_median(ray_df, pandas_df)
+    test_quantile(ray_df, pandas_df, .25)
+    test_quantile(ray_df, pandas_df, .5)
+    test_quantile(ray_df, pandas_df, .75)
+    test_describe(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -860,11 +896,9 @@ def test_cumsum(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.cumsum(), pandas_df.cumsum()))
 
 
-def test_describe():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.describe()
+@pytest.fixture
+def test_describe(ray_df, pandas_df):
+    assert(ray_df.describe().equals(pandas_df.describe()))
 
 
 def test_diff():
@@ -1743,18 +1777,14 @@ def test_max(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.max(), pandas_df.max()))
 
 
-def test_mean():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.mean()
+@pytest.fixture
+def test_mean(ray_df, pandas_df):
+    assert(ray_df.mean().equals(pandas_df.mean()))
 
 
-def test_median():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.median()
+@pytest.fixture
+def test_median(ray_df, pandas_df):
+    assert(ray_df.median().equals(pandas_df.median()))
 
 
 def test_melt():
@@ -1915,11 +1945,9 @@ def test_product():
         ray_df.product()
 
 
-def test_quantile():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.quantile()
+@pytest.fixture
+def test_quantile(ray_df, pandas_df, q):
+    assert(ray_df.quantile(q).equals(pandas_df.quantile(q)))
 
 
 @pytest.fixture
@@ -2424,11 +2452,9 @@ def test_stack():
         ray_df.stack()
 
 
-def test_std():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.std()
+@pytest.fixture
+def test_std(ray_df, pandas_df):
+    assert(ray_df.std().equals(pandas_df.std()))
 
 
 def test_sub():
@@ -2688,11 +2714,9 @@ def test_update():
         ray_df.update(None)
 
 
-def test_var():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.var()
+@pytest.fixture
+def test_var(ray_df, pandas_df):
+    assert(ray_df.var().equals(pandas_df.var()))
 
 
 def test_where():
