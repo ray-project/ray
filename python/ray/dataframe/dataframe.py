@@ -120,25 +120,11 @@ class DataFrame(object):
         def head(df, n):
             """Compute the head for this without creating a new DataFrame"""
 
-            sizes = df._row_lengths
-            cumulative = np.cumsum(np.array(sizes))
-            new_dfs = [df._row_partitions[i]
-                       for i in range(len(cumulative))
-                       if cumulative[i] < n]
-
-            last_index = len(new_dfs)
-
-            # this happens when we only need from the first partition
-            if last_index == 0:
-                num_to_transfer = n
-            else:
-                num_to_transfer = n - cumulative[last_index - 1]
-
-            new_dfs.append(_deploy_func.remote(lambda df: df.head(num_to_transfer),
-                                               df._row_partitions[last_index]))
+            new_dfs = _map_partitions(lambda df: df.head(n),
+                                      df._col_partitions)
 
             index = df._row_index.head(n).index
-            pd_head = pd.concat(ray.get(new_dfs))
+            pd_head = pd.concat(ray.get(new_dfs), axis=1)
             pd_head.index = index
             pd_head.columns = df.columns
             return pd_head
@@ -146,33 +132,11 @@ class DataFrame(object):
         def tail(df, n):
             """Compute the tail for this without creating a new DataFrame"""
 
-            sizes = self._row_lengths
+            new_dfs = _map_partitions(lambda df: df.tail(n),
+                                      df._col_partitions)
 
-            if n >= sum(sizes):
-                return self
-
-            cumulative = np.cumsum(np.array(sizes[::-1]))
-
-            reverse_dfs = self._row_partitions[::-1]
-            new_dfs = [reverse_dfs[i]
-                       for i in range(len(cumulative))
-                       if cumulative[i] < n]
-
-            last_index = len(new_dfs)
-
-            # this happens when we only need from the last partition
-            if last_index == 0:
-                num_to_transfer = n
-            else:
-                num_to_transfer = n - cumulative[last_index - 1]
-
-            new_dfs.append(_deploy_func.remote(lambda df: df.tail(num_to_transfer),
-                                               reverse_dfs[last_index]))
-
-            new_dfs.reverse()
-
-            index = self._row_index.tail(n).index
-            pd_tail = pd.concat(ray.get(new_dfs))
+            index = df._row_index.tail(n).index
+            pd_tail = pd.concat(ray.get(new_dfs), axis=1)
             pd_tail.index = index
             pd_tail.columns = df.columns
             return pd_tail
@@ -453,7 +417,7 @@ class DataFrame(object):
         Returns:
             A tuple with the size of each dimension as they appear in axes().
         """
-        return (len(self.index), len(self.columns))
+        return len(self.index), len(self.columns)
 
     def _update_inplace(self, row_partitions=None, col_partitions=None,
                         columns=None, index=None):
@@ -510,23 +474,23 @@ class DataFrame(object):
         # Since we want to keep the existing DF in a usable state, we need to carefully catch
         # and handle this error
         # TODO Make this asynchronous
-        if index is not None and len(index) != len(new_row_index):
-            self._row_partitions = old_row_parts
-            self._col_partitions = old_col_parts
-            raise ValueError("Length mismatch between `index` and new row index.", \
-                             "Expected: {0}, Got: {1}".format(len(new_row_index), len(index)))
-
-        if columns is not None and len(columns) != len(new_col_index):
-            self._row_partitions = old_row_parts
-            self._col_partitions = old_col_parts
-            raise ValueError("Length mismatch between `columns` and new column index.", \
-                             "Expected: {0}, Got: {1}".format(len(new_col_index), len(columns)))
+        # if index is not None and len(index) != len(new_row_index):
+        #     self._row_partitions = old_row_parts
+        #     self._col_partitions = old_col_parts
+        #     raise ValueError("Length mismatch between `index` and new row index.", \
+        #                      "Expected: {0}, Got: {1}".format(len(new_row_index), len(index)))
+        #
+        # if columns is not None and len(columns) != len(new_col_index):
+        #     self._row_partitions = old_row_parts
+        #     self._col_partitions = old_col_parts
+        #     raise ValueError("Length mismatch between `columns` and new column index.", \
+        #                      "Expected: {0}, Got: {1}".format(len(new_col_index), len(columns)))
 
         self._row_lengths, self._row_index = new_row_lengths, new_row_index
         self._col_lengths, self._col_index = new_col_lengths, new_col_index
 
         if columns is not None:
-            self._col_index = columns
+            self.columns = columns
 
         if index is not None:
             self.index = index
@@ -539,6 +503,7 @@ class DataFrame(object):
         """
         new_cols = self.columns.map(lambda x: str(prefix) + str(x))
         return DataFrame(row_partitions=self._row_partitions,
+                         col_partitions=self._col_partitions,
                          columns=new_cols,
                          index=self.index)
 
@@ -550,6 +515,7 @@ class DataFrame(object):
         """
         new_cols = self.columns.map(lambda x: str(x) + str(suffix))
         return DataFrame(row_partitions=self._row_partitions,
+                         col_partitions=self._col_partitions,
                          columns=new_cols,
                          index=self.index)
 
@@ -651,36 +617,21 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
-        if axis is not None:
-            self._row_index._get_axis_name(axis)
 
-        sum_df = pd.concat(ray.get(
+        axis = self._row_index._get_axis_name(axis) if axis is not None \
+            else 'index'
+
+        result = pd.concat(ray.get(
             _map_partitions(lambda df: df.sum(axis=axis,
                                               skipna=skipna,
                                               level=level,
                                               numeric_only=numeric_only),
-                            self._row_partitions if axis == 1 or axis == 'rows'
+                            self._row_partitions if axis == 'columns'
                             else self._col_partitions)))
-        sum_df.index = self.columns
-        return sum_df
+        result.index = self.index if axis == 'columns' else self.columns
+        return result
 
         # # TODO: We don't support `level` right now, so df.sum always returns a pd.Series
-        # #       Generalize when we support MultiIndexes, and distributed Series (?)
-        # if axis == 1:
-        #      return pd.DataFrame(pd.concat(
-        #              ray.get(
-        #                  self._map_row_partitions(
-        #                      lambda df: df.sum(axis=axis,
-        #                                        skipna=skipna,
-        #                                        level=level,
-        #                                        numeric_only=numeric_only)))))
-        #
-        # # TODO: It's probably faster to do a _map_cols_partition instead of a transpose
-        # elif axis == 0 or axis is None:
-        #     return self.T.sum(axis=1, skipna=skipna, level=level,
-        #                       numeric_only=numeric_only)
-        # else:
-        #     raise ValueError("axis parameter must be 0 or 1.")
 
     def abs(self):
         """Apply an absolute value function to all numberic columns.
@@ -696,9 +647,10 @@ class DataFrame(object):
         new_rows = _map_partitions(lambda df: df.abs(), self._row_partitions)
         new_cols = _map_partitions(lambda df: df.abs(), self._col_partitions)
 
-        return DataFrame(columns=self.columns,
-                         col_partitions=new_cols,
-                         row_partitions=new_rows)
+        return DataFrame(col_partitions=new_cols,
+                         row_partitions=new_rows,
+                         columns=self.columns,
+                         index=self.index)
 
     def isin(self, values):
         """Fill a DataFrame with booleans for cells contained in values.
@@ -717,9 +669,10 @@ class DataFrame(object):
         new_cols = _map_partitions(lambda df: df.isin(values),
                                    self._col_partitions)
 
-        return DataFrame(columns=self.columns,
-                         col_partitions=new_cols,
-                         row_partitions=new_rows)
+        return DataFrame(col_partitions=new_cols,
+                         row_partitions=new_rows,
+                         columns=self.columns,
+                         index=self.index)
 
     def isna(self):
         """Fill a DataFrame with booleans for cells containing NA.
@@ -733,9 +686,10 @@ class DataFrame(object):
         new_rows = _map_partitions(lambda df: df.isna(), self._row_partitions)
         new_cols = _map_partitions(lambda df: df.isna(), self._col_partitions)
 
-        return DataFrame(columns=self.columns,
-                         col_partitions=new_cols,
-                         row_partitions=new_rows)
+        return DataFrame(col_partitions=new_cols,
+                         row_partitions=new_rows,
+                         columns=self.columns,
+                         index=self.index)
 
     def isnull(self):
         """Fill a DataFrame with booleans for cells containing a null value.
@@ -749,9 +703,10 @@ class DataFrame(object):
         new_rows = _map_partitions(lambda df: df.isnull, self._row_partitions)
         new_cols = _map_partitions(lambda df: df.isnull, self._col_partitions)
 
-        return DataFrame(columns=self.columns,
-                         col_partitions=new_cols,
-                         row_partitions=new_rows)
+        return DataFrame(col_partitions=new_cols,
+                         row_partitions=new_rows,
+                         columns=self.columns,
+                         index=self.index)
 
     def keys(self):
         """Get the info axis for the DataFrame.
@@ -831,9 +786,12 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies df.all(axis=1)
             to the transpose of df.
         """
+        if axis is not None:
+            self._row_index._get_axis_name(axis)
         # Use .copy() to prevent read-only error
         partitions, res_index = (self._row_partitions, self._row_index.copy()) \
-                if axis == 1 else (self._col_partitions, self._col_index.copy())
+                if axis == 1 or axis == 'rows'\
+                else (self._col_partitions, self._col_index.copy())
 
         series = ray.get(
                     _map_partitions(
@@ -939,9 +897,10 @@ class DataFrame(object):
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
         """Synonym for DataFrame.fillna(method='bfill')
         """
-        new_df = self.fillna(
-            method='bfill', axis=axis, limit=limit, downcast=downcast
-        )
+        new_df = self.fillna(method='bfill',
+                             axis=axis,
+                             limit=limit,
+                             downcast=downcast)
         if inplace:
             self._row_partitions = new_df._row_partitions
             self.columns = new_df.columns
@@ -1025,24 +984,28 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def count(self, axis=0, level=None, numeric_only=False):
-        if axis == 1:
-            return self.T.count(axis=0,
-                                level=level,
-                                numeric_only=numeric_only)
-        else:
-            temp_index = [idx
-                          for _ in range(len(self._row_partitions))
-                          for idx in self.columns]
+        """Get the count of non-null objects in the DataFrame.
 
-            collapsed_df = sum(
-                ray.get(
-                    _map_partitions(
-                        lambda df: df.count(
-                            axis=axis,
-                            level=level,
-                            numeric_only=numeric_only),
-                        self._row_partitions)))
-            return collapsed_df
+        Arguments:
+            axis: 0 or ‘index’ for row-wise, 1 or ‘columns’ for column-wise.
+            level: If the axis is a MultiIndex (hierarchical), count along a
+                particular level, collapsing into a DataFrame.
+            numeric_only: Include only float, int, boolean data
+
+        Returns:
+            The count, in a Series (or DataFrame if level is specified).
+        """
+        axis = self._row_index._get_axis_name(axis)
+
+        result = pd.concat(ray.get(
+            _map_partitions(lambda df: df.count(axis=axis,
+                                                level=level,
+                                                numeric_only=numeric_only),
+                            self._row_partitions if axis == 'columns'
+                            else self._col_partitions)))
+
+        result.index = self.index if axis == 'columns' else self.columns
+        return result
 
     def cov(self, min_periods=None):
         raise NotImplementedError(
@@ -1737,24 +1700,11 @@ class DataFrame(object):
         if n >= sum(sizes):
             return self
 
-        cumulative = np.cumsum(np.array(sizes))
-        new_dfs = [self._row_partitions[i]
-                   for i in range(len(cumulative))
-                   if cumulative[i] < n]
-
-        last_index = len(new_dfs)
-
-        # this happens when we only need from the first partition
-        if last_index == 0:
-            num_to_transfer = n
-        else:
-            num_to_transfer = n - cumulative[last_index - 1]
-
-        new_dfs.append(_deploy_func.remote(lambda df: df.head(num_to_transfer),
-                                           self._row_partitions[last_index]))
+        new_dfs = _map_partitions(lambda df: df.head(n),
+                                  self._col_partitions)
 
         index = self._row_index.head(n).index
-        return DataFrame(row_partitions=new_dfs,
+        return DataFrame(col_partitions=new_dfs,
                          columns=self.columns,
                          index=index)
 
@@ -1917,11 +1867,18 @@ class DataFrame(object):
         Returns:
             A generator that iterates over the rows of the frame.
         """
+        def update_iterrow(series, i):
+            """Helper function to correct the columns + name of the Series."""
+            series.index = self.columns
+            series.name = list(self.index)[i]
+            return series
+
         iters = ray.get([_deploy_func.remote(
             lambda df: list(df.iterrows()), part)
             for part in self._row_partitions])
         iters = itertools.chain.from_iterable(iters)
-        series = map(lambda idx_series_tuple: idx_series_tuple[1], iters)
+        series = map(lambda s: update_iterrow(s[1][1], s[0]), enumerate(iters))
+
         return zip(self.index, series)
 
     def items(self):
@@ -2472,8 +2429,8 @@ class DataFrame(object):
         if axes_is_columns:
             renamed.columns.name = mapper
         else:
-            renamed._index.rename_axis(mapper, axis=axis, copy=copy,
-                                       inplace=True)
+            renamed._row_index.rename_axis(mapper, axis=axis, copy=copy,
+                                           inplace=True)
         if not inplace:
             return renamed
 
@@ -2493,7 +2450,7 @@ class DataFrame(object):
         if axes_is_columns:
             renamed.columns.set_names(name)
         else:
-            renamed._index.set_names(name)
+            renamed._row_index.set_names(name)
 
         if not inplace:
             return renamed
@@ -2918,28 +2875,11 @@ class DataFrame(object):
         if n >= sum(sizes):
             return self
 
-        cumulative = np.cumsum(np.array(sizes[::-1]))
-
-        reverse_dfs = self._row_partitions[::-1]
-        new_dfs = [reverse_dfs[i]
-                   for i in range(len(cumulative))
-                   if cumulative[i] < n]
-
-        last_index = len(new_dfs)
-
-        # this happens when we only need from the last partition
-        if last_index == 0:
-            num_to_transfer = n
-        else:
-            num_to_transfer = n - cumulative[last_index - 1]
-
-        new_dfs.append(_deploy_func.remote(lambda df: df.tail(num_to_transfer),
-                                           reverse_dfs[last_index]))
-
-        new_dfs.reverse()
+        new_dfs = _map_partitions(lambda df: df.tail(n),
+                                  self._col_partitions)
 
         index = self._row_index.tail(n).index
-        return DataFrame(row_partitions=new_dfs,
+        return DataFrame(col_partitions=new_dfs,
                          columns=self.columns,
                          index=index)
 
