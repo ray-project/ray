@@ -109,8 +109,6 @@ def test_copy(ray_df):
 
 @pytest.fixture
 def test_sum(ray_df, pandas_df):
-    # TODO: FIX THIS
-    return
     assert(ray_df.sum().sort_index().equals(pandas_df.sum().sort_index()))
 
 

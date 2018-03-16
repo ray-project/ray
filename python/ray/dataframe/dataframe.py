@@ -399,8 +399,10 @@ class DataFrame(object):
         """
         # The ftypes are common across all partitions.
         # The first partition will be enough.
-        return ray.get(_deploy_func.remote(lambda df: df.ftypes,
-                                           self._row_partitions[0]))
+        result = ray.get(_deploy_func.remote(lambda df: df.ftypes,
+                                             self._row_partitions[0]))
+        result.index = self.columns
+        return result
 
     @property
     def dtypes(self):
@@ -650,8 +652,8 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
-        # TODO: Fix this function - it does not work.
-        self._row_index._get_axis_name(axis)
+        if axis is not None:
+            self._row_index._get_axis_name(axis)
 
         sum_df = pd.concat(ray.get(
             _map_partitions(lambda df: df.sum(axis=axis,
@@ -3278,7 +3280,7 @@ class DataFrame(object):
             key: key to delete
         """
         def del_helper(df):
-            df.__delitem__(key)
+            df.__delitem__(self.columns.index(key))
             return df
         self._row_partitions = _map_partitions(del_helper, self._row_partitions)
 
