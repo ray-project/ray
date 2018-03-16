@@ -126,7 +126,7 @@ Status ClientTable::Disconnect() {
 const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
   RAY_CHECK(!client_id.is_nil());
   auto entry = client_cache_.find(client_id);
-  if (entry != client_cache_.end() && entry->second.is_insertion) {
+  if (entry != client_cache_.end()) {
     return entry->second;
   } else {
     // If the requested client was not found, return a reference to the nil

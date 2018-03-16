@@ -55,7 +55,7 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
   std::lock_guard<std::mutex> lock(gcs_mutex);
   const ClientTableDataT &data = gcs_client_->client_table().GetClient(client_id);
   ClientID result_client_id = ClientID::from_binary(data.client_id);
-  if(result_client_id == ClientID::nil()){
+  if(result_client_id == ClientID::nil() || !data.is_insertion){
     fail_cb(ray::Status::RedisError("ClientID not found."));
   } else {
     const auto &info =
