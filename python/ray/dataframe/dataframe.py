@@ -1897,9 +1897,10 @@ class DataFrame(object):
             for part in self._row_partitions])
 
         def concat_iters(iterables):
-            for partitions in zip(*iterables):
-                series = pd.concat([_series for _, _series in partitions])
+            for partitions in enumerate(zip(*iterables)):
+                series = pd.concat([_series for _, _series in partitions[1]])
                 series.index = self.index
+                series.name = list(self.columns)[partitions[0]]
                 yield (series.name, series)
 
         return concat_iters(iters)
