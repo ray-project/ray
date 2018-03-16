@@ -261,6 +261,7 @@ Status LineageCache::Flush() {
         auto parent = lineage_.GetEntry(parent_id);
         if (parent && parent->GetStatus() != GcsStatus_COMMITTED) {
           all_parents_committed = false;
+          break;
         }
       }
       if (all_parents_committed) {
@@ -299,7 +300,7 @@ Status LineageCache::Flush() {
       auto parent_ids = entry.GetParentIds();
       RAY_CHECK(parent_ids.size() == 1);
       auto parent = lineage_.GetEntry(parent_ids[0]);
-      if (!parent || parent->GetStatus() >= GcsStatus_COMMITTED) {
+      if (!parent || parent->GetStatus() >= GcsStatus_COMMITTING || parent->GetStatus() >= GcsStatus_COMMITTED) {
         ready_object_ids.push_back(entry_id);
       }
     }

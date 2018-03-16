@@ -252,6 +252,7 @@ class LineageCache {
 
  private:
   void HandleEntryCommitted(const UniqueID &unique_id);
+
   ClientID client_id_;
   gcs::Storage<TaskID, TaskFlatbuffer> &task_storage_;
   gcs::Storage<ObjectID, ObjectTableData> &object_storage_;
