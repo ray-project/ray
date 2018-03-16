@@ -81,7 +81,6 @@ class DataFrame(object):
                                                   index,
                                                   columns)
 
-
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
         self._row_lengths, self._row_index = \
@@ -306,7 +305,7 @@ class DataFrame(object):
     def _compute_row_lengths(self):
         """Updates the stored lengths of DataFrame partions
         """
-        self._row_lengths = [_deploy_func.remote(_get_row_lengths, d)
+        self._row_lengths = [_deploy_func.remote(lambda df: len(df), d)
                              for d in self._row_partitions]
 
     def _get_row_lengths(self):
@@ -339,7 +338,7 @@ class DataFrame(object):
     def _compute_col_lengths(self):
         """Updates the stored lengths of DataFrame partions
         """
-        self._col_lengths = [_deploy_func.remote(_get_col_lengths, d)
+        self._col_lengths = [_deploy_func.remote(lambda df: df.shape[1], d)
                              for d in self._col_partitions]
 
     def _get_col_lengths(self):
@@ -1320,16 +1319,25 @@ class DataFrame(object):
         try:
             if not is_axis_zero or columns is not None:
                 values = labels if labels else columns
+                new_values = [self.columns.get_loc(i) for i in values]
                 new_df_rows = _map_partitions(
                     lambda df: df.drop(
-                        values, axis=1, level=level, errors='ignore'),
+                        new_values, axis=1, level=level, errors='ignore'),
                     self._row_partitions
                 )
-                new_columns = self.columns.to_series().drop(values,
-                                                            errors=errors)
-                new_columns = pd.Index(new_columns)
+                new_columns = self._col_index.drop(values)
+                
+                new_df_cols = self._col_partitions.copy()
+                col_parts_to_del = pd.Series(self._col_index.loc[values, 'partition']).unique()
+                for i in col_parts_to_del:
+                    to_del = [self._col_index.loc[x, 'index_within_partition'] 
+                        for x in values if self._col_index.loc[x, 'partition'] == i]
+                    new_df_cols[i] = _deploy_func.remote(lambda df: df.drop(to_del), self._col_partitions[i])
+
+
                 new_df = DataFrame(columns=new_columns,
-                                   row_partitions=new_df_rows)
+                                   row_partitions=new_df_rows,
+                                   col_partitions=new_df_cols)
         except (ValueError, KeyError):
             if errors == 'raise':
                 raise
@@ -3279,9 +3287,13 @@ class DataFrame(object):
         Args:
             key: key to delete
         """
+        to_delete = self.columns.get_loc(key)
+
         def del_helper(df):
-            df.__delitem__(self.columns.index(key))
+            df.__delitem__(to_delete)
+            df.reset_index(drop=True, inplace=True)
             return df
+
         self._row_partitions = _map_partitions(del_helper, self._row_partitions)
 
         # TODO: See if this is faster than just:
