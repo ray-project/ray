@@ -42,9 +42,6 @@ class Raylet {
   /// Destroy the NodeServer.
   ~Raylet();
 
-  // TODO(melih): Get rid of this method.
-  ObjectManager &GetObjectManager();
-
  private:
   /// Register GCS client.
   ClientID RegisterGcs(boost::asio::io_service &io_service);

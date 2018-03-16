@@ -7,9 +7,7 @@
 
 namespace ray {
 
-namespace raylet {
-
-class MockRaylet {
+class MockServer {
 
  private:
 
@@ -20,7 +18,7 @@ class MockRaylet {
 
  public:
 
-  MockRaylet(boost::asio::io_service &main_service,
+  MockServer(boost::asio::io_service &main_service,
              boost::asio::io_service &object_manager_service,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
@@ -36,7 +34,7 @@ class MockRaylet {
     DoAcceptTcp();
   }
 
-  ~MockRaylet() {
+  ~MockServer() {
     (void) gcs_client_->client_table().Disconnect();
     RAY_CHECK_OK(object_manager_.Terminate());
   }
@@ -67,7 +65,7 @@ class MockRaylet {
     TCPClientConnection::pointer new_connection =
         TCPClientConnection::Create(tcp_acceptor_.get_io_service());
     tcp_acceptor_.async_accept(new_connection->GetSocket(),
-                               boost::bind(&MockRaylet::HandleAcceptTcp, this, new_connection,
+                               boost::bind(&MockServer::HandleAcceptTcp, this, new_connection,
                                            boost::asio::placeholders::error));
   }
 
@@ -112,7 +110,7 @@ class TestRaylet : public ::testing::Test {
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
-    server1.reset(new MockRaylet(main_service,
+    server1.reset(new MockServer(main_service,
                                  object_manager_service,
                                  om_config_1,
                                  gcs_client_1));
@@ -121,7 +119,7 @@ class TestRaylet : public ::testing::Test {
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
-    server2.reset(new MockRaylet(main_service,
+    server2.reset(new MockServer(main_service,
                                  object_manager_service,
                                  om_config_2,
                                  gcs_client_2));
@@ -177,8 +175,8 @@ class TestRaylet : public ::testing::Test {
   boost::asio::io_service object_manager_service;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
-  std::unique_ptr<MockRaylet> server1;
-  std::unique_ptr<MockRaylet> server2;
+  std::unique_ptr<MockServer> server1;
+  std::unique_ptr<MockServer> server2;
 
   plasma::PlasmaClient client1;
   plasma::PlasmaClient client2;
@@ -370,12 +368,10 @@ TEST_F(TestGCSIntegration, TestRayletCommands) {
   main_service.run();
 }
 
-} // namespace raylet
-
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ray::raylet::test_executable = std::string(argv[0]);
+  ray::test_executable = std::string(argv[0]);
   return RUN_ALL_TESTS();
 }

@@ -148,8 +148,6 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
   DoAccept();
 }
 
-ObjectManager &Raylet::GetObjectManager() { return object_manager_; }
-
 } // namespace raylet
 
 }  // namespace ray
