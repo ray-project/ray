@@ -11,6 +11,7 @@ pendulum-ppo:
         sgd_stepsize: 0.0003
         sgd_batchsize: 64
         num_sgd_iter: 10
-        horizon: 100
+        horizon: 200
+        gae: false
         model:
             fcnet_hiddens: [64, 64]

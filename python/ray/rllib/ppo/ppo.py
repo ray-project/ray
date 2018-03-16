@@ -223,6 +223,8 @@ class PPOAgent(Agent):
             elif kl_i < 0.5 * config["kl_target"]:
                 self.kl_coeff[i] *= 0.5
 
+        print('kl is', kl)
+        print('kl coeff is', self.kl_coeff)
         info = {
             "kl_divergence": np.mean(kl),
             "kl_coefficient": np.mean(self.kl_coeff),
