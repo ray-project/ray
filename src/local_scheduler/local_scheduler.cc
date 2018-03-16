@@ -583,9 +583,10 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
       ActorID actor_creation_id = TaskSpec_actor_creation_id(spec);
       WorkerID driver_id = TaskSpec_driver_id(spec);
 
-      // TODO(rkn): If the driver corresponding to this actor has died, we
-      // really ought to kill the actor here. However, finish_task does not have
-      // ownership of the worker struct.
+      // The driver must be alive because if the driver had been removed, then
+      // this worker would have been killed (because it was executing a task for
+      // the driver).
+      RAY_CHECK(is_driver_alive(state, driver_id));
 
       // Update the worker struct with this actor ID.
       RAY_CHECK(worker->actor_id.is_nil());

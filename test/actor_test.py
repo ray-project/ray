@@ -1865,16 +1865,16 @@ class ActorPlacementAndResources(unittest.TestCase):
             def method(self):
                 pass
 
+        # Make sure the first two actors get created and the third one does
+        # not.
         actor1 = ResourceActor1.remote()
-        actor2 = ResourceActor1.remote()
-        actor3 = ResourceActor1.remote()
         result1 = actor1.method.remote()
-        result2 = actor2.method.remote()
-        result3 = actor3.method.remote()
-        # Make sure the first two actors have been created and the third one
-        # has not.
         ray.wait([result1])
+        actor2 = ResourceActor1.remote()
+        result2 = actor2.method.remote()
         ray.wait([result2])
+        actor3 = ResourceActor1.remote()
+        result3 = actor3.method.remote()
         ready_ids, _ = ray.wait([result3], timeout=200)
         self.assertEqual(len(ready_ids), 0)
 
@@ -1890,7 +1890,12 @@ class ActorPlacementAndResources(unittest.TestCase):
         results = []
         for _ in range(3):
             actor = ResourceActor2.remote()
-            results.append(actor.method.remote())
+            object_id = actor.method.remote()
+            results.append(object_id)
+            # Wait for the task to execute. We do this because otherwise it may
+            # be possible for the __ray_terminate__ task to execute before the
+            # method.
+            ray.wait([object_id])
 
         ray.get(results)
 
