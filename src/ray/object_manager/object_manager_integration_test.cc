@@ -28,8 +28,7 @@ class MockServer {
     gcs_client_(gcs_client),
     object_manager_(main_service, object_manager_service, object_manager_config, gcs_client)
   {
-    ClientID client_id = RegisterGcs(main_service);
-    object_manager_.SetClientID(client_id);
+    RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptTcp();
   }
@@ -43,22 +42,19 @@ class MockServer {
 
  private:
 
-  ClientID RegisterGcs(boost::asio::io_service &io_service){
+  ray::Status RegisterGcs(boost::asio::io_service &io_service){
+      RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379));
+      RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
+
       boost::asio::ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
       std::string ip = endpoint.address().to_string();
       unsigned short object_manager_port = endpoint.port();
 
-      ClientID client_id = ClientID::from_random();
-
-      ClientTableDataT client_info;
-      client_info.client_id = client_id.binary();
+      ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
       client_info.node_manager_address = ip;
       client_info.local_scheduler_port = object_manager_port;
       client_info.object_manager_port = object_manager_port;
-      RAY_CHECK_OK(gcs_client_->Connect("127.0.0.1", 6379, client_info));
-      RAY_CHECK_OK(gcs_client_->Attach(io_service));
-      RAY_CHECK_OK(gcs_client_->client_table().Connect());
-      return client_id;
+      return gcs_client_->client_table().Connect(client_info);
   }
 
   void DoAcceptTcp() {

@@ -63,9 +63,7 @@ class ObjectManager {
                          ObjectManagerConfig config,
                          std::unique_ptr<ObjectDirectoryInterface> od);
 
-  /// \param client_id Set the client id associated with this node.
-  void SetClientID(const ClientID &client_id);
-
+  // TODO(hme): Remove this method.
   /// \return Get the client id associated with this node.
   ClientID GetClientID();
 

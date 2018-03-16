@@ -23,12 +23,7 @@ class TestGcs : public ::testing::Test {
  public:
   TestGcs() {
     client_ = std::make_shared<gcs::AsyncGcsClient>();
-    ClientTableDataT client_info;
-    client_info.client_id = ClientID::from_random().binary();
-    client_info.node_manager_address = "127.0.0.1";
-    client_info.local_scheduler_port = 0;
-    client_info.object_manager_port = 0;
-    RAY_CHECK_OK(client_->Connect("127.0.0.1", 6379, client_info));
+    RAY_CHECK_OK(client_->Connect("127.0.0.1", 6379));
 
     job_id_ = JobID::from_random();
   }
@@ -229,6 +224,7 @@ void ClientTableNotification(gcs::AsyncGcsClient *client, const UniqueID &id,
   ClientID added_id = client->client_table().GetLocalClientId();
   ASSERT_EQ(ClientID::from_binary(data->client_id), added_id);
   ASSERT_EQ(data->is_insertion, is_insertion);
+  ASSERT_FALSE(data->node_manager_address.empty());
 
   auto cached_client = client->client_table().GetClient(added_id);
   ASSERT_EQ(ClientID::from_binary(cached_client.client_id), added_id);
@@ -245,9 +241,14 @@ void TestClientTableConnect(const JobID &job_id,
         ClientTableNotification(client, id, data, true);
         test->Stop();
       });
+
   // Connect and disconnect to client table. We should receive notifications
   // for the addition and removal of our own entry.
-  RAY_CHECK_OK(client->client_table().Connect());
+  ClientTableDataT local_client_info = client->client_table().GetLocalClient();
+  local_client_info.node_manager_address = "127.0.0.1";
+  local_client_info.local_scheduler_port = 0;
+  local_client_info.object_manager_port = 0;
+  RAY_CHECK_OK(client->client_table().Connect(local_client_info));
   test->Start();
 }
 
@@ -273,7 +274,11 @@ void TestClientTableDisconnect(const JobID &job_id,
       });
   // Connect and disconnect to client table. We should receive notifications
   // for the addition and removal of our own entry.
-  RAY_CHECK_OK(client->client_table().Connect());
+  ClientTableDataT local_client_info = client->client_table().GetLocalClient();
+  local_client_info.node_manager_address = "127.0.0.1";
+  local_client_info.local_scheduler_port = 0;
+  local_client_info.object_manager_port = 0;
+  RAY_CHECK_OK(client->client_table().Connect(local_client_info));
   RAY_CHECK_OK(client->client_table().Disconnect());
   test->Start();
 }

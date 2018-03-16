@@ -210,14 +210,11 @@ class Lineage {
 /// been added durably to the GCS.
 class LineageCache {
  public:
-  /// Create a lineage cache policy.
+  /// Create a lineage cache for the given task and object storage system.
   /// TODO(swang): Pass in the policy (interface?) and a GCS client.
-  LineageCache(gcs::Storage<TaskID, TaskFlatbuffer> &task_storage,
+  LineageCache(const ClientID &client_id,
+               gcs::Storage<TaskID, TaskFlatbuffer> &task_storage,
                gcs::Storage<ObjectID, ObjectTableData> &object_storage);
-
-  /// Set the client ID.
-  /// TODO(swang): Move this to the constructor.
-  void SetClientId(const ClientID &client_id) { client_id_ = client_id; }
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
   /// These entries will not be written to the GCS until set to ready.

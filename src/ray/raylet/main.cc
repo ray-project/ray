@@ -26,8 +26,9 @@ int main(int argc, char *argv[]) {
   om_config.store_socket_name = "/tmp/store";
 
   //  initialize mock gcs & object directory
-  std::shared_ptr<ray::gcs::AsyncGcsClient> gcs_client =
-      std::shared_ptr<ray::gcs::AsyncGcsClient>(new ray::gcs::AsyncGcsClient());
+  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();
+  RAY_LOG(INFO) << "Initializing GCS client "
+                << gcs_client->client_table().GetLocalClientId();
 
   // Initialize the node manager.
   boost::asio::io_service main_service;

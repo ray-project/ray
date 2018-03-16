@@ -19,6 +19,13 @@ class RedisContext;
 
 class RAY_EXPORT AsyncGcsClient {
  public:
+  /// Start a GCS client with the given client ID. To read from the GCS tables,
+  /// Connect and then Attach must be called. To read and write from the GCS
+  /// tables requires a further call to Connect to the client table.
+  ///
+  /// \param client_id The ID to assign to the client.
+  AsyncGcsClient(const ClientID &client_id);
+  /// Start a GCS client with a random client ID.
   AsyncGcsClient();
   ~AsyncGcsClient();
 
@@ -28,8 +35,7 @@ class RAY_EXPORT AsyncGcsClient {
   /// \param port The GCS port.
   /// \param client_info Information about the local client to connect.
   /// \return Status.
-  Status Connect(const std::string &address, int port,
-                 const ClientTableDataT &client_info);
+  Status Connect(const std::string &address, int port);
   /// Attach this client to a plasma event loop. Note that only
   /// one event loop should be attached at a time.
   Status Attach(plasma::EventLoop &event_loop);

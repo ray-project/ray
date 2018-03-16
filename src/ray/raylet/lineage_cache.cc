@@ -156,9 +156,10 @@ flatbuffers::Offset<ForwardTaskRequest> Lineage::ToFlatbuffer(
   return request;
 }
 
-LineageCache::LineageCache(gcs::Storage<TaskID, TaskFlatbuffer> &task_storage,
+LineageCache::LineageCache(const ClientID &client_id,
+                           gcs::Storage<TaskID, TaskFlatbuffer> &task_storage,
                            gcs::Storage<ObjectID, ObjectTableData> &object_storage)
-    : client_id_(ClientID::nil()),
+    : client_id_(client_id),
       task_storage_(task_storage),
       object_storage_(object_storage) {}
 

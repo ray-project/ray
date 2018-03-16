@@ -57,7 +57,8 @@ class MockGcs : virtual public gcs::Storage<TaskID, TaskFlatbuffer>,
 
 class LineageCacheTest : public ::testing::Test {
  public:
-  LineageCacheTest() : mock_gcs_(), lineage_cache_(mock_gcs_, mock_gcs_) {}
+  LineageCacheTest()
+      : mock_gcs_(), lineage_cache_(ClientID::from_random(), mock_gcs_, mock_gcs_) {}
 
  protected:
   MockGcs mock_gcs_;

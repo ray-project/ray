@@ -80,8 +80,11 @@ const ClientID &ClientTable::GetLocalClientId() { return client_id_; }
 
 const ClientTableDataT &ClientTable::GetLocalClient() { return local_client_; }
 
-Status ClientTable::Connect() {
+Status ClientTable::Connect(const ClientTableDataT &local_client) {
   RAY_CHECK(!disconnected_) << "Tried to reconnect a disconnected client.";
+
+  RAY_CHECK(local_client.client_id == local_client_.client_id);
+  local_client_ = local_client;
 
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   data->is_insertion = true;

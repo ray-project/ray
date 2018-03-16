@@ -24,16 +24,13 @@ Raylet::Raylet(boost::asio::io_service &main_service,
           main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       node_manager_socket_(main_service),
       gcs_client_(gcs_client),
-      lineage_cache_(gcs_client->task_table(), gcs_client->object_table()),
+      lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
+                     gcs_client->task_table(), gcs_client->object_table()),
       object_manager_(main_service, object_manager_service,
                       object_manager_config, gcs_client),
       node_manager_(main_service, socket_name, resource_config, object_manager_,
                     lineage_cache_, gcs_client_) {
-  ClientID client_id = RegisterGcs(main_service);
-  // TODO(swang): Remove these calls. ClientID should be set as part of the
-  // constructors.
-  lineage_cache_.SetClientId(client_id);
-  object_manager_.SetClientID(client_id);
+  RAY_CHECK_OK(RegisterGcs(main_service));
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
@@ -45,27 +42,16 @@ Raylet::~Raylet() {
   RAY_CHECK_OK(object_manager_.Terminate());
 }
 
-ClientID Raylet::RegisterGcs(boost::asio::io_service &main_service) {
-  boost::asio::ip::tcp::endpoint endpoint = object_manager_acceptor_.local_endpoint();
-  std::string ip = endpoint.address().to_string();
-  unsigned short object_manager_port = endpoint.port();
-
-  endpoint = node_manager_acceptor_.local_endpoint();
-  unsigned short node_manager_port = endpoint.port();
-
-  ClientID client_id = ClientID::from_random();
-
-  ClientTableDataT client_info;
-  client_info.client_id = client_id.binary();
-  client_info.node_manager_address = ip;
-  // TODO(hme): Update port when we add new acceptor for local scheduler connections.
-  client_info.local_scheduler_port = node_manager_port;
-  client_info.object_manager_port = object_manager_port;
+ray::Status Raylet::RegisterGcs(boost::asio::io_service &io_service) {
   // TODO(hme): Clean up constants.
-  RAY_CHECK_OK(gcs_client_->Connect("127.0.0.1", 6379, client_info));
-  RAY_CHECK_OK(gcs_client_->Attach(main_service));
-  RAY_CHECK_OK(gcs_client_->client_table().Connect());
+  RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379));
+  RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
+  ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
+  client_info.node_manager_address = node_manager_acceptor_.local_endpoint().address().to_string();
+  client_info.object_manager_port = object_manager_acceptor_.local_endpoint().port();
+  client_info.local_scheduler_port = node_manager_acceptor_.local_endpoint().port();
+  RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client,
                       const UniqueID &id,
@@ -73,9 +59,7 @@ ClientID Raylet::RegisterGcs(boost::asio::io_service &main_service) {
     node_manager_.ClientAdded(client, id, data);
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
-  RAY_LOG(INFO) << "Registering as " << client_id.hex();
-
-  return client_id;
+  return Status::OK();
 }
 
 void Raylet::DoAcceptNodeManager() {

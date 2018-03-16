@@ -314,12 +314,15 @@ using ConfigTable = Table<ConfigID, ConfigTableData>;
 class ClientTable : private Table<ClientID, ClientTableData> {
  public:
   ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
-              const ClientTableDataT &local_client)
+              const ClientID &client_id)
       : Table(context, client),
         disconnected_(false),
-        client_id_(ClientID::from_binary(local_client.client_id)),
-        local_client_(local_client) {
+        client_id_(client_id),
+        local_client_() {
     pubsub_channel_ = TablePubsub_CLIENT;
+
+    // Set the local client's ID.
+    local_client_.client_id = client_id.binary();
 
     // Add a nil client to the cache so that we can serve requests for clients
     // that we have not heard about.
@@ -331,8 +334,10 @@ class ClientTable : private Table<ClientID, ClientTableData> {
   /// Connect as a client to the GCS. This registers us in the client table
   /// and begins subscription to client table notifications.
   ///
+  /// \param Information about the connecting client. This must have the
+  ///        same client_id as the one set in the client table.
   /// \return Status
-  ray::Status Connect();
+  ray::Status Connect(const ClientTableDataT &local_client);
 
   /// Disconnect the client from the GCS. The client ID assigned during
   /// registration should never be reused after disconnecting.

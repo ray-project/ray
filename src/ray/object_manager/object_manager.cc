@@ -6,7 +6,7 @@ ObjectManager::ObjectManager(boost::asio::io_service &main_service,
                              boost::asio::io_service &object_manager_service,
                              ObjectManagerConfig config,
                              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-    : object_directory_(new ObjectDirectory(gcs_client)), work_(object_manager_service) {
+    : client_id_(gcs_client->client_table().GetLocalClientId()), object_directory_(new ObjectDirectory(gcs_client)), work_(object_manager_service) {
   io_service_ = &main_service;
   config_ = config;
   store_client_ = std::unique_ptr<ObjectStoreClient>(
@@ -23,6 +23,7 @@ ObjectManager::ObjectManager(boost::asio::io_service &main_service,
                              ObjectManagerConfig config,
                              std::unique_ptr<ObjectDirectoryInterface> od)
     : object_directory_(std::move(od)), work_(object_manager_service) {
+  // TODO(hme) Client ID is never set with this constructor.
   io_service_ = &main_service;
   config_ = config;
   store_client_ = std::unique_ptr<ObjectStoreClient>(
@@ -50,8 +51,6 @@ void ObjectManager::StopIOService() {
    // io_thread_.join();
    // thread_group_.join_all();
 }
-
-void ObjectManager::SetClientID(const ClientID &client_id) { client_id_ = client_id; }
 
 ClientID ObjectManager::GetClientID() { return client_id_; }
 
