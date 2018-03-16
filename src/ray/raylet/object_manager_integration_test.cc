@@ -3,11 +3,83 @@
 
 #include "gtest/gtest.h"
 
-#include "ray/raylet/raylet.h"
+#include "ray/object_manager/object_manager.h"
 
 namespace ray {
 
 namespace raylet {
+
+class MockRaylet {
+
+ private:
+
+  boost::asio::ip::tcp::acceptor tcp_acceptor_;
+  boost::asio::ip::tcp::socket tcp_socket_;
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  ObjectManager object_manager_;
+
+ public:
+
+  MockRaylet(boost::asio::io_service &io_service,
+         const ObjectManagerConfig &object_manager_config,
+         std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+  : tcp_acceptor_(io_service,
+                  boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+    tcp_socket_(io_service),
+    gcs_client_(gcs_client),
+    object_manager_(io_service, object_manager_config, gcs_client)
+  {
+    ClientID client_id = RegisterGcs(io_service);
+    object_manager_.SetClientID(client_id);
+    // Start listening for clients.
+    DoAcceptTcp();
+  }
+
+  ~MockRaylet() {
+    (void) gcs_client_->client_table().Disconnect();
+    RAY_CHECK_OK(object_manager_.Terminate());
+  }
+
+  ObjectManager &GetObjectManager() { return object_manager_; }
+
+ private:
+
+  ClientID RegisterGcs(boost::asio::io_service &io_service){
+      boost::asio::ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
+      std::string ip = endpoint.address().to_string();
+      unsigned short object_manager_port = endpoint.port();
+
+      ClientID client_id = ClientID::from_random();
+
+      ClientTableDataT client_info;
+      client_info.client_id = client_id.binary();
+      client_info.node_manager_address = ip;
+      client_info.local_scheduler_port = object_manager_port;
+      client_info.object_manager_port = object_manager_port;
+      RAY_CHECK_OK(gcs_client_->Connect("127.0.0.1", 6379, client_info));
+      RAY_CHECK_OK(gcs_client_->Attach(io_service));
+      RAY_CHECK_OK(gcs_client_->client_table().Connect());
+      return client_id;
+  }
+
+  void DoAcceptTcp() {
+    TCPClientConnection::pointer new_connection =
+        TCPClientConnection::Create(tcp_acceptor_.get_io_service());
+    tcp_acceptor_.async_accept(new_connection->GetSocket(),
+                               boost::bind(&MockRaylet::HandleAcceptTcp, this, new_connection,
+                                           boost::asio::placeholders::error));
+  }
+
+  void HandleAcceptTcp(TCPClientConnection::pointer new_connection,
+                               const boost::system::error_code &error) {
+    if (!error) {
+      // Pass it off to object manager for now.
+      ray::Status status = object_manager_.AcceptConnection(std::move(new_connection));
+    }
+    DoAcceptTcp();
+  }
+
+};
 
 std::string test_executable;  // NOLINT
 
@@ -35,24 +107,17 @@ class TestRaylet : public ::testing::Test {
     std::string store_sock_1 = StartStore("1");
     std::string store_sock_2 = StartStore("2");
 
-    // configure
-    std::unordered_map<std::string, double> static_resource_config;
-    static_resource_config = {{"num_cpus", 1}, {"num_gpus", 1}};
-    ray::raylet::ResourceSet resource_config(std::move(static_resource_config));
-
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
-    ray::ObjectManagerConfig om_config_1;
+    ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
-    server1.reset(new Raylet(io_service, std::string("hello1"), resource_config,
-                             om_config_1, gcs_client_1));
+    server1.reset(new MockRaylet(io_service, om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
-    ray::ObjectManagerConfig om_config_2;
+    ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
-    server2.reset(new Raylet(io_service, std::string("hello2"), resource_config,
-                             om_config_2, gcs_client_2));
+    server2.reset(new MockRaylet(io_service, om_config_2, gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -70,11 +135,11 @@ class TestRaylet : public ::testing::Test {
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
 
-    std::string cmd_str = test_executable.substr(0, test_executable.find_last_of("/"));
-    s = system(("rm " + cmd_str + "/hello1").c_str());
-    ASSERT_TRUE(!s);
-    s = system(("rm " + cmd_str + "/hello2").c_str());
-    ASSERT_TRUE(!s);
+//    std::string cmd_str = test_executable.substr(0, test_executable.find_last_of("/"));
+//    s = system(("rm " + cmd_str + "/hello1").c_str());
+//    ASSERT_TRUE(!s);
+//    s = system(("rm " + cmd_str + "/hello2").c_str());
+//    ASSERT_TRUE(!s);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -104,8 +169,8 @@ class TestRaylet : public ::testing::Test {
   boost::asio::io_service io_service;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
-  std::unique_ptr<ray::raylet::Raylet> server1;
-  std::unique_ptr<ray::raylet::Raylet> server2;
+  std::unique_ptr<MockRaylet> server1;
+  std::unique_ptr<MockRaylet> server2;
 
   plasma::PlasmaClient client1;
   plasma::PlasmaClient client2;
