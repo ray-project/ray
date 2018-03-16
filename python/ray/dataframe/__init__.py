@@ -28,14 +28,11 @@ def get_npartitions():
 # We import these file after above two function
 # because they depend on npartitions.
 from .dataframe import DataFrame  # noqa: 402
-from .dataframe import from_pandas  # noqa: 402
-from .dataframe import to_pandas  # noqa: 402
 from .series import Series  # noqa: 402
 from .io import (read_csv, read_parquet)  # noqa: 402
 
 __all__ = [
-    "DataFrame", "from_pandas", "to_pandas", "Series", "read_csv",
-    "read_parquet"
+    "DataFrame", "Series", "read_csv", "read_parquet"
 ]
 
 try:

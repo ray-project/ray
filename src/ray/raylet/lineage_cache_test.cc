@@ -57,13 +57,7 @@ class MockGcs : virtual public gcs::Storage<TaskID, TaskFlatbuffer>,
 
 class LineageCacheTest : public ::testing::Test {
  public:
-  LineageCacheTest()
-      : client_id_(ObjectID::from_random()),
-        mock_gcs_(),
-        lineage_cache_(client_id_, mock_gcs_, mock_gcs_) {}
-
- private:
-  ClientID client_id_;
+  LineageCacheTest() : mock_gcs_(), lineage_cache_(mock_gcs_, mock_gcs_) {}
 
  protected:
   MockGcs mock_gcs_;
@@ -279,6 +273,26 @@ TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
   num_tasks_flushed++;
   num_objects_flushed += 2;
   CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed, num_objects_flushed);
+}
+
+TEST_F(LineageCacheTest, TestRemoveWaitingTask) {
+  // Insert a chain of dependent tasks.
+  std::vector<Task> tasks;
+  auto return_values1 =
+      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+
+  auto task_to_remove = tasks[0];
+  auto task_id_to_remove = task_to_remove.GetTaskSpecification().TaskId();
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id_to_remove);
+  flatbuffers::FlatBufferBuilder fbb;
+  auto uncommitted_lineage_message =
+      uncommitted_lineage.ToFlatbuffer(fbb, task_id_to_remove);
+  fbb.Finish(uncommitted_lineage_message);
+  uncommitted_lineage =
+      Lineage(*flatbuffers::GetRoot<ForwardTaskRequest>(fbb.GetBufferPointer()));
+
+  lineage_cache_.RemoveWaitingTask(task_id_to_remove);
+  lineage_cache_.AddWaitingTask(task_to_remove, uncommitted_lineage);
 }
 
 }  // namespace raylet

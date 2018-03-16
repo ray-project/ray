@@ -48,10 +48,9 @@ template <typename ID, typename Data>
 class Table : public Storage<ID, Data> {
  public:
   using DataT = typename Data::NativeTableType;
-  using Callback = std::function<
-      void(AsyncGcsClient *client, const ID &id, std::shared_ptr<DataT> data)>;
-  using FailureCallback = std::function<
-      void(AsyncGcsClient *client, const ID &id)>;
+  using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                      std::shared_ptr<DataT> data)>;
+  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
 
   struct CallbackData {
     ID id;
@@ -79,14 +78,12 @@ class Table : public Storage<ID, Data> {
   /// \param done Callback that is called once the data has been written to the
   ///        GCS.
   /// \return Status
-  Status Add(const JobID &job_id,
-             const ID &id,
-             std::shared_ptr<DataT> data,
+  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
              const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({id, data, done, nullptr, nullptr, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data, bool is_nil) {
+        RedisCallbackManager::instance().add([d](const std::string &data) {
           if (d->callback != nullptr) {
             (d->callback)(d->client, d->id, d->data);
           }
@@ -106,12 +103,13 @@ class Table : public Storage<ID, Data> {
   /// \param id The ID of the data that is looked up in the GCS.
   /// \param lookup Callback that is called after lookup.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup, const FailureCallback &failure) {
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
+                const FailureCallback &failure) {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({id, nullptr, lookup, failure, nullptr, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data, bool is_nil) {
-          if(is_nil){
+        RedisCallbackManager::instance().add([d](const std::string &data) {
+          if (data.empty()) {
             if (d->failure != nullptr) {
               (d->failure)(d->client, d->id);
             }
@@ -120,7 +118,7 @@ class Table : public Storage<ID, Data> {
             auto root = flatbuffers::GetRoot<Data>(data.data());
             root->UnPackTo(result.get());
             if (d->callback != nullptr) {
-                (d->callback)(d->client, d->id, result);
+              (d->callback)(d->client, d->id, result);
             }
           }
         });
@@ -148,7 +146,7 @@ class Table : public Storage<ID, Data> {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({client_id, nullptr, subscribe, nullptr, done, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data, bool is_nil) {
+        RedisCallbackManager::instance().add([d](const std::string &data) {
           if (data.empty()) {
             // No data is provided. This is the callback for the initial
             // subscription request.
@@ -171,8 +169,7 @@ class Table : public Storage<ID, Data> {
   Status Remove(const JobID &job_id, const ID &id, const Callback &done);
 
  protected:
-  std::unordered_map<ID, std::unique_ptr<CallbackData>, UniqueIDHasher>
-      callback_data_;
+  std::unordered_map<ID, std::unique_ptr<CallbackData>, UniqueIDHasher> callback_data_;
   std::shared_ptr<RedisContext> context_;
   AsyncGcsClient *client_;
   TablePubsub pubsub_channel_;
@@ -198,10 +195,8 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// \param done_callback Callback to be called when subscription is installed.
   ///        This is only used for the tests.
   /// \return Status
-  Status SubscribeToNotifications(const JobID &job_id,
-                                  bool subscribe_all,
-                                  const Callback &object_available,
-                                  const Callback &done);
+  Status SubscribeToNotifications(const JobID &job_id, bool subscribe_all,
+                                  const Callback &object_available, const Callback &done);
 
   /// Request notifications about the availability of some objects from the
   /// object
@@ -235,10 +230,9 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   };
   ~TaskTable(){};
 
-  using TestAndUpdateCallback = std::function<void(AsyncGcsClient *client,
-                                                   const TaskID &id,
-                                                   const TaskTableDataT &task,
-                                                   bool updated)>;
+  using TestAndUpdateCallback =
+      std::function<void(AsyncGcsClient *client, const TaskID &id,
+                         const TaskTableDataT &task, bool updated)>;
   using SubscribeToTaskCallback =
       std::function<void(std::shared_ptr<TaskTableDataT> task)>;
   /// Update a task's scheduling information in the task table, if the current
@@ -256,19 +250,17 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   ///        with, if the current state matches test_state_bitmask.
   /// \param callback Function to be called when database returns result.
   /// \return Status
-  Status TestAndUpdate(const JobID &job_id,
-                       const TaskID &id,
+  Status TestAndUpdate(const JobID &job_id, const TaskID &id,
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
     int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, callback, id](const std::string &data, bool is_nil) {
+        [this, callback, id](const std::string &data) {
           auto result = std::make_shared<TaskTableDataT>();
           auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
           root->UnPackTo(result.get());
           callback(client_, id, *result, root->updated());
         });
     flatbuffers::FlatBufferBuilder fbb;
-    TaskTableTestAndUpdateBuilder builder(fbb);
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_TEST_AND_UPDATE", id,
                                          fbb.GetBufferPointer(), fbb.GetSize(),
@@ -324,11 +316,9 @@ class ClientTable : private Table<ClientID, ClientTableData> {
   ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
               const ClientTableDataT &local_client)
       : Table(context, client),
+        disconnected_(false),
         client_id_(ClientID::from_binary(local_client.client_id)),
-        local_client_(local_client),
-        client_added_callback_(nullptr),
-        client_removed_callback_(nullptr) {
-    local_client_.is_insertion = true;
+        local_client_(local_client) {
     pubsub_channel_ = TablePubsub_CLIENT;
 
     // Add a nil client to the cache so that we can serve requests for clients
@@ -380,14 +370,14 @@ class ClientTable : private Table<ClientID, ClientTableData> {
 
  private:
   /// Handle a client table notification.
-  void HandleNotification(AsyncGcsClient *client,
-                          const ClientID &channel_id,
+  void HandleNotification(AsyncGcsClient *client, const ClientID &channel_id,
                           std::shared_ptr<ClientTableDataT>);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(AsyncGcsClient *client,
-                       const ClientID &client_id,
+  void HandleConnected(AsyncGcsClient *client, const ClientID &client_id,
                        std::shared_ptr<ClientTableDataT>);
 
+  /// Whether this client has called Disconnect().
+  bool disconnected_;
   /// This client's ID.
   const ClientID client_id_;
   /// Information about this client.

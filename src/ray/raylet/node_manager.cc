@@ -272,9 +272,15 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   RAY_CHECK_OK(TcpConnect(socket, client_info.node_manager_address,
                           client_info.local_scheduler_port));
   auto server_conn = TcpServerConnection(std::move(socket));
-  // TODO(swang): Clean up the lineage cache if possible.
-  return server_conn.WriteMessage(MessageType_ForwardTaskRequest, fbb.GetSize(),
+  auto status = server_conn.WriteMessage(MessageType_ForwardTaskRequest, fbb.GetSize(),
                                   fbb.GetBufferPointer());
+  if (status.ok()) {
+    // If we were able to forward the task, remove the forwarded task from the
+    // lineage cache since the receiving node is now responsible for writing
+    // the task to the GCS.
+    lineage_cache_.RemoveWaitingTask(task_id);
+  }
+  return status;
 }
 
 } // namespace raylet

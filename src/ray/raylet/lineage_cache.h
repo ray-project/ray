@@ -87,6 +87,12 @@ class LineageEntry {
   /// \return Whether the entry was set to the new status.
   bool SetStatus(GcsStatus new_status);
 
+  /// Reset this entry's GCS status to a lower status. The new status must
+  /// be lower than the current status.
+  ///
+  /// \param new_status This must be lower than the current status.
+  void ResetStatus(GcsStatus new_status);
+
   /// Get this entry's ID.
   ///
   /// \return The entry's ID.
@@ -206,9 +212,12 @@ class LineageCache {
  public:
   /// Create a lineage cache policy.
   /// TODO(swang): Pass in the policy (interface?) and a GCS client.
-  LineageCache(const ClientID &client_id,
-               gcs::Storage<TaskID, TaskFlatbuffer> &task_storage,
+  LineageCache(gcs::Storage<TaskID, TaskFlatbuffer> &task_storage,
                gcs::Storage<ObjectID, ObjectTableData> &object_storage);
+
+  /// Set the client ID.
+  /// TODO(swang): Move this to the constructor.
+  void SetClientId(const ClientID &client_id) { client_id_ = client_id; }
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
   /// These entries will not be written to the GCS until set to ready.
@@ -233,6 +242,8 @@ class LineageCache {
   /// \param object_id The object to add.
   /// \param remote Whether the object was created at a remote node.
   void AddReadyObject(const ObjectID &object_id, bool remote);
+
+  void RemoveWaitingTask(const TaskID &task_id);
 
   /// Get the uncommitted lineage of a task. The uncommitted lineage consists
   /// of all tasks and objects in the given task's lineage that have not been

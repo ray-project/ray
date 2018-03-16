@@ -6,18 +6,18 @@ namespace ray {
 
 namespace gcs {
 
-AsyncGcsClient::AsyncGcsClient() {}
-
-AsyncGcsClient::~AsyncGcsClient() {}
-
-Status AsyncGcsClient::Connect(const std::string &address,
-                               int port,
-                               const ClientTableDataT &client_info) {
+AsyncGcsClient::AsyncGcsClient() {
   context_.reset(new RedisContext());
-  RAY_RETURN_NOT_OK(context_->Connect(address, port));
   object_table_.reset(new ObjectTable(context_, this));
   task_table_.reset(new TaskTable(context_, this));
   legacy_task_table_.reset(new legacy::TaskTable(context_, this));
+}
+
+AsyncGcsClient::~AsyncGcsClient() {}
+
+Status AsyncGcsClient::Connect(const std::string &address, int port,
+                               const ClientTableDataT &client_info) {
+  RAY_RETURN_NOT_OK(context_->Connect(address, port));
   client_table_.reset(new ClientTable(context_, this, client_info));
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
@@ -33,32 +33,23 @@ Status Attach(plasma::EventLoop &event_loop) {
 }
 
 Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
-  asio_async_client_.reset(
-      new RedisAsioClient(io_service, context_->async_context()));
+  asio_async_client_.reset(new RedisAsioClient(io_service, context_->async_context()));
   asio_subscribe_client_.reset(
       new RedisAsioClient(io_service, context_->subscribe_context()));
   return Status::OK();
 }
 
-ObjectTable &AsyncGcsClient::object_table() {
-  return *object_table_;
-}
+ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
 
 TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
 
 legacy::TaskTable &AsyncGcsClient::legacy_task_table() { return *legacy_task_table_; }
 
-ClientTable &AsyncGcsClient::client_table() {
-  return *client_table_;
-}
+ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 
-FunctionTable &AsyncGcsClient::function_table() {
-  return *function_table_;
-}
+FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
 
-ClassTable &AsyncGcsClient::class_table() {
-  return *class_table_;
-}
+ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
 
 }  // namespace gcs
 

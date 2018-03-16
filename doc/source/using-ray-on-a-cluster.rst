@@ -15,10 +15,9 @@ Deploying Ray on a Cluster
 
 This section assumes that you have a cluster running and that the nodes in the
 cluster can communicate with each other. It also assumes that Ray is installed
-on each machine. To install Ray, follow the instructions for
-`installation on Ubuntu`_.
+on each machine. To install Ray, follow the `installation instructions`_.
 
-.. _`installation on Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
+.. _`installation instructions`: http://ray.readthedocs.io/en/latest/installation.html
 
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

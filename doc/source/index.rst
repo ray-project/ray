@@ -41,7 +41,7 @@ View the `codebase on GitHub`_.
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
 - `Ray Tune`_: Hyperparameter Optimization Framework
-- `Ray RLlib`_: A Scalable Reinforcement Learning Library
+- `Ray RLlib`_: Scalable Reinforcement Learning
 
 .. _`Ray Tune`: tune.html
 .. _`Ray RLlib`: rllib.html
@@ -51,8 +51,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    :maxdepth: 1
    :caption: Installation
 
-   install-on-ubuntu.rst
-   install-on-macosx.rst
+   installation.rst
    install-on-docker.rst
    installation-troubleshooting.rst
 
@@ -79,7 +78,14 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    :caption: Ray RLlib
 
    rllib.rst
+   policy-optimizers.rst
    rllib-dev.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Pandas on Ray
+
+   pandas_on_ray.rst
 
 .. toctree::
    :maxdepth: 1

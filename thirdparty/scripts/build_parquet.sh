@@ -20,6 +20,7 @@ if [ ! -d $TP_DIR/build/parquet-cpp ]; then
   if [ "$unamestr" == "Darwin" ]; then
     OPENSSL_ROOT_DIR=$OPENSSL_DIR \
     PATH="$BISON_DIR:$PATH" \
+    BOOST_ROOT=$TP_DIR/pkg/boost \
     ARROW_HOME=$TP_DIR/pkg/arrow/cpp/build/cpp-install \
     cmake -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=$PARQUET_HOME \

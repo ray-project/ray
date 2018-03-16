@@ -5,22 +5,26 @@ from __future__ import print_function
 import os
 
 
-class Evaluator(object):
-    """Algorithms implement this interface to leverage RLlib optimizers.
+class PolicyEvaluator(object):
+    """Algorithms implement this interface to leverage policy optimizers.
 
-    Any algorithm that implements Evaluator can plug in any RLLib optimizer,
-    e.g. async SGD, local multi-GPU SGD, etc.
+    Policy evaluators are the "data plane" of an algorithm.
+
+    Any algorithm that implements Evaluator can plug in any PolicyOptimizer,
+    e.g. async SGD, Ape-X, local multi-GPU SGD, etc.
     """
 
     def sample(self):
-        """Returns experience samples from this Evaluator.
+        """Returns a batch of experience sampled from this evaluator.
+
+        This method must be implemented by subclasses.
 
         Returns:
-            SampleBatch: A columnar batch of experiences.
+            SampleBatch: A columnar batch of experiences (e.g., tensors).
 
         Examples:
             >>> print(ev.sample())
-            SampleBatch({"a": [1, 2, 3], "b": [4, 5, 6]})
+            SampleBatch({"obs": [1, 2, 3], "action": [0, 1, 0], ...})
         """
 
         raise NotImplementedError
@@ -28,18 +32,27 @@ class Evaluator(object):
     def compute_gradients(self, samples):
         """Returns a gradient computed w.r.t the specified samples.
 
+        This method must be implemented by subclasses.
+
         Returns:
             object: A gradient that can be applied on a compatible evaluator.
+            info: dictionary of extra metadata.
+
+        Examples:
+            >>> batch = ev.sample()
+            >>> grads, info = ev2.compute_gradients(samples)
         """
 
         raise NotImplementedError
 
     def apply_gradients(self, grads):
-        """Applies the given gradients to this Evaluator's weights.
+        """Applies the given gradients to this evaluator's weights.
+
+        This method must be implemented by subclasses.
 
         Examples:
             >>> samples = ev1.sample()
-            >>> grads = ev2.compute_gradients(samples)
+            >>> grads, info = ev2.compute_gradients(samples)
             >>> ev1.apply_gradients(grads)
         """
 
@@ -48,14 +61,22 @@ class Evaluator(object):
     def get_weights(self):
         """Returns the model weights of this Evaluator.
 
+        This method must be implemented by subclasses.
+
         Returns:
             object: weights that can be set on a compatible evaluator.
+            info: dictionary of extra metadata.
+
+        Examples:
+            >>> weights = ev1.get_weights()
         """
 
         raise NotImplementedError
 
     def set_weights(self, weights):
         """Sets the model weights of this Evaluator.
+
+        This method must be implemented by subclasses.
 
         Examples:
             >>> weights = ev1.get_weights()
@@ -65,27 +86,31 @@ class Evaluator(object):
         raise NotImplementedError
 
     def compute_apply(self, samples):
-        """Fused compute and apply gradients on given samples.
+        """Fused compute gradients and apply gradients call.
 
         Returns:
-            The result of calling compute_gradients(samples)
+            info: dictionary of extra metadata from compute_gradients().
+
+        Examples:
+            >>> batch = ev.sample()
+            >>> ev.compute_apply(samples)
         """
 
-        grads = self.compute_gradients(samples)
+        grads, info = self.compute_gradients(samples)
         self.apply_gradients(grads)
-        return grads
+        return info
 
     def get_host(self):
-        """Returns hostname of actor."""
+        """Returns the hostname of the process running this evaluator."""
 
         return os.uname()[1]
 
 
-class TFMultiGPUSupport(Evaluator):
-    """The multi-GPU TF optimizer requires additional TF-specific supportt.
+class TFMultiGPUSupport(PolicyEvaluator):
+    """The multi-GPU TF optimizer requires additional TF-specific support.
 
     Attributes:
-        sess (Session) the tensorflow session associated with this evaluator
+        sess (Session): the tensorflow session associated with this evaluator.
     """
 
     def tf_loss_inputs(self):
@@ -102,7 +127,7 @@ class TFMultiGPUSupport(Evaluator):
             >>> print(ev.tf_loss_inputs())
             [("action", action_placeholder), ("reward", reward_placeholder)]
 
-            >>> print(ev.sample().data.keys())
+            >>> print(ev.sample()[0].data.keys())
             ["action", "reward"]
         """
 
