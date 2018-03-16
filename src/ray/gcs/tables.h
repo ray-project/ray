@@ -69,6 +69,7 @@ class Table : public Storage<ID, Data> {
       : context_(context),
         client_(client),
         pubsub_channel_(TablePubsub_NO_PUBLISH){};
+  ~Table(){};
 
   /// Add an entry to the table.
   ///
@@ -184,6 +185,7 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
   };
+  ~ObjectTable(){};
 
   /// Set up a client-specific channel for receiving notifications about
   /// available
@@ -231,6 +233,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_TASK;
   };
+  ~TaskTable(){};
 
   using TestAndUpdateCallback = std::function<void(AsyncGcsClient *client,
                                                    const TaskID &id,
