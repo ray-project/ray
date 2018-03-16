@@ -30,9 +30,11 @@ int main(int argc, char *argv[]) {
       std::shared_ptr<ray::gcs::AsyncGcsClient>(new ray::gcs::AsyncGcsClient());
 
   // Initialize the node manager.
-  boost::asio::io_service io_service;
-  ray::raylet::Raylet server(io_service, std::string(argv[1]), resource_config, om_config,
-                     gcs_client);
-  io_service.run();
+  boost::asio::io_service main_service;
+  boost::asio::io_service object_manager_service;
+  ray::raylet::Raylet server(main_service, object_manager_service,
+                             std::string(argv[1]), resource_config, om_config,
+                             gcs_client);
+  main_service.run();
 }
 #endif

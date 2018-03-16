@@ -41,20 +41,26 @@ class ObjectManager {
  public:
   /// Implicitly instantiates Ray implementation of ObjectDirectory.
   ///
-  /// \param io_service The asio io_service tied to the object manager.
+  /// \param main_service The main asio io_service.
+  /// \param object_manager_service The asio io_service tied to the object manager.
   /// \param config ObjectManager configuration.
   /// \param gcs_client A client connection to the Ray GCS.
-  explicit ObjectManager(boost::asio::io_service &io_service, ObjectManagerConfig config,
+  explicit ObjectManager(boost::asio::io_service &main_service,
+                         boost::asio::io_service &object_manager_service,
+                         ObjectManagerConfig config,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
   /// Takes user-defined ObjectDirectoryInterface implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
   /// the given ObjectDirectory instance.
   ///
-  /// \param io_service The asio io_service tied to the object manager.
+  /// \param main_service The main asio io_service.
+  /// \param object_manager_service The asio io_service tied to the object manager.
   /// \param config ObjectManager configuration.
   /// \param od An object implementing the object directory interface.
-  explicit ObjectManager(boost::asio::io_service &io_service, ObjectManagerConfig config,
+  explicit ObjectManager(boost::asio::io_service &main_service,
+                         boost::asio::io_service &object_manager_service,
+                         ObjectManagerConfig config,
                          std::unique_ptr<ObjectDirectoryInterface> od);
 
   /// \param client_id Set the client id associated with this node.
@@ -134,7 +140,6 @@ class ObjectManager {
   ray::Status Terminate();
 
  private:
-  using BoostEC = const boost::system::error_code &;
 
   ClientID client_id_;
   ObjectManagerConfig config_;
@@ -146,7 +151,7 @@ class ObjectManager {
   boost::asio::io_service *io_service_;
 
   /// Used to create "work" for an io service, so when it's run, it doesn't exit.
-  // boost::asio::io_service::work work_;
+  boost::asio::io_service::work work_;
 
   /// Single thread for executing asynchronous handlers.
   /// This runs the (currently only) io_service, which handles all outgoing requests
@@ -247,13 +252,15 @@ class ObjectManager {
   /// added by AcceptConnection.
   ray::Status WaitPushReceive(TCPClientConnection::pointer conn);
   /// Invoked when a remote object manager pushes an object to this object manager.
-  void HandlePushReceive(TCPClientConnection::pointer conn, BoostEC length_ec);
+  void HandlePushReceive(TCPClientConnection::pointer conn,
+                         const boost::system::error_code &length_ec);
 
   /// A socket connection doing an asynchronous read on a message connection that was
   /// added by AcceptConnection.
   ray::Status WaitMessage(TCPClientConnection::pointer conn);
   /// Handle messages.
-  void HandleMessage(TCPClientConnection::pointer conn, BoostEC msg_ec);
+  void HandleMessage(TCPClientConnection::pointer conn,
+                     const boost::system::error_code &msg_ec);
   /// Process the receive pull request message.
   void ReceivePullRequest(TCPClientConnection::pointer conn);
 

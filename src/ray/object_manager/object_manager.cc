@@ -2,14 +2,15 @@
 
 namespace ray {
 
-ObjectManager::ObjectManager(boost::asio::io_service &io_service,
+ObjectManager::ObjectManager(boost::asio::io_service &main_service,
+                             boost::asio::io_service &object_manager_service,
                              ObjectManagerConfig config,
                              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-    : object_directory_(new ObjectDirectory(gcs_client)) /*, work_(io_service) */ {
-  io_service_ = &io_service;
+    : object_directory_(new ObjectDirectory(gcs_client)), work_(object_manager_service) {
+  io_service_ = &main_service;
   config_ = config;
   store_client_ = std::unique_ptr<ObjectStoreClient>(
-      new ObjectStoreClient(io_service, config.store_socket_name));
+      new ObjectStoreClient(main_service, config.store_socket_name));
   store_client_->SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
   store_client_->SubscribeObjDeleted(
@@ -17,14 +18,15 @@ ObjectManager::ObjectManager(boost::asio::io_service &io_service,
   StartIOService();
 };
 
-ObjectManager::ObjectManager(boost::asio::io_service &io_service,
+ObjectManager::ObjectManager(boost::asio::io_service &main_service,
+                             boost::asio::io_service &object_manager_service,
                              ObjectManagerConfig config,
                              std::unique_ptr<ObjectDirectoryInterface> od)
-    : object_directory_(std::move(od)) /* , work_(io_service) */ {
-  io_service_ = &io_service;
+    : object_directory_(std::move(od)), work_(object_manager_service) {
+  io_service_ = &main_service;
   config_ = config;
   store_client_ = std::unique_ptr<ObjectStoreClient>(
-      new ObjectStoreClient(io_service, config.store_socket_name));
+      new ObjectStoreClient(main_service, config.store_socket_name));
   store_client_->SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
   store_client_->SubscribeObjDeleted(
@@ -292,7 +294,7 @@ ray::Status ObjectManager::WaitPushReceive(TCPClientConnection::pointer conn) {
 }
 
 void ObjectManager::HandlePushReceive(TCPClientConnection::pointer conn,
-                                      BoostEC length_ec) {
+                                      const boost::system::error_code &length_ec) {
   std::vector<uint8_t> message;
   message.resize(conn->message_length_);
   boost::system::error_code ec;
@@ -429,7 +431,8 @@ ray::Status ObjectManager::WaitMessage(TCPClientConnection::pointer conn) {
   return ray::Status::OK();
 }
 
-void ObjectManager::HandleMessage(TCPClientConnection::pointer conn, BoostEC msg_ec) {
+void ObjectManager::HandleMessage(TCPClientConnection::pointer conn,
+                                  const boost::system::error_code &msg_ec) {
   switch (conn->message_type_) {
   case OMMessageType_PullRequest:
     ReceivePullRequest(conn);

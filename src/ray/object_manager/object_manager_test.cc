@@ -38,7 +38,7 @@ class TestObjectManager : public ::testing::Test {
     ObjectManagerConfig config;
     config.store_socket_name = "/tmp/store";
     object_manager_1_ = std::unique_ptr<ObjectManager>(
-        new ObjectManager(io_service_, config, gcs_client_));
+        new ObjectManager(main_service_, object_manager_service_, config, gcs_client_));
 
     // Start object manager 2.
     //    ObjectManagerConfig config2;
@@ -66,12 +66,12 @@ class TestObjectManager : public ::testing::Test {
     ASSERT_TRUE(!s);
   }
 
-  void Loop() { io_service_.run(); };
+  void Loop() { main_service_.run(); };
 
   void StartLoop() { process_thread_ = std::thread(&TestObjectManager::Loop, this); };
 
   void StopLoop() {
-    io_service_.stop();
+    main_service_.stop();
     process_thread_.join();
   }
 
@@ -79,7 +79,8 @@ class TestObjectManager : public ::testing::Test {
   std::thread process_thread_;
   plasma::PlasmaClient client_;
   plasma::PlasmaClient client2_;
-  boost::asio::io_service io_service_;
+  boost::asio::io_service main_service_;
+  boost::asio::io_service object_manager_service_;
 
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   std::unique_ptr<ObjectManager> object_manager_1_;

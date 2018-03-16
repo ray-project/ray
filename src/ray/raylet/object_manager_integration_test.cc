@@ -20,16 +20,17 @@ class MockRaylet {
 
  public:
 
-  MockRaylet(boost::asio::io_service &io_service,
+  MockRaylet(boost::asio::io_service &main_service,
+             boost::asio::io_service &object_manager_service,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-  : tcp_acceptor_(io_service,
+  : tcp_acceptor_(main_service,
                   boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
-    tcp_socket_(io_service),
+    tcp_socket_(main_service),
     gcs_client_(gcs_client),
-    object_manager_(io_service, object_manager_config, gcs_client)
+    object_manager_(main_service, object_manager_service, object_manager_config, gcs_client)
   {
-    ClientID client_id = RegisterGcs(io_service);
+    ClientID client_id = RegisterGcs(main_service);
     object_manager_.SetClientID(client_id);
     // Start listening for clients.
     DoAcceptTcp();
@@ -111,13 +112,19 @@ class TestRaylet : public ::testing::Test {
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
-    server1.reset(new MockRaylet(io_service, om_config_1, gcs_client_1));
+    server1.reset(new MockRaylet(main_service,
+                                 object_manager_service,
+                                 om_config_1,
+                                 gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
-    server2.reset(new MockRaylet(io_service, om_config_2, gcs_client_2));
+    server2.reset(new MockRaylet(main_service,
+                                 object_manager_service,
+                                 om_config_2,
+                                 gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -166,7 +173,8 @@ class TestRaylet : public ::testing::Test {
 
  protected:
   std::thread p;
-  boost::asio::io_service io_service;
+  boost::asio::io_service main_service;
+  boost::asio::io_service object_manager_service;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
   std::unique_ptr<MockRaylet> server1;
@@ -196,12 +204,12 @@ class TestGCSIntegration : public TestRaylet {
   uint num_expected_objects;
 
   std::vector<TransferPattern> async_loop_patterns = {
-       PUSH_A_B
-      ,PUSH_B_A
-      ,BIDIRECTIONAL_PUSH
-      ,PULL_A_B
-      ,PULL_B_A
-      ,BIDIRECTIONAL_PULL
+     PUSH_A_B
+    ,PUSH_B_A
+    ,BIDIRECTIONAL_PUSH
+    ,PULL_A_B
+    ,PULL_B_A
+    ,BIDIRECTIONAL_PULL
   };
 
   int num_connected_clients = 0;
@@ -251,7 +259,7 @@ class TestGCSIntegration : public TestRaylet {
       TransferPattern pattern = async_loop_patterns[async_loop_index];
       TransferTestExecute(1000, 100, pattern);
     } else {
-      io_service.stop();
+      main_service.stop();
     }
   }
 
@@ -355,11 +363,11 @@ class TestGCSIntegration : public TestRaylet {
 };
 
 TEST_F(TestGCSIntegration, TestRayletCommands) {
-  auto AsyncStartTests = io_service.wrap([this](){
+  auto AsyncStartTests = main_service.wrap([this](){
     WaitConnections();
   });
   AsyncStartTests();
-  io_service.run();
+  main_service.run();
 }
 
 } // namespace raylet

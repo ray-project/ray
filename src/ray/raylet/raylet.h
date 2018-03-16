@@ -24,14 +24,17 @@ class Raylet {
  public:
   /// Create a node manager server and listen for new clients.
   ///
-  /// \param io_service The event loop to run the server on.
+  /// \param main_service The event loop to run the server on.
+  /// \param object_manager_service The asio io_service tied to the object manager.
   /// \param socket_name The Unix domain socket to listen on for local clients.
   /// \param resource_config The initial set of resources to start the local
   /// scheduler with.
   /// \param object_manager_config Configuration to initialize the object
   /// manager.
   /// \param gcs_client A client connection to the GCS.
-  Raylet(boost::asio::io_service &io_service, const std::string &socket_name,
+  Raylet(boost::asio::io_service &main_service,
+         boost::asio::io_service &object_manager_service,
+         const std::string &socket_name,
          const ResourceSet &resource_config,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
@@ -50,10 +53,10 @@ class Raylet {
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
   /// Accept a tcp client connection.
-  void DoAcceptTcp();
+  void DoAcceptObjectManager();
   /// Handle an accepted tcp client connection.
-  void HandleAcceptTcp(TCPClientConnection::pointer new_connection,
-                       const boost::system::error_code &error);
+  void HandleAcceptObjectManager(TCPClientConnection::pointer new_connection,
+                                 const boost::system::error_code &error);
   void DoAcceptNodeManager();
   void HandleAcceptNodeManager(const boost::system::error_code &error);
 
@@ -61,10 +64,10 @@ class Raylet {
   boost::asio::local::stream_protocol::acceptor acceptor_;
   /// The socket to listen on for new clients.
   boost::asio::local::stream_protocol::socket socket_;
-  /// An acceptor for new tcp clients.
-  boost::asio::ip::tcp::acceptor tcp_acceptor_;
-  /// The socket to listen on for new tcp clients.
-  boost::asio::ip::tcp::socket tcp_socket_;
+  /// An acceptor for new object manager tcp clients.
+  boost::asio::ip::tcp::acceptor object_manager_acceptor_;
+  /// The socket to listen on for new object manager tcp clients.
+  boost::asio::ip::tcp::socket object_manager_socket_;
   /// An acceptor for new tcp clients.
   boost::asio::ip::tcp::acceptor node_manager_acceptor_;
   /// The socket to listen on for new tcp clients.

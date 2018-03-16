@@ -9,31 +9,34 @@ namespace ray {
 
 namespace raylet {
 
-Raylet::Raylet(boost::asio::io_service &io_service, const std::string &socket_name,
+Raylet::Raylet(boost::asio::io_service &main_service,
+               boost::asio::io_service &object_manager_service,
+               const std::string &socket_name,
                const ResourceSet &resource_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-    : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
-      socket_(io_service),
-      tcp_acceptor_(io_service,
+    : acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
+      socket_(main_service),
+      object_manager_acceptor_(main_service,
                     boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
-      tcp_socket_(io_service),
+      object_manager_socket_(main_service),
       node_manager_acceptor_(
-          io_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
-      node_manager_socket_(io_service),
+          main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+      node_manager_socket_(main_service),
       gcs_client_(gcs_client),
       lineage_cache_(gcs_client->task_table(), gcs_client->object_table()),
-      object_manager_(io_service, object_manager_config, gcs_client),
-      node_manager_(io_service, socket_name, resource_config, object_manager_,
+      object_manager_(main_service, object_manager_service,
+                      object_manager_config, gcs_client),
+      node_manager_(main_service, socket_name, resource_config, object_manager_,
                     lineage_cache_, gcs_client_) {
-  ClientID client_id = RegisterGcs(io_service);
+  ClientID client_id = RegisterGcs(main_service);
   // TODO(swang): Remove these calls. ClientID should be set as part of the
   // constructors.
   lineage_cache_.SetClientId(client_id);
   object_manager_.SetClientID(client_id);
   // Start listening for clients.
   DoAccept();
-  DoAcceptTcp();
+  DoAcceptObjectManager();
   DoAcceptNodeManager();
 }
 
@@ -42,8 +45,8 @@ Raylet::~Raylet() {
   RAY_CHECK_OK(object_manager_.Terminate());
 }
 
-ClientID Raylet::RegisterGcs(boost::asio::io_service &io_service) {
-  boost::asio::ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
+ClientID Raylet::RegisterGcs(boost::asio::io_service &main_service) {
+  boost::asio::ip::tcp::endpoint endpoint = object_manager_acceptor_.local_endpoint();
   std::string ip = endpoint.address().to_string();
   unsigned short object_manager_port = endpoint.port();
 
@@ -60,7 +63,7 @@ ClientID Raylet::RegisterGcs(boost::asio::io_service &io_service) {
   client_info.object_manager_port = object_manager_port;
   // TODO(hme): Clean up constants.
   RAY_CHECK_OK(gcs_client_->Connect("127.0.0.1", 6379, client_info));
-  RAY_CHECK_OK(gcs_client_->Attach(io_service));
+  RAY_CHECK_OK(gcs_client_->Attach(main_service));
   RAY_CHECK_OK(gcs_client_->client_table().Connect());
 
 
@@ -73,14 +76,6 @@ ClientID Raylet::RegisterGcs(boost::asio::io_service &io_service) {
   RAY_LOG(INFO) << "Registering as " << client_id.hex();
 
   return client_id;
-}
-
-void Raylet::DoAcceptTcp() {
-  TCPClientConnection::pointer new_connection =
-      TCPClientConnection::Create(acceptor_.get_io_service());
-  tcp_acceptor_.async_accept(new_connection->GetSocket(),
-                             boost::bind(&Raylet::HandleAcceptTcp, this, new_connection,
-                                         boost::asio::placeholders::error));
 }
 
 void Raylet::DoAcceptNodeManager() {
@@ -108,13 +103,24 @@ void Raylet::HandleAcceptNodeManager(const boost::system::error_code &error) {
   DoAcceptNodeManager();
 }
 
-void Raylet::HandleAcceptTcp(TCPClientConnection::pointer new_connection,
-                             const boost::system::error_code &error) {
+void Raylet::DoAcceptObjectManager() {
+  TCPClientConnection::pointer new_connection =
+      TCPClientConnection::Create(object_manager_acceptor_.get_io_service());
+  object_manager_acceptor_.async_accept(
+      new_connection->GetSocket(),
+      boost::bind(&Raylet::HandleAcceptObjectManager,
+                  this,
+                  new_connection,
+                  boost::asio::placeholders::error));
+}
+
+void Raylet::HandleAcceptObjectManager(TCPClientConnection::pointer new_connection,
+                                       const boost::system::error_code &error) {
   if (!error) {
     // Pass it off to object manager for now.
     ray::Status status = object_manager_.AcceptConnection(std::move(new_connection));
   }
-  DoAcceptTcp();
+  DoAcceptObjectManager();
 }
 
 void Raylet::DoAccept() {

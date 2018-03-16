@@ -46,14 +46,18 @@ class TestRaylet : public ::testing::Test {
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ray::ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
-    server1.reset(new Raylet(io_service, std::string("hello1"), resource_config,
+    server1.reset(new Raylet(main_service,
+                             object_manager_service,
+                             std::string("hello1"), resource_config,
                              om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ray::ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
-    server2.reset(new Raylet(io_service, std::string("hello2"), resource_config,
+    server2.reset(new Raylet(main_service,
+                             object_manager_service,
+                             std::string("hello2"), resource_config,
                              om_config_2, gcs_client_2));
 
     // connect to stores.
@@ -82,7 +86,7 @@ class TestRaylet : public ::testing::Test {
   }
 
   void Loop() {
-    io_service.run();
+    main_service.run();
   };
 
   void StartLoop() {
@@ -90,7 +94,7 @@ class TestRaylet : public ::testing::Test {
   };
 
   void StopLoop() {
-    io_service.stop();
+    main_service.stop();
     p.join();
   }
 
@@ -118,7 +122,9 @@ class TestRaylet : public ::testing::Test {
 
  protected:
   std::thread p;
-  boost::asio::io_service io_service;
+  boost::asio::io_service main_service;
+  boost::asio::io_service object_manager_service;
+
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
   std::unique_ptr<ray::raylet::Raylet> server1;
