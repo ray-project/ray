@@ -28,7 +28,7 @@ class _MockEvaluator(object):
         return SampleBatch(samples_dict)
 
     def compute_gradients(self, samples):
-        return self._grad * samples.count
+        return self._grad * samples.count, {}
 
     def apply_gradients(self, grads):
         self._weights += self._grad

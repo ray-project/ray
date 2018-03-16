@@ -96,9 +96,9 @@ cd ray/python/ray/rllib
 ## Distributed Actor Handles
 
 Ray 0.3 adds support for [distributed actor handles][1], that is, the ability to
-have multiple callers invoke methods on the same actor. The actor’s creator may
+have multiple callers invoke methods on the same actor. The actor's creator may
 pass the actor handle as an argument to other tasks or to other actor methods.
-Here’s an example in which the driver creates an actor to log messages and
+Here's an example in which the driver creates an actor to log messages and
 passes an actor handle to other tasks:
 
 ```python

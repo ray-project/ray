@@ -1,3 +1,7 @@
+"""Implements Distributed Prioritized Experience Replay.
+
+https://arxiv.org/abs/1803.00933"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -11,7 +15,7 @@ import threading
 import numpy as np
 
 import ray
-from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.actors import TaskPool, create_colocated
@@ -25,10 +29,15 @@ LEARNER_QUEUE_MAX_SIZE = 16
 
 @ray.remote
 class ReplayActor(object):
+    """A replay buffer shard.
+
+    Ray actors are single-threaded, so for scalability multiple replay actors
+    may be created to increase parallelism."""
+
     def __init__(
             self, num_shards, learning_starts, buffer_size, train_batch_size,
             prioritized_replay_alpha, prioritized_replay_beta,
-            prioritized_replay_eps):
+            prioritized_replay_eps, clip_rewards):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.train_batch_size = train_batch_size
@@ -36,7 +45,8 @@ class ReplayActor(object):
         self.prioritized_replay_eps = prioritized_replay_eps
 
         self.replay_buffer = PrioritizedReplayBuffer(
-            buffer_size, alpha=prioritized_replay_alpha)
+            self.buffer_size, alpha=prioritized_replay_alpha,
+            clip_rewards=clip_rewards)
 
         # Metrics
         self.add_batch_timer = TimerStat()
@@ -88,7 +98,15 @@ class ReplayActor(object):
         return stat
 
 
-class GenericLearner(threading.Thread):
+class LearnerThread(threading.Thread):
+    """Background thread that updates the local model from replay data.
+
+    The learner thread communicates with the main thread through Queues. This
+    is needed since Ray operations can only be run on the main thread. In
+    addition, moving heavyweight gradient ops session runs off the main thread
+    improves overall throughput.
+    """
+
     def __init__(self, local_evaluator):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStat("size", 50)
@@ -98,6 +116,7 @@ class GenericLearner(threading.Thread):
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.daemon = True
+        self.weights_updated = False
 
     def run(self):
         while True:
@@ -108,12 +127,22 @@ class GenericLearner(threading.Thread):
             ra, replay = self.inqueue.get()
         if replay is not None:
             with self.grad_timer:
-                td_error = self.local_evaluator.compute_apply(replay)
+                td_error = self.local_evaluator.compute_apply(replay)[
+                    "td_error"]
             self.outqueue.put((ra, replay, td_error))
         self.learner_queue_size.push(self.inqueue.qsize())
+        self.weights_updated = True
 
 
-class ApexOptimizer(Optimizer):
+class ApexOptimizer(PolicyOptimizer):
+    """Main event loop of the Ape-X optimizer.
+
+    This class coordinates the data transfers between the learner thread,
+    remote evaluators (Ape-X actors), and replay buffer actors.
+
+    This optimizer requires that policy evaluators return an additional
+    "td_error" array in the info return of compute_gradients(). This error
+    term will be used for sample prioritization."""
 
     def _init(
             self, learning_starts=1000, buffer_size=10000,
@@ -121,7 +150,7 @@ class ApexOptimizer(Optimizer):
             prioritized_replay_beta=0.4, prioritized_replay_eps=1e-6,
             train_batch_size=512, sample_batch_size=50,
             num_replay_buffer_shards=1, max_weight_sync_delay=400,
-            debug=False):
+            clip_rewards=True, debug=False):
 
         self.debug = debug
         self.replay_starts = learning_starts
@@ -131,14 +160,14 @@ class ApexOptimizer(Optimizer):
         self.sample_batch_size = sample_batch_size
         self.max_weight_sync_delay = max_weight_sync_delay
 
-        self.learner = GenericLearner(self.local_evaluator)
+        self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
 
         self.replay_actors = create_colocated(
             ReplayActor,
             [num_replay_buffer_shards, learning_starts, buffer_size,
              train_batch_size, prioritized_replay_alpha,
-             prioritized_replay_beta, prioritized_replay_eps],
+             prioritized_replay_beta, prioritized_replay_eps, clip_rewards],
             num_replay_buffer_shards)
         assert len(self.remote_evaluators) > 0
 
@@ -186,10 +215,7 @@ class ApexOptimizer(Optimizer):
         weights = None
 
         with self.timers["sample_processing"]:
-            i = 0
-            num_weight_syncs = 0
             for ev, sample_batch in self.sample_tasks.completed():
-                i += 1
                 sample_timesteps += self.sample_batch_size
 
                 # Send the data to the replay buffer
@@ -199,22 +225,22 @@ class ApexOptimizer(Optimizer):
                 # Update weights if needed
                 self.steps_since_update[ev] += self.sample_batch_size
                 if self.steps_since_update[ev] >= self.max_weight_sync_delay:
-                    if weights is None:
+                    # Note that it's important to pull new weights once
+                    # updated to avoid excessive correlation between actors
+                    if weights is None or self.learner.weights_updated:
+                        self.learner.weights_updated = False
                         with self.timers["put_weights"]:
                             weights = ray.put(
                                 self.local_evaluator.get_weights())
                     ev.set_weights.remote(weights)
                     self.num_weight_syncs += 1
-                    num_weight_syncs += 1
                     self.steps_since_update[ev] = 0
 
                 # Kick off another sample request
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         with self.timers["replay_processing"]:
-            i = 0
             for ra, replay in self.replay_tasks.completed():
-                i += 1
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.timers["get_samples"]:
                     samples = ray.get(replay)
@@ -222,9 +248,7 @@ class ApexOptimizer(Optimizer):
                     self.learner.inqueue.put((ra, samples))
 
         with self.timers["update_priorities"]:
-            i = 0
             while not self.learner.outqueue.empty():
-                i += 1
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay["batch_indexes"], td_error)
                 train_timesteps += self.train_batch_size
@@ -256,4 +280,4 @@ class ApexOptimizer(Optimizer):
         }
         if self.debug:
             stats.update(debug_stats)
-        return dict(Optimizer.stats(self), **stats)
+        return dict(PolicyOptimizer.stats(self), **stats)

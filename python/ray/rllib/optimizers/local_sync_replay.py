@@ -7,20 +7,24 @@ import numpy as np
 import ray
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
     PrioritizedReplayBuffer
-from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
 
-class LocalSyncReplayOptimizer(Optimizer):
-    """Variant of the local sync optimizer that supports replay (for DQN)."""
+class LocalSyncReplayOptimizer(PolicyOptimizer):
+    """Variant of the local sync optimizer that supports replay (for DQN).
+
+    This optimizer requires that policy evaluators return an additional
+    "td_error" array in the info return of compute_gradients(). This error
+    term will be used for sample prioritization."""
 
     def _init(
             self, learning_starts=1000, buffer_size=10000,
             prioritized_replay=True, prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4, prioritized_replay_eps=1e-6,
-            train_batch_size=32, sample_batch_size=4):
+            train_batch_size=32, sample_batch_size=4, clip_rewards=True):
 
         self.replay_starts = learning_starts
         self.prioritized_replay_beta = prioritized_replay_beta
@@ -37,10 +41,10 @@ class LocalSyncReplayOptimizer(Optimizer):
         # Set up replay buffer
         if prioritized_replay:
             self.replay_buffer = PrioritizedReplayBuffer(
-                buffer_size,
-                alpha=prioritized_replay_alpha)
+                buffer_size, alpha=prioritized_replay_alpha,
+                clip_rewards=clip_rewards)
         else:
-            self.replay_buffer = ReplayBuffer(buffer_size)
+            self.replay_buffer = ReplayBuffer(buffer_size, clip_rewards)
 
         assert buffer_size >= self.replay_starts
 
@@ -88,7 +92,7 @@ class LocalSyncReplayOptimizer(Optimizer):
                 "batch_indexes": batch_indexes})
 
         with self.grad_timer:
-            td_error = self.local_evaluator.compute_apply(samples)
+            td_error = self.local_evaluator.compute_apply(samples)["td_error"]
             new_priorities = (
                 np.abs(td_error) + self.prioritized_replay_eps)
             if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
@@ -99,7 +103,7 @@ class LocalSyncReplayOptimizer(Optimizer):
         self.num_steps_trained += samples.count
 
     def stats(self):
-        return dict(Optimizer.stats(self), **{
+        return dict(PolicyOptimizer.stats(self), **{
             "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
             "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),

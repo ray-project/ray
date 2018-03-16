@@ -28,8 +28,7 @@ class RAY_EXPORT AsyncGcsClient {
   /// \param port The GCS port.
   /// \param client_info Information about the local client to connect.
   /// \return Status.
-  Status Connect(const std::string &address,
-                 int port,
+  Status Connect(const std::string &address, int port,
                  const ClientTableDataT &client_info);
   /// Attach this client to a plasma event loop. Note that only
   /// one event loop should be attached at a time.
@@ -55,8 +54,7 @@ class RAY_EXPORT AsyncGcsClient {
 
   using GetExportCallback = std::function<void(const std::string &data)>;
   Status AddExport(const std::string &driver_id, std::string &export_data);
-  Status GetExport(const std::string &driver_id,
-                   int64_t export_index,
+  Status GetExport(const std::string &driver_id, int64_t export_index,
                    const GetExportCallback &done_callback);
 
   std::shared_ptr<RedisContext> context() { return context_; }
@@ -74,24 +72,16 @@ class RAY_EXPORT AsyncGcsClient {
 };
 
 class SyncGcsClient {
-  Status LogEvent(const std::string &key,
-                  const std::string &value,
-                  double timestamp);
+  Status LogEvent(const std::string &key, const std::string &value, double timestamp);
   Status NotifyError(const std::map<std::string, std::string> &error_info);
-  Status RegisterFunction(const JobID &job_id,
-                          const FunctionID &function_id,
-                          const std::string &language,
-                          const std::string &name,
+  Status RegisterFunction(const JobID &job_id, const FunctionID &function_id,
+                          const std::string &language, const std::string &name,
                           const std::string &data);
-  Status RetrieveFunction(const JobID &job_id,
-                          const FunctionID &function_id,
-                          std::string *name,
-                          std::string *data);
+  Status RetrieveFunction(const JobID &job_id, const FunctionID &function_id,
+                          std::string *name, std::string *data);
 
   Status AddExport(const std::string &driver_id, std::string &export_data);
-  Status GetExport(const std::string &driver_id,
-                   int64_t export_index,
-                   std::string *data);
+  Status GetExport(const std::string &driver_id, int64_t export_index, std::string *data);
 };
 
 }  // namespace gcs
