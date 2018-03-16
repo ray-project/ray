@@ -1,7 +1,7 @@
 Policy Optimizers
 =================
 
-RLlib supports using its distributed policy optimizer implementations from external algorithms.
+RLlib supports using its policy optimizer implementations from external algorithms.
 
 Example of constructing and using a policy optimizer `(link to full example) <https://github.com/ericl/baselines/blob/rllib-example/baselines/deepq/run_simple_loop.py>`__:
 
