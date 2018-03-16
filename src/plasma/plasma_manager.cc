@@ -1336,7 +1336,7 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
         log_object_hash_mismatch_error_task_callback(task, user_context);
         Task_free(task);
       },
-      [user_context](gcs::AsyncGcsClient *, const TaskID &){
+      [user_context](gcs::AsyncGcsClient *, const TaskID &) {
         // TODO(pcmoritz): Handle failure.
       }));
 #endif
