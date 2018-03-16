@@ -55,7 +55,7 @@ class DDPGEvaluator(TFMultiGPUSupport):
 
         # when env.action_space is of Box type, e.g., Pendulum-v0
         # action_space.low is [-2.0], high is [2.0]
-        # take action by calling, e.g., env.step([0.5])
+        # take action by calling, e.g., env.step([3.5])
         if not isinstance(env.action_space, Box):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(
@@ -65,25 +65,28 @@ class DDPGEvaluator(TFMultiGPUSupport):
         self.sess = tf.Session(config=tf_config)
         self.ddpg_graph = models.DDPGGraph(registry, env, config, logdir)
 
-        '''
         # Create the schedule for exploration starting from 1.
         self.exploration = LinearSchedule(
             schedule_timesteps=int(
                 config["exploration_fraction"] *
                 config["schedule_max_timesteps"]),
-            initial_p=1.0,
-            final_p=config["exploration_final_eps"])
-        '''
+            initial_p=4.0*config["initial_noise_scale"],
+            final_p=4.0*0.02*config["initial_noise_scale"])
 
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())
-        self.ddpg_graph.update_target(self.sess)
+        # hard instead of soft!
+        self.ddpg_graph.update_target_hard(self.sess)
         self.global_timestep = 0
         self.local_timestep = 0
 
-        # Note that this encompasses both the Q and target network
+        # Note that this encompasses both the P&Q and target network
         self.variables = ray.experimental.TensorFlowVariables(
-            tf.group(self.ddpg_graph.q_t, self.ddpg_graph.q_tp1), self.sess)
+            tf.group(self.ddpg_graph.q_tp0, self.ddpg_graph.q_tp1), self.sess)
+        # for debug
+        #for k, v in self.variables.variables.items():
+        #    print(v.name)
+        #raw_input()
 
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]
@@ -123,11 +126,13 @@ class DDPGEvaluator(TFMultiGPUSupport):
         assert batch.count == self.config["sample_batch_size"]
         return batch
 
+    '''
     def compute_gradients(self, samples):
         _, grad = self.ddpg_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
             samples["new_obs"], samples["dones"], samples["weights"])
         return grad
+    '''
 
     def apply_critic_gradients(self, grads):
         self.ddpg_graph.apply_critic_gradients(self.sess, grads)
@@ -150,7 +155,8 @@ class DDPGEvaluator(TFMultiGPUSupport):
     def _step(self, global_timestep):
         """Takes a single step, and returns the result of the step."""
         action = self.ddpg_graph.act(
-            self.sess, np.array(self.obs)[None])[0]
+            self.sess, np.array(self.obs)[None],
+            True, self.exploration.value(global_timestep))[0]
         new_obs, rew, done, _ = self.env.step(action)
         ret = (self.obs, action, rew, new_obs, float(done))
         self.obs = new_obs
@@ -160,24 +166,26 @@ class DDPGEvaluator(TFMultiGPUSupport):
             self.obs = self.env.reset()
             self.episode_rewards.append(0.0)
             self.episode_lengths.append(0.0)
+            # reset UO noise for each episode
+            self.ddpg_graph.reset_noise(self.sess)
         self.local_timestep += 1
         return ret
 
     def stats(self):
         mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 5)
         mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 5)
-        #exploration = self.exploration.value(self.global_timestep)
+        exploration = self.exploration.value(self.global_timestep)
         return {
             "mean_100ep_reward": mean_100ep_reward,
             "mean_100ep_length": mean_100ep_length,
             "num_episodes": len(self.episode_rewards),
-            #"exploration": exploration,
+            "exploration": exploration,
             "local_timestep": self.local_timestep,
         }
 
     def save(self):
         return [
-            #self.exploration,
+            self.exploration,
             self.episode_rewards,
             self.episode_lengths,
             self.saved_mean_reward,
@@ -186,7 +194,7 @@ class DDPGEvaluator(TFMultiGPUSupport):
             self.local_timestep]
 
     def restore(self, data):
-        #self.exploration = data[0]
+        self.exploration = data[0]
         self.episode_rewards = data[1]
         self.episode_lengths = data[2]
         self.saved_mean_reward = data[3]

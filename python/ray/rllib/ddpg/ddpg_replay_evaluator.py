@@ -106,13 +106,7 @@ class DDPGReplayEvaluator(DDPGEvaluator):
         return grad
 
     def compute_actor_gradients(self, samples):
-        grad = self.ddpg_graph.compute_actor_gradients(
-            self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
-        return grad
-
-    def reset_noise(self):
-        self.ddpg_graph.reset_noise(self.sess)
+        return self.ddpg_graph.compute_actor_gradients(self.sess, samples["obs"])
 
     def _update_priorities_if_needed(self):
         """Manually updates replay buffer priorities on the last batch.

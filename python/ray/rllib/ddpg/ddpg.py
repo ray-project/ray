@@ -42,14 +42,19 @@ DEFAULT_CONFIG = dict(
     # exploration_fraction
     schedule_max_timesteps=100000,
     # Number of env steps to optimize for before returning
-    timesteps_per_iteration=200,
+    timesteps_per_iteration=2000,
+    # Fraction of entire training period over which the exploration rate is
+    # annealed
+    exploration_fraction=0.25,
     # exploration hyper-parameters are
+    # initial UO-noise scale
+    initial_noise_scale=0.1,
     # theta
-    exploration_theta =0.15,
+    exploration_theta=0.15,
     # sigma
-    exploration_sigma =0.2,
+    exploration_sigma=0.2,
     # How many steps of the model to sample before learning starts.
-    learning_starts=1000,
+    learning_starts=1024,
     # Update the target network every `target_network_update_freq` steps.
     # or update the target network softly when this is zero
     target_network_update_freq=0,
@@ -59,7 +64,7 @@ DEFAULT_CONFIG = dict(
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then each
     # worker will have a replay buffer of this size.
-    buffer_size=20000,
+    buffer_size=50000,
     # If True prioritized replay buffer will be used.
     prioritized_replay=False,
     # Alpha parameter for prioritized replay buffer
@@ -76,6 +81,9 @@ DEFAULT_CONFIG = dict(
     # Learning rate for adam optimizer
     actor_lr=1e-3,
     critic_lr=1e-3,
+    # Weights for L2 regularization
+    actor_l2_reg=None,
+    critic_l2_reg=None,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     sample_batch_size=1,
@@ -159,11 +167,11 @@ class DDPGAgent(Agent):
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
+        # enable illustration of the computation graph in TensorBoard
+        self.file_writer = tf.summary.FileWriter(self.logdir, self.local_evaluator.sess.graph)
+
     def _train(self):
         start_timestep = self.global_timestep
-
-        # TO DO: consider remote evaluators in async mode
-        self.local_evaluator.reset_noise()
 
         while (self.global_timestep - start_timestep <
                self.config["timesteps_per_iteration"]):
@@ -184,13 +192,13 @@ class DDPGAgent(Agent):
         mean_100ep_reward = 0.0
         mean_100ep_length = 0.0
         num_episodes = 0
-        #exploration = -1
+        exploration = -1
 
         for s in stats:
             mean_100ep_reward += s["mean_100ep_reward"] / len(stats)
             mean_100ep_length += s["mean_100ep_length"] / len(stats)
             num_episodes += s["num_episodes"]
-            #exploration = s["exploration"]
+            exploration = s["exploration"]
 
         result = TrainingResult(
             episode_reward_mean=mean_100ep_reward,
@@ -198,7 +206,7 @@ class DDPGAgent(Agent):
             episodes_total=num_episodes,
             timesteps_this_iter=self.global_timestep - start_timestep,
             info=dict({
-                #"exploration": exploration,
+                "exploration": exploration,
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
 
@@ -259,4 +267,4 @@ class DDPGAgent(Agent):
 
     def compute_action(self, observation):
         return self.local_evaluator.ddpg_graph.act(
-            self.local_evaluator.sess, np.array(observation)[None], 0.0)[0]
+            self.local_evaluator.sess, np.array(observation)[None], False, 0.0)[0]
