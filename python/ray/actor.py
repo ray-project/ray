@@ -352,7 +352,7 @@ def register_actor_signatures(worker, driver_id, class_id, class_name,
                                                        actor_method_name).id()
         worker.function_properties[driver_id][function_id] = (
             # The extra return value is an actor dummy object.
-            # In the cases wher actor_method_cpus is None, that value should
+            # In the cases where actor_method_cpus is None, that value should
             # never be used.
             FunctionProperties(num_return_vals=num_return_vals + 1,
                                resources={"CPU": actor_method_cpus},
@@ -495,6 +495,8 @@ class ActorHandleWrapper(object):
                  checkpoint_interval, class_name,
                  actor_creation_dummy_object_id,
                  actor_creation_resources, actor_method_cpus):
+        # TODO(rkn): Some of these fields are probably not necessary. We should
+        # strip out the unnecessary fields to keep actor handles lightweight.
         self.actor_id = actor_id
         self.class_id = class_id
         self.actor_handle_id = actor_handle_id
