@@ -22,14 +22,14 @@ Raylet::Raylet(boost::asio::io_service &io_service, const std::string &socket_na
           io_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       node_manager_socket_(io_service),
       gcs_client_(gcs_client),
-      // TODO(swang): This will break...we need to initialize the client and
-      // task tables before the lineage cache.
-      lineage_cache_(gcs_client->client_table().GetLocalClientId(),
-                     gcs_client->task_table(), gcs_client->object_table()),
+      lineage_cache_(gcs_client->task_table(), gcs_client->object_table()),
       object_manager_(io_service, object_manager_config, gcs_client),
       node_manager_(io_service, socket_name, resource_config, object_manager_,
                     lineage_cache_, gcs_client_) {
   ClientID client_id = RegisterGcs(io_service);
+  // TODO(swang): Remove these calls. ClientID should be set as part of the
+  // constructors.
+  lineage_cache_.SetClientId(client_id);
   object_manager_.SetClientID(client_id);
   // Start listening for clients.
   DoAccept();
