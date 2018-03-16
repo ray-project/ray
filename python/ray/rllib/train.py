@@ -64,6 +64,7 @@ if __name__ == "__main__":
                 "checkpoint_freq": args.checkpoint_freq,
                 "local_dir": args.local_dir,
                 "resources": resources_to_json(args.resources),
+                #"resources": {"cpu":2, "gpu":1},
                 "stop": args.stop,
                 "config": dict(args.config, env=args.env),
                 "restore": args.restore,

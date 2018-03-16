@@ -82,8 +82,8 @@ DEFAULT_CONFIG = dict(
     actor_lr=1e-3,
     critic_lr=1e-3,
     # Weights for L2 regularization
-    actor_l2_reg=None,
-    critic_l2_reg=None,
+    actor_l2_reg=1e-6,
+    critic_l2_reg=1e-6,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     sample_batch_size=1,
@@ -114,7 +114,7 @@ DEFAULT_CONFIG = dict(
     # setting is 1 unless your environment is particularly slow to sample.
     num_workers=1,
     # Whether to allocate GPUs for workers (if > 0).
-    num_gpus_per_worker=0,
+    num_gpus_per_worker=1,
     # (Experimental) Whether to update the model asynchronously from
     # workers. In this mode, gradients will be computed on workers instead of
     # on the driver, and workers will each have their own replay buffer.
