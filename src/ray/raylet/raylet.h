@@ -52,8 +52,7 @@ class Raylet {
   /// Accept a tcp client connection.
   void DoAcceptObjectManager();
   /// Handle an accepted tcp client connection.
-  void HandleAcceptObjectManager(TCPClientConnection::pointer new_connection,
-                                 const boost::system::error_code &error);
+  void HandleAcceptObjectManager(const boost::system::error_code &error);
   void DoAcceptNodeManager();
   void HandleAcceptNodeManager(const boost::system::error_code &error);
 

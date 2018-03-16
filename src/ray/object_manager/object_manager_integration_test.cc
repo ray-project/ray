@@ -11,8 +11,8 @@ class MockServer {
 
  private:
 
-  boost::asio::ip::tcp::acceptor tcp_acceptor_;
-  boost::asio::ip::tcp::socket tcp_socket_;
+  boost::asio::ip::tcp::acceptor object_manager_acceptor_;
+  boost::asio::ip::tcp::socket object_manager_socket_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   ObjectManager object_manager_;
 
@@ -22,15 +22,15 @@ class MockServer {
              boost::asio::io_service &object_manager_service,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-  : tcp_acceptor_(main_service,
+  : object_manager_acceptor_(main_service,
                   boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
-    tcp_socket_(main_service),
+    object_manager_socket_(main_service),
     gcs_client_(gcs_client),
     object_manager_(main_service, object_manager_service, object_manager_config, gcs_client)
   {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
-    DoAcceptTcp();
+    DoAcceptObjectManager();
   }
 
   ~MockServer() {
@@ -46,7 +46,7 @@ class MockServer {
       RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379));
       RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
-      boost::asio::ip::tcp::endpoint endpoint = tcp_acceptor_.local_endpoint();
+      boost::asio::ip::tcp::endpoint endpoint = object_manager_acceptor_.local_endpoint();
       std::string ip = endpoint.address().to_string();
       unsigned short object_manager_port = endpoint.port();
 
@@ -57,21 +57,27 @@ class MockServer {
       return gcs_client_->client_table().Connect(client_info);
   }
 
-  void DoAcceptTcp() {
-    TCPClientConnection::pointer new_connection =
-        TCPClientConnection::Create(tcp_acceptor_.get_io_service());
-    tcp_acceptor_.async_accept(new_connection->GetSocket(),
-                               boost::bind(&MockServer::HandleAcceptTcp, this, new_connection,
-                                           boost::asio::placeholders::error));
+  void DoAcceptObjectManager() {
+    object_manager_acceptor_.async_accept(object_manager_socket_,
+                                          boost::bind(&MockServer::HandleAcceptObjectManager,
+                                                      this,
+                                                      boost::asio::placeholders::error));
   }
 
-  void HandleAcceptTcp(TCPClientConnection::pointer new_connection,
-                               const boost::system::error_code &error) {
-    if (!error) {
-      // Pass it off to object manager for now.
-      ray::Status status = object_manager_.AcceptConnection(std::move(new_connection));
-    }
-    DoAcceptTcp();
+  void HandleAcceptObjectManager(const boost::system::error_code& error) {
+    ClientHandler<boost::asio::ip::tcp> client_handler =
+        [this](std::shared_ptr<TcpClientConnection> client) {
+          object_manager_.ProcessNewClient(client);
+        };
+    MessageHandler<boost::asio::ip::tcp> message_handler = [this](
+        std::shared_ptr<TcpClientConnection> client, int64_t message_type,
+        const uint8_t *message) {
+      object_manager_.ProcessClientMessage(client, message_type, message);
+    };
+    // Accept a new local client and dispatch it to the node manager.
+    auto new_connection = TcpClientConnection::Create(client_handler, message_handler,
+                                                      std::move(object_manager_socket_));
+    DoAcceptObjectManager();
   }
 
 };
