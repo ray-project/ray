@@ -278,61 +278,101 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id) const {
 }
 
 Status LineageCache::Flush() {
+  // Find all tasks that are READY and whose arguments have been committed in the GCS.
   std::vector<TaskID> ready_task_ids;
   for (const auto &pair : lineage_.GetEntries()) {
     auto entry_id = pair.first;
     auto entry = pair.second;
-    if (entry.IsTask() && entry.GetStatus() == GcsStatus_UNCOMMITTED_READY) {
-      bool all_parents_committed = true;
-      for (const auto &parent_id : entry.GetParentIds()) {
-        auto parent = lineage_.GetEntry(parent_id);
-        if (parent && parent->GetStatus() != GcsStatus_COMMITTED) {
-          all_parents_committed = false;
-          break;
-        }
+    // Skip object entries.
+    if (!entry.IsTask()) {
+      continue;
+    }
+    // Skip task entries that are not ready to be written yet. These tasks
+    // either have not started execution yet, are being executed on a remote
+    // node, or have already been written to the GCS.
+    if (entry.GetStatus() != GcsStatus_UNCOMMITTED_READY) {
+      continue;
+    }
+    // Check if all arguments have been committed to the GCS before writing
+    // this task.
+    bool all_arguments_committed = true;
+    for (const auto &parent_id : entry.GetParentIds()) {
+      auto parent = lineage_.GetEntry(parent_id);
+      // If a parent entry exists in the lineage cache but has not been
+      // committed yet, then as far as we know, it's still in flight to the
+      // GCS. Skip this task for now.
+      if (parent && parent->GetStatus() != GcsStatus_COMMITTED) {
+        all_arguments_committed = false;
+        break;
       }
-      if (all_parents_committed) {
-        ready_task_ids.push_back(entry_id);
-      }
+    }
+    if (all_arguments_committed) {
+      // All arguments have been committed to the GCS. Add this task to the
+      // list of tasks to write back to the GCS.
+      ready_task_ids.push_back(entry_id);
     }
   }
 
+  // Write back all ready tasks whose arguments have been committed to the GCS.
   gcs::TaskTable::Callback task_callback = [this](
       ray::gcs::AsyncGcsClient *client, const UniqueID &id, std::shared_ptr<TaskT> data) {
     HandleEntryCommitted(id);
   };
   for (const auto &ready_task_id : ready_task_ids) {
-    // TODO(swang): Make this better...
     auto task = lineage_.GetEntry(ready_task_id);
+    // TODO(swang): Make this better...
     flatbuffers::FlatBufferBuilder fbb;
     auto message = task->TaskData().ToFlatbuffer(fbb);
     fbb.Finish(message);
-
     auto task_data = std::make_shared<TaskT>();
     auto root = flatbuffers::GetRoot<TaskFlatbuffer>(fbb.GetBufferPointer());
     root->UnPackTo(task_data.get());
     RAY_CHECK_OK(task_storage_.Add(task->TaskData().GetTaskSpecification().DriverId(),
                                    ready_task_id, task_data, task_callback));
 
+    // We successfully wrote the task, so mark it as committing.
+    // TODO(swang): Use a batched interface and write with all object entries.
     auto entry = lineage_.PopEntry(ready_task_id);
     RAY_CHECK(entry->SetStatus(GcsStatus_COMMITTING));
     RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
   }
 
+  // Find all objects that are READY and whose parent task is committed in the
+  // GCS.
   std::vector<ObjectID> ready_object_ids;
   for (const auto &pair : lineage_.GetEntries()) {
     auto entry_id = pair.first;
     auto entry = pair.second;
-    if (!entry.IsTask() && entry.GetStatus() == GcsStatus_UNCOMMITTED_READY) {
-      auto parent_ids = entry.GetParentIds();
-      RAY_CHECK(parent_ids.size() == 1);
-      auto parent = lineage_.GetEntry(parent_ids[0]);
-      if (!parent || parent->GetStatus() >= GcsStatus_COMMITTING || parent->GetStatus() >= GcsStatus_COMMITTED) {
-        ready_object_ids.push_back(entry_id);
-      }
+    // Skip task entries.
+    if (entry.IsTask()) {
+      continue;
     }
+    // Skip object entries that are not ready to be written yet. These objects
+    // are waiting to be created by a task, are being created on a remote node,
+    // or have already been written to the GCS.
+    if (entry.GetStatus() != GcsStatus_UNCOMMITTED_READY) {
+      continue;
+    }
+    // Check if the parent task that created this object has been written to the GCS.
+    auto parent_ids = entry.GetParentIds();
+    RAY_CHECK(parent_ids.size() == 1);
+    auto parent = lineage_.GetEntry(parent_ids[0]);
+    // If a parent entry exists in the lineage cache but has not been written
+    // yet, then as far as we know, it's still in flight to the GCS. Skip this
+    // entry for now. NOTE(swang): For objects, we only need to wait for the
+    // parent to enter the COMMITTING status since a task and the objects that
+    // it creates are always co-located on the same GCS shard. Therefore, we
+    // can depend on the ordering at the shard to make sure that the task is
+    // written before or simultaneously with the objects.
+    if (parent && parent->GetStatus() < GcsStatus_COMMITTING) {
+      continue;
+    }
+    // The parent task has been written to the GCS. Add this object to the list
+    // of objects to write back to the GCS.
+    ready_object_ids.push_back(entry_id);
   }
 
+  // Write back all objects whose parent tasks have been written to the GCS.
   gcs::ObjectTable::Callback object_callback = [this](
       ray::gcs::AsyncGcsClient *client, const UniqueID &id,
       std::shared_ptr<ObjectTableDataT> data) { HandleEntryCommitted(id); };
@@ -343,6 +383,7 @@ Status LineageCache::Flush() {
     RAY_CHECK_OK(
         object_storage_.Add(JobID::nil(), ready_object_id, data, object_callback));
 
+    // We successfully wrote the object, so mark it as committing.
     auto entry = lineage_.PopEntry(ready_object_id);
     RAY_CHECK(entry->SetStatus(GcsStatus_COMMITTING));
     RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
