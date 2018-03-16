@@ -107,7 +107,8 @@ TaskID TaskSpecification::TaskId() const {
   return from_flatbuf(*message->task_id());
 }
 UniqueID TaskSpecification::DriverId() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->driver_id());
 }
 TaskID TaskSpecification::ParentTaskId() const {
   throw std::runtime_error("Method not implemented");

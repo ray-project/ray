@@ -144,8 +144,8 @@ void TaskUpdateCallback(gcs::AsyncGcsClient *client,
                         const TaskID &task_id,
                         const TaskTableDataT &task,
                         bool updated) {
-  RAY_CHECK_OK(client->task_table().Lookup(DriverID::nil(), task_id,
-                                           &TaskLookupAfterUpdate, &TaskLookupAfterUpdateFailure));
+  RAY_CHECK_OK(client->legacy_task_table().Lookup(
+      DriverID::nil(), task_id, &TaskLookupAfterUpdate, &TaskLookupAfterUpdateFailure));
 }
 
 
@@ -155,16 +155,17 @@ void TestTaskTable(const JobID &job_id, gcs::AsyncGcsClient &client) {
   ClientID local_scheduler_id = ClientID::from_binary("abcdefghijklmnopqrst");
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
-  RAY_CHECK_OK(client.task_table().Add(job_id, task_id, data, &TaskAdded));
-  RAY_CHECK_OK(client.task_table().Lookup(job_id, task_id, &TaskLookup, &TaskLookupFailure));
+  RAY_CHECK_OK(client.legacy_task_table().Add(job_id, task_id, data, &TaskAdded));
+  RAY_CHECK_OK(client.legacy_task_table().Lookup(job_id, task_id, &TaskLookup,
+                                                 &TaskLookupFailure));
   auto update = std::make_shared<TaskTableTestAndUpdateT>();
   update->test_scheduler_id = local_scheduler_id.binary();
   update->test_state_bitmask = SchedulingState_SCHEDULED;
   update->update_state = SchedulingState_LOST;
   // After test-and-setting, the callback will lookup the current state of the
   // task.
-  RAY_CHECK_OK(
-      client.task_table().TestAndUpdate(job_id, task_id, update, &TaskUpdateCallback));
+  RAY_CHECK_OK(client.legacy_task_table().TestAndUpdate(job_id, task_id, update,
+                                                        &TaskUpdateCallback));
   // Run the event loop. The loop will only stop if the lookup after the
   // test-and-set succeeds (or an assertion failure).
   test->Start();

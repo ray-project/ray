@@ -6,6 +6,7 @@
 // clang-format off
 #include "common_protocol.h"
 #include "ray/raylet/task.h"
+#include "ray/gcs/tables.h"
 #include "ray/id.h"
 #include "ray/status.h"
 // clang-format on
@@ -46,10 +47,10 @@ enum GcsStatus {
   GcsStatus_COMMITTED,
 };
 
-/// \class LineageCacheEntry
+/// \class LineageEntry
 ///
 /// An entry in the lineage. Each entry contains either an object or a task.
-class LineageCacheEntry {
+class LineageEntry {
  public:
   /// Create an entry for a task.
   ///
@@ -57,7 +58,7 @@ class LineageCacheEntry {
   /// \param task The task data to eventually be written back to the GCS.
   /// \param status The status of this entry, according to its write status in
   ///               the GCS.
-  LineageCacheEntry(const TaskID &task_id, const Task &task, GcsStatus status);
+  LineageEntry(const TaskID &task_id, const Task &task, GcsStatus status);
 
   /// Create an entry for an object.
   ///
@@ -65,12 +66,12 @@ class LineageCacheEntry {
   /// \param object The object data to eventually be written back to the GCS.
   /// \param status The status of this entry, according to its write status in
   ///               the GCS.
-  LineageCacheEntry(const ObjectID &entry_id, const Object &object, GcsStatus status);
+  LineageEntry(const ObjectID &entry_id, const Object &object, GcsStatus status);
 
   /// A copy constructor.
   ///
   /// \param entry A reference to the entry to copy.
-  LineageCacheEntry(const LineageCacheEntry &entry);
+  LineageEntry(const LineageEntry &entry);
 
   /// Get this entry's GCS status.
   ///
@@ -157,7 +158,7 @@ class Lineage {
   /// \param entry_id The ID of the entry to get.
   /// \return An optional reference to the entry. If this is empty, then the
   ///         entry ID is not in the lineage.
-  boost::optional<const LineageCacheEntry &> GetEntry(const UniqueID &entry_id) const;
+  boost::optional<const LineageEntry &> GetEntry(const UniqueID &entry_id) const;
 
   /// Set an entry in the lineage. If an entry with this ID already exists,
   /// then the entry is overwritten if and only if the new entry has a higher
@@ -167,20 +168,20 @@ class Lineage {
   /// \param entry The new entry to set in the lineage, if its GCS status is
   ///        greater than the current entry.
   /// \return Whether the entry was set.
-  bool SetEntry(LineageCacheEntry &&entry);
+  bool SetEntry(LineageEntry &&entry);
 
   /// Delete and return an entry from the lineage.
   ///
   /// \param entry_id The ID of the entry to pop.
   /// \return An optional reference to the popped entry. If this is empty, then
   ///         the entry ID is not in the lineage.
-  boost::optional<LineageCacheEntry> PopEntry(const UniqueID &entry_id);
+  boost::optional<LineageEntry> PopEntry(const UniqueID &entry_id);
 
   /// Get all entries in the lineage.
   ///
   /// \return A const reference to the lineage entries.
-  const std::unordered_map<const UniqueID, LineageCacheEntry, UniqueIDHasher>
-      &GetEntries() const;
+  const std::unordered_map<const UniqueID, LineageEntry, UniqueIDHasher> &GetEntries()
+      const;
 
   /// Serialize this lineage to a ForwardTaskRequest flatbuffer.
   ///
@@ -193,7 +194,7 @@ class Lineage {
 
  private:
   /// The lineage entries.
-  std::unordered_map<const UniqueID, LineageCacheEntry, UniqueIDHasher> entries_;
+  std::unordered_map<const UniqueID, LineageEntry, UniqueIDHasher> entries_;
 };
 
 /// \class LineageCache
@@ -205,7 +206,9 @@ class LineageCache {
  public:
   /// Create a lineage cache policy.
   /// TODO(swang): Pass in the policy (interface?) and a GCS client.
-  LineageCache();
+  LineageCache(const ClientID &client_id,
+               gcs::Storage<TaskID, TaskFlatbuffer> &task_storage,
+               gcs::Storage<ObjectID, ObjectTableData> &object_storage);
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
   /// These entries will not be written to the GCS until set to ready.
@@ -248,6 +251,11 @@ class LineageCache {
   Status Flush();
 
  private:
+  void HandleEntryCommitted(const UniqueID &unique_id);
+
+  ClientID client_id_;
+  gcs::Storage<TaskID, TaskFlatbuffer> &task_storage_;
+  gcs::Storage<ObjectID, ObjectTableData> &object_storage_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;

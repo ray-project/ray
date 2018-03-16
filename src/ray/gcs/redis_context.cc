@@ -35,6 +35,7 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
     data = std::string(reply->str, reply->len);
     RedisCallbackManager::instance().get(callback_index)(data, false);
   } else if (reply->type == REDIS_REPLY_STATUS) {
+    RedisCallbackManager::instance().get(callback_index)(data, false);
   } else if (reply->type == REDIS_REPLY_ERROR) {
     RAY_LOG(ERROR) << "Redis error " << reply->str;
   } else {
