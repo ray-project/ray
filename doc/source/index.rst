@@ -51,8 +51,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    :maxdepth: 1
    :caption: Installation
 
-   install-on-ubuntu.rst
-   install-on-macosx.rst
+   installation.rst
    install-on-docker.rst
    installation-troubleshooting.rst
 
@@ -80,6 +79,12 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 
    rllib.rst
    rllib-dev.rst
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Pandas on Ray
+
+   pandas_on_ray.rst
 
 .. toctree::
    :maxdepth: 1

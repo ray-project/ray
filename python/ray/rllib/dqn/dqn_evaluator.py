@@ -50,7 +50,7 @@ class DQNEvaluator(Evaluator):
 
     def __init__(self, registry, env_creator, config, logdir, worker_index):
         env = env_creator(config["env_config"])
-        env = wrap_dqn(registry, env, config["model"])
+        env = wrap_dqn(registry, env, config["model"], config["random_starts"])
         self.env = env
         self.config = config
 
