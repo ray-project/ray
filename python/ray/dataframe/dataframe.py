@@ -37,6 +37,7 @@ from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
 
+@_inherit_docstrings(pd.DataFrame)
 class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
