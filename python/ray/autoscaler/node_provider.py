@@ -49,10 +49,9 @@ def load_class(path):
     class_data = path.split(".")
     module_path = ".".join(class_data[:-1])
     class_str = class_data[-1]
-    module = importlib.import_module(module_path)
-    print(module)
     print(module_path)
     print(class_str)
+    module = importlib.import_module(module_path)
 
     return getattr(module, class_str)
 
