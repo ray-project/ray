@@ -62,7 +62,7 @@ class Table {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({id, data, done, nullptr, nullptr, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data, bool is_nil) {
+        RedisCallbackManager::instance().add([d](const std::string &data) {
           if (d->callback != nullptr) {
             (d->callback)(d->client, d->id, d->data);
           }
@@ -86,8 +86,8 @@ class Table {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({id, nullptr, lookup, failure, nullptr, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data, bool is_nil) {
-          if (is_nil) {
+        RedisCallbackManager::instance().add([d](const std::string &data) {
+          if (data.empty()) {
             if (d->failure != nullptr) {
               (d->failure)(d->client, d->id);
             }
@@ -121,7 +121,7 @@ class Table {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({client_id, nullptr, subscribe, nullptr, done, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data, bool is_nil) {
+        RedisCallbackManager::instance().add([d](const std::string &data) {
           if (data.empty()) {
             // No data is provided. This is the callback for the initial
             // subscription request.
@@ -221,7 +221,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
     int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, callback, id](const std::string &data, bool is_nil) {
+        [this, callback, id](const std::string &data) {
           auto result = std::make_shared<TaskTableDataT>();
           auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
           root->UnPackTo(result.get());
