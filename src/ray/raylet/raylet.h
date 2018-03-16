@@ -27,15 +27,14 @@ class Raylet {
   /// \param main_service The event loop to run the server on.
   /// \param object_manager_service The asio io_service tied to the object manager.
   /// \param socket_name The Unix domain socket to listen on for local clients.
-  /// \param resource_config The initial set of resources to start the local
+  /// \param node_manager_config Configuration to initialize the node manager.
   /// scheduler with.
   /// \param object_manager_config Configuration to initialize the object
   /// manager.
   /// \param gcs_client A client connection to the GCS.
   Raylet(boost::asio::io_service &main_service,
-         boost::asio::io_service &object_manager_service,
-         const std::string &socket_name,
-         const ResourceSet &resource_config,
+         boost::asio::io_service &object_manager_service, const std::string &socket_name,
+         const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 

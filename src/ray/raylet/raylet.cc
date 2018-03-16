@@ -11,7 +11,8 @@ namespace raylet {
 
 Raylet::Raylet(boost::asio::io_service &main_service,
                boost::asio::io_service &object_manager_service,
-               const std::string &socket_name, const ResourceSet &resource_config,
+               const std::string &socket_name,
+               const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
@@ -26,8 +27,8 @@ Raylet::Raylet(boost::asio::io_service &main_service,
       lineage_cache_(gcs_client->task_table()),
       object_manager_(main_service, object_manager_service, object_manager_config,
                       gcs_client),
-      node_manager_(main_service, socket_name, resource_config, object_manager_,
-                    lineage_cache_, gcs_client_) {
+      node_manager_(main_service, node_manager_config, object_manager_, lineage_cache_,
+                    gcs_client_) {
   RAY_CHECK_OK(RegisterGcs(main_service));
   // Start listening for clients.
   DoAccept();

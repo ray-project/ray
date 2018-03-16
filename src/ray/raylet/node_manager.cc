@@ -7,12 +7,12 @@ namespace ray {
 
 namespace raylet {
 
-NodeManager::NodeManager(boost::asio::io_service &io_service, const std::string &socket_name,
-                         const ResourceSet &resource_config,
-                         ObjectManager &object_manager, LineageCache &lineage_cache,
+NodeManager::NodeManager(boost::asio::io_service &io_service,
+                         const NodeManagerConfig &config, ObjectManager &object_manager,
+                         LineageCache &lineage_cache,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : io_service_(io_service),
-      local_resources_(resource_config),
+      local_resources_(config.resource_config),
       worker_pool_(WorkerPool(0)),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),

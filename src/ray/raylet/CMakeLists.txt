@@ -31,8 +31,6 @@ target_link_libraries(rayletlib ray_static ${Boost_SYSTEM_LIBRARY})
 
 add_executable(raylet main.cc)
 target_link_libraries(raylet rayletlib ${Boost_SYSTEM_LIBRARY} pthread)
-add_executable(raylet_demo remote_dependencies_demo.cc)
-target_link_libraries(raylet_demo rayletlib ${Boost_SYSTEM_LIBRARY} pthread)
 
 install(FILES
         raylet

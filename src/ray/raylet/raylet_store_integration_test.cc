@@ -38,27 +38,24 @@ class TestRaylet : public ::testing::Test {
     std::string store_sock_2 = StartStore("2");
 
     // configure
+    NodeManagerConfig node_manager_config;
     std::unordered_map<std::string, double> static_resource_config;
     static_resource_config = {{"num_cpus", 1}, {"num_gpus", 1}};
-    ray::raylet::ResourceSet resource_config(std::move(static_resource_config));
+    node_manager_config.resource_config = ResourceSet(std::move(static_resource_config));
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ray::ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
-    server1.reset(new Raylet(main_service,
-                             object_manager_service,
-                             std::string("hello1"), resource_config,
-                             om_config_1, gcs_client_1));
+    server1.reset(new Raylet(main_service, object_manager_service, std::string("hello1"),
+                             node_manager_config, om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ray::ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
-    server2.reset(new Raylet(main_service,
-                             object_manager_service,
-                             std::string("hello2"), resource_config,
-                             om_config_2, gcs_client_2));
+    server2.reset(new Raylet(main_service, object_manager_service, std::string("hello2"),
+                             node_manager_config, om_config_2, gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));

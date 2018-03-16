@@ -17,15 +17,18 @@ namespace ray {
 
 namespace raylet {
 
+struct NodeManagerConfig {
+  ResourceSet resource_config;
+  std::string worker_command;
+};
+
 class NodeManager {
  public:
   /// Create a node manager.
   ///
-  /// \param socket_name The pathname of the Unix domain socket to listen at
-  ///        for local connections.
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(boost::asio::io_service &io_service, const std::string &socket_name, const ResourceSet &resource_config,
+  NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
               ObjectManager &object_manager, LineageCache &lineage_cache,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
