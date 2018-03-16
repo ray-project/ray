@@ -35,9 +35,12 @@ else
 fi
 
 # Download and compile arrow if it isn't already present.
-if [[ ! -d $TP_DIR/pkg/arrow ]]; then
+if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
     echo "building arrow"
-    git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
+
+    if [[ ! -d $TP_DIR/build/arrow ]]; then
+      git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
+    fi
 
     pushd $TP_DIR/build/arrow
     git fetch origin master
