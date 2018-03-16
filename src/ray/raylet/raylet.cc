@@ -11,23 +11,21 @@ namespace raylet {
 
 Raylet::Raylet(boost::asio::io_service &main_service,
                boost::asio::io_service &object_manager_service,
-               const std::string &socket_name,
-               const ResourceSet &resource_config,
+               const std::string &socket_name, const ResourceSet &resource_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service),
-      object_manager_acceptor_(main_service,
-                    boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+      object_manager_acceptor_(
+          main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       object_manager_socket_(main_service),
       node_manager_acceptor_(
           main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       node_manager_socket_(main_service),
       gcs_client_(gcs_client),
-      lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
-                     gcs_client->task_table(), gcs_client->object_table()),
-      object_manager_(main_service, object_manager_service,
-                      object_manager_config, gcs_client),
+      lineage_cache_(gcs_client->task_table()),
+      object_manager_(main_service, object_manager_service, object_manager_config,
+                      gcs_client),
       node_manager_(main_service, socket_name, resource_config, object_manager_,
                     lineage_cache_, gcs_client_) {
   RAY_CHECK_OK(RegisterGcs(main_service));
