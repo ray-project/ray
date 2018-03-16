@@ -242,12 +242,6 @@ void NodeManager::FinishTask(const TaskID &task_id) {
   auto task = *tasks.begin();
 
   // TODO(swang): Release resources that were held for the task.
-
-  // Mark the task's return values as ready to be written to the GCS.
-  for (int64_t i = 0; i < task.GetTaskSpecification().NumReturns(); i++) {
-    ObjectID return_id = task.GetTaskSpecification().ReturnId(i);
-    lineage_cache_.AddReadyObject(return_id, false);
-  }
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
