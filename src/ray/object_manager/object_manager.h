@@ -146,7 +146,7 @@ class ObjectManager {
   boost::asio::io_service *io_service_;
 
   /// Used to create "work" for an io service, so when it's run, it doesn't exit.
-  boost::asio::io_service::work work_;
+  // boost::asio::io_service::work work_;
 
   /// Single thread for executing asynchronous handlers.
   /// This runs the (currently only) io_service, which handles all outgoing requests
