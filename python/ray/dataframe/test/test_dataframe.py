@@ -1062,37 +1062,31 @@ def test_equals():
 
 
 def test_eval_df_use_case():
-    return # TODO(kunalgosar)
     df = pd.DataFrame({'a': np.random.randn(10),
-                      'b': np.random.randn(10)})
-    ray_df = from_pandas(df, 5)
+                       'b': np.random.randn(10)})
+    ray_df = from_pandas(df, 2)
     df.eval("e = arctan2(sin(a), b)",
             engine='python',
             parser='pandas', inplace=True)
-    expect = df.e
     ray_df.eval("e = arctan2(sin(a), b)",
                 engine='python',
                 parser='pandas', inplace=True)
-    got = ray_df.e
     # TODO: Use a series equality validator.
-    assert ray_df_equals_pandas(got, pd.DataFrame(expect, columns=['e']))
+    assert ray_df_equals_pandas(ray_df, df)
 
 
 def test_eval_df_arithmetic_subexpression():
-    return # TODO(kunalgosar)
     df = pd.DataFrame({'a': np.random.randn(10),
-                      'b': np.random.randn(10)})
-    ray_df = from_pandas(df, 5)
-    df.eval("e = sin(a + b)",
+                       'b': np.random.randn(10)})
+    ray_df = from_pandas(df, 2)
+    df.eval("not_e = sin(a + b)",
             engine='python',
             parser='pandas', inplace=True)
-    expect = df.e
-    ray_df.eval("e = sin(a + b)",
+    ray_df.eval("not_e = sin(a + b)",
                 engine='python',
                 parser='pandas', inplace=True)
-    got = ray_df.e
     # TODO: Use a series equality validator.
-    assert ray_df_equals_pandas(got, pd.DataFrame(expect, columns=['e']))
+    assert ray_df_equals_pandas(ray_df, df)
 
 
 def test_ewm():
@@ -1784,6 +1778,7 @@ def test_mask():
 @pytest.fixture
 def test_max(ray_df, pandas_df):
     assert(ray_series_equals_pandas(ray_df.max(), pandas_df.max()))
+    assert(ray_series_equals_pandas(ray_df.max(axis=1), pandas_df.max(axis=1)))
 
 
 @pytest.fixture
@@ -1820,6 +1815,7 @@ def test_merge():
 @pytest.fixture
 def test_min(ray_df, pandas_df):
     assert(ray_series_equals_pandas(ray_df.min(), pandas_df.min()))
+    assert(ray_series_equals_pandas(ray_df.min(axis=1), pandas_df.min(axis=1)))
 
 
 def test_mod():

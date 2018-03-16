@@ -617,7 +617,7 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
-
+        # TODO: We don't support `level` right now, so df.sum always returns a pd.Series
         axis = self._row_index._get_axis_name(axis) if axis is not None \
             else 'index'
 
@@ -630,8 +630,6 @@ class DataFrame(object):
                             else self._col_partitions)))
         result.index = self.index if axis == 'columns' else self.columns
         return result
-
-        # # TODO: We don't support `level` right now, so df.sum always returns a pd.Series
 
     def abs(self):
         """Apply an absolute value function to all numberic columns.
@@ -786,11 +784,12 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies df.all(axis=1)
             to the transpose of df.
         """
+        # TODO: Clean up this function, particularly on the reindexing
         if axis is not None:
             self._row_index._get_axis_name(axis)
         # Use .copy() to prevent read-only error
         partitions, res_index = (self._row_partitions, self._row_index.copy()) \
-                if axis == 1 or axis == 'rows'\
+                if axis == 1 or axis == 'rows' \
                 else (self._col_partitions, self._col_index.copy())
 
         series = ray.get(
@@ -819,6 +818,7 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies on the column partitions,
             otherwise operates on row partitions
         """
+        # TODO: Clean up this function, particularly on the reindexing
         # Use .copy() to prevent read-only error
         partitions, res_index = (self._row_partitions, self._row_index.copy()) \
                 if axis == 1 else (self._col_partitions, self._col_index.copy())
@@ -900,11 +900,9 @@ class DataFrame(object):
         new_df = self.fillna(method='bfill',
                              axis=axis,
                              limit=limit,
-                             downcast=downcast)
-        if inplace:
-            self._row_partitions = new_df._row_partitions
-            self.columns = new_df.columns
-        else:
+                             downcast=downcast,
+                             inplace=inplace)
+        if not inplace:
             return new_df
 
     def bool(self):
@@ -995,16 +993,20 @@ class DataFrame(object):
         Returns:
             The count, in a Series (or DataFrame if level is specified).
         """
-        axis = self._row_index._get_axis_name(axis)
+        # TODO: doesn't work for multi-level indices
+        axis = self._row_index._get_axis_name(axis) if axis is not None \
+                else 'index'
 
         result = pd.concat(ray.get(
             _map_partitions(lambda df: df.count(axis=axis,
                                                 level=level,
                                                 numeric_only=numeric_only),
                             self._row_partitions if axis == 'columns'
-                            else self._col_partitions)))
+                            or axis == 0 else self._col_partitions)))
 
-        result.index = self.index if axis == 'columns' else self.columns
+        result.index = self.index if axis == 'columns' or axis == 0 \
+                else self.columns
+
         return result
 
     def cov(self, min_periods=None):
@@ -1289,7 +1291,7 @@ class DataFrame(object):
                     self._row_partitions
                 )
                 new_columns = self._col_index.drop(values)
-                
+
                 new_df_cols = self._col_partitions.copy()
                 col_parts_to_del = pd.Series(self._col_index.loc[values, 'partition']).unique()
                 for i in col_parts_to_del:
@@ -1337,6 +1339,7 @@ class DataFrame(object):
         Returns:
             Boolean: True if equal, otherwise False
         """
+        # TODO(kunalgosar): Implement Copartition and use it to implement equals
         def helper(df, index, other_series):
             return df.iloc[index['index_within_partition']] \
                         .equals(other_series)
@@ -1408,19 +1411,36 @@ class DataFrame(object):
         Returns:
             ndarray, numeric scalar, DataFrame, Series
         """
-        # TODO: Fix this function
-        return
+        columns = self.columns
+
+        def eval_helper(df):
+            df = df.copy()
+            df.columns = columns
+            df.eval(expr, inplace=True, **kwargs)
+            df.columns = pd.RangeIndex(0, len(df.columns))
+            return df
+
         inplace = validate_bool_kwarg(inplace, "inplace")
-        new_df = self._map_partitions(lambda df: df.eval(expr,
-                                      inplace=False, **kwargs))
-        new_df.columns = new_df.columns.insert(self.columns.size, 'e')
+        new_rows = _map_partitions(eval_helper, self._row_partitions)
+
+        columns_copy = pd.DataFrame(columns=self.columns)
+        columns_copy.eval(expr, inplace=True, **kwargs)
+        columns = columns_copy.columns
+
         if inplace:
             # TODO: return ray series instead of ray df
-            self.e = new_df.drop(columns=self.columns)
-            self._row_partitions = new_df._row_partitions
-            self.columns = new_df.columns
+            self._row_partitions = new_rows
+            old_num_col_partitions = len(self._col_partitions)
+            self._col_partitions = _rebuild_cols.remote(self._row_partitions,
+                                                        None, columns)
+            if len(self._col_partitions) != old_num_col_partitions:
+                self._col_index.loc[columns[-1]] = [len(self._col_partitions) - 1, 0] 
+            else:
+                new_index = self._col_index['index_within_partition'][columns[-2]] + 1
+                self._col_index.loc[columns[-1]] = [len(self._col_partitions) - 1,
+                        new_index] 
         else:
-            return new_df
+            return DataFrame(columns=columns, row_partitions=new_rows)
 
     def ewm(self, com=None, span=None, halflife=None, alpha=None,
             min_periods=0, freq=None, adjust=True, ignore_na=False, axis=0):
@@ -1436,13 +1456,12 @@ class DataFrame(object):
     def ffill(self, axis=None, inplace=False, limit=None, downcast=None):
         """Synonym for DataFrame.fillna(method='ffill')
         """
-        new_df = self.fillna(
-            method='ffill', axis=axis, limit=limit, downcast=downcast
-        )
-        if inplace:
-            self._row_partitions = new_df._row_partitions
-            self.columns = new_df.columns
-        else:
+        new_df = self.fillna(method='bfill',
+                             axis=axis,
+                             limit=limit,
+                             downcast=downcast,
+                             inplace=inplace)
+        if not inplace:
             return new_df
 
     def fillna(self, value=None, method=None, axis=None, inplace=False,
@@ -1587,9 +1606,8 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        idx = self._row_index
-        if (idx is not None):
-            return idx.first_valid_index()
+        if self._row_index is not None:
+            return self._row_index.first_valid_index()
         return None
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
@@ -1644,7 +1662,7 @@ class DataFrame(object):
         # TODO: Fix this function
         return
         temp_df = self._map_partitions(
-            lambda df: df.get(key, default=default))
+            lambda df: df.get(key, default=default), self._row_partitions)
         return to_pandas(temp_df)
 
     def get_dtype_counts(self):
@@ -1980,9 +1998,8 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        idx = self._row_index
-        if (idx is not None):
-            return idx.last_valid_index()
+        if self._row_index is not None:
+            return self._row_index.last_valid_index()
         return None
 
     def le(self, other, axis='columns', level=None):
@@ -2026,17 +2043,19 @@ class DataFrame(object):
         axis = self._row_index._get_axis_name(axis) if axis is not None \
                 else 'index'
 
+        is_axis_zero = axis == 'index' or axis == 0
+
         max_series = pd.concat(ray.get(
             _map_partitions(lambda df: df.max(axis=axis,
                                               skipna=skipna,
                                               level=level,
                                               numeric_only=numeric_only,
                                               **kwargs),
-                            self._row_partitions if axis == 1 or axis == 'rows'
+                            self._row_partitions if not is_axis_zero
                             else self._col_partitions)))
-        max_series.index = self.columns
-        #max_series is a pandas.Series object
-        #return Series(max_series)
+
+        max_series.index = self.columns if is_axis_zero else self.index
+
         return max_series
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
@@ -2132,17 +2151,18 @@ class DataFrame(object):
         axis = self._row_index._get_axis_name(axis) if axis is not None \
                 else 'index'
 
+        is_axis_zero = axis == 'index' or axis == 0
+
         min_series = pd.concat(ray.get(
             _map_partitions(lambda df: df.min(axis=axis,
                                               skipna=skipna,
                                               level=level,
                                               numeric_only=numeric_only,
                                               **kwargs),
-                            self._row_partitions if axis == 1 or axis == 'rows'
+                            self._row_partitions if not is_axis_zero
                             else self._col_partitions)))
-        min_series.index = self.columns
-        #min_series is a pandas.Series object
-        #return Series(min_series)
+
+        min_series.index = self.columns if is_axis_zero else self.index
         return min_series
 
     def mod(self, other, axis='columns', level=None, fill_value=None):
@@ -3279,7 +3299,7 @@ class DataFrame(object):
                                     'index_within_partition'] = [
                     p for p in range(sum(partition_mask))]
             except ValueError:
-                # Copy the arrrow sealed dataframe so we can mutate it.
+                # Copy the arrow sealed dataframe so we can mutate it.
                 # We only do this the first time we try to mutate the sealed.
                 self._col_index = self._col_index.copy()
                 self._col_index.loc[partition_mask,
