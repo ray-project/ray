@@ -54,9 +54,9 @@ class DataFrame(object):
                 If None, infer
             copy (boolean): Copy data from inputs.
                 Only affects DataFrame / 2d ndarray input
-            _col_partitions ([ObjectID]): The list of ObjectIDs that contain
+            col_partitions ([ObjectID]): The list of ObjectIDs that contain
                 the column dataframe partitions.
-            rows ([ObjectID]): The list of ObjectIDs that contain the row
+            row_partitions ([ObjectID]): The list of ObjectIDs that contain the row
                 dataframe partitions.
         """
         # Check type of data and use appropriate constructor
@@ -2022,14 +2022,22 @@ class DataFrame(object):
         Returns:
             The max of the DataFrame.
         """
-        return # Fix this
-        if axis == 1:
-            return self._map_partitions(
-                lambda df: df.max(axis=axis, skipna=skipna, level=level,
-                                  numeric_only=numeric_only, **kwargs))
-        else:
-            return self.T.max(axis=1, skipna=None, level=None,
-                              numeric_only=None, **kwargs)
+        # TODO: doesn't work for multi-level indices
+        axis = self._row_index._get_axis_name(axis) if axis is not None \
+                else 'index'
+
+        max_series = pd.concat(ray.get(
+            _map_partitions(lambda df: df.max(axis=axis,
+                                              skipna=skipna,
+                                              level=level,
+                                              numeric_only=numeric_only,
+                                              **kwargs),
+                            self._row_partitions if axis == 1 or axis == 'rows'
+                            else self._col_partitions)))
+        max_series.index = self.columns
+        #max_series is a pandas.Series object
+        #return Series(max_series)
+        return max_series
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
@@ -2120,15 +2128,22 @@ class DataFrame(object):
         Returns:
             The min of the DataFrame.
         """
-        return
-        # Fix this
-        if axis == 1:
-            return self._map_partitions(
-                lambda df: df.min(axis=axis, skipna=skipna, level=level,
-                                  numeric_only=numeric_only, **kwargs))
-        else:
-            return self.T.min(axis=1, skipna=skipna, level=level,
-                              numeric_only=numeric_only, **kwargs)
+        # TODO: doesn't work for multi-level indices
+        axis = self._row_index._get_axis_name(axis) if axis is not None \
+                else 'index'
+
+        min_series = pd.concat(ray.get(
+            _map_partitions(lambda df: df.min(axis=axis,
+                                              skipna=skipna,
+                                              level=level,
+                                              numeric_only=numeric_only,
+                                              **kwargs),
+                            self._row_partitions if axis == 1 or axis == 'rows'
+                            else self._col_partitions)))
+        min_series.index = self.columns
+        #min_series is a pandas.Series object
+        #return Series(min_series)
+        return min_series
 
     def mod(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(

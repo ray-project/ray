@@ -21,6 +21,10 @@ def ray_df_equals_pandas(ray_df, pandas_df):
 
 
 @pytest.fixture
+def ray_series_equals_pandas(ray_df, pandas_df):
+    return ray_df.sort_index().equals(pandas_df.sort_index())
+
+@pytest.fixture
 def ray_df_equals(ray_df1, ray_df2):
     return to_pandas(ray_df1).sort_index().equals(
         to_pandas(ray_df2).sort_index()
@@ -1779,8 +1783,7 @@ def test_mask():
 
 @pytest.fixture
 def test_max(ray_df, pandas_df):
-    return
-    assert(ray_df_equals_pandas(ray_df.max(), pandas_df.max()))
+    assert(ray_series_equals_pandas(ray_df.max(), pandas_df.max()))
 
 
 @pytest.fixture
@@ -1816,8 +1819,7 @@ def test_merge():
 
 @pytest.fixture
 def test_min(ray_df, pandas_df):
-    return
-    assert(ray_df_equals_pandas(ray_df.min(), pandas_df.min()))
+    assert(ray_series_equals_pandas(ray_df.min(), pandas_df.min()))
 
 
 def test_mod():
