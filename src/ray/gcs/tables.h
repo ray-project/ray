@@ -160,7 +160,12 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   ///        This is only used for the tests.
   /// \return Status
   Status SubscribeToNotifications(const JobID &job_id, bool subscribe_all,
-                                  const Callback &object_available, const Callback &done);
+                                  const Callback &object_available, const Callback &done) {
+    if (subscribe_all) {
+
+    }
+    return Status::OK();
+  }
 
   /// Request notifications about the availability of some objects from the
   /// object
@@ -171,7 +176,22 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// \param object_ids The object IDs to receive notifications about.
   /// \return Status
   Status RequestNotifications(const JobID &job_id,
-                              const std::vector<ObjectID> &object_ids);
+                              const ClientID& client_id,
+                              const std::vector<ObjectID> &object_ids) {
+    // TODO(pcm): Requests that go to the same shard should be batched
+    for (const auto& object_id : object_ids) {
+      int64_t callback_index = RedisCallbackManager::instance().add(
+        [this](const std::string& data) {
+        // TODO(pcm): If a callback is needed, can add it here.
+      });
+      std::vector<std::string> args;
+      args.push_back("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS");
+      args.push_back(client_id.binary());
+      args.push_back(object_id.binary());
+      RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index));
+    }
+    return Status::OK();
+  }
 };
 
 using FunctionTable = Table<FunctionID, FunctionTableData>;

@@ -23,8 +23,9 @@ class TestGcs : public ::testing::Test {
  public:
   TestGcs() {
     client_ = std::make_shared<gcs::AsyncGcsClient>();
+    client_id_ = ClientID::from_random();
     ClientTableDataT client_info;
-    client_info.client_id = ClientID::from_random().binary();
+    client_info.client_id = client_id_.binary();
     client_info.node_manager_address = "127.0.0.1";
     client_info.local_scheduler_port = 0;
     client_info.object_manager_port = 0;
@@ -45,6 +46,7 @@ class TestGcs : public ::testing::Test {
  protected:
   std::shared_ptr<gcs::AsyncGcsClient> client_;
   JobID job_id_;
+  ClientID client_id_;
 };
 
 TestGcs *test;
@@ -264,6 +266,29 @@ void TestClientTableDisconnect(const JobID &job_id,
 TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
   test = this;
   TestClientTableDisconnect(job_id_, client_);
+}
+
+void ObjectAvailable(gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {
+}
+
+void SubscriptionInstalled(gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {
+}
+
+void TestObjectTableRequests(const JobID &job_id,
+                             const ClientID &client_id,
+                             std::shared_ptr<gcs::AsyncGcsClient> client) {
+  std::vector<ObjectID> object_ids;
+  for (int i = 0; i < 100; ++i) {
+    object_ids.push_back(ObjectID::from_random());
+  }
+  RAY_CHECK_OK(client->object_table().SubscribeToNotifications(job_id, true, ObjectAvailable, SubscriptionInstalled));
+  RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, client_id, object_ids));
+  test->Start();
+}
+
+TEST_F(TestGcsWithAsio, TestObjectTableRequests) {
+  test = this;
+  TestObjectTableRequests(job_id_, client_id_, client_);
 }
 
 }  // namespace

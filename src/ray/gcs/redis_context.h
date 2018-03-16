@@ -53,6 +53,7 @@ class RedisContext {
   Status RunAsync(const std::string &command, const UniqueID &id, uint8_t *data,
                   int64_t length, const TablePubsub pubsub_channel,
                   int64_t callback_index);
+  Status RunArgvAsync(const std::vector<std::string>& args, int64_t callback_index);
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         int64_t callback_index);
   redisAsyncContext *async_context() { return async_context_; }
