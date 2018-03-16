@@ -3522,3 +3522,15 @@ class DataFrame(object):
         """
         from .indexing import _iLoc_Indexer
         return _iLoc_Indexer(self)
+
+    def get_col_partition(self, col):
+        return self._col_index['partition'][col]
+
+    def get_col_index_within_partition(self, col):
+        return self._col_index['index_within_partition'][col]
+
+    def get_row_partition(self, row):
+        return self._row_index['partition'][row]
+
+    def get_row_index_within_partition(self, row):
+        return self._row_index['index_within_partition'][row]
