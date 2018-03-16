@@ -11,11 +11,32 @@
 
 /* Callback for subscribing to the local scheduler table. */
 typedef void (*actor_notification_table_subscribe_callback)(
-    ActorID actor_id,
-    WorkerID driver_id,
-    DBClientID local_scheduler_id,
-    bool reconstruct,
+    const ActorID &actor_id,
+    const WorkerID &driver_id,
+    const DBClientID &local_scheduler_id,
     void *user_context);
+
+/// Publish an actor creation notification. This is published by a local
+/// scheduler once it creates an actor.
+///
+/// \param db_handle Database handle.
+/// \param actor_id The ID of the actor that was created.
+/// \param driver_id The ID of the driver that created the actor.
+/// \param local_scheduler_id The ID of the local scheduler that created the
+///        actor.
+/// \return Void.
+void publish_actor_creation_notification(DBHandle *db_handle,
+                                         const ActorID &actor_id,
+                                         const WorkerID &driver_id,
+                                         const DBClientID &local_scheduler_id);
+
+/// Data that is needed to publish an actor creation notification.
+typedef struct {
+  /// The size of the flatbuffer object.
+  int64_t size;
+  /// The information to be sent.
+  uint8_t flatbuffer_data[0];
+} ActorCreationNotificationData;
 
 /**
  * Register a callback to process actor notification events.
