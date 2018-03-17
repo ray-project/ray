@@ -569,8 +569,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
-    assert os.path.isfile(executable), executable
-    assert os.path.isfile(module), module
+    assert os.path.isfile(executable)
+    assert os.path.isfile(module)
     counter = 0
     if port is not None:
         # If a port is specified, then try only once to connect.
