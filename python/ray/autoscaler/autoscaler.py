@@ -55,7 +55,7 @@ CLUSTER_CONFIG_SCHEMA = {
         "type": (str, REQUIRED),  # e.g. aws
         "region": (str, OPTIONAL),  # e.g. us-east-1
         "availability_zone": (str, OPTIONAL),  # e.g. us-east-1a
-        "module": (str, OPTIONAL),  # e.g. module to import
+        "module": (str, OPTIONAL),  # module, if using external node provider
     }, REQUIRED),
 
     # How Ray will authenticate with newly launched nodes.
