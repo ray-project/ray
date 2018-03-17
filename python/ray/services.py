@@ -1115,7 +1115,7 @@ def start_ray_processes(address_info=None,
         for resource_dict in resources:
             cpus = resource_dict.get("CPU")
             workers_per_local_scheduler.append(cpus if cpus is not None
-                                               else psutil.cpu_count())
+                                               else psutil.cpu_count(logical=False))
 
     if address_info is None:
         address_info = {}
