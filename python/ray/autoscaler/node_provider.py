@@ -47,12 +47,13 @@ def load_class(path):
     """
     print(path)
     class_data = path.split(".")
+    if len(class_data) < 2:
+        raise ValueError("You need to pass a valid path: mymodule.provider_class")
     module_path = ".".join(class_data[:-1])
     class_str = class_data[-1]
     print(module_path)
     print(class_str)
     module = importlib.import_module(module_path)
-
     return getattr(module, class_str)
 
 
