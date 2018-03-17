@@ -10,7 +10,7 @@ namespace raylet {
 
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest() : worker_pool_(0), io_service_() {}
+  WorkerPoolTest() : worker_pool_(0, {}), io_service_() {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid) {
     std::function<void(std::shared_ptr<LocalClientConnection>)> client_handler = [this](

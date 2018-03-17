@@ -13,7 +13,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : io_service_(io_service),
       local_resources_(config.resource_config),
-      worker_pool_(WorkerPool(0)),
+      worker_pool_(config.num_initial_workers, config.worker_command),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); }),

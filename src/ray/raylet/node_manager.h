@@ -19,7 +19,8 @@ namespace raylet {
 
 struct NodeManagerConfig {
   ResourceSet resource_config;
-  std::string worker_command;
+  int num_initial_workers;
+  std::vector<const char *> worker_command;
 };
 
 class NodeManager {
