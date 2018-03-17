@@ -105,8 +105,8 @@ table Task {
 }
 
 table ForwardTaskRequest {
-  // The task to be forwarded.
-  task: string;
+  // The ID of the task to be forwarded.
+  task_id: string;
   // The tasks in the uncommitted lineage of the forwarded task. This
   // should include task_id.
   uncommitted_tasks: [Task];
