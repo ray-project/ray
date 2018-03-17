@@ -4,15 +4,13 @@ namespace ray {
 
 SenderConnection::pointer SenderConnection::Create(boost::asio::io_service &io_service,
                                                    const std::string &ip, uint16_t port) {
-  return pointer(new SenderConnection(io_service, ip, port));
+  boost::asio::ip::tcp::socket socket(io_service);
+  RAY_CHECK_OK(TcpConnect(socket, ip, port));
+  return pointer(new SenderConnection(std::move(socket)));
 };
 
-SenderConnection::SenderConnection(boost::asio::io_service &io_service,
-                                   const std::string &ip, uint16_t port)
-    : socket_(io_service), send_queue_() {
-  boost::asio::ip::address ip_address = boost::asio::ip::address::from_string(ip);
-  boost::asio::ip::tcp::endpoint endpoint(ip_address, port);
-  socket_.connect(endpoint);
+SenderConnection::SenderConnection(boost::asio::basic_stream_socket<boost::asio::ip::tcp> &&socket)
+    : ServerConnection<boost::asio::ip::tcp>(std::move(socket)), send_queue_() {
 };
 
 boost::asio::ip::tcp::socket &SenderConnection::GetSocket() { return socket_; };
@@ -47,13 +45,4 @@ SendRequest &SenderConnection::GetSendRequest(const ObjectID &object_id) {
   return send_requests_[object_id];
 };
 
-TCPClientConnection::TCPClientConnection(boost::asio::io_service &io_service)
-    : socket_(io_service) {}
-
-TCPClientConnection::pointer TCPClientConnection::Create(
-    boost::asio::io_service &io_service) {
-  return TCPClientConnection::pointer(new TCPClientConnection(io_service));
-}
-
-boost::asio::ip::tcp::socket &TCPClientConnection::GetSocket() { return socket_; }
 }  // namespace ray

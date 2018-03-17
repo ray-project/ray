@@ -45,12 +45,6 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, size_t length,
   }
 }
 
-// TODO(hme): Get rid of this.
-template <class T>
-boost::asio::basic_stream_socket<T> &ServerConnection<T>::GetSocket(){
-  return socket_;
-}
-
 template <class T>
 std::shared_ptr<ClientConnection<T>> ClientConnection<T>::Create(
     ClientHandler<T> &client_handler, MessageHandler<T> &message_handler,

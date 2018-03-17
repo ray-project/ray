@@ -65,18 +65,18 @@ class MockServer {
   }
 
   void HandleAcceptObjectManager(const boost::system::error_code& error) {
-    ClientHandler<boost::asio::ip::tcp> client_handler =
-        [this](std::shared_ptr<TcpClientConnection> client) {
+    ObjectManagerClientHandler client_handler =
+        [this](std::shared_ptr<ObjectManagerClientConnection> client) {
           object_manager_.ProcessNewClient(client);
         };
-    MessageHandler<boost::asio::ip::tcp> message_handler = [this](
-        std::shared_ptr<TcpClientConnection> client, int64_t message_type,
+    ObjectManagerMessageHandler message_handler = [this](
+        std::shared_ptr<ObjectManagerClientConnection> client, int64_t message_type,
         const uint8_t *message) {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = TcpClientConnection::Create(client_handler, message_handler,
-                                                      std::move(object_manager_socket_));
+    auto new_connection = ObjectManagerClientConnection::Create(client_handler, message_handler,
+                                                                std::move(object_manager_socket_));
     DoAcceptObjectManager();
   }
 

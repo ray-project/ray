@@ -324,11 +324,11 @@ ray::Status ObjectManager::CreateTransferConnection(
 };
 
 
-void ObjectManager::ProcessNewClient(std::shared_ptr<TcpClientConnection> conn){
+void ObjectManager::ProcessNewClient(std::shared_ptr<ObjectManagerClientConnection> conn){
   conn->ProcessMessages();
 };
 
-void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> conn,
+void ObjectManager::ProcessClientMessage(std::shared_ptr<ObjectManagerClientConnection> conn,
                                          int64_t message_type,
                                          const uint8_t *message){
   // RAY_LOG(INFO) << "ProcessClientMessage " << message_type;
@@ -356,7 +356,7 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> co
   }
 };
 
-void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
+void ObjectManager::ConnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn,
                                   const uint8_t *message){
   // RAY_LOG(INFO) << "ConnectClient";
   auto info = flatbuffers::GetRoot<ConnectClientMessage>(message);
@@ -373,7 +373,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
   }
 };
 
-void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
+void ObjectManager::DisconnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn,
                                      const uint8_t *message){
   auto info = flatbuffers::GetRoot<DisconnectClientMessage>(message);
   ClientID client_id = ObjectID::from_binary(info->client_id()->str());
@@ -386,7 +386,7 @@ void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
   // TODO(hme): appropriately dispose of client connection.
 };
 
-void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
+void ObjectManager::ReceivePullRequest(std::shared_ptr<ObjectManagerClientConnection> &conn,
                                        const uint8_t *message){
   // Serialize.
   auto pr = flatbuffers::GetRoot<PullRequestMessage>(message);
@@ -396,7 +396,7 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
   ray::Status push_status = Push(object_id, client_id);
 };
 
-ray::Status ObjectManager::WaitPushReceive(std::shared_ptr<TcpClientConnection> conn){
+ray::Status ObjectManager::WaitPushReceive(std::shared_ptr<ObjectManagerClientConnection> conn){
   boost::asio::async_read(conn->GetSocket(),
                           boost::asio::buffer(&read_length_, sizeof(read_length_)),
                           boost::bind(&ObjectManager::HandlePushReceive,
@@ -406,7 +406,7 @@ ray::Status ObjectManager::WaitPushReceive(std::shared_ptr<TcpClientConnection> 
   return ray::Status::OK();
 };
 
-void ObjectManager::HandlePushReceive(std::shared_ptr<TcpClientConnection> conn,
+void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnection> conn,
                                       const boost::system::error_code& length_ec){
   std::vector<uint8_t> message;
   message.resize(read_length_);

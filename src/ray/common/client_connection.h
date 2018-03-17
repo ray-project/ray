@@ -38,9 +38,6 @@ class ServerConnection {
   /// \return Status.
   ray::Status WriteMessage(int64_t type, size_t length, const uint8_t *message);
 
-  // TODO(hme): Get rid of this.
-  boost::asio::basic_stream_socket<T> &GetSocket();
-
  protected:
   /// The socket connection to the server.
   boost::asio::basic_stream_socket<T> socket_;

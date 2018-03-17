@@ -110,14 +110,14 @@ class ObjectManager {
   ///
   /// \param conn The connection.
   /// \return Status of whether the connection was successfully established.
-  void ProcessNewClient(std::shared_ptr<TcpClientConnection> conn);
+  void ProcessNewClient(std::shared_ptr<ObjectManagerClientConnection> conn);
 
   /// Process messages sent from other nodes.
   ///
   /// \param conn The connection.
   /// \param message_type The message type.
   /// \param message A pointer set to the beginning of the message.
-  void ProcessClientMessage(std::shared_ptr<TcpClientConnection> conn,
+  void ProcessClientMessage(std::shared_ptr<ObjectManagerClientConnection> conn,
                             int64_t message_type,
                             const uint8_t *message);
 
@@ -189,9 +189,9 @@ class ObjectManager {
   std::unordered_map<ray::ClientID, SenderConnection::pointer, ray::UniqueIDHasher>
       transfer_send_connections_;
 
-  std::unordered_map<ray::ClientID, std::shared_ptr<TcpClientConnection>, ray::UniqueIDHasher>
+  std::unordered_map<ray::ClientID, std::shared_ptr<ObjectManagerClientConnection>, ray::UniqueIDHasher>
       message_receive_connections_;
-  std::unordered_map<ray::ClientID, std::shared_ptr<TcpClientConnection>, ray::UniqueIDHasher>
+  std::unordered_map<ray::ClientID, std::shared_ptr<ObjectManagerClientConnection>, ray::UniqueIDHasher>
       transfer_receive_connections_;
 
   /// Read length for push receives.
@@ -266,21 +266,21 @@ class ObjectManager {
       std::function<void(SenderConnection::pointer)> callback);
 
   /// Handles receiving a pull request message.
-  void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
+  void ReceivePullRequest(std::shared_ptr<ObjectManagerClientConnection> &conn,
                           const uint8_t *message);
 
   /// Handles connect message of a new client connection.
-  void ConnectClient(std::shared_ptr<TcpClientConnection> &conn, const uint8_t *message);
+  void ConnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn, const uint8_t *message);
 
   /// Handles disconnect message of an existing client connection.
-  void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn, const uint8_t *message);
+  void DisconnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn, const uint8_t *message);
 
   /// A socket connection doing an asynchronous read on a transfer connection that was
   /// added by ConnectClient.
-  ray::Status WaitPushReceive(std::shared_ptr<TcpClientConnection> conn);
+  ray::Status WaitPushReceive(std::shared_ptr<ObjectManagerClientConnection> conn);
 
   /// Invoked when a remote object manager pushes an object to this object manager.
-  void HandlePushReceive(std::shared_ptr<TcpClientConnection> conn,
+  void HandlePushReceive(std::shared_ptr<ObjectManagerClientConnection> conn,
                          const boost::system::error_code& length_ec);
 
 };
