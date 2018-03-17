@@ -170,6 +170,8 @@ You can specify the external node provider using the yaml config:
         type: external
         module: mypackage.myclass
 
+The module needs to be in the format `package.provider_class` or `package.sub_package.provider_class`.
+
 Additional Cloud providers
 --------------------------
 
