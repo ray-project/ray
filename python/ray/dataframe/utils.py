@@ -247,7 +247,8 @@ def _blocks_to_row(*partition):
 def _inherit_docstrings(parent):
     """Creates a decorator which overwrites a decorated class' __doc__
     attribute with parent's __doc__ attribute. Also overwrites __doc__ of
-    methods defined in the class with the __doc__ of matching methods in parent.
+    methods defined in the class with the __doc__ of matching methods in
+    parent.
 
     Args:
         parent (object): Class from which the decorated class inherits __doc__.

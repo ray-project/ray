@@ -3015,6 +3015,7 @@ def test_iloc(ray_df, pd_df):
     assert ray_df.iloc[1:2, 0].equals(pd_df.iloc[1:2, 0])
     assert ray_df.iloc[1:2, 0:2].equals(pd_df.iloc[1:2, 0:2])
 
+
 def test__doc__():
     assert rdf.DataFrame.__doc__ != pd.DataFrame.__doc__
     assert rdf.DataFrame.__init__ != pd.DataFrame.__init__
