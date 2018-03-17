@@ -83,6 +83,12 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 
 .. toctree::
    :maxdepth: 1
+   :caption: Pandas on Ray
+
+   pandas_on_ray.rst
+
+.. toctree::
+   :maxdepth: 1
    :caption: Examples
 
    example-rl-pong.rst

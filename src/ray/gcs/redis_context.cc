@@ -26,6 +26,7 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
   redisReply *reply = reinterpret_cast<redisReply *>(r);
   std::string data = "";
   if (reply->type == REDIS_REPLY_NIL) {
+    // Respond with blank string, which triggers a failure callback for lookups.
   } else if (reply->type == REDIS_REPLY_STRING) {
     data = std::string(reply->str, reply->len);
   } else if (reply->type == REDIS_REPLY_ARRAY) {
@@ -84,6 +85,7 @@ int64_t RedisCallbackManager::add(const RedisCallback &function) {
 
 RedisCallbackManager::RedisCallback &RedisCallbackManager::get(
     int64_t callback_index) {
+  RAY_CHECK(callbacks_.find(callback_index) != callbacks_.end());
   return *callbacks_[callback_index];
 }
 

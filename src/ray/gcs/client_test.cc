@@ -98,13 +98,19 @@ void Lookup(gcs::AsyncGcsClient *client, const UniqueID &id,
   test->Stop();
 }
 
+void LookupFailed(gcs::AsyncGcsClient *client, const UniqueID &id) {
+  // Object entry failed.
+  RAY_CHECK(false);
+  test->Stop();
+}
+
 void TestObjectTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   auto data = std::make_shared<ObjectTableDataT>();
   data->managers.push_back("A");
   data->managers.push_back("B");
   ObjectID object_id = ObjectID::from_random();
   RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, &ObjectAdded));
-  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, &Lookup));
+  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, &Lookup, &LookupFailed));
   // Run the event loop. The loop will only stop if the Lookup callback is
   // called (or an assertion failure).
   test->Start();
@@ -130,16 +136,25 @@ void TaskLookup(gcs::AsyncGcsClient *client, const TaskID &id,
   ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);
 }
 
+void TaskLookupFailure(gcs::AsyncGcsClient *client, const TaskID &id) {
+  RAY_CHECK(false);
+}
+
 void TaskLookupAfterUpdate(gcs::AsyncGcsClient *client, const TaskID &id,
                            std::shared_ptr<TaskTableDataT> data) {
   ASSERT_EQ(data->scheduling_state, SchedulingState_LOST);
   test->Stop();
 }
 
+void TaskLookupAfterUpdateFailure(gcs::AsyncGcsClient *client, const TaskID &id) {
+  RAY_CHECK(false);
+  test->Stop();
+}
+
 void TaskUpdateCallback(gcs::AsyncGcsClient *client, const TaskID &task_id,
                         const TaskTableDataT &task, bool updated) {
-  RAY_CHECK_OK(
-      client->task_table().Lookup(DriverID::nil(), task_id, &TaskLookupAfterUpdate));
+  RAY_CHECK_OK(client->task_table().Lookup(
+      DriverID::nil(), task_id, &TaskLookupAfterUpdate, &TaskLookupAfterUpdateFailure));
 }
 
 void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -149,7 +164,8 @@ void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
   RAY_CHECK_OK(client->task_table().Add(job_id, task_id, data, &TaskAdded));
-  RAY_CHECK_OK(client->task_table().Lookup(job_id, task_id, &TaskLookup));
+  RAY_CHECK_OK(
+      client->task_table().Lookup(job_id, task_id, &TaskLookup, &TaskLookupFailure));
   auto update = std::make_shared<TaskTableTestAndUpdateT>();
   update->test_scheduler_id = local_scheduler_id.binary();
   update->test_state_bitmask = SchedulingState_SCHEDULED;

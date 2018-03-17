@@ -18,7 +18,6 @@ USE_VALGRIND = False
 ID_SIZE = 20
 
 NIL_WORKER_ID = 20 * b"\xff"
-NIL_ACTOR_ID = 20 * b"\xff"
 
 
 def random_object_id():
@@ -48,7 +47,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
             plasma_store_name, use_valgrind=USE_VALGRIND)
         # Connect to the scheduler.
         self.local_scheduler_client = local_scheduler.LocalSchedulerClient(
-            scheduler_name, NIL_WORKER_ID, NIL_ACTOR_ID, False, 0)
+            scheduler_name, NIL_WORKER_ID, False)
 
     def tearDown(self):
         # Check that the processes are still alive.
