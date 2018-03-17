@@ -281,14 +281,33 @@ void TestObjectTableRequests(const JobID &job_id,
   for (int i = 0; i < 100; ++i) {
     object_ids.push_back(ObjectID::from_random());
   }
-  RAY_CHECK_OK(client->object_table().SubscribeToNotifications(job_id, true, ObjectAvailable, SubscriptionInstalled));
+  RAY_CHECK_OK(client->object_table().SubscribeToNotifications(job_id, client_id, true, ObjectAvailable, SubscriptionInstalled));
   RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, client_id, object_ids));
   test->Start();
 }
 
+/*
 TEST_F(TestGcsWithAsio, TestObjectTableRequests) {
   test = this;
   TestObjectTableRequests(job_id_, client_id_, client_);
+}
+*/
+
+void ObjectEntryAdded(gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {
+  test->Stop();
+}
+
+void TestObjectTableAddEntry(const JobID &job_id,
+                             const ClientID &client_id,
+                             std::shared_ptr<gcs::AsyncGcsClient> client) {
+  ObjectID object_id = ObjectID::from_random();
+  RAY_CHECK_OK(client->object_table().AddEntry(job_id, client_id, object_id, 100, "testhash", ObjectEntryAdded));
+  test->Start();
+}
+
+TEST_F(TestGcsWithAsio, TestObjectTableAddEntry) {
+  test = this;
+  TestObjectTableAddEntry(job_id_, client_id_, client_);
 }
 
 }  // namespace

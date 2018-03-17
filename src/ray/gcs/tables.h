@@ -148,6 +148,31 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
     pubsub_channel_ = TablePubsub_OBJECT;
   };
 
+  Status AddEntry(const JobID &job_id, const ClientID &client_id,
+                  const ObjectID &object_id, int64_t size,
+                  const std::string& hash, const Callback &done) {
+    int64_t callback_index = RedisCallbackManager::instance().add(
+      [this, object_id, done](const std::string& data) {
+        if (data == "hash mismatch") {
+          RAY_LOG(WARNING) << "Found objects with different value but same object "
+                     << "ID, most likely because a nondeterministic task was "
+                     << "executed twice, either for reconstruction or for "
+                     << "speculation.";
+        } else {
+          std::shared_ptr<ObjectTableDataT> done_data;
+          done(client_, object_id, done_data);
+        }
+      });
+    std::vector<std::string> args;
+    args.push_back("RAY.OBJECT_TABLE_ADD");
+    args.push_back(object_id.binary());
+    args.push_back(std::to_string(size));
+    args.push_back(hash);
+    args.push_back(client_id.binary());
+    RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index));
+    return Status::OK();
+  }
+
   /// Set up a client-specific channel for receiving notifications about
   /// available
   /// objects from the object table. The callback will be called once per
@@ -159,10 +184,22 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// \param done_callback Callback to be called when subscription is installed.
   ///        This is only used for the tests.
   /// \return Status
-  Status SubscribeToNotifications(const JobID &job_id, bool subscribe_all,
-                                  const Callback &object_available, const Callback &done) {
+  Status SubscribeToNotifications(const JobID &job_id, const ClientID &client_id,
+                                  bool subscribe_all, const Callback &object_available,
+                                  const Callback &done) {
+    int64_t callback_index = RedisCallbackManager::instance().add(
+      [this](const std::string& data) {
+        // TODO(pcm): If a callback is needed, can add it here.
+      });
     if (subscribe_all) {
-
+      std::vector<std::string> args;
+      args.push_back("SUBSCRIBE OC:BCAST");
+      RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index));
+    } else {
+      std::vector<std::string> args;
+      args.push_back("SUBSCRIBE OC:%b");
+      args.push_back(client_id.binary());
+      RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index));
     }
     return Status::OK();
   }
