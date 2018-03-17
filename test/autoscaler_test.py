@@ -511,15 +511,26 @@ class AutoscalingTest(unittest.TestCase):
         config = SMALL_CLUSTER.copy()
         config["provider"] = {
             "type": "external",
-            "module": "test.autoscaler_test.MockProvider",
+            "module": "ray.autoscaler.node_provider.NodeProvider",
             }
         config_path = self.write_config(config)
         autoscaler = StandardAutoscaler(
             config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
-
-        self.assertIsInstance(autoscaler.provider, MockProvider)
+        self.assertIsInstance(autoscaler.provider, NodeProvider)
 
     def testExternalNodeScalerWrongImport(self):
+        config = SMALL_CLUSTER.copy()
+        config["provider"] = {
+            "type": "external",
+            "module": "mymodule.provider_class",
+            }
+        invalid_provider = self.write_config(config)
+        self.assertRaises(
+            ImportError,
+            lambda: StandardAutoscaler(
+                invalid_provider, LoadMetrics(), update_interval_s=0))
+
+    def testExternalNodeScalerWrongModuleFormat(self):
         config = SMALL_CLUSTER.copy()
         config["provider"] = {
             "type": "external",
@@ -527,7 +538,7 @@ class AutoscalingTest(unittest.TestCase):
             }
         invalid_provider = self.write_config(config)
         self.assertRaises(
-            ImportError,
+            ValueError,
             lambda: StandardAutoscaler(
                 invalid_provider, LoadMetrics(), update_interval_s=0))
 

@@ -45,20 +45,18 @@ def load_class(path):
 
     Example of the path: mypkg.mysubpkg.myclass
     """
-    print(path)
     class_data = path.split(".")
     if len(class_data) < 2:
-        raise ValueError("You need to pass a valid path: mymodule.provider_class")
+        raise ValueError(
+            "You need to pass a valid path like mymodule.provider_class"
+            )
     module_path = ".".join(class_data[:-1])
     class_str = class_data[-1]
-    print(module_path)
-    print(class_str)
     module = importlib.import_module(module_path)
     return getattr(module, class_str)
 
 
 def get_node_provider(provider_config, cluster_name):
-    print(provider_config)
     if provider_config["type"] == "external":
         provider_cls = load_class(path=provider_config["module"])
         return provider_cls(provider_config, cluster_name)
