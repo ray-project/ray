@@ -8,6 +8,7 @@ import unittest
 
 import ray
 
+
 @unittest.skipIf(
     not os.environ.get('RAY_USE_NEW_GCS', False),
     "Tests functionality of the new GCS.")
