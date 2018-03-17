@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import importlib
 import os
 import yaml
 
@@ -25,6 +26,7 @@ NODE_PROVIDERS = {
     "kubernetes": None,
     "docker": None,
     "local_cluster": None,
+    "external": None,  # Import an external module
 }
 
 DEFAULT_CONFIGS = {
@@ -37,8 +39,30 @@ DEFAULT_CONFIGS = {
 }
 
 
+def load_class(path):
+    """
+    Load a class at runtime given a full path.
+
+    Example of the path: mypkg.mysubpkg.myclass
+    """
+    class_data = path.split(".")
+    if len(class_data) < 2:
+        raise ValueError(
+            "You need to pass a valid path like mymodule.provider_class"
+            )
+    module_path = ".".join(class_data[:-1])
+    class_str = class_data[-1]
+    module = importlib.import_module(module_path)
+    return getattr(module, class_str)
+
+
 def get_node_provider(provider_config, cluster_name):
+    if provider_config["type"] == "external":
+        provider_cls = load_class(path=provider_config["module"])
+        return provider_cls(provider_config, cluster_name)
+
     importer = NODE_PROVIDERS.get(provider_config["type"])
+
     if importer is None:
         raise NotImplementedError(
             "Unsupported node provider: {}".format(provider_config["type"]))
