@@ -129,7 +129,11 @@ class _Bracket():
                 cutoff = self.cutoff(recorded)
                 if cutoff is not None and cur_rew < cutoff:
                     action = TrialScheduler.STOP
-                recorded[trial.trial_id] = cur_rew
+                if cur_rew is None:
+                    print("Reward attribute is None! Consider"
+                          " reporting using a different field.")
+                else:
+                    recorded[trial.trial_id] = cur_rew
                 break
         return action
 

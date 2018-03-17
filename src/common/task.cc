@@ -37,8 +37,10 @@ class TaskBuilder {
   void Start(UniqueID driver_id,
              TaskID parent_task_id,
              int64_t parent_counter,
+             ActorID actor_creation_id,
+             ObjectID actor_creation_dummy_object_id,
              ActorID actor_id,
-             ActorID actor_handle_id,
+             ActorHandleID actor_handle_id,
              int64_t actor_counter,
              bool is_actor_checkpoint_method,
              FunctionID function_id,
@@ -46,6 +48,8 @@ class TaskBuilder {
     driver_id_ = driver_id;
     parent_task_id_ = parent_task_id;
     parent_counter_ = parent_counter;
+    actor_creation_id_ = actor_creation_id;
+    actor_creation_dummy_object_id_ = actor_creation_dummy_object_id;
     actor_id_ = actor_id;
     actor_handle_id_ = actor_handle_id;
     actor_counter_ = actor_counter;
@@ -58,6 +62,9 @@ class TaskBuilder {
     sha256_update(&ctx, (BYTE *) &driver_id, sizeof(driver_id));
     sha256_update(&ctx, (BYTE *) &parent_task_id, sizeof(parent_task_id));
     sha256_update(&ctx, (BYTE *) &parent_counter, sizeof(parent_counter));
+    sha256_update(&ctx, (BYTE *) &actor_creation_id, sizeof(actor_creation_id));
+    sha256_update(&ctx, (BYTE *) &actor_creation_dummy_object_id,
+                  sizeof(actor_creation_dummy_object_id));
     sha256_update(&ctx, (BYTE *) &actor_id, sizeof(actor_id));
     sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
     sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
@@ -103,6 +110,8 @@ class TaskBuilder {
     auto message = CreateTaskInfo(
         fbb, to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
         to_flatbuf(fbb, parent_task_id_), parent_counter_,
+        to_flatbuf(fbb, actor_creation_id_),
+        to_flatbuf(fbb, actor_creation_dummy_object_id_),
         to_flatbuf(fbb, actor_id_), to_flatbuf(fbb, actor_handle_id_),
         actor_counter_, is_actor_checkpoint_method_,
         to_flatbuf(fbb, function_id_), arguments, fbb.CreateVector(returns),
@@ -127,6 +136,8 @@ class TaskBuilder {
   UniqueID driver_id_;
   TaskID parent_task_id_;
   int64_t parent_counter_;
+  ActorID actor_creation_id_;
+  ObjectID actor_creation_dummy_object_id_;
   ActorID actor_id_;
   ActorID actor_handle_id_;
   int64_t actor_counter_;
@@ -170,15 +181,18 @@ void TaskSpec_start_construct(TaskBuilder *builder,
                               UniqueID driver_id,
                               TaskID parent_task_id,
                               int64_t parent_counter,
+                              ActorID actor_creation_id,
+                              ObjectID actor_creation_dummy_object_id,
                               ActorID actor_id,
                               ActorID actor_handle_id,
                               int64_t actor_counter,
                               bool is_actor_checkpoint_method,
                               FunctionID function_id,
                               int64_t num_returns) {
-  builder->Start(driver_id, parent_task_id, parent_counter, actor_id,
-                 actor_handle_id, actor_counter, is_actor_checkpoint_method,
-                 function_id, num_returns);
+  builder->Start(driver_id, parent_task_id, parent_counter, actor_creation_id,
+                 actor_creation_dummy_object_id, actor_id, actor_handle_id,
+                 actor_counter, is_actor_checkpoint_method, function_id,
+                 num_returns);
 }
 
 TaskSpec *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
@@ -231,6 +245,24 @@ ActorID TaskSpec_actor_handle_id(TaskSpec *spec) {
 
 bool TaskSpec_is_actor_task(TaskSpec *spec) {
   return !TaskSpec_actor_id(spec).is_nil();
+}
+
+ActorID TaskSpec_actor_creation_id(TaskSpec *spec) {
+  RAY_CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(*message->actor_creation_id());
+}
+
+ObjectID TaskSpec_actor_creation_dummy_object_id(TaskSpec *spec) {
+  RAY_CHECK(spec);
+  // The task must be an actor method.
+  RAY_CHECK(TaskSpec_is_actor_task(spec));
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(*message->actor_creation_dummy_object_id());
+}
+
+bool TaskSpec_is_actor_creation_task(TaskSpec *spec) {
+  return !TaskSpec_actor_creation_id(spec).is_nil();
 }
 
 int64_t TaskSpec_actor_counter(TaskSpec *spec) {

@@ -24,6 +24,14 @@ void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state) {
  */
 bool constraints_satisfied_hard(const LocalScheduler *scheduler,
                                 const TaskSpec *spec) {
+  if (scheduler->info.static_resources.count("CPU") == 1 &&
+      scheduler->info.static_resources.at("CPU") == 0) {
+    // Don't give tasks to local schedulers that have 0 CPUs. This can be an
+    // issue for actor creation tasks that require 0 CPUs (but the subsequent
+    // actor methods require some CPUs).
+    return false;
+  }
+
   for (auto const &resource_pair : TaskSpec_get_required_resources(spec)) {
     std::string resource_name = resource_pair.first;
     double resource_quantity = resource_pair.second;
