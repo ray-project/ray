@@ -569,8 +569,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
-    assert os.path.isfile(executable)
-    assert os.path.isfile(module)
+    assert os.path.isfile(executable), executable
+    assert os.path.isfile(module), module
     counter = 0
     if port is not None:
         # If a port is specified, then try only once to connect.
@@ -1144,6 +1144,11 @@ def start_ray_processes(address_info=None,
             credis_address = start_credis(
                 node_ip_address, cleanup=cleanup)
             address_info["credis_address"] = credis_address
+            # Register credis master in redis
+            redis_ip_address, redis_port = redis_address.split(":")
+            redis_client = redis.StrictRedis(host=redis_ip_address,
+                                             port=redis_port)
+            redis_client.set("credis_address", credis_address)
         time.sleep(0.1)
 
         # Start monitoring the processes.
