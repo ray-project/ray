@@ -41,6 +41,7 @@ class TestRaylet : public ::testing::Test {
     NodeManagerConfig node_manager_config;
     std::unordered_map<std::string, double> static_resource_config;
     static_resource_config = {{"num_cpus", 1}, {"num_gpus", 1}};
+    node_manager_config.num_initial_workers = 0;
     node_manager_config.resource_config = ResourceSet(std::move(static_resource_config));
 
     // start first server

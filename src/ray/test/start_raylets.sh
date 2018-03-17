@@ -6,7 +6,7 @@
 set -e
 
 # Start the GCS.
-./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so --port 6379 &
+./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so --port 6379 >/dev/null &
 sleep 1s
 
 if [[ $1 ]]; then
@@ -31,6 +31,6 @@ for i in `seq 1 $NUM_RAYLETS`; do
   ./src/ray/raylet/raylet $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME &
 
   echo
-  echo "WORKER COMMAND: python ../../../src/ray/test/worker.py $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME"
+  echo "WORKER COMMAND: python ../../../src/ray/python/worker.py $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME"
   echo
 done
