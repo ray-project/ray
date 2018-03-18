@@ -16,12 +16,22 @@ from ray.utils import (FunctionProperties, random_string, is_cython,
                        push_error_to_driver)
 
 
-def random_actor_id():
-    return ray.local_scheduler.ObjectID(random_string())
+def random_actor_id(current_task_id, actor_id_counter):
+    actor_id_hash = hashlib.sha1()
+    actor_id_hash.update(current_task_id)
+    actor_id_hash.update(str(actor_id_counter).encode("ascii"))
+    actor_id = actor_id_hash.digest()
+    assert len(actor_id) == 20
+    return ray.local_scheduler.ObjectID(actor_id)
 
 
-def random_actor_class_id():
-    return random_string()
+def random_actor_class_id(current_task_id, actor_class_counter):
+    class_id_hash = hashlib.sha1()
+    class_id_hash.update(current_task_id)
+    class_id_hash.update(str(actor_class_counter).encode("ascii"))
+    class_id = class_id_hash.digest()
+    assert len(class_id) == 20
+    return class_id
 
 
 def compute_actor_handle_id(actor_handle_id, num_forks):
@@ -737,7 +747,7 @@ def make_actor_handle_class(class_name):
 
 
 def actor_handle_from_class(Class, class_id, actor_creation_resources,
-                            checkpoint_interval, actor_method_cpus):
+                            checkpoint_interval, actor_method_cpus, worker):
     class_name = Class.__name__.encode("ascii")
     actor_handle_class = make_actor_handle_class(class_name)
     exported = []
@@ -750,7 +760,10 @@ def actor_handle_from_class(Class, class_id, actor_creation_resources,
                 raise Exception("Actors cannot be created before ray.init() "
                                 "has been called.")
 
-            actor_id = random_actor_id()
+            actor_id = random_actor_id(worker.current_task_id.id(),
+                                       worker.actor_id_counter)
+            worker.actor_id_counter += 1
+
             # The ID for this instance of ActorHandle. These should be unique
             # across instances with the same _ray_actor_id.
             actor_handle_id = ray.local_scheduler.ObjectID(
@@ -834,7 +847,7 @@ def actor_handle_from_class(Class, class_id, actor_creation_resources,
     return ActorHandle
 
 
-def make_actor(cls, resources, checkpoint_interval, actor_method_cpus):
+def make_actor(cls, resources, checkpoint_interval, actor_method_cpus, worker):
     if checkpoint_interval == 0:
         raise Exception("checkpoint_interval must be greater than 0.")
 
@@ -930,10 +943,13 @@ def make_actor(cls, resources, checkpoint_interval, actor_method_cpus):
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = random_actor_class_id()
+    class_id = random_actor_class_id(worker.current_task_id.id(),
+                                     worker.actor_class_counter)
+    worker.actor_class_counter += 1
 
     return actor_handle_from_class(Class, class_id, resources,
-                                   checkpoint_interval, actor_method_cpus)
+                                   checkpoint_interval, actor_method_cpus,
+                                   worker)
 
 
 ray.worker.global_worker.fetch_and_register_actor = fetch_and_register_actor
