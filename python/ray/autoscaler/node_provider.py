@@ -43,7 +43,6 @@ DEFAULT_CONFIGS = {
     "kubernetes": None,
     "docker": None,
     "local_cluster": None,
-    "external": None,
 }
 
 
