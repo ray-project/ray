@@ -269,19 +269,22 @@ TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
 }
 
 void ObjectAvailable(gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {
-}
-
-void SubscriptionInstalled(gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {
+  std::cout << "XXX" << data->object_id << std::endl;
+  test->Stop();
 }
 
 void TestObjectTableRequests(const JobID &job_id,
                              const ClientID &client_id,
                              std::shared_ptr<gcs::AsyncGcsClient> client) {
   std::vector<ObjectID> object_ids;
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 10; ++i) {
     object_ids.push_back(ObjectID::from_random());
   }
-  RAY_CHECK_OK(client->object_table().SubscribeToNotifications(job_id, client_id, true, ObjectAvailable, SubscriptionInstalled));
+  RAY_CHECK_OK(client->object_table().SubscribeToNotifications(job_id, client_id, true, ObjectAvailable,
+    [job_id, client_id, object_ids](gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {
+      RAY_CHECK_OK(client->object_table().AddEntry(job_id, client_id, object_ids[0], 100, "testhash",
+        [](gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {}));
+    }));
   RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, client_id, object_ids));
   test->Start();
 }

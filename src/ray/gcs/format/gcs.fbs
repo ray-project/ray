@@ -20,7 +20,7 @@ table FunctionTableData {
 }
 
 table ObjectTableData {
-  task_id: string;
+  object_id: string;
   object_size: long;
   is_put: bool;
   never_created: bool;

@@ -68,6 +68,8 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
     // NOTE(swang): We do not delete the callback after calling it since there
     // may be more subscription messages.
     RedisCallbackManager::instance().get(callback_index)(data);
+  } else if (reply->type == REDIS_REPLY_STATUS) {
+    std::cout << "got status" << std::endl;
   } else if (reply->type == REDIS_REPLY_ERROR) {
     RAY_LOG(ERROR) << "Redis error " << reply->str;
   } else {
@@ -183,16 +185,23 @@ Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
   return Status::OK();
 }
 
-Status RedisContext::RunArgvAsync(const std::vector<std::string>& args, int64_t callback_index) {
+Status RedisContext::RunArgvAsync(const std::vector<std::string>& args, int64_t callback_index, bool subscribe) {
   std::vector<const char *> argv;
   std::vector<size_t> argc;
   for (int i = 0; i < args.size(); ++i) {
     argv.push_back(args[i].data());
     argc.push_back(args[i].size());
   }
-  int status = redisAsyncCommandArgv(
-      async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-      reinterpret_cast<void *>(callback_index), args.size(), argv.data(), argc.data());
+  int status;
+  if(!subscribe) {
+    status = redisAsyncCommandArgv(
+        async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+        reinterpret_cast<void *>(callback_index), args.size(), argv.data(), argc.data());
+  } else {
+    status = redisAsyncCommandArgv(
+        subscribe_context_, reinterpret_cast<redisCallbackFn *>(&SubscribeRedisCallback),
+        reinterpret_cast<void *>(callback_index), args.size(), argv.data(), argc.data());
+  }
   if (status == REDIS_ERR) {
     return Status::RedisError(std::string(async_context_->errstr));
   }

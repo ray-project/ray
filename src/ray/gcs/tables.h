@@ -188,19 +188,33 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
                                   bool subscribe_all, const Callback &object_available,
                                   const Callback &done) {
     int64_t callback_index = RedisCallbackManager::instance().add(
-      [this](const std::string& data) {
-        // TODO(pcm): If a callback is needed, can add it here.
+      [this, object_available, done, client_id](const std::string& payload) {
+        if (payload.empty()) {
+          // No data is provided. This is the callback for the initial
+          // subscription request.
+          done(client_, client_id, nullptr);
+          return;
+        }
+        auto message = flatbuffers::GetRoot<SubscribeToNotificationsReply>(payload.data());
+        auto data = std::make_shared<ObjectTableDataT>();
+        data->object_size = message->object_size();
+        data->object_id = message->object_id()->str();
+        for (int i = 0; i < message->manager_ids()->size(); ++i) {
+          std::string manager_id = message->manager_ids()->Get(i)->str();
+          data->managers.push_back(manager_id);
+        }
+        object_available(client_, client_id, data);
       });
     if (subscribe_all) {
       std::vector<std::string> args;
       args.push_back("SUBSCRIBE");
       args.push_back("OC:BCAST");
-      RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index));
+      RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index, true));
     } else {
       std::vector<std::string> args;
       args.push_back("SUBSCRIBE");
       args.push_back("OC:" + client_id.binary());
-      RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index));
+      RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index, true));
     }
     return Status::OK();
   }
