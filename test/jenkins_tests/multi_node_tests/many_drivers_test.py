@@ -20,7 +20,7 @@ max_concurrent_drivers = 15
 num_gpus_per_driver = 5
 
 
-@ray.remote(num_cpus=0, num_gpus=1)
+@ray.remote(num_gpus=1)
 class Actor1(object):
     def __init__(self):
         assert len(ray.get_gpu_ids()) == 1

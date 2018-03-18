@@ -12,10 +12,7 @@ import os
 
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger, pretty_print
-# NOTE(rkn): We import ray.tune.registry here instead of importing the names we
-# need because there are cyclic imports that may cause specific names to not
-# have been defined yet. See https://github.com/ray-project/ray/issues/1716.
-import ray.tune.registry
+from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR
 from ray.utils import random_string, binary_to_hex
 
@@ -88,8 +85,8 @@ class Trial(object):
         in ray.tune.config_parser.
         """
 
-        if not ray.tune.registry._default_registry.contains(
-                ray.tune.registry.TRAINABLE_CLASS, trainable_name):
+        if not _default_registry.contains(
+                TRAINABLE_CLASS, trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
         if stopping_criterion:
@@ -344,8 +341,8 @@ class Trial(object):
 
     def _setup_runner(self):
         self.status = Trial.RUNNING
-        trainable_cls = ray.tune.registry.get_registry().get(
-            ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
+        trainable_cls = get_registry().get(
+            TRAINABLE_CLASS, self.trainable_name)
         cls = ray.remote(
             num_cpus=self.resources.driver_cpu_limit,
             num_gpus=self.resources.driver_gpu_limit)(trainable_cls)
@@ -370,7 +367,7 @@ class Trial(object):
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         self.runner = cls.remote(
-            config=self.config, registry=ray.tune.registry.get_registry(),
+            config=self.config, registry=get_registry(),
             logger_creator=logger_creator)
 
     def set_verbose(self, verbose):

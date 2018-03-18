@@ -76,8 +76,17 @@ table RegisterClientRequest {
   is_worker: bool;
   // The ID of the worker or driver.
   client_id: string;
+  // The ID of the actor. This is NIL_ACTOR_ID if the worker is not an actor.
+  actor_id: string;
   // The process ID of this worker.
   worker_pid: long;
+  // The number of GPUs required by this actor.
+  num_gpus: long;
+}
+
+table RegisterClientReply {
+  // The IDs of the GPUs that are reserved for this worker.
+  gpu_ids: [int];
 }
 
 table DisconnectClient {

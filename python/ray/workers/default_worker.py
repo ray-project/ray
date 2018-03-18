@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import binascii
 import traceback
 
 import ray
@@ -20,10 +21,19 @@ parser.add_argument("--object-store-manager-name", required=True, type=str,
                     help="the object store manager's name")
 parser.add_argument("--local-scheduler-name", required=True, type=str,
                     help="the local scheduler's name")
+parser.add_argument("--actor-id", required=False, type=str,
+                    help="the actor ID of this worker")
+parser.add_argument("--reconstruct", action="store_true",
+                    help=("true if the actor should be started in reconstruct "
+                          "mode"))
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    # If this worker is not an actor, it cannot be started in reconstruct mode.
+    if args.actor_id is None:
+        assert not args.reconstruct
 
     info = {"node_ip_address": args.node_ip_address,
             "redis_address": args.redis_address,
@@ -31,7 +41,12 @@ if __name__ == "__main__":
             "manager_socket_name": args.object_store_manager_name,
             "local_scheduler_socket_name": args.local_scheduler_name}
 
-    ray.worker.connect(info, mode=ray.WORKER_MODE)
+    if args.actor_id is not None:
+        actor_id = binascii.unhexlify(args.actor_id)
+    else:
+        actor_id = ray.worker.NIL_ACTOR_ID
+
+    ray.worker.connect(info, mode=ray.WORKER_MODE, actor_id=actor_id)
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker

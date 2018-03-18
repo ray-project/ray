@@ -104,8 +104,7 @@ TaskSpecification::TaskSpecification(
   // Serialize the TaskSpecification.
   auto spec = CreateTaskInfo(
       fbb, to_flatbuf(fbb, driver_id), to_flatbuf(fbb, task_id),
-      to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, ActorID::nil()),
-      to_flatbuf(fbb, ActorID::nil()), to_flatbuf(fbb, WorkerID::nil()),
+      to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, WorkerID::nil()),
       to_flatbuf(fbb, ActorHandleID::nil()), 0, false, to_flatbuf(fbb, function_id),
       fbb.CreateVector(arguments), fbb.CreateVector(returns),
       map_to_flatbuf(fbb, required_resources));

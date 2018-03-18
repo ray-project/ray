@@ -26,7 +26,6 @@ ID_SIZE = 20
 NUM_CLUSTER_NODES = 2
 
 NIL_WORKER_ID = 20 * b"\xff"
-NIL_OBJECT_ID = 20 * b"\xff"
 NIL_ACTOR_ID = 20 * b"\xff"
 
 # These constants are an implementation detail of ray_redis_module.cc, so this
@@ -102,7 +101,7 @@ class TestGlobalScheduler(unittest.TestCase):
                 static_resources={"CPU": 10})
             # Connect to the scheduler.
             local_scheduler_client = local_scheduler.LocalSchedulerClient(
-                local_scheduler_name, NIL_WORKER_ID, False)
+                local_scheduler_name, NIL_WORKER_ID, NIL_ACTOR_ID, False, 0)
             self.local_scheduler_clients.append(local_scheduler_client)
             self.local_scheduler_pids.append(p4)
 
@@ -171,8 +170,6 @@ class TestGlobalScheduler(unittest.TestCase):
         task2 = local_scheduler.Task(random_driver_id(), random_function_id(),
                                      [random_object_id()], 0, random_task_id(),
                                      0, local_scheduler.ObjectID(NIL_ACTOR_ID),
-                                     local_scheduler.ObjectID(NIL_OBJECT_ID),
-                                     local_scheduler.ObjectID(NIL_ACTOR_ID),
                                      local_scheduler.ObjectID(NIL_ACTOR_ID),
                                      0, 0, [], {"CPU": 1, "GPU": 2})
         self.assertEqual(task2.required_resources(), {"CPU": 1, "GPU": 2})

@@ -7,7 +7,9 @@ from types import FunctionType
 import numpy as np
 
 import ray
+from ray.tune import TuneError
 from ray.local_scheduler import ObjectID
+from ray.tune.trainable import Trainable, wrap_function
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -26,8 +28,6 @@ def register_trainable(name, trainable):
             take (config, status_reporter) as arguments and will be
             automatically converted into a class during registration.
     """
-
-    from ray.tune.trainable import Trainable, wrap_function
 
     if isinstance(trainable, FunctionType):
         trainable = wrap_function(trainable)
@@ -83,7 +83,6 @@ class _Registry(object):
 
     def register(self, category, key, value):
         if category not in KNOWN_CATEGORIES:
-            from ray.tune import TuneError
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
         self._all_objects[(category, key)] = value
