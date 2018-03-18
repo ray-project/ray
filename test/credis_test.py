@@ -14,17 +14,21 @@ import ray
     "Tests functionality of the new GCS.")
 class CredisTest(unittest.TestCase):
     def setUp(self):
-        self.config = ray.init()
+        self.config = ray.init(num_workers=0)
 
     def tearDown(self):
         ray.worker.cleanup()
 
     def test_credis_started(self):
         assert "credis_address" in self.config
-        address, port = self.config["credis_address"].split(":")
-        redis_client = redis.StrictRedis(host=address,
-                                         port=port)
-        assert redis_client.ping() is True
+        credis_address, credis_port = self.config["credis_address"].split(":")
+        credis_client = redis.StrictRedis(host=credis_address,
+                                          port=credis_port)
+        assert credis_client.ping() is True
+
+        redis_client = ray.worker.global_state.redis_client
+        addr = redis_client.get("credis_address").decode("ascii")
+        assert addr == self.config["credis_address"]
 
 
 if __name__ == "__main__":
