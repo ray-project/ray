@@ -19,7 +19,9 @@
 #include "format/object_manager_generated.h"
 #include "object_directory.h"
 #include "object_manager_client_connection.h"
-#include "object_store_client.h"
+#include "object_store_notification.h"
+#include "object_store_pool.h"
+#include "connection_pool.h"
 #include "ray/common/client_connection.h"
 #include "ray/id.h"
 #include "ray/status.h"
@@ -152,7 +154,8 @@ class ObjectManager {
   ClientID client_id_;
   ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
-  std::unique_ptr<ObjectStoreClient> store_client_;
+  std::unique_ptr<ObjectStoreNotification> store_notification_;
+  std::unique_ptr<ObjectStorePool> store_pool_;
 
   /// An io service for creating connections to other object managers.
   std::unique_ptr<boost::asio::io_service> object_manager_service_;
@@ -213,14 +216,18 @@ class ObjectManager {
   /// is GetLocationsFailed.
   void SchedulePull(const ObjectID &object_id, int wait_ms);
 
-  /// The handler for SchedulePull. Invokes a pull and removes the deadline timer
+  /// Invokes a pull and removes the deadline timer
   /// that was added to schedule the pull.
-  ray::Status SchedulePullHandler(const ObjectID &object_id);
+  /// Guaranteed to execute on main_service_ thread.
+  ray::Status Pull_(const ObjectID &object_id);
 
   /// Synchronously send a pull request.
   /// Invoked once a connection to a remote manager that contains the required ObjectID
   /// is established.
   ray::Status ExecutePull(const ObjectID &object_id, SenderConnection::pointer conn);
+
+  /// Guaranteed to execute on main_service_ thread.
+  ray::Status Push_(const ObjectID &object_id, const ClientID &client_id);
 
   /// Invoked once a connection to the remote manager to which the ObjectID
   /// is to be sent is established.
@@ -234,7 +241,9 @@ class ObjectManager {
                                  SenderConnection::pointer client);
   /// Called by the handler for ExecutePushMeta.
   /// This method initiates the actual object transfer.
-  void ExecutePushObject(SenderConnection::pointer conn, const ObjectID &object_id,
+  void ExecutePushObject(SenderConnection::pointer conn,
+                         const ObjectID &object_id,
+                         std::shared_ptr<plasma::PlasmaClient> store_client,
                          const boost::system::error_code &header_ec);
   /// Invoked when a push is completed. This method will decrement num_transfers_
   /// and invoke ExecutePushQueue.

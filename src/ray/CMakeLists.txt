@@ -38,7 +38,9 @@ set(RAY_SRCS
   gcs/asio.cc
   common/client_connection.cc
   object_manager/object_manager_client_connection.cc
-  object_manager/object_store_client.cc
+  object_manager/connection_pool.cc
+  object_manager/object_store_pool.cc
+  object_manager/object_store_notification.cc
   object_manager/object_directory.cc
   object_manager/object_manager.cc
   raylet/mock_gcs_client.cc

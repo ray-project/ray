@@ -20,10 +20,12 @@
 namespace ray {
 
 // TODO(hme): document public API after refactor.
-class ObjectStoreClient {
+class ObjectStoreNotification {
+
  public:
+
   // Encapsulates communication with the object store.
-  ObjectStoreClient(boost::asio::io_service &io_service, std::string &store_socket_name);
+  ObjectStoreNotification(boost::asio::io_service &io_service, std::string &store_socket_name);
 
   // Subscribe to notifications of objects added to local store.
   // Upon subscribing, the callback will be invoked for all objects that
@@ -33,20 +35,15 @@ class ObjectStoreClient {
   // Subscribe to notifications of objects deleted from local store.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
 
-  // TODO(hme): There should be as many client connections as there are threads.
-  // Two client connections are made to enable concurrent communication with the store.
-  plasma::PlasmaClient &GetClient();
-  plasma::PlasmaClient &GetClientOther();
-
   // Terminate this object.
   void Terminate();
 
  private:
+
   std::vector<std::function<void(const ray::ObjectID &)>> add_handlers_;
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
 
-  plasma::PlasmaClient client_one_;
-  plasma::PlasmaClient client_two_;
+  plasma::PlasmaClient store_client_;
   int c_socket_;
   int64_t length_;
   std::vector<uint8_t> notification_;

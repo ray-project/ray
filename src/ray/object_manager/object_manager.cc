@@ -14,12 +14,13 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       work_(*object_manager_service_) {
   main_service_ = &main_service;
   config_ = config;
-  store_client_ = std::unique_ptr<ObjectStoreClient>(
-      new ObjectStoreClient(main_service, config.store_socket_name));
-  store_client_->SubscribeObjAdded(
+  store_notification_.reset(
+      new ObjectStoreNotification(main_service, config.store_socket_name));
+  store_notification_->SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
-  store_client_->SubscribeObjDeleted(
+  store_notification_->SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
+  store_pool_.reset(new ObjectStorePool(config.store_socket_name));
   StartIOService();
 };
 
@@ -33,11 +34,11 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   config_ = config;
-  store_client_ = std::unique_ptr<ObjectStoreClient>(
-      new ObjectStoreClient(main_service, config.store_socket_name));
-  store_client_->SubscribeObjAdded(
+  store_notification_ = std::unique_ptr<ObjectStoreNotification>(
+      new ObjectStoreNotification(main_service, config.store_socket_name));
+  store_notification_->SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
-  store_client_->SubscribeObjDeleted(
+  store_notification_->SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
 };
@@ -72,25 +73,27 @@ ray::Status ObjectManager::Terminate() {
   StopIOService();
   ray::Status status_code = object_directory_->Terminate();
   // TODO: evaluate store client termination status.
-  store_client_->Terminate();
+  store_notification_->Terminate();
+  store_pool_->Terminate();
   return status_code;
 };
 
 ray::Status ObjectManager::SubscribeObjAdded(
     std::function<void(const ObjectID &)> callback) {
-  store_client_->SubscribeObjAdded(callback);
+  store_notification_->SubscribeObjAdded(callback);
   return ray::Status::OK();
 };
 
 ray::Status ObjectManager::SubscribeObjDeleted(
     std::function<void(const ObjectID &)> callback) {
-  store_client_->SubscribeObjDeleted(callback);
+  store_notification_->SubscribeObjDeleted(callback);
   return ray::Status::OK();
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
-  // TODO(hme): Need to correct. Workaround to get all pull requests on the same thread.
-  SchedulePull(object_id, 0);
+  main_service_->post([this, object_id](){
+    RAY_CHECK_OK(Pull_(object_id));
+  });
   return Status::OK();
 };
 
@@ -99,12 +102,13 @@ void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
       *main_service_, boost::posix_time::milliseconds(wait_ms)));
   pull_requests_[object_id]->async_wait(
       [this, object_id](const boost::system::error_code &error_code) {
-        RAY_CHECK_OK(SchedulePullHandler(object_id));
-      });
+        pull_requests_.erase(object_id);
+        RAY_CHECK_OK(Pull_(object_id));
+      }
+  );
 }
 
-ray::Status ObjectManager::SchedulePullHandler(const ObjectID &object_id) {
-  pull_requests_.erase(object_id);
+ray::Status ObjectManager::Pull_(const ObjectID &object_id) {
   ray::Status status_code = object_directory_->GetLocations(
       object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
@@ -148,13 +152,20 @@ ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
 };
 
 ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
+  main_service_->post([this, object_id, client_id](){
+    RAY_CHECK_OK(Push_(object_id, client_id));
+  });
+  return Status::OK();
+};
+
+ray::Status ObjectManager::Push_(const ObjectID &object_id, const ClientID &client_id){
   ray::Status status;
   status =
       GetTransferConnection(client_id, [this, object_id](SenderConnection::pointer conn) {
         ray::Status status = QueuePush(object_id, conn);
       });
   return status;
-};
+}
 
 ray::Status ObjectManager::QueuePush(const ObjectID &object_id_const,
                                      SenderConnection::pointer conn) {
@@ -180,7 +191,10 @@ ray::Status ObjectManager::ExecutePushQueue(SenderConnection::pointer conn) {
     // The threads that increment/decrement num_transfers_ are different.
     // It's important to increment num_transfers_ before executing the push.
     num_transfers_ += 1;
-    status = ExecutePushHeaders(object_id, conn);
+    main_service_->post([this, object_id, conn](){
+      RAY_CHECK_OK(ExecutePushHeaders(object_id, conn));
+    });
+    // status = ExecutePushHeaders(object_id, conn);
   }
   return status;
 };
@@ -191,7 +205,8 @@ ray::Status ObjectManager::ExecutePushHeaders(const ObjectID &object_id_const,
   // Allocate and append the request to the transfer queue.
   plasma::ObjectBuffer object_buffer;
   plasma::ObjectID plasma_id = object_id.to_plasma_id();
-  ARROW_CHECK_OK(store_client_->GetClientOther().Get(&plasma_id, 1, 0, &object_buffer));
+  std::shared_ptr<plasma::PlasmaClient> store_client = store_pool_->GetObjectStore();
+  ARROW_CHECK_OK(store_client->Get(&plasma_id, 1, 0, &object_buffer));
   if (object_buffer.data_size == -1) {
     RAY_LOG(ERROR) << "Failed to get object";
     // If the object wasn't locally available, exit immediately. If the object
@@ -220,12 +235,14 @@ ray::Status ObjectManager::ExecutePushHeaders(const ObjectID &object_id_const,
   // Send asynchronously.
   asio::async_write(conn->GetSocket(), buffer,
                            boost::bind(&ObjectManager::ExecutePushObject, this, conn,
-                                       object_id, asio::placeholders::error));
+                                       object_id, store_client,
+                                       asio::placeholders::error));
   return ray::Status::OK();
 };
 
 void ObjectManager::ExecutePushObject(SenderConnection::pointer conn,
                                       const ObjectID &object_id,
+                                      std::shared_ptr<plasma::PlasmaClient> store_client,
                                       const boost::system::error_code &header_ec) {
   SendRequest &send_request = conn->GetSendRequest(object_id);
   boost::system::error_code ec;
@@ -234,8 +251,8 @@ void ObjectManager::ExecutePushObject(SenderConnection::pointer conn,
       asio::buffer(send_request.data, (size_t)send_request.object_size), ec);
   // Do this regardless of whether it failed or succeeded.
   ARROW_CHECK_OK(
-      store_client_->GetClientOther().Release(send_request.object_id.to_plasma_id()));
-
+      store_client->Release(send_request.object_id.to_plasma_id()));
+  store_pool_->ReleaseObjectStore(store_client);
   ray::Status ray_status = ExecutePushCompleted(object_id, conn);
 }
 
@@ -426,17 +443,18 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnect
   int64_t metadata_size = 0;
   // Try to create shared buffer.
   std::shared_ptr<Buffer> data;
-  arrow::Status s = store_client_->GetClient().Create(object_id.to_plasma_id(), object_size, NULL, metadata_size, &data);
+  std::shared_ptr<plasma::PlasmaClient> store_client = store_pool_->GetObjectStore();
+  arrow::Status s = store_client->Create(object_id.to_plasma_id(), object_size, NULL, metadata_size, &data);
   if(s.ok()){
     // Read object into store.
     uint8_t *mutable_data = data->mutable_data();
     asio::read(conn->GetSocket(), asio::buffer(mutable_data, object_size), ec);
     if(!ec.value()){
-      ARROW_CHECK_OK(store_client_->GetClient().Seal(object_id.to_plasma_id()));
-      ARROW_CHECK_OK(store_client_->GetClient().Release(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client->Seal(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client->Release(object_id.to_plasma_id()));
     } else {
-      ARROW_CHECK_OK(store_client_->GetClient().Release(object_id.to_plasma_id()));
-      ARROW_CHECK_OK(store_client_->GetClient().Abort(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client->Release(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client->Abort(object_id.to_plasma_id()));
       RAY_LOG(ERROR) << "Receive Failed";
     }
   } else {
@@ -445,6 +463,7 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnect
     uint8_t *mutable_data = (uint8_t *) malloc(object_size + metadata_size);
     asio::read(conn->GetSocket(), asio::buffer(mutable_data, object_size), ec);
   }
+  store_pool_->ReleaseObjectStore(store_client);
   // Wait for another push.
   ray::Status ray_status = WaitPushReceive(conn);
 };

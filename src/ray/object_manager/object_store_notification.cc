@@ -7,47 +7,44 @@
 
 #include "common.h"
 #include "common_protocol.h"
-#include "ray/object_manager/object_store_client.h"
+#include "ray/object_manager/object_store_notification.h"
 
 namespace ray {
 
 // TODO(hme): Dedicate this class to notifications.
 // TODO(hme): Create object store client pool for object manager.
-ObjectStoreClient::ObjectStoreClient(boost::asio::io_service &io_service,
-                                     std::string &store_socket_name)
-    : client_one_(), client_two_(), socket_(io_service) {
+ObjectStoreNotification::ObjectStoreNotification(boost::asio::io_service &io_service, 
+                                                 std::string &store_socket_name)
+    : store_client_(), socket_(io_service) {
   ARROW_CHECK_OK(
-      client_two_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
-  ARROW_CHECK_OK(
-      client_one_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+      store_client_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
 
   // Connect to two clients, but subscribe to only one.
-  ARROW_CHECK_OK(client_one_.Subscribe(&c_socket_));
+  ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
   boost::system::error_code ec;
   socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
   assert(!ec.value());
   NotificationWait();
 };
 
-void ObjectStoreClient::Terminate() {
-  ARROW_CHECK_OK(client_two_.Disconnect());
-  ARROW_CHECK_OK(client_one_.Disconnect());
+void ObjectStoreNotification::Terminate() {
+  ARROW_CHECK_OK(store_client_.Disconnect());
 }
 
-void ObjectStoreClient::NotificationWait() {
+void ObjectStoreNotification::NotificationWait() {
   boost::asio::async_read(socket_, boost::asio::buffer(&length_, sizeof(length_)),
-                          boost::bind(&ObjectStoreClient::ProcessStoreLength, this,
+                          boost::bind(&ObjectStoreNotification::ProcessStoreLength, this,
                                       boost::asio::placeholders::error));
 }
 
-void ObjectStoreClient::ProcessStoreLength(const boost::system::error_code &error) {
+void ObjectStoreNotification::ProcessStoreLength(const boost::system::error_code &error) {
   notification_.resize(length_);
   boost::asio::async_read(socket_, boost::asio::buffer(notification_),
-                          boost::bind(&ObjectStoreClient::ProcessStoreNotification, this,
+                          boost::bind(&ObjectStoreNotification::ProcessStoreNotification, this,
                                       boost::asio::placeholders::error));
 }
 
-void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code &error) {
+void ObjectStoreNotification::ProcessStoreNotification(const boost::system::error_code &error) {
   if (error) {
     throw std::runtime_error("ObjectStore may have died.");
   }
@@ -67,29 +64,26 @@ void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code
   NotificationWait();
 }
 
-void ObjectStoreClient::ProcessStoreAdd(const ObjectID &object_id) {
+void ObjectStoreNotification::ProcessStoreAdd(const ObjectID &object_id) {
   for (auto handler : add_handlers_) {
     handler(object_id);
   }
 };
 
-void ObjectStoreClient::ProcessStoreRemove(const ObjectID &object_id) {
+void ObjectStoreNotification::ProcessStoreRemove(const ObjectID &object_id) {
   for (auto handler : rem_handlers_) {
     handler(object_id);
   }
 };
 
-void ObjectStoreClient::SubscribeObjAdded(
+void ObjectStoreNotification::SubscribeObjAdded(
     std::function<void(const ObjectID &)> callback) {
   add_handlers_.push_back(callback);
 };
 
-void ObjectStoreClient::SubscribeObjDeleted(
+void ObjectStoreNotification::SubscribeObjDeleted(
     std::function<void(const ObjectID &)> callback) {
   rem_handlers_.push_back(callback);
 };
 
-plasma::PlasmaClient &ObjectStoreClient::GetClient() { return client_one_; };
-
-plasma::PlasmaClient &ObjectStoreClient::GetClientOther() { return client_two_; };
 }  // namespace ray
