@@ -66,7 +66,7 @@ def run_experiments(experiments, scheduler=None, with_server=False,
     elif (type(experiments) is list and
           all(isinstance(exp, Experiment) for exp in experiments)):
         for experiment in experiments:
-            for trial in experiments.trials():
+            for trial in experiment.trials():
                 trial.set_verbose(verbose)
                 runner.add_trial(trial)
     elif isinstance(experiments, Experiment):
