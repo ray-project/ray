@@ -6,7 +6,7 @@ Ray Tune is a hyperparameter optimization framework for long-running tasks such 
 Getting Started
 ---------------
 
-Check out how easy Ray Tune is to use. Add a two-line modification to a function:
+To use Ray Tune, add a two-line modification to a function:
 
 .. code-block:: python
    :emphasize-lines: 1,5
@@ -55,7 +55,7 @@ This script runs a small grid search over the ``my_func`` function using Ray Tun
 
 In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
 
-Check out `detailed instructions <tune-config.html>`__ on specifying experiments.
+Learn more `about specifying experiments <tune-config.html>`__ .
 
 Features
 --------
