@@ -317,7 +317,7 @@ def read_clipboard(sep=r'\s+'):
     port_frame = pd.read_clipboard(sep)
     ray_frame = from_pandas(port_frame, get_npartitions())
 
-    return ray_frame 
+    return ray_frame
 
 
 def read_excel(io,
