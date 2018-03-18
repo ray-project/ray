@@ -7,21 +7,29 @@ import hashlib
 import inspect
 import json
 import traceback
+import uuid
 
 import ray.cloudpickle as pickle
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, random_string, is_cython,
-                       push_error_to_driver)
+from ray.utils import FunctionProperties, is_cython, push_error_to_driver
 
 
 def random_actor_id():
-    return ray.local_scheduler.ObjectID(random_string())
+    actor_id_hash = hashlib.sha1()
+    actor_id_hash.update(uuid.uuid4().bytes)
+    actor_id = actor_id_hash.digest()
+    assert len(actor_id) == 20
+    return ray.local_scheduler.ObjectID(actor_id)
 
 
 def random_actor_class_id():
-    return random_string()
+    class_id_hash = hashlib.sha1()
+    class_id_hash.update(uuid.uuid4().bytes)
+    class_id = class_id_hash.digest()
+    assert len(class_id) == 20
+    return class_id
 
 
 def compute_actor_handle_id(actor_handle_id, num_forks):
