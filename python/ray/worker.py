@@ -236,13 +236,6 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
-        # The number of actor classes that have been defined so far by this
-        # worker during this task. This is used to generate unique actor class
-        # IDs.
-        self.actor_class_counter = 0
-        # The number of actors that have been defined so far by this worker
-        # during this task. This is used to generate unique actor IDs.
-        self.actor_id_counter = 0
         # A set of all of the actor class keys that have been imported by the
         # import thread. It is safe to convert this worker into an actor of
         # these types.
@@ -773,8 +766,6 @@ class Worker(object):
         self.current_function_id = task.function_id().id()
         self.task_index = 0
         self.put_index = 0
-        self.actor_class_counter = 0
-        self.actor_id_counter = 0
         function_id = task.function_id()
         args = task.arguments()
         return_object_ids = task.returns()
@@ -2562,7 +2553,7 @@ def remote(*args, **kwargs):
 
                 return worker.make_actor(func_or_class, resources,
                                          checkpoint_interval,
-                                         actor_method_cpus, worker)
+                                         actor_method_cpus)
             raise Exception("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
 
