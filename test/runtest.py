@@ -685,6 +685,26 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(k2.remote(1)), 2)
         self.assertEqual(ray.get(m.remote(1)), 2)
 
+    def testSubmitAPI(self):
+        self.init_ray(num_gpus=1, resources={"Custom": 1}, num_workers=1)
+
+        @ray.remote
+        def f(n):
+            return list(range(n))
+
+        @ray.remote
+        def g():
+            return ray.get_gpu_ids()
+
+        assert f._submit([0], num_return_vals=0) is None
+        assert ray.get(f._submit(args=[1], num_return_vals=1)) == [0]
+        assert ray.get(f._submit(args=[2], num_return_vals=2)) == [0, 1]
+        assert ray.get(f._submit(args=[3], num_return_vals=3)) == [0, 1, 2]
+        assert ray.get(g._submit(args=[],
+                                 num_cpus=1,
+                                 num_gpus=1,
+                                 resources={"Custom": 1})) == [0]
+
     def testGetMultiple(self):
         self.init_ray()
         object_ids = [ray.put(i) for i in range(10)]
