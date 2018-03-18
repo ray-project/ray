@@ -147,7 +147,7 @@ ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
                                           fbb.CreateString(client_id_.binary()),
                                           fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  conn->WriteMessage(OMMessageType_PullRequest, fbb.GetSize(), fbb.GetBufferPointer());
+  (void)conn->WriteMessage(OMMessageType_PullRequest, fbb.GetSize(), fbb.GetBufferPointer());
   return ray::Status::OK();
 };
 
@@ -305,7 +305,7 @@ ray::Status ObjectManager::CreateMsgConnection(
   fbb.Finish(message);
   // Send synchronously.
   SenderConnection::pointer conn = message_send_connections_[info.client_id];
-  conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(), fbb.GetBufferPointer());
+  (void)conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(), fbb.GetBufferPointer());
   // The connection is ready, invoke callback with connection info.
   callback(message_send_connections_[info.client_id]);
   return Status::OK();
@@ -341,7 +341,7 @@ ray::Status ObjectManager::CreateTransferConnection(
   fbb.Finish(message);
   // Send synchronously.
   SenderConnection::pointer conn = transfer_send_connections_[info.client_id];
-  conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(), fbb.GetBufferPointer());
+  (void)conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(), fbb.GetBufferPointer());
   callback(transfer_send_connections_[info.client_id]);
   return Status::OK();
 };
@@ -389,7 +389,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<ObjectManagerClientConnection>
   if (is_transfer) {
     // RAY_LOG(INFO) << "is_transfer " << is_transfer;
     transfer_receive_connections_[client_id] = conn;
-    WaitPushReceive(conn);
+    (void)WaitPushReceive(conn);
   } else {
     message_receive_connections_[client_id] = conn;
     conn->ProcessMessages();
