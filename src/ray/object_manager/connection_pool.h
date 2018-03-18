@@ -122,7 +122,7 @@ public:
     fbb.Finish(message);
     // Send synchronously.
     SenderConnection::pointer conn = send_connections[info.client_id];
-    conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(), fbb.GetBufferPointer());
+    (void)conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(), fbb.GetBufferPointer());
     // The connection is ready, invoke callback with connection info.
     success_callback(send_connections[info.client_id]);
     return Status::OK();

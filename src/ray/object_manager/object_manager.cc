@@ -156,7 +156,7 @@ ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
                                           fbb.CreateString(client_id_.binary()),
                                           fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  conn->WriteMessage(OMMessageType_PullRequest, fbb.GetSize(), fbb.GetBufferPointer());
+  (void)conn->WriteMessage(OMMessageType_PullRequest, fbb.GetSize(), fbb.GetBufferPointer());
   return ray::Status::OK();
 };
 
@@ -339,7 +339,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<ObjectManagerClientConnection>
   // TODO: trash connection if either fails.
   if (is_transfer) {
     connection_pool_.RegisterReceiver(ConnectionPool::TRANSFER, client_id, conn);
-    WaitPushReceive(conn);
+    (void)WaitPushReceive(conn);
   } else {
     connection_pool_.RegisterReceiver(ConnectionPool::MESSAGE, client_id, conn);
     conn->ProcessMessages();
