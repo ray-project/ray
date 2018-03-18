@@ -19,6 +19,13 @@ def load_aws_config():
         ray_aws.__file__), "example-full.yaml")
 
 
+def import_external():
+    """Mock a normal provider importer."""
+    def return_it_back(config):
+        return config
+    return return_it_back, None
+
+
 NODE_PROVIDERS = {
     "aws": import_aws,
     "gce": None,  # TODO: support more node providers
@@ -26,7 +33,7 @@ NODE_PROVIDERS = {
     "kubernetes": None,
     "docker": None,
     "local_cluster": None,
-    "external": None,  # Import an external module
+    "external": import_external  # Import an external module
 }
 
 DEFAULT_CONFIGS = {
@@ -36,6 +43,7 @@ DEFAULT_CONFIGS = {
     "kubernetes": None,
     "docker": None,
     "local_cluster": None,
+    "external": None,
 }
 
 
