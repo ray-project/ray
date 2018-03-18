@@ -12,7 +12,7 @@ class Experiment(object):
     Parameters:
         name (str): Name of experiment.
         run (str): The algorithm or model to train. This may refer to the
-            name of a built-on algorithm (e.g. RLLib’s DQN or PPO), or a
+            name of a built-on algorithm (e.g. RLLib's DQN or PPO), or a
             user-defined trainable function or class
             registered in the tune registry.
         stop (dict): The stopping criteria. The keys may be any field in
