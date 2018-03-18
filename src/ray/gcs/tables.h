@@ -23,10 +23,7 @@ namespace gcs {
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace legacy {
-// TODO(pcm): Remove this
-#include "task.h"
 
-using Task = Task;
 }
 
 class RedisContext;

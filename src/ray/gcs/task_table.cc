@@ -15,6 +15,8 @@ namespace gcs {
 namespace legacy {
 #include "common_protocol.h"
 // TODO(pcm): Remove this
+#include "task.h"
+using Task = Task;
 
 std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execution_spec,
                                                   const ClientID &local_scheduler_id,
