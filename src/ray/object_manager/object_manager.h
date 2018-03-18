@@ -169,8 +169,10 @@ class ObjectManager {
   /// and object transfers (push).
   std::thread io_thread_;
 
+  ConnectionPool connection_pool_;
+
   /// Relatively simple way to add thread pooling.
-  /// boost::thread_group thread_group_;
+  // boost::thread_group thread_group_;
 
   /// Timeout for failed pull requests.
   using Timer = std::shared_ptr<boost::asio::deadline_timer>;
@@ -184,18 +186,6 @@ class ObjectManager {
   /// We can only increase this number if we increase the number of
   /// plasma client connections.
   int max_transfers_ = 1;
-
-  /// Note that (currently) receives take place on the main thread,
-  /// and sends take place on a dedicated thread.
-  std::unordered_map<ray::ClientID, SenderConnection::pointer, ray::UniqueIDHasher>
-      message_send_connections_;
-  std::unordered_map<ray::ClientID, SenderConnection::pointer, ray::UniqueIDHasher>
-      transfer_send_connections_;
-
-  std::unordered_map<ray::ClientID, std::shared_ptr<ObjectManagerClientConnection>, ray::UniqueIDHasher>
-      message_receive_connections_;
-  std::unordered_map<ray::ClientID, std::shared_ptr<ObjectManagerClientConnection>, ray::UniqueIDHasher>
-      transfer_receive_connections_;
 
   /// Read length for push receives.
   uint64_t read_length_;
@@ -256,23 +246,6 @@ class ObjectManager {
 
   /// Private callback implementation for failure on get location. Called inside OD.
   void GetLocationsFailed(ray::Status status, const ObjectID &object_id);
-
-  /// Asynchronously obtain a connection to client_id.
-  /// If a connection to client_id already exists, the callback is invoked immediately.
-  ray::Status GetMsgConnection(const ClientID &client_id,
-                               std::function<void(SenderConnection::pointer)> callback);
-  /// Asynchronously create a connection to client_id.
-  ray::Status CreateMsgConnection(
-      const RemoteConnectionInfo &info,
-      std::function<void(SenderConnection::pointer)> callback);
-  /// Asynchronously create a connection to client_id.
-  ray::Status GetTransferConnection(
-      const ClientID &client_id, std::function<void(SenderConnection::pointer)> callback);
-  /// Asynchronously obtain a connection to client_id.
-  /// If a connection to client_id already exists, the callback is invoked immediately.
-  ray::Status CreateTransferConnection(
-      const RemoteConnectionInfo &info,
-      std::function<void(SenderConnection::pointer)> callback);
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<ObjectManagerClientConnection> &conn,

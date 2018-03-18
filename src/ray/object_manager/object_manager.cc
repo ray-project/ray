@@ -11,7 +11,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       object_directory_(new ObjectDirectory(gcs_client)),
       object_manager_service_(std::move(object_manager_service)),
-      work_(*object_manager_service_) {
+      work_(*object_manager_service_),
+      connection_pool_(object_directory_.get(), &main_service, client_id_){
   main_service_ = &main_service;
   config_ = config;
   store_notification_.reset(
@@ -30,7 +31,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::unique_ptr<ObjectDirectoryInterface> od)
     : object_directory_(std::move(od)),
       object_manager_service_(std::move(object_manager_service)),
-      work_(*object_manager_service_) {
+      work_(*object_manager_service_),
+      connection_pool_(object_directory_.get(), &main_service, client_id_){
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   config_ = config;
@@ -133,10 +135,17 @@ void ObjectManager::GetLocationsFailed(ray::Status status, const ObjectID &objec
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
-  Status status =
-      GetMsgConnection(client_id, [this, object_id](SenderConnection::pointer conn) {
+  Status status = connection_pool_.GetSender(
+      ConnectionPool::MESSAGE,
+      client_id,
+      [this, object_id](SenderConnection::pointer conn) {
         Status status = ExecutePull(object_id, conn);
-      });
+      },
+      [this, object_id]() {
+        // connection failed, so reschedule pull.
+        SchedulePull(object_id, config_.pull_timeout_ms);
+      }
+  );
   return status;
 };
 
@@ -160,10 +169,16 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
 
 ray::Status ObjectManager::Push_(const ObjectID &object_id, const ClientID &client_id){
   ray::Status status;
-  status =
-      GetTransferConnection(client_id, [this, object_id](SenderConnection::pointer conn) {
-        ray::Status status = QueuePush(object_id, conn);
-      });
+  status = connection_pool_.GetSender(
+      ConnectionPool::TRANSFER,
+      client_id,
+      [this, object_id](SenderConnection::pointer conn) {
+        RAY_CHECK_OK(QueuePush(object_id, conn));
+      },
+      [this, object_id]() {
+        // Push is best effort, so do nothing on failure.
+      }
+  );
   return status;
 }
 
@@ -207,6 +222,9 @@ ray::Status ObjectManager::ExecutePushHeaders(const ObjectID &object_id_const,
   plasma::ObjectID plasma_id = object_id.to_plasma_id();
   std::shared_ptr<plasma::PlasmaClient> store_client = store_pool_->GetObjectStore();
   ARROW_CHECK_OK(store_client->Get(&plasma_id, 1, 0, &object_buffer));
+//  uint64_t digest;
+//  store_client->Hash(object_id.to_plasma_id(), reinterpret_cast<uint8_t*>(&digest));
+//  RAY_LOG(INFO) << "SENDER HASH " << digest;
   if (object_buffer.data_size == -1) {
     RAY_LOG(ERROR) << "Failed to get object";
     // If the object wasn't locally available, exit immediately. If the object
@@ -248,7 +266,8 @@ void ObjectManager::ExecutePushObject(SenderConnection::pointer conn,
   boost::system::error_code ec;
   asio::write(
       conn->GetSocket(),
-      asio::buffer(send_request.data, (size_t)send_request.object_size), ec);
+      asio::buffer(send_request.data, send_request.object_size), ec);
+  RAY_CHECK(ec.value() == 0);
   // Do this regardless of whether it failed or succeeded.
   ARROW_CHECK_OK(
       store_client->Release(send_request.object_id.to_plasma_id()));
@@ -276,77 +295,6 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
   return ray::Status::OK();
 };
 
-ray::Status ObjectManager::GetMsgConnection(
-    const ClientID &client_id, std::function<void(SenderConnection::pointer)> callback) {
-  ray::Status status = Status::OK();
-  if (message_send_connections_.count(client_id) > 0) {
-    callback(message_send_connections_[client_id]);
-  } else {
-    status = object_directory_->GetInformation(
-        client_id,
-        [this, callback](RemoteConnectionInfo info) {
-          Status status = CreateMsgConnection(info, callback);
-        },
-        [this](const Status &status) {
-          // TODO: deal with failure.
-        });
-  }
-  return status;
-};
-
-ray::Status ObjectManager::CreateMsgConnection(
-    const RemoteConnectionInfo &info,
-    std::function<void(SenderConnection::pointer)> callback) {
-  message_send_connections_.emplace(info.client_id, SenderConnection::Create(*main_service_, info.ip, info.port));
-  // Prepare client connection info buffer
-  flatbuffers::FlatBufferBuilder fbb;
-  bool is_transfer = false;
-  auto message = CreateConnectClientMessage(fbb, fbb.CreateString(client_id_.binary()), is_transfer);
-  fbb.Finish(message);
-  // Send synchronously.
-  SenderConnection::pointer conn = message_send_connections_[info.client_id];
-  conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(), fbb.GetBufferPointer());
-  // The connection is ready, invoke callback with connection info.
-  callback(message_send_connections_[info.client_id]);
-  return Status::OK();
-};
-
-ray::Status ObjectManager::GetTransferConnection(
-    const ClientID &client_id, std::function<void(SenderConnection::pointer)> callback) {
-  ray::Status status = Status::OK();
-  if (transfer_send_connections_.count(client_id) > 0) {
-    callback(transfer_send_connections_[client_id]);
-  } else {
-    status = object_directory_->GetInformation(
-        client_id,
-        [this, callback](RemoteConnectionInfo info) {
-          Status status = CreateTransferConnection(info, callback);
-        },
-        [this](const Status &status) {
-          // TODO(hme): deal with failure.
-        });
-  }
-  return status;
-};
-
-ray::Status ObjectManager::CreateTransferConnection(
-    const RemoteConnectionInfo &info,
-    std::function<void(SenderConnection::pointer)> callback) {
-  transfer_send_connections_.emplace(info.client_id,
-                                     SenderConnection::Create(*main_service_, info.ip, info.port));
-  // Prepare client connection info buffer.
-  flatbuffers::FlatBufferBuilder fbb;
-  bool is_transfer = true;
-  auto message = CreateConnectClientMessage(fbb, fbb.CreateString(client_id_.binary()), is_transfer);
-  fbb.Finish(message);
-  // Send synchronously.
-  SenderConnection::pointer conn = transfer_send_connections_[info.client_id];
-  conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(), fbb.GetBufferPointer());
-  callback(transfer_send_connections_[info.client_id]);
-  return Status::OK();
-};
-
-
 void ObjectManager::ProcessNewClient(std::shared_ptr<ObjectManagerClientConnection> conn){
   conn->ProcessMessages();
 };
@@ -354,22 +302,25 @@ void ObjectManager::ProcessNewClient(std::shared_ptr<ObjectManagerClientConnecti
 void ObjectManager::ProcessClientMessage(std::shared_ptr<ObjectManagerClientConnection> conn,
                                          int64_t message_type,
                                          const uint8_t *message){
-  // RAY_LOG(INFO) << "ProcessClientMessage " << message_type;
   switch(message_type) {
     case OMMessageType_PushRequest: {
+      // RAY_LOG(INFO) << "ProcessClientMessage PushRequest";
       // TODO(hme): Realize design with transfer requests handled in this manner.
       break;
     }
     case OMMessageType_PullRequest: {
+      // RAY_LOG(INFO) << "ProcessClientMessage PullRequest";
       ReceivePullRequest(conn, message);
       conn->ProcessMessages();
       break;
     }
     case OMMessageType_ConnectClient: {
+      // RAY_LOG(INFO) << "ProcessClientMessage ConnectClient";
       ConnectClient(conn, message);
       break;
     }
     case OMMessageType_DisconnectClient: {
+      // RAY_LOG(INFO) << "ProcessClientMessage DisconnectClient";
       DisconnectClient(conn, message);
       break;
     }
@@ -387,11 +338,10 @@ void ObjectManager::ConnectClient(std::shared_ptr<ObjectManagerClientConnection>
   bool is_transfer = info->is_transfer();
   // TODO: trash connection if either fails.
   if (is_transfer) {
-    // RAY_LOG(INFO) << "is_transfer " << is_transfer;
-    transfer_receive_connections_[client_id] = conn;
+    connection_pool_.RegisterReceiver(ConnectionPool::TRANSFER, client_id, conn);
     WaitPushReceive(conn);
   } else {
-    message_receive_connections_[client_id] = conn;
+    connection_pool_.RegisterReceiver(ConnectionPool::MESSAGE, client_id, conn);
     conn->ProcessMessages();
   }
 };
@@ -402,11 +352,10 @@ void ObjectManager::DisconnectClient(std::shared_ptr<ObjectManagerClientConnecti
   ClientID client_id = ObjectID::from_binary(info->client_id()->str());
   bool is_transfer = info->is_transfer();
   if (is_transfer) {
-    transfer_receive_connections_.erase(client_id);
+    connection_pool_.RemoveReceiver(ConnectionPool::TRANSFER, client_id);
   } else {
-    message_receive_connections_.erase(client_id);
+    connection_pool_.RemoveReceiver(ConnectionPool::MESSAGE, client_id);
   }
-  // TODO(hme): appropriately dispose of client connection.
 };
 
 void ObjectManager::ReceivePullRequest(std::shared_ptr<ObjectManagerClientConnection> &conn,
@@ -420,6 +369,7 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<ObjectManagerClientConnec
 };
 
 ray::Status ObjectManager::WaitPushReceive(std::shared_ptr<ObjectManagerClientConnection> conn){
+//  RAY_LOG(INFO) << "WaitPushReceive";
   asio::async_read(conn->GetSocket(),
                           asio::buffer(&read_length_, sizeof(read_length_)),
                           boost::bind(&ObjectManager::HandlePushReceive,
@@ -439,6 +389,9 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnect
   auto object_header = flatbuffers::GetRoot<PushRequestMessage>(message.data());
   ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
   int64_t object_size = (int64_t) object_header->object_size();
+//  RAY_LOG(INFO) << "HandlePushReceive "
+//                << object_id << " "
+//                << object_size << " ";
   // RAY_LOG(INFO) << object_size << " " << object_id.hex();
   int64_t metadata_size = 0;
   // Try to create shared buffer.
@@ -465,6 +418,9 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnect
   }
   store_pool_->ReleaseObjectStore(store_client);
   // Wait for another push.
+//  uint64_t digest;
+//  store_client->Hash(object_id.to_plasma_id(), reinterpret_cast<uint8_t*>(&digest));
+//  RAY_LOG(INFO) << "RECEIVER HASH " << digest;
   ray::Status ray_status = WaitPushReceive(conn);
 };
 
