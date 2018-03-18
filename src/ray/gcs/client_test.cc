@@ -286,12 +286,10 @@ void TestObjectTableRequests(const JobID &job_id,
   test->Start();
 }
 
-/*
 TEST_F(TestGcsWithAsio, TestObjectTableRequests) {
   test = this;
   TestObjectTableRequests(job_id_, client_id_, client_);
 }
-*/
 
 void ObjectEntryAdded(gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {
   test->Stop();

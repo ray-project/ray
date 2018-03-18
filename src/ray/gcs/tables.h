@@ -193,12 +193,13 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
       });
     if (subscribe_all) {
       std::vector<std::string> args;
-      args.push_back("SUBSCRIBE OC:BCAST");
+      args.push_back("SUBSCRIBE");
+      args.push_back("OC:BCAST");
       RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index));
     } else {
       std::vector<std::string> args;
-      args.push_back("SUBSCRIBE OC:%b");
-      args.push_back(client_id.binary());
+      args.push_back("SUBSCRIBE");
+      args.push_back("OC:" + client_id.binary());
       RAY_CHECK_OK(context_->RunArgvAsync(args, callback_index));
     }
     return Status::OK();
