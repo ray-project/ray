@@ -1357,28 +1357,6 @@ class ResourcesTest(unittest.TestCase):
         a1 = Actor1.remote()
         ray.get(a1.test.remote())
 
-    def testZeroCPUs(self):
-        ray.worker._init(
-            start_ray_local=True,
-            num_local_schedulers=2,
-            num_cpus=[0, 2])
-
-        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
-
-        @ray.remote(num_cpus=0)
-        def f():
-            return ray.worker.global_worker.plasma_client.store_socket_name
-
-        @ray.remote
-        class Foo(object):
-            def method(self):
-                return ray.worker.global_worker.plasma_client.store_socket_name
-
-        # Make sure tasks and actors run on the remote local scheduler.
-        self.assertNotEqual(ray.get(f.remote()), local_plasma)
-        a = Foo.remote()
-        self.assertNotEqual(ray.get(a.method.remote()), local_plasma)
-
     def testMultipleLocalSchedulers(self):
         # This test will define a bunch of tasks that can only be assigned to
         # specific local schedulers, and we will check that they are assigned

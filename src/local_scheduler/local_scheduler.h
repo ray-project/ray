@@ -104,9 +104,15 @@ void kill_worker(LocalSchedulerState *state,
  * scheduler.
  *
  * @param state The local scheduler state.
+ * @param actor_id The ID of the actor for this worker. If this worker is not an
+ *        actor, then NIL_ACTOR_ID should be used.
+ * @param reconstruct True if the worker is an actor and is being started in
+ *        reconstruct mode.
  * @param Void.
  */
-void start_worker(LocalSchedulerState *state);
+void start_worker(LocalSchedulerState *state,
+                  ActorID actor_id,
+                  bool reconstruct);
 
 /**
  * Check if a certain quantity of dynamic resources are available. If num_cpus

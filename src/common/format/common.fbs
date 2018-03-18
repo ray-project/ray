@@ -29,10 +29,6 @@ table TaskInfo {
   parent_task_id: string;
   // A count of the number of tasks submitted by the parent task before this one.
   parent_counter: int;
-  // The ID of the actor to create if this is an actor creation task.
-  actor_creation_id: string;
-  // The dummy object ID of the actor creation task if this is an actor method.
-  actor_creation_dummy_object_id: string;
   // Actor ID of the task. This is the actor that this task is executed on
   // or NIL_ACTOR_ID if the task is just a normal task.
   actor_id: string;
@@ -165,13 +161,4 @@ root_type ResultTableReply;
 table DriverTableMessage {
   // The driver ID of the driver that died.
   driver_id: string;
-}
-
-table ActorCreationNotification {
-  // The ID of the actor that was created.
-  actor_id: string;
-  // The ID of the driver that created the actor.
-  driver_id: string;
-  // The ID of the local scheduler that created the actor.
-  local_scheduler_id: string;
 }

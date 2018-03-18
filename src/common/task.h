@@ -190,9 +190,6 @@ void free_task_builder(TaskBuilder *builder);
  * @param parent_task_id The task ID of the task that submitted this task.
  * @param parent_counter A counter indicating how many tasks were submitted by
  *        the parent task prior to this one.
- * @param actor_creation_id The actor creation ID of this task.
- * @param actor_creation_dummy_object_id The dummy object for the corresponding
- *        actor creation task, assuming this is an actor method.
  * @param actor_id The ID of the actor that this task is for. If it is not an
  *        actor task, then this if NIL_ACTOR_ID.
  * @param actor_handle_id The ID of the actor handle that this task was
@@ -213,10 +210,8 @@ void TaskSpec_start_construct(TaskBuilder *B,
                               UniqueID driver_id,
                               TaskID parent_task_id,
                               int64_t parent_counter,
-                              ActorID actor_creation_id,
-                              ObjectID actor_creation_dummy_object_id,
-                              ActorID actor_id,
-                              ActorHandleID actor_handle_id,
+                              UniqueID actor_id,
+                              UniqueID actor_handle_id,
                               int64_t actor_counter,
                               bool is_actor_checkpoint_method,
                               FunctionID function_id,
@@ -246,7 +241,7 @@ FunctionID TaskSpec_function(TaskSpec *spec);
  * @param spec The task_spec in question.
  * @return The actor ID of the actor the task is part of.
  */
-ActorID TaskSpec_actor_id(TaskSpec *spec);
+UniqueID TaskSpec_actor_id(TaskSpec *spec);
 
 /**
  * Return the actor handle ID of the task.
@@ -254,7 +249,7 @@ ActorID TaskSpec_actor_id(TaskSpec *spec);
  * @param spec The task_spec in question.
  * @return The ID of the actor handle that the task was submitted through.
  */
-ActorID TaskSpec_actor_handle_id(TaskSpec *spec);
+UniqueID TaskSpec_actor_handle_id(TaskSpec *spec);
 
 /**
  * Return whether this task is for an actor.
@@ -263,26 +258,6 @@ ActorID TaskSpec_actor_handle_id(TaskSpec *spec);
  * @return Whether the task is for an actor.
  */
 bool TaskSpec_is_actor_task(TaskSpec *spec);
-
-/// Return whether this task is an actor creation task or not.
-///
-/// \param spec The task_spec in question.
-/// \return True if this task is an actor creation task and false otherwise.
-bool TaskSpec_is_actor_creation_task(TaskSpec *spec);
-
-/// Return the actor creation ID of the task. The task must be an actor creation
-/// task.
-///
-/// \param spec The task_spec in question.
-/// \return The actor creation ID if this is an actor creation task.
-ActorID TaskSpec_actor_creation_id(TaskSpec *spec);
-
-/// Return the actor creation dummy object ID of the task. The task must be an
-/// actor task.
-///
-/// \param spec The task_spec in question.
-/// \return The actor creation dummy object ID corresponding to this actor task.
-ObjectID TaskSpec_actor_creation_dummy_object_id(TaskSpec *spec);
 
 /**
  * Return the actor counter of the task. This starts at 0 and increments by 1
@@ -533,10 +508,7 @@ typedef enum {
   /** The task was not able to finish. */
   TASK_STATUS_LOST = 32,
   /** The task will be submitted for reexecution. */
-  TASK_STATUS_RECONSTRUCTING = 64,
-  /** An actor task is cached at a local scheduler and is waiting for the
-   *  corresponding actor to be created. */
-  TASK_STATUS_ACTOR_CACHED = 128
+  TASK_STATUS_RECONSTRUCTING = 64
 } scheduling_state;
 
 /** A task is an execution of a task specification.  It has a state of execution

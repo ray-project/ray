@@ -16,8 +16,6 @@ from ray.utils import (decode, binary_to_object_id, binary_to_hex,
 # Import flatbuffer bindings.
 from ray.core.generated.TaskReply import TaskReply
 from ray.core.generated.ResultTableReply import ResultTableReply
-from ray.core.generated.TaskExecutionDependencies import \
-    TaskExecutionDependencies
 
 # These prefixes must be kept up-to-date with the definitions in
 # ray_redis_module.cc.
@@ -264,35 +262,17 @@ class GlobalState(object):
             "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
             "ParentCounter": task_spec.parent_counter(),
             "ActorID": binary_to_hex(task_spec.actor_id().id()),
-            "ActorCreationID":
-                binary_to_hex(task_spec.actor_creation_id().id()),
-            "ActorCreationDummyObjectID":
-                binary_to_hex(task_spec.actor_creation_dummy_object_id().id()),
             "ActorCounter": task_spec.actor_counter(),
             "FunctionID": binary_to_hex(task_spec.function_id().id()),
             "Args": task_spec.arguments(),
             "ReturnObjectIDs": task_spec.returns(),
             "RequiredResources": task_spec.required_resources()}
 
-        execution_dependencies_message = (
-            TaskExecutionDependencies.GetRootAsTaskExecutionDependencies(
-                task_table_message.ExecutionDependencies(), 0))
-        execution_dependencies = [
-            ray.local_scheduler.ObjectID(
-                execution_dependencies_message.ExecutionDependencies(i))
-            for i in range(
-                execution_dependencies_message.ExecutionDependenciesLength())]
-
-        # TODO(rkn): The return fields ExecutionDependenciesString and
-        # ExecutionDependencies are redundant, so we should remove
-        # ExecutionDependencies. However, it is currently used in monitor.py.
-
         return {"State": task_table_message.State(),
                 "LocalSchedulerID": binary_to_hex(
                     task_table_message.LocalSchedulerId()),
                 "ExecutionDependenciesString":
                     task_table_message.ExecutionDependencies(),
-                "ExecutionDependencies": execution_dependencies,
                 "SpillbackCount":
                     task_table_message.SpillbackCount(),
                 "TaskSpec": task_spec_info}

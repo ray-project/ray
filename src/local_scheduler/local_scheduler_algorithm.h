@@ -76,12 +76,14 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param actor_id The ID of the actor being created.
+ * @param reconstruct True if the actor is being created in "reconstruct" mode.
  * @return Void.
  */
 void handle_actor_creation_notification(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id);
+    ActorID actor_id,
+    bool reconstruct);
 
 /**
  * This function will be called when a task is assigned by the global scheduler
@@ -175,17 +177,13 @@ void handle_actor_worker_available(LocalSchedulerState *state,
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param actor_id The ID of the actor running on the worker.
- * @param initial_execution_dependency The dummy object ID of the actor
- *        creation task.
- * @param worker The worker that was converted to an actor.
+ * @param worker The worker that was connected.
  * @return Void.
  */
-void handle_convert_worker_to_actor(
-    LocalSchedulerState *state,
-    SchedulingAlgorithmState *algorithm_state,
-    const ActorID &actor_id,
-    const ObjectID &initial_execution_dependency,
-    LocalSchedulerClient *worker);
+void handle_actor_worker_connect(LocalSchedulerState *state,
+                                 SchedulingAlgorithmState *algorithm_state,
+                                 ActorID actor_id,
+                                 LocalSchedulerClient *worker);
 
 /**
  * Handle the fact that a worker running an actor has disconnected.
@@ -294,19 +292,6 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
 int reconstruct_object_timeout_handler(event_loop *loop,
                                        timer_id id,
                                        void *context);
-
-/// This function initiates reconstruction for the actor creation tasks
-/// corresponding to the actor tasks cached in the local scheduler.
-///
-/// \param loop The local scheduler's event loop.
-/// \param id The ID of the timer that triggers this function.
-/// \param context The function's context.
-/// \return An integer representing the time interval in seconds before the
-/// next invocation of the function.
-int rerun_actor_creation_tasks_timeout_handler(event_loop *loop,
-                                               timer_id id,
-                                               void *context);
-
 /**
  * Check whether an object, including actor dummy objects, is locally
  * available.
