@@ -1,13 +1,18 @@
 #include "object_manager.h"
 
+namespace asio = boost::asio;
+
 namespace ray {
 
-ObjectManager::ObjectManager(boost::asio::io_service &main_service,
-                             boost::asio::io_service &object_manager_service,
+ObjectManager::ObjectManager(asio::io_service &main_service,
+                             std::unique_ptr<asio::io_service> object_manager_service,
                              ObjectManagerConfig config,
                              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-    : client_id_(gcs_client->client_table().GetLocalClientId()), object_directory_(new ObjectDirectory(gcs_client)), work_(object_manager_service) {
-  io_service_ = &main_service;
+    : client_id_(gcs_client->client_table().GetLocalClientId()),
+      object_directory_(new ObjectDirectory(gcs_client)),
+      object_manager_service_(std::move(object_manager_service)),
+      work_(*object_manager_service_) {
+  main_service_ = &main_service;
   config_ = config;
   store_client_ = std::unique_ptr<ObjectStoreClient>(
       new ObjectStoreClient(main_service, config.store_socket_name));
@@ -18,13 +23,15 @@ ObjectManager::ObjectManager(boost::asio::io_service &main_service,
   StartIOService();
 };
 
-ObjectManager::ObjectManager(boost::asio::io_service &main_service,
-                             boost::asio::io_service &object_manager_service,
+ObjectManager::ObjectManager(asio::io_service &main_service,
+                             std::unique_ptr<asio::io_service> object_manager_service,
                              ObjectManagerConfig config,
                              std::unique_ptr<ObjectDirectoryInterface> od)
-    : object_directory_(std::move(od)), work_(object_manager_service) {
+    : object_directory_(std::move(od)),
+      object_manager_service_(std::move(object_manager_service)),
+      work_(*object_manager_service_) {
   // TODO(hme) Client ID is never set with this constructor.
-  io_service_ = &main_service;
+  main_service_ = &main_service;
   config_ = config;
   store_client_ = std::unique_ptr<ObjectStoreClient>(
       new ObjectStoreClient(main_service, config.store_socket_name));
@@ -36,20 +43,19 @@ ObjectManager::ObjectManager(boost::asio::io_service &main_service,
 };
 
 void ObjectManager::StartIOService() {
-  // TODO(hme): Reintroduce threading.
-  // io_thread_ = std::thread(&ObjectManager::IOServiceLoop, this);
-  // thread_group_.create_thread(boost::bind(&boost::asio::io_service::run,
+  io_thread_ = std::thread(&ObjectManager::IOServiceLoop, this);
+  // thread_group_.create_thread(boost::bind(&asio::io_service::run,
   // &io_service_));
 }
 
 void ObjectManager::IOServiceLoop() {
-  // io_service_->run();
+  object_manager_service_->run();
 }
 
 void ObjectManager::StopIOService() {
-   // io_service_->stop();
-   // io_thread_.join();
-   // thread_group_.join_all();
+  object_manager_service_->stop();
+  io_thread_.join();
+  // thread_group_.join_all();
 }
 
 ClientID ObjectManager::GetClientID() { return client_id_; }
@@ -89,8 +95,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 };
 
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
-  pull_requests_[object_id] = Timer(new boost::asio::deadline_timer(
-      *io_service_, boost::posix_time::milliseconds(wait_ms)));
+  pull_requests_[object_id] = Timer(new asio::deadline_timer(
+      *main_service_, boost::posix_time::milliseconds(wait_ms)));
   pull_requests_[object_id]->async_wait(
       [this, object_id](const boost::system::error_code &error_code) {
         RAY_CHECK_OK(SchedulePullHandler(object_id));
@@ -124,8 +130,8 @@ void ObjectManager::GetLocationsFailed(ray::Status status, const ObjectID &objec
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
   Status status =
-      GetMsgConnection(client_id, [this, object_id](SenderConnection::pointer client) {
-        Status status = ExecutePull(object_id, client);
+      GetMsgConnection(client_id, [this, object_id](SenderConnection::pointer conn) {
+        Status status = ExecutePull(object_id, conn);
       });
   return status;
 };
@@ -208,13 +214,13 @@ ray::Status ObjectManager::ExecutePushHeaders(const ObjectID &object_id_const,
   fbb.Finish(message);
   // Pack into asio buffer.
   size_t length = fbb.GetSize();
-  std::vector<boost::asio::const_buffer> buffer;
-  buffer.push_back(boost::asio::buffer(&length, sizeof(length)));
-  buffer.push_back(boost::asio::buffer(fbb.GetBufferPointer(), length));
+  std::vector<asio::const_buffer> buffer;
+  buffer.push_back(asio::buffer(&length, sizeof(length)));
+  buffer.push_back(asio::buffer(fbb.GetBufferPointer(), length));
   // Send asynchronously.
-  boost::asio::async_write(conn->GetSocket(), buffer,
+  asio::async_write(conn->GetSocket(), buffer,
                            boost::bind(&ObjectManager::ExecutePushObject, this, conn,
-                                       object_id, boost::asio::placeholders::error));
+                                       object_id, asio::placeholders::error));
   return ray::Status::OK();
 };
 
@@ -223,9 +229,9 @@ void ObjectManager::ExecutePushObject(SenderConnection::pointer conn,
                                       const boost::system::error_code &header_ec) {
   SendRequest &send_request = conn->GetSendRequest(object_id);
   boost::system::error_code ec;
-  boost::asio::write(
+  asio::write(
       conn->GetSocket(),
-      boost::asio::buffer(send_request.data, (size_t)send_request.object_size), ec);
+      asio::buffer(send_request.data, (size_t)send_request.object_size), ec);
   // Do this regardless of whether it failed or succeeded.
   ARROW_CHECK_OK(
       store_client_->GetClientOther().Release(send_request.object_id.to_plasma_id()));
@@ -274,7 +280,7 @@ ray::Status ObjectManager::GetMsgConnection(
 ray::Status ObjectManager::CreateMsgConnection(
     const RemoteConnectionInfo &info,
     std::function<void(SenderConnection::pointer)> callback) {
-  message_send_connections_.emplace(info.client_id, SenderConnection::Create(*io_service_, info.ip, info.port));
+  message_send_connections_.emplace(info.client_id, SenderConnection::Create(*main_service_, info.ip, info.port));
   // Prepare client connection info buffer
   flatbuffers::FlatBufferBuilder fbb;
   bool is_transfer = false;
@@ -310,7 +316,7 @@ ray::Status ObjectManager::CreateTransferConnection(
     const RemoteConnectionInfo &info,
     std::function<void(SenderConnection::pointer)> callback) {
   transfer_send_connections_.emplace(info.client_id,
-                                     SenderConnection::Create(*io_service_, info.ip, info.port));
+                                     SenderConnection::Create(*main_service_, info.ip, info.port));
   // Prepare client connection info buffer.
   flatbuffers::FlatBufferBuilder fbb;
   bool is_transfer = true;
@@ -397,12 +403,12 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<ObjectManagerClientConnec
 };
 
 ray::Status ObjectManager::WaitPushReceive(std::shared_ptr<ObjectManagerClientConnection> conn){
-  boost::asio::async_read(conn->GetSocket(),
-                          boost::asio::buffer(&read_length_, sizeof(read_length_)),
+  asio::async_read(conn->GetSocket(),
+                          asio::buffer(&read_length_, sizeof(read_length_)),
                           boost::bind(&ObjectManager::HandlePushReceive,
                                       this,
                                       conn,
-                                      boost::asio::placeholders::error));
+                                      asio::placeholders::error));
   return ray::Status::OK();
 };
 
@@ -411,7 +417,7 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnect
   std::vector<uint8_t> message;
   message.resize(read_length_);
   boost::system::error_code ec;
-  boost::asio::read(conn->GetSocket(), boost::asio::buffer(message), ec);
+  asio::read(conn->GetSocket(), asio::buffer(message), ec);
   // Serialize.
   auto object_header = flatbuffers::GetRoot<PushRequestMessage>(message.data());
   ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
@@ -424,7 +430,7 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnect
   if(s.ok()){
     // Read object into store.
     uint8_t *mutable_data = data->mutable_data();
-    boost::asio::read(conn->GetSocket(), boost::asio::buffer(mutable_data, object_size), ec);
+    asio::read(conn->GetSocket(), asio::buffer(mutable_data, object_size), ec);
     if(!ec.value()){
       ARROW_CHECK_OK(store_client_->GetClient().Seal(object_id.to_plasma_id()));
       ARROW_CHECK_OK(store_client_->GetClient().Release(object_id.to_plasma_id()));
@@ -437,7 +443,7 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnect
     RAY_LOG(ERROR) << "Buffer Create Failed: " << s.message();
     // Read object into empty buffer.
     uint8_t *mutable_data = (uint8_t *) malloc(object_size + metadata_size);
-    boost::asio::read(conn->GetSocket(), boost::asio::buffer(mutable_data, object_size), ec);
+    asio::read(conn->GetSocket(), asio::buffer(mutable_data, object_size), ec);
   }
   // Wait for another push.
   ray::Status ray_status = WaitPushReceive(conn);

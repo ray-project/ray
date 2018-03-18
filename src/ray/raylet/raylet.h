@@ -33,7 +33,8 @@ class Raylet {
   /// manager.
   /// \param gcs_client A client connection to the GCS.
   Raylet(boost::asio::io_service &main_service,
-         boost::asio::io_service &object_manager_service, const std::string &socket_name,
+         std::unique_ptr<boost::asio::io_service> object_manager_service,
+         const std::string &socket_name,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);

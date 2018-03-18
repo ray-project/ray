@@ -10,7 +10,7 @@ namespace ray {
 namespace raylet {
 
 Raylet::Raylet(boost::asio::io_service &main_service,
-               boost::asio::io_service &object_manager_service,
+               std::unique_ptr<boost::asio::io_service> object_manager_service,
                const std::string &socket_name,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
@@ -25,7 +25,7 @@ Raylet::Raylet(boost::asio::io_service &main_service,
       node_manager_socket_(main_service),
       gcs_client_(gcs_client),
       lineage_cache_(gcs_client->task_table()),
-      object_manager_(main_service, object_manager_service, object_manager_config,
+      object_manager_(main_service, std::move(object_manager_service), object_manager_config,
                       gcs_client),
       node_manager_(main_service, node_manager_config, object_manager_, lineage_cache_,
                     gcs_client_) {

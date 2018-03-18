@@ -38,7 +38,7 @@ class TestObjectManager : public ::testing::Test {
     ObjectManagerConfig config;
     config.store_socket_name = "/tmp/store";
     object_manager_1_ = std::unique_ptr<ObjectManager>(
-        new ObjectManager(main_service_, object_manager_service_, config, gcs_client_));
+        new ObjectManager(main_service_, std::move(object_manager_service_), config, gcs_client_));
 
     // Start object manager 2.
     //    ObjectManagerConfig config2;
@@ -80,7 +80,7 @@ class TestObjectManager : public ::testing::Test {
   plasma::PlasmaClient client_;
   plasma::PlasmaClient client2_;
   boost::asio::io_service main_service_;
-  boost::asio::io_service object_manager_service_;
+  std::unique_ptr<boost::asio::io_service> object_manager_service_;
 
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   std::unique_ptr<ObjectManager> object_manager_1_;

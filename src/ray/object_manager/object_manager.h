@@ -47,7 +47,7 @@ class ObjectManager {
   /// \param config ObjectManager configuration.
   /// \param gcs_client A client connection to the Ray GCS.
   explicit ObjectManager(boost::asio::io_service &main_service,
-                         boost::asio::io_service &object_manager_service,
+                         std::unique_ptr<boost::asio::io_service> object_manager_service,
                          ObjectManagerConfig config,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
@@ -60,7 +60,7 @@ class ObjectManager {
   /// \param config ObjectManager configuration.
   /// \param od An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
-                         boost::asio::io_service &object_manager_service,
+                         std::unique_ptr<boost::asio::io_service> object_manager_service,
                          ObjectManagerConfig config,
                          std::unique_ptr<ObjectDirectoryInterface> od);
 
@@ -155,8 +155,8 @@ class ObjectManager {
   std::unique_ptr<ObjectStoreClient> store_client_;
 
   /// An io service for creating connections to other object managers.
-  // TODO(hme): make unique ptr once om_service is being passed in.
-  boost::asio::io_service *io_service_;
+  std::unique_ptr<boost::asio::io_service> object_manager_service_;
+  boost::asio::io_service *main_service_;
 
   /// Used to create "work" for an io service, so when it's run, it doesn't exit.
   boost::asio::io_service::work work_;
