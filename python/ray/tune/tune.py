@@ -92,4 +92,3 @@ def run_experiments(experiments, scheduler=None, with_server=False,
 
     wait_for_log_sync()
     return runner.get_trials()
-
