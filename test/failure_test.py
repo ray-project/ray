@@ -284,7 +284,7 @@ class WorkerDeath(unittest.TestCase):
         wait_for_errors(b"worker_died", 1)
 
         self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn("A worker died or was killed while executing a task.",
+        self.assertIn("died or was killed while executing the task",
                       ray.error_info()[0][b"message"].decode("ascii"))
 
     def testActorWorkerDying(self):

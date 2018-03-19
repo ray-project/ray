@@ -1081,23 +1081,6 @@ def error_info(worker=global_worker):
     for error_key in error_keys:
         if error_applies_to_driver(error_key, worker=worker):
             error_contents = worker.redis_client.hgetall(error_key)
-            # If the error is an object hash mismatch, look up the function
-            # name for the nondeterministic task. TODO(rkn): Change this so
-            # that we don't have to look up additional information. Ideally all
-            # relevant information would already be in error_contents.
-            error_type = error_contents[b"type"]
-            if error_type in [OBJECT_HASH_MISMATCH_ERROR_TYPE,
-                              PUT_RECONSTRUCTION_ERROR_TYPE]:
-                function_id = error_contents[b"data"]
-                if function_id == NIL_FUNCTION_ID:
-                    function_name = b"Driver"
-                else:
-                    task_driver_id = worker.task_driver_id
-                    function_name = worker.redis_client.hget(
-                        (b"RemoteFunction:" + task_driver_id.id() +
-                         b":" + function_id),
-                        "name")
-                error_contents[b"data"] = function_name
             errors.append(error_contents)
 
     return errors
