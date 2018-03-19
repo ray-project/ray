@@ -858,10 +858,10 @@ void spillback_tasks_handler(LocalSchedulerState *state) {
 
   for (int64_t i = 0; i < num_to_spillback; i++) {
     it->IncrementSpillbackCount();
-    // If an actor hasn't been created after 10 seconds, push a warning to the
+    // If an actor hasn't been created for a while, push a warning to the
     // driver.
-    int actor_spillback_count_warning_threshold = 10 * 10;
-    if (it->SpillbackCount() == actor_spillback_count_warning_threshold) {
+    if (it->SpillbackCount() %
+        RayConfig::instance().actor_creation_num_spillbacks_warning() == 0) {
       TaskSpec *spec = it->Spec();
       if (TaskSpec_is_actor_creation_task(spec)) {
         std::ostringstream error_message;
