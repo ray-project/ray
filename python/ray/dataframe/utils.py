@@ -247,8 +247,8 @@ def _blocks_to_row(*partition):
 def _inherit_docstrings(parent):
     """Creates a decorator which overwrites a decorated class' __doc__
     attribute with parent's __doc__ attribute. Also overwrites __doc__ of
-    methods defined in the class with the __doc__ of matching methods in
-    parent.
+    methods and properties defined in the class with the __doc__ of matching
+    methods in parent.
 
     Args:
         parent (object): Class from which the decorated class inherits __doc__.
@@ -261,15 +261,17 @@ def _inherit_docstrings(parent):
             __init__ method matches pandas.DataFrame's __init__ method.
 
     Returns:
-        function: decorator which replaces a decorated class' __doc__  with
-            parent's __doc__.
+        function: decorator which replaces the decorated class' documentation
+            parent's documentation.
     """
     def decorator(cls):
-        # cls.__doc = parent.__doc__
+        # cls.__doc__ = parent.__doc__
         for attr, obj in cls.__dict__.items():
-            if callable(obj) and hasattr(parent, attr) \
+            if (callable(obj) or isinstance(obj, property)) \
                     and attr != "__init__":
-                obj.__doc__ = getattr(parent, attr).__doc__
+                parent_obj = getattr(parent, attr, None)
+                if callable(parent_obj) or isinstance(parent_obj, property):
+                    obj.__doc__ = parent_obj.__doc__
         return cls
 
     return decorator

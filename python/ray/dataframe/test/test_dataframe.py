@@ -3020,6 +3020,8 @@ def test__doc__():
     assert rdf.DataFrame.__doc__ != pd.DataFrame.__doc__
     assert rdf.DataFrame.__init__ != pd.DataFrame.__init__
     for attr, obj in rdf.DataFrame.__dict__.items():
-        if callable(obj) and hasattr(pd.DataFrame, attr) \
+        if (callable(obj) or isinstance(obj, property)) \
                 and attr != "__init__":
-            assert obj.__doc__ == getattr(pd.DataFrame, attr).__doc__
+            pd_obj = getattr(pd.DataFrame, attr, None)
+            if callable(pd_obj) or isinstance(pd_obj, property):
+                assert obj.__doc__ == pd_obj.__doc__
