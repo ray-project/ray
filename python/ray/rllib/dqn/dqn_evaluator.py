@@ -11,7 +11,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
-from ray.rllib.optimizers import SampleBatch, Evaluator
+from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.compression import pack
 
 
@@ -43,7 +43,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
         del arr[new_len:]
 
 
-class DQNEvaluator(Evaluator):
+class DQNEvaluator(PolicyEvaluator):
     """The DQN Evaluator.
 
     TODO(rliaw): Support observation/reward filters?"""
@@ -136,13 +136,20 @@ class DQNEvaluator(Evaluator):
 
         return batch
 
+    def compute_gradients(self, samples):
+        td_err, grads = self.dqn_graph.compute_gradients(
+            self.sess, samples["obs"], samples["actions"], samples["rewards"],
+            samples["new_obs"], samples["dones"], samples["weights"])
+        return grads, {"td_error": td_err}
+
+    def apply_gradients(self, grads):
+        self.dqn_graph.apply_gradients(self.sess, grads)
+
     def compute_apply(self, samples):
-        if samples is None:
-            return None
         td_error = self.dqn_graph.compute_apply(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
             samples["new_obs"], samples["dones"], samples["weights"])
-        return td_error
+        return {"td_error": td_error}
 
     def get_weights(self):
         return self.variables.get_weights()

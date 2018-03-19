@@ -5,17 +5,27 @@ from __future__ import print_function
 import ray
 
 
-class Optimizer(object):
-    """RLlib optimizers encapsulate distributed RL optimization strategies.
+class PolicyOptimizer(object):
+    """Policy optimizers encapsulate distributed RL optimization strategies.
+
+    Policy optimizers serve as the "control plane" of algorithms.
 
     For example, AsyncOptimizer is used for A3C, and LocalMultiGPUOptimizer is
     used for PPO. These optimizers are all pluggable, and it is possible
     to mix and match as needed.
 
     In order for an algorithm to use an RLlib optimizer, it must implement
-    the Evaluator interface and pass a number of Evaluators to its Optimizer
-    of choice. The Optimizer uses these Evaluators to sample from the
-    environment and compute model gradient updates.
+    the PolicyEvaluator interface and pass a PolicyEvaluator class or set of
+    PolicyEvaluators to its PolicyOptimizer of choice. The PolicyOptimizer
+    uses these Evaluators to sample from the environment and compute model
+    gradient updates.
+
+    Attributes:
+        config (dict): The JSON configuration passed to this optimizer.
+        local_evaluator (PolicyEvaluator): The embedded evaluator instance.
+        remote_evaluators (list): List of remote evaluator replicas, or [].
+        num_steps_trained (int): Number of timesteps trained on so far.
+        num_steps_sampled (int): Number of timesteps sampled so far.
     """
 
     @classmethod
@@ -59,10 +69,17 @@ class Optimizer(object):
         self.num_steps_sampled = 0
 
     def _init(self):
+        """Subclasses should prefer overriding this instead of __init__."""
+
         pass
 
     def step(self):
-        """Takes a logical optimization step."""
+        """Takes a logical optimization step.
+
+        This should run for long enough to minimize call overheads (i.e., at
+        least a couple seconds), but short enough to return control
+        periodically to callers (i.e., at most a few tens of seconds).
+        """
 
         raise NotImplementedError
 
@@ -75,8 +92,12 @@ class Optimizer(object):
         }
 
     def save(self):
+        """Returns a serializable object representing the optimizer state."""
+
         return [self.num_steps_trained, self.num_steps_sampled]
 
     def restore(self, data):
+        """Restores optimizer state from the given data object."""
+
         self.num_steps_trained = data[0]
         self.num_steps_sampled = data[1]

@@ -507,6 +507,41 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitFor(lambda: len(runner.calls) > num_calls)
 
+    def testExternalNodeScaler(self):
+        config = SMALL_CLUSTER.copy()
+        config["provider"] = {
+            "type": "external",
+            "module": "ray.autoscaler.node_provider.NodeProvider",
+            }
+        config_path = self.write_config(config)
+        autoscaler = StandardAutoscaler(
+            config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
+        self.assertIsInstance(autoscaler.provider, NodeProvider)
+
+    def testExternalNodeScalerWrongImport(self):
+        config = SMALL_CLUSTER.copy()
+        config["provider"] = {
+            "type": "external",
+            "module": "mymodule.provider_class",
+            }
+        invalid_provider = self.write_config(config)
+        self.assertRaises(
+            ImportError,
+            lambda: StandardAutoscaler(
+                invalid_provider, LoadMetrics(), update_interval_s=0))
+
+    def testExternalNodeScalerWrongModuleFormat(self):
+        config = SMALL_CLUSTER.copy()
+        config["provider"] = {
+            "type": "external",
+            "module": "does-not-exist",
+            }
+        invalid_provider = self.write_config(config)
+        self.assertRaises(
+            ValueError,
+            lambda: StandardAutoscaler(
+                invalid_provider, LoadMetrics(), update_interval_s=0))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

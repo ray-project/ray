@@ -155,3 +155,10 @@ def _compute_length_and_index(dfs):
                      for j in range(lengths[i])]}
 
     return lengths, pd.DataFrame(dest_indices)
+
+
+@ray.remote
+def _prepend_partitions(last_vals, index, partition, func):
+    appended_df = last_vals[:index].append(partition)
+    cum_df = func(appended_df)
+    return cum_df[index:]

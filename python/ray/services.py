@@ -388,6 +388,7 @@ def check_version_info(redis_client):
 
 
 def start_credis(node_ip_address,
+                 redis_address,
                  port=None,
                  redirect_output=False,
                  cleanup=True):
@@ -400,6 +401,8 @@ def start_credis(node_ip_address,
     Args:
         node_ip_address: The IP address of the current node. This is only used
             for recording the log filenames in Redis.
+        redis_address (str): The IP address and port of the primary redis
+            server.
         port (int): If provided, the primary Redis shard will be started on
             this port.
         redirect_output (bool): True if output should be redirected to a file
@@ -439,7 +442,15 @@ def start_credis(node_ip_address,
     master_client.execute_command("MASTER.ADD", node_ip_address, head_port)
     master_client.execute_command("MASTER.ADD", node_ip_address, tail_port)
 
-    return address(node_ip_address, master_port)
+    credis_address = address(node_ip_address, master_port)
+
+    # Register credis master in redis
+    redis_ip_address, redis_port = redis_address.split(":")
+    redis_client = redis.StrictRedis(host=redis_ip_address,
+                                     port=redis_port)
+    redis_client.set("credis_address", credis_address)
+
+    return credis_address
 
 
 def start_redis(node_ip_address,
@@ -1142,7 +1153,7 @@ def start_ray_processes(address_info=None,
         address_info["redis_address"] = redis_address
         if "RAY_USE_NEW_GCS" in os.environ:
             credis_address = start_credis(
-                node_ip_address, cleanup=cleanup)
+                node_ip_address, redis_address, cleanup=cleanup)
             address_info["credis_address"] = credis_address
         time.sleep(0.1)
 

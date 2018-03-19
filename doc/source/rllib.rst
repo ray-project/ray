@@ -1,21 +1,11 @@
-Ray RLlib: A Scalable Reinforcement Learning Library
-====================================================
+Ray RLlib: Scalable Reinforcement Learning
+==========================================
 
-Ray RLlib is a reinforcement learning library that aims to provide both performance and composability:
+Ray RLlib is an RL execution toolkit built on the Ray distributed execution framework. RLlib implements a collection of distributed *policy optimizers* that make it easy to use a variety of training strategies with existing RL algorithms written in frameworks such as PyTorch, TensorFlow, and Theano.
 
-- Performance
-    - High performance algorithm implementions
-    - Pluggable distributed RL execution strategies
+You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the paper `here <https://arxiv.org/abs/1712.09381>`__.
 
-- Composability
-    - Integration with the `Ray Tune <tune.html>`__ hyperparam tuning tool
-    - Support for multiple frameworks (TensorFlow, PyTorch)
-    - Scalable primitives for developing new algorithms
-    - Shared models between algorithms
-
-You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the NIPS symposium paper `here <https://arxiv.org/abs/1712.09381>`__.
-
-RLlib currently provides the following algorithms:
+RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, which include:
 
 -  `Proximal Policy Optimization (PPO) <https://arxiv.org/abs/1707.06347>`__ which
    is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
@@ -24,6 +14,8 @@ RLlib currently provides the following algorithms:
 
 - `Deep Q Networks (DQN) <https://arxiv.org/abs/1312.5602>`__.
 
+- `Ape-X Distributed Prioritized Experience Replay <https://arxiv.org/abs/1803.00933>`__.
+
 -  Evolution Strategies, as described in `this
    paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
    is adapted from
@@ -31,6 +23,10 @@ RLlib currently provides the following algorithms:
 
 These algorithms can be run on any `OpenAI Gym MDP <https://github.com/openai/gym>`__,
 including custom ones written and registered by the user.
+
+.. note::
+
+    To use RLlib's policy optimizers outside of RLlib, see the `policy optimizers documentation <policy-optimizers.html>`__.
 
 Installation
 ------------
@@ -80,7 +76,7 @@ The ``train.py`` script has a number of options you can show by running
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``A3C``, ``ES`` and ``DQN``).
+(available options are ``PPO``, ``A3C``, ``ES``, ``DQN`` and ``APEX``).
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
@@ -89,8 +85,9 @@ Each algorithm has specific hyperparameters that can be set with ``--config`` - 
 ``DEFAULT_CONFIG`` variable in
 `PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ppo/ppo.py>`__,
 `A3C <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c.py>`__,
-`ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__ and
-`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__.
+`ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__,
+`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__ and
+`APEX <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__.
 
 In an example below, we train A3C by specifying 8 workers through the config flag.
 function that creates the env to refer to it by name. The contents of the env_config agent config field will be passed to that function to allow the environment to be configured. The return type should be an OpenAI gym.Env. For example:
@@ -324,6 +321,11 @@ in the ``config`` section of the experiments.
 
 For an advanced example of using Population Based Training (PBT) with RLlib,
 see the `PPO + PBT Walker2D training example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__.
+
+Using Policy Optimizers outside of RLlib
+----------------------------------------
+
+See the `RLlib policy optimizers documentation <policy-optimizers.html>`__.
 
 Contributing to RLlib
 ---------------------
