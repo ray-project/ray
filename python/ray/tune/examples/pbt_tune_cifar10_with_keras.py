@@ -31,10 +31,6 @@ from ray.tune import TrainingResult
 from ray.tune.pbt import PopulationBasedTraining
 
 
-config = tf.ConfigProto(log_device_placement=True)
-config.gpu_options.allow_growth = True
-set_session(tf.Session(config=config))
-
 
 num_classes = 10
 
@@ -85,6 +81,10 @@ class Cifar10Model(Trainable):
         return model
 
     def _setup(self):
+        config = tf.ConfigProto(log_device_placement=True)
+        config.gpu_options.per_process_gpu_memory_fraction = 0.2
+        set_session(tf.Session(config=config))
+
         self.train_data, self.test_data = self._read_data()
         x_train = self.train_data[0]
         model = self._build_model(x_train.shape[1:])
@@ -147,6 +147,7 @@ if __name__ == '__main__':
     register_trainable('train_cifar10', Cifar10Model)
     train_spec = {
         'run': 'train_cifar10',
+        'resources': { 'cpu': 6, 'gpu': 1 },
         'stop': {
             'mean_accuracy': 0.80,
             'timesteps_total': 300,
@@ -154,9 +155,9 @@ if __name__ == '__main__':
         'config': {
             'epochs': 1,
             'batch_size': 64,
-            'lr': grid_search([10 ** -3, 10 ** -4, 10 ** -5]),
+            'lr': grid_search([10 ** -4, 10 ** -5]),
             'decay': lambda spec: spec.config.lr / 100.0,
-            'dropout': grid_search([0.25, 0.5, 0.75]),
+            'dropout': grid_search([0.25, 0.5]),
         },
         "repeat": 1,
     }
