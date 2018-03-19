@@ -1612,14 +1612,12 @@ def test_hist():
 
 @pytest.fixture
 def test_idxmax(ray_df, pandas_df):
-    return
     assert \
         ray_df.idxmax().sort_index().equals(pandas_df.idxmax().sort_index())
 
 
 @pytest.fixture
 def test_idxmin(ray_df, pandas_df):
-    return
     assert \
         ray_df.idxmin().sort_index().equals(pandas_df.idxmin().sort_index())
 
@@ -1921,7 +1919,6 @@ def test_plot():
 
 @pytest.fixture
 def test_pop(ray_df, pandas_df):
-    return
     temp_ray_df = ray_df.copy()
     temp_pandas_df = pandas_df.copy()
     ray_popped = temp_ray_df.pop('col2')

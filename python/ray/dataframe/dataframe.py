@@ -376,8 +376,10 @@ class DataFrame(object):
         """
         # The dtypes are common across all partitions.
         # The first partition will be enough.
-        return ray.get(_deploy_func.remote(lambda df: df.dtypes,
+        result = ray.get(_deploy_func.remote(lambda df: df.dtypes,
                                            self._row_partitions[0]))
+        result.index = self.columns
+        return result
 
     @property
     def empty(self):
@@ -1659,11 +1661,10 @@ class DataFrame(object):
             value (type of items contained in object) : A value that is
             stored at the key
         """
-        # TODO: Fix this function
-        return
-        temp_df = self._map_partitions(
-            lambda df: df.get(key, default=default), self._row_partitions)
-        return to_pandas(temp_df)
+        try:
+            return self[key]
+        except (KeyError, ValueError, IndexError):
+            return default
 
     def get_dtype_counts(self):
         """Get the counts of dtypes in this object.
@@ -1671,11 +1672,8 @@ class DataFrame(object):
         Returns:
             The counts of dtypes in this object.
         """
-        return ray.get(
-            _deploy_func.remote(
-                lambda df: df.get_dtype_counts(), self._row_partitions[0]
-            )
-        )
+        return ray.get(_deploy_func.remote(lambda df: df.get_dtype_counts(),
+                                             self._row_partitions[0]))
 
     def get_ftype_counts(self):
         """Get the counts of ftypes in this object.
@@ -1683,11 +1681,8 @@ class DataFrame(object):
         Returns:
             The counts of ftypes in this object.
         """
-        return ray.get(
-            _deploy_func.remote(
-                lambda df: df.get_ftype_counts(), self._row_partitions[0]
-            )
-        )
+        return ray.get(_deploy_func.remote(lambda df: df.get_ftype_counts(),
+                                             self._row_partitions[0]))
 
     def get_value(self, index, col, takeable=False):
         raise NotImplementedError(
@@ -1744,17 +1739,21 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
-        return
-        # TODO: Fix this
-        for t in self.dtypes:
-            if np.dtype('O') == t:
-                # TODO Give a more accurate error to Pandas
-                raise TypeError("bad operand type for abs():", "str")
-        if axis == 1:
-            return to_pandas(self._map_partitions(
-                lambda df: df.idxmax(axis=axis, skipna=skipna)))
-        else:
-            return self.T.idxmax(axis=1, skipna=skipna)
+        for dtype in self.dtypes:
+            if dtype == np.dtype('O'):
+                raise TypeError('invalid datatype for comparison')
+
+        is_axis_zero = axis == 0 or axis == 'rows'
+
+        idxmax_series = pd.concat(ray.get(
+            _map_partitions(lambda df: df.idxmax(axis=axis,
+                                              skipna=skipna),
+                            self._row_partitions if not is_axis_zero
+                            else self._col_partitions)))
+
+        idxmax_series.index = self.columns if is_axis_zero else self.index
+
+        return idxmax_series
 
     def idxmin(self, axis=0, skipna=True):
         """Get the index of the first occurrence of the min value of the axis.
@@ -1767,17 +1766,21 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
-        return
-        # Fix this
-        for t in self.dtypes:
-            if np.dtype('O') == t:
-                # TODO Give a more accurate error to Pandas
-                raise TypeError("bad operand type for abs():", "str")
-        if axis == 1:
-            return to_pandas(self._map_partitions(
-                lambda df: df.idxmin(axis=axis, skipna=skipna)))
-        else:
-            return self.T.idxmin(axis=1, skipna=skipna)
+        for dtype in self.dtypes:
+            if dtype == np.dtype('O'):
+                raise TypeError('invalid datatype for comparison')
+
+        is_axis_zero = axis == 0 or axis == 'rows'
+
+        idxmin_series = pd.concat(ray.get(
+            _map_partitions(lambda df: df.idxmin(axis=axis,
+                                              skipna=skipna),
+                            self._row_partitions if not is_axis_zero
+                            else self._col_partitions)))
+
+        idxmin_series.index = self.columns if is_axis_zero else self.index
+
+        return idxmin_series
 
     def infer_objects(self):
         raise NotImplementedError(
@@ -2283,14 +2286,13 @@ class DataFrame(object):
             A Series containing the popped values. Also modifies this
             DataFrame.
         """
-        # TODO: Fix this
-        return
-        popped = to_pandas(self._map_partitions(
-            lambda df: df.pop(item)))
-        self._row_partitions = self._map_row_partitions(
-            lambda df: df.drop([item], axis=1))
+        result = _map_partitions(lambda df: df.pop(item),
+                                 self._row_partitions) 
+        self._row_partitions = _map_partitions(lambda df: df.drop(labels=item,
+                                                                  axis=1),
+                                               self._row_partitions)
         self.columns = self.columns.drop(item)
-        return popped
+        return to_pandas(result)
 
     def pow(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
