@@ -1114,6 +1114,8 @@ def start_ray_processes(address_info=None,
         A dictionary of the address information for the processes that were
             started.
     """
+    print("Process STDOUT and STDERR is being redirected to /tmp/raylogs/.")
+
     if resources is None:
         resources = {}
     if not isinstance(resources, list):
