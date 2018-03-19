@@ -42,10 +42,10 @@ a common base class:
 Policy Evaluators and Optimizers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.rllib.optimizers.evaluator.Evaluator
+.. autoclass:: ray.rllib.optimizers.policy_evaluator.PolicyEvaluator
     :members:
 
-.. autoclass:: ray.rllib.optimizers.optimizer.Optimizer
+.. autoclass:: ray.rllib.optimizers.policy_optimizer.PolicyOptimizer
     :members:
 
 Sample Batches

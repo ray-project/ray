@@ -37,7 +37,8 @@ MOCK_MODULES = ["gym",
                 "ray.plasma",
                 "ray.core.generated.TaskInfo",
                 "ray.core.generated.TaskReply",
-                "ray.core.generated.ResultTableReply"]
+                "ray.core.generated.ResultTableReply",
+                "ray.core.generated.TaskExecutionDependencies"]
 for mod_name in MOCK_MODULES:
   sys.modules[mod_name] = mock.Mock()
 
@@ -319,5 +320,8 @@ texinfo_documents = [
 
 # pcmoritz: To make the following work, you have to run
 # sudo pip install recommonmark
+
+# Python methods should be presented in source code order
+autodoc_member_order = 'bysource'
 
 # see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
