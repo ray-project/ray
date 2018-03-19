@@ -42,6 +42,7 @@ set(RAY_SRCS
   object_manager/object_store_pool.cc
   object_manager/object_store_notification.cc
   object_manager/object_directory.cc
+  object_manager/transfer_queue.cc
   object_manager/object_manager.cc
   raylet/mock_gcs_client.cc
   raylet/task.cc

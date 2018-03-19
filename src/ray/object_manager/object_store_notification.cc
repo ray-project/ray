@@ -13,7 +13,7 @@ namespace ray {
 
 // TODO(hme): Dedicate this class to notifications.
 // TODO(hme): Create object store client pool for object manager.
-ObjectStoreNotification::ObjectStoreNotification(boost::asio::io_service &io_service, 
+ObjectStoreNotification::ObjectStoreNotification(boost::asio::io_service &io_service,
                                                  std::string &store_socket_name)
     : store_client_(), socket_(io_service) {
   ARROW_CHECK_OK(
@@ -27,9 +27,7 @@ ObjectStoreNotification::ObjectStoreNotification(boost::asio::io_service &io_ser
   NotificationWait();
 };
 
-void ObjectStoreNotification::Terminate() {
-  ARROW_CHECK_OK(store_client_.Disconnect());
-}
+void ObjectStoreNotification::Terminate() { ARROW_CHECK_OK(store_client_.Disconnect()); }
 
 void ObjectStoreNotification::NotificationWait() {
   boost::asio::async_read(socket_, boost::asio::buffer(&length_, sizeof(length_)),
@@ -40,11 +38,12 @@ void ObjectStoreNotification::NotificationWait() {
 void ObjectStoreNotification::ProcessStoreLength(const boost::system::error_code &error) {
   notification_.resize(length_);
   boost::asio::async_read(socket_, boost::asio::buffer(notification_),
-                          boost::bind(&ObjectStoreNotification::ProcessStoreNotification, this,
-                                      boost::asio::placeholders::error));
+                          boost::bind(&ObjectStoreNotification::ProcessStoreNotification,
+                                      this, boost::asio::placeholders::error));
 }
 
-void ObjectStoreNotification::ProcessStoreNotification(const boost::system::error_code &error) {
+void ObjectStoreNotification::ProcessStoreNotification(
+    const boost::system::error_code &error) {
   if (error) {
     throw std::runtime_error("ObjectStore may have died.");
   }

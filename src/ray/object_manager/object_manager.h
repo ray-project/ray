@@ -16,15 +16,17 @@
 #include "plasma/events.h"
 #include "plasma/plasma.h"
 
+#include "ray/common/client_connection.h"
+#include "ray/id.h"
+#include "ray/status.h"
+
+#include "connection_pool.h"
 #include "format/object_manager_generated.h"
 #include "object_directory.h"
 #include "object_manager_client_connection.h"
 #include "object_store_notification.h"
 #include "object_store_pool.h"
-#include "connection_pool.h"
-#include "ray/common/client_connection.h"
-#include "ray/id.h"
-#include "ray/status.h"
+#include "transfer_queue.h"
 
 namespace ray {
 
@@ -120,8 +122,7 @@ class ObjectManager {
   /// \param message_type The message type.
   /// \param message A pointer set to the beginning of the message.
   void ProcessClientMessage(std::shared_ptr<ObjectManagerClientConnection> conn,
-                            int64_t message_type,
-                            const uint8_t *message);
+                            int64_t message_type, const uint8_t *message);
 
   /// Cancels all requests (Push/Pull) associated with the given ObjectID.
   ///
@@ -150,7 +151,6 @@ class ObjectManager {
   ray::Status Terminate();
 
  private:
-
   ClientID client_id_;
   ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
@@ -187,6 +187,8 @@ class ObjectManager {
   /// plasma client connections.
   int max_transfers_ = 1;
 
+  TransferQueue transfer_queue_;
+
   /// Read length for push receives.
   uint64_t read_length_;
 
@@ -211,6 +213,13 @@ class ObjectManager {
   /// Guaranteed to execute on main_service_ thread.
   ray::Status Pull_(const ObjectID &object_id);
 
+  /// Private callback implementation for success on get location. Called inside OD.
+  void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
+                           const ray::ObjectID &object_id);
+
+  /// Private callback implementation for failure on get location. Called inside OD.
+  void GetLocationsFailed(ray::Status status, const ObjectID &object_id);
+
   /// Synchronously send a pull request.
   /// Invoked once a connection to a remote manager that contains the required ObjectID
   /// is established.
@@ -219,52 +228,47 @@ class ObjectManager {
   /// Guaranteed to execute on main_service_ thread.
   ray::Status Push_(const ObjectID &object_id, const ClientID &client_id);
 
-  /// Invoked once a connection to the remote manager to which the ObjectID
-  /// is to be sent is established.
-  ray::Status QueuePush(const ObjectID &object_id, SenderConnection::pointer client);
-  /// Starts as many queued pushes as possible without exceeding max_transfers_
+  /// Starts as many queued transfers as possible without exceeding max_transfers_
   /// concurrent transfers.
-  ray::Status ExecutePushQueue(SenderConnection::pointer client);
+  ray::Status DequeueTransfers();
+
+  ray::Status ExecuteSend(const ObjectID &object_id, const ClientID &client_id);
+
   /// Initiate a push. This method asynchronously sends the object id and object size
   /// to the remote object manager.
-  ray::Status ExecutePushHeaders(const ObjectID &object_id,
-                                 SenderConnection::pointer client);
+  ray::Status SendHeaders(const ObjectID &object_id, SenderConnection::pointer client);
   /// Called by the handler for ExecutePushMeta.
   /// This method initiates the actual object transfer.
-  void ExecutePushObject(SenderConnection::pointer conn,
-                         const ObjectID &object_id,
-                         std::shared_ptr<plasma::PlasmaClient> store_client,
-                         const boost::system::error_code &header_ec);
-  /// Invoked when a push is completed. This method will decrement num_transfers_
-  /// and invoke ExecutePushQueue.
-  ray::Status ExecutePushCompleted(const ObjectID &object_id,
-                                   SenderConnection::pointer client);
+  void SendObject(SenderConnection::pointer conn, const UniqueID &context_id,
+                  std::shared_ptr<plasma::PlasmaClient> store_client,
+                  const boost::system::error_code &header_ec);
 
-  /// Private callback implementation for success on get location. Called inside OD.
-  void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
-                           const ray::ObjectID &object_id);
-
-  /// Private callback implementation for failure on get location. Called inside OD.
-  void GetLocationsFailed(ray::Status status, const ObjectID &object_id);
+  /// Invoked when a transfer is completed. This method will decrement num_transfers_
+  /// and invoke DequeueTransfers.
+  ray::Status TransferCompleted();
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<ObjectManagerClientConnection> &conn,
                           const uint8_t *message);
 
   /// Handles connect message of a new client connection.
-  void ConnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn, const uint8_t *message);
+  void ConnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn,
+                     const uint8_t *message);
 
   /// Handles disconnect message of an existing client connection.
-  void DisconnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn, const uint8_t *message);
+  void DisconnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn,
+                        const uint8_t *message);
 
   /// A socket connection doing an asynchronous read on a transfer connection that was
   /// added by ConnectClient.
   ray::Status WaitPushReceive(std::shared_ptr<ObjectManagerClientConnection> conn);
 
+  ray::Status ExecuteReceive(ClientID client_id, ObjectID object_id, uint64_t object_size,
+                             std::shared_ptr<ObjectManagerClientConnection> conn);
+
   /// Invoked when a remote object manager pushes an object to this object manager.
   void HandlePushReceive(std::shared_ptr<ObjectManagerClientConnection> conn,
-                         const boost::system::error_code& length_ec);
-
+                         const boost::system::error_code &length_ec);
 };
 
 }  // namespace ray

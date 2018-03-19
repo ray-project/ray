@@ -21,11 +21,10 @@ namespace ray {
 
 // TODO(hme): document public API after refactor.
 class ObjectStoreNotification {
-
  public:
-
   // Encapsulates communication with the object store.
-  ObjectStoreNotification(boost::asio::io_service &io_service, std::string &store_socket_name);
+  ObjectStoreNotification(boost::asio::io_service &io_service,
+                          std::string &store_socket_name);
 
   // Subscribe to notifications of objects added to local store.
   // Upon subscribing, the callback will be invoked for all objects that
@@ -39,7 +38,6 @@ class ObjectStoreNotification {
   void Terminate();
 
  private:
-
   std::vector<std::function<void(const ray::ObjectID &)>> add_handlers_;
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
 

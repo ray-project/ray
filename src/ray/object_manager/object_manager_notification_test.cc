@@ -37,8 +37,8 @@ class TestObjectManager : public ::testing::Test {
     // Start object manager 1.
     ObjectManagerConfig config;
     config.store_socket_name = "/tmp/store";
-    object_manager_1_ = std::unique_ptr<ObjectManager>(
-        new ObjectManager(main_service_, std::move(object_manager_service_), config, gcs_client_));
+    object_manager_1_ = std::unique_ptr<ObjectManager>(new ObjectManager(
+        main_service_, std::move(object_manager_service_), config, gcs_client_));
 
     // Start object manager 2.
     //    ObjectManagerConfig config2;

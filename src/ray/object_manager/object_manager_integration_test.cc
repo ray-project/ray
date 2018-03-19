@@ -7,64 +7,61 @@
 
 namespace ray {
 
+std::string test_executable;  // NOLINT
+
 class MockServer {
-
  private:
-
   boost::asio::ip::tcp::acceptor object_manager_acceptor_;
   boost::asio::ip::tcp::socket object_manager_socket_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   ObjectManager object_manager_;
 
  public:
-
   MockServer(boost::asio::io_service &main_service,
              std::unique_ptr<boost::asio::io_service> object_manager_service,
-         const ObjectManagerConfig &object_manager_config,
-         std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-  : object_manager_acceptor_(main_service,
-                  boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
-    object_manager_socket_(main_service),
-    gcs_client_(gcs_client),
-    object_manager_(main_service, std::move(object_manager_service), object_manager_config, gcs_client)
-  {
+             const ObjectManagerConfig &object_manager_config,
+             std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+      : object_manager_acceptor_(
+            main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+        object_manager_socket_(main_service),
+        gcs_client_(gcs_client),
+        object_manager_(main_service, std::move(object_manager_service),
+                        object_manager_config, gcs_client) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
   }
 
   ~MockServer() {
-    (void) gcs_client_->client_table().Disconnect();
+    (void)gcs_client_->client_table().Disconnect();
     RAY_CHECK_OK(object_manager_.Terminate());
   }
 
   ObjectManager &GetObjectManager() { return object_manager_; }
 
  private:
+  ray::Status RegisterGcs(boost::asio::io_service &io_service) {
+    RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379));
+    RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
-  ray::Status RegisterGcs(boost::asio::io_service &io_service){
-      RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379));
-      RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
+    boost::asio::ip::tcp::endpoint endpoint = object_manager_acceptor_.local_endpoint();
+    std::string ip = endpoint.address().to_string();
+    unsigned short object_manager_port = endpoint.port();
 
-      boost::asio::ip::tcp::endpoint endpoint = object_manager_acceptor_.local_endpoint();
-      std::string ip = endpoint.address().to_string();
-      unsigned short object_manager_port = endpoint.port();
-
-      ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
-      client_info.node_manager_address = ip;
-      client_info.local_scheduler_port = object_manager_port;
-      client_info.object_manager_port = object_manager_port;
-      return gcs_client_->client_table().Connect(client_info);
+    ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
+    client_info.node_manager_address = ip;
+    client_info.local_scheduler_port = object_manager_port;
+    client_info.object_manager_port = object_manager_port;
+    return gcs_client_->client_table().Connect(client_info);
   }
 
   void DoAcceptObjectManager() {
-    object_manager_acceptor_.async_accept(object_manager_socket_,
-                                          boost::bind(&MockServer::HandleAcceptObjectManager,
-                                                      this,
-                                                      boost::asio::placeholders::error));
+    object_manager_acceptor_.async_accept(
+        object_manager_socket_, boost::bind(&MockServer::HandleAcceptObjectManager, this,
+                                            boost::asio::placeholders::error));
   }
 
-  void HandleAcceptObjectManager(const boost::system::error_code& error) {
+  void HandleAcceptObjectManager(const boost::system::error_code &error) {
     ObjectManagerClientHandler client_handler =
         [this](std::shared_ptr<ObjectManagerClientConnection> client) {
           object_manager_.ProcessNewClient(client);
@@ -75,14 +72,11 @@ class MockServer {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = ObjectManagerClientConnection::Create(client_handler, message_handler,
-                                                                std::move(object_manager_socket_));
+    auto new_connection = ObjectManagerClientConnection::Create(
+        client_handler, message_handler, std::move(object_manager_socket_));
     DoAcceptObjectManager();
   }
-
 };
-
-std::string test_executable;  // NOLINT
 
 class TestRaylet : public ::testing::Test {
  public:
@@ -92,7 +86,8 @@ class TestRaylet : public ::testing::Test {
     std::string store_id = "/tmp/store";
     store_id = store_id + id;
     std::string test_dir = test_executable.substr(0, test_executable.find_last_of("/"));
-    std::string plasma_dir = test_dir + "./../plasma";
+    // std::string plasma_dir = test_dir + "./../plasma";
+    std::string plasma_dir = "/home/elibol/dev/xray/python/ray/core/src/plasma";
     std::string plasma_command = plasma_dir + "/plasma_store -m 1000000000 -s " +
                                  store_id + " 1> /dev/null 2> /dev/null &";
     RAY_LOG(INFO) << plasma_command;
@@ -106,9 +101,6 @@ class TestRaylet : public ::testing::Test {
   void SetUp() {
     object_manager_service_1.reset(new boost::asio::io_service());
     object_manager_service_2.reset(new boost::asio::io_service());
-    object_manager_service_2->post([this](){
-      RAY_LOG(INFO) << "say things.";
-    });
 
     // start store
     std::string store_sock_1 = StartStore("1");
@@ -118,19 +110,15 @@ class TestRaylet : public ::testing::Test {
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
-    server1.reset(new MockServer(main_service,
-                                 std::move(object_manager_service_1),
-                                 om_config_1,
-                                 gcs_client_1));
+    server1.reset(new MockServer(main_service, std::move(object_manager_service_1),
+                                 om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
-    server2.reset(new MockServer(main_service,
-                                 std::move(object_manager_service_2),
-                                 om_config_2,
-                                 gcs_client_2));
+    server2.reset(new MockServer(main_service, std::move(object_manager_service_2),
+                                 om_config_2, gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -148,11 +136,12 @@ class TestRaylet : public ::testing::Test {
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
 
-//    std::string cmd_str = test_executable.substr(0, test_executable.find_last_of("/"));
-//    s = system(("rm " + cmd_str + "/hello1").c_str());
-//    ASSERT_TRUE(!s);
-//    s = system(("rm " + cmd_str + "/hello2").c_str());
-//    ASSERT_TRUE(!s);
+    //    std::string cmd_str = test_executable.substr(0,
+    //    test_executable.find_last_of("/"));
+    //    s = system(("rm " + cmd_str + "/hello1").c_str());
+    //    ASSERT_TRUE(!s);
+    //    s = system(("rm " + cmd_str + "/hello2").c_str());
+    //    ASSERT_TRUE(!s);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -193,11 +182,8 @@ class TestRaylet : public ::testing::Test {
   std::vector<ObjectID> v2;
 };
 
-
 class TestGCSIntegration : public TestRaylet {
-
  public:
-
   enum TransferPattern {
     PUSH_A_B,
     PUSH_B_A,
@@ -211,58 +197,50 @@ class TestGCSIntegration : public TestRaylet {
   uint num_expected_objects;
 
   std::vector<TransferPattern> async_loop_patterns = {
-     PUSH_A_B
-    ,PUSH_B_A
-    ,BIDIRECTIONAL_PUSH
-    ,PULL_A_B
-    ,PULL_B_A
-    ,BIDIRECTIONAL_PULL
-  };
+      PUSH_A_B, PUSH_B_A, BIDIRECTIONAL_PUSH, PULL_A_B, PULL_B_A, BIDIRECTIONAL_PULL};
 
   int num_connected_clients = 0;
 
-  void WaitConnections(){
+  void WaitConnections() {
     gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::AsyncGcsClient *client, const ClientID &id, std::shared_ptr<ClientTableDataT> data){
+        [this](gcs::AsyncGcsClient *client, const ClientID &id,
+               std::shared_ptr<ClientTableDataT> data) {
           num_connected_clients += 1;
-          if(num_connected_clients == 2){
+          if (num_connected_clients == 2) {
             StartTests();
           }
-        }
-    );
+        });
   }
 
-  void StartTests(){
+  void StartTests() {
     TestConnections();
     AddTransferTestHandlers();
     TransferTestNext();
   }
 
-  void AddTransferTestHandlers(){
+  void AddTransferTestHandlers() {
     ray::Status status = ray::Status::OK();
-    status = server1->GetObjectManager().SubscribeObjAdded(
-        [this](const ObjectID &object_id) {
+    status =
+        server1->GetObjectManager().SubscribeObjAdded([this](const ObjectID &object_id) {
           object_added_handler_1(object_id);
-          if(v1.size() == num_expected_objects && v1.size() == v2.size()){
+          if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
           }
-        }
-    );
+        });
     RAY_CHECK_OK(status);
-    status = server2->GetObjectManager().SubscribeObjAdded(
-        [this](const ObjectID &object_id) {
+    status =
+        server2->GetObjectManager().SubscribeObjAdded([this](const ObjectID &object_id) {
           object_added_handler_2(object_id);
-          if(v2.size() == num_expected_objects && v1.size() == v2.size()){
+          if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
           }
-        }
-    );
+        });
     RAY_CHECK_OK(status);
   }
 
-  void TransferTestNext(){
+  void TransferTestNext() {
     async_loop_index += 1;
-    if((uint) async_loop_index < async_loop_patterns.size()){
+    if ((uint)async_loop_index < async_loop_patterns.size()) {
       TransferPattern pattern = async_loop_patterns[async_loop_index];
       TransferTestExecute(1000, 100, pattern);
     } else {
@@ -270,13 +248,11 @@ class TestGCSIntegration : public TestRaylet {
     }
   }
 
-  void TransferTestComplete(){
-    RAY_LOG(INFO) << "TransferTestComplete: "
-                  << async_loop_patterns[async_loop_index] << " "
-                  << v1.size() << " "
-                  << v2.size();
+  void TransferTestComplete() {
+    RAY_LOG(INFO) << "TransferTestComplete: " << async_loop_patterns[async_loop_index]
+                  << " " << v1.size() << " " << v2.size();
     ASSERT_TRUE(v1.size() == v2.size());
-    for (int i = -1; ++i < (int) v1.size();) {
+    for (int i = -1; ++i < (int)v1.size();) {
       ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
     }
     v1.clear();
@@ -284,67 +260,65 @@ class TestGCSIntegration : public TestRaylet {
     TransferTestNext();
   }
 
-  void TransferTestExecute(int num_trials,
-                           int64_t data_size,
-                           TransferPattern transfer_pattern){
-
+  void TransferTestExecute(int num_trials, int64_t data_size,
+                           TransferPattern transfer_pattern) {
     ClientID client_id_1 = server1->GetObjectManager().GetClientID();
     ClientID client_id_2 = server2->GetObjectManager().GetClientID();
 
     ray::Status status = ray::Status::OK();
 
-    if (transfer_pattern == BIDIRECTIONAL_PULL || transfer_pattern == BIDIRECTIONAL_PUSH) {
-      num_expected_objects = (uint) 2*num_trials;
+    if (transfer_pattern == BIDIRECTIONAL_PULL ||
+        transfer_pattern == BIDIRECTIONAL_PUSH) {
+      num_expected_objects = (uint)2 * num_trials;
     } else {
-      num_expected_objects = (uint) num_trials;
+      num_expected_objects = (uint)num_trials;
     }
 
-    switch(transfer_pattern) {
-      case PUSH_A_B: {
-        for(int i=-1;++i<num_trials;) {
-          ObjectID oid1 = WriteDataToClient(client1, data_size);
-          status = server1->GetObjectManager().Push(oid1, client_id_2);
-        }
-      } break;
-      case PUSH_B_A: {
-        for(int i=-1;++i<num_trials;){
-          ObjectID oid2 = WriteDataToClient(client2, data_size);
-          status = server2->GetObjectManager().Push(oid2, client_id_1);
-        }
-      } break;
-      case BIDIRECTIONAL_PUSH: {
-        for(int i=-1;++i<num_trials;){
-          ObjectID oid1 = WriteDataToClient(client1, data_size);
-          status = server1->GetObjectManager().Push(oid1, client_id_2);
-          ObjectID oid2 = WriteDataToClient(client2, data_size);
-          status = server2->GetObjectManager().Push(oid2, client_id_1);
-        }
-      } break;
-      case PULL_A_B: {
-        for(int i=-1;++i<num_trials;){
-          ObjectID oid1 = WriteDataToClient(client1, data_size);
-          status = server2->GetObjectManager().Pull(oid1);
-        }
-      } break;
-      case PULL_B_A: {
-        for(int i=-1;++i<num_trials;){
-          ObjectID oid2 = WriteDataToClient(client2, data_size);
-          status = server1->GetObjectManager().Pull(oid2);
-        }
-      } break;
-      case BIDIRECTIONAL_PULL: {
-        for(int i=-1;++i<num_trials;){
-          ObjectID oid1 = WriteDataToClient(client1, data_size);
-          status = server2->GetObjectManager().Pull(oid1);
-          ObjectID oid2 = WriteDataToClient(client2, data_size);
-          status = server1->GetObjectManager().Pull(oid2);
-        }
-      } break;
+    switch (transfer_pattern) {
+    case PUSH_A_B: {
+      for (int i = -1; ++i < num_trials;) {
+        ObjectID oid1 = WriteDataToClient(client1, data_size);
+        status = server1->GetObjectManager().Push(oid1, client_id_2);
+      }
+    } break;
+    case PUSH_B_A: {
+      for (int i = -1; ++i < num_trials;) {
+        ObjectID oid2 = WriteDataToClient(client2, data_size);
+        status = server2->GetObjectManager().Push(oid2, client_id_1);
+      }
+    } break;
+    case BIDIRECTIONAL_PUSH: {
+      for (int i = -1; ++i < num_trials;) {
+        ObjectID oid1 = WriteDataToClient(client1, data_size);
+        status = server1->GetObjectManager().Push(oid1, client_id_2);
+        ObjectID oid2 = WriteDataToClient(client2, data_size);
+        status = server2->GetObjectManager().Push(oid2, client_id_1);
+      }
+    } break;
+    case PULL_A_B: {
+      for (int i = -1; ++i < num_trials;) {
+        ObjectID oid1 = WriteDataToClient(client1, data_size);
+        status = server2->GetObjectManager().Pull(oid1);
+      }
+    } break;
+    case PULL_B_A: {
+      for (int i = -1; ++i < num_trials;) {
+        ObjectID oid2 = WriteDataToClient(client2, data_size);
+        status = server1->GetObjectManager().Pull(oid2);
+      }
+    } break;
+    case BIDIRECTIONAL_PULL: {
+      for (int i = -1; ++i < num_trials;) {
+        ObjectID oid1 = WriteDataToClient(client1, data_size);
+        status = server2->GetObjectManager().Pull(oid1);
+        ObjectID oid2 = WriteDataToClient(client2, data_size);
+        status = server1->GetObjectManager().Pull(oid2);
+      }
+    } break;
     }
-
   }
 
-  void TestConnections(){
+  void TestConnections() {
     RAY_LOG(INFO) << "\n"
                   << "Server client ids:"
                   << "\n";
@@ -366,13 +340,10 @@ class TestGCSIntegration : public TestRaylet {
     RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
     RAY_LOG(INFO) << "ClientPort=" << data2.local_scheduler_port;
   }
-
 };
 
 TEST_F(TestGCSIntegration, TestRayletCommands) {
-  auto AsyncStartTests = main_service.wrap([this](){
-    WaitConnections();
-  });
+  auto AsyncStartTests = main_service.wrap([this]() { WaitConnections(); });
   AsyncStartTests();
   main_service.run();
 }

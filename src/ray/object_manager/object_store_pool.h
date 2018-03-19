@@ -18,16 +18,14 @@
 #include "ray/id.h"
 #include "ray/status.h"
 
-
 namespace ray {
 
 class ObjectStorePool {
-
  public:
   std::mutex pool_mutex;
 
   // Encapsulates communication with the object store.
-  ObjectStorePool(std::string &store_socket_name){
+  ObjectStorePool(std::string &store_socket_name) {
     store_socket_name_ = store_socket_name;
   }
 
@@ -35,9 +33,9 @@ class ObjectStorePool {
     throw std::runtime_error("Can't copy ObjectStorePool.");
   }
 
-  std::shared_ptr<plasma::PlasmaClient> GetObjectStore(){
+  std::shared_ptr<plasma::PlasmaClient> GetObjectStore() {
     pool_mutex.lock();
-    if (available_clients.empty()){
+    if (available_clients.empty()) {
       Add();
     }
     std::shared_ptr<plasma::PlasmaClient> client = available_clients.back();
@@ -46,14 +44,14 @@ class ObjectStorePool {
     return client;
   }
 
-  void ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client){
+  void ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client) {
     pool_mutex.lock();
     available_clients.push_back(client);
     pool_mutex.unlock();
   }
 
-  void Terminate(){
-    for(auto client : clients){
+  void Terminate() {
+    for (auto client : clients) {
       ARROW_CHECK_OK(client->Disconnect());
     }
     available_clients.clear();
@@ -61,20 +59,17 @@ class ObjectStorePool {
   }
 
  private:
-
-  void Add(){
+  void Add() {
     clients.emplace_back(new plasma::PlasmaClient());
-    ARROW_CHECK_OK(
-        clients.back()->Connect(store_socket_name_.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(clients.back()->Connect(store_socket_name_.c_str(), "",
+                                           PLASMA_DEFAULT_RELEASE_DELAY));
     available_clients.push_back(clients.back());
   }
 
   std::vector<std::shared_ptr<plasma::PlasmaClient>> available_clients;
   std::vector<std::shared_ptr<plasma::PlasmaClient>> clients;
   std::string store_socket_name_;
-
 };
-
 }
 
-#endif //RAY_OBJECT_STORE_POOL_H
+#endif  // RAY_OBJECT_STORE_POOL_H

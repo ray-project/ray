@@ -43,8 +43,8 @@ class ObjectDirectoryInterface {
                                      const InfoFailureCallback &fail_cb) = 0;
 
   // Callbacks for GetLocations.
-  using OnLocationsSuccess = std::function<void(
-      const std::vector<ray::ClientID> &v, const ray::ObjectID &object_id)>;
+  using OnLocationsSuccess = std::function<void(const std::vector<ray::ClientID> &v,
+                                                const ray::ObjectID &object_id)>;
   using OnLocationsFailure =
       std::function<void(ray::Status status, const ray::ObjectID &object_id)>;
 
