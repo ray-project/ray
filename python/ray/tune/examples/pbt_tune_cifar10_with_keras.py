@@ -128,8 +128,10 @@ class Cifar10Model(Trainable):
         self.model.load_weights(path)
 
     def _stop(self):
-        saved_path = self.model.save(self.logdir)
-        print('save model at: ', saved_path)
+        # If need, save your model when exit.
+        # saved_path = self.model.save(self.logdir)
+        # print('save model at: ', saved_path)
+        pass
 
 
 if __name__ == '__main__':
