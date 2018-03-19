@@ -70,6 +70,7 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
    :caption: Ray Tune
 
    tune.rst
+   tune-config.rst
    hyperband.rst
    pbt.rst
 
