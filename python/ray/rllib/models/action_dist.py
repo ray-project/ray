@@ -26,7 +26,7 @@ class ActionDistribution(object):
         raise NotImplementedError
 
     def entropy(self):
-        """The entroy of the action distribution."""
+        """The entropy of the action distribution."""
         raise NotImplementedError
 
     def sample(self):
@@ -118,6 +118,7 @@ class MultiActionDistribution(ActionDistribution):
     Args:
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
+
     def __init__(self, inputs, action_space, child_distributions):
         # you actually have to instantiate the child distributions
         self.reshaper = Reshaper(action_space.spaces)
@@ -135,23 +136,23 @@ class MultiActionDistribution(ActionDistribution):
             if isinstance(distribution, Categorical):
                 split_list[i] = tf.squeeze(split_list[i], axis=-1)
         log_list = np.asarray([distribution.logp(split_x) for
-                              distribution, split_x in
+                               distribution, split_x in
                                zip(self.child_distributions, split_list)])
-        return np.sum(log_list)
+        return log_list.tolist()
 
     def kl(self, other):
         """The KL-divergence between two action distributions."""
-        kl_list = np.asarray([distribution.kl(other_distribution) for
-                              distribution, other_distribution in
-                              zip(self.child_distributions,
-                                  other.child_distributions)])
-        return np.sum(kl_list)
+        kl_list = [distribution.kl(other_distribution) for
+                   distribution, other_distribution in
+                   zip(self.child_distributions,
+                       other.child_distributions)]
+        return kl_list
 
     def entropy(self):
         """The entropy of the action distribution."""
-        entropy_list = np.array([s.entropy() for s in
-                                 self.child_distributions])
-        return np.sum(entropy_list)
+        entropy_list = [s.entropy() for s in
+                        self.child_distributions]
+        return entropy_list
 
     def sample(self):
         """Draw a sample from the action distribution."""

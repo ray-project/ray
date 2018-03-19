@@ -21,8 +21,8 @@ class MultiAgentPendulumEnv(PendulumEnv):
         self.viewer = None
 
         high = np.array([1., 1., self.max_speed])
-        self.action_space = [Box(low=-self.max_torque / 2,
-                                 high=self.max_torque / 2,
+        self.action_space = [Box(low=-self.max_torque,
+                                 high=self.max_torque,
                                  shape=(1,),
                                  dtype=np.float32)
                              for _ in range(2)]
@@ -38,7 +38,7 @@ class MultiAgentPendulumEnv(PendulumEnv):
     def step(self, u):
         th, thdot = self.state  # th := theta
 
-        summed_u = np.sum(u)
+        summed_u = np.sum(np.asarray(u)/2)
         g = 10.
         m = 1.
         length = 1.
@@ -69,4 +69,4 @@ class MultiAgentPendulumEnv(PendulumEnv):
                 for _ in range(2)]
 
     def angle_normalize(self, x):
-        return (((x + np.pi) % (2 * np.pi)) - np.pi)
+        return ((x + np.pi) % (2 * np.pi)) - np.pi

@@ -22,7 +22,7 @@ def pass_params_to_gym(env_name):
     register(
       id=env_name,
       entry_point='ray.rllib.examples:' + "MultiAgentMountainCarEnv",
-      max_episode_steps=200,
+      max_episode_steps=config['horizon'],
       kwargs={}
     )
 
