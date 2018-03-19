@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-'''Train keras CNN on the CIFAR10 small images dataset.
+"""Train keras CNN on the CIFAR10 small images dataset.
 
 The model comes from: https://zhuanlan.zhihu.com/p/29214791,
 and it gets to about 87% validation accuracy in 100 epochs.
@@ -8,7 +8,7 @@ and it gets to about 87% validation accuracy in 100 epochs.
 Note that the scipt requires a machine with 4 GPUs. You
 can set {'gpu': 0} to use CPUs for training, although
 it is less efficient.
-'''
+"""
 
 from __future__ import print_function
 
@@ -29,7 +29,6 @@ from ray.tune import register_trainable
 from ray.tune import Trainable
 from ray.tune import TrainingResult
 from ray.tune.pbt import PopulationBasedTraining
-
 
 
 num_classes = 10
@@ -130,7 +129,7 @@ class Cifar10Model(Trainable):
 
     def _stop(self):
         saved_path = self.model.save(self.logdir)
-        print("save model at: ", saved_path)
+        print('save model at: ', saved_path)
 
 
 if __name__ == '__main__':
@@ -155,7 +154,7 @@ if __name__ == '__main__':
             'decay': lambda spec: spec.config.lr / 100.0,
             'dropout': grid_search([0.25, 0.5]),
         },
-        "repeat": 1,
+        'repeat': 1,
     }
 
     if args.smoke_test:
@@ -165,11 +164,11 @@ if __name__ == '__main__':
     ray.init()
 
     pbt = PopulationBasedTraining(
-        time_attr="timesteps_total", reward_attr="mean_accuracy",
+        time_attr='timesteps_total', reward_attr='mean_accuracy',
         perturbation_interval=10,
         hyperparam_mutations={
             'dropout': lambda _: np.random.uniform(0, 1),
         })
 
-    run_experiments({"pbt_cifar10": train_spec},
+    run_experiments({'pbt_cifar10': train_spec},
                     scheduler=pbt)
