@@ -7,29 +7,13 @@ import hashlib
 import inspect
 import json
 import traceback
-import uuid
 
 import ray.cloudpickle as pickle
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import FunctionProperties, is_cython, push_error_to_driver
-
-
-def random_actor_id():
-    actor_id_hash = hashlib.sha1()
-    actor_id_hash.update(uuid.uuid4().bytes)
-    actor_id = actor_id_hash.digest()
-    assert len(actor_id) == 20
-    return ray.local_scheduler.ObjectID(actor_id)
-
-
-def random_actor_class_id():
-    class_id_hash = hashlib.sha1()
-    class_id_hash.update(uuid.uuid4().bytes)
-    class_id = class_id_hash.digest()
-    assert len(class_id) == 20
-    return class_id
+from ray.utils import (FunctionProperties, _random_string, is_cython,
+                       push_error_to_driver)
 
 
 def compute_actor_handle_id(actor_handle_id, num_forks):
@@ -758,7 +742,7 @@ def actor_handle_from_class(Class, class_id, actor_creation_resources,
                 raise Exception("Actors cannot be created before ray.init() "
                                 "has been called.")
 
-            actor_id = random_actor_id()
+            actor_id = ray.local_scheduler.ObjectID(_random_string())
             # The ID for this instance of ActorHandle. These should be unique
             # across instances with the same _ray_actor_id.
             actor_handle_id = ray.local_scheduler.ObjectID(
@@ -938,7 +922,7 @@ def make_actor(cls, resources, checkpoint_interval, actor_method_cpus):
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = random_actor_class_id()
+    class_id = _random_string()
 
     return actor_handle_from_class(Class, class_id, resources,
                                    checkpoint_interval, actor_method_cpus)

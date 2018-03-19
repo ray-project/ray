@@ -4,9 +4,11 @@ from __future__ import print_function
 
 import binascii
 import collections
+import hashlib
 import numpy as np
 import os
 import sys
+import uuid
 
 import ray.local_scheduler
 
@@ -15,7 +17,11 @@ DRIVER_ID_LENGTH = 20
 
 
 def _random_string():
-    return np.random.bytes(20)
+    id_hash = hashlib.sha1()
+    id_hash.update(uuid.uuid4().bytes)
+    id_bytes = id_hash.digest()
+    assert len(id_bytes) == 20
+    return id_bytes
 
 
 def format_error_message(exception_message, task_exception=False):
