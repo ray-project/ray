@@ -11,15 +11,15 @@ from ray.rllib.optimizers.multi_gpu_impl import TOWER_SCOPE_NAME
 def _build_p_network(registry, inputs, num_actions, config):
     hiddens = config["actor_hiddens"]
 
-    with tf.variable_scope("action_value"):
-        action_out = inputs
-        for hidden in hiddens:
-            action_out = layers.fully_connected(
-                action_out, num_outputs=hidden, activation_fn=tf.nn.relu)
-        # The final output layer of the actor was a tanh layer, to bound the actions
-        # (batch_size, num_actions)
-        action_scores = layers.fully_connected(
-            action_out, num_outputs=num_actions, activation_fn=tf.nn.tanh)
+    #with tf.variable_scope("action_value"):
+    action_out = inputs
+    for hidden in hiddens:
+        action_out = layers.fully_connected(
+            action_out, num_outputs=hidden, activation_fn=tf.nn.relu)
+    # The final output layer of the actor was a tanh layer, to bound the actions
+    # (batch_size, num_actions)
+    action_scores = layers.fully_connected(
+        action_out, num_outputs=num_actions, activation_fn=tf.nn.tanh)
 
     return action_scores
 
@@ -45,13 +45,13 @@ def _build_action_network(
 def _build_q_network(registry, state_inputs, action_inputs, config):
     hiddens = config["critic_hiddens"]
 
-    with tf.variable_scope("action_value"):
-        q_out = tf.concat([state_inputs, action_inputs], axis=1)
-        for hidden in hiddens:
-            q_out = layers.fully_connected(
-                q_out, num_outputs=hidden, activation_fn=tf.nn.relu)
-        q_scores = layers.fully_connected(
-            q_out, num_outputs=1, activation_fn=None)
+    #with tf.variable_scope("action_value"):
+    q_out = tf.concat([state_inputs, action_inputs], axis=1)
+    for hidden in hiddens:
+        q_out = layers.fully_connected(
+            q_out, num_outputs=hidden, activation_fn=tf.nn.relu)
+    q_scores = layers.fully_connected(
+        q_out, num_outputs=1, activation_fn=None)
 
     return q_scores
 
@@ -112,20 +112,12 @@ class ModelAndLoss(object):
         # p network evaluation
         with tf.variable_scope("p_func", reuse=True) as scope:
             self.p_t = _build_p_network(registry, obs_t, num_actions, config)
-            p_func_vars = _scope_vars(scope.name)
-            print("###### ensure identical to p_func scope ######")
-            for var in p_func_vars:
-                print(var.name)
-            raw_input()
-
+            #p_func_vars = _scope_vars(scope.name)
 
         # target p network evaluation
         with tf.variable_scope("target_p_func") as scope:
             self.p_tp1 = _build_p_network(registry, obs_tp1, num_actions, config)
             self.target_p_func_vars = _scope_vars(scope.name)
-            for var in self.target_p_func_vars:
-                print(var.name)
-            raw_input()
 
         # Action outputs
         with tf.variable_scope("a_func", reuse=True):
@@ -150,21 +142,14 @@ class ModelAndLoss(object):
         # q network evaluation
         with tf.variable_scope("q_func", reuse=True) as scope:
             self.q_t = _build_q_network(registry, obs_t, act_t, config)
+        with tf.variable_scope("q_func", reuse=True) as scope:
             self.q_tp0 = _build_q_network(registry, obs_t, output_actions, config)
-            q_func_vars = _scope_vars(scope.name)
-            print("###### ensure identical to q_func scope ######")
-            for var in q_func_vars:
-                print(var.name)
-            raw_input()
-
+            #q_func_vars = _scope_vars(scope.name)
 
         # target q network evalution
         with tf.variable_scope("target_q_func") as scope:
             self.q_tp1 = _build_q_network(registry, obs_tp1, output_actions_estimated, config)
             self.target_q_func_vars = _scope_vars(scope.name)
-            for var in self.target_q_func_vars:
-                print(var.name)
-            raw_input()
 
 
         # q scores for actions which we know were selected in the given state.
@@ -195,8 +180,8 @@ class ModelAndLoss(object):
 
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
-        #errors = _huber_loss(self.td_error)
-        errors = 0.5 * tf.square(self.td_error)
+        errors = _huber_loss(self.td_error)
+        #errors = 0.5 * tf.square(self.td_error)
 
         weighted_error = tf.reduce_mean(importance_weights * errors)
 
@@ -227,10 +212,6 @@ class DDPGGraph(object):
             p_values = _build_p_network(
                 registry, self.cur_observations, num_actions, config)
             p_func_vars = _scope_vars(scope.name)
-            for var in p_func_vars:
-                print(var.name)
-            raw_input()
-
 
         # Action outputs
         a_scope_name = TOWER_SCOPE_NAME + "/a_func"
@@ -254,9 +235,6 @@ class DDPGGraph(object):
         with tf.variable_scope(q_scope_name) as scope:
             q_values = _build_q_network(registry, self.cur_observations, self.output_actions, config)
             q_func_vars = _scope_vars(scope.name)
-            for var in q_func_vars:
-                print(var.name)
-            raw_input()
 
         # Replay inputs
         self.obs_t = tf.placeholder(

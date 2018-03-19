@@ -1,0 +1,39 @@
+# can expect improvement to -140 reward in ~36-50k timesteps
+pendulum-ddpg-1:
+    env: Pendulum-v0
+    run: DDPG
+    resources:
+        cpu: 4
+        gpu: 1
+    stop:
+        episode_reward_mean: -140
+    config:
+        actor_hiddens: [64, 64]
+        critic_hiddens: [64, 64]
+        n_step: 1
+        gamma: 0.99
+        schedule_max_timesteps: 100000
+        exploration_fraction: 0.25
+        initial_noise_scale: 0.1
+        exploration_theta: 0.15
+        exploration_sigma: 0.2
+        learning_starts: 1000
+        target_network_update_freq: 0
+        tau: 0.002
+        buffer_size: 50000
+        prioritized_replay: False
+        actor_lr: 0.0001
+        critic_lr: 0.001
+        actor_l2_reg: 0.000001
+        critic_l2_reg: 0.000001
+        sample_batch_size: 1
+        train_batch_size: 1024
+        sgd_batch_size: 1024
+        num_workers: 1
+        num_gpus_per_worker: 1
+        async_updates: False
+        multi_gpu: False
+        tf_session_args:
+            device_count:
+                CPU: 2
+                GPU: 1
