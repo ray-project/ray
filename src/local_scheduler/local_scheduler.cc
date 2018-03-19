@@ -128,9 +128,13 @@ void kill_worker(LocalSchedulerState *state,
    * error message to the driver responsible for the task. */
   if (worker->task_in_progress != NULL && !cleanup && !suppress_warning) {
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
-    TaskID task_id = TaskSpec_task_id(spec);
+
+    std::ostringstream error_message;
+    error_message << "The worker with ID " << worker->client_id << " died or "
+                  << "was killed while executing the task with ID "
+                  << TaskSpec_task_id(spec);
     push_error(state->db, TaskSpec_driver_id(spec), WORKER_DIED_ERROR_INDEX,
-               sizeof(task_id), task_id.data());
+               error_message.str());
   }
 
   /* Clean up the task in progress. */
@@ -753,20 +757,26 @@ void reconstruct_put_task_update_callback(Task *task,
          * by `ray.put` was not able to be reconstructed, and the workload will
          * likely hang. Push an error to the appropriate driver. */
         TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-        FunctionID function = TaskSpec_function(spec);
+
+        std::ostringstream error_message;
+        error_message << "The task with ID " << TaskSpec_task_id(spec)
+                      << " is still executing and so the object created by "
+                      << "ray.put could not be reconstructed.";
         push_error(state->db, TaskSpec_driver_id(spec),
-                   PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
-                   function.data());
+                   PUT_RECONSTRUCTION_ERROR_INDEX, error_message.str());
       }
     } else {
       /* (1) The task is still executing and it is the driver task. We cannot
        * restart the driver task, so the workload will hang. Push an error to
        * the appropriate driver. */
       TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-      FunctionID function = TaskSpec_function(spec);
+
+      std::ostringstream error_message;
+      error_message << "The task with ID " << TaskSpec_task_id(spec)
+                    << " is a driver task and so the object created by ray.put "
+                    << "could not be reconstructed.";
       push_error(state->db, TaskSpec_driver_id(spec),
-                 PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
-                 function.data());
+                 PUT_RECONSTRUCTION_ERROR_INDEX, error_message.str());
     }
   } else {
     /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
