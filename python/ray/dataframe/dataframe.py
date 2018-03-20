@@ -73,43 +73,18 @@ class DataFrame(object):
             columns = pd_df.columns
             index = pd_df.index
 
-        elif col_partitions is None:
-            col_partitions = _rebuild_cols.remote(row_partitions,
-                                                  index,
-                                                  columns)
-
-        elif row_partitions is None:
-            row_partitions = _rebuild_rows.remote(col_partitions,
-                                                  index,
-                                                  columns)
-
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
-        self._row_lengths, self._row_index = \
-            _compute_length_and_index.remote(row_partitions, index)
-        self._col_lengths, self._col_index = \
-            _compute_width_and_index.remote(col_partitions, columns)
+        if row_partitions is not None:
+            self._row_lengths, self._row_index = \
+                _compute_length_and_index.remote(row_partitions, index)
+        
+        if col_partitions is not None:
+            self._col_lengths, self._col_index = \
+                _compute_width_and_index.remote(col_partitions, columns)
 
         self._col_partitions = col_partitions
         self._row_partitions = row_partitions
-
-        # TODO: Remove testing print code comments
-        # print("row partitions")
-        # for x in ray.get(self._row_partitions):
-        #     print(x)
-        # print("col partitions")
-        # for x in ray.get(self._col_partitions):
-        #     print(x)
-        # print("row items")
-        # print(self._row_lengths, "\n", self._row_index)
-        # print("col items")
-        # print(self._col_lengths, "\n", self._col_index)
-        #
-        # if index is not None:
-        #     self.index = index
-        #
-        # if columns is not None:
-        #     self.columns = columns
 
     def __str__(self):
         return repr(self)
@@ -156,6 +131,9 @@ class DataFrame(object):
         Returns:
             [ObjectID]: List of row partitions.
         """
+        if self._row_partitions_cache is None:
+            return None
+
         if isinstance(self._row_partitions_cache,
                       ray.local_scheduler.ObjectID):
             self._row_partitions_cache = ray.get(self._row_partitions_cache)
@@ -177,6 +155,9 @@ class DataFrame(object):
         Returns:
             [ObjectID]: List of column partitions.
         """
+        if self._col_partitions_cache is None:
+            return None
+
         if isinstance(self._col_partitions_cache,
                       ray.local_scheduler.ObjectID):
             self._col_partitions_cache = ray.get(self._col_partitions_cache)
@@ -727,10 +708,17 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
-        locally_transposed_rows = [_deploy_func.remote(lambda df: df.T, r)
-                                   for r in self._row_partitions]
-        locally_transposed_cols = [_deploy_func.remote(lambda df: df.T, c)
-                                   for c in self._col_partitions]
+        locally_transposed_cols = None
+        locally_transposed_rows = None
+
+        if self._row_partitions is not None:
+            locally_transposed_rows = [_deploy_func.remote(lambda df: df.T, r)
+                                       for r in self._row_partitions]
+
+        if self._col_partitions is not None:
+            locally_transposed_cols = [_deploy_func.remote(lambda df: df.T, c)
+                                       for c in self._col_partitions]
+
         return DataFrame(row_partitions=locally_transposed_cols,
                          col_partitions=locally_transposed_rows,
                          index=self.columns,
