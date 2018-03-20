@@ -137,7 +137,7 @@ class MultiActionDistribution(ActionDistribution):
         log_list = np.asarray([distribution.logp(split_x) for
                               distribution, split_x in
                                zip(self.child_distributions, split_list)])
-        return np.sum(log_list)
+        return log_list
 
     def kl(self, other):
         """The KL-divergence between two action distributions."""

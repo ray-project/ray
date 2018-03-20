@@ -48,13 +48,14 @@ class ProximalPolicyLoss(object):
             curr_logp = [curr_logp]
             prev_logp = [prev_logp]
             self.entropy = [self.entropy]
-        kl_prod = kl_coeff[0]*self.kl[0]
+        kl_prod = [kl_coeff_i*kl_i for kl_coeff_i, kl_i in zip(kl_coeff, self.kl)]
 
         # Make loss functions.
         self.ratio = [tf.exp(curr - prev)
                       for curr, prev in zip(curr_logp, prev_logp)]
         self.mean_kl = [tf.reduce_mean(kl_i) for kl_i in self.kl]
         self.mean_entropy = tf.reduce_mean(self.entropy)
+        self.entropy = tf.add_n(self.entropy)
         self.surr1 = [ratio_i * advantages for ratio_i in self.ratio]
         self.surr2 = [tf.clip_by_value(ratio_i, 1 - config["clip_param"],
                                       1 + config["clip_param"]) * advantages
@@ -76,7 +77,7 @@ class ProximalPolicyLoss(object):
             self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
             self.loss = tf.reduce_mean(
-                -self.surr + kl_coeff * self.kl +
+                -self.surr + kl_prod +
                 config["vf_loss_coeff"] * self.vf_loss -
                 config["entropy_coeff"] * self.entropy)
         else:
