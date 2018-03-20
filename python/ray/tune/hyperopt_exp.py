@@ -17,45 +17,14 @@ from ray.tune.trial_scheduler import FIFOScheduler
 from hyperopt import tpe, Domain, Trials
 
 
-# class MyTrainableClass(Trainable):
-#     """Example agent whose learning curve is a random sigmoid.
-
-#     The dummy hyperparameters "width" and "height" determine the slope and
-#     maximum reward value reached.
-#     """
-
-#     def _setup(self):
-#         self.timestep = 0
-
-#     def _train(self):
-#         self.timestep += 1
-#         v = np.tanh(float(self.timestep) / self.config["width"])
-#         v *= self.config["height"]
-
-#         # Here we use `episode_reward_mean`, but you can also report other
-#         # objectives such as loss or accuracy (see tune/result.py).
-#         return TrainingResult(episode_reward_mean=v, timesteps_this_iter=1)
-
-#     def _save(self, checkpoint_dir):
-#         path = os.path.join(checkpoint_dir, "checkpoint")
-#         with open(path, "w") as f:
-#             f.write(json.dumps({"timestep": self.timestep}))
-#         return path
-
-#     def _restore(self, checkpoint_path):
-#         with open(checkpoint_path) as f:
-#             self.timestep = json.loads(f.read())["timestep"]
-
-
-
 def easy_objective(config, reporter):
 
     # val = config["height"]
-    time.sleep(0.5)
+    time.sleep(0.2)
     reporter(
         timesteps_total=1,
         mean_loss=((config["height"] - 14) ** 2 + abs(config["width"] - 3)))
-    time.sleep(0.5)
+    time.sleep(0.2)
 
 
 class HyperOptScheduler(FIFOScheduler):
@@ -197,18 +166,6 @@ def run_experiments(experiments, with_server=False,
         # TODO(rliaw): What about errored?
         if trial.status != Trial.TERMINATED:
             raise TuneError("Trial did not complete", trial)
-
-    import ipdb; ipdb.set_trace()
-    t = scheduler.get_hyperopt_trials()
-
-
-    import matplotlib.pyplot as plt
-    from scipy.signal import convolve
-
-    loss = [x['result']['loss'] for x in t.trials]
-    filt = np.ones(5) / 5
-    plt.plot(convolve(loss, filt))
-    plt.show()
 
     return runner.get_trials()
 
