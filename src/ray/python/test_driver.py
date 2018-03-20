@@ -26,6 +26,7 @@ if __name__ == '__main__':
     driver.node_manager_client.submit(task)
 
     logger.debug("Return values were", task.returns())
+    print("[DRIVER] Return values were", task.returns())
     task2 = ray.local_scheduler.Task(
         ray.local_scheduler.ObjectID(random_string()),
         ray.local_scheduler.ObjectID(random_string()),
@@ -33,9 +34,10 @@ if __name__ == '__main__':
         1,
         ray.local_scheduler.ObjectID(random_string()),
         0)
-    logger.debug("submitting another task", task2.task_id())
+    logger.debug("submitting dependent task 2", task2.task_id())
     driver.node_manager_client.submit(task2)
 
     # Make sure the tasks get executed and we can get the result of the last
     # task.
-    driver.get(task2.returns(), timeout_ms=1000)
+    obj = driver.get(task2.returns(), timeout_ms=1000)
+    print("[DRIVER]: task2 return value ", obj)

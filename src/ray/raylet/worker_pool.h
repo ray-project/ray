@@ -74,7 +74,7 @@ class WorkerPool {
   std::shared_ptr<Worker> PopWorker();
 
  private:
-  const std::vector<const char *> worker_command_;
+  std::vector<const char *> worker_command_;
   /// The pool of idle workers.
   std::list<std::shared_ptr<Worker>> pool_;
   /// All workers that have registered and are still connected, including both

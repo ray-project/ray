@@ -30,6 +30,7 @@ class Worker(object):
                       object_ids]
         values = self.plasma_client.get(plasma_ids, timeout_ms,
                                         self.serialization_context)
+        logger.debug(values)
         assert(all(value == RETURN_VALUE for value in values))
         return values
 
