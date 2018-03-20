@@ -2746,6 +2746,22 @@ class DataFrame(object):
             lambda df: df.__getitem__(key))
         return to_pandas(result_column_chunks)
 
+    def __getattr__(self, key):
+        """After regular attribute access, looks up the name in the columns
+
+        Args:
+            key (str): Attribute name.
+
+        Returns:
+            The value of the attribute.
+        """
+        try:
+            return object.__getattribute__(self, key)
+        except AttributeError as e:
+            if key in self.columns:
+                return self[key]
+            raise e
+
     def __setitem__(self, key, value):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
