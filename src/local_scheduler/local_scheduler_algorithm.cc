@@ -1286,9 +1286,14 @@ void handle_task_submitted(LocalSchedulerState *state,
   // locally, and there is an available worker, then enqueue the task in the
   // dispatch queue and trigger task dispatch. Otherwise, pass the task along to
   // the global scheduler if there is one.
+  // Note that actor creation tasks automatically go to the global scheduler.
+  // See https://github.com/ray-project/ray/issues/1756 for more discussion.
+  // This is a hack to improve actor load balancing (and to prevent the scenario
+  // where all actors are started locally).
   if (resource_constraints_satisfied(state, spec) &&
       (algorithm_state->available_workers.size() > 0) &&
-      can_run(algorithm_state, execution_spec)) {
+      can_run(algorithm_state, execution_spec) &&
+      !TaskSpec_is_actor_creation_task(spec)) {
     queue_dispatch_task(state, algorithm_state, execution_spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */
