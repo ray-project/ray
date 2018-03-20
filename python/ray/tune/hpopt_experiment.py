@@ -82,8 +82,7 @@ class HyperOptExperiment(Experiment):
             new_cfg.update(suggested_config)
             kv_str = "_".join(["{}={}".format(k, str(v)[:5])
                                for k, v in suggested_config.items()])
-            experiment_tag = "hyperopt_{}_{}".format(
-                new_trial_id, kv_str)
+            experiment_tag = "hyperopt_{}_{}".format(new_trial_id, kv_str)
 
             trial = Trial(
                 trainable_name=self.args.run,
@@ -98,11 +97,10 @@ class HyperOptExperiment(Experiment):
 
             self._tune_to_hp[trial] = new_trial_id
             self._num_trials_left -= 1
-            print("Adding new trial - {}".format(
-                len(self.get_hyperopt_trials())))
             yield trial
 
     def on_trial_stop(self, trial, error=False):
+        """Updates Hyperopt's logical tracking of trials."""
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         if error:
@@ -112,6 +110,7 @@ class HyperOptExperiment(Experiment):
         del self._tune_to_hp[trial]
 
     def on_trial_complete(self, trial):
+        """Updates Hyperopt's logical tracking of trials."""
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         ho_trial['state'] = hpo.base.JOB_STATE_DONE
@@ -121,6 +120,10 @@ class HyperOptExperiment(Experiment):
         self._hpopt_trials.refresh()
 
     def ready(self):
+        """Checks if there is a next trial ready to be queued.
+
+        This is determined by tracking the number of concurrent
+        experiments and trials left to run."""
         return (self._num_trials_left > 0 and
                 self._num_live_trials() < self._max_concurrent)
 
@@ -128,6 +131,7 @@ class HyperOptExperiment(Experiment):
         return len(self._tune_to_hp)
 
     def get_hyperopt_trials(self):
+        """Returns Hyperopt's logical tracking of trials."""
         return self._hpopt_trials
 
     def _convert_result(self, result):
