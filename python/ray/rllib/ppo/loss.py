@@ -44,20 +44,24 @@ class ProximalPolicyLoss(object):
         self.entropy = self.curr_dist.entropy()
 
         if not isinstance(curr_logp, list):
-            self.kl = [self.prev_dist.kl(self.curr_dist)]
+            self.kl = [self.kl]
             curr_logp = [curr_logp]
             prev_logp = [prev_logp]
+            self.entropy = [self.entropy]
         kl_prod = kl_coeff[0]*self.kl[0]
 
         # Make loss functions.
-        self.ratio = [tf.exp(curr -
-                            prev) for curr, prev in zip(curr_logp, prev_logp)]
-        self.mean_kl = tf.reduce_mean(self.kl[0])
+        self.ratio = [tf.exp(curr - prev)
+                      for curr, prev in zip(curr_logp, prev_logp)]
+        self.mean_kl = [tf.reduce_mean(kl_i) for kl_i in self.kl]
         self.mean_entropy = tf.reduce_mean(self.entropy)
-        self.surr1 = self.ratio[0] * advantages
-        self.surr2 = tf.clip_by_value(self.ratio[0], 1 - config["clip_param"],
+        self.surr1 = [ratio_i * advantages for ratio_i in self.ratio]
+        self.surr2 = [tf.clip_by_value(ratio_i, 1 - config["clip_param"],
                                       1 + config["clip_param"]) * advantages
-        self.surr = tf.minimum(self.surr1, self.surr2)
+                      for ratio_i in self.ratio]
+        self.surr = [tf.minimum(surr1_i, surr2_i) for surr1_i, surr2_i in
+                     zip(self.surr1, self.surr2)]
+        self.surr = tf.add_n(self.surr)
         self.mean_policy_loss = tf.reduce_mean(-self.surr)
 
         if config["use_gae"]:
