@@ -163,12 +163,12 @@ class ApexOptimizer(PolicyOptimizer):
         self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
 
-        self.replay_actors = create_colocated(
-            ReplayActor,
-            [num_replay_buffer_shards, learning_starts, buffer_size,
-             train_batch_size, prioritized_replay_alpha,
-             prioritized_replay_beta, prioritized_replay_eps, clip_rewards],
-            num_replay_buffer_shards)
+        self.replay_actors = [
+            ReplayActor.remote(num_replay_buffer_shards, learning_starts, buffer_size,
+                 train_batch_size, prioritized_replay_alpha,
+                 prioritized_replay_beta, prioritized_replay_eps, clip_rewards)
+            for _ in range(num_replay_buffer_shards)
+        ]
         assert len(self.remote_evaluators) > 0
 
         # Stats
