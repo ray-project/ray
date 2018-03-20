@@ -41,11 +41,11 @@ class ProximalPolicyLoss(object):
         curr_logp = self.curr_dist.logp(actions)
         prev_logp = self.prev_dist.logp(actions)
         self.kl = self.prev_dist.kl(self.curr_dist)
-        kl_prod = kl_coeff*self.kl
         self.entropy = self.curr_dist.entropy()
 
         if not isinstance(curr_logp, list):
             self.kl = [self.prev_dist.kl(self.curr_dist)]
+        kl_prod = kl_coeff[0]*self.kl[0]
 
         # Make loss functions.
         self.ratio = tf.exp(self.curr_dist.logp(actions) -
@@ -77,7 +77,7 @@ class ProximalPolicyLoss(object):
             self.mean_vf_loss = tf.constant(0.0)
             self.loss = tf.reduce_mean(
                 -self.surr +
-                kl_coeff[0] * self.kl[0] -
+                kl_prod -
                 config["entropy_coeff"] * self.entropy)
 
         self.sess = sess
