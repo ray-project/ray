@@ -226,8 +226,11 @@ def _rebuild_rows(col_partitions, index, columns):
     """
     n_rows = min(max(get_npartitions(), len(col_partitions)), len(index))
     partition_assignments = assign_partitions.remote(index, n_rows)
-    shufflers = [ShuffleActor.remote(x, partition_axis=1, shuffle_axis=0)
-                 for x in col_partitions]
+    shufflers = [ShuffleActor.remote(
+        col_partitions[i] if i < len(col_partitions) else pd.DataFrame(),
+        partition_axis=1,
+        shuffle_axis=0)
+                 for i in range(n_rows)]
 
     shufflers_done = \
         [shufflers[i].shuffle.remote(
@@ -291,6 +294,9 @@ def _map_partitions(func, partitions, *argslists):
     assert(callable(func))
     if argslists is None:
         return [_deploy_func.remote(func, part) for part in partitions]
+    elif len(argslists) == 1:
+        return [_deploy_func.remote(func, part, argslists[0])
+                for part in partitions]
     else:
         assert(all([len(args) == len(partitions) for args in argslists]))
         return [_deploy_func.remote(func, part, *args) for part, *args in zip(partitions, *argslists)]
