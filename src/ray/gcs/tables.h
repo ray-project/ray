@@ -50,7 +50,8 @@ class Table {
       : context_(context),
         client_(client),
         pubsub_channel_(TablePubsub_NO_PUBLISH),
-        prefix_(TablePrefix_UNUSED){};
+        prefix_(TablePrefix_UNUSED),
+        subscribed_(false){};
 
   /// Add an entry to the table.
   ///
@@ -78,6 +79,9 @@ class Table {
                                          callback_index));
     return Status::OK();
   }
+
+  /// Remove an entry from the table.
+  Status Remove(const JobID &job_id, const ID &id, const Callback &done);
 
   /// Lookup an entry asynchronously.
   ///
@@ -110,12 +114,16 @@ class Table {
     return Status::OK();
   }
 
-  /// Subscribe to updates of this table
+  /// Subscribe to any Add operations to this table. The caller may choose to
+  /// subscribe to all Adds, or to subscribe only to keys that it requests
+  /// notifications for. This may only be called once per Table instance.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
   ///        message for each Add to the table will be received. Else, only
-  ///        messages for the given client will be received.
+  ///        messages for the given client will be received. In the latter
+  ///        case, the client may request notifications on specific keys in the
+  ///        table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message.
   /// \param done Callback that is called when subscription is complete and we
   ///        are ready to receive messages..
@@ -125,27 +133,65 @@ class Table {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({client_id, nullptr, subscribe, nullptr, done, this, client_}));
     int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data) {
+        RedisCallbackManager::instance().add([this, d](const std::string &data) {
           if (data.empty()) {
             // No data is provided. This is the callback for the initial
             // subscription request.
+            RAY_CHECK(!subscribed_) << "Client called Subscribe twice on the same table";
+            subscribed_ = true;
             if (d->subscription_callback != nullptr) {
               (d->subscription_callback)(d->client, d->id, nullptr);
             }
           } else {
-            // Data is provided. This is the callback for a message.
-            auto result = std::make_shared<DataT>();
-            auto root = flatbuffers::GetRoot<Data>(data.data());
-            root->UnPackTo(result.get());
-            (d->callback)(d->client, d->id, result);
+            if (d->callback != nullptr) {
+              // Data is provided. This is the callback for a message.
+              auto result = std::make_shared<DataT>();
+              auto root = flatbuffers::GetRoot<Data>(data.data());
+              root->UnPackTo(result.get());
+              (d->callback)(d->client, d->id, result);
+            }
           }
         });
     std::vector<uint8_t> nil;
     return context_->SubscribeAsync(client_id, pubsub_channel_, callback_index);
   }
 
-  /// Remove and entry from the table
-  Status Remove(const JobID &job_id, const ID &id, const Callback &done);
+  /// Request notifications about a key in this table.
+  ///
+  /// The notifications will be published to a channel specific to this table
+  /// and client. An initial notification will be published for the current
+  /// value at the key, if any, and a subsequent notification will be published
+  /// for every following `Add` to the key. Before notifications can be
+  /// requested, the channel must first be set up by a successful call to
+  /// `Subscribe`, with the same `client_id`.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the key to request notifications for.
+  /// \param client_id The client who is requesting notifications. Before
+  ///        notifications can be requested, a call to `Subscribe` to this
+  ///        table with the same `client_id` must complete successfully.
+  /// \return Status
+  Status RequestNotifications(const JobID &job_id, const ID &id,
+                              const ClientID &client_id) {
+    RAY_CHECK(subscribed_)
+        << "Client requested notifications on a key before Subscribe completed";
+    return context_->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
+                              client_id.size(), prefix_, pubsub_channel_, -1);
+  }
+
+  /// Cancel notifications about a key in this table.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the key to request notifications for.
+  /// \param client_id The client who originally requested notifications.
+  /// \return Status
+  Status CancelNotifications(const JobID &job_id, const ID &id,
+                             const ClientID &client_id) {
+    RAY_CHECK(subscribed_)
+        << "Client canceled notifications on a key before Subscribe completed";
+    return context_->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
+                              client_id.size(), prefix_, pubsub_channel_, -1);
+  }
 
  protected:
   /// The connection to the GCS.
@@ -158,6 +204,9 @@ class Table {
   TablePubsub pubsub_channel_;
   /// The prefix to use for keys in this table.
   TablePrefix prefix_;
+  /// Whether we have subscribed to the table yet. Each client may only
+  /// subscribe to a table once.
+  bool subscribed_;
 };
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
@@ -182,16 +231,11 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   Status SubscribeToNotifications(const JobID &job_id, bool subscribe_all,
                                   const Callback &object_available, const Callback &done);
 
-  /// Request notifications about the availability of some objects from the
-  /// object
-  /// table. The notifications will be published to this client's object
-  /// notification channel, which was set up by the method
-  /// ObjectTableSubscribeToNotifications.
-  ///
-  /// \param object_ids The object IDs to receive notifications about.
-  /// \return Status
-  Status RequestNotifications(const JobID &job_id,
-                              const std::vector<ObjectID> &object_ids);
+  /////
+  ///// \param object_ids The object IDs to receive notifications about.
+  ///// \return Status
+  // Status RequestNotifications(const JobID &job_id,
+  //                            const std::vector<ObjectID> &object_ids);
 };
 
 class FunctionTable : public Table<ObjectID, FunctionTableData> {

@@ -39,9 +39,11 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
     RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type
                    << " and with string " << reply->str;
   }
-  RedisCallbackManager::instance().get(callback_index)(data);
-  // Delete the callback.
-  RedisCallbackManager::instance().remove(callback_index);
+  if (callback_index >= 0) {
+    RedisCallbackManager::instance().get(callback_index)(data);
+    // Delete the callback.
+    RedisCallbackManager::instance().remove(callback_index);
+  }
 }
 
 void SubscribeRedisCallback(void *c, void *r, void *privdata) {
@@ -161,8 +163,9 @@ Status RedisContext::AttachToEventLoop(aeEventLoop *loop) {
 }
 
 Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
-                              uint8_t *data, int64_t length, const TablePrefix prefix,
-                              const TablePubsub pubsub_channel, int64_t callback_index) {
+                              const uint8_t *data, int64_t length,
+                              const TablePrefix prefix, const TablePubsub pubsub_channel,
+                              int64_t callback_index) {
   if (length > 0) {
     std::string redis_command = command + " %d %d %b %b";
     int status = redisAsyncCommand(
