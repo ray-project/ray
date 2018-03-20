@@ -78,6 +78,8 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
   auto prefix = static_cast<TablePrefix>(prefix_long);
   RAY_CHECK(prefix != TablePrefix_UNUSED)
       << "This table has no prefix registered";
+  RAY_CHECK(prefix >= TablePrefix_MIN && prefix <= TablePrefix_MAX)
+      << "Prefix must be a valid TablePrefix";
   return OpenPrefixedKey(ctx, table_prefixes[prefix], keyname, mode);
 }
 
