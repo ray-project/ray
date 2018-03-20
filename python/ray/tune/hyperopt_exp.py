@@ -17,39 +17,46 @@ from ray.tune.trial_scheduler import FIFOScheduler
 from hyperopt import tpe, Domain, Trials
 
 
-class MyTrainableClass(Trainable):
-    """Example agent whose learning curve is a random sigmoid.
+# class MyTrainableClass(Trainable):
+#     """Example agent whose learning curve is a random sigmoid.
 
-    The dummy hyperparameters "width" and "height" determine the slope and
-    maximum reward value reached.
-    """
+#     The dummy hyperparameters "width" and "height" determine the slope and
+#     maximum reward value reached.
+#     """
 
-    def _setup(self):
-        self.timestep = 0
+#     def _setup(self):
+#         self.timestep = 0
 
-    def _train(self):
-        self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config["width"])
-        v *= self.config["height"]
+#     def _train(self):
+#         self.timestep += 1
+#         v = np.tanh(float(self.timestep) / self.config["width"])
+#         v *= self.config["height"]
 
-        # Here we use `episode_reward_mean`, but you can also report other
-        # objectives such as loss or accuracy (see tune/result.py).
-        return TrainingResult(episode_reward_mean=v, timesteps_this_iter=1)
+#         # Here we use `episode_reward_mean`, but you can also report other
+#         # objectives such as loss or accuracy (see tune/result.py).
+#         return TrainingResult(episode_reward_mean=v, timesteps_this_iter=1)
 
-    def _save(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        with open(path, "w") as f:
-            f.write(json.dumps({"timestep": self.timestep}))
-        return path
+#     def _save(self, checkpoint_dir):
+#         path = os.path.join(checkpoint_dir, "checkpoint")
+#         with open(path, "w") as f:
+#             f.write(json.dumps({"timestep": self.timestep}))
+#         return path
 
-    def _restore(self, checkpoint_path):
-        with open(checkpoint_path) as f:
-            self.timestep = json.loads(f.read())["timestep"]
+#     def _restore(self, checkpoint_path):
+#         with open(checkpoint_path) as f:
+#             self.timestep = json.loads(f.read())["timestep"]
+
+
+
+def easy_objective(config, reporter):
+
+    # val = config["height"]
+    reporter(mean_loss=config["height"] - 14) ** 2 + abs(config["width"] - 3)
 
 
 class HyperOptScheduler(FIFOScheduler):
 
-    def __init__(self, experiments, max_concurrent=10, loss_attr="episode_reward_mean"):
+    def __init__(self, experiments, max_concurrent=10, loss_attr="mean_loss"):
         assert len(experiments) == 1, "Currently only support 1 experiment"
         name, _spec = list(experiments.keys())[0], list(experiments.values())[0]
 
@@ -191,14 +198,14 @@ if __name__ == '__main__':
     import ray
     ray.init()
     from hyperopt import hp
-    register_trainable("exp", MyTrainableClass)
+    # register_trainable("exp", MyTrainableClass)
 
+    register_trainable("exp", easy_objective)
 
     space = {
-    'width': hp.uniform('width', 0, 20),
-    'height': hp.uniform('height', 0, 1),
-}
-
+        'width': hp.uniform('width', 0, 20),
+        'height': hp.uniform('height', -100, 100),
+    }
 
     config = {"my_exp": {
             "run": "exp",
