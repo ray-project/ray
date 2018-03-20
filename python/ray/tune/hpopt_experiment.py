@@ -95,7 +95,7 @@ class HyperOptExperiment(Experiment):
         ho_trial['refresh_time'] = utils.coarse_utcnow()
         if error:
             ho_trial['state'] = base.JOB_STATE_ERROR
-            ho_trial['misc']['error'] = (str(TuneError), "Trial stopped early.")
+            ho_trial['misc']['error'] = (str(TuneError), "Trial stopped early")
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
 
@@ -152,10 +152,9 @@ if __name__ == '__main__':
         'height': hp.uniform('height', -100, 100),
     }
 
-    config = { "repeat": 1000,
-               "stop": {"training_iteration": 1},
-               "config": {
-                "space": space}}
+    config = {"repeat": 1000,
+              "stop": {"training_iteration": 1},
+              "config": {"space": space}}
     exp = HyperOptExperiment("my_exp", "exp", **config)
 
     run_experiments(exp, verbose=False)
