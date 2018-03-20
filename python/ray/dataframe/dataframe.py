@@ -78,7 +78,7 @@ class DataFrame(object):
         if row_partitions is not None:
             self._row_lengths, self._row_index = \
                 _compute_length_and_index.remote(row_partitions, index)
-        
+
         if col_partitions is not None:
             self._col_lengths, self._col_index = \
                 _compute_width_and_index.remote(col_partitions, columns)
@@ -511,10 +511,16 @@ class DataFrame(object):
             func (callable): The function to apply.
         """
         assert(callable(func))
-        new_rows = _map_partitions(lambda df: df.applymap(lambda x: func(x)),
-                                   self._row_partitions)
-        new_cols = _map_partitions(lambda df: df.applymap(lambda x: func(x)),
-                                   self._col_partitions)
+        if self._row_partitions is not None:
+            new_rows = _map_partitions(lambda df: df.applymap(lambda x: func(x)),
+                                       self._row_partitions)
+            new_cols = None
+
+        else:
+            new_cols = _map_partitions(lambda df: df.applymap(lambda x: func(x)),
+                                       self._col_partitions)
+            new_rows = None
+
         return DataFrame(columns=self.columns,
                          col_partitions=new_cols,
                          row_partitions=new_rows)
