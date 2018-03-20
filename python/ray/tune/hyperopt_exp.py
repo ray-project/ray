@@ -51,7 +51,11 @@ from hyperopt import tpe, Domain, Trials
 def easy_objective(config, reporter):
 
     # val = config["height"]
-    reporter(mean_loss=config["height"] - 14) ** 2 + abs(config["width"] - 3)
+    time.sleep(0.5)
+    reporter(
+        timesteps_total=1,
+        mean_loss=((config["height"] - 14) ** 2 + abs(config["width"] - 3)))
+    time.sleep(0.5)
 
 
 class HyperOptScheduler(FIFOScheduler):
@@ -80,7 +84,7 @@ class HyperOptScheduler(FIFOScheduler):
         self._loss_attr = loss_attr
         self._num_trials_left = self.args.repeat
 
-        self.max_concurrent = max_concurrent
+        self.max_concurrent = min(max_concurrent, self._num_trials_left)
         self.rstate = np.random.RandomState()
 
     def generate_trial(self):
@@ -158,6 +162,9 @@ class HyperOptScheduler(FIFOScheduler):
     def _continue(self):
         return self._num_trials_left > 0
 
+    def get_hyperopt_trials(self):
+        return self._hpopt_trials
+
 
 
 def run_experiments(experiments, with_server=False,
@@ -166,7 +173,7 @@ def run_experiments(experiments, with_server=False,
     # Make sure rllib agents are registered
     from ray import rllib  # noqa # pylint: disable=unused-import
 
-    scheduler = HyperOptScheduler(experiments, max_concurrent=1)
+    scheduler = HyperOptScheduler(experiments, max_concurrent=8)
     runner = TrialRunner(
         scheduler, launch_web_server=with_server, server_port=server_port)
 
@@ -191,12 +198,24 @@ def run_experiments(experiments, with_server=False,
         if trial.status != Trial.TERMINATED:
             raise TuneError("Trial did not complete", trial)
 
+    import ipdb; ipdb.set_trace()
+    t = scheduler.get_hyperopt_trials()
+
+
+    import matplotlib.pyplot as plt
+    from scipy.signal import convolve
+
+    loss = [x['result']['loss'] for x in t.trials]
+    filt = np.ones(5) / 5
+    plt.plot(convolve(loss, filt))
+    plt.show()
+
     return runner.get_trials()
 
 
 if __name__ == '__main__':
     import ray
-    ray.init()
+    ray.init(redirect_output=True)
     from hyperopt import hp
     # register_trainable("exp", MyTrainableClass)
 
@@ -209,8 +228,8 @@ if __name__ == '__main__':
 
     config = {"my_exp": {
             "run": "exp",
-            "repeat": 5,
-            "stop": {"training_iteration": 5},
+            "repeat": 200,
+            "stop": {"training_iteration": 1},
             "config": {
                 "space": space}}}
-    run_experiments(config)
+    run_experiments(config, verbose=False)
