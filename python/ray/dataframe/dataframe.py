@@ -1743,12 +1743,12 @@ class DataFrame(object):
             if dtype == np.dtype('O'):
                 raise TypeError('invalid datatype for comparison')
 
-        is_axis_zero = axis == 0 or axis == 'rows'
+        axis = self._row_index._get_axis_name(axis)
 
         idxmax_series = pd.concat(ray.get(
             _map_partitions(lambda df: df.idxmax(axis=axis,
                                               skipna=skipna),
-                            self._row_partitions if not is_axis_zero
+                            self._row_partitions if axis == 'columns'
                             else self._col_partitions)))
 
         idxmax_series.index = self.columns if is_axis_zero else self.index
@@ -1770,12 +1770,12 @@ class DataFrame(object):
             if dtype == np.dtype('O'):
                 raise TypeError('invalid datatype for comparison')
 
-        is_axis_zero = axis == 0 or axis == 'rows'
+        axis = self._row_index._get_axis_name(axis)
 
         idxmin_series = pd.concat(ray.get(
             _map_partitions(lambda df: df.idxmin(axis=axis,
                                               skipna=skipna),
-                            self._row_partitions if not is_axis_zero
+                            self._row_partitions if axis == 'columns'
                             else self._col_partitions)))
 
         idxmin_series.index = self.columns if is_axis_zero else self.index
@@ -2287,7 +2287,7 @@ class DataFrame(object):
             DataFrame.
         """
         result = _map_partitions(lambda df: df.pop(item),
-                                 self._row_partitions) 
+                                 self._row_partitions)
         self._row_partitions = _map_partitions(lambda df: df.drop(labels=item,
                                                                   axis=1),
                                                self._row_partitions)
@@ -2372,12 +2372,15 @@ class DataFrame(object):
         Returns:
             A new DataFrame if inplace=False
         """
-        return # TODO: Fix this
-        new_rows = _map_partitions(lambda df: df.query(expr, **kwargs),
+        # return # TODO: Fix this
+        new_rows = _map_partitions(lambda df: df.query(expr=expr,
+                                                       inplace=False,
+                                                       **kwargs),
                                    self._row_partitions)
 
         if inplace:
             self._update_inplace(row_partitions=new_rows)
+            # self._row_partitions = new_rows
         else:
             return DataFrame(row_partitions=new_rows, columns=self.columns)
 
