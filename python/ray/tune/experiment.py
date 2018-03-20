@@ -49,8 +49,25 @@ class Experiment(object):
             "checkpoint_freq": checkpoint_freq,
             "max_failures": max_failures
         }
-        self._trials = generate_trials(spec, name)
 
-    def trials(self):
-        for trial in self._trials:
-            yield trial
+        self.name = name
+        self.spec = spec
+        self.trial_generator = generate_trials(self.spec, self.name)
+
+    def on_trial_stop(self, trial, error=False):
+        pass
+
+    def on_trial_complete(self, trial):
+        pass
+
+    def ready(self):
+        return True
+
+    def next_trial(self):
+        return next(self.trial_generator)
+
+
+class JSONExperiment(Experiment):
+    """Tracks experiment specifications given JSON."""
+    def __init__(self, name, spec):
+        self.trial_generator = generate_trials(spec, name)

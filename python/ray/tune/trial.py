@@ -333,8 +333,8 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        if terminate or (
-                self.verbose and
+        if self.verbose and (
+                terminate or
                 time.time() - self.last_debug > DEBUG_PRINT_INTERVAL):
             print("TrainingResult for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
