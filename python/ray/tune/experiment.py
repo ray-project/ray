@@ -55,15 +55,27 @@ class Experiment(object):
         self.trial_generator = generate_trials(self.spec, self.name)
 
     def on_trial_stop(self, trial, error=False):
+        """Hook for when the trial is completely stopped.
+
+        For completed trials, this is called after `on_trial_complete`.
+        """
         pass
 
     def on_trial_complete(self, trial):
+        """Hook for when trial is completed.
+
+        Note that this is only for trials that reach the stopping
+        criteria of the experiment or the scheduler."""
         pass
 
     def ready(self):
+        """Whether there are trials ready to be queued."""
         return True
 
     def next_trial(self):
+        """Getting the next trial.
+
+        Only called if self.ready() is True."""
         return next(self.trial_generator)
 
 

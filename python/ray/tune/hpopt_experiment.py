@@ -14,10 +14,11 @@ from ray.tune.experiment import Experiment
 
 
 class HyperOptExperiment(Experiment):
-    """Experiment class for HyperOpt trial suggestions.
+    """Tracks experiment with HyperOpt trial suggestions.
 
     Requires HyperOpt to be installed. Uses the Tree of Parzen Estimators
-    algorithm.
+    algorithm. Mixing standard trial configuration with this class results
+    in undefined behavior and hence unrecommended.
     """
 
     def __init__(self, name, run, max_concurrent=10,
@@ -124,37 +125,3 @@ class HyperOptExperiment(Experiment):
 
     def _get_dynamic_trial(self, tid):
         return [t for t in self._hpopt_trials.trials if t["tid"] == tid][0]
-
-
-if __name__ == '__main__':
-    import ray
-    from ray.tune import register_trainable
-    from ray.tune import run_experiments
-    from hyperopt import hp
-
-    ray.init(redirect_output=True)
-
-    # register_trainable("exp", MyTrainableClass)
-
-    def easy_objective(args, reporter):
-        import time
-        # val = args["height"]
-        time.sleep(0.2)
-        reporter(
-            mean_loss=(args["height"] - 14) ** 2 + abs(args["width"] - 3),
-            timesteps_total=1)
-        time.sleep(0.1)
-
-    register_trainable("exp", easy_objective)
-
-    space = {
-        'width': hp.uniform('width', 0, 20),
-        'height': hp.uniform('height', -100, 100),
-    }
-
-    config = {"repeat": 1000,
-              "stop": {"training_iteration": 1},
-              "config": {"space": space}}
-    exp = HyperOptExperiment("my_exp", "exp", **config)
-
-    run_experiments(exp, verbose=False)
