@@ -203,7 +203,6 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel);
   } else {
     // Subscribe only to messages sent to this client.
-    // TODO(swang): Nobody sends on this channel yet.
     std::string redis_command = "SUBSCRIBE %d:%b";
     status = redisAsyncCommand(
         subscribe_context_, reinterpret_cast<redisCallbackFn *>(&SubscribeRedisCallback),
