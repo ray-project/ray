@@ -95,7 +95,7 @@ class PPOAgent(Agent):
 
     def _init(self):
         self.global_step = 0
-        self.kl_coeff = self.config["kl_coeff"]
+        self.kl_coeff = [self.config["kl_coeff"]]
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
@@ -218,7 +218,7 @@ class PPOAgent(Agent):
 
         info = {
             "kl_divergence": kl,
-            "kl_coefficient": self.kl_coeff,
+            "kl_coefficient": self.kl_coeff[0],
             "rollouts_time": rollouts_time,
             "shuffle_time": shuffle_time,
             "load_time": load_time,
