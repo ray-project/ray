@@ -49,6 +49,12 @@
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
 
+static const char *table_prefixes[] = {
+    NULL, "TASK:", "CLIENT:", "OBJECT:", "FUNCTION:",
+};
+
+// TODO(swang): This helper function should be deprecated by the version below,
+// which uses enums for table prefixes.
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 const char *prefix,
                                 RedisModuleString *keyname,
@@ -59,6 +65,20 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
       (RedisModuleKey *) RedisModule_OpenKey(ctx, prefixed_keyname, mode);
   RedisModule_FreeString(ctx, prefixed_keyname);
   return key;
+}
+
+RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
+                                RedisModuleString *prefix_enum,
+                                RedisModuleString *keyname,
+                                int mode) {
+  long long prefix_long;
+  RAY_CHECK(RedisModule_StringToLongLong(prefix_enum, &prefix_long) ==
+            REDISMODULE_OK)
+      << "Prefix must be a valid TablePrefix";
+  auto prefix = static_cast<TablePrefix>(prefix_long);
+  RAY_CHECK(prefix != TablePrefix_UNUSED)
+      << "This table has no prefix registered";
+  return OpenPrefixedKey(ctx, table_prefixes[prefix], keyname, mode);
 }
 
 /**
@@ -394,17 +414,18 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
 int TableAdd_RedisCommand(RedisModuleCtx *ctx,
                           RedisModuleString **argv,
                           int argc) {
-  if (argc != 4) {
+  if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleString *pubsub_channel_str = argv[1];
-  RedisModuleString *id = argv[2];
-  RedisModuleString *data = argv[3];
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
 
   // Set the keys in the table.
-  RedisModuleKey *key =
-      OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
+  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
+                                        REDISMODULE_READ | REDISMODULE_WRITE);
   RedisModule_StringSet(key, data);
   RedisModule_CloseKey(key);
 
@@ -517,13 +538,14 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 int TableLookup_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
-  if (argc != 3) {
+  if (argc != 4) {
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleString *id = argv[2];
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *id = argv[3];
 
-  RedisModuleKey *key = OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ);
+  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
   if (key == nullptr) {
     return RedisModule_ReplyWithNull(ctx);
   }
@@ -554,14 +576,15 @@ bool is_nil(const std::string &data) {
 int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                     RedisModuleString **argv,
                                     int argc) {
-  if (argc != 4) {
+  if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
-  RedisModuleString *id = argv[2];
-  RedisModuleString *update_data = argv[3];
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *update_data = argv[4];
 
-  RedisModuleKey *key =
-      OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
+  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
+                                        REDISMODULE_READ | REDISMODULE_WRITE);
 
   size_t value_len = 0;
   char *value_buf = RedisModule_StringDMA(key, &value_len, REDISMODULE_READ);

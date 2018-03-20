@@ -47,7 +47,10 @@ class Table {
   };
 
   Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : context_(context), client_(client), pubsub_channel_(TablePubsub_NO_PUBLISH){};
+      : context_(context),
+        client_(client),
+        pubsub_channel_(TablePubsub_NO_PUBLISH),
+        prefix_(TablePrefix_UNUSED){};
 
   /// Add an entry to the table.
   ///
@@ -71,7 +74,8 @@ class Table {
     fbb.ForceDefaults(true);
     fbb.Finish(Data::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(),
-                                         fbb.GetSize(), pubsub_channel_, callback_index));
+                                         fbb.GetSize(), prefix_, pubsub_channel_,
+                                         callback_index));
     return Status::OK();
   }
 
@@ -102,7 +106,7 @@ class Table {
         });
     std::vector<uint8_t> nil;
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
-                                         pubsub_channel_, callback_index));
+                                         prefix_, pubsub_channel_, callback_index));
     return Status::OK();
   }
 
@@ -148,6 +152,7 @@ class Table {
   std::shared_ptr<RedisContext> context_;
   AsyncGcsClient *client_;
   TablePubsub pubsub_channel_;
+  TablePrefix prefix_;
 };
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
@@ -155,6 +160,7 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
+    prefix_ = TablePrefix_OBJECT;
   };
 
   /// Set up a client-specific channel for receiving notifications about
@@ -183,7 +189,14 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
                               const std::vector<ObjectID> &object_ids);
 };
 
-using FunctionTable = Table<FunctionID, FunctionTableData>;
+class FunctionTable : public Table<ObjectID, FunctionTableData> {
+ public:
+  FunctionTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Table(context, client) {
+    pubsub_channel_ = TablePubsub_NO_PUBLISH;
+    prefix_ = TablePrefix_FUNCTION;
+  };
+};
 
 using ClassTable = Table<ClassID, ClassTableData>;
 
@@ -195,6 +208,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_TASK;
+    prefix_ = TablePrefix_TASK;
   };
 
   using TestAndUpdateCallback =
@@ -230,7 +244,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
     flatbuffers::FlatBufferBuilder fbb;
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_TEST_AND_UPDATE", id,
-                                         fbb.GetBufferPointer(), fbb.GetSize(),
+                                         fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
                                          pubsub_channel_, callback_index));
     return Status::OK();
   }
@@ -281,6 +295,7 @@ class ClientTable : private Table<ClientID, ClientTableData> {
         client_id_(ClientID::from_binary(local_client.client_id)),
         local_client_(local_client) {
     pubsub_channel_ = TablePubsub_CLIENT;
+    prefix_ = TablePrefix_CLIENT;
 
     // Add a nil client to the cache so that we can serve requests for clients
     // that we have not heard about.
