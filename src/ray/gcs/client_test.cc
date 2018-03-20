@@ -246,7 +246,7 @@ void TestClientTableConnect(const JobID &job_id,
   // for the addition and removal of our own entry.
   ClientTableDataT local_client_info = client->client_table().GetLocalClient();
   local_client_info.node_manager_address = "127.0.0.1";
-  local_client_info.local_scheduler_port = 0;
+  local_client_info.node_manager_port = 0;
   local_client_info.object_manager_port = 0;
   RAY_CHECK_OK(client->client_table().Connect(local_client_info));
   test->Start();
@@ -276,7 +276,7 @@ void TestClientTableDisconnect(const JobID &job_id,
   // for the addition and removal of our own entry.
   ClientTableDataT local_client_info = client->client_table().GetLocalClient();
   local_client_info.node_manager_address = "127.0.0.1";
-  local_client_info.local_scheduler_port = 0;
+  local_client_info.node_manager_port = 0;
   local_client_info.object_manager_port = 0;
   RAY_CHECK_OK(client->client_table().Connect(local_client_info));
   RAY_CHECK_OK(client->client_table().Disconnect());

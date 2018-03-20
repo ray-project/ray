@@ -51,11 +51,11 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client,
   auto client_info = gcs_client_->client_table().GetClient(client_id);
   RAY_LOG(DEBUG) <<"[ClientAdded] CONNECTING TO: "
                  << " " << client_info.node_manager_address.c_str()
-                 << " " << client_info.local_scheduler_port;
+                 << " " << client_info.node_manager_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
   RAY_CHECK_OK(TcpConnect(socket, client_info.node_manager_address,
-                          client_info.local_scheduler_port));
+                          client_info.node_manager_port));
   auto server_conn = TcpServerConnection(std::move(socket));
   remote_server_connections_.emplace(client_id, std::move(server_conn));
 }

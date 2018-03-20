@@ -50,7 +50,7 @@ class MockServer {
 
     ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
     client_info.node_manager_address = ip;
-    client_info.local_scheduler_port = object_manager_port;
+    client_info.node_manager_port = object_manager_port;
     client_info.object_manager_port = object_manager_port;
     return gcs_client_->client_table().Connect(client_info);
   }
@@ -334,11 +334,11 @@ class TestGCSIntegration : public TestRaylet {
     RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
-    RAY_LOG(INFO) << "ClientPort=" << data.local_scheduler_port;
+    RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port;
     const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
-    RAY_LOG(INFO) << "ClientPort=" << data2.local_scheduler_port;
+    RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port;
   }
 };
 
