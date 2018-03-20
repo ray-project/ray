@@ -7,7 +7,6 @@ from ray.tune import register_trainable
 from ray.tune import run_experiments
 from ray.tune.hpopt_experiment import HyperOptExperiment
 
-ray.init(redirect_output=True)
 
 def easy_objective(args, reporter):
     import time
@@ -18,6 +17,8 @@ def easy_objective(args, reporter):
         timesteps_total=1)
     time.sleep(0.1)
 
+
+ray.init(redirect_output=True)
 register_trainable("exp", easy_objective)
 
 
