@@ -2742,6 +2742,23 @@ def test___getitem__(ray_df, pd_df):
     assert pd_col.equals(ray_col)
 
 
+def test___getattr__():
+    df = create_test_dataframe()
+
+    col = df.__getattr__("col1")
+    assert isinstance(col, pd.Series)
+
+    col = getattr(df, "col1")
+    assert isinstance(col, pd.Series)
+
+    col = df.col1
+    assert isinstance(col, pd.Series)
+
+    # Check that lookup in column doesn't override other attributes
+    df2 = df.rename(index=str, columns={"col5": "columns"})
+    assert isinstance(df2.columns, pd.Index)
+
+
 def test___setitem__():
     ray_df = create_test_dataframe()
 
