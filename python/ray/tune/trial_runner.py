@@ -133,6 +133,12 @@ class TrialRunner(object):
         """Adds a new trial to this TrialRunner.
 
         Trials may be added at any time.
+
+        Args:
+            trial (Trial): Trial to queue.
+            experiment (Experiment): Experiment that trial belongs to.
+                If specified, trial events (stopping and completion)
+                will notify this object.
         """
         self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
@@ -228,7 +234,6 @@ class TrialRunner(object):
             if trial.should_stop(result):
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, result)
-
                 # Hook into experiment
                 experiment = self._trial_to_experiments.get(trial)
                 if experiment:
@@ -349,7 +354,7 @@ class TrialRunner(object):
             self._return_resources(trial.resources)
 
     def register_experiment(self, experiment):
-
+        """Tracks experiment for queueing new trials."""
         self._experiments.append(experiment)
 
     def _update_trials(self):
