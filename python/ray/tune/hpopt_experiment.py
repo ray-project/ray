@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import copy
 import numpy as np
-from hyperopt import base, utils, tpe, Domain, Trials
+import hyperopt as hpo
 
 from ray.tune.config_parser import make_parser
 from ray.tune.variant_generator import to_argv
@@ -19,14 +19,26 @@ class HyperOptExperiment(Experiment):
     Requires HyperOpt to be installed. Uses the Tree of Parzen Estimators
     algorithm. Mixing standard trial configuration with this class results
     in undefined behavior and hence unrecommended.
+
+    Note that this class takes in a loss attribute rather than a reward.
+
+    Parameters:
+        name (str):Inherited from ray.tune.experiment.
+        run (str): Inherited from ray.tune.experiment.
+        max_concurrent (int): Number of maximum concurrent trials.
+        loss_attr (str): The TrainingResult objective value attribute.
+            This may refer to any decreasing value. Suggestion procedures
+            will use this attribute.
+        kwargs: Arguments inherited from ray.tune.experiment.
     """
 
     def __init__(self, name, run, max_concurrent=10,
                  loss_attr="mean_loss", **kwargs):
+        self._max_concurrent = max_concurrent  # NOTE: this is modified later
+        self._loss_attr = loss_attr
         super(HyperOptExperiment, self).__init__(name, run, **kwargs)
 
-        name, spec = self.name, self.spec
-
+    def _initialize_generator(self, spec, name):
         if "env" in spec:
             spec["config"] = spec.get("config", {})
             spec["config"]["env"] = spec["env"]
@@ -40,15 +52,14 @@ class HyperOptExperiment(Experiment):
         self.args = parser.parse_args(to_argv(spec))
         self.default_config = copy.deepcopy(spec["config"])
 
-        self.algo = tpe.suggest
-        self.domain = Domain(lambda hp_spec: hp_spec, space)
+        self.algo = hpo.tpe.suggest
+        self.domain = hpo.Domain(lambda hp_spec: hp_spec, space)
 
-        self._hpopt_trials = Trials()
+        self._hpopt_trials = hpo.Trials()
         self._tune_to_hp = {}
-        self._loss_attr = loss_attr
         self._num_trials_left = self.args.repeat
 
-        self.max_concurrent = min(max_concurrent, self.args.repeat)
+        self._max_concurrent = min(self._max_concurrent, self.args.repeat)
         self.rstate = np.random.RandomState()
         self.trial_generator = self._trial_generator()
 
@@ -67,7 +78,7 @@ class HyperOptExperiment(Experiment):
             new_trial = new_trials[0]
             new_trial_id = new_trial["tid"]
 
-            suggested_config = base.spec_from_misc(new_trial["misc"])
+            suggested_config = hpo.base.spec_from_misc(new_trial["misc"])
             new_cfg.update(suggested_config)
             kv_str = "_".join(["{}={}".format(k, str(v)[:5])
                                for k, v in suggested_config.items()])
@@ -93,17 +104,17 @@ class HyperOptExperiment(Experiment):
 
     def on_trial_stop(self, trial, error=False):
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
-        ho_trial['refresh_time'] = utils.coarse_utcnow()
+        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         if error:
-            ho_trial['state'] = base.JOB_STATE_ERROR
+            ho_trial['state'] = hpo.base.JOB_STATE_ERROR
             ho_trial['misc']['error'] = (str(TuneError), "Trial stopped early")
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
 
     def on_trial_complete(self, trial):
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
-        ho_trial['refresh_time'] = utils.coarse_utcnow()
-        ho_trial['state'] = base.JOB_STATE_DONE
+        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
+        ho_trial['state'] = hpo.base.JOB_STATE_DONE
         if trial.last_result:
             hp_result = self._convert_result(trial.last_result)
             ho_trial['result'] = hp_result
@@ -111,7 +122,7 @@ class HyperOptExperiment(Experiment):
 
     def ready(self):
         return (self._num_trials_left > 0 and
-                self._num_live_trials() < self.max_concurrent)
+                self._num_live_trials() < self._max_concurrent)
 
     def _num_live_trials(self):
         return len(self._tune_to_hp)

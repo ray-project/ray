@@ -52,7 +52,10 @@ class Experiment(object):
 
         self.name = name
         self.spec = spec
-        self.trial_generator = generate_trials(self.spec, self.name)
+        self._initialize_generator(spec, name)
+
+    def _initialize_generator(self, spec, name):
+        self.trial_generator = generate_trials(spec, name)
 
     def on_trial_stop(self, trial, error=False):
         """Hook for when the trial is completely stopped.
