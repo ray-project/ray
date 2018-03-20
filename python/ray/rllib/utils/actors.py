@@ -27,6 +27,13 @@ class TaskPool(object):
         return len(self._tasks)
 
 
+def drop_colocated(actors):
+    colocated, non_colocated = split_colocated(actors)
+    for a in colocated:
+        a.__ray_terminate__.remote(a._ray_actor_id.id())
+    return non_colocated
+
+
 def split_colocated(actors):
     localhost = os.uname()[1]
     hosts = ray.get([a.get_host.remote() for a in actors])
@@ -42,11 +49,9 @@ def split_colocated(actors):
 
 def try_create_colocated(cls, args, count):
     actors = [cls.remote(*args) for _ in range(count)]
-    return actors
-# TODO(ekl) re-enable this after https://github.com/ray-project/ray/issues/1734
-#    local, _ = split_colocated(actors)
-#    print("Got {} colocated actors of {}".format(len(local), count))
-#    return local
+    local, _ = split_colocated(actors)
+    print("Got {} colocated actors of {}".format(len(local), count))
+    return local
 
 
 def create_colocated(cls, args, count):

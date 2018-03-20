@@ -18,7 +18,7 @@ import ray
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.optimizers.sample_batch import SampleBatch
-from ray.rllib.utils.actors import TaskPool, create_colocated
+from ray.rllib.utils.actors import TaskPool
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
@@ -164,9 +164,10 @@ class ApexOptimizer(PolicyOptimizer):
         self.learner.start()
 
         self.replay_actors = [
-            ReplayActor.remote(num_replay_buffer_shards, learning_starts, buffer_size,
-                 train_batch_size, prioritized_replay_alpha,
-                 prioritized_replay_beta, prioritized_replay_eps, clip_rewards)
+            ReplayActor.remote(
+                num_replay_buffer_shards, learning_starts, buffer_size,
+                train_batch_size, prioritized_replay_alpha,
+                prioritized_replay_beta, prioritized_replay_eps, clip_rewards)
             for _ in range(num_replay_buffer_shards)
         ]
         assert len(self.remote_evaluators) > 0
