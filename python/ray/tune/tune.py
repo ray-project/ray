@@ -58,16 +58,16 @@ def run_experiments(experiments, scheduler=None, with_server=False,
         scheduler, launch_web_server=with_server, server_port=server_port,
         verbose=verbose)
 
+    exp_list = experiments
     if isinstance(experiments, Experiment):
-        experiments = [experiments]
-
-    if type(experiments) is dict:
-        experiments = [JSONExperiment(name, spec)
+        exp_list = [experiments]
+    elif type(experiments) is dict:
+        exp_list = [JSONExperiment(name, spec)
                        for name, spec in experiments.items()]
 
-    if (type(experiments) is list and
-            all(isinstance(exp, Experiment) for exp in experiments)):
-        for experiment in experiments:
+    if (type(exp_list) is list and
+            all(isinstance(exp, Experiment) for exp in exp_list)):
+        for experiment in exp_list:
             runner.register_experiment(experiment)
     else:
         raise TuneError("Invalid argument: {}".format(experiments))

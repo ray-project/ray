@@ -79,6 +79,7 @@ class TrialRunner(object):
                     self._total_time, self._global_time_limit))
             return True
 
+        self._update_trials()
         for t in self._trials:
             if t.status in [Trial.PENDING, Trial.RUNNING, Trial.PAUSED]:
                 return False
@@ -352,6 +353,7 @@ class TrialRunner(object):
         self._experiments.append(experiment)
 
     def _update_trials(self):
+        """Checks and queues any trials that are ready."""
         for experiment in self._experiments:
             while experiment.ready():
                 try:
