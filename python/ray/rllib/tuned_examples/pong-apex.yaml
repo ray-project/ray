@@ -6,7 +6,8 @@ pong-apex:
     run: APEX
     resources:
         cpu:
-            eval: spec.config.num_workers
+            eval: 1 + spec.config.num_workers
+        driver_cpu_limit: 1
         gpu: 1
     config:
         target_network_update_freq: 50000
