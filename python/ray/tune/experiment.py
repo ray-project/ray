@@ -55,6 +55,7 @@ class Experiment(object):
         self._initialize_generator(spec, name)
 
     def _initialize_generator(self, spec, name):
+        """Creates a trial generator. Can be overwritten by subclass."""
         self.trial_generator = generate_trials(spec, name)
 
     def on_trial_stop(self, trial, error=False):
