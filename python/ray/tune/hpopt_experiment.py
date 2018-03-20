@@ -1,15 +1,24 @@
-from hyperopt import base, utils
-from ray.tune.config_parser import make_parser
-from ray.tune.variant_generator import to_argv
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import copy
 import numpy as np
+from hyperopt import base, utils, tpe, Domain, Trials
+
+from ray.tune.config_parser import make_parser
+from ray.tune.variant_generator import to_argv
 from ray.tune.trial import Trial
 from ray.tune import TuneError
 from ray.tune.experiment import Experiment
-from hyperopt import tpe, Domain, Trials
 
 
 class HyperOptExperiment(Experiment):
+    """Experiment class for HyperOpt trial suggestions.
+
+    Requires HyperOpt to be installed. Uses the Tree of Parzen Estimators
+    algorithm.
+    """
 
     def __init__(self, name, run, max_concurrent=10,
                  loss_attr="mean_loss", **kwargs):
@@ -77,14 +86,16 @@ class HyperOptExperiment(Experiment):
 
             self._tune_to_hp[trial] = new_trial_id
             self._num_trials_left -= 1
-            print("Adding new trial - {}".format(len(self._tune_to_hp)))
+            print("Adding new trial - {}".format(
+                len(self.get_hyperopt_trials())))
             yield trial
 
     def on_trial_stop(self, trial, error=False):
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
         ho_trial['refresh_time'] = utils.coarse_utcnow()
-        ho_trial['state'] = base.JOB_STATE_ERROR
-        ho_trial['misc']['error'] = (str(TuneError), "Trial stopped early.")
+        if error:
+            ho_trial['state'] = base.JOB_STATE_ERROR
+            ho_trial['misc']['error'] = (str(TuneError), "Trial stopped early.")
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
 
@@ -96,7 +107,6 @@ class HyperOptExperiment(Experiment):
             hp_result = self._convert_result(trial.last_result)
             ho_trial['result'] = hp_result
         self._hpopt_trials.refresh()
-        del self._tune_to_hp[trial]
 
     def ready(self):
         return (self._num_trials_left > 0 and
@@ -120,14 +130,19 @@ if __name__ == '__main__':
     import ray
     from ray.tune import register_trainable
     from ray.tune import run_experiments
-    ray.init(redirect_output=True)
     from hyperopt import hp
+
+    ray.init(redirect_output=True)
+
     # register_trainable("exp", MyTrainableClass)
 
     def easy_objective(args, reporter):
+        import time
         # val = args["height"]
         time.sleep(0.2)
-        reporter(mean_loss=(args["height"] - 14) ** 2 + abs(args["width"] - 3))
+        reporter(
+            mean_loss=(args["height"] - 14) ** 2 + abs(args["width"] - 3),
+            timesteps_total=1)
         time.sleep(0.1)
 
     register_trainable("exp", easy_objective)

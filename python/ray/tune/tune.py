@@ -63,7 +63,7 @@ def run_experiments(experiments, scheduler=None, with_server=False,
         exp_list = [experiments]
     elif type(experiments) is dict:
         exp_list = [JSONExperiment(name, spec)
-                       for name, spec in experiments.items()]
+                    for name, spec in experiments.items()]
 
     if (type(exp_list) is list and
             all(isinstance(exp, Experiment) for exp in exp_list)):
