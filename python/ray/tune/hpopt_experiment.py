@@ -80,11 +80,11 @@ class HyperOptExperiment(Experiment):
             print("Adding new trial - {}".format(len(self._tune_to_hp)))
             yield trial
 
-    def on_trial_stop(self, trial):
+    def on_trial_stop(self, trial, error=False):
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
         ho_trial['refresh_time'] = utils.coarse_utcnow()
         ho_trial['state'] = base.JOB_STATE_ERROR
-        ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
+        ho_trial['misc']['error'] = (str(TuneError), "Trial stopped early.")
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
 
@@ -124,9 +124,11 @@ if __name__ == '__main__':
     from hyperopt import hp
     # register_trainable("exp", MyTrainableClass)
 
-    def easy_objective(args):
+    def easy_objective(args, reporter):
         # val = args["height"]
-        return (args["height"] - 14) ** 2 + abs(args["width"] - 3)
+        time.sleep(0.2)
+        reporter(mean_loss=(args["height"] - 14) ** 2 + abs(args["width"] - 3))
+        time.sleep(0.1)
 
     register_trainable("exp", easy_objective)
 
@@ -135,10 +137,10 @@ if __name__ == '__main__':
         'height': hp.uniform('height', -100, 100),
     }
 
-    config = {"my_exp": {
-            "run": "exp",
-            "repeat": 1000,
-            "stop": {"training_iteration": 1},
-            "config": {
-                "space": space}}}
-    run_experiments(config, verbose=False)
+    config = { "repeat": 1000,
+               "stop": {"training_iteration": 1},
+               "config": {
+                "space": space}}
+    exp = HyperOptExperiment("my_exp", "exp", **config)
+
+    run_experiments(exp, verbose=False)

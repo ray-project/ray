@@ -347,6 +347,10 @@ class TrialRunner(object):
         if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
 
+    def register_experiment(self, experiment):
+
+        self._experiments.append(experiment)
+
     def _update_trials(self):
         for experiment in self._experiments:
             while experiment.ready():
