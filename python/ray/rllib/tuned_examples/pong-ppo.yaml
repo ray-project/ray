@@ -11,6 +11,7 @@ pong-deterministic-ppo:
     resources:
         cpu: 5
         gpu: 1
+        driver_cpu_limit: 1
     stop:
         episode_reward_mean: 21
     config:
