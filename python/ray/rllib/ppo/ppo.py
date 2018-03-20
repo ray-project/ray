@@ -195,7 +195,7 @@ class PPOAgent(Agent):
                 metric_prefix = "ppo/sgd/final_iter/"
                 values.append(tf.Summary.Value(
                     tag=metric_prefix + "kl_coeff",
-                    simple_value=self.kl_coeff))
+                    simple_value=self.kl_coeff[0]))
                 values.extend([
                     tf.Summary.Value(
                         tag=metric_prefix + "mean_entropy",
@@ -212,9 +212,9 @@ class PPOAgent(Agent):
             self.global_step += 1
             sgd_time += sgd_end - sgd_start
         if kl > 2.0 * config["kl_target"]:
-            self.kl_coeff *= 1.5
+            self.kl_coeff[0] *= 1.5
         elif kl < 0.5 * config["kl_target"]:
-            self.kl_coeff *= 0.5
+            self.kl_coeff[0] *= 0.5
 
         info = {
             "kl_divergence": kl,
