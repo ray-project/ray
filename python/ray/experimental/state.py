@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+from collections import defaultdict
 import heapq
 import json
 import redis
@@ -949,3 +950,24 @@ class GlobalState(object):
         if num_tasks is 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
+
+    def cluster_resources(self):
+        """Get the current total cluster resources.
+
+        Note that this information can grow stale as nodes are added to or
+        removed from the cluster.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        local_schedulers = self.local_schedulers()
+        resources = defaultdict(lambda: 0)
+
+        for local_scheduler in local_schedulers:
+            for key, value in local_scheduler.items():
+                if key not in ["ClientType", "Deleted", "DBClientID",
+                               "AuxAddress", "LocalSchedulerSocketName"]:
+                    resources[key] += value
+
+        return dict(resources)
