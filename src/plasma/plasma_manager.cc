@@ -1307,12 +1307,15 @@ void log_object_hash_mismatch_error_task_callback(Task *task,
   RAY_CHECK(task != NULL);
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-  FunctionID function = TaskSpec_function(spec);
   /* Push the error to the Python driver that caused the nondeterministic task
    * to be submitted. */
+  std::ostringstream error_message;
+  error_message << "An object created by the task with ID "
+                << TaskSpec_task_id(spec) << " was created with a different "
+                << "hash. This may mean that a non-deterministic task was "
+                << "reexecuted.";
   push_error(state->db, TaskSpec_driver_id(spec),
-             OBJECT_HASH_MISMATCH_ERROR_INDEX, sizeof(function),
-             function.data());
+             OBJECT_HASH_MISMATCH_ERROR_INDEX, error_message.str());
 }
 
 void log_object_hash_mismatch_error_result_callback(ObjectID object_id,

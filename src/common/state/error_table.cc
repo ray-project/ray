@@ -2,29 +2,21 @@
 #include "redis.h"
 
 const char *error_types[] = {"object_hash_mismatch", "put_reconstruction",
-                             "worker_died"};
-const char *error_messages[] = {
-    "A nondeterministic task was reexecuted.",
-    "An object created by ray.put was evicted and could not be reconstructed. "
-    "The driver may need to be restarted.",
-    "A worker died or was killed while executing a task."};
+                             "worker_died", "actor_not_created"};
 
 void push_error(DBHandle *db_handle,
                 DBClientID driver_id,
-                int error_index,
-                size_t data_length,
-                const unsigned char *data) {
-  RAY_CHECK(error_index >= 0 && error_index < MAX_ERROR_INDEX);
+                int error_type,
+                const std::string &error_message) {
+  int64_t message_size = error_message.size();
+
   /* Allocate a struct to hold the error information. */
-  ErrorInfo *info = (ErrorInfo *) malloc(sizeof(ErrorInfo) + data_length);
+  ErrorInfo *info = (ErrorInfo *) malloc(sizeof(ErrorInfo) + message_size);
   info->driver_id = driver_id;
-  info->error_index = error_index;
-  info->data_length = data_length;
-  memcpy(info->data, data, data_length);
-  /* Generate a random key to identify this error message. */
-  RAY_CHECK(sizeof(info->error_key) >= sizeof(UniqueID));
-  UniqueID error_key = UniqueID::from_random();
-  memcpy(info->error_key, error_key.data(), sizeof(info->error_key));
+  info->error_type = error_type;
+  info->error_key = UniqueID::from_random();
+  info->size = message_size;
+  memcpy(info->error_message, error_message.data(), message_size);
 
   init_table_callback(db_handle, UniqueID::nil(), __func__,
                       new CommonCallbackData(info), NULL, NULL,

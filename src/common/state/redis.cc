@@ -1665,7 +1665,7 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
   int status = redisAsyncCommand(
       db->context, redis_push_error_rpush_callback,
       (void *) callback_data->timer_id, "RPUSH ErrorKeys Error:%b:%b",
-      info->driver_id.data(), sizeof(info->driver_id), info->error_key,
+      info->driver_id.data(), sizeof(info->driver_id), info->error_key.data(),
       sizeof(info->error_key));
   if ((status == REDIS_ERR) || db->subscribe_context->err) {
     LOG_REDIS_DEBUG(db->subscribe_context, "error in redis_push_error rpush");
@@ -1675,18 +1675,17 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
 void redis_push_error(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   ErrorInfo *info = (ErrorInfo *) callback_data->data->Get();
-  RAY_CHECK(info->error_index < MAX_ERROR_INDEX && info->error_index >= 0);
-  /* Look up the error type. */
-  const char *error_type = error_types[info->error_index];
-  const char *error_message = error_messages[info->error_index];
+  RAY_CHECK(info->error_type < MAX_ERROR_INDEX && info->error_type >= 0);
+  /// Look up the error type.
+  const char *error_type = error_types[info->error_type];
 
   /* Set the error information. */
   int status = redisAsyncCommand(
       db->context, redis_push_error_hmset_callback,
       (void *) callback_data->timer_id,
-      "HMSET Error:%b:%b type %s message %s data %b", info->driver_id.data(),
-      sizeof(info->driver_id), info->error_key, sizeof(info->error_key),
-      error_type, error_message, info->data, info->data_length);
+      "HMSET Error:%b:%b type %s message %b data %b", info->driver_id.data(),
+      sizeof(info->driver_id), info->error_key.data(), sizeof(info->error_key),
+      error_type, info->error_message, info->size, "None", strlen("None"));
   if ((status == REDIS_ERR) || db->subscribe_context->err) {
     LOG_REDIS_DEBUG(db->subscribe_context, "error in redis_push_error hmset");
   }
