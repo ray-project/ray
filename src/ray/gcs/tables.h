@@ -148,10 +148,15 @@ class Table {
   Status Remove(const JobID &job_id, const ID &id, const Callback &done);
 
  protected:
-  std::unordered_map<ID, std::unique_ptr<CallbackData>, UniqueIDHasher> callback_data_;
+  /// The connection to the GCS.
   std::shared_ptr<RedisContext> context_;
+  /// The GCS client.
   AsyncGcsClient *client_;
+  /// The pubsub channel to subscribe to for notifications about keys in this
+  /// table. If no notifications are required, this may be set to
+  /// TablePubsub_NO_PUBLISH.
   TablePubsub pubsub_channel_;
+  /// The prefix to use for keys in this table.
   TablePrefix prefix_;
 };
 
