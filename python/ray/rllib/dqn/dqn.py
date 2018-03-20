@@ -11,7 +11,6 @@ import tensorflow as tf
 import ray
 from ray.rllib import optimizers
 from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
-from ray.rllib.utils.actors import drop_colocated
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
