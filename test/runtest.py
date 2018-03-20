@@ -1820,7 +1820,10 @@ class GlobalStateAPI(unittest.TestCase):
         with self.assertRaises(Exception):
             ray.global_state.log_files()
 
-        ray.init()
+        ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+
+        resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
+        assert ray.global_state.cluster_resources() == resources
 
         self.assertEqual(ray.global_state.object_table(), dict())
 
