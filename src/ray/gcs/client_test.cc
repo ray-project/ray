@@ -21,7 +21,7 @@ static inline void flushall_redis(void) {
 
 class TestGcs : public ::testing::Test {
  public:
-  TestGcs() {
+  TestGcs() : num_callbacks_(0) {
     client_ = std::make_shared<gcs::AsyncGcsClient>();
     ClientTableDataT client_info;
     client_info.client_id = ClientID::from_random().binary();
@@ -42,7 +42,12 @@ class TestGcs : public ::testing::Test {
 
   virtual void Stop() = 0;
 
+  int64_t NumCallbacks() { return num_callbacks_; }
+
+  void IncrementNumCallbacks() { num_callbacks_++; }
+
  protected:
+  int64_t num_callbacks_;
   std::shared_ptr<gcs::AsyncGcsClient> client_;
   JobID job_id_;
 };
@@ -189,18 +194,19 @@ TEST_F(TestGcsWithAsio, TestTaskTable) {
   TestTaskTable(job_id_, client_);
 }
 
-void ObjectTableSubscribed(gcs::AsyncGcsClient *client, const UniqueID &id,
-                           std::shared_ptr<ObjectTableDataT> data) {
-  test->Stop();
-}
-
 void TestSubscribeAll(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  auto notification_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                  std::shared_ptr<ObjectTableDataT> data) {
+    // Check that the object entry was added.
+    ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
+    test->IncrementNumCallbacks();
+    test->Stop();
+  };
+
   // Subscribe to all object table notifications. The registered callback for
   // notifications will check whether the object below is added.
-  RAY_CHECK_OK(client->object_table().Subscribe(job_id, ClientID::nil(), &Lookup,
-                                                &ObjectTableSubscribed));
-  // Run the event loop. The loop will only stop if the subscription succeeds.
-  test->Start();
+  RAY_CHECK_OK(client->object_table().Subscribe(job_id, ClientID::nil(),
+                                                notification_callback, nullptr));
 
   // We have subscribed. Add an object table entry.
   auto data = std::make_shared<ObjectTableDataT>();
@@ -211,6 +217,7 @@ void TestSubscribeAll(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> 
   // Run the event loop. The loop will only stop if the registered subscription
   // callback is called (or an assertion failure).
   test->Start();
+  ASSERT_EQ(test->NumCallbacks(), 1);
 }
 
 TEST_F(TestGcsWithAe, TestSubscribeAll) {
@@ -221,6 +228,143 @@ TEST_F(TestGcsWithAe, TestSubscribeAll) {
 TEST_F(TestGcsWithAsio, TestSubscribeAll) {
   test = this;
   TestSubscribeAll(job_id_, client_);
+}
+
+void TestSubscribeId(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  // Add an object table entry.
+  ObjectID object_id1 = ObjectID::from_random();
+  auto data1 = std::make_shared<ObjectTableDataT>();
+  data1->managers.push_back("A");
+  data1->managers.push_back("B");
+  RAY_CHECK_OK(client->object_table().Add(job_id, object_id1, data1, nullptr));
+
+  // Add a second object table entry.
+  ObjectID object_id2 = ObjectID::from_random();
+  auto data2 = std::make_shared<ObjectTableDataT>();
+  data2->managers.push_back("C");
+  RAY_CHECK_OK(client->object_table().Add(job_id, object_id2, data2, nullptr));
+
+  // The callback for subscription success. Once we've subscribed, request
+  // notifications for the second object that was added.
+  auto subscribe_callback = [job_id, object_id2](gcs::AsyncGcsClient *client,
+                                                 const UniqueID &id,
+                                                 std::shared_ptr<ObjectTableDataT> d) {
+    // Request notifications for the second object. Since we already added the
+    // entry to the table, we should receive an initial notification for its
+    // current value.
+    client->object_table().RequestNotifications(
+        job_id, object_id2, client->client_table().GetLocalClientId());
+    // Overwrite the entry for the object. We should receive a second
+    // notification for its new value.
+    auto data = std::make_shared<ObjectTableDataT>();
+    data->managers.push_back("C");
+    data->managers.push_back("D");
+    RAY_CHECK_OK(client->object_table().Add(job_id, object_id2, data, nullptr));
+  };
+
+  // The callback for a notification from the object table. This should only be
+  // received for the object that we requested notifications for.
+  auto notification_callback = [data2](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                       std::shared_ptr<ObjectTableDataT> data) {
+    // Check that we got a notification for the correct object.
+    ASSERT_EQ(data->managers.front(), "C");
+    test->IncrementNumCallbacks();
+    // Stop the loop once we've received notifications for both writes to the
+    // object key.
+    if (test->NumCallbacks() == 2) {
+      test->Stop();
+    }
+  };
+
+  RAY_CHECK_OK(
+      client->object_table().Subscribe(job_id, client->client_table().GetLocalClientId(),
+                                       notification_callback, subscribe_callback));
+
+  // Run the event loop. The loop will only stop if the registered subscription
+  // callback is called for both writes to the object key.
+  test->Start();
+  ASSERT_EQ(test->NumCallbacks(), 2);
+}
+
+TEST_F(TestGcsWithAe, TestSubscribeId) {
+  test = this;
+  TestSubscribeId(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAsio, TestSubscribeId) {
+  test = this;
+  TestSubscribeId(job_id_, client_);
+}
+
+void TestSubscribeCancel(const JobID &job_id,
+                         std::shared_ptr<gcs::AsyncGcsClient> client) {
+  // Write the object table once.
+  ObjectID object_id = ObjectID::from_random();
+  auto data = std::make_shared<ObjectTableDataT>();
+  data->managers.push_back("A");
+  RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, nullptr));
+
+  // The callback for subscription success. Once we've subscribed, request
+  // notifications for the second object that was added.
+  auto subscribe_callback = [job_id, object_id](gcs::AsyncGcsClient *client,
+                                                const UniqueID &id,
+                                                std::shared_ptr<ObjectTableDataT> d) {
+    // Request notifications for the object. We should receive a notification
+    // for the current value at the key.
+    client->object_table().RequestNotifications(
+        job_id, object_id, client->client_table().GetLocalClientId());
+    // Cancel notifications.
+    client->object_table().CancelNotifications(job_id, object_id,
+                                               client->client_table().GetLocalClientId());
+    // Write the object table entry twice. Since we canceled notifications, we
+    // should not get notifications for either of these writes.
+    auto data = std::make_shared<ObjectTableDataT>();
+    data->managers.push_back("B");
+    RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, nullptr));
+    data = std::make_shared<ObjectTableDataT>();
+    data->managers.push_back("C");
+    RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, nullptr));
+    // Request notifications for the object again. We should only receive a
+    // notification for the current value at the key.
+    client->object_table().RequestNotifications(
+        job_id, object_id, client->client_table().GetLocalClientId());
+  };
+
+  // The callback for a notification from the object table.
+  auto notification_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                  std::shared_ptr<ObjectTableDataT> data) {
+    // Check that we only receive notifications for the key when we have
+    // requested notifications for it. We should not get a notification for the
+    // entry that began with "B" since we canceled notifications then.
+    if (test->NumCallbacks() == 0) {
+      ASSERT_EQ(data->managers.front(), "A");
+    } else {
+      ASSERT_EQ(data->managers.front(), "C");
+    }
+    test->IncrementNumCallbacks();
+    if (test->NumCallbacks() == 2) {
+      test->Stop();
+    }
+  };
+
+  RAY_CHECK_OK(
+      client->object_table().Subscribe(job_id, client->client_table().GetLocalClientId(),
+                                       notification_callback, subscribe_callback));
+
+  // Run the event loop. The loop will only stop if the registered subscription
+  // callback is called (or an assertion failure).
+  test->Start();
+  ASSERT_EQ(test->NumCallbacks(), 2);
+}
+
+TEST_F(TestGcsWithAe, TestSubscribeCancel) {
+  test = this;
+  TestSubscribeCancel(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAsio, TestSubscribeCancel) {
+  test = this;
+  TestSubscribeCancel(job_id_, client_);
 }
 
 void ClientTableNotification(gcs::AsyncGcsClient *client, const UniqueID &id,
