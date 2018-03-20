@@ -5,11 +5,12 @@
 # Cause the script to exit if a single command fails.
 set -e
 
+# Tear down the Raylet.
+#bash ../../../src/ray/test/stop_raylets.sh
+
 # Set up a single Raylet.
 bash ../../../src/ray/test/start_raylets.sh
 
 # Connect a driver to the raylet and make sure it completes.
 python ../../../src/ray/python/test_driver.py /tmp/raylet1 /tmp/store1
 
-# Tear down the Raylet.
-bash ../../../src/ray/test/stop_raylets.sh

@@ -23,7 +23,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
       lineage_cache_(lineage_cache),
       gcs_client_(gcs_client),
-      remote_clients_() {
+      remote_clients_(),
+      remote_server_connections_() {
   //// TODO(atumanov): need to add the self-knowledge of ClientID, using nill().
   // cluster_resource_map_[ClientID::nil()] = local_resources_;
 }
@@ -32,13 +33,31 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client,
                       const UniqueID &id,
                       std::shared_ptr<ClientTableDataT> data) {
   ClientID client_id = ClientID::from_binary(data->client_id);
+  RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     return;
   }
+  // TODO(atumanov): make remote client lookup O(1)
   if (std::find(remote_clients_.begin(), remote_clients_.end(), client_id) == remote_clients_.end()) {
     RAY_LOG(INFO) << "a new client: " << client_id.hex();
     remote_clients_.push_back(client_id);
+  } else {
+    // NodeManager connection to this client was already established.
+    RAY_LOG(DEBUG) << "received a new client connection that already exists: " << client_id.hex();
+    return;
   }
+
+  // Establish a new NodeManager connection to this GCS client.
+  auto client_info = gcs_client_->client_table().GetClient(client_id);
+  RAY_LOG(DEBUG) <<"[ClientAdded] CONNECTING TO: "
+                 << " " << client_info.node_manager_address.c_str()
+                 << " " << client_info.local_scheduler_port;
+
+  boost::asio::ip::tcp::socket socket(io_service_);
+  RAY_CHECK_OK(TcpConnect(socket, client_info.node_manager_address,
+                          client_info.local_scheduler_port));
+  auto server_conn = TcpServerConnection(std::move(socket));
+  remote_server_connections_.emplace(client_id, std::move(server_conn));
 }
 
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
@@ -260,12 +279,13 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
 
   auto client_info = gcs_client_->client_table().GetClient(node_id);
 
-  // Send the request to the client at node_id.
-  // TODO: Store this connection for later usage.
-  boost::asio::ip::tcp::socket socket(io_service_);
-  RAY_CHECK_OK(TcpConnect(socket, client_info.node_manager_address,
-                          client_info.local_scheduler_port));
-  auto server_conn = TcpServerConnection(std::move(socket));
+  // Lookup remote server connection for this node_id and use it to send the request.
+  if (remote_server_connections_.count(node_id) == 0) {
+    RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id.hex();
+    return ray::Status::IOError("NodeManager connection not found");
+  }
+
+  auto &server_conn = remote_server_connections_.at(node_id);
   auto status = server_conn.WriteMessage(MessageType_ForwardTaskRequest, fbb.GetSize(),
                                   fbb.GetBufferPointer());
   if (status.ok()) {

@@ -29,11 +29,12 @@ Raylet::Raylet(boost::asio::io_service &main_service,
                       gcs_client),
       node_manager_(main_service, node_manager_config, object_manager_, lineage_cache_,
                     gcs_client_) {
-  RAY_CHECK_OK(RegisterGcs(main_service));
+
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
   DoAcceptNodeManager();
+  RAY_CHECK_OK(RegisterGcs(main_service));
 }
 
 Raylet::~Raylet() {
@@ -46,10 +47,13 @@ ray::Status Raylet::RegisterGcs(boost::asio::io_service &io_service) {
   RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379));
   RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
+
   ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
   client_info.node_manager_address = node_manager_acceptor_.local_endpoint().address().to_string();
   client_info.object_manager_port = object_manager_acceptor_.local_endpoint().port();
   client_info.local_scheduler_port = node_manager_acceptor_.local_endpoint().port();
+  RAY_LOG(DEBUG) << "NM LISTENING ON: IP " << client_info.node_manager_address.c_str()
+                 << " PORT " << client_info.local_scheduler_port;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client,
