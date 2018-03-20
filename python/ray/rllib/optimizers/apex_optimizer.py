@@ -163,6 +163,8 @@ class ApexOptimizer(PolicyOptimizer):
         self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
 
+        # TODO(ekl) use create_colocated() for these actors once
+        # https://github.com/ray-project/ray/issues/1734 is fixed
         self.replay_actors = [
             ReplayActor.remote(
                 num_replay_buffer_shards, learning_starts, buffer_size,
