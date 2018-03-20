@@ -1753,7 +1753,7 @@ class DataFrame(object):
                             self._row_partitions if axis == 'columns'
                             else self._col_partitions)))
 
-        idxmax_series.index = self.columns if is_axis_zero else self.index
+        idxmax_series.index = self.columns if axis == 'index' else self.index
 
         return idxmax_series
 
@@ -1780,7 +1780,7 @@ class DataFrame(object):
                             self._row_partitions if axis == 'columns'
                             else self._col_partitions)))
 
-        idxmin_series.index = self.columns if is_axis_zero else self.index
+        idxmin_series.index = self.columns if axis == 'index' else self.index
 
         return idxmin_series
 
@@ -2374,7 +2374,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame if inplace=False
         """
-        # return # TODO: Fix this
+        return # TODO: Fix this
         new_rows = _map_partitions(lambda df: df.query(expr=expr,
                                                        inplace=False,
                                                        **kwargs),
@@ -3590,6 +3590,7 @@ class DataFrame(object):
         We currently support: single label, list array, slice object
         We do not support: boolean array, callable
         """
+        # TODO: needs fixing
         from .indexing import _Loc_Indexer
         return _Loc_Indexer(self)
 
@@ -3626,6 +3627,7 @@ class DataFrame(object):
         We currently support: single label, list array, slice object
         We do not support: boolean array, callable
         """
+        # TODO: needs fixing
         from .indexing import _iLoc_Indexer
         return _iLoc_Indexer(self)
 
