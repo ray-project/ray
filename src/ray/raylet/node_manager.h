@@ -51,9 +51,12 @@ class NodeManager {
   void ProcessNodeManagerMessage(std::shared_ptr<TcpClientConnection> node_manager_client,
                                  int64_t message_type, const uint8_t *message);
 
-  void ClientAdded(gcs::AsyncGcsClient *client,
-                      const UniqueID &id,
-                      std::shared_ptr<ClientTableDataT> data);
+  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
+                   std::shared_ptr<ClientTableDataT> data);
+
+  void HeartbeatHandler(gcs::AsyncGcsClient *client, const ClientID &id,
+                        std::shared_ptr<ClientTableDataT> data);
+
  private:
   /// Submit a task to this node.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
@@ -74,8 +77,7 @@ class NodeManager {
   /// The resources local to this node.
   SchedulingResources local_resources_;
   // TODO(atumanov): Add resource information from other nodes.
-  // std::unordered_map<ClientID, SchedulingResources&, UniqueIDHasher>
-  // cluster_resource_map_;
+  std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> cluster_resource_map_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// A set of queues to maintain tasks.

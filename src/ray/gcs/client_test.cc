@@ -113,6 +113,7 @@ void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
   ASSERT_EQ(data->resources_total_capacity, total_capacity);
 }
 
+// Callback for successful completion of Table::Add.
 void HeartbeatLookup(gcs::AsyncGcsClient *client, const ClientID &id,
                   std::shared_ptr<HeartbeatTableDataT> data) {
   // Check that the object entry was added.
@@ -120,9 +121,16 @@ void HeartbeatLookup(gcs::AsyncGcsClient *client, const ClientID &id,
   test->Stop();
 }
 
+// Callback for unsuccessful completion of Table::Add.
 void HeartbeatLookupFailed(gcs::AsyncGcsClient *client, const ClientID &id) {
   // Object entry failed.
   RAY_CHECK(false);
+  test->Stop();
+}
+
+// Callback for successful completion of Table::Subscribe.
+void HeartbeatTableSubscribed(gcs::AsyncGcsClient *client, const ClientID &id,
+                              std::shared_ptr<HeartbeatTableDataT> data) {
   test->Stop();
 }
 
@@ -270,6 +278,38 @@ void TestSubscribeAll(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> 
   test->Start();
 }
 
+void TestSubscribeHeartbeats(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  // Subscribe to all object table notifications. The registered callback for
+  // notifications will check whether the object below is added.
+  ray::Status status = client->heartbeat_table().Subscribe(job_id, ClientID::nil(),
+                                                           &HeartbeatLookup,
+                                                           &HeartbeatTableSubscribed);
+  RAY_CHECK_OK(status);
+  // Run the event loop. This loop should be terminated by a successful subscription.
+  test->Start();
+
+  // We have subscribed. Trigger subscribe callback by adding/publishing a heartbeat.
+  auto data = std::make_shared<HeartbeatTableDataT>();
+  auto client_id = ClientID::from_random();
+  data->client_id = client_id.hex();
+  std::vector<std::string> labels({"CPU", "GPU"});
+  std::unordered_map<std::string, double> resources_available({{"CPU", 1}, {"GPU", 0}});
+  std::unordered_map<std::string, double> resources_total({{"CPU", 2}, {"GPU", 2}});
+  for (const auto &resource_label : labels) {
+    data->resources_available_label.push_back(resource_label);
+    data->resources_available_capacity.push_back(resources_available[resource_label]);
+    data->resources_total_label.push_back(resource_label);
+    data->resources_total_capacity.push_back(resources_total[resource_label]);
+
+  }
+
+  RAY_CHECK_OK(client->heartbeat_table()
+                   .Add(job_id, client_id, data, &HeartbeatAdded));
+  // Run the event loop. The loop will only stop if the registered subscription
+  // callback is called (or an assertion failure).
+  test->Start();
+}
+
 TEST_F(TestGcsWithAe, TestSubscribeAll) {
   test = this;
   TestSubscribeAll(job_id_, client_);
@@ -278,6 +318,11 @@ TEST_F(TestGcsWithAe, TestSubscribeAll) {
 TEST_F(TestGcsWithAsio, TestSubscribeAll) {
   test = this;
   TestSubscribeAll(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAsio, TestSubscribeHeartbeats) {
+  test = this;
+  TestSubscribeHeartbeats(job_id_, client_);
 }
 
 void ClientTableNotification(gcs::AsyncGcsClient *client, const UniqueID &id,

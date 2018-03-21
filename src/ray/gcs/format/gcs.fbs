@@ -96,6 +96,8 @@ table ClientTableData {
   // True if the message is about the addition of a client and false if it is
   // about the deletion of a client.
   is_insertion: bool;
+  resources_total_label: [string];
+  resources_total_capacity: [double];
 }
 
 table HeartbeatTableData {

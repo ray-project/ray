@@ -45,6 +45,8 @@ class Raylet {
  private:
   /// Register GCS client.
   ray::Status RegisterGcs(boost::asio::io_service &io_service);
+
+  ray::Status RegisterPeriodicTimer(boost::asio::io_service &io_service);
   /// Accept a client connection.
   void DoAccept();
   /// Handle an accepted client connection.

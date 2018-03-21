@@ -25,8 +25,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       gcs_client_(gcs_client),
       remote_clients_(),
       remote_server_connections_() {
-  //// TODO(atumanov): need to add the self-knowledge of ClientID, using nill().
-  // cluster_resource_map_[ClientID::nil()] = local_resources_;
+
+  ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
+  cluster_resource_map_.emplace(local_client_id, SchedulingResources(config.resource_config));
 }
 
 void NodeManager::ClientAdded(gcs::AsyncGcsClient *client,
@@ -47,6 +48,13 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client,
     return;
   }
 
+  ResourceSet resources_total;
+  for (int i=0; i < data->resources_total_label.size(); i++) {
+    resources_total.AddResource(data->resources_total_label[i],
+                                data->resources_total_capacity[i]);
+  }
+  this->cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
+
   // Establish a new NodeManager connection to this GCS client.
   auto client_info = gcs_client_->client_table().GetClient(client_id);
   RAY_LOG(DEBUG) <<"[ClientAdded] CONNECTING TO: "
@@ -58,6 +66,15 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client,
                           client_info.node_manager_port));
   auto server_conn = TcpServerConnection(std::move(socket));
   remote_server_connections_.emplace(client_id, std::move(server_conn));
+}
+
+void NodeManager::HeartbeatHandler(gcs::AsyncGcsClient *client, const ClientID &id,
+                                   std::shared_ptr<ClientTableDataT> data) {
+  RAY_LOG(INFO) << "received heartbeat from " << id.hex();
+  if (id == gcs_client_->client_table().GetLocalClientId()) {
+    return;
+  }
+  // TODO(atumanov): Locate the client id in remote client table and save heartbeat information.
 }
 
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
