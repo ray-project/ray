@@ -10,7 +10,8 @@ enum TablePubsub:int {
   TASK,
   CLIENT,
   OBJECT,
-  ACTOR
+  ACTOR,
+  HEARTBEAT
 }
 
 table FunctionTableData {
@@ -97,7 +98,9 @@ table ClientTableData {
   is_insertion: bool;
 }
 
-table NodeManagerHeartbeat {
+table HeartbeatTableData {
+  // Node manager client id
+  client_id: string;
   // Resource capacity currently available on this node manager.
   resources_available_label: [string];
   resources_available_capacity: [double];

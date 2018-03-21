@@ -12,6 +12,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id) {
   task_table_.reset(new TaskTable(context_, this));
   legacy_task_table_.reset(new legacy::TaskTable(context_, this));
   client_table_.reset(new ClientTable(context_, this, client_id));
+  heartbeat_table_.reset(new HeartbeatTable(context_, this));
 }
 
 AsyncGcsClient::AsyncGcsClient() : AsyncGcsClient(ClientID::from_random()) {}
@@ -51,6 +52,8 @@ ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
 
 ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
+
+HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
 }  // namespace gcs
 

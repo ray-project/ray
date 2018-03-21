@@ -81,19 +81,46 @@ class TestGcsWithAsio : public TestGcs {
   boost::asio::io_service::work work_;
 };
 
+// Object table callback functions.
 void ObjectAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
                  std::shared_ptr<ObjectTableDataT> data) {
   ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
 }
 
-void Lookup(gcs::AsyncGcsClient *client, const UniqueID &id,
+void ObjectLookup(gcs::AsyncGcsClient *client, const UniqueID &id,
             std::shared_ptr<ObjectTableDataT> data) {
   // Check that the object entry was added.
   ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
   test->Stop();
 }
 
-void LookupFailed(gcs::AsyncGcsClient *client, const UniqueID &id) {
+void ObjectLookupFailed(gcs::AsyncGcsClient *client, const UniqueID &id) {
+  // Object entry failed.
+  RAY_CHECK(false);
+  test->Stop();
+}
+
+// Heartbeat table callback functions.
+void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
+                 std::shared_ptr<HeartbeatTableDataT> data) {
+  std::vector<std::string> labels({"CPU", "GPU"});
+  std::vector<double> available_capacity({1,0});
+  std::vector<double> total_capacity({2,2});
+  ASSERT_EQ(data->client_id, id.hex());
+  ASSERT_EQ(data->resources_available_label, labels);
+  ASSERT_EQ(data->resources_total_label, labels);
+  ASSERT_EQ(data->resources_available_capacity, available_capacity);
+  ASSERT_EQ(data->resources_total_capacity, total_capacity);
+}
+
+void HeartbeatLookup(gcs::AsyncGcsClient *client, const ClientID &id,
+                  std::shared_ptr<HeartbeatTableDataT> data) {
+  // Check that the object entry was added.
+  HeartbeatAdded(client, id, data);
+  test->Stop();
+}
+
+void HeartbeatLookupFailed(gcs::AsyncGcsClient *client, const ClientID &id) {
   // Object entry failed.
   RAY_CHECK(false);
   test->Stop();
@@ -105,9 +132,32 @@ void TestObjectTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   data->managers.push_back("B");
   ObjectID object_id = ObjectID::from_random();
   RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, &ObjectAdded));
-  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, &Lookup, &LookupFailed));
-  // Run the event loop. The loop will only stop if the Lookup callback is
+  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, &ObjectLookup, &ObjectLookupFailed));
+  // Run the event loop. The loop will only stop if the ObjectLookup callback is
   // called (or an assertion failure).
+  test->Start();
+}
+
+void TestHeartbeatTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  auto data = std::make_shared<HeartbeatTableDataT>();
+  auto client_id = ClientID::from_random();
+  data->client_id = client_id.hex();
+  std::vector<std::string> labels({"CPU", "GPU"});
+  std::unordered_map<std::string, double> resources_available({{"CPU", 1}, {"GPU", 0}});
+  std::unordered_map<std::string, double> resources_total({{"CPU", 2}, {"GPU", 2}});
+  for (const auto &resource_label : labels) {
+    data->resources_available_label.push_back(resource_label);
+    data->resources_available_capacity.push_back(resources_available[resource_label]);
+    data->resources_total_label.push_back(resource_label);
+    data->resources_total_capacity.push_back(resources_total[resource_label]);
+
+  }
+
+  RAY_CHECK_OK(client->heartbeat_table()
+                   .Add(job_id, client_id, data, &HeartbeatAdded));
+  RAY_CHECK_OK(client->heartbeat_table()
+                   .Lookup(job_id, client_id, HeartbeatLookup, HeartbeatLookupFailed));
+  // Run the event loop.
   test->Start();
 }
 
@@ -121,6 +171,17 @@ TEST_F(TestGcsWithAsio, TestObjectTable) {
   TestObjectTable(job_id_, client_);
 }
 
+TEST_F(TestGcsWithAsio, TestHeartbeatTable) {
+  test = this;
+  TestHeartbeatTable(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAe, TestHeartbeatTable) {
+  test = this;
+  TestHeartbeatTable(job_id_, client_);
+}
+
+// Task table callbacks.
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
                std::shared_ptr<TaskTableDataT> data) {
   ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);
@@ -193,7 +254,7 @@ void ObjectTableSubscribed(gcs::AsyncGcsClient *client, const UniqueID &id,
 void TestSubscribeAll(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Subscribe to all object table notifications. The registered callback for
   // notifications will check whether the object below is added.
-  RAY_CHECK_OK(client->object_table().Subscribe(job_id, ClientID::nil(), &Lookup,
+  RAY_CHECK_OK(client->object_table().Subscribe(job_id, ClientID::nil(), &ObjectLookup,
                                                 &ObjectTableSubscribed));
   // Run the event loop. The loop will only stop if the subscription succeeds.
   test->Start();
