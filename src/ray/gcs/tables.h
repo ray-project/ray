@@ -51,7 +51,7 @@ class Table {
         client_(client),
         pubsub_channel_(TablePubsub_NO_PUBLISH),
         prefix_(TablePrefix_UNUSED),
-        subscribed_(false){};
+        subscribe_callback_index_(-1){};
 
   /// Add an entry to the table.
   ///
@@ -65,11 +65,12 @@ class Table {
              const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({id, data, done, nullptr, nullptr, this, client_}));
-    int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data) {
+    int64_t callback_index = RedisCallbackManager::instance().add(
+        [d](boost::optional<const std::string &> data) {
           if (d->callback != nullptr) {
             (d->callback)(d->client, d->id, d->data);
           }
+          return true;
         });
     flatbuffers::FlatBufferBuilder fbb;
     fbb.ForceDefaults(true);
@@ -93,20 +94,21 @@ class Table {
                 const FailureCallback &failure) {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({id, nullptr, lookup, failure, nullptr, this, client_}));
-    int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::string &data) {
-          if (data.empty()) {
-            if (d->failure != nullptr) {
-              (d->failure)(d->client, d->id);
-            }
-          } else {
+    int64_t callback_index = RedisCallbackManager::instance().add(
+        [d](boost::optional<const std::string &> data) {
+          if (data) {
             auto result = std::make_shared<DataT>();
-            auto root = flatbuffers::GetRoot<Data>(data.data());
+            auto root = flatbuffers::GetRoot<Data>(data->data());
             root->UnPackTo(result.get());
             if (d->callback != nullptr) {
               (d->callback)(d->client, d->id, result);
             }
+          } else {
+            if (d->failure != nullptr) {
+              (d->failure)(d->client, d->id);
+            }
           }
+          return true;
         });
     std::vector<uint8_t> nil;
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
@@ -130,40 +132,46 @@ class Table {
   /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const Callback &subscribe, const Callback &done) {
+    RAY_CHECK(subscribe_callback_index_ == -1)
+        << "Client called Subscribe twice on the same table";
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({client_id, nullptr, subscribe, nullptr, done, this, client_}));
-    int64_t callback_index =
-        RedisCallbackManager::instance().add([this, d](const std::string &data) {
-          if (data.empty()) {
-            // No data is provided. This is the callback for the initial
-            // subscription request.
-            RAY_CHECK(!subscribed_) << "Client called Subscribe twice on the same table";
-            subscribed_ = true;
-            if (d->subscription_callback != nullptr) {
-              (d->subscription_callback)(d->client, d->id, nullptr);
-            }
-          } else {
-            if (d->callback != nullptr) {
-              // Data is provided. This is the callback for a message.
-              auto result = std::make_shared<DataT>();
-              auto root = flatbuffers::GetRoot<Data>(data.data());
-              root->UnPackTo(result.get());
-              (d->callback)(d->client, d->id, result);
+    int64_t callback_index = RedisCallbackManager::instance().add(
+        [this, d](boost::optional<const std::string &> data) {
+          if (data) {
+            if (data->empty()) {
+              // No data is provided. This is the callback for the initial
+              // subscription request.
+              if (d->subscription_callback != nullptr) {
+                (d->subscription_callback)(d->client, d->id, nullptr);
+              }
+            } else {
+              if (d->callback != nullptr) {
+                // Data is provided. This is the callback for a message.
+                auto result = std::make_shared<DataT>();
+                auto root = flatbuffers::GetRoot<Data>(data->data());
+                root->UnPackTo(result.get());
+                (d->callback)(d->client, d->id, result);
+              }
             }
           }
+          // We do not delete the callback after calling it since there may be
+          // more subscription messages.
+          return false;
         });
+    subscribe_callback_index_ = callback_index;
     std::vector<uint8_t> nil;
     return context_->SubscribeAsync(client_id, pubsub_channel_, callback_index);
   }
 
   /// Request notifications about a key in this table.
   ///
-  /// The notifications will be published to a channel specific to this table
-  /// and client. An initial notification will be published for the current
-  /// value at the key, if any, and a subsequent notification will be published
-  /// for every following `Add` to the key. Before notifications can be
-  /// requested, the channel must first be set up by a successful call to
-  /// `Subscribe`, with the same `client_id`.
+  /// The notifications will be returned via the subscribe callback that was
+  /// registered by `Subscribe`.  An initial notification will be returned for
+  /// the current value at the key, if any, and a subsequent notification will
+  /// be published for every following `Add` to the key. Before notifications
+  /// can be requested, the caller must first call `Subscribe`, with the same
+  /// `client_id`.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the key to request notifications for.
@@ -173,10 +181,11 @@ class Table {
   /// \return Status
   Status RequestNotifications(const JobID &job_id, const ID &id,
                               const ClientID &client_id) {
-    RAY_CHECK(subscribed_)
+    RAY_CHECK(subscribe_callback_index_ >= 0)
         << "Client requested notifications on a key before Subscribe completed";
     return context_->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
-                              client_id.size(), prefix_, pubsub_channel_, -1);
+                              client_id.size(), prefix_, pubsub_channel_,
+                              subscribe_callback_index_);
   }
 
   /// Cancel notifications about a key in this table.
@@ -187,7 +196,7 @@ class Table {
   /// \return Status
   Status CancelNotifications(const JobID &job_id, const ID &id,
                              const ClientID &client_id) {
-    RAY_CHECK(subscribed_)
+    RAY_CHECK(subscribe_callback_index_ >= 0)
         << "Client canceled notifications on a key before Subscribe completed";
     return context_->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
                               client_id.size(), prefix_, pubsub_channel_, -1);
@@ -206,7 +215,7 @@ class Table {
   TablePrefix prefix_;
   /// Whether we have subscribed to the table yet. Each client may only
   /// subscribe to a table once.
-  bool subscribed_;
+  int64_t subscribe_callback_index_;
 };
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
@@ -284,11 +293,12 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
     int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, callback, id](const std::string &data) {
+        [this, callback, id](boost::optional<const std::string &> data) {
           auto result = std::make_shared<TaskTableDataT>();
-          auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
+          auto root = flatbuffers::GetRoot<TaskTableData>(data->data());
           root->UnPackTo(result.get());
           callback(client_, id, *result, root->updated());
+          return true;
         });
     flatbuffers::FlatBufferBuilder fbb;
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));

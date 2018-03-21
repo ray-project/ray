@@ -24,25 +24,38 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
   redisReply *reply = reinterpret_cast<redisReply *>(r);
+  boost::optional<const std::string &> optional_data;
   std::string data = "";
-  if (reply->type == REDIS_REPLY_NIL) {
+  switch (reply->type) {
+  case (REDIS_REPLY_NIL): {
     // Respond with blank string, which triggers a failure callback for lookups.
-  } else if (reply->type == REDIS_REPLY_STRING) {
+  } break;
+  case (REDIS_REPLY_STRING): {
     data = std::string(reply->str, reply->len);
-  } else if (reply->type == REDIS_REPLY_ARRAY) {
+    optional_data = data;
+  } break;
+  case (REDIS_REPLY_ARRAY): {
+    RAY_LOG(INFO) << "ARRAY";
     reply = reply->element[reply->elements - 1];
     data = std::string(reply->str, reply->len);
-  } else if (reply->type == REDIS_REPLY_STATUS) {
-  } else if (reply->type == REDIS_REPLY_ERROR) {
+    optional_data = data;
+  } break;
+  case (REDIS_REPLY_STATUS): {
+  } break;
+  case (REDIS_REPLY_ERROR): {
     RAY_LOG(ERROR) << "Redis error " << reply->str;
-  } else {
+  } break;
+  default:
     RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type
                    << " and with string " << reply->str;
   }
   if (callback_index >= 0) {
-    RedisCallbackManager::instance().get(callback_index)(data);
+    bool delete_callback =
+        RedisCallbackManager::instance().get(callback_index)(optional_data);
     // Delete the callback.
-    RedisCallbackManager::instance().remove(callback_index);
+    if (delete_callback) {
+      RedisCallbackManager::instance().remove(callback_index);
+    }
   }
 }
 
@@ -52,28 +65,36 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
   redisReply *reply = reinterpret_cast<redisReply *>(r);
+  boost::optional<const std::string &> optional_data;
   std::string data = "";
-  if (reply->type == REDIS_REPLY_ARRAY) {
+  switch (reply->type) {
+  case (REDIS_REPLY_ARRAY): {
     // Parse the message.
     redisReply *message_type = reply->element[0];
     if (strcmp(message_type->str, "subscribe") == 0) {
-      // If the message is for the initial subscription call, do not fill in
-      // data.
+      // If the message is for the initial subscription call, return the empty
+      // string as a response.
+      optional_data = data;
     } else if (strcmp(message_type->str, "message") == 0) {
       // If the message is from a PUBLISH, make sure the data is nonempty.
       redisReply *message = reply->element[reply->elements - 1];
       data = std::string(message->str, message->len);
       RAY_CHECK(!data.empty()) << "Empty message received on subscribe channel";
+      optional_data = data;
     } else {
       RAY_LOG(FATAL) << "Fatal redis error during subscribe" << message_type->str;
     }
 
-    // NOTE(swang): We do not delete the callback after calling it since there
-    // may be more subscription messages.
-    RedisCallbackManager::instance().get(callback_index)(data);
-  } else if (reply->type == REDIS_REPLY_ERROR) {
+    bool delete_callback =
+        RedisCallbackManager::instance().get(callback_index)(optional_data);
+    if (delete_callback) {
+      RedisCallbackManager::instance().remove(callback_index);
+    }
+  } break;
+  case (REDIS_REPLY_ERROR): {
     RAY_LOG(ERROR) << "Redis error " << reply->str;
-  } else {
+  } break;
+  default:
     RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type << " and with string "
                    << reply->str;
   }

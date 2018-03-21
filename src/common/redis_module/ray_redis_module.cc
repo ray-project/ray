@@ -635,34 +635,28 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
   // are changes to the key.
   RedisModuleKey *notification_key = OpenBroadcastKey(
       ctx, pubsub_channel_str, id, REDISMODULE_READ | REDISMODULE_WRITE);
-  // Add this client to the list of clients that will be notified when further
-  // updates are made to the key.
   CHECK_ERROR(RedisModule_ZsetAdd(notification_key, 0.0, client_channel, NULL),
               "ZsetAdd failed.");
   RedisModule_CloseKey(notification_key);
+  RedisModule_FreeString(ctx, client_channel);
 
-  // Publish the current value at the key to the client that requested a
-  // notification.
+  // Return the current value at the key, if any, to the client that requested
+  // a notification.
   RedisModuleKey *table_key =
       OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
   if (table_key != nullptr) {
     size_t message_len = 0;
     char *message_buf =
         RedisModule_StringDMA(table_key, &message_len, REDISMODULE_READ);
-    RedisModuleCallReply *reply = RedisModule_Call(
-        ctx, "PUBLISH", "sb", client_channel, message_buf, message_len);
-    if (reply == NULL) {
-      RedisModule_CloseKey(table_key);
-      RedisModule_FreeString(ctx, client_channel);
-      RedisModule_ReplyWithError(ctx, "error during PUBLISH");
-    }
+    int result =
+        RedisModule_ReplyWithStringBuffer(ctx, message_buf, message_len);
+    RedisModule_CloseKey(table_key);
+    return result;
+  } else {
+    RedisModule_CloseKey(table_key);
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return REDISMODULE_OK;
   }
-  RedisModule_CloseKey(table_key);
-
-  RedisModule_FreeString(ctx, client_channel);
-
-  RedisModule_ReplyWithSimpleString(ctx, "OK");
-  return REDISMODULE_OK;
 }
 
 int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx,
