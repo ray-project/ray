@@ -283,8 +283,8 @@ void TestSubscribeId(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
     // Request notifications for the second object. Since we already added the
     // entry to the table, we should receive an initial notification for its
     // current value.
-    client->object_table().RequestNotifications(
-        job_id, object_id2, client->client_table().GetLocalClientId());
+    RAY_CHECK_OK(client->object_table().RequestNotifications(
+        job_id, object_id2, client->client_table().GetLocalClientId()));
     // Overwrite the entry for the object. We should receive a second
     // notification for its new value.
     auto data = std::make_shared<ObjectTableDataT>();
@@ -343,11 +343,11 @@ void TestSubscribeCancel(const JobID &job_id,
     test->IncrementNumCallbacks();
     // Request notifications for the object. We should receive a notification
     // for the current value at the key.
-    client->object_table().RequestNotifications(
-        job_id, object_id, client->client_table().GetLocalClientId());
+    RAY_CHECK_OK(client->object_table().RequestNotifications(
+        job_id, object_id, client->client_table().GetLocalClientId()));
     // Cancel notifications.
-    client->object_table().CancelNotifications(job_id, object_id,
-                                               client->client_table().GetLocalClientId());
+    RAY_CHECK_OK(client->object_table().CancelNotifications(
+        job_id, object_id, client->client_table().GetLocalClientId()));
     // Write the object table entry twice. Since we canceled notifications, we
     // should not get notifications for either of these writes.
     auto data = std::make_shared<ObjectTableDataT>();
@@ -358,8 +358,8 @@ void TestSubscribeCancel(const JobID &job_id,
     RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, nullptr));
     // Request notifications for the object again. We should only receive a
     // notification for the current value at the key.
-    client->object_table().RequestNotifications(
-        job_id, object_id, client->client_table().GetLocalClientId());
+    RAY_CHECK_OK(client->object_table().RequestNotifications(
+        job_id, object_id, client->client_table().GetLocalClientId()));
   };
 
   // The callback for a notification from the object table.
