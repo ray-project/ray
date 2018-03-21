@@ -1952,7 +1952,7 @@ class GlobalStateAPI(unittest.TestCase):
                          ray.global_state.object_table(result_id))
 
     def testLogFileAPI(self):
-        ray.init(redirect_output=True)
+        ray.init(redirect_worker_output=True)
 
         message = "unique message"
 
@@ -2016,7 +2016,7 @@ class GlobalStateAPI(unittest.TestCase):
     def testWorkers(self):
         num_workers = 3
         ray.init(
-            redirect_output=True,
+            redirect_worker_output=True,
             num_cpus=num_workers,
             num_workers=num_workers)
 

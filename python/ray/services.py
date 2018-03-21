@@ -1050,6 +1050,7 @@ def start_ray_processes(address_info=None,
                         redis_max_clients=None,
                         worker_path=None,
                         cleanup=True,
+                        redirect_worker_output=False,
                         redirect_output=False,
                         include_global_scheduler=False,
                         include_log_monitor=False,
@@ -1090,8 +1091,10 @@ def start_ray_processes(address_info=None,
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
-        redirect_output (bool): True if stdout and stderr should be redirected
-            to a file.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         include_global_scheduler (bool): If include_global_scheduler is True,
             then start a global scheduler process.
         include_log_monitor (bool): If True, then start a log monitor to
@@ -1114,6 +1117,8 @@ def start_ray_processes(address_info=None,
         A dictionary of the address information for the processes that were
             started.
     """
+    print("Process STDOUT and STDERR is being redirected to /tmp/raylogs/.")
+
     if resources is None:
         resources = {}
     if not isinstance(resources, list):
@@ -1149,7 +1154,8 @@ def start_ray_processes(address_info=None,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             redirect_output=True,
-            redirect_worker_output=redirect_output, cleanup=cleanup)
+            redirect_worker_output=redirect_worker_output,
+            cleanup=cleanup)
         address_info["redis_address"] = redis_address
         if "RAY_USE_NEW_GCS" in os.environ:
             credis_address = start_credis(
@@ -1247,9 +1253,12 @@ def start_ray_processes(address_info=None,
             # If we're starting the workers from Python, the local scheduler
             # should not start any workers.
             num_local_scheduler_workers = 0
-        # Start the local scheduler.
+        # Start the local scheduler. Note that if we do not wish to redirect
+        # the worker output, then we cannot redirect the local scheduler
+        # output.
         local_scheduler_stdout_file, local_scheduler_stderr_file = (
-            new_log_files("local_scheduler_{}".format(i), redirect_output))
+            new_log_files("local_scheduler_{}".format(i),
+                          redirect_output=redirect_worker_output))
         local_scheduler_name = start_local_scheduler(
             redis_address,
             node_ip_address,
@@ -1314,6 +1323,7 @@ def start_ray_node(node_ip_address,
                    object_store_memory=None,
                    worker_path=None,
                    cleanup=True,
+                   redirect_worker_output=False,
                    redirect_output=False,
                    resources=None,
                    plasma_directory=None,
@@ -1340,8 +1350,10 @@ def start_ray_node(node_ip_address,
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
-        redirect_output (bool): True if stdout and stderr should be redirected
-            to a file.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         resources: A dictionary mapping resource name to the available quantity
             of that resource.
         plasma_directory: A directory where the Plasma memory mapped files will
@@ -1363,6 +1375,7 @@ def start_ray_node(node_ip_address,
                                worker_path=worker_path,
                                include_log_monitor=True,
                                cleanup=cleanup,
+                               redirect_worker_output=redirect_worker_output,
                                redirect_output=redirect_output,
                                resources=resources,
                                plasma_directory=plasma_directory,
@@ -1378,6 +1391,7 @@ def start_ray_head(address_info=None,
                    object_store_memory=None,
                    worker_path=None,
                    cleanup=True,
+                   redirect_worker_output=False,
                    redirect_output=False,
                    start_workers_from_local_scheduler=True,
                    resources=None,
@@ -1414,8 +1428,10 @@ def start_ray_head(address_info=None,
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
-        redirect_output (bool): True if stdout and stderr should be redirected
-            to a file.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         start_workers_from_local_scheduler (bool): If this flag is True, then
             start the initial workers from the local scheduler. Else, start
             them from Python.
@@ -1447,6 +1463,7 @@ def start_ray_head(address_info=None,
         object_store_memory=object_store_memory,
         worker_path=worker_path,
         cleanup=cleanup,
+        redirect_worker_output=redirect_worker_output,
         redirect_output=redirect_output,
         include_global_scheduler=True,
         include_log_monitor=True,
