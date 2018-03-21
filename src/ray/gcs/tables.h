@@ -32,6 +32,9 @@ class Table {
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
+  /// The callback to call when a SUBSCRIBE call completes and we are ready to
+  /// request and receive notifications.
+  using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
 
   struct CallbackData {
     ID id;
@@ -39,7 +42,7 @@ class Table {
     Callback callback;
     // An optional callback to call for subscription operations, where the
     // first message is a notification of subscription success.
-    Callback subscription_callback;
+    SubscriptionCallback subscription_callback;
     Table<ID, Data> *table;
     AsyncGcsClient *client;
   };
@@ -129,7 +132,7 @@ class Table {
   ///        are ready to receive messages.
   /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const Callback &subscribe, const Callback &done) {
+                   const Callback &subscribe, const SubscriptionCallback &done) {
     RAY_CHECK(subscribe_callback_index_ == -1)
         << "Client called Subscribe twice on the same table";
     auto d = std::shared_ptr<CallbackData>(
@@ -140,7 +143,7 @@ class Table {
             // No notification data is provided. This is the callback for the
             // initial subscription request.
             if (d->subscription_callback != nullptr) {
-              (d->subscription_callback)(d->client, d->id, {});
+              (d->subscription_callback)(d->client);
             }
           } else {
             // Data is provided. This is the callback for a message.

@@ -99,8 +99,7 @@ Status ClientTable::Connect() {
     HandleConnected(client, id, data);
   };
   // Callback to add ourselves once we've successfully subscribed.
-  auto subscription_callback = [this, data, add_callback](
-      AsyncGcsClient *c, const ClientID &id, const std::vector<ClientTableDataT> &d) {
+  auto subscription_callback = [this, data, add_callback](AsyncGcsClient *c) {
     // Mark ourselves as deleted if we called Disconnect() since the last
     // Connect() call.
     if (disconnected_) {

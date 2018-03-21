@@ -210,8 +210,7 @@ void TestSubscribeAll(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> 
   };
 
   // Callback for subscription success. This should only be called once.
-  auto subscribe_callback = [job_id](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                     const std::vector<ObjectTableDataT> &d) {
+  auto subscribe_callback = [job_id](gcs::AsyncGcsClient *client) {
     test->IncrementNumCallbacks();
     // We have subscribed. Add an object table entry.
     auto data = std::make_shared<ObjectTableDataT>();
@@ -261,9 +260,7 @@ void TestSubscribeId(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
 
   // The callback for subscription success. Once we've subscribed, request
   // notifications for the second object that was added.
-  auto subscribe_callback = [job_id, object_id2](gcs::AsyncGcsClient *client,
-                                                 const UniqueID &id,
-                                                 const std::vector<ObjectTableDataT> &d) {
+  auto subscribe_callback = [job_id, object_id2](gcs::AsyncGcsClient *client) {
     test->IncrementNumCallbacks();
     // Request notifications for the second object. Since we already added the
     // entry to the table, we should receive an initial notification for its
@@ -325,9 +322,7 @@ void TestSubscribeCancel(const JobID &job_id,
 
   // The callback for subscription success. Once we've subscribed, request
   // notifications for the second object that was added.
-  auto subscribe_callback = [job_id, object_id](gcs::AsyncGcsClient *client,
-                                                const UniqueID &id,
-                                                const std::vector<ObjectTableDataT> &d) {
+  auto subscribe_callback = [job_id, object_id](gcs::AsyncGcsClient *client) {
     test->IncrementNumCallbacks();
     // Request notifications for the object. We should receive a notification
     // for the current value at the key.
