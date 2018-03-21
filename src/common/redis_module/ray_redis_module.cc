@@ -62,7 +62,9 @@ RedisModuleString *FormatPubsubChannel(RedisModuleCtx *ctx,
   RAY_CHECK(RedisModule_StringToLongLong(
                 pubsub_channel_str, &pubsub_channel_long) == REDISMODULE_OK)
       << "Prefix must be a valid TablePrefix";
-  char pubsub_channel[sizeof(TablePubsub) + 1];
+  // Format the pubsub channel enum to a string. TablePubsub_MAX should be more
+  // than enough digits, but add 1 just in case for the null terminator.
+  char pubsub_channel[TablePubsub_MAX + 1];
   sprintf(pubsub_channel, "%lld", pubsub_channel_long);
   return RedisString_Format(ctx, "%s:%S", pubsub_channel, id);
 }
@@ -581,7 +583,7 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
             RedisModule_Call(ctx, "PUBLISH", "ss", client_channel, data);
         if (reply == NULL) {
           RedisModule_CloseKey(notification_key);
-          RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+          return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
         }
       }
     }

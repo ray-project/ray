@@ -63,27 +63,7 @@ class Table {
   ///        GCS.
   /// \return Status
   Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
-             const Callback &done) {
-    auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, data, done, nullptr, this, client_}));
-    int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::vector<std::string> &data) {
-          if (d->callback != nullptr) {
-            (d->callback)(d->client, d->id, {*d->data});
-          }
-          return true;
-        });
-    flatbuffers::FlatBufferBuilder fbb;
-    fbb.ForceDefaults(true);
-    fbb.Finish(Data::Pack(fbb, data.get()));
-    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(),
-                                         fbb.GetSize(), prefix_, pubsub_channel_,
-                                         callback_index));
-    return Status::OK();
-  }
-
-  /// Remove an entry from the table.
-  Status Remove(const JobID &job_id, const ID &id, const Callback &done);
+             const Callback &done);
 
   /// Lookup an entry asynchronously.
   ///
@@ -92,28 +72,7 @@ class Table {
   /// \param lookup Callback that is called after lookup. If the callback is
   ///        called with an empty vector, then there was no data at the key.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
-    auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, nullptr, lookup, nullptr, this, client_}));
-    int64_t callback_index =
-        RedisCallbackManager::instance().add([d](const std::vector<std::string> &data) {
-          if (d->callback != nullptr) {
-            std::vector<DataT> results;
-            for (auto &item : data) {
-              DataT result;
-              auto root = flatbuffers::GetRoot<Data>(item.data());
-              root->UnPackTo(&result);
-              results.push_back(result);
-            }
-            (d->callback)(d->client, d->id, results);
-          }
-          return true;
-        });
-    std::vector<uint8_t> nil;
-    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
-                                         prefix_, pubsub_channel_, callback_index));
-    return Status::OK();
-  }
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
 
   /// Subscribe to any Add operations to this table. The caller may choose to
   /// subscribe to all Adds, or to subscribe only to keys that it requests
@@ -132,40 +91,7 @@ class Table {
   ///        are ready to receive messages.
   /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const Callback &subscribe, const SubscriptionCallback &done) {
-    RAY_CHECK(subscribe_callback_index_ == -1)
-        << "Client called Subscribe twice on the same table";
-    auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({client_id, nullptr, subscribe, done, this, client_}));
-    int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, d](const std::vector<std::string> &data) {
-          if (data.size() == 1 && data[0] == "") {
-            // No notification data is provided. This is the callback for the
-            // initial subscription request.
-            if (d->subscription_callback != nullptr) {
-              (d->subscription_callback)(d->client);
-            }
-          } else {
-            // Data is provided. This is the callback for a message.
-            if (d->callback != nullptr) {
-              std::vector<DataT> results;
-              for (auto &item : data) {
-                DataT result;
-                auto root = flatbuffers::GetRoot<Data>(item.data());
-                root->UnPackTo(&result);
-                results.push_back(result);
-              }
-              (d->callback)(d->client, d->id, results);
-            }
-          }
-          // We do not delete the callback after calling it since there may be
-          // more subscription messages.
-          return false;
-        });
-    subscribe_callback_index_ = callback_index;
-    std::vector<uint8_t> nil;
-    return context_->SubscribeAsync(client_id, pubsub_channel_, callback_index);
-  }
+                   const Callback &subscribe, const SubscriptionCallback &done);
 
   /// Request notifications about a key in this table.
   ///
@@ -183,13 +109,7 @@ class Table {
   ///        table with the same `client_id` must complete successfully.
   /// \return Status
   Status RequestNotifications(const JobID &job_id, const ID &id,
-                              const ClientID &client_id) {
-    RAY_CHECK(subscribe_callback_index_ >= 0)
-        << "Client requested notifications on a key before Subscribe completed";
-    return context_->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
-                              client_id.size(), prefix_, pubsub_channel_,
-                              subscribe_callback_index_);
-  }
+                              const ClientID &client_id);
 
   /// Cancel notifications about a key in this table.
   ///
@@ -198,12 +118,7 @@ class Table {
   /// \param client_id The client who originally requested notifications.
   /// \return Status
   Status CancelNotifications(const JobID &job_id, const ID &id,
-                             const ClientID &client_id) {
-    RAY_CHECK(subscribe_callback_index_ >= 0)
-        << "Client canceled notifications on a key before Subscribe completed";
-    return context_->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
-                              client_id.size(), prefix_, pubsub_channel_, -1);
-  }
+                             const ClientID &client_id);
 
  protected:
   /// The connection to the GCS.
