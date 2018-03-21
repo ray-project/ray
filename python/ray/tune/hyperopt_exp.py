@@ -17,41 +17,23 @@ from ray.tune.trial_scheduler import FIFOScheduler
 from hyperopt import tpe, Domain, Trials
 
 
-class MyTrainableClass(Trainable):
-    """Example agent whose learning curve is a random sigmoid.
+def easy_objective(config, reporter):
 
-    The dummy hyperparameters "width" and "height" determine the slope and
-    maximum reward value reached.
-    """
-
-    def _setup(self):
-        self.timestep = 0
-
-    def _train(self):
-        self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config["width"])
-        v *= self.config["height"]
-
-        # Here we use `episode_reward_mean`, but you can also report other
-        # objectives such as loss or accuracy (see tune/result.py).
-        return TrainingResult(episode_reward_mean=v, timesteps_this_iter=1)
-
-    def _save(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        with open(path, "w") as f:
-            f.write(json.dumps({"timestep": self.timestep}))
-        return path
-
-    def _restore(self, checkpoint_path):
-        with open(checkpoint_path) as f:
-            self.timestep = json.loads(f.read())["timestep"]
+    # val = config["height"]
+    time.sleep(0.2)
+    reporter(
+        timesteps_total=1,
+        mean_loss=((config["height"] - 14) ** 2 + abs(config["width"] - 3)))
+    time.sleep(0.2)
 
 
 class HyperOptScheduler(FIFOScheduler):
 
-    def __init__(self, experiments, max_concurrent=10, loss_attr="episode_reward_mean"):
+    def __init__(self, experiments, max_concurrent=10, loss_attr="mean_loss"):
         assert len(experiments) == 1, "Currently only support 1 experiment"
-        name, _spec = list(experiments.keys())[0], list(experiments.values())[0]
+        exp = experiments[0]
+
+        name, _spec = exp.name, exp.spec
 
         spec = copy.deepcopy(_spec)
         if "env" in spec:
@@ -60,7 +42,7 @@ class HyperOptScheduler(FIFOScheduler):
             del spec["env"]
 
         space = spec["config"]["space"]
-        del  spec["config"]["space"]
+        del spec["config"]["space"]
 
         self.parser = make_parser()
         self.args = self.parser.parse_args(to_argv(spec))
@@ -73,7 +55,7 @@ class HyperOptScheduler(FIFOScheduler):
         self._loss_attr = loss_attr
         self._num_trials_left = self.args.repeat
 
-        self.max_concurrent = max_concurrent
+        self.max_concurrent = min(max_concurrent, self._num_trials_left)
         self.rstate = np.random.RandomState()
 
     def generate_trial(self):
@@ -151,6 +133,9 @@ class HyperOptScheduler(FIFOScheduler):
     def _continue(self):
         return self._num_trials_left > 0
 
+    def get_hyperopt_trials(self):
+        return self._hpopt_trials
+
 
 
 def run_experiments(experiments, with_server=False,
@@ -159,7 +144,7 @@ def run_experiments(experiments, with_server=False,
     # Make sure rllib agents are registered
     from ray import rllib  # noqa # pylint: disable=unused-import
 
-    scheduler = HyperOptScheduler(experiments, max_concurrent=1)
+    scheduler = HyperOptScheduler(experiments, max_concurrent=8)
     runner = TrialRunner(
         scheduler, launch_web_server=with_server, server_port=server_port)
 
@@ -189,21 +174,21 @@ def run_experiments(experiments, with_server=False,
 
 if __name__ == '__main__':
     import ray
-    ray.init()
+    ray.init(redirect_output=True)
     from hyperopt import hp
-    register_trainable("exp", MyTrainableClass)
+    # register_trainable("exp", MyTrainableClass)
 
+    register_trainable("exp", easy_objective)
 
     space = {
-    'width': hp.uniform('width', 0, 20),
-    'height': hp.uniform('height', 0, 1),
-}
-
+        'width': hp.uniform('width', 0, 20),
+        'height': hp.uniform('height', -100, 100),
+    }
 
     config = {"my_exp": {
             "run": "exp",
-            "repeat": 5,
-            "stop": {"training_iteration": 5},
+            "repeat": 1000,
+            "stop": {"training_iteration": 1},
             "config": {
                 "space": space}}}
-    run_experiments(config)
+    run_experiments(config, verbose=False)

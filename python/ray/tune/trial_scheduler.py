@@ -47,11 +47,13 @@ class TrialScheduler(object):
 
         raise NotImplementedError
 
-    def choose_trial_to_run(self, trial_runner, trials):
+    def choose_trial_to_run(self, trial_runner):
         """Called to choose a new trial to run.
 
         This should return one of the trials in trial_runner that is in
-        the PENDING or PAUSED state."""
+        the PENDING or PAUSED state.
+
+        If no trial is ready, return None."""
 
         raise NotImplementedError
 

@@ -40,13 +40,15 @@ class TrialRunner(object):
     """
 
     def __init__(self, scheduler=None, launch_web_server=False,
-                 server_port=TuneServer.DEFAULT_PORT):
+                 server_port=TuneServer.DEFAULT_PORT, verbose=True):
         """Initializes a new TrialRunner.
 
         Args:
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
-            server_port (int): Port number for launching TuneServer"""
+            server_port (int): Port number for launching TuneServer
+            verbose (bool): How much output should be printed for each trial.
+        """
 
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
@@ -64,6 +66,7 @@ class TrialRunner(object):
         if launch_web_server:
             self._server = TuneServer(self, server_port)
         self._stop_queue = []
+        self._verbose = verbose
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -85,8 +88,9 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
-        if self._can_launch_more():
-            self._launch_trial()
+        next_trial = self._check_next_trial()
+        if next_trial is not None:
+            self._launch_trial(next_trial)
         elif self._running:
             self._process_events()
         else:
@@ -127,6 +131,9 @@ class TrialRunner(object):
         """Adds a new trial to this TrialRunner.
 
         Trials may be added at any time.
+
+        Args:
+            trial (Trial): Trial to queue.
         """
         self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
@@ -183,13 +190,12 @@ class TrialRunner(object):
         gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
         return resources.cpu <= cpu_avail and resources.gpu <= gpu_avail
 
-    def _can_launch_more(self):
+    def _check_next_trial(self):
         self._update_avail_resources()
-        trial = self._get_runnable()
-        return trial is not None
+        trial = self._scheduler_alg.choose_trial_to_run(self)
+        return trial
 
-    def _launch_trial(self, custom_trial=None):
-        trial = custom_trial or self._get_runnable()
+    def _launch_trial(self, trial):
         self._commit_resources(trial.resources)
         try:
             trial.start()
@@ -217,6 +223,7 @@ class TrialRunner(object):
             self._total_time += result.time_this_iter_s
 
             if trial.should_stop(result):
+                # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, result)
                 decision = TrialScheduler.STOP
             else:
@@ -259,9 +266,6 @@ class TrialRunner(object):
             error_msg = traceback.format_exc()
             print("Error recovering trial from checkpoint, abort:", error_msg)
             self._stop_trial(trial, error=True, error_msg=error_msg)
-
-    def _get_runnable(self):
-        return self._scheduler_alg.choose_trial_to_run(self)
 
     def _commit_resources(self, resources):
         self._committed_resources = Resources(

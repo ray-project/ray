@@ -13,8 +13,7 @@ from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.web_server import TuneServer
-from ray.tune.variant_generator import generate_trials
-from ray.tune.experiment import Experiment
+from ray.tune.experiment import Experiment, JSONExperiment
 
 
 _SCHEDULERS = {
@@ -56,23 +55,22 @@ def run_experiments(experiments, scheduler=None, with_server=False,
         scheduler = FIFOScheduler()
 
     runner = TrialRunner(
-        scheduler, launch_web_server=with_server, server_port=server_port)
+        scheduler, launch_web_server=with_server, server_port=server_port,
+        verbose=verbose)
 
-    if type(experiments) is dict:
-        for name, spec in experiments.items():
-            for trial in generate_trials(spec, name):
-                trial.set_verbose(verbose)
-                runner.add_trial(trial)
-    elif (type(experiments) is list and
-          all(isinstance(exp, Experiment) for exp in experiments)):
-        for experiment in experiments:
-            for trial in experiment.trials():
-                trial.set_verbose(verbose)
-                runner.add_trial(trial)
-    elif isinstance(experiments, Experiment):
-        for trial in experiments.trials():
-            trial.set_verbose(verbose)
-            runner.add_trial(trial)
+    exp_list = experiments
+    if isinstance(experiments, Experiment):
+        exp_list = [experiments]
+    elif type(experiments) is dict:
+        exp_list = [JSONExperiment(name, spec)
+                    for name, spec in experiments.items()]
+
+    if (type(exp_list) is list and
+            all(isinstance(exp, Experiment) for exp in exp_list)):
+        for experiment in exp_list:
+            runner.register_experiment(experiment)
+    else:
+        raise TuneError("Invalid argument: {}".format(experiments))
 
     print(runner.debug_string(max_debug=99999))
 
