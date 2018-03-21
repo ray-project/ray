@@ -22,7 +22,6 @@ APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
     timesteps_per_iteration=25000,
     per_worker_exploration=True,
     worker_side_prioritization=True,
-    force_evaluators_remote=False,  # consider enabling for large clusters
 ))
 
 
@@ -30,8 +29,7 @@ class ApexAgent(DQNAgent):
     """DQN variant that uses the Ape-X distributed policy optimizer.
 
     By default, this is configured for a large single node (32 cores). For
-    running in a large cluster, increase `num_workers` and consider setting
-    `force_evaluators_remote` to move workers off of the head node.
+    running in a large cluster, increase the `num_workers` config var.
     """
 
     _agent_name = "APEX"

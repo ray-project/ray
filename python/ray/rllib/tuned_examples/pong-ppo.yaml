@@ -9,11 +9,13 @@ pong-deterministic-ppo:
     env: PongDeterministic-v4
     run: PPO
     resources:
-        cpu: 6
+        cpu: 5
         gpu: 1
+        driver_cpu_limit: 1
     stop:
         episode_reward_mean: 21
     config:
         gamma: 0.99
+        num_workers: 4
         num_sgd_iter: 20
         devices: ["/gpu:0"]
