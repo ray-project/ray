@@ -283,5 +283,24 @@ class StartRayScriptTest(unittest.TestCase):
         subprocess.Popen(["ray", "stop"]).wait()
 
 
+class MiscellaneousTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
+
+    def testConnectingInLocalCase(self):
+        address_info = ray.init(num_cpus=0)
+
+        # Define a driver that just connects to Redis.
+        driver_script = """
+import ray
+ray.init(redis_address="{}")
+print("success")
+""".format(address_info["redis_address"])
+
+        out = run_string_as_driver(driver_script)
+        # Make sure the other driver succeeded.
+        self.assertIn("success", out)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
