@@ -66,7 +66,8 @@ def make_parser(**kwargs):
         help="Algorithm-specific configuration (e.g. env, hyperparams), "
         "specified in JSON.")
     parser.add_argument(
-        "--resources", type=lambda v: _tune_error(
+        "--resources", help="Deprecated, use --trial-resources.",
+        type=lambda v: _tune_error(
             "The `resources` argument is no longer supported. "
             "Use `trial_resources` or --trial-resources instead."))
     parser.add_argument(
