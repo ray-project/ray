@@ -21,9 +21,8 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, data.get()));
-  RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(),
-                                       fbb.GetSize(), prefix_, pubsub_channel_,
-                                       callback_index));
+  return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
+                            prefix_, pubsub_channel_, callback_index);
   return Status::OK();
 }
 
@@ -47,8 +46,8 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id,
         return true;
       });
   std::vector<uint8_t> nil;
-  RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
-                                       prefix_, pubsub_channel_, callback_index));
+  return context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), prefix_,
+                            pubsub_channel_, callback_index);
   return Status::OK();
 }
 
@@ -86,7 +85,6 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
         return false;
       });
   subscribe_callback_index_ = callback_index;
-  std::vector<uint8_t> nil;
   return context_->SubscribeAsync(client_id, pubsub_channel_, callback_index);
 }
 
@@ -106,7 +104,8 @@ Status Table<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), prefix_, pubsub_channel_, -1);
+                            client_id.size(), prefix_, pubsub_channel_,
+                            /*callback_index=*/-1);
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
@@ -122,11 +121,9 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
 void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callback) {
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
-  std::vector<ClientTableDataT> entries;
   for (const auto &entry : client_cache_) {
     if (!entry.first.is_nil() && !entry.second.is_insertion) {
       client_removed_callback_(client_, ClientID::nil(), entry.second);
-      entries.push_back(entry.second);
     }
   }
 }

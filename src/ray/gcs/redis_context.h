@@ -21,6 +21,9 @@ namespace gcs {
 
 class RedisCallbackManager {
  public:
+  /// Every callback should take in a vector of the results from the Redis
+  /// operation and return a bool indicating whether the callback should be
+  /// deleted once called.
   using RedisCallback = std::function<bool(const std::vector<std::string> &)>;
 
   static RedisCallbackManager &instance() {

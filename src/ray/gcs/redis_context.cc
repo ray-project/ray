@@ -11,6 +11,22 @@ extern "C" {
 // TODO(pcm): Integrate into the C++ tree.
 #include "state/ray_config.h"
 
+namespace {
+
+/// A helper function to call the callback and delete it from the callback
+/// manager if necessary.
+void ProcessCallback(int64_t callback_index, const std::vector<std::string> &data) {
+  if (callback_index >= 0) {
+    bool delete_callback =
+        ray::gcs::RedisCallbackManager::instance().get(callback_index)(data);
+    // Delete the callback if necessary.
+    if (delete_callback) {
+      ray::gcs::RedisCallbackManager::instance().remove(callback_index);
+    }
+  }
+}
+}
+
 namespace ray {
 
 namespace gcs {
@@ -42,13 +58,7 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
     RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type
                    << " and with string " << reply->str;
   }
-  if (callback_index >= 0) {
-    bool delete_callback = RedisCallbackManager::instance().get(callback_index)(data);
-    // Delete the callback.
-    if (delete_callback) {
-      RedisCallbackManager::instance().remove(callback_index);
-    }
-  }
+  ProcessCallback(callback_index, data);
 }
 
 void SubscribeRedisCallback(void *c, void *r, void *privdata) {
@@ -85,13 +95,7 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
     RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type << " and with string "
                    << reply->str;
   }
-
-  if (callback_index >= 0) {
-    bool delete_callback = RedisCallbackManager::instance().get(callback_index)(data);
-    if (delete_callback) {
-      RedisCallbackManager::instance().remove(callback_index);
-    }
-  }
+  ProcessCallback(callback_index, data);
 }
 
 int64_t RedisCallbackManager::add(const RedisCallback &function) {

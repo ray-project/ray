@@ -131,8 +131,9 @@ class Table {
   TablePubsub pubsub_channel_;
   /// The prefix to use for keys in this table.
   TablePrefix prefix_;
-  /// Whether we have subscribed to the table yet. Each client may only
-  /// subscribe to a table once.
+  /// The index in the RedisCallbackManager for the callback that is called
+  /// when we receive notifications. This is >= 0 iff we have subscribed to the
+  /// table, otherwise -1.
   int64_t subscribe_callback_index_;
 };
 

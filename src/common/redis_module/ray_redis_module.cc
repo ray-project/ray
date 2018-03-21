@@ -54,7 +54,7 @@ static const char *table_prefixes[] = {
 };
 
 /// Parse a Redis string into a TablePubsub channel.
-TablePubsub ParseTablePubsub(RedisModuleString *pubsub_channel_str) {
+TablePubsub ParseTablePubsub(const RedisModuleString *pubsub_channel_str) {
   long long pubsub_channel_long;
   RAY_CHECK(RedisModule_StringToLongLong(
                 pubsub_channel_str, &pubsub_channel_long) == REDISMODULE_OK)
@@ -68,9 +68,10 @@ TablePubsub ParseTablePubsub(RedisModuleString *pubsub_channel_str) {
 
 /// Format a pubsub channel for a specific key. pubsub_channel_str should
 /// contain a valid TablePubsub.
-RedisModuleString *FormatPubsubChannel(RedisModuleCtx *ctx,
-                                       RedisModuleString *pubsub_channel_str,
-                                       RedisModuleString *id) {
+RedisModuleString *FormatPubsubChannel(
+    RedisModuleCtx *ctx,
+    const RedisModuleString *pubsub_channel_str,
+    const RedisModuleString *id) {
   // Format the pubsub channel enum to a string. TablePubsub_MAX should be more
   // than enough digits, but add 1 just in case for the null terminator.
   char pubsub_channel[TablePubsub_MAX + 1];
