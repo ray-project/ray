@@ -1174,7 +1174,10 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
         assert b"ray_client_id" in info
         assert b"node_ip_address" in info
         assert b"client_type" in info
-        if info[b"node_ip_address"].decode("ascii") == node_ip_address:
+        client_node_ip_address = info[b"node_ip_address"].decode("ascii")
+        if (client_node_ip_address == node_ip_address or
+                (client_node_ip_address == "127.0.0.1" and
+                 redis_ip_address == ray.services.get_node_ip_address())):
             if info[b"client_type"].decode("ascii") == "plasma_manager":
                 plasma_managers.append(info)
             elif info[b"client_type"].decode("ascii") == "local_scheduler":
