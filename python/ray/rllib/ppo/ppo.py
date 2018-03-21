@@ -94,8 +94,10 @@ class PPOAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
+        self.num_agents = len(self.config["model"].get(
+            "custom_options", {}).get("multiagent_obs_shapes", [1]))
         self.global_step = 0
-        self.kl_coeff = [self.config["kl_coeff"]]
+        self.kl_coeff = [self.config["kl_coeff"]] * self.num_agents
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(

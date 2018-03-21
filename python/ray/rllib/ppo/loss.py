@@ -48,7 +48,8 @@ class ProximalPolicyLoss(object):
             curr_logp = [curr_logp]
             prev_logp = [prev_logp]
             self.entropy = [self.entropy]
-        kl_prod = [kl_coeff_i*kl_i for kl_coeff_i, kl_i in zip(kl_coeff, self.kl)]
+        kl_prod = tf.add_n([kl_coeff[i]*kl_i for
+                            i, kl_i in enumerate(self.kl)])
 
         # Make loss functions.
         self.ratio = [tf.exp(curr - prev)
