@@ -29,7 +29,7 @@ run_experiments({
     "carla-dqn": {
         "run": "DQN",
         "env": "carla_env",
-        "resources": {"cpu": 4, "gpu": 1},
+        "trial_resources": {"cpu": 4, "gpu": 1},
         "config": {
             "env_config": env_config,
             "model": {

@@ -130,7 +130,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         def f():
             run_experiments({"foo": {
                 "run": "PPO",
-                "resources": {"asdf": 1}
+                "trial_resources": {"asdf": 1}
             }})
         self.assertRaises(TuneError, f)
 
@@ -452,6 +452,27 @@ class TrialRunnerTest(unittest.TestCase):
             trial.start()
         except Exception as e:
             self.assertIn("a class", str(e))
+
+    def testExtraResources(self):
+        ray.init(num_cpus=4, num_gpus=2)
+        runner = TrialRunner()
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 1},
+            "resources": Resources(cpu=1, gpu=0, extra_cpu=3, extra_gpu=1),
+        }
+        trials = [
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
