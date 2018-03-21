@@ -30,8 +30,11 @@ template <typename ID, typename Data>
 class Table {
  public:
   using DataT = typename Data::NativeTableType;
-  using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                      const std::vector<DataT> &data)>;
+  using Callback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  /// The callback to call when a lookup fails because there is no entry at the
+  /// key.
+  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
@@ -40,6 +43,7 @@ class Table {
     ID id;
     std::shared_ptr<DataT> data;
     Callback callback;
+    FailureCallback failure;
     // An optional callback to call for subscription operations, where the
     // first message is a notification of subscription success.
     SubscriptionCallback subscription_callback;
@@ -72,7 +76,8 @@ class Table {
   /// \param lookup Callback that is called after lookup. If the callback is
   ///        called with an empty vector, then there was no data at the key.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
+                const FailureCallback &failure);
 
   /// Subscribe to any Add operations to this table. The caller may choose to
   /// subscribe to all Adds, or to subscribe only to keys that it requests
@@ -308,10 +313,10 @@ class ClientTable : private Table<ClientID, ClientTableData> {
  private:
   /// Handle a client table notification.
   void HandleNotification(AsyncGcsClient *client, const ClientID &channel_id,
-                          const std::vector<ClientTableDataT> &notifications);
+                          const ClientTableDataT &notifications);
   /// Handle this client's successful connection to the GCS.
   void HandleConnected(AsyncGcsClient *client, const ClientID &client_id,
-                       const std::vector<ClientTableDataT> &notifications);
+                       const ClientTableDataT &notifications);
 
   /// Whether this client has called Disconnect().
   bool disconnected_;

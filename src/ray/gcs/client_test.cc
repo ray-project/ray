@@ -92,16 +92,14 @@ class TestGcsWithAsio : public TestGcs {
 };
 
 void ObjectAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                 const std::vector<ObjectTableDataT> &data) {
-  ASSERT_EQ(data.size(), 1);
-  ASSERT_EQ(data[0].managers, std::vector<std::string>({"A", "B"}));
+                 const ObjectTableDataT &data) {
+  ASSERT_EQ(data.managers, std::vector<std::string>({"A", "B"}));
 }
 
 void Lookup(gcs::AsyncGcsClient *client, const UniqueID &id,
-            const std::vector<ObjectTableDataT> &data) {
+            const ObjectTableDataT &data) {
   // Check that the object entry was added.
-  ASSERT_EQ(data.size(), 1);
-  ASSERT_EQ(data[0].managers, std::vector<std::string>({"A", "B"}));
+  ASSERT_EQ(data.managers, std::vector<std::string>({"A", "B"}));
   test->Stop();
 }
 
@@ -117,7 +115,7 @@ void TestObjectTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   data->managers.push_back("B");
   ObjectID object_id = ObjectID::from_random();
   RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, &ObjectAdded));
-  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, &Lookup));
+  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, &Lookup, &LookupFailed));
   // Run the event loop. The loop will only stop if the Lookup callback is
   // called (or an assertion failure).
   test->Start();
@@ -134,15 +132,13 @@ TEST_F(TestGcsWithAsio, TestObjectTable) {
 }
 
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
-               const std::vector<TaskTableDataT> &data) {
-  ASSERT_EQ(data.size(), 1);
-  ASSERT_EQ(data[0].scheduling_state, SchedulingState_SCHEDULED);
+               const TaskTableDataT &data) {
+  ASSERT_EQ(data.scheduling_state, SchedulingState_SCHEDULED);
 }
 
 void TaskLookup(gcs::AsyncGcsClient *client, const TaskID &id,
-                const std::vector<TaskTableDataT> &data) {
-  ASSERT_EQ(data.size(), 1);
-  ASSERT_EQ(data[0].scheduling_state, SchedulingState_SCHEDULED);
+                const TaskTableDataT &data) {
+  ASSERT_EQ(data.scheduling_state, SchedulingState_SCHEDULED);
 }
 
 void TaskLookupFailure(gcs::AsyncGcsClient *client, const TaskID &id) {
@@ -150,9 +146,8 @@ void TaskLookupFailure(gcs::AsyncGcsClient *client, const TaskID &id) {
 }
 
 void TaskLookupAfterUpdate(gcs::AsyncGcsClient *client, const TaskID &id,
-                           const std::vector<TaskTableDataT> &data) {
-  ASSERT_EQ(data.size(), 1);
-  ASSERT_EQ(data[0].scheduling_state, SchedulingState_LOST);
+                           const TaskTableDataT &data) {
+  ASSERT_EQ(data.scheduling_state, SchedulingState_LOST);
   test->Stop();
 }
 
@@ -163,8 +158,8 @@ void TaskLookupAfterUpdateFailure(gcs::AsyncGcsClient *client, const TaskID &id)
 
 void TaskUpdateCallback(gcs::AsyncGcsClient *client, const TaskID &task_id,
                         const TaskTableDataT &task, bool updated) {
-  RAY_CHECK_OK(
-      client->task_table().Lookup(DriverID::nil(), task_id, &TaskLookupAfterUpdate));
+  RAY_CHECK_OK(client->task_table().Lookup(DriverID::nil(), task_id,
+                                           &TaskLookupAfterUpdate, &TaskLookupFailure));
 }
 
 void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -174,7 +169,8 @@ void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
   RAY_CHECK_OK(client->task_table().Add(job_id, task_id, data, &TaskAdded));
-  RAY_CHECK_OK(client->task_table().Lookup(job_id, task_id, &TaskLookup));
+  RAY_CHECK_OK(
+      client->task_table().Lookup(job_id, task_id, &TaskLookup, &TaskLookupFailure));
   auto update = std::make_shared<TaskTableTestAndUpdateT>();
   update->test_scheduler_id = local_scheduler_id.binary();
   update->test_state_bitmask = SchedulingState_SCHEDULED;
@@ -201,10 +197,9 @@ TEST_F(TestGcsWithAsio, TestTaskTable) {
 void TestSubscribeAll(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Callback for a notification.
   auto notification_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                  const std::vector<ObjectTableDataT> &data) {
-    ASSERT_EQ(data.size(), 1);
+                                  const ObjectTableDataT &data) {
     // Check that the object entry was added.
-    ASSERT_EQ(data[0].managers, std::vector<std::string>({"A", "B"}));
+    ASSERT_EQ(data.managers, std::vector<std::string>({"A", "B"}));
     test->IncrementNumCallbacks();
     test->Stop();
   };
@@ -278,10 +273,9 @@ void TestSubscribeId(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
   auto notification_callback = [data2](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                       const std::vector<ObjectTableDataT> &data) {
-    ASSERT_EQ(data.size(), 1);
+                                       const ObjectTableDataT &data) {
     // Check that we got a notification for the correct object.
-    ASSERT_EQ(data[0].managers.front(), "C");
+    ASSERT_EQ(data.managers.front(), "C");
     test->IncrementNumCallbacks();
     // Stop the loop once we've received notifications for both writes to the
     // object key.
@@ -347,15 +341,14 @@ void TestSubscribeCancel(const JobID &job_id,
 
   // The callback for a notification from the object table.
   auto notification_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                  const std::vector<ObjectTableDataT> &data) {
-    ASSERT_EQ(data.size(), 1);
+                                  const ObjectTableDataT &data) {
     // Check that we only receive notifications for the key when we have
     // requested notifications for it. We should not get a notification for the
     // entry that began with "B" since we canceled notifications then.
     if (test->NumCallbacks() == 1) {
-      ASSERT_EQ(data[0].managers.front(), "A");
+      ASSERT_EQ(data.managers.front(), "A");
     } else {
-      ASSERT_EQ(data[0].managers.front(), "C");
+      ASSERT_EQ(data.managers.front(), "C");
     }
     test->IncrementNumCallbacks();
     if (test->NumCallbacks() == 3) {
