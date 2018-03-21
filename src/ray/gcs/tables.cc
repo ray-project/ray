@@ -28,7 +28,7 @@ void ClientTable::RegisterClientRemovedCallback(const Callback &callback) {
   }
 }
 
-void ClientTable::HandleNotification(AsyncGcsClient *client, const ClientID &channel_id,
+  void ClientTable::HandleNotification(AsyncGcsClient *client, const ClientID &channel_id,
                                      std::shared_ptr<ClientTableDataT> data) {
   ClientID client_id = ClientID::from_binary(data->client_id);
   // It's possible to get duplicate notifications from the client table, so

@@ -65,7 +65,7 @@ class Table : public Storage<ID, Data> {
       : context_(context),
         client_(client),
         pubsub_channel_(TablePubsub_NO_PUBLISH){};
-  ~Table(){};
+  virtual ~Table(){};
 
   /// Add an entry to the table.
   ///
@@ -162,7 +162,7 @@ class Table : public Storage<ID, Data> {
     return context_->SubscribeAsync(client_id, pubsub_channel_, callback_index);
   }
 
-  /// Remove and entry from the table
+  /// Remove an entry from the table
   Status Remove(const JobID &job_id, const ID &id, const Callback &done);
 
  protected:
@@ -179,7 +179,7 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
   };
-  ~ObjectTable(){};
+  virtual ~ObjectTable(){};
 
   /// Set up a client-specific channel for receiving notifications about
   /// available
@@ -205,6 +205,15 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// \return Status
   Status RequestNotifications(const JobID &job_id,
                               const std::vector<ObjectID> &object_ids);
+};
+
+class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
+ public:
+  HeartbeatTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client) :
+      Table(context, client) {
+    pubsub_channel_ = TablePubsub_HEARTBEAT;
+  }
+  virtual ~HeartbeatTable(){}
 };
 
 using FunctionTable = Table<FunctionID, FunctionTableData>;

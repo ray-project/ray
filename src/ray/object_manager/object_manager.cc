@@ -152,7 +152,7 @@ ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
   fbb.Finish(message);
   (void)conn->WriteMessage(OMMessageType_PullRequest, fbb.GetSize(),
                            fbb.GetBufferPointer());
-  connection_pool_.ReleaseSender(ConnectionPool::MESSAGE, conn);
+  (void)connection_pool_.ReleaseSender(ConnectionPool::MESSAGE, conn);
   return ray::Status::OK();
 };
 
@@ -237,7 +237,7 @@ ray::Status ObjectManager::SendHeaders(const ObjectID &object_id_const,
     // If the object wasn't locally available, exit immediately. If the object
     // later appears locally, the requesting plasma manager should request the
     // transfer again.
-    connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
+    (void)connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
     return ray::Status::IOError(
         "Unable to transfer object to requesting plasma manager, object not local.");
   }
@@ -276,7 +276,7 @@ void ObjectManager::SendObject(SenderConnection::pointer conn, const UniqueID &c
   if (header_ec.value() != 0) {
     // push failed.
     // TODO(hme): Trash sender.
-    connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
+    (void)connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
     return;
   }
   boost::system::error_code ec;
@@ -284,15 +284,15 @@ void ObjectManager::SendObject(SenderConnection::pointer conn, const UniqueID &c
   if (ec.value() != 0) {
     // push failed.
     // TODO(hme): Trash sender.
-    connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
+    (void)connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
     return;
   }
   // Do this regardless of whether it failed or succeeded.
   ARROW_CHECK_OK(store_client->Release(context.object_id.to_plasma_id()));
   store_pool_->ReleaseObjectStore(store_client);
   // RAY_LOG(INFO) << "ReleaseSender " << conn->GetClientID();
-  connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
-  transfer_queue_.RemoveContext(context_id);
+  (void)connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
+  (void)transfer_queue_.RemoveContext(context_id);
   ray::Status ray_status = TransferCompleted();
 }
 
@@ -407,7 +407,7 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ReceiverConnection> conn,
   // TODO(hme): Queue receives...
   // transfer_queue_.QueueReceive(conn->GetClientID(), object_id, object_size, conn);
   // DequeueTransfers();
-  ExecuteReceive(conn->GetClientID(), object_id, object_size, conn);
+  (void)ExecuteReceive(conn->GetClientID(), object_id, object_size, conn);
 }
 
 ray::Status ObjectManager::ExecuteReceive(
