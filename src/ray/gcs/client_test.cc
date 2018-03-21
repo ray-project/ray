@@ -131,6 +131,29 @@ TEST_F(TestGcsWithAsio, TestObjectTable) {
   TestObjectTable(job_id_, client_);
 }
 
+void TestLookupFailure(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  auto object_id = ObjectID::from_random();
+  // Looking up an empty object ID should call the failure callback.
+  auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+    test->Stop();
+  };
+  RAY_CHECK_OK(
+      client->object_table().Lookup(job_id, object_id, nullptr, failure_callback));
+  // Run the event loop. The loop will only stop if the failure callback is
+  // called.
+  test->Start();
+}
+
+TEST_F(TestGcsWithAe, TestLookupFailure) {
+  test = this;
+  TestLookupFailure(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAsio, TestLookupFailure) {
+  test = this;
+  TestLookupFailure(job_id_, client_);
+}
+
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
                const TaskTableDataT &data) {
   ASSERT_EQ(data.scheduling_state, SchedulingState_SCHEDULED);
