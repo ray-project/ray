@@ -40,16 +40,20 @@ class TrialRunner(object):
     """
 
     def __init__(self, scheduler=None, launch_web_server=False,
-                 server_port=TuneServer.DEFAULT_PORT):
+                 server_port=TuneServer.DEFAULT_PORT, verbose=True):
         """Initializes a new TrialRunner.
 
         Args:
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
-            server_port (int): Port number for launching TuneServer"""
+            server_port (int): Port number for launching TuneServer
+            verbose (bool): How much output should be printed for each trial.
+        """
 
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
+        self._experiments = []
+        self._trial_to_experiments = {}
         self._running = {}
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
@@ -64,6 +68,7 @@ class TrialRunner(object):
         if launch_web_server:
             self._server = TuneServer(self, server_port)
         self._stop_queue = []
+        self._verbose = verbose
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -74,6 +79,7 @@ class TrialRunner(object):
                     self._total_time, self._global_time_limit))
             return True
 
+        self._update_trials()
         for t in self._trials:
             if t.status in [Trial.PENDING, Trial.RUNNING, Trial.PAUSED]:
                 return False
@@ -123,13 +129,21 @@ class TrialRunner(object):
 
         return self._trials
 
-    def add_trial(self, trial):
+    def add_trial(self, trial, experiment=None):
         """Adds a new trial to this TrialRunner.
 
         Trials may be added at any time.
+
+        Args:
+            trial (Trial): Trial to queue.
+            experiment (Experiment): Experiment that trial belongs to.
+                If specified, trial events (stopping and completion)
+                will notify this object.
         """
         self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
+        if experiment:
+            self._trial_to_experiments[trial] = experiment
 
     def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
         """Returns a human readable message for printing to the console."""
@@ -185,6 +199,7 @@ class TrialRunner(object):
 
     def _can_launch_more(self):
         self._update_avail_resources()
+        self._update_trials()
         trial = self._get_runnable()
         return trial is not None
 
@@ -217,7 +232,12 @@ class TrialRunner(object):
             self._total_time += result.time_this_iter_s
 
             if trial.should_stop(result):
+                # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, result)
+                # Hook into experiment
+                experiment = self._trial_to_experiments.get(trial)
+                if experiment:
+                    experiment.on_trial_complete(trial)
                 decision = TrialScheduler.STOP
             else:
                 decision = self._scheduler_alg.on_trial_result(
@@ -318,8 +338,13 @@ class TrialRunner(object):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
         trial.stop(error=error, error_msg=error_msg)
+
         if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
+
+        experiment = self._trial_to_experiments.get(trial)
+        if experiment:
+            experiment.on_trial_stop(trial, error=error)
 
     def _pause_trial(self, trial):
         """Only returns resources if resources allocated."""
@@ -327,6 +352,21 @@ class TrialRunner(object):
         trial.pause()
         if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
+
+    def register_experiment(self, experiment):
+        """Tracks experiment for queueing new trials."""
+        self._experiments.append(experiment)
+
+    def _update_trials(self):
+        """Checks and queues any trials that are ready."""
+        for experiment in self._experiments:
+            while experiment.ready():
+                try:
+                    trial = experiment.next_trial()
+                    trial.set_verbose(self._verbose)
+                    self.add_trial(trial, experiment=experiment)
+                except StopIteration:
+                    break
 
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()

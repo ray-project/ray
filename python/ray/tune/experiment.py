@@ -49,8 +49,43 @@ class Experiment(object):
             "checkpoint_freq": checkpoint_freq,
             "max_failures": max_failures
         }
-        self._trials = generate_trials(spec, name)
 
-    def trials(self):
-        for trial in self._trials:
-            yield trial
+        self.name = name
+        self.spec = spec
+        self._initialize_generator(spec, name)
+
+    def _initialize_generator(self, spec, name):
+        """Creates a trial generator. Can be overwritten by subclass."""
+        self.trial_generator = generate_trials(spec, name)
+
+    def on_trial_stop(self, trial, error=False):
+        """Hook for when the trial is completely stopped.
+
+        For completed trials, this is called after `on_trial_complete`.
+        """
+        pass
+
+    def on_trial_complete(self, trial):
+        """Hook for when trial is completed.
+
+        Note that this is only for trials that reach the stopping
+        criteria of the experiment or the scheduler."""
+        pass
+
+    def ready(self):
+        """Whether there are trials ready to be queued."""
+        return True
+
+    def next_trial(self):
+        """Getting the next trial.
+
+        Only called if self.ready() is True."""
+        return next(self.trial_generator)
+
+
+class JSONExperiment(Experiment):
+    """Tracks experiment specifications given JSON."""
+    def __init__(self, name, spec):
+        self.name = name
+        self.spec = spec
+        self.trial_generator = generate_trials(spec, name)
