@@ -4,6 +4,8 @@ namespace asio = boost::asio;
 
 namespace ray {
 
+
+// TODO(hme): Clean up commented logs once multi-threading integration is completed.
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::unique_ptr<asio::io_service> object_manager_service,
                              ObjectManagerConfig config,
@@ -229,9 +231,6 @@ ray::Status ObjectManager::SendHeaders(const ObjectID &object_id_const,
   plasma::ObjectID plasma_id = object_id.to_plasma_id();
   std::shared_ptr<plasma::PlasmaClient> store_client = store_pool_->GetObjectStore();
   ARROW_CHECK_OK(store_client->Get(&plasma_id, 1, 0, &object_buffer));
-  //  uint64_t digest;
-  //  store_client->Hash(object_id.to_plasma_id(), reinterpret_cast<uint8_t*>(&digest));
-  //  RAY_LOG(INFO) << "SENDER HASH " << digest;
   if (object_buffer.data_size == -1) {
     RAY_LOG(ERROR) << "Failed to get object";
     // If the object wasn't locally available, exit immediately. If the object
@@ -443,9 +442,6 @@ ray::Status ObjectManager::ExecuteReceive(
   }
   store_pool_->ReleaseObjectStore(store_client);
   // Wait for another push.
-  //  uint64_t digest;
-  //  store_client->Hash(object_id.to_plasma_id(), reinterpret_cast<uint8_t*>(&digest));
-  //  RAY_LOG(INFO) << "RECEIVER HASH " << digest;
   ray::Status status = WaitPushReceive(conn);
   // TransferCompleted();
   return status;

@@ -41,7 +41,6 @@ struct ObjectManagerConfig {
 // TODO(hme): Implement connection cleanup.
 // TODO(hme): Add success/failure callbacks for push and pull.
 // TODO(hme): Use boost thread pool.
-// TODO(hme): Add incoming connections to io_service tied to thread pool.
 class ObjectManager {
  public:
   /// Implicitly instantiates Ray implementation of ObjectDirectory.
