@@ -823,6 +823,8 @@ class Worker(object):
         # the passed handles since we use a nested dictionary.
         for handles in ray.worker.global_worker.passed_actor_handles.values():
             assert len(handles) == 0
+        # TODO(swang): An actor may keep handles as part of its internal state
+        # across methods, so we should not clear the entire dictionary here.
         ray.worker.global_worker.passed_actor_handles.clear()
 
         # Get task arguments from the object store.
