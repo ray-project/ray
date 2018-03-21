@@ -8,10 +8,10 @@
 pong-deterministic-ppo:
     env: PongDeterministic-v4
     run: PPO
-    resources:
-        cpu: 5
+    trial_resources:
+        cpu: 1
         gpu: 1
-        driver_cpu_limit: 1
+        extra_cpu: 4
     stop:
         episode_reward_mean: 21
     config:

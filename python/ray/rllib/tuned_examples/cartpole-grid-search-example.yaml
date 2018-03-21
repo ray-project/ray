@@ -4,9 +4,9 @@ cartpole-ppo:
     stop:
         episode_reward_mean: 200
         time_total_s: 180
-    resources:
-        cpu: 3
-        driver_cpu_limit: 1
+    trial_resources:
+        cpu: 1
+        extra_cpu: 1
     config:
         num_workers: 2
         num_sgd_iter:

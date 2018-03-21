@@ -4,7 +4,7 @@ cartpole-a3c:
     stop:
         episode_reward_mean: 200
         time_total_s: 600
-    resources:
+    trial_resources:
         cpu: 2
     config:
         num_workers: 4

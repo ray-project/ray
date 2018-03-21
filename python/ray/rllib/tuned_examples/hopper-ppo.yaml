@@ -1,9 +1,8 @@
 hopper-ppo:
     env: Hopper-v1
     run: PPO
-    resources:
-        cpu: 65
+    trial_resources:
+        cpu: 1
         gpu: 4
-        driver_cpu_limit: 1
-        driver_gpu_limit: 4
+        extra_cpu: 64
     config: {"gamma": 0.995, "kl_coeff": 1.0, "num_sgd_iter": 20, "sgd_stepsize": .0001, "sgd_batchsize": 32768, "devices": ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"], "tf_session_args": {"device_count": {"GPU": 4}, "log_device_placement": false, "allow_soft_placement": true}, "timesteps_per_batch": 160000, "num_workers": 64}
