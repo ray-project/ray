@@ -202,11 +202,19 @@ void NodeManager::ScheduleTasks() {
   // DEBUG: print
   const auto &policy_decision = scheduling_policy_.Schedule(
       cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(), remote_clients_);
+  // DEBUG: print the policy decision
+  RAY_LOG(INFO) << "[NM ScheduleTasks] policy decision:";
+  for (const auto & pair: policy_decision) {
+    TaskID task_id = pair.first;
+    ClientID client_id = pair.second;
+    RAY_LOG(INFO) << task_id.hex() << " --> " << client_id.hex();
+  }
+
   // Extract decision for this local scheduler.
   // TODO(alexey): Check for this node's own client ID, not for nil.
   std::unordered_set<TaskID, UniqueIDHasher> task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks to run on the local client.
-  for (auto &task_schedule : policy_decision) {
+  for (const auto &task_schedule : policy_decision) {
     if (task_schedule.second == gcs_client_->client_table().GetLocalClientId()) {
       task_ids.insert(task_schedule.first);
     } else {
