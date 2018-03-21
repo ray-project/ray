@@ -45,7 +45,8 @@ bool ResourceSet::IsEqual(const ResourceSet &rhs) const {
 }
 
 bool ResourceSet::AddResource(const std::string &resource_name, double capacity) {
-  throw std::runtime_error("Method not implemented");
+  this->resource_capacity_[resource_name] = capacity;
+  return true;
 }
 bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
