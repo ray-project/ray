@@ -631,10 +631,15 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
   // Publish a message on the requested pubsub channel if necessary.
   TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
   if (pubsub_channel == TablePubsub_TASK) {
+    // Publish the task to its subscribers.
+    // TODO(swang): This is only necessary for legacy Ray and should be removed
+    // once we switch to using the new GCS API for the task table.
     return TaskTableAdd(ctx, id, data);
   } else if (pubsub_channel == TablePubsub_CLIENT) {
+    // Publish all previous client table additions to the new client.
     return ClientTableAdd(ctx, pubsub_channel_str, data);
   } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+    // All other pubsub channels write the data back directly onto the channel.
     return PublishTableAdd(ctx, pubsub_channel_str, id, data);
   } else {
     return RedisModule_ReplyWithSimpleString(ctx, "OK");
