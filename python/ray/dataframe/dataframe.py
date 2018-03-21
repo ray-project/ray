@@ -67,9 +67,8 @@ class DataFrame(object):
 
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
-            row_partitions, col_partitions = \
-                _partition_pandas_dataframe(pd_df,
-                                            num_partitions=get_npartitions())
+            row_partitions = \
+                _partition_pandas_dataframe(pd_df, num_partitions=get_npartitions())
             columns = pd_df.columns
             index = pd_df.index
 
@@ -78,10 +77,24 @@ class DataFrame(object):
         if row_partitions is not None:
             self._row_lengths, self._row_index = \
                 _compute_length_and_index.remote(row_partitions, index)
-
+        else:
+            if index is None:
+                self._row_index = ray.get(_deploy_func.remote(lambda df: df.index,
+                                                                     col_partitions[0]))
+            else:
+                self._row_index = index
+            self._row_lengths = len(self._row_index)
+        
         if col_partitions is not None:
             self._col_lengths, self._col_index = \
                 _compute_width_and_index.remote(col_partitions, columns)
+        else:
+            if columns is None:
+                self._col_index = ray.get(_deploy_func.remote(lambda df: df.columns,
+                                                                     row_partitions[0]))
+            else:
+                self._col_index = columns
+            self._col_lengths = len(self._col_index)
 
         self._col_partitions = col_partitions
         self._row_partitions = row_partitions
@@ -179,6 +192,9 @@ class DataFrame(object):
         Returns:
             The union of all indexes across the partitions.
         """
+        if isinstance(self._row_index, pd.core.indexes.range.RangeIndex) or \
+           isinstance(self._row_index, pd.core.indexes.base.Index):
+            return self._row_index
         return self._row_index.index
 
     def _set_index(self, new_index):
@@ -187,6 +203,10 @@ class DataFrame(object):
         Args:
             new_index: The new index to set this
         """
+        if isinstance(self._row_index, pd.core.indexes.range.RangeIndex) or \
+           isinstance(self._row_index, pd.core.indexes.base.Index):
+               self._row_index = new_index
+               return
         self._row_index.index = new_index
 
     index = property(_get_index, _set_index)
@@ -197,6 +217,9 @@ class DataFrame(object):
         Returns:
             The default index.
         """
+        if self._row_index_cache is None:
+            return None
+
         if isinstance(self._row_index_cache, ray.local_scheduler.ObjectID):
             self._row_index_cache = ray.get(self._row_index_cache)
         return self._row_index_cache
@@ -217,6 +240,9 @@ class DataFrame(object):
         Returns:
             The union of all indexes across the partitions.
         """
+        if isinstance(self._col_index, pd.core.indexes.range.RangeIndex) or \
+           isinstance(self._col_index, pd.core.indexes.base.Index):
+            return self._col_index
         return self._col_index.index
 
     def _set_columns(self, new_index):
@@ -225,6 +251,10 @@ class DataFrame(object):
         Args:
             new_index: The new index to set this
         """
+        if isinstance(self._col_index, pd.core.indexes.range.RangeIndex) or \
+           isinstance(self._col_index, pd.core.indexes.base.Index):
+            self._col_index = new_index
+            return
         self._col_index.index = new_index
 
     columns = property(_get_columns, _set_columns)
@@ -235,6 +265,9 @@ class DataFrame(object):
         Returns:
             The default index.
         """
+        if self._col_index_cache is None:
+            return None
+
         if isinstance(self._col_index_cache, ray.local_scheduler.ObjectID):
             self._col_index_cache = ray.get(self._col_index_cache)
         return self._col_index_cache
@@ -261,6 +294,8 @@ class DataFrame(object):
         Returns:
             A list of integers representing the length of each partition.
         """
+        if self._row_length_cache is None:
+            return None
         if isinstance(self._row_length_cache, ray.local_scheduler.ObjectID):
             self._row_length_cache = ray.get(self._row_length_cache)
         elif isinstance(self._row_length_cache, list) and \
@@ -294,6 +329,8 @@ class DataFrame(object):
         Returns:
             A list of integers representing the length of each partition.
         """
+        if self._col_length_cache is None:
+            return None
         if isinstance(self._col_length_cache, ray.local_scheduler.ObjectID):
             self._col_length_cache = ray.get(self._col_length_cache)
         elif isinstance(self._col_length_cache, list) and \
@@ -612,15 +649,21 @@ class DataFrame(object):
         axis = self._row_index._get_axis_name(axis) if axis is not None \
             else 'index'
 
-        result = pd.concat(ray.get(
+        sum_series = pd.concat(ray.get(
             _map_partitions(lambda df: df.sum(axis=axis,
                                               skipna=skipna,
                                               level=level,
                                               numeric_only=numeric_only),
-                            self._row_partitions if axis == 'columns'
-                            else self._col_partitions)))
-        result.index = self.index if axis == 'columns' else self.columns
-        return result
+                            self._row_partitions)),
+                            axis=1 if axis == 'index' else 0)
+
+        if axis == 'index':
+            rows_sum_series = sum_series.sum(axis = 1)
+            rows_sum_series.index = self.columns
+            return rows_sum_series
+        else:
+            sum_series.index = self.index
+            return sum_series
 
     def abs(self):
         """Apply an absolute value function to all numberic columns.
@@ -783,6 +826,7 @@ class DataFrame(object):
             to the transpose of df.
         """
         # TODO: Clean up this function, particularly on the reindexing
+        # TODO: broken after col_partitions rewrite
         if axis is not None:
             self._row_index._get_axis_name(axis)
         # Use .copy() to prevent read-only error
@@ -817,6 +861,7 @@ class DataFrame(object):
             otherwise operates on row partitions
         """
         # TODO: Clean up this function, particularly on the reindexing
+        # TODO: broken after col_partitions rewrite
         # Use .copy() to prevent read-only error
         partitions, res_index = (self._row_partitions, self._row_index.copy()) \
                 if axis == 1 else (self._col_partitions, self._col_index.copy())
@@ -992,6 +1037,7 @@ class DataFrame(object):
             The count, in a Series (or DataFrame if level is specified).
         """
         # TODO: doesn't work for multi-level indices
+        # TODO: is _col_index set?
         axis = self._row_index._get_axis_name(axis) if axis is not None \
                 else 'index'
 
@@ -1226,6 +1272,7 @@ class DataFrame(object):
         Returns:
             dropped : type of caller
         """
+        # TODO: fix - not working
         # inplace = validate_bool_kwarg(inplace, "inplace")
         if labels is not None:
             if index is not None or columns is not None:
@@ -1409,6 +1456,7 @@ class DataFrame(object):
         Returns:
             ndarray, numeric scalar, DataFrame, Series
         """
+        # TODO: test after _col_partitions rewrite
         columns = self.columns
 
         def eval_helper(df):
@@ -1428,6 +1476,7 @@ class DataFrame(object):
         if inplace:
             # TODO: return ray series instead of ray df
             self._row_partitions = new_rows
+            # TODO: fix bc there might not be col_partitions here
             old_num_col_partitions = len(self._col_partitions)
             self._col_partitions = _rebuild_cols.remote(self._row_partitions,
                                                         None, columns)
@@ -1735,21 +1784,39 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
+        #TODO: need to fix after column partitions rewrite
         for dtype in self.dtypes:
             if dtype == np.dtype('O'):
                 raise TypeError('invalid datatype for comparison')
 
         axis = self._row_index._get_axis_name(axis)
+        
+        if axis == 'index':
+            idxmax_series = pd.concat(ray.get(
+                _map_partitions(lambda df: df.idxmax(axis=axis,
+                                                     skipna=skipna),
+                                self._row_partitions)),
+                                axis=1)
+            max_series = pd.concat(ray.get(
+                _map_partitions(lambda df: df.max(axis=axis,
+                                                  skipna=skipna),
+                                self._row_partitions)),
+                                axis=1)
+            #TODO: readjust indices for the global df and not partition
+            # and compare with df of maxes to get global max indices 
 
-        idxmax_series = pd.concat(ray.get(
-            _map_partitions(lambda df: df.idxmax(axis=axis,
-                                              skipna=skipna),
-                            self._row_partitions if axis == 'columns'
-                            else self._col_partitions)))
-
-        idxmax_series.index = self.columns if axis == 'index' else self.index
-
-        return idxmax_series
+            rows_idxmax_series = idxmax_series.max(axis = 1)
+            rows_idxmax_series.index = self.columns
+            return rows_idxmax_series
+        else:
+            #should be fine
+            idxmax_series = pd.concat(ray.get(
+                _map_partitions(lambda df: df.idxmax(axis=axis,
+                                                     skipna=skipna),
+                                self._row_partitions)),
+                                axis=0)
+            idmax_series.index = self.index
+            return idmax_series
 
     def idxmin(self, axis=0, skipna=True):
         """Get the index of the first occurrence of the min value of the axis.
@@ -1762,6 +1829,7 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
+        #TODO: need to fix after column partitions rewrite
         for dtype in self.dtypes:
             if dtype == np.dtype('O'):
                 raise TypeError('invalid datatype for comparison')
@@ -1798,6 +1866,7 @@ class DataFrame(object):
             value (int, Series, or array-like): The values to insert.
             allow_duplicates (bool): Whether to allow duplicate column names.
         """
+        # TODO: not working after _col_index rewrite 
         try:
             len(value)
         except TypeError:
@@ -2050,12 +2119,16 @@ class DataFrame(object):
                                               level=level,
                                               numeric_only=numeric_only,
                                               **kwargs),
-                            self._row_partitions if not is_axis_zero
-                            else self._col_partitions)))
+                            self._row_partitions)),
+                            axis=1 if is_axis_zero else 0)
 
-        max_series.index = self.columns if is_axis_zero else self.index
-
-        return max_series
+        if is_axis_zero:
+            rows_max_series = max_series.max(axis = 1)
+            rows_max_series.index = self.columns
+            return rows_max_series
+        else:
+            max_series.index = self.index
+            return max_series
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
@@ -2158,11 +2231,15 @@ class DataFrame(object):
                                               level=level,
                                               numeric_only=numeric_only,
                                               **kwargs),
-                            self._row_partitions if not is_axis_zero
-                            else self._col_partitions)))
-
-        min_series.index = self.columns if is_axis_zero else self.index
-        return min_series
+                            self._row_partitions)),
+                            axis=1 if is_axis_zero else 0)
+        if is_axis_zero:
+            rows_min_series = min_series.min(axis = 1)
+            rows_min_series.index = self.columns
+            return rows_min_series
+        else:
+            min_series.index = self.index
+            return min_series
 
     def mod(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -3221,6 +3298,7 @@ class DataFrame(object):
                          index=self.index)
 
     def _getitem_indiv_col(self, key, partition):
+        # TODO: check if self._col_index is set
         loc = self._col_index.loc[key]
         if isinstance(loc, pd.Series):
             index = loc[loc['partition'] == partition]
@@ -3329,6 +3407,7 @@ class DataFrame(object):
         Args:
             key: key to delete
         """
+        # TODO: test after col_partitions rewrite 
         # Create helper method for deleting column(s) in row partition.
         def del_helper(df, to_delete):
             cols = df.columns[to_delete]  # either int or an array of ints

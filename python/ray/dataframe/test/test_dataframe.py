@@ -63,6 +63,11 @@ def test_ftypes(ray_df, pandas_df):
 
 
 @pytest.fixture
+def test_dtypes(ray_df, pandas_df):
+    assert(ray_df.dtypes.equals(pandas_df.dtypes))
+
+
+@pytest.fixture
 def test_values(ray_df, pandas_df):
     np.testing.assert_equal(ray_df.values, pandas_df.values)
 
@@ -190,6 +195,7 @@ def test_int_dataframe():
     test_size(ray_df, pandas_df)
     test_ndim(ray_df, pandas_df)
     test_ftypes(ray_df, pandas_df)
+    test_dtypes(ray_df, pandas_df)
     test_values(ray_df, pandas_df)
     test_axes(ray_df, pandas_df)
     test_shape(ray_df, pandas_df)
@@ -313,6 +319,7 @@ def test_float_dataframe():
     test_size(ray_df, pandas_df)
     test_ndim(ray_df, pandas_df)
     test_ftypes(ray_df, pandas_df)
+    test_dtypes(ray_df, pandas_df)
     test_values(ray_df, pandas_df)
     test_axes(ray_df, pandas_df)
     test_shape(ray_df, pandas_df)
@@ -349,7 +356,7 @@ def test_float_dataframe():
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
     test_bool(ray_df, pandas_df)
-    # test_count(ray_df, pandas_df)
+    test_count(ray_df, pandas_df)
     test_head(ray_df, pandas_df, 3)
     test_head(ray_df, pandas_df)
     test_tail(ray_df, pandas_df)
@@ -434,6 +441,7 @@ def test_mixed_dtype_dataframe():
     test_size(ray_df, pandas_df)
     test_ndim(ray_df, pandas_df)
     test_ftypes(ray_df, pandas_df)
+    test_dtypes(ray_df, pandas_df)
     test_values(ray_df, pandas_df)
     test_axes(ray_df, pandas_df)
     test_shape(ray_df, pandas_df)
@@ -564,6 +572,7 @@ def test_nan_dataframe():
     test_size(ray_df, pandas_df)
     test_ndim(ray_df, pandas_df)
     test_ftypes(ray_df, pandas_df)
+    test_dtypes(ray_df, pandas_df)
     test_values(ray_df, pandas_df)
     test_axes(ray_df, pandas_df)
     test_shape(ray_df, pandas_df)
