@@ -1267,7 +1267,8 @@ def _init(address_info=None,
           num_local_schedulers=None,
           object_store_memory=None,
           driver_mode=SCRIPT_MODE,
-          redirect_output=False,
+          redirect_worker_output=False,
+          redirect_output=True,
           start_workers_from_local_scheduler=True,
           num_cpus=None,
           num_gpus=None,
@@ -1306,8 +1307,10 @@ def _init(address_info=None,
             object store with.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
-        redirect_output (bool): True if stdout and stderr for all the processes
-            should be redirected to files and false otherwise.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         start_workers_from_local_scheduler (bool): If this flag is True, then
             start the initial workers from the local scheduler. Else, start
             them from Python. The latter case is for debugging purposes only.
@@ -1387,6 +1390,7 @@ def _init(address_info=None,
             num_workers=num_workers,
             num_local_schedulers=num_local_schedulers,
             object_store_memory=object_store_memory,
+            redirect_worker_output=redirect_worker_output,
             redirect_output=redirect_output,
             start_workers_from_local_scheduler=(
                 start_workers_from_local_scheduler),
@@ -1457,7 +1461,8 @@ def _init(address_info=None,
 
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
-         num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
+         num_workers=None, driver_mode=SCRIPT_MODE,
+         redirect_worker_output=False, redirect_output=True,
          num_cpus=None, num_gpus=None, resources=None,
          num_custom_resource=None, num_redis_shards=None,
          redis_max_clients=None, plasma_directory=None,
@@ -1483,8 +1488,10 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             provided if redis_address is not provided.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
-        redirect_output (bool): True if stdout and stderr for all the processes
-            should be redirected to files and false otherwise.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         num_cpus (int): Number of cpus the user wishes all local schedulers to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all local schedulers to
@@ -1521,6 +1528,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             "redis_address": redis_address}
     return _init(address_info=info, start_ray_local=(redis_address is None),
                  num_workers=num_workers, driver_mode=driver_mode,
+                 redirect_worker_output=redirect_worker_output,
                  redirect_output=redirect_output, num_cpus=num_cpus,
                  num_gpus=num_gpus, resources=resources,
                  num_redis_shards=num_redis_shards,
