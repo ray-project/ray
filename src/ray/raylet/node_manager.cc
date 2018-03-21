@@ -26,6 +26,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       remote_clients_(),
       remote_server_connections_() {
 
+  // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id, SchedulingResources(config.resource_config));
 }
@@ -198,10 +199,13 @@ void NodeManager::ScheduleTasks() {
   // local one.
   std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> cluster_resource_map;
   cluster_resource_map[gcs_client_->client_table().GetLocalClientId()] = local_resources_;
-  const auto &policy_decision = scheduling_policy_.Schedule(cluster_resource_map, gcs_client_->client_table().GetLocalClientId(), remote_clients_);
+  // DEBUG: print
+  const auto &policy_decision = scheduling_policy_.Schedule(
+      cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(), remote_clients_);
   // Extract decision for this local scheduler.
   // TODO(alexey): Check for this node's own client ID, not for nil.
   std::unordered_set<TaskID, UniqueIDHasher> task_ids;
+  // Iterate over (taskid, clientid) pairs, extract tasks to run on the local client.
   for (auto &task_schedule : policy_decision) {
     if (task_schedule.second == gcs_client_->client_table().GetLocalClientId()) {
       task_ids.insert(task_schedule.first);
