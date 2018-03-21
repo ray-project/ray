@@ -24,19 +24,14 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
   redisReply *reply = reinterpret_cast<redisReply *>(r);
-  // We use an optional response to distinguish between a nil response and a
-  // response of an empty string.
-  boost::optional<const std::string &> optional_data;
-  std::string data = "";
+  std::vector<std::string> data;
   // Parse the response.
   switch (reply->type) {
   case (REDIS_REPLY_NIL): {
-    // Do not set the data string for a nil response.
+    // Do not add any data for a nil response.
   } break;
   case (REDIS_REPLY_STRING): {
-    // Set the data string for a string response.
-    data = std::string(reply->str, reply->len);
-    optional_data = data;
+    data.push_back(std::string(reply->str, reply->len));
   } break;
   case (REDIS_REPLY_STATUS): {
   } break;
@@ -48,8 +43,7 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
                    << " and with string " << reply->str;
   }
   if (callback_index >= 0) {
-    bool delete_callback =
-        RedisCallbackManager::instance().get(callback_index)(optional_data);
+    bool delete_callback = RedisCallbackManager::instance().get(callback_index)(data);
     // Delete the callback.
     if (delete_callback) {
       RedisCallbackManager::instance().remove(callback_index);
@@ -63,10 +57,7 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
   redisReply *reply = reinterpret_cast<redisReply *>(r);
-  // We use an optional response to distinguish between a nil response and a
-  // response of an empty string.
-  boost::optional<const std::string &> optional_data;
-  std::string data = "";
+  std::vector<std::string> data;
   // Parse the response.
   switch (reply->type) {
   case (REDIS_REPLY_ARRAY): {
@@ -75,13 +66,13 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
     if (strcmp(message_type->str, "subscribe") == 0) {
       // If the message is for the initial subscription call, return the empty
       // string as a response to signify that subscription was successful.
-      optional_data = data;
+      data.push_back("");
     } else if (strcmp(message_type->str, "message") == 0) {
       // If the message is from a PUBLISH, make sure the data is nonempty.
       redisReply *message = reply->element[reply->elements - 1];
-      data = std::string(message->str, message->len);
-      RAY_CHECK(!data.empty()) << "Empty message received on subscribe channel";
-      optional_data = data;
+      auto notification = std::string(message->str, message->len);
+      RAY_CHECK(!notification.empty()) << "Empty message received on subscribe channel";
+      data.push_back(notification);
     } else {
       RAY_LOG(FATAL) << "Fatal redis error during subscribe" << message_type->str;
     }
@@ -96,8 +87,7 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
   }
 
   if (callback_index >= 0) {
-    bool delete_callback =
-        RedisCallbackManager::instance().get(callback_index)(optional_data);
+    bool delete_callback = RedisCallbackManager::instance().get(callback_index)(data);
     if (delete_callback) {
       RedisCallbackManager::instance().remove(callback_index);
     }

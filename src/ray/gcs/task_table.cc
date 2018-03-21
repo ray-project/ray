@@ -46,7 +46,7 @@ Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task) {
                                 static_cast<SchedulingState>(Task_state(task)));
   return gcs_client->task_table().Add(ray::JobID::nil(), TaskSpec_task_id(spec), data,
                                       [](gcs::AsyncGcsClient *client, const TaskID &id,
-                                         std::shared_ptr<TaskTableDataT> data) {});
+                                         const std::vector<TaskTableDataT> &data) {});
 }
 
 // TODO(pcm): This is a helper method that should go away once we get rid of

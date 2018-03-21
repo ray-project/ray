@@ -31,14 +31,12 @@ class Table {
  public:
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                      std::shared_ptr<DataT> data)>;
-  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
+                                      const std::vector<DataT> &data)>;
 
   struct CallbackData {
     ID id;
     std::shared_ptr<DataT> data;
     Callback callback;
-    FailureCallback failure;
     // An optional callback to call for subscription operations, where the
     // first message is a notification of subscription success.
     Callback subscription_callback;
@@ -64,11 +62,11 @@ class Table {
   Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
              const Callback &done) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, data, done, nullptr, nullptr, this, client_}));
-    int64_t callback_index = RedisCallbackManager::instance().add(
-        [d](boost::optional<const std::string &> data) {
+        new CallbackData({id, data, done, nullptr, this, client_}));
+    int64_t callback_index =
+        RedisCallbackManager::instance().add([d](const std::vector<std::string> &data) {
           if (d->callback != nullptr) {
-            (d->callback)(d->client, d->id, d->data);
+            (d->callback)(d->client, d->id, {*d->data});
           }
           return true;
         });
@@ -88,25 +86,23 @@ class Table {
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is looked up in the GCS.
-  /// \param lookup Callback that is called after lookup.
+  /// \param lookup Callback that is called after lookup. If the callback is
+  ///        called with an empty vector, then there was no data at the key.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
-                const FailureCallback &failure) {
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, nullptr, lookup, failure, nullptr, this, client_}));
-    int64_t callback_index = RedisCallbackManager::instance().add(
-        [d](boost::optional<const std::string &> data) {
-          if (data) {
-            auto result = std::make_shared<DataT>();
-            auto root = flatbuffers::GetRoot<Data>(data->data());
-            root->UnPackTo(result.get());
-            if (d->callback != nullptr) {
-              (d->callback)(d->client, d->id, result);
+        new CallbackData({id, nullptr, lookup, nullptr, this, client_}));
+    int64_t callback_index =
+        RedisCallbackManager::instance().add([d](const std::vector<std::string> &data) {
+          if (d->callback != nullptr) {
+            std::vector<DataT> results;
+            for (auto &item : data) {
+              DataT result;
+              auto root = flatbuffers::GetRoot<Data>(item.data());
+              root->UnPackTo(&result);
+              results.push_back(result);
             }
-          } else {
-            if (d->failure != nullptr) {
-              (d->failure)(d->client, d->id);
-            }
+            (d->callback)(d->client, d->id, results);
           }
           return true;
         });
@@ -126,33 +122,37 @@ class Table {
   ///        messages for the given client will be received. In the latter
   ///        case, the client may request notifications on specific keys in the
   ///        table via `RequestNotifications`.
-  /// \param subscribe Callback that is called on each received message.
+  /// \param subscribe Callback that is called on each received message. If the
+  ///        callback is called with an empty vector, then there was no data at
+  ///        the key.
   /// \param done Callback that is called when subscription is complete and we
-  ///        are ready to receive messages..
+  ///        are ready to receive messages.
   /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const Callback &subscribe, const Callback &done) {
     RAY_CHECK(subscribe_callback_index_ == -1)
         << "Client called Subscribe twice on the same table";
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({client_id, nullptr, subscribe, nullptr, done, this, client_}));
+        new CallbackData({client_id, nullptr, subscribe, done, this, client_}));
     int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, d](boost::optional<const std::string &> data) {
-          if (data) {
-            if (data->empty()) {
-              // No data is provided. This is the callback for the initial
-              // subscription request.
-              if (d->subscription_callback != nullptr) {
-                (d->subscription_callback)(d->client, d->id, nullptr);
+        [this, d](const std::vector<std::string> &data) {
+          if (data.size() == 1 && data[0] == "") {
+            // No notification data is provided. This is the callback for the
+            // initial subscription request.
+            if (d->subscription_callback != nullptr) {
+              (d->subscription_callback)(d->client, d->id, {});
+            }
+          } else {
+            // Data is provided. This is the callback for a message.
+            if (d->callback != nullptr) {
+              std::vector<DataT> results;
+              for (auto &item : data) {
+                DataT result;
+                auto root = flatbuffers::GetRoot<Data>(item.data());
+                root->UnPackTo(&result);
+                results.push_back(result);
               }
-            } else {
-              if (d->callback != nullptr) {
-                // Data is provided. This is the callback for a message.
-                auto result = std::make_shared<DataT>();
-                auto root = flatbuffers::GetRoot<Data>(data->data());
-                root->UnPackTo(result.get());
-                (d->callback)(d->client, d->id, result);
-              }
+              (d->callback)(d->client, d->id, results);
             }
           }
           // We do not delete the callback after calling it since there may be
@@ -168,10 +168,10 @@ class Table {
   ///
   /// The notifications will be returned via the subscribe callback that was
   /// registered by `Subscribe`.  An initial notification will be returned for
-  /// the current value at the key, if any, and a subsequent notification will
-  /// be published for every following `Add` to the key. Before notifications
-  /// can be requested, the caller must first call `Subscribe`, with the same
-  /// `client_id`.
+  /// the current value(s) at the key, if any, and a subsequent notification
+  /// will be published for every following `Add` to the key. Before
+  /// notifications can be requested, the caller must first call `Subscribe`,
+  /// with the same `client_id`.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the key to request notifications for.
@@ -273,9 +273,10 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
     int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, callback, id](boost::optional<const std::string &> data) {
+        [this, callback, id](const std::vector<std::string> &data) {
+          RAY_CHECK(data.size() == 1);
           auto result = std::make_shared<TaskTableDataT>();
-          auto root = flatbuffers::GetRoot<TaskTableData>(data->data());
+          auto root = flatbuffers::GetRoot<TaskTableData>(data[0].data());
           root->UnPackTo(result.get());
           callback(client_, id, *result, root->updated());
           return true;
@@ -327,6 +328,8 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
 
 class ClientTable : private Table<ClientID, ClientTableData> {
  public:
+  using ClientTableCallback = std::function<void(
+      AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
   ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
               const ClientTableDataT &local_client)
       : Table(context, client),
@@ -358,12 +361,12 @@ class ClientTable : private Table<ClientID, ClientTableData> {
   /// Register a callback to call when a new client is added.
   ///
   /// \param callback The callback to register.
-  void RegisterClientAddedCallback(const Callback &callback);
+  void RegisterClientAddedCallback(const ClientTableCallback &callback);
 
   /// Register a callback to call when a client is removed.
   ///
   /// \param callback The callback to register.
-  void RegisterClientRemovedCallback(const Callback &callback);
+  void RegisterClientRemovedCallback(const ClientTableCallback &callback);
 
   /// Get a client's information from the cache. The cache only contains
   /// information for clients that we've heard a notification for.
@@ -386,10 +389,10 @@ class ClientTable : private Table<ClientID, ClientTableData> {
  private:
   /// Handle a client table notification.
   void HandleNotification(AsyncGcsClient *client, const ClientID &channel_id,
-                          std::shared_ptr<ClientTableDataT>);
+                          const std::vector<ClientTableDataT> &notifications);
   /// Handle this client's successful connection to the GCS.
   void HandleConnected(AsyncGcsClient *client, const ClientID &client_id,
-                       std::shared_ptr<ClientTableDataT>);
+                       const std::vector<ClientTableDataT> &notifications);
 
   /// Whether this client has called Disconnect().
   bool disconnected_;
@@ -398,9 +401,9 @@ class ClientTable : private Table<ClientID, ClientTableData> {
   /// Information about this client.
   ClientTableDataT local_client_;
   /// The callback to call when a new client is added.
-  Callback client_added_callback_;
+  ClientTableCallback client_added_callback_;
   /// The callback to call when a client is removed.
-  Callback client_removed_callback_;
+  ClientTableCallback client_removed_callback_;
   /// A cache for information about all clients.
   std::unordered_map<ClientID, ClientTableDataT, UniqueIDHasher> client_cache_;
 };

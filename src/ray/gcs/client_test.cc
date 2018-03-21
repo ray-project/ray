@@ -92,14 +92,16 @@ class TestGcsWithAsio : public TestGcs {
 };
 
 void ObjectAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                 std::shared_ptr<ObjectTableDataT> data) {
-  ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
+                 const std::vector<ObjectTableDataT> &data) {
+  ASSERT_EQ(data.size(), 1);
+  ASSERT_EQ(data[0].managers, std::vector<std::string>({"A", "B"}));
 }
 
 void Lookup(gcs::AsyncGcsClient *client, const UniqueID &id,
-            std::shared_ptr<ObjectTableDataT> data) {
+            const std::vector<ObjectTableDataT> &data) {
   // Check that the object entry was added.
-  ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
+  ASSERT_EQ(data.size(), 1);
+  ASSERT_EQ(data[0].managers, std::vector<std::string>({"A", "B"}));
   test->Stop();
 }
 
@@ -115,7 +117,7 @@ void TestObjectTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   data->managers.push_back("B");
   ObjectID object_id = ObjectID::from_random();
   RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, &ObjectAdded));
-  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, &Lookup, &LookupFailed));
+  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, &Lookup));
   // Run the event loop. The loop will only stop if the Lookup callback is
   // called (or an assertion failure).
   test->Start();
@@ -131,37 +133,16 @@ TEST_F(TestGcsWithAsio, TestObjectTable) {
   TestObjectTable(job_id_, client_);
 }
 
-void TestLookupFailure(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
-  auto object_id = ObjectID::from_random();
-  // Looking up an empty object ID should call the failure callback.
-  auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
-    test->Stop();
-  };
-  RAY_CHECK_OK(
-      client->object_table().Lookup(job_id, object_id, nullptr, failure_callback));
-  // Run the event loop. The loop will only stop if the failure callback is
-  // called.
-  test->Start();
-}
-
-TEST_F(TestGcsWithAe, TestLookupFailure) {
-  test = this;
-  TestLookupFailure(job_id_, client_);
-}
-
-TEST_F(TestGcsWithAsio, TestLookupFailure) {
-  test = this;
-  TestLookupFailure(job_id_, client_);
-}
-
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
-               std::shared_ptr<TaskTableDataT> data) {
-  ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);
+               const std::vector<TaskTableDataT> &data) {
+  ASSERT_EQ(data.size(), 1);
+  ASSERT_EQ(data[0].scheduling_state, SchedulingState_SCHEDULED);
 }
 
 void TaskLookup(gcs::AsyncGcsClient *client, const TaskID &id,
-                std::shared_ptr<TaskTableDataT> data) {
-  ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);
+                const std::vector<TaskTableDataT> &data) {
+  ASSERT_EQ(data.size(), 1);
+  ASSERT_EQ(data[0].scheduling_state, SchedulingState_SCHEDULED);
 }
 
 void TaskLookupFailure(gcs::AsyncGcsClient *client, const TaskID &id) {
@@ -169,8 +150,9 @@ void TaskLookupFailure(gcs::AsyncGcsClient *client, const TaskID &id) {
 }
 
 void TaskLookupAfterUpdate(gcs::AsyncGcsClient *client, const TaskID &id,
-                           std::shared_ptr<TaskTableDataT> data) {
-  ASSERT_EQ(data->scheduling_state, SchedulingState_LOST);
+                           const std::vector<TaskTableDataT> &data) {
+  ASSERT_EQ(data.size(), 1);
+  ASSERT_EQ(data[0].scheduling_state, SchedulingState_LOST);
   test->Stop();
 }
 
@@ -181,8 +163,8 @@ void TaskLookupAfterUpdateFailure(gcs::AsyncGcsClient *client, const TaskID &id)
 
 void TaskUpdateCallback(gcs::AsyncGcsClient *client, const TaskID &task_id,
                         const TaskTableDataT &task, bool updated) {
-  RAY_CHECK_OK(client->task_table().Lookup(
-      DriverID::nil(), task_id, &TaskLookupAfterUpdate, &TaskLookupAfterUpdateFailure));
+  RAY_CHECK_OK(
+      client->task_table().Lookup(DriverID::nil(), task_id, &TaskLookupAfterUpdate));
 }
 
 void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -192,8 +174,7 @@ void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
   RAY_CHECK_OK(client->task_table().Add(job_id, task_id, data, &TaskAdded));
-  RAY_CHECK_OK(
-      client->task_table().Lookup(job_id, task_id, &TaskLookup, &TaskLookupFailure));
+  RAY_CHECK_OK(client->task_table().Lookup(job_id, task_id, &TaskLookup));
   auto update = std::make_shared<TaskTableTestAndUpdateT>();
   update->test_scheduler_id = local_scheduler_id.binary();
   update->test_state_bitmask = SchedulingState_SCHEDULED;
@@ -220,16 +201,17 @@ TEST_F(TestGcsWithAsio, TestTaskTable) {
 void TestSubscribeAll(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Callback for a notification.
   auto notification_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                  std::shared_ptr<ObjectTableDataT> data) {
+                                  const std::vector<ObjectTableDataT> &data) {
+    ASSERT_EQ(data.size(), 1);
     // Check that the object entry was added.
-    ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
+    ASSERT_EQ(data[0].managers, std::vector<std::string>({"A", "B"}));
     test->IncrementNumCallbacks();
     test->Stop();
   };
 
   // Callback for subscription success. This should only be called once.
   auto subscribe_callback = [job_id](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                     std::shared_ptr<ObjectTableDataT> d) {
+                                     const std::vector<ObjectTableDataT> &d) {
     test->IncrementNumCallbacks();
     // We have subscribed. Add an object table entry.
     auto data = std::make_shared<ObjectTableDataT>();
@@ -281,7 +263,7 @@ void TestSubscribeId(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   // notifications for the second object that was added.
   auto subscribe_callback = [job_id, object_id2](gcs::AsyncGcsClient *client,
                                                  const UniqueID &id,
-                                                 std::shared_ptr<ObjectTableDataT> d) {
+                                                 const std::vector<ObjectTableDataT> &d) {
     test->IncrementNumCallbacks();
     // Request notifications for the second object. Since we already added the
     // entry to the table, we should receive an initial notification for its
@@ -299,9 +281,10 @@ void TestSubscribeId(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
   auto notification_callback = [data2](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                       std::shared_ptr<ObjectTableDataT> data) {
+                                       const std::vector<ObjectTableDataT> &data) {
+    ASSERT_EQ(data.size(), 1);
     // Check that we got a notification for the correct object.
-    ASSERT_EQ(data->managers.front(), "C");
+    ASSERT_EQ(data[0].managers.front(), "C");
     test->IncrementNumCallbacks();
     // Stop the loop once we've received notifications for both writes to the
     // object key.
@@ -344,7 +327,7 @@ void TestSubscribeCancel(const JobID &job_id,
   // notifications for the second object that was added.
   auto subscribe_callback = [job_id, object_id](gcs::AsyncGcsClient *client,
                                                 const UniqueID &id,
-                                                std::shared_ptr<ObjectTableDataT> d) {
+                                                const std::vector<ObjectTableDataT> &d) {
     test->IncrementNumCallbacks();
     // Request notifications for the object. We should receive a notification
     // for the current value at the key.
@@ -369,14 +352,15 @@ void TestSubscribeCancel(const JobID &job_id,
 
   // The callback for a notification from the object table.
   auto notification_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                  std::shared_ptr<ObjectTableDataT> data) {
+                                  const std::vector<ObjectTableDataT> &data) {
+    ASSERT_EQ(data.size(), 1);
     // Check that we only receive notifications for the key when we have
     // requested notifications for it. We should not get a notification for the
     // entry that began with "B" since we canceled notifications then.
     if (test->NumCallbacks() == 1) {
-      ASSERT_EQ(data->managers.front(), "A");
+      ASSERT_EQ(data[0].managers.front(), "A");
     } else {
-      ASSERT_EQ(data->managers.front(), "C");
+      ASSERT_EQ(data[0].managers.front(), "C");
     }
     test->IncrementNumCallbacks();
     if (test->NumCallbacks() == 3) {
@@ -407,10 +391,10 @@ TEST_F(TestGcsWithAsio, TestSubscribeCancel) {
 }
 
 void ClientTableNotification(gcs::AsyncGcsClient *client, const UniqueID &id,
-                             std::shared_ptr<ClientTableDataT> data, bool is_insertion) {
+                             const ClientTableDataT &data, bool is_insertion) {
   ClientID added_id = client->client_table().GetLocalClientId();
-  ASSERT_EQ(ClientID::from_binary(data->client_id), added_id);
-  ASSERT_EQ(data->is_insertion, is_insertion);
+  ASSERT_EQ(ClientID::from_binary(data.client_id), added_id);
+  ASSERT_EQ(data.is_insertion, is_insertion);
 
   auto cached_client = client->client_table().GetClient(added_id);
   ASSERT_EQ(ClientID::from_binary(cached_client.client_id), added_id);
@@ -422,8 +406,7 @@ void TestClientTableConnect(const JobID &job_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const UniqueID &id,
-         std::shared_ptr<ClientTableDataT> data) {
+      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, true);
         test->Stop();
       });
@@ -443,13 +426,11 @@ void TestClientTableDisconnect(const JobID &job_id,
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
-      [](gcs::AsyncGcsClient *client, const UniqueID &id,
-         std::shared_ptr<ClientTableDataT> data) {
+      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, true);
       });
   client->client_table().RegisterClientRemovedCallback(
-      [](gcs::AsyncGcsClient *client, const UniqueID &id,
-         std::shared_ptr<ClientTableDataT> data) {
+      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, false);
         test->Stop();
       });

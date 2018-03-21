@@ -1,7 +1,6 @@
 #ifndef RAY_GCS_REDIS_CONTEXT_H
 #define RAY_GCS_REDIS_CONTEXT_H
 
-#include <boost/optional.hpp>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -22,7 +21,7 @@ namespace gcs {
 
 class RedisCallbackManager {
  public:
-  using RedisCallback = std::function<bool(boost::optional<const std::string &>)>;
+  using RedisCallback = std::function<bool(const std::vector<std::string> &)>;
 
   static RedisCallbackManager &instance() {
     static RedisCallbackManager instance;
