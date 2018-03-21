@@ -1332,15 +1332,16 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
   RAY_CHECK_OK(state->gcs_client.task_table().Lookup(
       ray::JobID::nil(), task_id,
       [user_context](gcs::AsyncGcsClient *, const TaskID &,
-                     std::shared_ptr<TaskTableDataT> t) {
-        Task *task = Task_alloc(
-            t->task_info.data(), t->task_info.size(), t->scheduling_state,
-            DBClientID::from_binary(t->scheduler_id), std::vector<ObjectID>());
+                     const std::vector<TaskTableDataT> &data) {
+        RAY_CHECK(data.size() == 1);
+        TaskTableDataT task_data = data[0];
+        Task *task =
+            Task_alloc(task_data.task_info.data(), task_data.task_info.size(),
+                       task_data.scheduling_state,
+                       DBClientID::from_binary(task_data.scheduler_id),
+                       std::vector<ObjectID>());
         log_object_hash_mismatch_error_task_callback(task, user_context);
         Task_free(task);
-      },
-      [user_context](gcs::AsyncGcsClient *, const TaskID &) {
-        // TODO(pcmoritz): Handle failure.
       }));
 #endif
 }
