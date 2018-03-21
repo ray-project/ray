@@ -2,8 +2,8 @@ humanoid-es:
     env: Humanoid-v1
     run: ES
     resources:
-        cpu: 100
-        driver_cpu_limit: 4
+        cpu: 101
+        driver_cpu_limit: 1
     stop:
         episode_reward_mean: 6000
     config:

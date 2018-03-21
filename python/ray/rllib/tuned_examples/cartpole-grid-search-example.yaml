@@ -5,7 +5,7 @@ cartpole-ppo:
         episode_reward_mean: 200
         time_total_s: 180
     resources:
-        cpu: 2
+        cpu: 3
         driver_cpu_limit: 1
     config:
         num_workers: 2

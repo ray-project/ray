@@ -11,7 +11,6 @@ import tensorflow as tf
 import ray
 from ray.rllib import optimizers
 from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
-from ray.rllib.utils.actors import drop_colocated
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
@@ -114,9 +113,7 @@ DEFAULT_CONFIG = dict(
     # Whether to use a distribution of epsilons across workers for exploration.
     per_worker_exploration=False,
     # Whether to compute priorities on workers.
-    worker_side_prioritization=False,
-    # Whether to force evaluator actors to be placed on remote machines.
-    force_evaluators_remote=False)
+    worker_side_prioritization=False)
 
 
 class DQNAgent(Agent):
@@ -136,9 +133,6 @@ class DQNAgent(Agent):
                 self.registry, self.env_creator, self.config, self.logdir,
                 i)
             for i in range(self.config["num_workers"])]
-
-        if self.config["force_evaluators_remote"]:
-            self.remote_evaluators = drop_colocated(self.remote_evaluators)
 
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer_config"]:
