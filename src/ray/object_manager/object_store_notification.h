@@ -19,25 +19,37 @@
 
 namespace ray {
 
-// TODO(hme): document public API after refactor.
 class ObjectStoreNotification {
  public:
-  // Encapsulates communication with the object store.
+  /// Encapsulates notification handling from the object store.
   ObjectStoreNotification(boost::asio::io_service &io_service,
                           std::string &store_socket_name);
 
-  // Subscribe to notifications of objects added to local store.
-  // Upon subscribing, the callback will be invoked for all objects that
-  // already exist in the local store.
+  /// Subscribe to notifications of objects added to local store.
+  /// Upon subscribing, the callback will be invoked for all objects that
+  /// already exist in the local store
+  ///
+  /// \param callback A callback expecting an ObjectID.
   void SubscribeObjAdded(std::function<void(const ray::ObjectID &)> callback);
 
-  // Subscribe to notifications of objects deleted from local store.
+  /// Subscribe to notifications of objects deleted from local store.
+  ///
+  /// \param callback A callback expecting an ObjectID.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
 
-  // Terminate this object.
+  /// Terminate this object.
   void Terminate();
 
  private:
+  /// Async loop for handling object store notifications.
+  void NotificationWait();
+  void ProcessStoreLength(const boost::system::error_code &error);
+  void ProcessStoreNotification(const boost::system::error_code &error);
+
+  /// Support for rebroadcasting object add/rem events.
+  void ProcessStoreAdd(const ObjectID &object_id);
+  void ProcessStoreRemove(const ObjectID &object_id);
+
   std::vector<std::function<void(const ray::ObjectID &)>> add_handlers_;
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
 
@@ -46,15 +58,6 @@ class ObjectStoreNotification {
   int64_t length_;
   std::vector<uint8_t> notification_;
   boost::asio::local::stream_protocol::socket socket_;
-
-  // Async loop for handling object store notifications.
-  void NotificationWait();
-  void ProcessStoreLength(const boost::system::error_code &error);
-  void ProcessStoreNotification(const boost::system::error_code &error);
-
-  // Support for rebroadcasting object add/rem events.
-  void ProcessStoreAdd(const ObjectID &object_id);
-  void ProcessStoreRemove(const ObjectID &object_id);
 };
 
 }  // namespace ray

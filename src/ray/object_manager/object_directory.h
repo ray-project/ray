@@ -7,7 +7,6 @@
 #include <vector>
 
 #include "ray/gcs/client.h"
-// #include "ray/raylet/mock_gcs_client.h"
 #include "ray/id.h"
 #include "ray/status.h"
 
@@ -116,18 +115,17 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     OnLocationsFailure fail_cb;
   };
 
-  /// Maintain map of in-flight GetLocation requests.
-  std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
-
-  /// Reference to the gcs client.
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
-
   /// GetLocations registers a request for locations.
   /// This function actually carries out that request.
   ray::Status ExecuteGetLocations(const ObjectID &object_id);
   /// Invoked when call to ExecuteGetLocations completes.
   ray::Status GetLocationsComplete(const ray::Status &status, const ObjectID &object_id,
                                    const std::vector<ClientID> &v);
+
+  /// Maintain map of in-flight GetLocation requests.
+  std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
+  /// Reference to the gcs client.
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
 };
 
 }  // namespace ray

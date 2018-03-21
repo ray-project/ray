@@ -22,50 +22,37 @@ namespace ray {
 
 class ObjectStorePool {
  public:
-  std::mutex pool_mutex;
+  /// Provides connections to the object store. Enables concurrent communication with
+  /// the object store.
+  ///
+  /// \param store_socket_name The object store socket name.
+  ObjectStorePool(std::string &store_socket_name);
 
-  // Encapsulates communication with the object store.
-  ObjectStorePool(std::string &store_socket_name) {
-    store_socket_name_ = store_socket_name;
-  }
-
+  /// This object cannot be copied due to pool_mutex.
   ObjectStorePool &operator=(const ObjectStorePool &o) {
     throw std::runtime_error("Can't copy ObjectStorePool.");
   }
 
-  std::shared_ptr<plasma::PlasmaClient> GetObjectStore() {
-    pool_mutex.lock();
-    if (available_clients.empty()) {
-      Add();
-    }
-    std::shared_ptr<plasma::PlasmaClient> client = available_clients.back();
-    available_clients.pop_back();
-    pool_mutex.unlock();
-    return client;
-  }
+  /// Provides a connection to the object store from the object store pool.
+  /// This removes the object store client from the pool of available clients.
+  ///
+  /// \return A connection to the object store.
+  std::shared_ptr<plasma::PlasmaClient> GetObjectStore();
 
-  void ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client) {
-    pool_mutex.lock();
-    available_clients.push_back(client);
-    pool_mutex.unlock();
-  }
+  /// Returns a client to the object store pool.
+  /// Once a client is released, it is assumed that it is not being used.
+  /// \param client The client to return.
+  /// \param client
+  void ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client);
 
-  void Terminate() {
-    for (auto client : clients) {
-      ARROW_CHECK_OK(client->Disconnect());
-    }
-    available_clients.clear();
-    clients.clear();
-  }
+  /// Terminates this object.
+  void Terminate();
 
  private:
-  void Add() {
-    clients.emplace_back(new plasma::PlasmaClient());
-    ARROW_CHECK_OK(clients.back()->Connect(store_socket_name_.c_str(), "",
-                                           PLASMA_DEFAULT_RELEASE_DELAY));
-    available_clients.push_back(clients.back());
-  }
+  /// Adds a client to the client pool and mark it as available.
+  void Add();
 
+  std::mutex pool_mutex;
   std::vector<std::shared_ptr<plasma::PlasmaClient>> available_clients;
   std::vector<std::shared_ptr<plasma::PlasmaClient>> clients;
   std::string store_socket_name_;

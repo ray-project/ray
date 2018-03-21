@@ -310,12 +310,12 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
 };
 
 void ObjectManager::ProcessNewClient(
-    std::shared_ptr<ObjectManagerClientConnection> conn) {
+    std::shared_ptr<ReceiverConnection> conn) {
   conn->ProcessMessages();
 };
 
 void ObjectManager::ProcessClientMessage(
-    std::shared_ptr<ObjectManagerClientConnection> conn, int64_t message_type,
+    std::shared_ptr<ReceiverConnection> conn, int64_t message_type,
     const uint8_t *message) {
   switch (message_type) {
   case OMMessageType_PushRequest: {
@@ -343,7 +343,7 @@ void ObjectManager::ProcessClientMessage(
   }
 };
 
-void ObjectManager::ConnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn,
+void ObjectManager::ConnectClient(std::shared_ptr<ReceiverConnection> &conn,
                                   const uint8_t *message) {
   // TODO: trash connection on failure.
   auto info = flatbuffers::GetRoot<ConnectClientMessage>(message);
@@ -362,7 +362,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<ObjectManagerClientConnection>
   }
 };
 
-void ObjectManager::DisconnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn,
+void ObjectManager::DisconnectClient(std::shared_ptr<ReceiverConnection> &conn,
                                      const uint8_t *message) {
   auto info = flatbuffers::GetRoot<DisconnectClientMessage>(message);
   ClientID client_id = ObjectID::from_binary(info->client_id()->str());
@@ -375,7 +375,7 @@ void ObjectManager::DisconnectClient(std::shared_ptr<ObjectManagerClientConnecti
 };
 
 void ObjectManager::ReceivePullRequest(
-    std::shared_ptr<ObjectManagerClientConnection> &conn, const uint8_t *message) {
+    std::shared_ptr<ReceiverConnection> &conn, const uint8_t *message) {
   // Serialize.
   auto pr = flatbuffers::GetRoot<PullRequestMessage>(message);
   ObjectID object_id = ObjectID::from_binary(pr->object_id()->str());
@@ -385,7 +385,7 @@ void ObjectManager::ReceivePullRequest(
 };
 
 ray::Status ObjectManager::WaitPushReceive(
-    std::shared_ptr<ObjectManagerClientConnection> conn) {
+    std::shared_ptr<ReceiverConnection> conn) {
   //  RAY_LOG(INFO) << "WaitPushReceive";
   asio::async_read(conn->GetSocket(), asio::buffer(&read_length_, sizeof(read_length_)),
                    boost::bind(&ObjectManager::HandlePushReceive, this, conn,
@@ -393,7 +393,7 @@ ray::Status ObjectManager::WaitPushReceive(
   return ray::Status::OK();
 };
 
-void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnection> conn,
+void ObjectManager::HandlePushReceive(std::shared_ptr<ReceiverConnection> conn,
                                       const boost::system::error_code &length_ec) {
   //  RAY_LOG(INFO) << "HandlePushReceive";
   std::vector<uint8_t> message;
@@ -412,7 +412,7 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ObjectManagerClientConnect
 
 ray::Status ObjectManager::ExecuteReceive(
     ClientID client_id, ObjectID object_id, uint64_t object_size,
-    std::shared_ptr<ObjectManagerClientConnection> conn) {
+    std::shared_ptr<ReceiverConnection> conn) {
   boost::system::error_code ec;
   //  RAY_LOG(INFO) << "ExecuteReceive "
   //                << object_id << " "

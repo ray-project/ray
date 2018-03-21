@@ -62,17 +62,17 @@ class MockServer {
   }
 
   void HandleAcceptObjectManager(const boost::system::error_code &error) {
-    ObjectManagerClientHandler client_handler =
-        [this](std::shared_ptr<ObjectManagerClientConnection> client) {
+    ReceiverClientHandler client_handler =
+        [this](std::shared_ptr<ReceiverConnection> client) {
           object_manager_.ProcessNewClient(client);
         };
-    ObjectManagerMessageHandler message_handler = [this](
-        std::shared_ptr<ObjectManagerClientConnection> client, int64_t message_type,
+    ReceiverMessageHandler message_handler = [this](
+        std::shared_ptr<ReceiverConnection> client, int64_t message_type,
         const uint8_t *message) {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = ObjectManagerClientConnection::Create(
+    auto new_connection = ReceiverConnection::Create(
         client_handler, message_handler, std::move(object_manager_socket_));
     DoAcceptObjectManager();
   }

@@ -11,15 +11,12 @@
 
 namespace ray {
 
-// TODO(hme): Dedicate this class to notifications.
-// TODO(hme): Create object store client pool for object manager.
 ObjectStoreNotification::ObjectStoreNotification(boost::asio::io_service &io_service,
                                                  std::string &store_socket_name)
     : store_client_(), socket_(io_service) {
   ARROW_CHECK_OK(
       store_client_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
 
-  // Connect to two clients, but subscribe to only one.
   ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
   boost::system::error_code ec;
   socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
@@ -54,7 +51,7 @@ void ObjectStoreNotification::ProcessStoreNotification(
     ProcessStoreRemove(object_id);
   } else {
     ProcessStoreAdd(object_id);
-    // why all these params?
+    // TODO(hme): Determine what data is actually needed by consumer of this notification.
     //    ProcessStoreAdd(
     //        object_id, object_info->data_size(),
     //        object_info->metadata_size(),

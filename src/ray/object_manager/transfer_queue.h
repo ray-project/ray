@@ -27,6 +27,7 @@ class TransferQueue {
  public:
   enum TransferType { SEND = 1, RECEIVE };
 
+  /// Context maintained during an object send.
   struct SendContext {
     ClientID client_id;
     ObjectID object_id;
@@ -34,8 +35,8 @@ class TransferQueue {
     uint8_t *data;
   };
 
+  /// The structure used in the send queue.
   struct SendRequest {
-   public:
     ClientID client_id;
     ObjectID object_id;
     friend bool operator==(const SendRequest &o1, const SendRequest &o2) {
@@ -43,81 +44,72 @@ class TransferQueue {
     }
   };
 
+  /// The structure used in the receive queue.
   struct ReceiveRequest {
     ClientID client_id;
     ObjectID object_id;
     uint64_t object_size;
-    std::shared_ptr<ObjectManagerClientConnection> conn;
+    std::shared_ptr<ReceiverConnection> conn;
     friend bool operator==(const ReceiveRequest &o1, const ReceiveRequest &o2) {
       return o1.client_id == o2.client_id && o1.object_id == o2.object_id;
     }
   };
 
+  /// \return Whether the transfer queue is empty.
+  bool Empty();
+
+  /// \return The number of sends in the transfer queue.
+  uint64_t SendCount();
+
+  /// \return The number of receives in the transfer queue.
+  uint64_t ReceiveCount();
+
+  /// \return Indicator of the last transfer type to be dequeued from the queue.
+  TransferType LastTransferType();
+
+  /// Queues a send.
+  ///
+  /// \param client_id The ClientID to which the object needs to be sent.
+  /// \param object_id The ObjectID of the object to be sent.
+  void QueueSend(ClientID client_id, ObjectID object_id);
+
+  /// \return Removes a SendRequest from the send queue. This queue is FIFO.
+  SendRequest DequeueSend();
+
+  /// Queues a receive.
+  ///
+  /// \param client_id The ClientID from which the object is being received.
+  /// \param object_id The ObjectID of the object to be received.
+  void QueueReceive(const ClientID &client_id, const ObjectID &object_id,
+                    uint64_t object_size, std::shared_ptr<ReceiverConnection> conn);
+
+  /// \return Removes a ReceiveRequest from the receive queue. This queue is FIFO.
+  ReceiveRequest DequeueReceive();
+
+  /// Maintain ownership over SendContext for sends in transit.
+  ///
+  /// \param context The context to maintain.
+  /// \return A unique identifier identifying the context that was added.
+  UniqueID AddContext(SendContext &context);
+
+  /// Gets the SendContext associated with the given id.
+  ///
+  /// \param id The unique identifier of the context.
+  /// \return The context.
+  SendContext &GetContext(const UniqueID &id);
+
+  /// Removes the context associated with the given id.
+  ///
+  /// \param id The unique identifier of the context.
+  /// \return The status of invoking this method.
+  ray::Status RemoveContext(const UniqueID &id);
+
  private:
   std::deque<SendRequest> send_queue_;
   std::deque<ReceiveRequest> receive_queue_;
   std::unordered_map<ray::UniqueID, SendContext, ray::UniqueIDHasher> send_context_set_;
-
   TransferType last_transfer_type_;
-
- public:
-  bool Empty() { return send_queue_.empty() && receive_queue_.empty(); }
-
-  uint64_t SendCount() { return send_queue_.size(); }
-
-  uint64_t ReceiveCount() { return receive_queue_.size(); }
-
-  TransferType LastTransferType() { return last_transfer_type_; }
-
-  void QueueSend(ClientID client_id, ObjectID object_id) {
-    SendRequest req = {client_id, object_id};
-    // TODO(hme): Use a set to speed this up.
-    if (std::find(send_queue_.begin(), send_queue_.end(), req) != send_queue_.end()) {
-      // already queued.
-      return;
-    }
-    send_queue_.push_back(req);
-  }
-
-  SendRequest DequeueSend() {
-    SendRequest req = send_queue_.front();
-    send_queue_.pop_front();
-    last_transfer_type_ = SEND;
-    return req;
-  }
-
-  void QueueReceive(const ClientID &client_id, const ObjectID &object_id,
-                    uint64_t object_size,
-                    std::shared_ptr<ObjectManagerClientConnection> conn) {
-    ReceiveRequest req = {client_id, object_id, object_size, conn};
-    if (std::find(receive_queue_.begin(), receive_queue_.end(), req) !=
-        receive_queue_.end()) {
-      // already queued.
-      return;
-    }
-    receive_queue_.push_back(req);
-  }
-
-  ReceiveRequest DequeueReceive() {
-    ReceiveRequest req = receive_queue_.front();
-    receive_queue_.pop_front();
-    last_transfer_type_ = RECEIVE;
-    return req;
-  }
-
-  UniqueID AddContext(SendContext &context) {
-    UniqueID id = UniqueID::from_random();
-    send_context_set_.emplace(id, context);
-    return id;
-  }
-
-  SendContext &GetContext(const UniqueID &id) { return send_context_set_[id]; }
-
-  ray::Status RemoveContext(const UniqueID &id) {
-    send_context_set_.erase(id);
-    return Status::OK();
-  }
 };
-}
+}  // namespace ray
 
 #endif  // RAY_TRANSFER_QUEUE_H

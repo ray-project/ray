@@ -114,14 +114,14 @@ class ObjectManager {
   ///
   /// \param conn The connection.
   /// \return Status of whether the connection was successfully established.
-  void ProcessNewClient(std::shared_ptr<ObjectManagerClientConnection> conn);
+  void ProcessNewClient(std::shared_ptr<ReceiverConnection> conn);
 
   /// Process messages sent from other nodes.
   ///
   /// \param conn The connection.
   /// \param message_type The message type.
   /// \param message A pointer set to the beginning of the message.
-  void ProcessClientMessage(std::shared_ptr<ObjectManagerClientConnection> conn,
+  void ProcessClientMessage(std::shared_ptr<ReceiverConnection> conn,
                             int64_t message_type, const uint8_t *message);
 
   /// Cancels all requests (Push/Pull) associated with the given ObjectID.
@@ -248,26 +248,26 @@ class ObjectManager {
   ray::Status TransferCompleted();
 
   /// Handles receiving a pull request message.
-  void ReceivePullRequest(std::shared_ptr<ObjectManagerClientConnection> &conn,
+  void ReceivePullRequest(std::shared_ptr<ReceiverConnection> &conn,
                           const uint8_t *message);
 
   /// Handles connect message of a new client connection.
-  void ConnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn,
+  void ConnectClient(std::shared_ptr<ReceiverConnection> &conn,
                      const uint8_t *message);
 
   /// Handles disconnect message of an existing client connection.
-  void DisconnectClient(std::shared_ptr<ObjectManagerClientConnection> &conn,
+  void DisconnectClient(std::shared_ptr<ReceiverConnection> &conn,
                         const uint8_t *message);
 
   /// A socket connection doing an asynchronous read on a transfer connection that was
   /// added by ConnectClient.
-  ray::Status WaitPushReceive(std::shared_ptr<ObjectManagerClientConnection> conn);
+  ray::Status WaitPushReceive(std::shared_ptr<ReceiverConnection> conn);
 
   ray::Status ExecuteReceive(ClientID client_id, ObjectID object_id, uint64_t object_size,
-                             std::shared_ptr<ObjectManagerClientConnection> conn);
+                             std::shared_ptr<ReceiverConnection> conn);
 
   /// Invoked when a remote object manager pushes an object to this object manager.
-  void HandlePushReceive(std::shared_ptr<ObjectManagerClientConnection> conn,
+  void HandlePushReceive(std::shared_ptr<ReceiverConnection> conn,
                          const boost::system::error_code &length_ec);
 };
 

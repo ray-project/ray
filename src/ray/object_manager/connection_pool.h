@@ -24,191 +24,125 @@ namespace asio = boost::asio;
 namespace ray {
 
 class ConnectionPool {
- private:
-  // TODO(hme): make this a shared_ptr.
-  ObjectDirectoryInterface *object_directory_;
-  asio::io_service *connection_service_;
-  ClientID client_id_;
-
-  /// Note that (currently) receives take place on the main thread,
-  /// and sends take place on a dedicated thread.
-  using SenderMapType =
-      std::unordered_map<ray::ClientID, std::vector<SenderConnection::pointer>,
-                         ray::UniqueIDHasher>;
-  SenderMapType message_send_connections_;
-  SenderMapType transfer_send_connections_;
-  SenderMapType available_message_send_connections_;
-  SenderMapType available_transfer_send_connections_;
-
-  using ReceiverMapType =
-      std::unordered_map<ray::ClientID,
-                         std::vector<std::shared_ptr<ObjectManagerClientConnection>>,
-                         ray::UniqueIDHasher>;
-  ReceiverMapType message_receive_connections_;
-  ReceiverMapType transfer_receive_connections_;
-
  public:
-  enum ConnectionType { MESSAGE = 0, TRANSFER };
 
+  /// Callbacks for GetSender.
   using SuccessCallback = std::function<void(SenderConnection::pointer)>;
   using FailureCallback = std::function<void()>;
 
+  /// Connection type to distinguish between message and transfer connections.
+  enum ConnectionType { MESSAGE = 0, TRANSFER };
+
+  /// Connection pool for all connections needed by the ObjectManager.
+  ///
+  /// \param object_directory The object directory, used for obtaining
+  /// remote object manager connection information.
+  /// \param connection_service The io_service the connection pool should use
+  /// to create new connections.
+  /// \param client_id The ClientID of this node.
   ConnectionPool(ObjectDirectoryInterface *object_directory,
-                 asio::io_service *connection_service, const ClientID &client_id) {
-    object_directory_ = object_directory;
-    connection_service_ = connection_service;
-    client_id_ = client_id;
-  }
+                 asio::io_service *connection_service, const ClientID &client_id);
 
+  /// Register a receiver connection.
+  ///
+  /// \param type The type of connection.
+  /// \param client_id The ClientID of the remote object manager.
+  /// \param conn The actual connection.
   void RegisterReceiver(ConnectionType type, const ClientID &client_id,
-                        std::shared_ptr<ObjectManagerClientConnection> &conn) {
-    switch (type) {
-    case MESSAGE: {
-      Add(message_receive_connections_, client_id, conn);
-    } break;
-    case TRANSFER: {
-      Add(transfer_receive_connections_, client_id, conn);
-    } break;
-    }
-  }
+                        std::shared_ptr<ReceiverConnection> &conn);
 
+  /// Remove a receiver connection.
+  ///
+  /// \param type The type of connection.
+  /// \param client_id The ClientID of the remote object manager.
+  /// \param conn The actual connection.
   void RemoveReceiver(ConnectionType type, const ClientID &client_id,
-                      std::shared_ptr<ObjectManagerClientConnection> &conn) {
-    switch (type) {
-    case MESSAGE: {
-      Remove(message_receive_connections_, client_id, conn);
-    } break;
-    case TRANSFER: {
-      Remove(transfer_receive_connections_, client_id, conn);
-    } break;
-    }
-    // TODO(hme): appropriately dispose of client connection.
-  }
+                      std::shared_ptr<ReceiverConnection> &conn);
 
+  /// Get a sender connection from the connection pool.
+  /// The connection must be released or removed when the operation for which the
+  /// connection was obtained is completed.
+  ///
+  /// \param type The type of connection.
+  /// \param client_id The ClientID of the remote object manager.
+  /// \param success_callback The callback invoked when a sender is available.
+  /// \param failure_callback The callback invoked if this method fails.
+  /// \return Status of invoking this method.
   ray::Status GetSender(ConnectionType type, ClientID client_id,
                         SuccessCallback success_callback,
-                        FailureCallback failure_callback) {
-    SenderMapType &avail_conn_map = (type == MESSAGE)
-                                        ? available_message_send_connections_
-                                        : available_transfer_send_connections_;
-    if (Count(avail_conn_map, client_id) > 0) {
-      success_callback(Borrow(avail_conn_map, client_id));
-      return Status::OK();
-    } else {
-      return CreateConnection1(
-          type, client_id,
-          [this, type, client_id, success_callback](SenderConnection::pointer conn) {
-            // add it to the connection map to maintain ownership.
-            SenderMapType &conn_map = (type == MESSAGE) ? message_send_connections_
-                                                        : transfer_send_connections_;
-            Add(conn_map, client_id, conn);
-            // add it to the available connections
-            SenderMapType &avail_conn_map = (type == MESSAGE)
-                                                ? available_message_send_connections_
-                                                : available_transfer_send_connections_;
-            Add(avail_conn_map, client_id, conn);
-            // "borrow" the connection.
-            success_callback(Borrow(avail_conn_map, client_id));
-          },
-          failure_callback);
-    }
-  }
+                        FailureCallback failure_callback);
 
-  ray::Status ReleaseSender(ConnectionType type, SenderConnection::pointer conn) {
-    SenderMapType &conn_map = (type == MESSAGE) ? available_message_send_connections_
-                                                : available_transfer_send_connections_;
-    Return(conn_map, conn->GetClientID(), conn);
-    return ray::Status::OK();
-  }
+  /// Releasex a sender connection, allowing it to be used by another operation.
+  ///
+  /// \param type The type of connection.
+  /// \param conn The actual connection.
+  /// \return Status of invoking this method.
+  ray::Status ReleaseSender(ConnectionType type, SenderConnection::pointer conn);
+
+  /// Remove a sender connection. This is invoked if the connection is no longer
+  /// usable.
+  /// \param type The type of connection.
+  /// \param conn The actual connection.
+  /// \return Status of invoking this method.
+  // TODO(hme): Implement with error handling.
+  ray::Status RemoveSender(ConnectionType type, SenderConnection::pointer conn);
 
  private:
+
+  /// A container type that maps ClientID to a connection type.
+  using SenderMapType =
+      std::unordered_map<ray::ClientID, std::vector<SenderConnection::pointer>,
+                         ray::UniqueIDHasher>;
+  using ReceiverMapType =
+      std::unordered_map<ray::ClientID, std::vector<std::shared_ptr<ReceiverConnection>>,
+                         ray::UniqueIDHasher>;
+
+  /// Adds a receiver for ClientID to the given map.
   void Add(ReceiverMapType &conn_map, const ClientID &client_id,
-           std::shared_ptr<ObjectManagerClientConnection> conn) {
-    if (conn_map.count(client_id) == 0) {
-      conn_map[client_id] = std::vector<std::shared_ptr<ObjectManagerClientConnection>>();
-    }
-    conn_map[client_id].push_back(conn);
-  }
+           std::shared_ptr<ReceiverConnection> conn);
 
+  /// Adds a sender for ClientID to the given map.
   void Add(SenderMapType &conn_map, const ClientID &client_id,
-           SenderConnection::pointer conn) {
-    if (conn_map.count(client_id) == 0) {
-      conn_map[client_id] = std::vector<SenderConnection::pointer>();
-    }
-    conn_map[client_id].push_back(conn);
-  }
+           SenderConnection::pointer conn);
 
+  /// Removes the given receiver for ClientID from the given map.
   void Remove(ReceiverMapType &conn_map, const ClientID &client_id,
-              std::shared_ptr<ObjectManagerClientConnection> conn) {
-    if (conn_map.count(client_id) == 0) {
-      return;
-    }
-    std::vector<std::shared_ptr<ObjectManagerClientConnection>> &connections =
-        conn_map[client_id];
-    int64_t pos =
-        std::find(connections.begin(), connections.end(), conn) - connections.begin();
-    if (pos >= (int64_t)connections.size()) {
-      return;
-    }
-    connections.erase(connections.begin() + pos);
-  }
+              std::shared_ptr<ReceiverConnection> conn);
 
-  uint64_t Count(SenderMapType &conn_map, const ClientID &client_id) {
-    if (conn_map.count(client_id) == 0) {
-      return 0;
-    };
-    return conn_map[client_id].size();
-  };
+  /// Returns the count of sender connections to ClientID.
+  uint64_t Count(SenderMapType &conn_map, const ClientID &client_id);
 
-  SenderConnection::pointer Borrow(SenderMapType &conn_map, const ClientID &client_id) {
-    // RAY_LOG(INFO) << "Borrow";
-    SenderConnection::pointer conn = conn_map[client_id].back();
-    conn_map[client_id].pop_back();
-    return conn;
-  }
+  /// Removes a sender connection to ClientID from the pool of available connections.
+  /// This method assumes conn_map has available connections to ClientID.
+  SenderConnection::pointer Borrow(SenderMapType &conn_map, const ClientID &client_id);
 
+  /// Returns a sender connection to ClientID to the pool of available connections.
   void Return(SenderMapType &conn_map, const ClientID &client_id,
-              SenderConnection::pointer conn) {
-    // RAY_LOG(INFO) << "Return";
-    conn_map[client_id].push_back(conn);
-  }
+              SenderConnection::pointer conn);
 
   /// Asynchronously obtain a connection to client_id.
   /// If a connection to client_id already exists, the callback is invoked immediately.
   ray::Status CreateConnection1(ConnectionType type, const ClientID &client_id,
                                 SuccessCallback success_callback,
-                                FailureCallback failure_callback) {
-    //    RAY_LOG(INFO) << "CreateConnection1 " << client_id;
-    ray::Status status = Status::OK();
-    status = object_directory_->GetInformation(
-        client_id,
-        [this, type, success_callback, failure_callback](RemoteConnectionInfo info) {
-          RAY_CHECK_OK(CreateConnection2(type, info, success_callback, failure_callback));
-        },
-        [this, failure_callback](const Status &status) { failure_callback(); });
-    return status;
-  };
+                                FailureCallback failure_callback);
 
   /// Asynchronously create a connection to client_id.
   ray::Status CreateConnection2(ConnectionType type, RemoteConnectionInfo info,
                                 SuccessCallback success_callback,
-                                FailureCallback failure_callback) {
-    //    RAY_LOG(INFO) << "CreateConnection2";
-    SenderConnection::pointer conn = SenderConnection::Create(
-        *connection_service_, info.client_id, info.ip, info.port);
-    // Prepare client connection info buffer
-    flatbuffers::FlatBufferBuilder fbb;
-    bool is_transfer = (type == TRANSFER);
-    auto message = CreateConnectClientMessage(fbb, fbb.CreateString(client_id_.binary()),
-                                              is_transfer);
-    fbb.Finish(message);
-    // Send synchronously.
-    (void)conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(),
-                             fbb.GetBufferPointer());
-    // The connection is ready, invoke callback with connection info.
-    success_callback(conn);
-    return Status::OK();
-  };
+                                FailureCallback failure_callback);
+
+  // TODO(hme): make this a shared_ptr.
+  ObjectDirectoryInterface *object_directory_;
+  asio::io_service *connection_service_;
+  ClientID client_id_;
+
+  SenderMapType message_send_connections_;
+  SenderMapType transfer_send_connections_;
+  SenderMapType available_message_send_connections_;
+  SenderMapType available_transfer_send_connections_;
+
+  ReceiverMapType message_receive_connections_;
+  ReceiverMapType transfer_receive_connections_;
 };
 
 }  // namespace ray
