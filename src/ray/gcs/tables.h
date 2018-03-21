@@ -225,26 +225,6 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
     pubsub_channel_ = TablePubsub_OBJECT;
     prefix_ = TablePrefix_OBJECT;
   };
-
-  /// Set up a client-specific channel for receiving notifications about
-  /// available
-  /// objects from the object table. The callback will be called once per
-  /// notification received on this channel.
-  ///
-  /// \param subscribe_all
-  /// \param object_available_callback Callback to be called when new object
-  ///        becomes available.
-  /// \param done_callback Callback to be called when subscription is installed.
-  ///        This is only used for the tests.
-  /// \return Status
-  Status SubscribeToNotifications(const JobID &job_id, bool subscribe_all,
-                                  const Callback &object_available, const Callback &done);
-
-  /////
-  ///// \param object_ids The object IDs to receive notifications about.
-  ///// \return Status
-  // Status RequestNotifications(const JobID &job_id,
-  //                            const std::vector<ObjectID> &object_ids);
 };
 
 class FunctionTable : public Table<ObjectID, FunctionTableData> {
