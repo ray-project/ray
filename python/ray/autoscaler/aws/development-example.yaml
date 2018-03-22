@@ -45,7 +45,7 @@ head_node:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 25
+              VolumeSize: 50
 
     # Additional options in the boto docs.
 
@@ -61,7 +61,7 @@ worker_nodes:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 25
+              VolumeSize: 50
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -106,9 +106,9 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 65536; ray start --head --num-redis-shards=10 --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ray start --redis-address=$RAY_HEAD_IP:6379
+    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379
