@@ -64,8 +64,8 @@ class MockServer {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = ReceiverConnection::Create(
-        client_handler, message_handler, std::move(object_manager_socket_));
+    auto new_connection = ReceiverConnection::Create(client_handler, message_handler,
+                                                     std::move(object_manager_socket_));
     DoAcceptObjectManager();
   }
 
@@ -75,7 +75,6 @@ class MockServer {
   boost::asio::ip::tcp::socket object_manager_socket_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   ObjectManager object_manager_;
-
 };
 
 class TestObjectManagerBase : public ::testing::Test {
@@ -85,8 +84,8 @@ class TestObjectManagerBase : public ::testing::Test {
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
     store_id = store_id + id;
-    std::string plasma_command = store_executable + " -m 1000000000 -s " +
-                                 store_id + " 1> /dev/null 2> /dev/null &";
+    std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
+                                 " 1> /dev/null 2> /dev/null &";
     RAY_LOG(INFO) << plasma_command;
     int ec = system(plasma_command.c_str());
     if (ec != 0) {
@@ -132,7 +131,6 @@ class TestObjectManagerBase : public ::testing::Test {
 
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
-
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -147,13 +145,9 @@ class TestObjectManagerBase : public ::testing::Test {
     return object_id;
   }
 
-  void object_added_handler_1(ObjectID object_id) {
-    v1.push_back(object_id);
-  };
+  void object_added_handler_1(ObjectID object_id) { v1.push_back(object_id); };
 
-  void object_added_handler_2(ObjectID object_id) {
-    v2.push_back(object_id);
-  };
+  void object_added_handler_2(ObjectID object_id) { v2.push_back(object_id); };
 
  protected:
   std::thread p;
@@ -200,8 +194,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
         [this](gcs::AsyncGcsClient *client, const ClientID &id,
                std::shared_ptr<ClientTableDataT> data) {
           ClientID parsed_id = ClientID::from_binary(data->client_id);
-          if(parsed_id == client_id_1 ||
-              parsed_id == client_id_2){
+          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
             num_connected_clients += 1;
           }
           if (num_connected_clients == 2) {
@@ -246,43 +239,39 @@ class StressTestObjectManager : public TestObjectManagerBase {
     }
   }
 
-  plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client,
-                                 ObjectID object_id){
+  plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID object_id) {
     plasma::ObjectBuffer object_buffer;
     plasma::ObjectID plasma_id = object_id.to_plasma_id();
     ARROW_CHECK_OK(client.Get(&plasma_id, 1, 0, &object_buffer));
     return object_buffer;
   }
 
-  static unsigned char *GetDigest(plasma::PlasmaClient &client,
-                                  ObjectID object_id){
+  static unsigned char *GetDigest(plasma::PlasmaClient &client, ObjectID object_id) {
     const int64_t size = sizeof(uint64_t);
     static unsigned char digest_1[size];
     client.Hash(object_id.to_plasma_id(), &digest_1[0]);
     return digest_1;
   }
 
-  void CompareObjects(ObjectID object_id_1, ObjectID object_id_2){
+  void CompareObjects(ObjectID object_id_1, ObjectID object_id_2) {
     plasma::ObjectBuffer object_buffer_1 = GetObject(client1, object_id_1);
     plasma::ObjectBuffer object_buffer_2 = GetObject(client1, object_id_1);
     uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
     uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->data());
     ASSERT_EQ(object_buffer_1.data_size, object_buffer_2.data_size);
-    for(int i=-1;++i<object_buffer_1.data_size;){
+    for (int i = -1; ++i < object_buffer_1.data_size;) {
       ASSERT_TRUE(data_1[i] == data_2[i]);
     }
   }
 
-  void CompareHashes(ObjectID object_id_1, ObjectID object_id_2){
+  void CompareHashes(ObjectID object_id_1, ObjectID object_id_2) {
     const int64_t size = sizeof(uint64_t);
     static unsigned char *digest_1 = GetDigest(client1, object_id_1);
     static unsigned char *digest_2 = GetDigest(client2, object_id_2);
-    for(int i=-1;++i<size;){
+    for (int i = -1; ++i < size;) {
       ASSERT_TRUE(digest_1[i] == digest_2[i]);
-      if (digest_1[i] != digest_2[i]){
-        RAY_LOG(INFO) << i << " "
-                      << digest_1[i] << " "
-                      << digest_2[i];
+      if (digest_1[i] != digest_2[i]) {
+        RAY_LOG(INFO) << i << " " << digest_1[i] << " " << digest_2[i];
       }
     }
   }
@@ -298,7 +287,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
     // Compare objects and their hashes.
     for (int i = -1; ++i < (int)v1.size();) {
       ObjectID object_id_2 = v2[i];
-      ObjectID object_id_1 = v1[std::distance(v1.begin(), std::find(v1.begin(), v1.end(), v2[i]))];
+      ObjectID object_id_1 =
+          v1[std::distance(v1.begin(), std::find(v1.begin(), v1.end(), v2[i]))];
       CompareHashes(object_id_1, object_id_2);
       CompareObjects(object_id_1, object_id_2);
     }

@@ -25,7 +25,6 @@ namespace ray {
 
 class ConnectionPool {
  public:
-
   /// Callbacks for GetSender.
   using SuccessCallback = std::function<void(SenderConnection::pointer)>;
   using FailureCallback = std::function<void()>;
@@ -88,7 +87,6 @@ class ConnectionPool {
   ray::Status RemoveSender(ConnectionType type, SenderConnection::pointer conn);
 
  private:
-
   /// A container type that maps ClientID to a connection type.
   using SenderMapType =
       std::unordered_map<ray::ClientID, std::vector<SenderConnection::pointer>,

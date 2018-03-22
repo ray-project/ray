@@ -268,7 +268,6 @@ class ObjectManager {
   /// Handles disconnect message of an existing client connection.
   void DisconnectClient(std::shared_ptr<ReceiverConnection> &conn,
                         const uint8_t *message);
-
 };
 
 }  // namespace ray

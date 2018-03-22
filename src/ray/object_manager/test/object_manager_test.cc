@@ -16,7 +16,7 @@ class MockServer {
              const ObjectManagerConfig &object_manager_config,
              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
       : object_manager_acceptor_(
-      main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
+            main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
         object_manager_(main_service, std::move(object_manager_service),
@@ -64,8 +64,8 @@ class MockServer {
       object_manager_.ProcessClientMessage(client, message_type, message);
     };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = ReceiverConnection::Create(
-        client_handler, message_handler, std::move(object_manager_socket_));
+    auto new_connection = ReceiverConnection::Create(client_handler, message_handler,
+                                                     std::move(object_manager_socket_));
     DoAcceptObjectManager();
   }
 
@@ -75,7 +75,6 @@ class MockServer {
   boost::asio::ip::tcp::socket object_manager_socket_;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   ObjectManager object_manager_;
-
 };
 
 class TestObjectManager : public ::testing::Test {
@@ -85,8 +84,8 @@ class TestObjectManager : public ::testing::Test {
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
     store_id = store_id + id;
-    std::string plasma_command = store_executable + " -m 1000000000 -s " +
-        store_id + " 1> /dev/null 2> /dev/null &";
+    std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
+                                 " 1> /dev/null 2> /dev/null &";
     RAY_LOG(INFO) << plasma_command;
     int ec = system(plasma_command.c_str());
     if (ec != 0) {
@@ -132,7 +131,6 @@ class TestObjectManager : public ::testing::Test {
 
     int s = system("killall plasma_store &");
     ASSERT_TRUE(!s);
-
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -147,13 +145,9 @@ class TestObjectManager : public ::testing::Test {
     return object_id;
   }
 
-  void object_added_handler_1(ObjectID object_id) {
-    v1.push_back(object_id);
-  };
+  void object_added_handler_1(ObjectID object_id) { v1.push_back(object_id); };
 
-  void object_added_handler_2(ObjectID object_id) {
-    v2.push_back(object_id);
-  };
+  void object_added_handler_2(ObjectID object_id) { v2.push_back(object_id); };
 
  protected:
   std::thread p;
@@ -173,7 +167,6 @@ class TestObjectManager : public ::testing::Test {
 
 class TestObjectManagerCommands : public TestObjectManager {
  public:
-
   int num_connected_clients = 0;
   uint num_expected_objects;
   ClientID client_id_1;
@@ -188,8 +181,7 @@ class TestObjectManagerCommands : public TestObjectManager {
         [this](gcs::AsyncGcsClient *client, const ClientID &id,
                std::shared_ptr<ClientTableDataT> data) {
           ClientID parsed_id = ClientID::from_binary(data->client_id);
-          if(parsed_id == client_id_1 ||
-             parsed_id == client_id_2){
+          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
             num_connected_clients += 1;
           }
           if (num_connected_clients == 2) {
