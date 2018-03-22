@@ -350,6 +350,31 @@ class DataFrame(object):
 
     _col_lengths = property(_get_col_lengths, _set_col_lengths)
 
+    def _arithmetic_helper(self, remote_func, local_func, axis):
+        is_rows = self._row_partitions is not None
+        is_columns = self._col_partitions is not None
+
+        #concat the series output by _map_partitions as rows if the specified
+        #axis corresponds to the partitions, otherwise concat as columns and reduce 
+        concat_axis = 1 if (axis == 'index' and is_rows) or \
+                           (axis == 'columns' and is_columns) else 0
+
+        result_series = pd.concat(ray.get(
+            _map_partitions(remote_func,
+                            self._row_partitions if is_rows 
+                            else self._col_partitions)),
+                            axis=concat_axis)
+
+        # if series_sum is a df, reduce across the columns to get the result
+        # otherwise return series_sum as is
+        if concat_axis:
+            rows_result_series = local_func(result_series)
+            rows_result_series.index = self.columns
+            return rows_result_series
+        else:
+            result_series.index = self.index
+            return result_series
+
     @property
     def size(self):
         """Get the number of elements in the DataFrame.
@@ -615,32 +640,12 @@ class DataFrame(object):
         assert self._row_partitions is not None or self._col_partitions is not \
             None
 
-        is_rows = self._row_partitions is not None
-        is_columns = self._col_partitions is not None
-
-        #concat the series output by _map_partitions as rows if the specified
-        #axis corresponds to the partitions, otherwise concat as columns and reduce 
-        concat_axis = 1 if (axis == 'index' and is_rows) or \
-                           (axis == 'columns' and is_columns) else 0
-
-        sum_series = pd.concat(ray.get(
-            _map_partitions(lambda df: df.sum(axis=axis,
-                                              skipna=skipna,
-                                              level=level,
-                                              numeric_only=numeric_only),
-                            self._row_partitions if is_rows 
-                            else self._col_partitions)),
-                            axis=concat_axis)
-
-        # if series_sum is a df, reduce across the columns to get the result
-        # otherwise return series_sum as is
-        if concat_axis:
-            rows_sum_series = sum_series.sum(axis=1)
-            rows_sum_series.index = self.columns
-            return rows_sum_series
-        else:
-            sum_series.index = self.index
-            return sum_series
+        remote_func = lambda df: df.sum(axis=axis,
+                                        skipna=skipna,
+                                        level=level,
+                                        numeric_only=numeric_only)
+        local_func = lambda df: df.sum(axis=1)
+        return self._arithmetic_helper(remote_func, local_func, axis)
 
     def abs(self):
         """Apply an absolute value function to all numberic columns.
@@ -2092,33 +2097,13 @@ class DataFrame(object):
         assert self._row_partitions is not None or self._col_partitions is not \
             None
 
-        is_rows = self._row_partitions is not None
-        is_columns = self._col_partitions is not None
-
-        #concat the series output by _map_partitions as rows if the specified
-        #axis corresponds to the partitions, otherwise concat as columns and reduce 
-        concat_axis = 1 if (axis == 'index' and is_rows) or \
-                           (axis == 'columns' and is_columns) else 0
-
-        max_series = pd.concat(ray.get(
-            _map_partitions(lambda df: df.max(axis=axis,
-                                              skipna=skipna,
-                                              level=level,
-                                              numeric_only=numeric_only,
-                                              **kwargs),
-                            self._row_partitions if is_rows 
-                            else self._col_partitions)),
-                            axis=concat_axis)
-
-        # if series_sum is a df, reduce across the columns to get the result
-        # otherwise return series_sum as is
-        if concat_axis:
-            rows_max_series = max_series.max(axis=1)
-            rows_max_series.index = self.columns
-            return rows_max_series
-        else:
-            max_series.index = self.index
-            return max_series
+        remote_func = lambda df: df.max(axis=axis,
+                                        skipna=skipna,
+                                        level=level,
+                                        numeric_only=numeric_only,
+                                        **kwargs)
+        local_func = lambda df: df.max(axis=1)
+        return self._arithmetic_helper(remote_func, local_func, axis)
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
@@ -2213,33 +2198,13 @@ class DataFrame(object):
         assert self._row_partitions is not None or self._col_partitions is not \
             None
 
-        is_rows = self._row_partitions is not None
-        is_columns = self._col_partitions is not None
-
-        #concat the series output by _map_partitions as rows if the specified
-        #axis corresponds to the partitions, otherwise concat as columns and reduce 
-        concat_axis = 1 if (axis == 'index' and is_rows) or \
-                           (axis == 'columns' and is_columns) else 0
-
-        min_series = pd.concat(ray.get(
-            _map_partitions(lambda df: df.min(axis=axis,
-                                              skipna=skipna,
-                                              level=level,
-                                              numeric_only=numeric_only,
-                                              **kwargs),
-                            self._row_partitions if is_rows 
-                            else self._col_partitions)),
-                            axis=concat_axis)
-
-        # if series_sum is a df, reduce across the columns to get the result
-        # otherwise return series_sum as is
-        if concat_axis:
-            rows_min_series = min_series.min(axis=1)
-            rows_min_series.index = self.columns
-            return rows_min_series
-        else:
-            min_series.index = self.index
-            return min_series
+        remote_func = lambda df: df.min(axis=axis,
+                                        skipna=skipna,
+                                        level=level,
+                                        numeric_only=numeric_only,
+                                        **kwargs)
+        local_func = lambda df: df.min(axis=1)
+        return self._arithmetic_helper(remote_func, local_func, axis)
 
     def mod(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
