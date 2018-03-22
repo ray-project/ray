@@ -665,12 +665,53 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
   }
 }
 
-// This is a temporary redis command that will be removed once
-// the GCS uses https://github.com/pcmoritz/credis.
+int TableAppend_RedisCommand(RedisModuleCtx *ctx,
+                             RedisModuleString **argv,
+                             int argc) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+
+  // Set the keys in the table.
+  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
+                                        REDISMODULE_READ | REDISMODULE_WRITE);
+  size_t index = RedisModule_ValueLength(key);
+  RedisModule_ZsetAdd(key, index, data, NULL);
+  RedisModule_CloseKey(key);
+  RAY_LOG(INFO) << "Appending at index: " << index;
+
+  // Publish a message on the requested pubsub channel if necessary.
+  TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
+  if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+    // All other pubsub channels write the data back directly onto the channel.
+    return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+  } else {
+    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+  }
+}
+
+/// Lookup the current value or values at a key. Returns the current value or
+/// values at the key.
+///
+/// This is called from a client with the command:
+//
+///    RAY.TABLE_LOOKUP <table_prefix> <pubsub_channel> <id>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for
+///        this key should be published to. This field is unused for lookups.
+/// \param id The ID of the key to lookup.
+/// \return nil if the key is empty, the current value if the key type is a
+///         string, or an array of the current values if the key type is a set.
 int TableLookup_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
-  if (argc != 4) {
+  if (argc < 4) {
     return RedisModule_WrongArity(ctx);
   }
 
@@ -681,10 +722,34 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
   if (key == nullptr) {
     return RedisModule_ReplyWithNull(ctx);
   }
-  size_t len = 0;
-  const char *buf = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
 
-  RedisModule_ReplyWithStringBuffer(ctx, buf, len);
+  auto key_type = RedisModule_KeyType(key);
+  switch (key_type) {
+  case REDISMODULE_KEYTYPE_EMPTY: {
+    RedisModule_ReplyWithNull(ctx);
+  } break;
+  case REDISMODULE_KEYTYPE_STRING: {
+    size_t len = 0;
+    const char *buf = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
+    RedisModule_ReplyWithStringBuffer(ctx, buf, len);
+  } break;
+  case REDISMODULE_KEYTYPE_ZSET: {
+    RedisModule_ReplyWithArray(ctx, RedisModule_ValueLength(key));
+
+    CHECK_ERROR(
+        RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
+                                          REDISMODULE_POSITIVE_INFINITE, 1, 1),
+        "Unable to initialize zset iterator");
+    for (; !RedisModule_ZsetRangeEndReached(key);
+         RedisModule_ZsetRangeNext(key)) {
+      RedisModule_ReplyWithString(
+          ctx, RedisModule_ZsetRangeCurrentElement(key, NULL));
+    }
+
+  } break;
+  default:
+    RAY_LOG(FATAL) << "Invalid Redis type during lookup: " << key_type;
+  }
 
   RedisModule_CloseKey(key);
 
@@ -706,7 +771,8 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
 ///        client, the channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to publish notifications for.
 /// \param client_id The ID of the client that is being notified.
-/// \return The current value at the key, or OK if there is no value.
+/// \return nil if the key is empty, the current value if the key type is a
+///         string, or an array of the current values if the key type is a set.
 int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
                                            RedisModuleString **argv,
                                            int argc) {
@@ -728,13 +794,16 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
   CHECK_ERROR(RedisModule_ZsetAdd(notification_key, 0.0, client_channel, NULL),
               "ZsetAdd failed.");
   RedisModule_CloseKey(notification_key);
-  RedisModule_FreeString(ctx, client_channel);
 
   // Return the current value at the key, if any, to the client that requested
   // a notification.
   RedisModuleKey *table_key =
       OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
-  if (table_key != nullptr) {
+  auto key_type = RedisModule_KeyType(table_key);
+  switch (key_type) {
+  case REDISMODULE_KEYTYPE_EMPTY: {
+  } break;
+  case REDISMODULE_KEYTYPE_STRING: {
     // Serialize the notification to send.
     size_t data_len = 0;
     char *data_buf =
@@ -744,16 +813,30 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
                                          fbb.CreateString(data_buf, data_len));
     fbb.Finish(message);
 
-    int result = RedisModule_ReplyWithStringBuffer(
-        ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+    RedisModule_Call(ctx, "PUBLISH", "sb", client_channel, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
         fbb.GetSize());
-    RedisModule_CloseKey(table_key);
-    return result;
-  } else {
-    RedisModule_CloseKey(table_key);
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
-    return REDISMODULE_OK;
+  } break;
+  case REDISMODULE_KEYTYPE_ZSET: {
+    CHECK_ERROR(
+        RedisModule_ZsetFirstInScoreRange(table_key, REDISMODULE_NEGATIVE_INFINITE,
+                                          REDISMODULE_POSITIVE_INFINITE, 1, 1),
+        "Unable to initialize zset iterator");
+    for (; !RedisModule_ZsetRangeEndReached(table_key);
+         RedisModule_ZsetRangeNext(table_key)) {
+      flatbuffers::FlatBufferBuilder fbb;
+      auto message = CreateGcsNotification(fbb, RedisStringToFlatbuf(fbb, id),
+                                           RedisStringToFlatbuf(fbb, RedisModule_ZsetRangeCurrentElement(table_key, NULL)));
+      fbb.Finish(message);
+      RedisModule_Call(ctx, "PUBLISH", "sb", client_channel, reinterpret_cast<const char *>(fbb.GetBufferPointer()),fbb.GetSize());
+    }
+  } break;
+  default:
+    RAY_LOG(FATAL) << "Invalid Redis type during lookup: " << key_type;
   }
+
+  RedisModule_CloseKey(table_key);
+  RedisModule_FreeString(ctx, client_channel);
+  return RedisModule_ReplyWithNull(ctx);
 }
 
 /// Cancel notifications for changes to a key. The client will no longer
@@ -1658,6 +1741,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_CreateCommand(ctx, "ray.table_add", TableAdd_RedisCommand,
                                 "write", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_append",
+                                TableAppend_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
