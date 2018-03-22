@@ -107,9 +107,12 @@ class DDPGEvaluator(Evaluator):
     def compute_gradients(self, samples):
         """ Returns gradient w.r.t. samples."""
         # actor gradients
+        actor_actions = self.sess.run(self.model.output_action,
+                                        feed_dict = {self.model.obs: samples["obs"]})
+
         actor_feed_dict = {
             self.model.obs: samples["obs"],
-            self.model.output_action: samples["actions"],
+            self.model.output_action: actor_actions,
         }
         self.actor_grads = [g for g in self.actor_grads if g is not None]
         actor_grad = self.sess.run(self.actor_grads, feed_dict=actor_feed_dict)
