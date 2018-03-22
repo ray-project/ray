@@ -173,12 +173,13 @@ void NodeManager::ProcessNodeManagerMessage(
     const uint8_t *message_data) {
   switch (message_type) {
   case MessageType_ForwardTaskRequest: {
-    RAY_LOG(INFO) << "HELLO";
+    RAY_LOG(INFO) << "ForwardTaskRequest received";
     auto message = flatbuffers::GetRoot<ForwardTaskRequest>(message_data);
     TaskID task_id = from_flatbuf(*message->task_id());
     Lineage uncommitted_lineage(*message);
     const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
-    RAY_LOG(INFO) << "got task " << task.GetTaskSpecification().TaskId();
+    RAY_LOG(INFO) << "got task " << task.GetTaskSpecification().TaskId()
+                  << "with numforwards=" << task.GetTaskExecutionSpecReadonly().NumForwards();
     SubmitTask(task, uncommitted_lineage);
   } break;
   default:
@@ -194,12 +195,7 @@ void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
 }
 
 void NodeManager::ScheduleTasks() {
-  // Ask policy for scheduling decision.
-  // TODO(alexey): Give the policy all cluster resources instead of just the
-  // local one.
-  std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> cluster_resource_map;
-  cluster_resource_map[gcs_client_->client_table().GetLocalClientId()] = local_resources_;
-  // DEBUG: print
+
   auto policy_decision = scheduling_policy_.Schedule(
       cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(), remote_clients_);
   RAY_LOG(INFO) << "[NM ScheduleTasks] policy decision:";
@@ -300,7 +296,7 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
 
 ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
   auto task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(INFO) << "Forwarding task " << task_id.hex() << " to " << node_id.hex();
+
 
   // Increment forward count for the forwarded task.
   task.GetTaskExecutionSpec().IncrementNumForwards();
@@ -310,6 +306,8 @@ ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
   fbb.Finish(request);
+  RAY_LOG(INFO) << "Forwarding task " << task_id.hex() << " to " << node_id.hex()
+                << " with numforwards=" << task.GetTaskExecutionSpecReadonly().NumForwards();
 
   auto client_info = gcs_client_->client_table().GetClient(node_id);
 

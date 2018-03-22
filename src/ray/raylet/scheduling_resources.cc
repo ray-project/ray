@@ -70,13 +70,17 @@ bool ResourceSet::GetResource(const std::string &resource_name, double *value) c
   return true;
 }
 
-std::string ResourceSet::ToString() const {
+const std::string ResourceSet::ToString() const {
   std::string return_string = "";
   for (const auto & resource_pair : this->resource_capacity_) {
     return_string += "{" + resource_pair.first + "," + std::to_string(resource_pair.second) + "}, ";
   }
   return return_string;
 }
+
+const std::unordered_map<std::string, double> &ResourceSet::GetResourceMap() const {
+  return this->resource_capacity_;
+};
 
 /// SchedulingResources class implementation
 

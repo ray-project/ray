@@ -91,7 +91,10 @@ class ResourceSet {
   ///         False otherwise.
   bool GetResource(const std::string &resource_name, double *value) const;
 
-  std::string ToString() const;
+  // TODO(atumanov): implement const_iterator class for the ResourceSet container.
+  const std::unordered_map<std::string, double> &GetResourceMap() const;
+
+  const std::string ToString() const;
 
  private:
   /// Resource capacity map.

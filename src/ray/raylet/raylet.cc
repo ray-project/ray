@@ -37,7 +37,7 @@ Raylet::Raylet(boost::asio::io_service &main_service,
   DoAcceptObjectManager();
   DoAcceptNodeManager();
 
-  RAY_CHECK_OK(RegisterGcs(main_service));
+  RAY_CHECK_OK(RegisterGcs(main_service, node_manager_config));
 
   RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
 }
@@ -53,21 +53,21 @@ ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {
   return ray::Status::OK();
 }
 
-ray::Status Raylet::RegisterGcs(boost::asio::io_service &io_service) {
+ray::Status Raylet::RegisterGcs(boost::asio::io_service &io_service,
+                                const NodeManagerConfig &node_manager_config) {
   // TODO(hme): Clean up constants.
   RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379));
   RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
-  // TODO(atumanov): pass node manager configuration to RegisterGcs().
-  const std::vector<std::string> resource_labels({"CPU", "GPU"});
-  const std::vector<double> resource_capacity({4,0});
 
   ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
   client_info.node_manager_address = node_manager_acceptor_.local_endpoint().address().to_string();
   client_info.object_manager_port = object_manager_acceptor_.local_endpoint().port();
   client_info.node_manager_port = node_manager_acceptor_.local_endpoint().port();
   // Add resource information.
-  client_info.resources_total_label = resource_labels;
-  client_info.resources_total_capacity = resource_capacity;
+  for (const auto & resource_pair : node_manager_config.resource_config.GetResourceMap()) {
+    client_info.resources_total_label.push_back(resource_pair.first);
+    client_info.resources_total_capacity.push_back(resource_pair.second);
+  }
 
   RAY_LOG(DEBUG) << "NM LISTENING ON: IP " << client_info.node_manager_address.c_str()
                  << " PORT " << client_info.node_manager_port;

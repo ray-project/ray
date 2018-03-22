@@ -20,7 +20,6 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
   // Random number generator.
   std::default_random_engine gen;
-
   // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
   for (const auto &client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
@@ -34,6 +33,9 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     // Get task's resource demand
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     const TaskID &task_id = t.GetTaskSpecification().TaskId();
+    RAY_LOG(INFO) << "[SchedulingPolicy]: task=" << task_id.hex() << " numforwards="
+                  << t.GetTaskExecutionSpecReadonly().NumForwards() << " resources="
+                  << t.GetTaskSpecification().GetRequiredResources().ToString();
     // TODO(atumanov): replace the simple spillback policy with exponential backoff based
     // policy.
     if (t.GetTaskExecutionSpecReadonly().NumForwards() >= 1) {

@@ -41,7 +41,7 @@ int TaskExecutionSpecification::NumForwards() const {
 }
 
 void TaskExecutionSpecification::IncrementNumForwards() {
-  ++execution_spec_.num_forwards;
+  execution_spec_.num_forwards += 1;
 }
 
 int64_t TaskExecutionSpecification::LastTimestamp() const {
