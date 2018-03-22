@@ -176,6 +176,7 @@ void NodeManager::ProcessNodeManagerMessage(
     RAY_LOG(INFO) << "ForwardTaskRequest received";
     auto message = flatbuffers::GetRoot<ForwardTaskRequest>(message_data);
     TaskID task_id = from_flatbuf(*message->task_id());
+
     Lineage uncommitted_lineage(*message);
     const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
     RAY_LOG(INFO) << "got task " << task.GetTaskSpecification().TaskId()
@@ -298,16 +299,20 @@ ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
   auto task_id = task.GetTaskSpecification().TaskId();
 
 
-  // Increment forward count for the forwarded task.
-  task.GetTaskExecutionSpec().IncrementNumForwards();
-
   // Get and serialize the task's uncommitted lineage.
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
+  Task &lineage_cache_entry_task = uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+  // Increment forward count for the forwarded task.
+  lineage_cache_entry_task.GetTaskExecutionSpec().IncrementNumForwards();
+  RAY_LOG(INFO) << "AFTER: " << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
+
+  RAY_LOG(INFO) << "[FORWARDTASK] " << uncommitted_lineage.GetEntry(task_id)->TaskData().GetTaskExecutionSpecReadonly().NumForwards();
   flatbuffers::FlatBufferBuilder fbb;
   auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
   fbb.Finish(request);
+
   RAY_LOG(INFO) << "Forwarding task " << task_id.hex() << " to " << node_id.hex()
-                << " with numforwards=" << task.GetTaskExecutionSpecReadonly().NumForwards();
+                << " with numforwards=" << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
 
   auto client_info = gcs_client_->client_table().GetClient(node_id);
 

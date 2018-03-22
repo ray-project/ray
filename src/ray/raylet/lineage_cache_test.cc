@@ -57,6 +57,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                 UniqueID::from_random(), task_arguments, num_returns,
                                 required_resources);
   auto execution_spec = TaskExecutionSpecification(std::vector<ObjectID>());
+  execution_spec.IncrementNumForwards();
   Task task = Task(execution_spec, spec);
   return task;
 }
@@ -242,6 +243,11 @@ TEST_F(LineageCacheTest, TestRemoveWaitingTask) {
   fbb.Finish(uncommitted_lineage_message);
   uncommitted_lineage =
       Lineage(*flatbuffers::GetRoot<ForwardTaskRequest>(fbb.GetBufferPointer()));
+
+  const Task &task = uncommitted_lineage.GetEntry(task_id_to_remove)->TaskData();
+  RAY_LOG(INFO) << "removing task " << task.GetTaskSpecification().TaskId()
+                << "with numforwards=" << task.GetTaskExecutionSpecReadonly().NumForwards();
+  ASSERT_EQ(task.GetTaskExecutionSpecReadonly().NumForwards(),1);
 
   lineage_cache_.RemoveWaitingTask(task_id_to_remove);
   lineage_cache_.AddWaitingTask(task_to_remove, uncommitted_lineage);

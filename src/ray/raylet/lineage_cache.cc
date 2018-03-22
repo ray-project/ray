@@ -40,6 +40,8 @@ const std::unordered_set<UniqueID, UniqueIDHasher> LineageEntry::GetParentTaskId
 
 const Task &LineageEntry::TaskData() const { return task_; }
 
+Task &LineageEntry::TaskDataMutable() {return task_; }
+
 Lineage::Lineage() {}
 
 Lineage::Lineage(const ForwardTaskRequest &task_request) {
@@ -58,6 +60,15 @@ boost::optional<const LineageEntry &> Lineage::GetEntry(const UniqueID &task_id)
     return entry->second;
   } else {
     return boost::optional<const LineageEntry &>();
+  }
+}
+
+boost::optional<LineageEntry &> Lineage::GetEntryMutable(const UniqueID &task_id) {
+  auto entry = entries_.find(task_id);
+  if (entry != entries_.end()) {
+    return entry->second;
+  } else {
+    return boost::optional<LineageEntry &>();
   }
 }
 

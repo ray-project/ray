@@ -11,7 +11,8 @@ TaskExecutionSpecification::TaskExecutionSpecification(
 
 TaskExecutionSpecification::TaskExecutionSpecification(
     const std::vector<ObjectID> &&dependencies, int num_forwards) {
-  TaskExecutionSpecification(std::move(dependencies));
+  //TaskExecutionSpecification(std::move(dependencies));
+  SetExecutionDependencies(dependencies);
   execution_spec_.num_forwards = num_forwards;
 }
 

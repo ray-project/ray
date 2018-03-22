@@ -83,12 +83,15 @@ class LineageEntry {
   /// \return The task data.
   const Task &TaskData() const;
 
+  Task &TaskDataMutable();
+
  private:
   /// The current state of this entry according to its status in the GCS.
   GcsStatus status_;
   /// The task data to be written to the GCS. This is nullptr if the entry is
   /// an object.
-  const Task task_;
+//  const Task task_;
+  Task task_;
 };
 
 /// \class Lineage
@@ -114,6 +117,7 @@ class Lineage {
   /// \return An optional reference to the entry. If this is empty, then the
   ///         entry ID is not in the lineage.
   boost::optional<const LineageEntry &> GetEntry(const TaskID &entry_id) const;
+  boost::optional<LineageEntry &> GetEntryMutable(const UniqueID &task_id);
 
   /// Set an entry in the lineage. If an entry with this ID already exists,
   /// then the entry is overwritten if and only if the new entry has a higher
