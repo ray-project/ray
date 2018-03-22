@@ -53,6 +53,7 @@ class Experiment(object):
         self.name = name
         self.spec = spec
 
+
 class JSONExperiment(Experiment):
     """Tracks experiment specifications given JSON."""
     def __init__(self, name, spec):
