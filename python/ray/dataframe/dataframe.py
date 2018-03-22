@@ -612,16 +612,26 @@ class DataFrame(object):
         axis = self._row_index._get_axis_name(axis) if axis is not None \
             else 'index'
 
+        assert self._row_partitions is not None or self._col_partitions is not \
+            None
+
+        is_rows = self._row_partitions is not None
+        is_columns = self._col_partitions is not None
+
+        concat_axis = 1 if (axis == 'index' and is_rows) or \
+                           (axis == 'columns' and is_columns) else 0
+
         sum_series = pd.concat(ray.get(
             _map_partitions(lambda df: df.sum(axis=axis,
                                               skipna=skipna,
                                               level=level,
                                               numeric_only=numeric_only),
-                            self._row_partitions)),
-                            axis=1 if axis == 'index' else 0)
+                            self._row_partitions if is_rows 
+                            else self._col_partitions)),
+                            axis=concat_axis)
 
-        if axis == 'index':
-            rows_sum_series = sum_series.sum(axis = 1)
+        if concat_axis:
+            rows_sum_series = sum_series.sum(axis=1)
             rows_sum_series.index = self.columns
             return rows_sum_series
         else:
@@ -2074,7 +2084,14 @@ class DataFrame(object):
         axis = self._row_index._get_axis_name(axis) if axis is not None \
                 else 'index'
 
-        is_axis_zero = axis == 'index' or axis == 0
+        assert self._row_partitions is not None or self._col_partitions is not \
+            None
+
+        is_rows = self._row_partitions is not None
+        is_columns = self._col_partitions is not None
+
+        concat_axis = 1 if (axis == 'index' and is_rows) or \
+                           (axis == 'columns' and is_columns) else 0
 
         max_series = pd.concat(ray.get(
             _map_partitions(lambda df: df.max(axis=axis,
@@ -2082,11 +2099,12 @@ class DataFrame(object):
                                               level=level,
                                               numeric_only=numeric_only,
                                               **kwargs),
-                            self._row_partitions)),
-                            axis=1 if is_axis_zero else 0)
+                            self._row_partitions if is_rows 
+                            else self._col_partitions)),
+                            axis=concat_axis)
 
-        if is_axis_zero:
-            rows_max_series = max_series.max(axis = 1)
+        if concat_axis:
+            rows_max_series = max_series.max(axis=1)
             rows_max_series.index = self.columns
             return rows_max_series
         else:
@@ -2183,7 +2201,14 @@ class DataFrame(object):
         axis = self._row_index._get_axis_name(axis) if axis is not None \
                 else 'index'
 
-        is_axis_zero = axis == 'index' or axis == 0
+        assert self._row_partitions is not None or self._col_partitions is not \
+            None
+
+        is_rows = self._row_partitions is not None
+        is_columns = self._col_partitions is not None
+
+        concat_axis = 1 if (axis == 'index' and is_rows) or \
+                           (axis == 'columns' and is_columns) else 0
 
         min_series = pd.concat(ray.get(
             _map_partitions(lambda df: df.min(axis=axis,
@@ -2191,10 +2216,12 @@ class DataFrame(object):
                                               level=level,
                                               numeric_only=numeric_only,
                                               **kwargs),
-                            self._row_partitions)),
-                            axis=1 if is_axis_zero else 0)
-        if is_axis_zero:
-            rows_min_series = min_series.min(axis = 1)
+                            self._row_partitions if is_rows 
+                            else self._col_partitions)),
+                            axis=concat_axis)
+
+        if concat_axis:
+            rows_min_series = min_series.min(axis=1)
             rows_min_series.index = self.columns
             return rows_min_series
         else:
