@@ -111,3 +111,8 @@ table ForwardTaskRequest {
   // should include task_id.
   uncommitted_tasks: [Task];
 }
+
+table ReconstructObject {
+  // Object ID of the object that needs to be reconstructed.
+  object_id: string;
+}

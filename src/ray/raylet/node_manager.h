@@ -94,6 +94,7 @@ class NodeManager {
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   std::vector<ClientID> remote_clients_;
   std::unordered_map<ClientID, TcpServerConnection, UniqueIDHasher> remote_server_connections_;
+  ObjectManager &object_manager_;
 };
 
 } // namespace raylet

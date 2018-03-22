@@ -24,7 +24,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       lineage_cache_(lineage_cache),
       gcs_client_(gcs_client),
       remote_clients_(),
-      remote_server_connections_() {
+      remote_server_connections_(),
+      object_manager_(object_manager) {
 
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -155,6 +156,12 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       // Listen for more messages.
     }
       break;
+    case MessageType_ReconstructObject: {
+      // TODO(hme): handle multiple object ids.
+      auto message = flatbuffers::GetRoot<ReconstructObject>(message_data);
+      ObjectID object_id = from_flatbuf(*message->object_id());
+      RAY_CHECK_OK(object_manager_.Pull(object_id));
+    } break;
     default:RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
 

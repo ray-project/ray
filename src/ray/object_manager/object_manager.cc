@@ -96,6 +96,7 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
+  // TODO(hme): don't pull if object is local.
   main_service_->post([this, object_id]() { RAY_CHECK_OK(Pull_(object_id)); });
   return Status::OK();
 };
