@@ -249,7 +249,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
   static unsigned char *GetDigest(plasma::PlasmaClient &client, ObjectID object_id) {
     const int64_t size = sizeof(uint64_t);
     static unsigned char digest_1[size];
-    client.Hash(object_id.to_plasma_id(), &digest_1[0]);
+    ARROW_CHECK_OK(client.Hash(object_id.to_plasma_id(), &digest_1[0]));
     return digest_1;
   }
 
