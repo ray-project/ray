@@ -502,64 +502,6 @@ int TaskTableAdd(RedisModuleCtx *ctx,
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
-// TODO(swang): Implement the client table as an append-only log so that we
-// don't need this special case for client table publication.
-int ClientTableAdd(RedisModuleCtx *ctx,
-                   RedisModuleString *pubsub_channel_str,
-                   RedisModuleString *data) {
-  const char *buf = RedisModule_StringPtrLen(data, NULL);
-  auto client_data = flatbuffers::GetRoot<ClientTableData>(buf);
-
-  RedisModuleKey *clients_key = (RedisModuleKey *) RedisModule_OpenKey(
-      ctx, pubsub_channel_str, REDISMODULE_READ | REDISMODULE_WRITE);
-  // If this is a client addition, send all previous notifications, in order.
-  // NOTE(swang): This will go to all clients, so some clients will get
-  // duplicate notifications.
-  if (client_data->is_insertion() &&
-      RedisModule_KeyType(clients_key) != REDISMODULE_KEYTYPE_EMPTY) {
-    // NOTE(swang): Sets are not implemented yet, so we use ZSETs instead.
-    CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
-                    clients_key, REDISMODULE_NEGATIVE_INFINITE,
-                    REDISMODULE_POSITIVE_INFINITE, 1, 1),
-                "Unable to initialize zset iterator");
-    do {
-      RedisModuleString *message =
-          RedisModule_ZsetRangeCurrentElement(clients_key, NULL);
-      RedisModuleCallReply *reply =
-          RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, message);
-      if (reply == NULL) {
-        RedisModule_CloseKey(clients_key);
-        return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
-      }
-    } while (RedisModule_ZsetRangeNext(clients_key));
-  }
-
-  // Append this notification to the past notifications so that it will get
-  // sent to new clients in the future.
-  size_t index = RedisModule_ValueLength(clients_key);
-  // Serialize the notification to send.
-  flatbuffers::FlatBufferBuilder fbb;
-  auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
-  auto message = CreateGcsTableEntry(fbb, fbb.CreateString(""),
-                                     fbb.CreateVector(&data_flatbuf, 1));
-  fbb.Finish(message);
-  auto notification = RedisModule_CreateString(
-      ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
-      fbb.GetSize());
-  RedisModule_ZsetAdd(clients_key, index, notification, NULL);
-  // Publish the notification about this client.
-  RedisModuleCallReply *reply =
-      RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, notification);
-  RedisModule_FreeString(ctx, notification);
-  if (reply == NULL) {
-    RedisModule_CloseKey(clients_key);
-    return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
-  }
-
-  RedisModule_CloseKey(clients_key);
-  return RedisModule_ReplyWithSimpleString(ctx, "OK");
-}
-
 /// Publish a notification for a new entry at a key. This publishes a
 /// notification to all subscribers of the table, as well as every client that
 /// has requested notifications for this key.
@@ -656,9 +598,6 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
     // TODO(swang): This is only necessary for legacy Ray and should be removed
     // once we switch to using the new GCS API for the task table.
     return TaskTableAdd(ctx, id, data);
-  } else if (pubsub_channel == TablePubsub_CLIENT) {
-    // Publish all previous client table additions to the new client.
-    return ClientTableAdd(ctx, pubsub_channel_str, data);
   } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the channel.
     return PublishTableAdd(ctx, pubsub_channel_str, id, data);

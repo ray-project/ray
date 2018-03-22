@@ -326,13 +326,14 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
-class ClientTable : private Table<ClientID, ClientTableData> {
+class ClientTable : private Log<UniqueID, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
   ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
               const ClientTableDataT &local_client)
-      : Table(context, client),
+      : Log(context, client),
+        client_log_key_(UniqueID::nil()),
         disconnected_(false),
         client_id_(ClientID::from_binary(local_client.client_id)),
         local_client_(local_client) {
@@ -388,12 +389,12 @@ class ClientTable : private Table<ClientID, ClientTableData> {
 
  private:
   /// Handle a client table notification.
-  void HandleNotification(AsyncGcsClient *client, const ClientID &channel_id,
-                          const ClientTableDataT &notifications);
+  void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(AsyncGcsClient *client, const ClientID &client_id,
-                       const ClientTableDataT &notifications);
+  void HandleConnected(AsyncGcsClient *client, const ClientTableDataT &notifications);
 
+  /// The key to append client table entries to.
+  UniqueID client_log_key_;
   /// Whether this client has called Disconnect().
   bool disconnected_;
   /// This client's ID.
