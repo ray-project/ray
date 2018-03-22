@@ -210,10 +210,9 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
     int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, callback, id](const std::vector<std::string> &data) {
-          RAY_CHECK(data.size() == 1);
+        [this, callback, id](const std::string &data) {
           auto result = std::make_shared<TaskTableDataT>();
-          auto root = flatbuffers::GetRoot<TaskTableData>(data[0].data());
+          auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
           root->UnPackTo(result.get());
           callback(client_, id, *result, root->updated());
           return true;

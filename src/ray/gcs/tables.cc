@@ -13,7 +13,7 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   auto d = std::shared_ptr<CallbackData>(
       new CallbackData({id, data, done, nullptr, nullptr, this, client_}));
   int64_t callback_index =
-      RedisCallbackManager::instance().add([d](const std::vector<std::string> &data) {
+      RedisCallbackManager::instance().add([d](const std::string &data) {
         if (d->callback != nullptr) {
           (d->callback)(d->client, d->id, *d->data);
         }
@@ -32,16 +32,15 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
   auto d = std::shared_ptr<CallbackData>(
       new CallbackData({id, nullptr, lookup, failure, nullptr, this, client_}));
   int64_t callback_index =
-      RedisCallbackManager::instance().add([d](const std::vector<std::string> &data) {
+      RedisCallbackManager::instance().add([d](const std::string &data) {
         if (data.empty()) {
           if (d->failure != nullptr) {
             (d->failure)(d->client, d->id);
           }
         } else {
-          RAY_CHECK(data.size() == 1);
           if (d->callback != nullptr) {
             DataT result;
-            auto root = flatbuffers::GetRoot<Data>(data[0].data());
+            auto root = flatbuffers::GetRoot<Data>(data.data());
             root->UnPackTo(&result);
             (d->callback)(d->client, d->id, result);
           }
@@ -62,8 +61,8 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
   auto d = std::shared_ptr<CallbackData>(
       new CallbackData({client_id, nullptr, subscribe, nullptr, done, this, client_}));
   int64_t callback_index = RedisCallbackManager::instance().add(
-      [this, d](const std::vector<std::string> &data) {
-        if (data.size() == 1 && data[0] == "") {
+      [this, d](const std::string &data) {
+        if (data.empty()) {
           // No notification data is provided. This is the callback for the
           // initial subscription request.
           if (d->subscription_callback != nullptr) {
@@ -71,10 +70,9 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
           }
         } else {
           // Data is provided. This is the callback for a message.
-          RAY_CHECK(data.size() == 1);
           if (d->callback != nullptr) {
             // Parse the notification.
-            auto notification = flatbuffers::GetRoot<GcsNotification>(data[0].data());
+            auto notification = flatbuffers::GetRoot<GcsNotification>(data.data());
             ID id = UniqueID::nil();
             if (notification->id()->size() > 0) {
               id = from_flatbuf(*notification->id());
@@ -100,7 +98,7 @@ Status Table<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
       << "Client requested notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
                             client_id.size(), prefix_, pubsub_channel_,
-                            subscribe_callback_index_);
+                            /*callback_index=*/-1);
 }
 
 template <typename ID, typename Data>
