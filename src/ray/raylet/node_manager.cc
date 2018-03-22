@@ -200,9 +200,8 @@ void NodeManager::ScheduleTasks() {
   std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> cluster_resource_map;
   cluster_resource_map[gcs_client_->client_table().GetLocalClientId()] = local_resources_;
   // DEBUG: print
-  const auto &policy_decision = scheduling_policy_.Schedule(
+  auto policy_decision = scheduling_policy_.Schedule(
       cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(), remote_clients_);
-  // DEBUG: print the policy decision
   RAY_LOG(INFO) << "[NM ScheduleTasks] policy decision:";
   for (const auto & pair: policy_decision) {
     TaskID task_id = pair.first;
@@ -211,23 +210,26 @@ void NodeManager::ScheduleTasks() {
   }
 
   // Extract decision for this local scheduler.
-  // TODO(alexey): Check for this node's own client ID, not for nil.
-  std::unordered_set<TaskID, UniqueIDHasher> task_ids;
+  std::unordered_set<TaskID, UniqueIDHasher> local_task_ids;
+  //std::unordered_set<TaskID, UniqueIDHasher> remote_task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks to run on the local client.
   for (const auto &task_schedule : policy_decision) {
-    if (task_schedule.second == gcs_client_->client_table().GetLocalClientId()) {
-      task_ids.insert(task_schedule.first);
+    TaskID task_id = task_schedule.first;
+    ClientID client_id = task_schedule.second;
+    if (client_id == gcs_client_->client_table().GetLocalClientId()) {
+      local_task_ids.insert(task_id);
     } else {
-      auto tasks = local_queues_.RemoveTasks({task_schedule.first});
-      RAY_CHECK(tasks.size() == 1);
-      const Task &task = *tasks.begin();
+      //remote_task_ids.insert(task_id);
+      auto tasks = local_queues_.RemoveTasks({task_id});
+      RAY_CHECK(1 == tasks.size());
+      Task &task = tasks.front();
       // TODO(swang): Handle forward task failure.
-      RAY_CHECK_OK(ForwardTask(task, task_schedule.second));
+      RAY_CHECK_OK(ForwardTask(task, client_id));
     }
   }
 
   // Assign the tasks to workers.
-  std::vector<Task> tasks = local_queues_.RemoveTasks(task_ids);
+  std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
   for (auto &task : tasks) {
     AssignTask(task);
   }
@@ -296,9 +298,12 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
 }
 
-ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) {
+ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
   auto task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(INFO) << "Forwarding task " << task_id.hex() << " to " << node_id.hex();
+
+  // Increment forward count for the forwarded task.
+  task.GetTaskExecutionSpec().IncrementNumForwards();
 
   // Get and serialize the task's uncommitted lineage.
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
@@ -310,6 +315,7 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
 
   // Lookup remote server connection for this node_id and use it to send the request.
   if (remote_server_connections_.count(node_id) == 0) {
+    // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
     RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id.hex();
     return ray::Status::IOError("NodeManager connection not found");
   }
@@ -322,6 +328,10 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
+  } else {
+    // TODO(atumanov): caller must handle ForwardTask failure to ensure tasks are not lost.
+    RAY_LOG(FATAL) << "[NodeManager][ForwardTask] failed to forward task " << task_id.hex()
+                   << " to node " << node_id.hex();
   }
   return status;
 }

@@ -70,6 +70,14 @@ bool ResourceSet::GetResource(const std::string &resource_name, double *value) c
   return true;
 }
 
+std::string ResourceSet::ToString() const {
+  std::string return_string = "";
+  for (const auto & resource_pair : this->resource_capacity_) {
+    return_string += "{" + resource_pair.first + "," + std::to_string(resource_pair.second) + "}, ";
+  }
+  return return_string;
+}
+
 /// SchedulingResources class implementation
 
 SchedulingResources::SchedulingResources()
@@ -96,6 +104,10 @@ const ResourceSet &SchedulingResources::GetAvailableResources() const {
   return this->resources_available_;
 }
 
+const ResourceSet &SchedulingResources::GetTotalResources() const {
+  return this->resources_total_;
+}
+
 // Return specified resources back to SchedulingResources.
 bool SchedulingResources::Release(const ResourceSet &resources) {
   return this->resources_available_.AddResources(resources);
@@ -106,6 +118,7 @@ bool SchedulingResources::Acquire(const ResourceSet &resources) {
   return this->resources_available_.SubtractResources(resources);
 }
 
-}
+
+}  // namespace raylet
 
 }  // namespace ray

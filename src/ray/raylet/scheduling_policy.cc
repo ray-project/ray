@@ -21,38 +21,47 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
   // Random number generator.
   std::default_random_engine gen;
 
-  // Get all the client id keys and randomly pick.
-  std::vector<ClientID> client_keys;
-  for (const auto &pair : cluster_resources) {
+  // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
+  for (const auto &client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
-    ClientID key = pair.first;
-    client_keys.push_back(key);
+    ClientID key = client_resource_pair.first;
+    SchedulingResources value = client_resource_pair.second;
+    RAY_LOG(INFO) << key.hex() << " " << value.GetAvailableResources().ToString();
   }
-  RAY_LOG(INFO) << "[SchedulingPolicy] resource map key count : " << client_keys.size();
-  // Initialize a uniform integer distribution over the key space.
-  std::uniform_int_distribution<int> distribution(0, client_keys.size());
 
   // Iterate over running tasks, get their resource demand and try to schedule.
   for (const auto &t : scheduling_queue_.GetReadyTasks()) {
     // Get task's resource demand
-//    const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
+    const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     const TaskID &task_id = t.GetTaskSpecification().TaskId();
+    // TODO(atumanov): replace the simple spillback policy with exponential backoff based
+    // policy.
+    if (t.GetTaskExecutionSpecReadonly().NumForwards() >= 1) {
+      decision[task_id] = me;
+      continue;
+    }
+    // Construct a set of viable node candidates and randomly pick between them.
+    // Get all the client id keys and randomly pick.
+    std::vector<ClientID> client_keys;
+    for (const auto &client_resource_pair : cluster_resources) {
+      // pair = ClientID, SchedulingResources
+      ClientID node_client_id = client_resource_pair.first;
+      SchedulingResources node_resources = client_resource_pair.second;
+      if (resource_demand.IsSubset(node_resources.GetTotalResources())) {
+        // This node is a feasible candidate.
+        client_keys.push_back(node_client_id);
+      }
+    }
+    RAY_CHECK(!client_keys.empty());
+
     // Choose index at random.
+    // Initialize a uniform integer distribution over the key space.
+    // TODO(atumanov): change uniform random to discrete, weighted by resource capacity.
+    std::uniform_int_distribution<int> distribution(0, client_keys.size()-1);
     int client_key_index = distribution(gen);
     decision[task_id] = client_keys[client_key_index];
-    RAY_LOG(INFO) << "[SchedulingPolicy] assigned: " << task_id.hex() << " --> " << client_keys[client_key_index].hex();
-//    SchedulingResources resource_supply = cluster_resources.at(client_keys[client_key_index]);
-//    const auto &resource_supply_set = resource_supply.GetAvailableResources();
-//
-//    bool task_feasible = resource_demand.IsSubset(resource_supply_set);
-//    if (task_feasible) {
-//      ClientID node = me;
-//      if (scheduling_queue_.GetScheduledTasks().size() > 0 && others.size() > 0) {
-//        node = others.front();
-//      }
-//
-//      decision[task_id] = node;
-//    }
+    RAY_LOG(INFO) << "[SchedulingPolicy] assigned: " << task_id.hex() << " --> "
+                  << client_keys[client_key_index].hex();
   }
   return decision;
 }

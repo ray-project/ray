@@ -91,6 +91,8 @@ class ResourceSet {
   ///         False otherwise.
   bool GetResource(const std::string &resource_name, double *value) const;
 
+  std::string ToString() const;
+
  private:
   /// Resource capacity map.
   std::unordered_map<std::string, double> resource_capacity_;
@@ -126,6 +128,8 @@ class SchedulingResources {
   ///
   /// \return Immutable set of resources with currently available capacity.
   const ResourceSet &GetAvailableResources() const;
+
+  const ResourceSet &GetTotalResources() const;
 
   /// \brief Release the amount of resources specified.
   ///
