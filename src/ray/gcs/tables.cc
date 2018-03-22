@@ -1,5 +1,6 @@
 #include "ray/gcs/tables.h"
 
+#include "common_protocol.h"
 #include "ray/gcs/client.h"
 
 namespace ray {
@@ -72,10 +73,16 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
           // Data is provided. This is the callback for a message.
           RAY_CHECK(data.size() == 1);
           if (d->callback != nullptr) {
+            // Parse the notification.
+            auto notification = flatbuffers::GetRoot<GcsNotification>(data[0].data());
+            ID id = UniqueID::nil();
+            if (notification->id()->size() > 0) {
+              id = from_flatbuf(*notification->id());
+            }
             DataT result;
-            auto root = flatbuffers::GetRoot<Data>(data[0].data());
+            auto root = flatbuffers::GetRoot<Data>(notification->data()->data());
             root->UnPackTo(&result);
-            (d->callback)(d->client, d->id, result);
+            (d->callback)(d->client, id, result);
           }
         }
         // We do not delete the callback after calling it since there may be

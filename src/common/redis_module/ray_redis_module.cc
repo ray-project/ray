@@ -537,10 +537,19 @@ int ClientTableAdd(RedisModuleCtx *ctx,
   // Append this notification to the past notifications so that it will get
   // sent to new clients in the future.
   size_t index = RedisModule_ValueLength(clients_key);
-  RedisModule_ZsetAdd(clients_key, index, data, NULL);
+  // Serialize the notification to send.
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateGcsNotification(fbb, fbb.CreateString(""),
+                                       RedisStringToFlatbuf(fbb, data));
+  fbb.Finish(message);
+  auto notification = RedisModule_CreateString(
+      ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+      fbb.GetSize());
+  RedisModule_ZsetAdd(clients_key, index, notification, NULL);
   // Publish the notification about this client.
   RedisModuleCallReply *reply =
-      RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, data);
+      RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, notification);
+  RedisModule_FreeString(ctx, notification);
   if (reply == NULL) {
     RedisModule_CloseKey(clients_key);
     return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
@@ -564,9 +573,17 @@ int PublishTableAdd(RedisModuleCtx *ctx,
                     RedisModuleString *pubsub_channel_str,
                     RedisModuleString *id,
                     RedisModuleString *data) {
-  // All other pubsub channels write the data back directly onto the channel.
+  // Serialize the notification to send.
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateGcsNotification(fbb, RedisStringToFlatbuf(fbb, id),
+                                       RedisStringToFlatbuf(fbb, data));
+  fbb.Finish(message);
+
+  // Write the data back to any subscribers that are listening to all table
+  // notifications.
   RedisModuleCallReply *reply =
-      RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, data);
+      RedisModule_Call(ctx, "PUBLISH", "sb", pubsub_channel_str,
+                       fbb.GetBufferPointer(), fbb.GetSize());
   if (reply == NULL) {
     return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
   }
@@ -585,7 +602,8 @@ int PublishTableAdd(RedisModuleCtx *ctx,
       RedisModuleString *client_channel =
           RedisModule_ZsetRangeCurrentElement(notification_key, NULL);
       RedisModuleCallReply *reply =
-          RedisModule_Call(ctx, "PUBLISH", "ss", client_channel, data);
+          RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
+                           fbb.GetBufferPointer(), fbb.GetSize());
       if (reply == NULL) {
         RedisModule_CloseKey(notification_key);
         return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
@@ -717,11 +735,18 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *table_key =
       OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
   if (table_key != nullptr) {
-    size_t message_len = 0;
-    char *message_buf =
-        RedisModule_StringDMA(table_key, &message_len, REDISMODULE_READ);
-    int result =
-        RedisModule_ReplyWithStringBuffer(ctx, message_buf, message_len);
+    // Serialize the notification to send.
+    size_t data_len = 0;
+    char *data_buf =
+        RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message = CreateGcsNotification(fbb, RedisStringToFlatbuf(fbb, id),
+                                         fbb.CreateString(data_buf, data_len));
+    fbb.Finish(message);
+
+    int result = RedisModule_ReplyWithStringBuffer(
+        ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+        fbb.GetSize());
     RedisModule_CloseKey(table_key);
     return result;
   } else {
