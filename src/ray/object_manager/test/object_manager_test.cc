@@ -182,8 +182,8 @@ class TestObjectManagerCommands : public TestObjectManager {
   ObjectID created_object_id;
 
   void WaitConnections() {
-    client_id_1 = server1->object_manager_.GetClientID();
-    client_id_2 = server2->object_manager_.GetClientID();
+    client_id_1 = gcs_client_1->client_table().GetLocalClientId();
+    client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback(
         [this](gcs::AsyncGcsClient *client, const ClientID &id,
                std::shared_ptr<ClientTableDataT> data) {

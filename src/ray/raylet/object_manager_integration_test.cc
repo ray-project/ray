@@ -131,11 +131,20 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
 
   int num_connected_clients = 0;
 
+  ClientID client_id_1;
+  ClientID client_id_2;
+
   void WaitConnections() {
+    client_id_1 = gcs_client_1->client_table().GetLocalClientId();
+    client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     gcs_client_1->client_table().RegisterClientAddedCallback(
         [this](gcs::AsyncGcsClient *client, const ClientID &id,
                std::shared_ptr<ClientTableDataT> data) {
-          num_connected_clients += 1;
+          ClientID parsed_id = ClientID::from_binary(data->client_id);
+          if(parsed_id == client_id_1 ||
+              parsed_id == client_id_2){
+            num_connected_clients += 1;
+          }
           if (num_connected_clients == 2) {
             StartTests();
           }
@@ -169,8 +178,6 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   }
 
   void TestPush(int64_t data_size) {
-    // ClientID client_id_1 = server1->object_manager_.GetClientID();
-    ClientID client_id_2 = server2->object_manager_.GetClientID();
 
     ray::Status status = ray::Status::OK();
 
@@ -195,15 +202,15 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_LOG(INFO) << "\n"
                   << "Server client ids:"
                   << "\n";
-    ClientID client_id_1 = server1->object_manager_.GetClientID();
-    ClientID client_id_2 = server2->object_manager_.GetClientID();
+    ClientID client_id_1 = gcs_client_1->client_table().GetLocalClientId();
+    ClientID client_id_2 = gcs_client_2->client_table().GetLocalClientId();
     RAY_LOG(INFO) << "Server 1: " << client_id_1.hex();
     RAY_LOG(INFO) << "Server 2: " << client_id_2.hex();
 
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
                   << "\n";
-    const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
+    const ClientTableDataT &data = gcs_client_2->client_table().GetClient(client_id_1);
     RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
@@ -215,7 +222,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   }
 };
 
-TEST_F(TestObjectManagerIntegration, StartTestObjectManagerIntegration) {
+TEST_F(TestObjectManagerIntegration, StartTestObjectManagerPush) {
   auto AsyncStartTests = main_service.wrap([this]() { WaitConnections(); });
   AsyncStartTests();
   main_service.run();

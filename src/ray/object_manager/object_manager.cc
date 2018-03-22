@@ -4,12 +4,15 @@ namespace asio = boost::asio;
 
 namespace ray {
 
-
 // TODO(hme): Clean up commented logs once multi-threading integration is completed.
+// Note: Current implementation has everything needed for concurrent transfers,
+// but concurrency is currently disabled for integration purposes. Concurrency is
+// disabled by running all asio components on the main thread (main_service).
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::unique_ptr<asio::io_service> object_manager_service,
                              ObjectManagerConfig config,
                              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+    // TODO(hme): Eliminate knowledge of GCS.
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       object_directory_(new ObjectDirectory(gcs_client)),
       object_manager_service_(std::move(object_manager_service)),
@@ -62,8 +65,6 @@ void ObjectManager::StopIOService() {
   io_thread_.join();
   // thread_group_.join_all();
 }
-
-ClientID ObjectManager::GetClientID() { return client_id_; }
 
 void ObjectManager::NotifyDirectoryObjectAdd(const ObjectID &object_id) {
   ray::Status status = object_directory_->ReportObjectAdded(object_id, client_id_);
