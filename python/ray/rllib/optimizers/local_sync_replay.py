@@ -92,10 +92,10 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
                 "batch_indexes": batch_indexes})
 
         with self.grad_timer:
-            td_error = self.local_evaluator.compute_apply(samples)["td_error"]
-            new_priorities = (
-                np.abs(td_error) + self.prioritized_replay_eps)
             if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
+                td_error = self.local_evaluator.compute_apply(samples)["td_error"]
+                new_priorities = (
+                    np.abs(td_error) + self.prioritized_replay_eps)
                 self.replay_buffer.update_priorities(
                     samples["batch_indexes"], new_priorities)
             self.grad_timer.push_units_processed(samples.count)

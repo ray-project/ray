@@ -91,6 +91,11 @@ class DDPGEvaluator(PolicyEvaluator):
     def update_target(self):
         """Updates target critic and target actor."""
         self.sess.run(self.target_updates)
+        from pprint import pprint
+        pprint("After update TARGETACTOR:")
+        pprint([(k, np.linalg.norm(v)) for k, v in self.target_model.get_weights()[0].items()])
+        pprint("After update TARGETCRITIC:")
+        pprint([(k, np.linalg.norm(v)) for k, v in self.target_model.get_weights()[1].items()])
 
     def setup_gradients(self):
         """Setups critic and actor gradients."""
@@ -139,7 +144,7 @@ class DDPGEvaluator(PolicyEvaluator):
         self.critic_grads = [g for g in self.critic_grads if g is not None]
         critic_grad = self.sess.run(self.critic_grads, feed_dict=critic_feed_dict)
 
-        return critic_grad, actor_grad
+        return (critic_grad, actor_grad), {}
 
     def apply_gradients(self, grads):
         """Applies gradients to evaluator weights."""

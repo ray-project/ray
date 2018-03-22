@@ -22,7 +22,8 @@ DEFAULT_CONFIG = {
     "num_workers": 0,
     # Arguments to pass to the rllib optimizer
     "optimizer": {
-        "buffer_size": 10000,
+        "buffer_size": 10,
+        "learning_starts": 10,
         "clip_rewards": False,
         "prioritized_replay": False,
         "train_batch_size": 32,
@@ -75,6 +76,8 @@ if __name__ == '__main__':
     import ray
     ray.init()
     agent = DDPGAgent(env="Pendulum-v0")
+    for i in range(30):
+        r = agent.train()
     r = agent.train()
 
     from ray.tune.logger import pretty_print
