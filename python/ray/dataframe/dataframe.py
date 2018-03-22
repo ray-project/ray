@@ -734,6 +734,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
+        # TODO: test after col_partitions rewrite 
         locally_transposed_cols = None
         locally_transposed_rows = None
 
@@ -1014,7 +1015,7 @@ class DataFrame(object):
             The count, in a Series (or DataFrame if level is specified).
         """
         # TODO: doesn't work for multi-level indices
-        # TODO: is _col_index set?
+        # TODO: test after col_partitions rewrite 
         axis = self._row_index._get_axis_name(axis) if axis is not None \
                 else 'index'
 
@@ -2358,6 +2359,7 @@ class DataFrame(object):
             A Series containing the popped values. Also modifies this
             DataFrame.
         """
+        # TODO: test after col_partitions rewrite 
         result = _map_partitions(lambda df: df.pop(item),
                                  self._row_partitions)
         self._row_partitions = _map_partitions(lambda df: df.drop(labels=item,
@@ -2558,6 +2560,7 @@ class DataFrame(object):
         Returns:
             Type of caller or None if inplace=True.
         """
+        # TODO: test after col_partitions rewrite 
         axes_is_columns = axis == 1 or axis == "columns"
         renamed = self if inplace else self.copy()
         if axes_is_columns:
