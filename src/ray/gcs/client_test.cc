@@ -42,7 +42,7 @@ class TestGcs : public ::testing::Test {
 
   virtual void Stop() = 0;
 
-  int64_t NumCallbacks() { return num_callbacks_; }
+  int64_t NumCallbacks() const { return num_callbacks_; }
 
   void IncrementNumCallbacks() { num_callbacks_++; }
 

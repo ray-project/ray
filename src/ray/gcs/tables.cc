@@ -23,7 +23,6 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   fbb.Finish(Data::Pack(fbb, data.get()));
   return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
                             prefix_, pubsub_channel_, callback_index);
-  return Status::OK();
 }
 
 template <typename ID, typename Data>
@@ -51,7 +50,6 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
   std::vector<uint8_t> nil;
   return context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), prefix_,
                             pubsub_channel_, callback_index);
-  return Status::OK();
 }
 
 template <typename ID, typename Data>
