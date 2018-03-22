@@ -26,6 +26,8 @@ class Worker(object):
             self.get_task()
 
     def get(self, object_ids, timeout_ms=-1):
+        for object_id in object_ids:
+            self.node_manager_client.reconstruct_object(object_id.id())
         plasma_ids = [plasma.ObjectID(argument.id()) for argument in
                       object_ids]
         values = self.plasma_client.get(plasma_ids, timeout_ms,
