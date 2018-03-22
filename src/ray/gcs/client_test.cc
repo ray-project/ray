@@ -218,9 +218,11 @@ TEST_F(TestGcsWithAsio, TestTaskTable) {
 }
 
 void TestSubscribeAll(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  ObjectID object_id = ObjectID::from_random();
   // Callback for a notification.
-  auto notification_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                  const ObjectTableDataT &data) {
+  auto notification_callback = [object_id](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &data) {
+    ASSERT_EQ(id, object_id);
     // Check that the object entry was added.
     ASSERT_EQ(data.managers, std::vector<std::string>({"A", "B"}));
     test->IncrementNumCallbacks();
@@ -228,13 +230,12 @@ void TestSubscribeAll(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> 
   };
 
   // Callback for subscription success. This should only be called once.
-  auto subscribe_callback = [job_id](gcs::AsyncGcsClient *client) {
+  auto subscribe_callback = [job_id, object_id](gcs::AsyncGcsClient *client) {
     test->IncrementNumCallbacks();
     // We have subscribed. Add an object table entry.
     auto data = std::make_shared<ObjectTableDataT>();
     data->managers.push_back("A");
     data->managers.push_back("B");
-    ObjectID object_id = ObjectID::from_random();
     RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, &ObjectAdded));
   };
 
@@ -295,8 +296,9 @@ void TestSubscribeId(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
 
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
-  auto notification_callback = [data2](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                       const ObjectTableDataT &data) {
+  auto notification_callback = [data2, object_id2](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &data) {
+    ASSERT_EQ(id, object_id2);
     // Check that we got a notification for the correct object.
     ASSERT_EQ(data.managers.front(), "C");
     test->IncrementNumCallbacks();
@@ -363,8 +365,9 @@ void TestSubscribeCancel(const JobID &job_id,
   };
 
   // The callback for a notification from the object table.
-  auto notification_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                  const ObjectTableDataT &data) {
+  auto notification_callback = [object_id](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &data) {
+    ASSERT_EQ(id, object_id);
     // Check that we only receive notifications for the key when we have
     // requested notifications for it. We should not get a notification for the
     // entry that began with "B" since we canceled notifications then.
