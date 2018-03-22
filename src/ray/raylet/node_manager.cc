@@ -193,6 +193,7 @@ void NodeManager::ProcessNodeManagerMessage(
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
+  node_manager_client->ProcessMessages();
 }
 
 void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
