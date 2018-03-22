@@ -9,10 +9,11 @@ from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import SampleBatch
 from ray.rllib.optimizers import Evaluator
-from ray.rllib.utils.filter import NoFilter
+from ray.rllib.utils.filter import NoFilter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
 from ray.tune.registry import get_registry
+
 
 import numpy as np
 import tensorflow as tf
@@ -51,15 +52,13 @@ class DDPGEvaluator(Evaluator):
         critic_updates = tf.group(*c_updates)
         self.sess.run([actor_updates, critic_updates])
 
-        self.replay_buffer = ReplayBuffer(config["buffer_size"], config["clip_rewards"])
         self.sampler = SyncSampler(
                         self.env, self.model, NoFilter(),
-                        config["batch_size"], horizon=config["horizon"])
+                        config["num_local_steps"], horizon=config["horizon"])
 
     def initialize(self):
         self.sess.run(tf.global_variables_initializer())
 
-    #TODO: (not critical) Add batch normalization?
     def sample(self, no_replay = True):
         """Returns a batch of samples."""
 
@@ -67,12 +66,11 @@ class DDPGEvaluator(Evaluator):
         rollout.data["weights"] = np.ones_like(rollout.data["rewards"])
 
         samples = process_rollout(
-                    rollout, NoFilter(),
+                    rollout, MeanStdFilter(()),
                     gamma=self.config["gamma"], use_gae=False)
 
         return samples
 
-    #TODO: Update this
     def _setup_target_updates(self):
         """Set up actor and critic updates."""
         a_updates = []
@@ -90,19 +88,17 @@ class DDPGEvaluator(Evaluator):
         critic_updates = tf.group(*c_updates)
         self.target_updates = [actor_updates, critic_updates]
 
-    #TODO: Update this
     def update_target(self):
-        # update target critic and target actor
+        """Updates target critic and target actor."""
         self.sess.run(self.target_updates)
 
     def setup_gradients(self):
-        # setup critic gradients
+        """Setups critic and actor gradients."""
         self.critic_grads = tf.gradients(self.model.critic_loss, self.model.critic_var_list)
         c_grads_and_vars = list(zip(self.critic_grads, self.model.critic_var_list))
         c_opt = tf.train.AdamOptimizer(self.config["critic_lr"])
         self._apply_c_gradients = c_opt.apply_gradients(c_grads_and_vars)
 
-        # setup actor gradients
         self.actor_grads = tf.gradients(self.model.actor_loss, self.model.actor_var_list)
         a_grads_and_vars = list(zip(self.actor_grads, self.model.actor_var_list))
         a_opt = tf.train.AdamOptimizer(self.config["actor_lr"])
@@ -118,12 +114,17 @@ class DDPGEvaluator(Evaluator):
         self.actor_grads = [g for g in self.actor_grads if g is not None]
         actor_grad = self.sess.run(self.actor_grads, feed_dict=actor_feed_dict)
 
+        # feed samples into target actor
+        target_Q_act = self.sess.run(self.target_model.output_action,
+                                    feed_dict={
+                                        self.target_model.obs: samples["new_obs"]
+                                    })
         target_Q_dict = {
-            self.model.obs: samples["obs"],
-            self.model.act: samples["actions"]
+            self.target_model.obs: samples["new_obs"],
+            self.target_model.act: target_Q_act,
         }
 
-        target_Q = self.sess.run(self.model.cn_for_loss.outputs, feed_dict = target_Q_dict)
+        target_Q = self.sess.run(self.target_model.critic_eval, feed_dict = target_Q_dict)
 
         # critic gradients
         critic_feed_dict = {

@@ -10,6 +10,7 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 import numpy as np
 import tensorflow as tf
 
+
 class DDPGModel():
     other_output = []
     is_recurrent = False
@@ -50,8 +51,6 @@ class DDPGModel():
         self.actor_vars = ray.experimental.TensorFlowVariables(self.actor_loss, self.sess)
 
     def _setup_critic_loss(self, action_space):
-        # y_i = r_i + gamma * Q'(si+1, mu'(si+1))
-
         # what the target Q network gives us
         self.target_Q = tf.placeholder(tf.float32, [None, 1], name="target_q")
 
@@ -63,21 +62,14 @@ class DDPGModel():
     def _setup_critic_network(self, obs_space, ac_space):
         """Sets up Q network."""
 
-        # In DDPG Paper, actions are not
-        # utilized until the second hidden layer
-        #self.critic_model = ModelCatalog.get_model(
-        #                self.registry, self.x, 1,
-        #                options=self.config["critic_model"])
-
         self.obs_and_action = tf.concat([self.obs, self.act], 1)
 
         with tf.variable_scope("critic", reuse=tf.AUTO_REUSE):
             self.critic_network = FullyConnectedNetwork(self.obs_and_action,
                                                         1, self.config["critic_model"])
         self.critic_eval = self.critic_network.outputs
-        self.obs_and_actor = tf.concat([self.obs, self.output_action], 1) #output_action is output of actor network
 
-        # will this share weights between the two copies of critic?
+        self.obs_and_actor = tf.concat([self.obs, self.output_action], 1) #output_action is output of actor network
         with tf.variable_scope("critic", reuse=True):
             self.cn_for_loss = FullyConnectedNetwork(self.obs_and_actor,
                                                         1, self.config["critic_model"])
@@ -85,30 +77,27 @@ class DDPGModel():
     def _setup_actor_network(self, obs_space, ac_space):
         dist_class, self.action_dim = ModelCatalog.get_action_dist(ac_space,
                                      dist_type = 'deterministic')
-        # 1 means one output
         with tf.variable_scope("actor", reuse=tf.AUTO_REUSE):
             self.actor_network = ModelCatalog.get_model(
-                                    self.registry, self.obs, 1, #self.action_dim?
+                                    self.registry, self.obs, 1,
                                     options=self.config["actor_model"])
         self.output_action = self.actor_network.outputs
-        #self.dist = dist_class(self.actor_network.outputs) # deterministic
-        #self.output_action = self.dist.sample()
 
     def _setup_actor_loss(self):
-        # takes in output of the critic
         self.actor_loss = -tf.reduce_mean(self.cn_for_loss.outputs)
 
     def get_weights(self):
-        # returns critic weights, actor weights
+        """Returns critic weights, actor weights."""
         return self.critic_vars.get_weights(), self.actor_vars.get_weights()
 
     def set_weights(self, weights):
+        """Sets critic and actor weights."""
         critic_weights, actor_weights = weights
         self.critic_vars.set_weights(critic_weights)
         self.actor_vars.set_weights(actor_weights)
 
     def compute(self, ob):
-        # returns action, given state; this method is needed for sampler
+        """Returns action, given state."""
         flattened_ob = np.reshape(ob, [-1, np.prod(ob.shape)])
         action = self.sess.run(self.output_action, {self.obs: flattened_ob})
         return action[0], {}

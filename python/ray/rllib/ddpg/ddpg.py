@@ -10,26 +10,23 @@ from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator, RemoteDDPGEvaluator
 from ray.tune.result import TrainingResult
 import numpy as np
 
-# add more stuff to config as necessary
 DEFAULT_CONFIG = {
-    "actor_model": {},
-    "batch_size": 256,
-    "buffer_size": 1000000,
-    "clip_rewards": False,
-    "critic_model": {},
+    "actor_model": {"fcnet_activation": "tanh"},
+    "critic_model": {"fcnet_activation": "tanh"},
     "env_config": {},
-    # Discount factor
     "gamma": 0.99,
     "horizon": 500,
     "actor_lr": 0.0001,
     "critic_lr": 0.001,
-    #"model": {},
+    "num_local_steps": 512,
     "num_workers": 1,
     # Arguments to pass to the rllib optimizer
     "optimizer": {
+        "buffer_size": 10000,
+        "clip_rewards": False,
         "prioritized_replay": False,
+        "train_batch_size": 32,
     },
-    "train_batch_size": 100,
     "tau": 0.001,
 }
 
@@ -73,8 +70,3 @@ class DDPGAgent(Agent):
             info={})
 
         return result
-
-    def compute_action(self, obs):
-        # select action using actor
-        action, info = self.local_evaluator.actor.act(obs)
-        return action
