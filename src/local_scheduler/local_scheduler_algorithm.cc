@@ -872,8 +872,13 @@ void spillback_tasks_handler(LocalSchedulerState *state) {
                       << "cluster does not have enough resources to place this "
                       << "actor. Try reducing the number of actors created or "
                       << "increasing the number of slots available by using "
-                      << "the --num-cpus, --num-gpus, and --resources flags.";
-
+                      << "the --num-cpus, --num-gpus, and --resources flags. "
+                      << " The actor creation task is requesting ";
+        for (auto const &resource_pair :
+             TaskSpec_get_required_resources(spec)) {
+          error_message << resource_pair.second << " " << resource_pair.first
+                        << " ";
+        }
         push_error(state->db, TaskSpec_driver_id(spec),
                    ACTOR_NOT_CREATED_ERROR_INDEX, error_message.str());
       }
