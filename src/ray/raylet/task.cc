@@ -11,7 +11,11 @@ flatbuffers::Offset<TaskFlatbuffer> Task::ToFlatbuffer(
   return task;
 }
 
-const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
+TaskExecutionSpecification &Task::GetTaskExecutionSpec() {
+  return task_execution_spec_;
+}
+
+const TaskExecutionSpecification &Task::GetTaskExecutionSpecReadonly() const {
   return task_execution_spec_;
 }
 

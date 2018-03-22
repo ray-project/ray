@@ -56,7 +56,9 @@ class Task {
   /// Get the execution specification for the task.
   ///
   /// \return The mutable specification for the task.
-  const TaskExecutionSpecification &GetTaskExecutionSpec() const;
+  TaskExecutionSpecification &GetTaskExecutionSpec();
+
+  const TaskExecutionSpecification &GetTaskExecutionSpecReadonly() const;
 
   /// Get the immutable specification for the task.
   ///
