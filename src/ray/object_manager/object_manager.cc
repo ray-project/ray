@@ -4,10 +4,15 @@ namespace asio = boost::asio;
 
 namespace ray {
 
+// TODO(hme): Clean up commented logs once multi-threading integration is completed.
+// Note: Current implementation has everything needed for concurrent transfers,
+// but concurrency is currently disabled for integration purposes. Concurrency is
+// disabled by running all asio components on the main thread (main_service).
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::unique_ptr<asio::io_service> object_manager_service,
                              ObjectManagerConfig config,
                              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+    // TODO(hme): Eliminate knowledge of GCS.
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       object_directory_(new ObjectDirectory(gcs_client)),
       object_manager_service_(std::move(object_manager_service)),
@@ -60,8 +65,6 @@ void ObjectManager::StopIOService() {
   io_thread_.join();
   // thread_group_.join_all();
 }
-
-ClientID ObjectManager::GetClientID() { return client_id_; }
 
 void ObjectManager::NotifyDirectoryObjectAdd(const ObjectID &object_id) {
   ray::Status status = object_directory_->ReportObjectAdded(object_id, client_id_);
@@ -229,9 +232,6 @@ ray::Status ObjectManager::SendHeaders(const ObjectID &object_id_const,
   plasma::ObjectID plasma_id = object_id.to_plasma_id();
   std::shared_ptr<plasma::PlasmaClient> store_client = store_pool_->GetObjectStore();
   ARROW_CHECK_OK(store_client->Get(&plasma_id, 1, 0, &object_buffer));
-  //  uint64_t digest;
-  //  store_client->Hash(object_id.to_plasma_id(), reinterpret_cast<uint8_t*>(&digest));
-  //  RAY_LOG(INFO) << "SENDER HASH " << digest;
   if (object_buffer.data_size == -1) {
     RAY_LOG(ERROR) << "Failed to get object";
     // If the object wasn't locally available, exit immediately. If the object
@@ -309,14 +309,12 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
   return ray::Status::OK();
 };
 
-void ObjectManager::ProcessNewClient(
-    std::shared_ptr<ReceiverConnection> conn) {
+void ObjectManager::ProcessNewClient(std::shared_ptr<ReceiverConnection> conn) {
   conn->ProcessMessages();
 };
 
-void ObjectManager::ProcessClientMessage(
-    std::shared_ptr<ReceiverConnection> conn, int64_t message_type,
-    const uint8_t *message) {
+void ObjectManager::ProcessClientMessage(std::shared_ptr<ReceiverConnection> conn,
+                                         int64_t message_type, const uint8_t *message) {
   switch (message_type) {
   case OMMessageType_PushRequest: {
     // RAY_LOG(INFO) << "ProcessClientMessage PushRequest";
@@ -374,8 +372,8 @@ void ObjectManager::DisconnectClient(std::shared_ptr<ReceiverConnection> &conn,
   }
 };
 
-void ObjectManager::ReceivePullRequest(
-    std::shared_ptr<ReceiverConnection> &conn, const uint8_t *message) {
+void ObjectManager::ReceivePullRequest(std::shared_ptr<ReceiverConnection> &conn,
+                                       const uint8_t *message) {
   // Serialize.
   auto pr = flatbuffers::GetRoot<PullRequestMessage>(message);
   ObjectID object_id = ObjectID::from_binary(pr->object_id()->str());
@@ -384,8 +382,7 @@ void ObjectManager::ReceivePullRequest(
   ray::Status push_status = Push(object_id, client_id);
 };
 
-ray::Status ObjectManager::WaitPushReceive(
-    std::shared_ptr<ReceiverConnection> conn) {
+ray::Status ObjectManager::WaitPushReceive(std::shared_ptr<ReceiverConnection> conn) {
   //  RAY_LOG(INFO) << "WaitPushReceive";
   asio::async_read(conn->GetSocket(), asio::buffer(&read_length_, sizeof(read_length_)),
                    boost::bind(&ObjectManager::HandlePushReceive, this, conn,
@@ -410,9 +407,9 @@ void ObjectManager::HandlePushReceive(std::shared_ptr<ReceiverConnection> conn,
   (void)ExecuteReceive(conn->GetClientID(), object_id, object_size, conn);
 }
 
-ray::Status ObjectManager::ExecuteReceive(
-    ClientID client_id, ObjectID object_id, uint64_t object_size,
-    std::shared_ptr<ReceiverConnection> conn) {
+ray::Status ObjectManager::ExecuteReceive(ClientID client_id, ObjectID object_id,
+                                          uint64_t object_size,
+                                          std::shared_ptr<ReceiverConnection> conn) {
   boost::system::error_code ec;
   //  RAY_LOG(INFO) << "ExecuteReceive "
   //                << object_id << " "
@@ -443,9 +440,6 @@ ray::Status ObjectManager::ExecuteReceive(
   }
   store_pool_->ReleaseObjectStore(store_client);
   // Wait for another push.
-  //  uint64_t digest;
-  //  store_client->Hash(object_id.to_plasma_id(), reinterpret_cast<uint8_t*>(&digest));
-  //  RAY_LOG(INFO) << "RECEIVER HASH " << digest;
   ray::Status status = WaitPushReceive(conn);
   // TransferCompleted();
   return status;

@@ -50,7 +50,7 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client,
   }
 
   ResourceSet resources_total;
-  for (int i=0; i < data->resources_total_label.size(); i++) {
+  for (uint i=0; i < data->resources_total_label.size(); i++) {
     resources_total.AddResource(data->resources_total_label[i],
                                 data->resources_total_capacity[i]);
   }

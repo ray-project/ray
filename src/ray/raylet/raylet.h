@@ -58,6 +58,8 @@ class Raylet {
   void DoAcceptNodeManager();
   void HandleAcceptNodeManager(const boost::system::error_code &error);
 
+  friend class TestObjectManagerIntegration;
+
   /// An acceptor for new clients.
   boost::asio::local::stream_protocol::acceptor acceptor_;
   /// The socket to listen on for new clients.
