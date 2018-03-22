@@ -21,6 +21,11 @@ enum TablePubsub:int {
   ACTOR
 }
 
+table GcsNotification {
+  id: string;
+  data: string;
+}
+
 table FunctionTableData {
   language: Language;
   name: string;
