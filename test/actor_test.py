@@ -1162,6 +1162,22 @@ class ActorsWithGPUs(unittest.TestCase):
         actor = Foo.remote()
         ray.get(actor.blocking_method.remote())
 
+        @ray.remote(num_cpus=1)
+        class CPUFoo(object):
+            def __init__(self):
+                pass
+
+            def blocking_method(self):
+                ray.get(f.remote())
+
+        # Make sure that lifetime CPU resources are not released when actors
+        # block.
+        actor = CPUFoo.remote()
+        x_id = actor.blocking_method.remote()
+        ready_ids, remaining_ids = ray.wait([x_id], timeout=1000)
+        self.assertEqual(ready_ids, [])
+        self.assertEqual(remaining_ids, [x_id])
+
         @ray.remote(num_gpus=1)
         class GPUFoo(object):
             def __init__(self):
@@ -1170,10 +1186,10 @@ class ActorsWithGPUs(unittest.TestCase):
             def blocking_method(self):
                 ray.get(f.remote())
 
-        # Make sure that we GPU resources are not released when actors block.
+        # Make sure that GPU resources are not released when actors block.
         actor = GPUFoo.remote()
         x_id = actor.blocking_method.remote()
-        ready_ids, remaining_ids = ray.wait([x_id], timeout=500)
+        ready_ids, remaining_ids = ray.wait([x_id], timeout=1000)
         self.assertEqual(ready_ids, [])
         self.assertEqual(remaining_ids, [x_id])
 
