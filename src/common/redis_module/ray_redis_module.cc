@@ -539,8 +539,9 @@ int ClientTableAdd(RedisModuleCtx *ctx,
   size_t index = RedisModule_ValueLength(clients_key);
   // Serialize the notification to send.
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateGcsNotification(fbb, fbb.CreateString(""),
-                                       RedisStringToFlatbuf(fbb, data));
+  auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
+  auto message = CreateGcsTableEntry(fbb, fbb.CreateString(""),
+                                     fbb.CreateVector(&data_flatbuf, 1));
   fbb.Finish(message);
   auto notification = RedisModule_CreateString(
       ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
@@ -575,8 +576,9 @@ int PublishTableAdd(RedisModuleCtx *ctx,
                     RedisModuleString *data) {
   // Serialize the notification to send.
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateGcsNotification(fbb, RedisStringToFlatbuf(fbb, id),
-                                       RedisStringToFlatbuf(fbb, data));
+  auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
+  auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, id),
+                                     fbb.CreateVector(&data_flatbuf, 1));
   fbb.Finish(message);
 
   // Write the data back to any subscribers that are listening to all table
@@ -695,6 +697,42 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
   }
 }
 
+/// A helper function to create and finish a GcsTableEntry, based on the
+/// current value or values at the given key.
+void TableEntryToFlatbuf(flatbuffers::FlatBufferBuilder &fbb,
+                         RedisModuleKey *table_key,
+                         RedisModuleString *entry_id) {
+  auto key_type = RedisModule_KeyType(table_key);
+  switch (key_type) {
+  case REDISMODULE_KEYTYPE_STRING: {
+    // Serialize the notification to send.
+    size_t data_len = 0;
+    char *data_buf =
+        RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
+    auto data = fbb.CreateString(data_buf, data_len);
+    auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, entry_id),
+                                       fbb.CreateVector(&data, 1));
+    fbb.Finish(message);
+  } break;
+  case REDISMODULE_KEYTYPE_ZSET: {
+    RAY_CHECK(RedisModule_ZsetFirstInScoreRange(
+                  table_key, REDISMODULE_NEGATIVE_INFINITE,
+                  REDISMODULE_POSITIVE_INFINITE, 1, 1) == REDISMODULE_ERR);
+    std::vector<flatbuffers::Offset<flatbuffers::String>> data;
+    for (; !RedisModule_ZsetRangeEndReached(table_key);
+         RedisModule_ZsetRangeNext(table_key)) {
+      data.push_back(RedisStringToFlatbuf(
+          fbb, RedisModule_ZsetRangeCurrentElement(table_key, NULL)));
+    }
+    auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, entry_id),
+                                       fbb.CreateVector(data));
+    fbb.Finish(message);
+  } break;
+  default:
+    RAY_LOG(FATAL) << "Invalid Redis type during lookup: " << key_type;
+  }
+}
+
 /// Lookup the current value or values at a key. Returns the current value or
 /// values at the key.
 ///
@@ -718,40 +756,18 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *prefix_str = argv[1];
   RedisModuleString *id = argv[3];
 
-  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
-  if (key == nullptr) {
-    return RedisModule_ReplyWithNull(ctx);
-  }
-
-  auto key_type = RedisModule_KeyType(key);
-  switch (key_type) {
-  case REDISMODULE_KEYTYPE_EMPTY: {
+  RedisModuleKey *table_key =
+      OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
+  if (table_key == nullptr) {
     RedisModule_ReplyWithNull(ctx);
-  } break;
-  case REDISMODULE_KEYTYPE_STRING: {
-    size_t len = 0;
-    const char *buf = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
-    RedisModule_ReplyWithStringBuffer(ctx, buf, len);
-  } break;
-  case REDISMODULE_KEYTYPE_ZSET: {
-    RedisModule_ReplyWithArray(ctx, RedisModule_ValueLength(key));
-
-    CHECK_ERROR(
-        RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
-                                          REDISMODULE_POSITIVE_INFINITE, 1, 1),
-        "Unable to initialize zset iterator");
-    for (; !RedisModule_ZsetRangeEndReached(key);
-         RedisModule_ZsetRangeNext(key)) {
-      RedisModule_ReplyWithString(
-          ctx, RedisModule_ZsetRangeCurrentElement(key, NULL));
-    }
-
-  } break;
-  default:
-    RAY_LOG(FATAL) << "Invalid Redis type during lookup: " << key_type;
+  } else {
+    flatbuffers::FlatBufferBuilder fbb;
+    TableEntryToFlatbuf(fbb, table_key, id);
+    RedisModule_ReplyWithStringBuffer(
+        ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+        fbb.GetSize());
   }
-
-  RedisModule_CloseKey(key);
+  RedisModule_CloseKey(table_key);
 
   return REDISMODULE_OK;
 }
@@ -799,42 +815,16 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
   // a notification.
   RedisModuleKey *table_key =
       OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
-  auto key_type = RedisModule_KeyType(table_key);
-  switch (key_type) {
-  case REDISMODULE_KEYTYPE_EMPTY: {
-  } break;
-  case REDISMODULE_KEYTYPE_STRING: {
-    // Serialize the notification to send.
-    size_t data_len = 0;
-    char *data_buf =
-        RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
+  if (table_key == nullptr) {
+    RedisModule_ReplyWithNull(ctx);
+  } else {
     flatbuffers::FlatBufferBuilder fbb;
-    auto message = CreateGcsNotification(fbb, RedisStringToFlatbuf(fbb, id),
-                                         fbb.CreateString(data_buf, data_len));
-    fbb.Finish(message);
-
+    TableEntryToFlatbuf(fbb, table_key, id);
     RedisModule_Call(ctx, "PUBLISH", "sb", client_channel, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
         fbb.GetSize());
-  } break;
-  case REDISMODULE_KEYTYPE_ZSET: {
-    CHECK_ERROR(
-        RedisModule_ZsetFirstInScoreRange(table_key, REDISMODULE_NEGATIVE_INFINITE,
-                                          REDISMODULE_POSITIVE_INFINITE, 1, 1),
-        "Unable to initialize zset iterator");
-    for (; !RedisModule_ZsetRangeEndReached(table_key);
-         RedisModule_ZsetRangeNext(table_key)) {
-      flatbuffers::FlatBufferBuilder fbb;
-      auto message = CreateGcsNotification(fbb, RedisStringToFlatbuf(fbb, id),
-                                           RedisStringToFlatbuf(fbb, RedisModule_ZsetRangeCurrentElement(table_key, NULL)));
-      fbb.Finish(message);
-      RedisModule_Call(ctx, "PUBLISH", "sb", client_channel, reinterpret_cast<const char *>(fbb.GetBufferPointer()),fbb.GetSize());
-    }
-  } break;
-  default:
-    RAY_LOG(FATAL) << "Invalid Redis type during lookup: " << key_type;
   }
-
   RedisModule_CloseKey(table_key);
+
   RedisModule_FreeString(ctx, client_channel);
   return RedisModule_ReplyWithNull(ctx);
 }

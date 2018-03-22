@@ -27,15 +27,15 @@ class RedisContext;
 
 class AsyncGcsClient;
 
+/// \class Log
+///
+/// A GCS table where every entry is an append-only log.
 template <typename ID, typename Data>
-class Table {
+class Log {
  public:
   using DataT = typename Data::NativeTableType;
-  using Callback =
-      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
-  /// The callback to call when a lookup fails because there is no entry at the
-  /// key.
-  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
+  using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                      const std::vector<DataT> &data)>;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
@@ -44,45 +44,44 @@ class Table {
     ID id;
     std::shared_ptr<DataT> data;
     Callback callback;
-    FailureCallback failure;
     // An optional callback to call for subscription operations, where the
     // first message is a notification of subscription success.
     SubscriptionCallback subscription_callback;
-    Table<ID, Data> *table;
+    Log<ID, Data> *log;
     AsyncGcsClient *client;
   };
 
-  Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+  Log(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : context_(context),
         client_(client),
         pubsub_channel_(TablePubsub_NO_PUBLISH),
         prefix_(TablePrefix_UNUSED),
         subscribe_callback_index_(-1){};
 
-  /// Add an entry to the table.
+  /// Append a log entry to a key.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
-  /// \param data Data that is added to the GCS.
+  /// \param data Data to append to the log.
   /// \param done Callback that is called once the data has been written to the
   ///        GCS.
   /// \return Status
-  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
-             const Callback &done);
+  Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+                const Callback &done);
 
-  /// Lookup an entry asynchronously.
+  /// Lookup the log values at a key asynchronously.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is looked up in the GCS.
   /// \param lookup Callback that is called after lookup. If the callback is
   ///        called with an empty vector, then there was no data at the key.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
-                const FailureCallback &failure);
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
 
-  /// Subscribe to any Add operations to this table. The caller may choose to
-  /// subscribe to all Adds, or to subscribe only to keys that it requests
-  /// notifications for. This may only be called once per Table instance.
+  /// Subscribe to any Append operations to this table. The caller may choose
+  /// to subscribe to all Appends, or to subscribe only to keys that it
+  /// requests notifications for. This may only be called once per Log
+  /// instance.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
@@ -103,8 +102,8 @@ class Table {
   ///
   /// The notifications will be returned via the subscribe callback that was
   /// registered by `Subscribe`.  An initial notification will be returned for
-  /// the current value(s) at the key, if any, and a subsequent notification
-  /// will be published for every following `Add` to the key. Before
+  /// the current values at the key, if any, and a subsequent notification will
+  /// be published for every following `Append` to the key. Before
   /// notifications can be requested, the caller must first call `Subscribe`,
   /// with the same `client_id`.
   ///
@@ -141,6 +140,71 @@ class Table {
   /// when we receive notifications. This is >= 0 iff we have subscribed to the
   /// table, otherwise -1.
   int64_t subscribe_callback_index_;
+};
+
+/// \class Table
+///
+/// A GCS table where every entry is a single data item.
+template <typename ID, typename Data>
+class Table : private Log<ID, Data> {
+ public:
+  using DataT = typename Log<ID, Data>::DataT;
+  using Callback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  /// The callback to call when a Lookup call returns an empty entry.
+  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
+  /// The callback to call when a Subscribe call completes and we are ready to
+  /// request and receive notifications.
+  using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
+
+  struct CallbackData {
+    ID id;
+    std::shared_ptr<DataT> data;
+    Callback callback;
+    // An optional callback to call for subscription operations, where the
+    // first message is a notification of subscription success.
+    SubscriptionCallback subscription_callback;
+    Log<ID, Data> *log;
+    AsyncGcsClient *client;
+  };
+
+  Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log<ID, Data>(context, client) {}
+
+  using Log<ID, Data>::RequestNotifications;
+  using Log<ID, Data>::CancelNotifications;
+
+  /// Add an entry to the table. This overwrites any existing data at the key.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data that is added to the GCS.
+  /// \param done Callback that is called once the data has been written to the
+  ///        GCS.
+  /// \return Status
+  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+             const Callback &done);
+
+  /// Lookup an entry asynchronously.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is looked up in the GCS.
+  /// \param lookup Callback that is called after lookup if there was data the
+  ///        key.
+  /// \param failure Callback that is called after lookup if there was no data
+  ///        at the key.
+  /// \return Status
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
+                const FailureCallback &failure);
+
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const Callback &subscribe, const SubscriptionCallback &done);
+
+ protected:
+  using Log<ID, Data>::context_;
+  using Log<ID, Data>::client_;
+  using Log<ID, Data>::pubsub_channel_;
+  using Log<ID, Data>::prefix_;
 };
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
