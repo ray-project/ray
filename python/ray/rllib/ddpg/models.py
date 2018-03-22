@@ -101,3 +101,6 @@ class DDPGModel():
         flattened_ob = np.reshape(ob, [-1, np.prod(ob.shape)])
         action = self.sess.run(self.output_action, {self.obs: flattened_ob})
         return action[0], {}
+
+    def value(self, *args):
+        return 0

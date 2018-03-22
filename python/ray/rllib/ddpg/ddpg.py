@@ -18,8 +18,8 @@ DEFAULT_CONFIG = {
     "horizon": 500,
     "actor_lr": 0.0001,
     "critic_lr": 0.001,
-    "num_local_steps": 512,
-    "num_workers": 1,
+    "num_local_steps": 1,
+    "num_workers": 0,
     # Arguments to pass to the rllib optimizer
     "optimizer": {
         "buffer_size": 10000,
@@ -70,3 +70,12 @@ class DDPGAgent(Agent):
             info={})
 
         return result
+
+if __name__ == '__main__':
+    import ray
+    ray.init()
+    agent = DDPGAgent(env="Pendulum-v0")
+    r = agent.train()
+
+    from ray.tune.logger import pretty_print
+    pretty_print(r)

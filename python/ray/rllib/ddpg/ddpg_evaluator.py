@@ -8,7 +8,7 @@ from ray.rllib.ddpg.models import DDPGModel
 from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import SampleBatch
-from ray.rllib.optimizers import Evaluator
+from ray.rllib.optimizers import PolicyEvaluator
 from ray.rllib.utils.filter import NoFilter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
@@ -19,7 +19,7 @@ import numpy as np
 import tensorflow as tf
 
 
-class DDPGEvaluator(Evaluator):
+class DDPGEvaluator(PolicyEvaluator):
 
 
     def __init__(self, registry, env_creator, config):
