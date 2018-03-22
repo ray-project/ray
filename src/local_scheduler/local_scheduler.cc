@@ -1145,10 +1145,14 @@ void process_message(event_loop *loop,
        * already blocked on an object that's not locally available, update its
        * state to blocked. */
       worker->is_blocked = true;
-      /* Return the CPU resources that the blocked worker was using, but not
-       * other resources. */
+      // Return the CPU resources that the blocked worker was using, but not
+      // other resources. If the worker is an actor, this will not return the
+      // CPU resources that the worker has acquired for its lifetime. It will
+      // only return the ones associated with the current method.
+      TaskSpec *spec =
+          Task_task_execution_spec(worker->task_in_progress)->Spec();
       std::unordered_map<std::string, double> cpu_resources;
-      cpu_resources["CPU"] = worker->resources_in_use["CPU"];
+      cpu_resources["CPU"] = TaskSpec_get_required_resource(spec, "CPU");
       release_resources(state, worker, cpu_resources);
       /* Let the scheduling algorithm process the fact that the worker is
        * blocked. */
