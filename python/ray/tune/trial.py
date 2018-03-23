@@ -28,34 +28,32 @@ def date_str():
 
 
 class Resources(
-        namedtuple("Resources", [
-            "cpu", "gpu", "driver_cpu_limit", "driver_gpu_limit"])):
+        namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
     """Ray resources required to schedule a trial.
 
     Attributes:
-        cpu (int): Number of CPUs required for the trial total.
-        gpu (int): Number of GPUs required for the trial total.
-        driver_cpu_limit (int): Max CPUs allocated to the driver.
-            Defaults to all of the required CPUs.
-        driver_gpu_limit (int): Max GPUs allocated to the driver.
-            Defaults to all of the required GPUs.
+        cpu (int): Number of CPUs to allocate to the trial.
+        gpu (int): Number of GPUs to allocate to the trial.
+        extra_cpu (int): Extra CPUs to reserve in case the trial needs to
+            launch additional Ray actors that use CPUs.
+        extra_gpu (int): Extra GPUs to reserve in case the trial needs to
+            launch additional Ray actors that use GPUs.
     """
     __slots__ = ()
 
-    def __new__(cls, cpu, gpu, driver_cpu_limit=None, driver_gpu_limit=None):
-        if driver_cpu_limit is not None:
-            assert driver_cpu_limit <= cpu
-        else:
-            driver_cpu_limit = cpu
-        if driver_gpu_limit is not None:
-            assert driver_gpu_limit <= gpu
-        else:
-            driver_gpu_limit = gpu
+    def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
         return super(Resources, cls).__new__(
-            cls, cpu, gpu, driver_cpu_limit, driver_gpu_limit)
+            cls, cpu, gpu, extra_cpu, extra_gpu)
 
     def summary_string(self):
-        return "{} CPUs, {} GPUs".format(self.cpu, self.gpu)
+        return "{} CPUs, {} GPUs".format(
+            self.cpu + self.extra_cpu, self.gpu + self.extra_gpu)
+
+    def cpu_total(self):
+        return self.cpu + self.extra_cpu
+
+    def gpu_total(self):
+        return self.gpu + self.extra_gpu
 
 
 class Trial(object):
@@ -66,9 +64,6 @@ class Trial(object):
 
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
-
-    The driver for the trial will be allocated at most `driver_cpu_limit` and
-    `driver_gpu_limit` CPUs and GPUs.
     """
 
     PENDING = "PENDING"
@@ -79,7 +74,7 @@ class Trial(object):
 
     def __init__(
             self, trainable_name, config=None, local_dir=DEFAULT_RESULTS_DIR,
-            experiment_tag=None, resources=Resources(cpu=1, gpu=0),
+            experiment_tag="", resources=Resources(cpu=1, gpu=0),
             stopping_criterion=None, checkpoint_freq=0,
             restore_path=None, upload_dir=None, max_failures=0):
         """Initialize a new trial.
@@ -347,8 +342,8 @@ class Trial(object):
         trainable_cls = ray.tune.registry.get_registry().get(
             ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
         cls = ray.remote(
-            num_cpus=self.resources.driver_cpu_limit,
-            num_gpus=self.resources.driver_gpu_limit)(trainable_cls)
+            num_cpus=self.resources.cpu,
+            num_gpus=self.resources.gpu)(trainable_cls)
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
