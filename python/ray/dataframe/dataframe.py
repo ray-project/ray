@@ -1020,21 +1020,17 @@ class DataFrame(object):
             The count, in a Series (or DataFrame if level is specified).
         """
         # TODO: doesn't work for multi-level indices
-        # TODO: test after col_partitions rewrite 
         axis = self._row_index._get_axis_name(axis) if axis is not None \
                 else 'index'
 
-        result = pd.concat(ray.get(
-            _map_partitions(lambda df: df.count(axis=axis,
-                                                level=level,
-                                                numeric_only=numeric_only),
-                            self._row_partitions if axis == 'columns'
-                            or axis == 0 else self._col_partitions)))
+        assert self._row_partitions is not None or self._col_partitions is not \
+            None
 
-        result.index = self.index if axis == 'columns' or axis == 0 \
-                else self.columns
-
-        return result
+        remote_func = lambda df: df.count(axis=axis,
+                                          level=level,
+                                          numeric_only=numeric_only)
+        local_func = lambda df: df.sum(axis=1)
+        return self._arithmetic_helper(remote_func, local_func, axis)
 
     def cov(self, min_periods=None):
         raise NotImplementedError(
