@@ -12,6 +12,7 @@
 
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/raylet/format/node_manager_generated.h"
 
 // TODO(pcm): Remove this
 #include "task.h"
@@ -164,6 +165,18 @@ using ClassTable = Table<ClassID, ClassTableData>;
 
 // TODO(swang): Set the pubsub channel for the actor table.
 using ActorTable = Table<ActorID, ActorTableData>;
+
+namespace raylet {
+
+class TaskTable : public Table<TaskID, ray::protocol::Task> {
+ public:
+  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Table(context, client) {
+    pubsub_channel_ = TablePubsub_RAYLET_TASK;
+    prefix_ = TablePrefix_RAYLET_TASK;
+  }
+};
+}
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:

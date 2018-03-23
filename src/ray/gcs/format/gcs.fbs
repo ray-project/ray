@@ -7,6 +7,7 @@ enum Language:int {
 enum TablePrefix:int {
   UNUSED = 0,
   TASK,
+  RAYLET_TASK,
   CLIENT,
   OBJECT,
   FUNCTION
@@ -16,6 +17,7 @@ enum TablePrefix:int {
 enum TablePubsub:int {
   NO_PUBLISH = 0,
   TASK,
+  RAYLET_TASK,
   CLIENT,
   OBJECT,
   ACTOR

@@ -16,6 +16,7 @@ Status AsyncGcsClient::Connect(const std::string &address, int port,
   RAY_RETURN_NOT_OK(context_->Connect(address, port));
   object_table_.reset(new ObjectTable(context_, this));
   task_table_.reset(new TaskTable(context_, this));
+  raylet_task_table_.reset(new raylet::TaskTable(context_, this));
   client_table_.reset(new ClientTable(context_, this, client_info));
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
@@ -40,6 +41,8 @@ Status AsyncGcsClient::Attach(boost::asio::io_service &io_service) {
 ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
 
 TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
+
+raylet::TaskTable &AsyncGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
 ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 

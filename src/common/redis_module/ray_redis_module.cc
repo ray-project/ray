@@ -50,7 +50,7 @@
   }
 
 static const char *table_prefixes[] = {
-    NULL, "TASK:", "CLIENT:", "OBJECT:", "FUNCTION:",
+    NULL, "TASK:", "TASK:", "CLIENT:", "OBJECT:", "FUNCTION:",
 };
 
 /// Parse a Redis string into a TablePubsub channel.

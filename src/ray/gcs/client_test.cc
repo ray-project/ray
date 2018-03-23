@@ -109,26 +109,42 @@ void LookupFailed(gcs::AsyncGcsClient *client, const UniqueID &id) {
   test->Stop();
 }
 
-void TestObjectTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
-  auto data = std::make_shared<ObjectTableDataT>();
-  data->managers.push_back("A");
-  data->managers.push_back("B");
-  ObjectID object_id = ObjectID::from_random();
-  RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, &ObjectAdded));
-  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, &Lookup, &LookupFailed));
+void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  TaskID task_id = TaskID::from_random();
+  auto data = std::make_shared<protocol::TaskT>();
+  data->task_specification = "123";
+
+  auto add_callback = [data](gcs::AsyncGcsClient *client, const UniqueID &id,
+                             const protocol::TaskT &d) {
+    ASSERT_EQ(data->task_specification, d.task_specification);
+  };
+
+  auto lookup_callback = [data](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                const protocol::TaskT &d) {
+    ASSERT_EQ(data->task_specification, d.task_specification);
+    test->Stop();
+  };
+
+  auto failure_callback = [](gcs::AsyncGcsClient *client, const UniqueID &id) {
+    RAY_CHECK(false);
+  };
+
+  RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, add_callback));
+  RAY_CHECK_OK(client->raylet_task_table().Lookup(job_id, task_id, lookup_callback,
+                                                  failure_callback));
   // Run the event loop. The loop will only stop if the Lookup callback is
   // called (or an assertion failure).
   test->Start();
 }
 
-TEST_F(TestGcsWithAe, TestObjectTable) {
+TEST_F(TestGcsWithAe, TestTableLookup) {
   test = this;
-  TestObjectTable(job_id_, client_);
+  TestTableLookup(job_id_, client_);
 }
 
-TEST_F(TestGcsWithAsio, TestObjectTable) {
+TEST_F(TestGcsWithAsio, TestTableLookup) {
   test = this;
-  TestObjectTable(job_id_, client_);
+  TestTableLookup(job_id_, client_);
 }
 
 void TestLookupFailure(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
