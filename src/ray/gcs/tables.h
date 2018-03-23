@@ -167,7 +167,15 @@ using ClassTable = Table<ClassID, ClassTableData>;
 using ActorTable = Table<ActorID, ActorTableData>;
 
 namespace raylet {
-using TaskTable = Table<TaskID, ray::protocol::Task>;
+
+class TaskTable : public Table<TaskID, ray::protocol::Task> {
+ public:
+  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Table(context, client) {
+    pubsub_channel_ = TablePubsub_RAYLET_TASK;
+    prefix_ = TablePrefix_RAYLET_TASK;
+  }
+};
 }
 
 class TaskTable : public Table<TaskID, TaskTableData> {

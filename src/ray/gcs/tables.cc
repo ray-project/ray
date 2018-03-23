@@ -239,6 +239,7 @@ const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
   }
 }
 
+template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;
 template class Table<ObjectID, ObjectTableData>;
 
