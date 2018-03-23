@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ray/../common/format/common_generated.h"
+#include "format/common_generated.h"
 #include "ray/id.h"
 #include "ray/raylet/scheduling_resources.h"
 

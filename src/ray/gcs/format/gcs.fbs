@@ -4,14 +4,30 @@ enum Language:int {
   JAVA = 2
 }
 
+enum TablePrefix:int {
+  UNUSED = 0,
+  TASK,
+  RAYLET_TASK,
+  CLIENT,
+  OBJECT,
+  FUNCTION,
+  HEARTBEAT
+}
+
 // The channel that Add operations to the Table should be published on, if any.
 enum TablePubsub:int {
   NO_PUBLISH = 0,
   TASK,
+  RAYLET_TASK,
   CLIENT,
   OBJECT,
   ACTOR,
   HEARTBEAT
+}
+
+table GcsNotification {
+  id: string;
+  data: string;
 }
 
 table FunctionTableData {

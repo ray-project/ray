@@ -3,37 +3,45 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/task.h"
 #include "ray/raylet/task_execution_spec.h"
+#include "ray/raylet/task_spec.h"
 #include "ray/raylet/task_spec.h"
 
 namespace ray {
 
 namespace raylet {
 
-class MockGcs : virtual public gcs::Storage<TaskID, TaskFlatbuffer> {
+class MockGcs : virtual public gcs::Storage<TaskID, protocol::Task> {
  public:
   MockGcs(){};
-  Status Add(const JobID &job_id, const TaskID &task_id, std::shared_ptr<TaskT> task_data,
-             const gcs::Storage<TaskID, TaskFlatbuffer>::Callback &done) {
+  Status Add(const JobID &job_id, const TaskID &task_id,
+             std::shared_ptr<protocol::TaskT> task_data,
+             const gcs::Storage<TaskID, protocol::Task>::Callback &done) {
     task_table_[task_id] = task_data;
-    callbacks_.push_back(std::pair<gcs::TaskTable::Callback, TaskID>(done, task_id));
+    callbacks_.push_back(
+        std::pair<gcs::raylet::TaskTable::Callback, TaskID>(done, task_id));
     return ray::Status::OK();
   };
 
   void Flush() {
     for (const auto &callback : callbacks_) {
-      callback.first(NULL, callback.second, nullptr);
+      callback.first(NULL, callback.second, *task_table_[callback.second]);
     }
     callbacks_.clear();
   };
 
-  std::unordered_map<TaskID, std::shared_ptr<TaskT>, UniqueIDHasher> &TaskTable() { return task_table_; }
+  std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
+      &TaskTable() {
+    return task_table_;
+  }
 
  private:
-  std::unordered_map<TaskID, std::shared_ptr<TaskT>, UniqueIDHasher> task_table_;
-  std::vector<std::pair<gcs::TaskTable::Callback, TaskID>> callbacks_;
+  std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
+      task_table_;
+  std::vector<std::pair<gcs::raylet::TaskTable::Callback, TaskID>> callbacks_;
 };
 
 class LineageCacheTest : public ::testing::Test {
@@ -241,8 +249,8 @@ TEST_F(LineageCacheTest, TestRemoveWaitingTask) {
   auto uncommitted_lineage_message =
       uncommitted_lineage.ToFlatbuffer(fbb, task_id_to_remove);
   fbb.Finish(uncommitted_lineage_message);
-  uncommitted_lineage =
-      Lineage(*flatbuffers::GetRoot<ForwardTaskRequest>(fbb.GetBufferPointer()));
+  uncommitted_lineage = Lineage(
+      *flatbuffers::GetRoot<protocol::ForwardTaskRequest>(fbb.GetBufferPointer()));
 
   const Task &task = uncommitted_lineage.GetEntry(task_id_to_remove)->TaskData();
   RAY_LOG(INFO) << "removing task " << task.GetTaskSpecification().TaskId()

@@ -32,10 +32,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   cluster_resource_map_.emplace(local_client_id, SchedulingResources(config.resource_config));
 }
 
-void NodeManager::ClientAdded(gcs::AsyncGcsClient *client,
-                      const UniqueID &id,
-                      std::shared_ptr<ClientTableDataT> data) {
-  ClientID client_id = ClientID::from_binary(data->client_id);
+void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
+                              const ClientTableDataT &data) {
+  ClientID client_id = ClientID::from_binary(data.client_id);
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     return;
@@ -51,9 +50,9 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client,
   }
 
   ResourceSet resources_total;
-  for (uint i=0; i < data->resources_total_label.size(); i++) {
-    resources_total.AddResource(data->resources_total_label[i],
-                                data->resources_total_capacity[i]);
+  for (uint i = 0; i < data.resources_total_label.size(); i++) {
+    resources_total.AddResource(data.resources_total_label[i],
+                                data.resources_total_capacity[i]);
   }
   this->cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
 
@@ -90,32 +89,17 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (message_type) {
-    case MessageType_RegisterClientRequest: {
-      auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_data);
-      if (message->is_worker()) {
-        // Create a new worker from the registration request.
-        std::shared_ptr<Worker> worker(new Worker(message->worker_pid(), client));
-        // Register the new worker.
-        worker_pool_.RegisterWorker(std::move(worker));
-      }
-
-      // Build the reply to the worker's registration request. TODO(swang): This
-      // is legacy code and should be removed once actor creation tasks are
-      // implemented.
-      flatbuffers::FlatBufferBuilder fbb;
-      auto reply = CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
-      fbb.Finish(reply);
-      // Reply to the worker's registration request, then listen for more
-      // messages.
-      auto status = client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(),
-                                         fbb.GetBufferPointer());
-      if (!status.ok()) {
-        const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-        worker_pool_.DisconnectWorker(worker);
-      }
+  case protocol::MessageType_RegisterClientRequest: {
+    auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
+    if (message->is_worker()) {
+      // Create a new worker from the registration request.
+      std::shared_ptr<Worker> worker(new Worker(message->worker_pid(), client));
+      // Register the new worker.
+      worker_pool_.RegisterWorker(std::move(worker));
+    }
     }
       break;
-    case MessageType_GetTask: {
+    case protocol::MessageType_GetTask: {
       const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
       RAY_CHECK(worker);
       // If the worker was assigned a task, mark it as finished.
@@ -133,7 +117,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       }
     }
       break;
-    case MessageType_DisconnectClient: {
+    case protocol::MessageType_DisconnectClient: {
       // Remove the dead worker from the pool and stop listening for messages.
       const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
       if (worker) {
@@ -143,9 +127,9 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       return;
     }
       break;
-    case MessageType_SubmitTask: {
+    case protocol::MessageType_SubmitTask: {
       // Read the task submitted by the client.
-      auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_data);
+      auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
       TaskExecutionSpecification task_execution_spec(
           from_flatbuf(*message->execution_dependencies()));
       TaskSpecification task_spec(*message->task_spec());
@@ -156,16 +140,17 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       // Listen for more messages.
     }
       break;
-    case MessageType_ReconstructObject: {
+    case protocol::MessageType_ReconstructObject: {
       // TODO(hme): handle multiple object ids.
-      auto message = flatbuffers::GetRoot<ReconstructObject>(message_data);
+      auto message = flatbuffers::GetRoot<protocol::ReconstructObject>(message_data);
       ObjectID object_id = from_flatbuf(*message->object_id());
+      RAY_LOG(INFO) << "reconstructing object " << object_id.hex();
       RAY_CHECK_OK(object_manager_.Pull(object_id));
     } break;
     default:RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
 
-  RAY_CHECK(message_type != MessageType_DisconnectClient);
+  RAY_CHECK(message_type != protocol::MessageType_DisconnectClient);
   client->ProcessMessages();
 }
 
@@ -179,9 +164,9 @@ void NodeManager::ProcessNodeManagerMessage(
     std::shared_ptr<TcpClientConnection> node_manager_client, int64_t message_type,
     const uint8_t *message_data) {
   switch (message_type) {
-  case MessageType_ForwardTaskRequest: {
+  case protocol::MessageType_ForwardTaskRequest: {
     RAY_LOG(INFO) << "ForwardTaskRequest received";
-    auto message = flatbuffers::GetRoot<ForwardTaskRequest>(message_data);
+    auto message = flatbuffers::GetRoot<protocol::ForwardTaskRequest>(message_data);
     TaskID task_id = from_flatbuf(*message->task_id());
 
     Lineage uncommitted_lineage(*message);
@@ -276,18 +261,19 @@ void NodeManager::AssignTask(const Task &task) {
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
 
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
-                                    fbb.CreateVector(std::vector<int>()));
+  auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
+                                              fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
-  auto status = worker->Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(),
-                                                   fbb.GetBufferPointer());
+  auto status = worker->Connection()->WriteMessage(protocol::MessageType_ExecuteTask,
+                                                   fbb.GetSize(), fbb.GetBufferPointer());
   if (status.ok()) {
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
   } else {
     // We failed to send the task to the worker, so disconnect the worker. The
     // task will get queued again during cleanup.
-    ProcessClientMessage(worker->Connection(), MessageType_DisconnectClient, NULL);
+    ProcessClientMessage(worker->Connection(), protocol::MessageType_DisconnectClient,
+                         NULL);
   }
 }
 
@@ -331,8 +317,8 @@ ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
   }
 
   auto &server_conn = remote_server_connections_.at(node_id);
-  auto status = server_conn.WriteMessage(MessageType_ForwardTaskRequest, fbb.GetSize(),
-                                  fbb.GetBufferPointer());
+  auto status = server_conn.WriteMessage(protocol::MessageType_ForwardTaskRequest,
+                                         fbb.GetSize(), fbb.GetBufferPointer());
   if (status.ok()) {
     // If we were able to forward the task, remove the forwarded task from the
     // lineage cache since the receiving node is now responsible for writing

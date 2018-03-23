@@ -17,7 +17,7 @@ class Worker(object):
                  is_worker):
         # Connect to the Raylet and object store.
         self.node_manager_client = ray.local_scheduler.LocalSchedulerClient(
-            raylet_socket_name, random_string(), random_string(), is_worker, 0)
+            raylet_socket_name, random_string(), is_worker)
         self.plasma_client = plasma.connect(object_store_socket_name, "", 0)
         self.serialization_context = pyarrow.default_serialization_context()
 

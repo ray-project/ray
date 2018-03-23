@@ -13,6 +13,7 @@ from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.registry import _default_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.variant_generator import generate_trials, grid_search, \
@@ -129,7 +130,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         def f():
             run_experiments({"foo": {
                 "run": "PPO",
-                "resources": {"asdf": 1}
+                "trial_resources": {"asdf": 1}
             }})
         self.assertRaises(TuneError, f)
 
@@ -201,6 +202,79 @@ class TrainableFunctionApiTest(unittest.TestCase):
         }})
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result.timesteps_total, 99)
+
+
+class RunExperimentTest(unittest.TestCase):
+
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
+
+    def testDict(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+        register_trainable("f1", train)
+        trials = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+            },
+            "bar": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertEqual(trial.last_result.timesteps_total, 99)
+
+    def testExperiment(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+        register_trainable("f1", train)
+        exp1 = Experiment(**{
+                "name": "foo",
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+        })
+        [trial] = run_experiments(exp1)
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result.timesteps_total, 99)
+
+    def testExperimentList(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+        register_trainable("f1", train)
+        exp1 = Experiment(**{
+                "name": "foo",
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+        })
+        exp2 = Experiment(**{
+                "name": "bar",
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+        })
+        trials = run_experiments([exp1, exp2])
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertEqual(trial.last_result.timesteps_total, 99)
 
 
 class VariantGeneratorTest(unittest.TestCase):
@@ -378,6 +452,27 @@ class TrialRunnerTest(unittest.TestCase):
             trial.start()
         except Exception as e:
             self.assertIn("a class", str(e))
+
+    def testExtraResources(self):
+        ray.init(num_cpus=4, num_gpus=2)
+        runner = TrialRunner()
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 1},
+            "resources": Resources(cpu=1, gpu=0, extra_cpu=3, extra_gpu=1),
+        }
+        trials = [
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)

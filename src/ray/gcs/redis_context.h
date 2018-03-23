@@ -21,7 +21,10 @@ namespace gcs {
 
 class RedisCallbackManager {
  public:
-  using RedisCallback = std::function<void(const std::string &)>;
+  /// Every callback should take in a vector of the results from the Redis
+  /// operation and return a bool indicating whether the callback should be
+  /// deleted once called.
+  using RedisCallback = std::function<bool(const std::vector<std::string> &)>;
 
   static RedisCallbackManager &instance() {
     static RedisCallbackManager instance;
@@ -50,9 +53,9 @@ class RedisContext {
   ~RedisContext();
   Status Connect(const std::string &address, int port);
   Status AttachToEventLoop(aeEventLoop *loop);
-  Status RunAsync(const std::string &command, const UniqueID &id, uint8_t *data,
-                  int64_t length, const TablePubsub pubsub_channel,
-                  int64_t callback_index);
+  Status RunAsync(const std::string &command, const UniqueID &id, const uint8_t *data,
+                  int64_t length, const TablePrefix prefix,
+                  const TablePubsub pubsub_channel, int64_t callback_index);
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         int64_t callback_index);
   redisAsyncContext *async_context() { return async_context_; }

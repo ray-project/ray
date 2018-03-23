@@ -44,7 +44,7 @@ Task &LineageEntry::TaskDataMutable() {return task_; }
 
 Lineage::Lineage() {}
 
-Lineage::Lineage(const ForwardTaskRequest &task_request) {
+Lineage::Lineage(const protocol::ForwardTaskRequest &task_request) {
   // Deserialize and set entries for the uncommitted tasks.
   auto tasks = task_request.uncommitted_tasks();
   for (auto it = tasks->begin(); it != tasks->end(); it++) {
@@ -109,21 +109,21 @@ const std::unordered_map<const UniqueID, LineageEntry, UniqueIDHasher>
   return entries_;
 }
 
-flatbuffers::Offset<ForwardTaskRequest> Lineage::ToFlatbuffer(
+flatbuffers::Offset<protocol::ForwardTaskRequest> Lineage::ToFlatbuffer(
     flatbuffers::FlatBufferBuilder &fbb, const TaskID &task_id) const {
   RAY_CHECK(GetEntry(task_id));
   // Serialize the task and object entries.
-  std::vector<flatbuffers::Offset<TaskFlatbuffer>> uncommitted_tasks;
+  std::vector<flatbuffers::Offset<protocol::Task>> uncommitted_tasks;
   for (const auto &entry : entries_) {
     uncommitted_tasks.push_back(entry.second.TaskData().ToFlatbuffer(fbb));
   }
 
-  auto request = CreateForwardTaskRequest(fbb, to_flatbuf(fbb, task_id),
-                                          fbb.CreateVector(uncommitted_tasks));
+  auto request = protocol::CreateForwardTaskRequest(fbb, to_flatbuf(fbb, task_id),
+                                                    fbb.CreateVector(uncommitted_tasks));
   return request;
 }
 
-LineageCache::LineageCache(gcs::Storage<TaskID, TaskFlatbuffer> &task_storage)
+LineageCache::LineageCache(gcs::Storage<TaskID, protocol::Task> &task_storage)
     : task_storage_(task_storage) {}
 
 /// A helper function to merge one lineage into another, in DFS order.
@@ -248,8 +248,8 @@ Status LineageCache::Flush() {
   }
 
   // Write back all ready tasks whose arguments have been committed to the GCS.
-  gcs::TaskTable::Callback task_callback = [this](
-      ray::gcs::AsyncGcsClient *client, const UniqueID &id, std::shared_ptr<TaskT> data) {
+  gcs::raylet::TaskTable::Callback task_callback = [this](
+      ray::gcs::AsyncGcsClient *client, const UniqueID &id, const protocol::TaskT &data) {
     HandleEntryCommitted(id);
   };
   for (const auto &ready_task_id : ready_task_ids) {
@@ -258,8 +258,8 @@ Status LineageCache::Flush() {
     flatbuffers::FlatBufferBuilder fbb;
     auto message = task->TaskData().ToFlatbuffer(fbb);
     fbb.Finish(message);
-    auto task_data = std::make_shared<TaskT>();
-    auto root = flatbuffers::GetRoot<TaskFlatbuffer>(fbb.GetBufferPointer());
+    auto task_data = std::make_shared<protocol::TaskT>();
+    auto root = flatbuffers::GetRoot<protocol::Task>(fbb.GetBufferPointer());
     root->UnPackTo(task_data.get());
     RAY_CHECK_OK(task_storage_.Add(task->TaskData().GetTaskSpecification().DriverId(),
                                    ready_task_id, task_data, task_callback));

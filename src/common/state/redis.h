@@ -332,6 +332,14 @@ void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data);
  */
 void redis_actor_table_mark_removed(DBHandle *db, ActorID actor_id);
 
+/// Publish an actor creation notification.
+///
+/// \param callback_data Data structure containing redis connection and timeout
+///      information.
+/// \return Void.
+void redis_publish_actor_creation_notification(
+    TableCallbackData *callback_data);
+
 /**
  * Subscribe to updates about newly created actors.
  *

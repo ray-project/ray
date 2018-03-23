@@ -49,6 +49,7 @@ NIL_ID = 20 * b"\xff"
 NIL_LOCAL_SCHEDULER_ID = NIL_ID
 NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
+NIL_ACTOR_HANDLE_ID = NIL_ID
 
 # This must be kept in sync with the `error_types` array in
 # common/state/error_table.h.
@@ -57,6 +58,19 @@ PUT_RECONSTRUCTION_ERROR_TYPE = b"put_reconstruction"
 
 # This must be kept in sync with the `scheduling_state` enum in common/task.h.
 TASK_STATUS_RUNNING = 8
+
+# Default resource requirements for remote functions.
+DEFAULT_REMOTE_FUNCTION_CPUS = 1
+DEFAULT_REMOTE_FUNCTION_GPUS = 0
+# Default resource requirements for actors when no resource requirements are
+# specified.
+DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
+DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
+# Default resource requirements for actors when some resource requirements are
+# specified.
+DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
+DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
+DEFAULT_ACTOR_CREATION_GPUS_SPECIFIED_CASE = 0
 
 
 class FunctionID(object):
@@ -222,6 +236,10 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
+        # A set of all of the actor class keys that have been imported by the
+        # import thread. It is safe to convert this worker into an actor of
+        # these types.
+        self.imported_actor_classes = set()
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
@@ -358,7 +376,8 @@ class Worker(object):
             # and make sure that the objects are in fact the same. We also
             # should return an error code to the caller instead of printing a
             # message.
-            print("This object already exists in the object store.")
+            print("The object with ID {} already exists in the object store."
+                  .format(object_id))
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
@@ -485,8 +504,10 @@ class Worker(object):
 
     def submit_task(self, function_id, args, actor_id=None,
                     actor_handle_id=None, actor_counter=0,
-                    is_actor_checkpoint_method=False,
-                    execution_dependencies=None):
+                    is_actor_checkpoint_method=False, actor_creation_id=None,
+                    actor_creation_dummy_object_id=None,
+                    execution_dependencies=None, num_return_vals=None,
+                    num_cpus=None, num_gpus=None, resources=None):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -502,15 +523,38 @@ class Worker(object):
             actor_counter: The counter of the actor task.
             is_actor_checkpoint_method: True if this is an actor checkpoint
                 task and false otherwise.
+            actor_creation_id: The ID of the actor to create, if this is an
+                actor creation task.
+            actor_creation_dummy_object_id: If this task is an actor method,
+                then this argument is the dummy object ID associated with the
+                actor creation task for the corresponding actor.
+            execution_dependencies: The execution dependencies for this task.
+            num_return_vals: The number of return values this function should
+                have.
+            num_cpus: The number of CPUs required by this task.
+            num_gpus: The number of GPUs required by this task.
+            resources: The resource requirements for this task.
+
+        Returns:
+            The return object IDs for this task.
         """
         with log_span("ray:submit_task", worker=self):
             check_main_thread()
             if actor_id is None:
                 assert actor_handle_id is None
                 actor_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
-                actor_handle_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+                actor_handle_id = ray.local_scheduler.ObjectID(
+                    NIL_ACTOR_HANDLE_ID)
             else:
                 assert actor_handle_id is not None
+
+            if actor_creation_id is None:
+                actor_creation_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+
+            if actor_creation_dummy_object_id is None:
+                actor_creation_dummy_object_id = (
+                    ray.local_scheduler.ObjectID(NIL_ID))
+
             # Put large or complex arguments that are passed by value in the
             # object store first.
             args_for_local_scheduler = []
@@ -533,20 +577,35 @@ class Worker(object):
             function_properties = self.function_properties[
                 self.task_driver_id.id()][function_id.id()]
 
+            if num_return_vals is None:
+                num_return_vals = function_properties.num_return_vals
+
+            if resources is None and num_cpus is None and num_gpus is None:
+                resources = function_properties.resources
+            else:
+                resources = {} if resources is None else resources
+                if "CPU" in resources or "GPU" in resources:
+                    raise ValueError("The resources dictionary must not "
+                                     "contain the keys 'CPU' or 'GPU'")
+                resources["CPU"] = num_cpus
+                resources["GPU"] = num_gpus
+
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
                 self.task_driver_id,
                 ray.local_scheduler.ObjectID(function_id.id()),
                 args_for_local_scheduler,
-                function_properties.num_return_vals,
+                num_return_vals,
                 self.current_task_id,
                 self.task_index,
+                actor_creation_id,
+                actor_creation_dummy_object_id,
                 actor_id,
                 actor_handle_id,
                 actor_counter,
                 is_actor_checkpoint_method,
                 execution_dependencies,
-                function_properties.resources)
+                resources)
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
             self.task_index += 1
@@ -685,7 +744,7 @@ class Worker(object):
             arguments.append(argument)
         return arguments
 
-    def _store_outputs_in_objstore(self, objectids, outputs):
+    def _store_outputs_in_objstore(self, object_ids, outputs):
         """Store the outputs of a remote function in the local object store.
 
         This stores the values that were returned by a remote function in the
@@ -695,18 +754,18 @@ class Worker(object):
         executes the remote function.
 
         Note:
-            The arguments objectids and outputs should have the same length.
+            The arguments object_ids and outputs should have the same length.
 
         Args:
-            objectids (List[ObjectID]): The object IDs that were assigned to
+            object_ids (List[ObjectID]): The object IDs that were assigned to
                 the outputs of the remote function call.
             outputs (Tuple): The value returned by the remote function. If the
                 remote function was supposed to only return one value, then its
                 output was wrapped in a tuple with one element prior to being
                 passed into this function.
         """
-        for i in range(len(objectids)):
-            self.put_object(objectids[i], outputs[i])
+        for i in range(len(object_ids)):
+            self.put_object(object_ids[i], outputs[i])
 
     def _process_task(self, task):
         """Execute a task assigned to this worker.
@@ -801,6 +860,29 @@ class Worker(object):
                                        data={"function_id": function_id.id(),
                                              "function_name": function_name})
 
+    def _become_actor(self, task):
+        """Turn this worker into an actor.
+
+        Args:
+            task: The actor creation task.
+        """
+        assert self.actor_id == NIL_ACTOR_ID
+        arguments = task.arguments()
+        assert len(arguments) == 1
+        self.actor_id = task.actor_creation_id().id()
+        class_id = arguments[0]
+
+        key = b"ActorClass:" + class_id
+
+        # Wait for the actor class key to have been imported by the import
+        # thread. TODO(rkn): It shouldn't be possible to end up in an infinite
+        # loop here, but we should push an error to the driver if too much time
+        # is spent here.
+        while key not in self.imported_actor_classes:
+            time.sleep(0.001)
+
+        self.fetch_and_register_actor(key, task.required_resources(), self)
+
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
 
@@ -808,6 +890,14 @@ class Worker(object):
             task: The task to execute.
         """
         function_id = task.function_id()
+
+        # TODO(rkn): It would be preferable for actor creation tasks to share
+        # more of the code path with regular task execution.
+        if (task.actor_creation_id() !=
+                ray.local_scheduler.ObjectID(NIL_ACTOR_ID)):
+            self._become_actor(task)
+            return
+
         # Wait until the function to be executed has actually been registered
         # on this worker. We will push warnings to the user if we spend too
         # long in this loop.
@@ -1010,23 +1100,6 @@ def error_info(worker=global_worker):
     for error_key in error_keys:
         if error_applies_to_driver(error_key, worker=worker):
             error_contents = worker.redis_client.hgetall(error_key)
-            # If the error is an object hash mismatch, look up the function
-            # name for the nondeterministic task. TODO(rkn): Change this so
-            # that we don't have to look up additional information. Ideally all
-            # relevant information would already be in error_contents.
-            error_type = error_contents[b"type"]
-            if error_type in [OBJECT_HASH_MISMATCH_ERROR_TYPE,
-                              PUT_RECONSTRUCTION_ERROR_TYPE]:
-                function_id = error_contents[b"data"]
-                if function_id == NIL_FUNCTION_ID:
-                    function_name = b"Driver"
-                else:
-                    task_driver_id = worker.task_driver_id
-                    function_name = worker.redis_client.hget(
-                        (b"RemoteFunction:" + task_driver_id.id() +
-                         b":" + function_id),
-                        "name")
-                error_contents[b"data"] = function_name
             errors.append(error_contents)
 
     return errors
@@ -1101,7 +1174,10 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
         assert b"ray_client_id" in info
         assert b"node_ip_address" in info
         assert b"client_type" in info
-        if info[b"node_ip_address"].decode("ascii") == node_ip_address:
+        client_node_ip_address = info[b"node_ip_address"].decode("ascii")
+        if (client_node_ip_address == node_ip_address or
+                (client_node_ip_address == "127.0.0.1" and
+                 redis_ip_address == ray.services.get_node_ip_address())):
             if info[b"client_type"].decode("ascii") == "plasma_manager":
                 plasma_managers.append(info)
             elif info[b"client_type"].decode("ascii") == "local_scheduler":
@@ -1194,7 +1270,8 @@ def _init(address_info=None,
           num_local_schedulers=None,
           object_store_memory=None,
           driver_mode=SCRIPT_MODE,
-          redirect_output=False,
+          redirect_worker_output=False,
+          redirect_output=True,
           start_workers_from_local_scheduler=True,
           num_cpus=None,
           num_gpus=None,
@@ -1233,8 +1310,10 @@ def _init(address_info=None,
             object store with.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
-        redirect_output (bool): True if stdout and stderr for all the processes
-            should be redirected to files and false otherwise.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         start_workers_from_local_scheduler (bool): If this flag is True, then
             start the initial workers from the local scheduler. Else, start
             them from Python. The latter case is for debugging purposes only.
@@ -1314,6 +1393,7 @@ def _init(address_info=None,
             num_workers=num_workers,
             num_local_schedulers=num_local_schedulers,
             object_store_memory=object_store_memory,
+            redirect_worker_output=redirect_worker_output,
             redirect_output=redirect_output,
             start_workers_from_local_scheduler=(
                 start_workers_from_local_scheduler),
@@ -1379,12 +1459,13 @@ def _init(address_info=None,
                 address_info["local_scheduler_socket_names"][0]),
             "webui_url": address_info["webui_url"]}
     connect(driver_address_info, object_id_seed=object_id_seed,
-            mode=driver_mode, worker=global_worker, actor_id=NIL_ACTOR_ID)
+            mode=driver_mode, worker=global_worker)
     return address_info
 
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
-         num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
+         num_workers=None, driver_mode=SCRIPT_MODE,
+         redirect_worker_output=False, redirect_output=True,
          num_cpus=None, num_gpus=None, resources=None,
          num_custom_resource=None, num_redis_shards=None,
          redis_max_clients=None, plasma_directory=None,
@@ -1410,8 +1491,10 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             provided if redis_address is not provided.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
-        redirect_output (bool): True if stdout and stderr for all the processes
-            should be redirected to files and false otherwise.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         num_cpus (int): Number of cpus the user wishes all local schedulers to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all local schedulers to
@@ -1448,6 +1531,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             "redis_address": redis_address}
     return _init(address_info=info, start_ray_local=(redis_address is None),
                  num_workers=num_workers, driver_mode=driver_mode,
+                 redirect_worker_output=redirect_worker_output,
                  redirect_output=redirect_output, num_cpus=num_cpus,
                  num_gpus=num_gpus, resources=resources,
                  num_redis_shards=num_redis_shards,
@@ -1678,13 +1762,10 @@ def import_thread(worker, mode):
             elif key.startswith(b"FunctionsToRun"):
                 fetch_and_execute_function_to_run(key, worker=worker)
             elif key.startswith(b"ActorClass"):
-                # If this worker is an actor that is supposed to construct this
-                # class, fetch the actor and class information and construct
-                # the class.
-                class_id = key.split(b":", 1)[1]
-                if (worker.actor_id != NIL_ACTOR_ID and
-                        worker.class_id == class_id):
-                    worker.fetch_and_register_actor(key, worker)
+                # Keep track of the fact that this actor class has been
+                # exported so that we know it is safe to turn this worker into
+                # an actor of that class.
+                worker.imported_actor_classes.add(key)
             else:
                 raise Exception("This code should be unreachable.")
 
@@ -1721,12 +1802,14 @@ def import_thread(worker, mode):
                                       worker=worker):
                             fetch_and_execute_function_to_run(key,
                                                               worker=worker)
-                    elif key.startswith(b"Actor"):
-                        # Only get the actor if the actor ID matches the actor
-                        # ID of this worker.
-                        actor_id, = worker.redis_client.hmget(key, "actor_id")
-                        if worker.actor_id == actor_id:
-                            worker.fetch_and_register["Actor"](key, worker)
+                    elif key.startswith(b"ActorClass"):
+                        # Keep track of the fact that this actor class has been
+                        # exported so that we know it is safe to turn this
+                        # worker into an actor of that class.
+                        worker.imported_actor_classes.add(key)
+
+                    # TODO(rkn): We may need to bring back the case of fetching
+                    # actor classes here.
                     else:
                         raise Exception("This code should be unreachable.")
     except redis.ConnectionError:
@@ -1735,8 +1818,7 @@ def import_thread(worker, mode):
         pass
 
 
-def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
-            actor_id=NIL_ACTOR_ID):
+def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker):
     """Connect this worker to the local scheduler, to Plasma, and to Redis.
 
     Args:
@@ -1746,8 +1828,6 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             deterministic.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE,
             PYTHON_MODE, and SILENT_MODE.
-        actor_id: The ID of the actor running on this worker. If this worker is
-            not an actor, then this is NIL_ACTOR_ID.
     """
     check_main_thread()
     # Do some basic checking to make sure we didn't call ray.init twice.
@@ -1757,7 +1837,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     assert worker.cached_remote_functions_and_actors is not None, error_message
     # Initialize some fields.
     worker.worker_id = random_string()
-    worker.actor_id = actor_id
+    # All workers start out as non-actors. A worker can be turned into an actor
+    # after it is created.
+    worker.actor_id = NIL_ACTOR_ID
     worker.connected = True
     worker.set_mode(mode)
     # The worker.events field is used to aggregate logging information and
@@ -1854,15 +1936,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     worker.plasma_client = plasma.connect(info["store_socket_name"],
                                           info["manager_socket_name"],
                                           64)
-    # Create the local scheduler client.
-    if worker.actor_id != NIL_ACTOR_ID:
-        num_gpus = int(worker.redis_client.hget(b"Actor:" + actor_id,
-                                                "num_gpus"))
-    else:
-        num_gpus = 0
     worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-        info["local_scheduler_socket_name"], worker.worker_id, worker.actor_id,
-        is_worker, num_gpus)
+        info["local_scheduler_socket_name"], worker.worker_id, is_worker)
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -1906,6 +1981,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             worker.task_index,
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
+            ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
+            ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter,
             False,
             [],
@@ -1922,12 +1999,6 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
         worker.current_task_id = driver_task.task_id()
-
-    # If this is an actor, get the ID of the corresponding class for the actor.
-    if worker.actor_id != NIL_ACTOR_ID:
-        actor_key = b"Actor:" + worker.actor_id
-        class_id = worker.redis_client.hget(actor_key, "class_id")
-        worker.class_id = class_id
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
@@ -2279,7 +2350,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
     is not set, the function simply waits until that number of objects is ready
-    and returns that exact number of objectids.
+    and returns that exact number of object_ids.
 
     This method returns two lists. The first list consists of object IDs that
     correspond to objects that are stored in the object store. The second list
@@ -2340,7 +2411,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         return ready_ids, remaining_ids
 
 
-def _submit_task(function_id, args, worker=global_worker):
+def _submit_task(function_id, *args, **kwargs):
     """This is a wrapper around worker.submit_task.
 
     We use this wrapper so that in the remote decorator, we can call
@@ -2348,7 +2419,7 @@ def _submit_task(function_id, args, worker=global_worker):
     attempt to serialize remote functions, we don't attempt to serialize the
     worker object, which cannot be serialized.
     """
-    return worker.submit_task(function_id, args)
+    return global_worker.submit_task(function_id, *args, **kwargs)
 
 
 def _mode(worker=global_worker):
@@ -2457,10 +2528,16 @@ def remote(*args, **kwargs):
     """
     worker = global_worker
 
-    def make_remote_decorator(num_return_vals, resources, max_calls,
-                              checkpoint_interval, func_id=None):
+    def make_remote_decorator(num_return_vals, num_cpus, num_gpus, resources,
+                              max_calls, checkpoint_interval, func_id=None):
         def remote_decorator(func_or_class):
             if inspect.isfunction(func_or_class) or is_cython(func_or_class):
+                # Set the remote function default resources.
+                resources["CPU"] = (DEFAULT_REMOTE_FUNCTION_CPUS
+                                    if num_cpus is None else num_cpus)
+                resources["GPU"] = (DEFAULT_REMOTE_FUNCTION_GPUS
+                                    if num_gpus is None else num_gpus)
+
                 function_properties = FunctionProperties(
                     num_return_vals=num_return_vals,
                     resources=resources,
@@ -2468,8 +2545,28 @@ def remote(*args, **kwargs):
                 return remote_function_decorator(func_or_class,
                                                  function_properties)
             if inspect.isclass(func_or_class):
+                # Set the actor default resources.
+                if num_cpus is None and num_gpus is None and resources == {}:
+                    # In the default case, actors acquire no resources for
+                    # their lifetime, and actor methods will require 1 CPU.
+                    resources["CPU"] = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE
+                    actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE
+                else:
+                    # If any resources are specified, then all resources are
+                    # acquired for the actor's lifetime and no resources are
+                    # associated with methods.
+                    resources["CPU"] = (
+                        DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
+                        if num_cpus is None else num_cpus)
+                    resources["GPU"] = (
+                        DEFAULT_ACTOR_CREATION_GPUS_SPECIFIED_CASE
+                        if num_gpus is None else num_gpus)
+                    actor_method_cpus = (
+                        DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE)
+
                 return worker.make_actor(func_or_class, resources,
-                                         checkpoint_interval)
+                                         checkpoint_interval,
+                                         actor_method_cpus)
             raise Exception("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
 
@@ -2482,8 +2579,14 @@ def remote(*args, **kwargs):
 
             def func_call(*args, **kwargs):
                 """This runs immediately when a remote function is called."""
+                return _submit(args=args, kwargs=kwargs)
+
+            def _submit(args=None, kwargs=None, num_return_vals=None,
+                        num_cpus=None, num_gpus=None, resources=None):
+                """An experimental alternate way to submit remote functions."""
                 check_connected()
                 check_main_thread()
+                kwargs = {} if kwargs is None else kwargs
                 args = signature.extend_args(function_signature, args, kwargs)
 
                 if _mode() == PYTHON_MODE:
@@ -2493,11 +2596,14 @@ def remote(*args, **kwargs):
                     # immutable remote objects.
                     result = func(*copy.deepcopy(args))
                     return result
-                objectids = _submit_task(function_id, args)
-                if len(objectids) == 1:
-                    return objectids[0]
-                elif len(objectids) > 1:
-                    return objectids
+                object_ids = _submit_task(function_id, args,
+                                          num_return_vals=num_return_vals,
+                                          num_cpus=num_cpus, num_gpus=num_gpus,
+                                          resources=resources)
+                if len(object_ids) == 1:
+                    return object_ids[0]
+                elif len(object_ids) > 1:
+                    return object_ids
 
             def func_executor(arguments):
                 """This gets run when the remote function is executed."""
@@ -2510,6 +2616,7 @@ def remote(*args, **kwargs):
                                 "Instead of running '{}()', try '{}.remote()'."
                                 .format(func_name, func_name))
             func_invoker.remote = func_call
+            func_invoker._submit = _submit
             func_invoker.executor = func_executor
             func_invoker.is_remote = True
             func_name = "{}.{}".format(func.__module__, func.__name__)
@@ -2535,8 +2642,8 @@ def remote(*args, **kwargs):
         return remote_decorator
 
     # Handle resource arguments
-    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else 1
-    num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else 0
+    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
+    num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
     resources = kwargs.get("resources", {})
     if not isinstance(resources, dict):
         raise Exception("The 'resources' keyword argument must be a "
@@ -2544,8 +2651,6 @@ def remote(*args, **kwargs):
                         .format(type(resources)))
     assert "CPU" not in resources, "Use the 'num_cpus' argument."
     assert "GPU" not in resources, "Use the 'num_gpus' argument."
-    resources["CPU"] = num_cpus
-    resources["GPU"] = num_gpus
     # Handle other arguments.
     num_return_vals = (kwargs["num_return_vals"] if "num_return_vals"
                        in kwargs else 1)
@@ -2556,13 +2661,14 @@ def remote(*args, **kwargs):
     if _mode() == WORKER_MODE:
         if "function_id" in kwargs:
             function_id = kwargs["function_id"]
-            return make_remote_decorator(num_return_vals, resources, max_calls,
+            return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
+                                         resources, max_calls,
                                          checkpoint_interval, function_id)
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
         return make_remote_decorator(
-            num_return_vals, resources,
+            num_return_vals, num_cpus, num_gpus, resources,
             max_calls, checkpoint_interval)(args[0])
     else:
         # This is the case where the decorator is something like
@@ -2580,5 +2686,5 @@ def remote(*args, **kwargs):
                            "resources", "max_calls",
                            "checkpoint_interval"], error_string
         assert "function_id" not in kwargs
-        return make_remote_decorator(num_return_vals, resources, max_calls,
-                                     checkpoint_interval)
+        return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
+                                     resources, max_calls, checkpoint_interval)

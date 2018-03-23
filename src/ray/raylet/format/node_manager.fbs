@@ -1,5 +1,9 @@
 // Local scheduler protocol specification
 
+// TODO(swang): We put the flatbuffer types in a separate namespace for now to
+// avoid conflicts with legacy Ray types.
+namespace ray.protocol;
+
 enum MessageType:int {
   // Task is submitted to the local scheduler. This is sent from a worker to a
   // local scheduler.
@@ -51,6 +55,21 @@ enum MessageType:int {
   ForwardTaskRequest
 }
 
+table TaskExecutionSpecification {
+  // A list of object IDs representing the dependencies of this task that may
+  // change at execution time.
+  dependencies: [string];
+  // The last time this task was received for scheduling.
+  last_timestamp: double;
+  // The number of times this task was spilled back by local schedulers.
+  num_forwards: int;
+}
+
+table Task {
+  task_specification: string;
+  task_execution_spec: TaskExecutionSpecification;
+}
+
 table SubmitTaskRequest {
   execution_dependencies: [string];
   task_spec: string;
@@ -87,21 +106,6 @@ table RegisterClientReply {
 table RegisterNodeManagerRequest {
   // GCS ClientID of the connecting node manager.
   client_id: string;
-}
-
-table TaskExecutionSpecification {
-  // A list of object IDs representing the dependencies of this task that may
-  // change at execution time.
-  dependencies: [string];
-  // The last time this task was received for scheduling.
-  last_timestamp: double;
-  // The number of times this task was spilled back by local schedulers.
-  num_forwards: int;
-}
-
-table Task {
-  task_specification: string;
-  task_execution_spec: TaskExecutionSpecification;
 }
 
 table ForwardTaskRequest {

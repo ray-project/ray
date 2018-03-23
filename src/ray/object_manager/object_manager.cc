@@ -222,6 +222,9 @@ ray::Status ObjectManager::ExecuteSend(const ObjectID &object_id,
   ray::Status status;
   status = connection_pool_.GetSender(ConnectionPool::TRANSFER, client_id,
                                       [this, object_id](SenderConnection::pointer conn) {
+                                        // TODO(hme): Handle this error. It's
+                                        // possible that the object is not local,
+                                        // so this should not be a fatal error.
                                         RAY_CHECK_OK(SendHeaders(object_id, conn));
                                       },
                                       [this, object_id]() {

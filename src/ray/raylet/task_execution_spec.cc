@@ -16,10 +16,10 @@ TaskExecutionSpecification::TaskExecutionSpecification(
   execution_spec_.num_forwards = num_forwards;
 }
 
-flatbuffers::Offset<TaskExecSpecFlatbuffer> TaskExecutionSpecification::ToFlatbuffer(
-    flatbuffers::FlatBufferBuilder &fbb) const {
+flatbuffers::Offset<protocol::TaskExecutionSpecification>
+TaskExecutionSpecification::ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const {
   fbb.ForceDefaults(true);
-  return TaskExecSpecFlatbuffer::Pack(fbb, &execution_spec_);
+  return protocol::TaskExecutionSpecification::Pack(fbb, &execution_spec_);
 }
 
 std::vector<ObjectID> TaskExecutionSpecification::ExecutionDependencies() const {

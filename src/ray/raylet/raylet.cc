@@ -26,12 +26,11 @@ Raylet::Raylet(boost::asio::io_service &main_service,
           main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       node_manager_socket_(main_service),
       gcs_client_(gcs_client),
-      lineage_cache_(gcs_client->task_table()),
-      object_manager_(main_service, std::move(object_manager_service), object_manager_config,
-                      gcs_client),
+      lineage_cache_(gcs_client->raylet_task_table()),
+      object_manager_(main_service, std::move(object_manager_service),
+                      object_manager_config, gcs_client),
       node_manager_(main_service, node_manager_config, object_manager_, lineage_cache_,
                     gcs_client_) {
-
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
@@ -73,9 +72,8 @@ ray::Status Raylet::RegisterGcs(boost::asio::io_service &io_service,
                  << " PORT " << client_info.node_manager_port;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
-  auto node_manager_client_added = [this](gcs::AsyncGcsClient *client,
-                      const UniqueID &id,
-                      std::shared_ptr<ClientTableDataT> data) {
+  auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                          const ClientTableDataT &data) {
     node_manager_.ClientAdded(client, id, data);
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);

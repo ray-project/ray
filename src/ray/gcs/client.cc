@@ -10,7 +10,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id) {
   context_.reset(new RedisContext());
   object_table_.reset(new ObjectTable(context_, this));
   task_table_.reset(new TaskTable(context_, this));
-  legacy_task_table_.reset(new legacy::TaskTable(context_, this));
+  raylet_task_table_.reset(new raylet::TaskTable(context_, this));
   client_table_.reset(new ClientTable(context_, this, client_id));
   heartbeat_table_.reset(new HeartbeatTable(context_, this));
 }
@@ -45,7 +45,7 @@ ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
 
 TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
 
-legacy::TaskTable &AsyncGcsClient::legacy_task_table() { return *legacy_task_table_; }
+raylet::TaskTable &AsyncGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
 ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 

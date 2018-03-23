@@ -12,13 +12,13 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "plasma/client.h"
-#include "plasma/events.h"
-#include "plasma/plasma.h"
-
 #include "ray/common/client_connection.h"
 #include "ray/id.h"
 #include "ray/status.h"
+
+#include "plasma/client.h"
+#include "plasma/events.h"
+#include "plasma/plasma.h"
 
 #include "connection_pool.h"
 #include "format/object_manager_generated.h"

@@ -1033,7 +1033,8 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
      * delayed when added to the task table if they are submitted to a local
      * scheduler before it receives the notification that maps the actor to a
      * local scheduler. */
-    RAY_LOG(ERROR) << "No task found during task_table_test_and_update";
+    RAY_LOG(ERROR) << "No task found during task_table_test_and_update for "
+                   << "task with ID " << callback_data->id;
     return;
   }
   /* Determine whether the update happened. */
@@ -1541,6 +1542,40 @@ void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data) {
   destroy_timer_callback(db->loop, callback_data);
 }
 
+void redis_publish_actor_creation_notification_callback(redisAsyncContext *c,
+                                                        void *r,
+                                                        void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  redisReply *reply = (redisReply *) r;
+  RAY_CHECK(reply->type == REDIS_REPLY_INTEGER);
+  RAY_LOG(DEBUG) << reply->integer << " subscribers received this publish.";
+  // At the very least, the local scheduler that publishes this message should
+  // also receive it.
+  RAY_CHECK(reply->integer >= 1);
+
+  RAY_CHECK(callback_data->done_callback == NULL);
+  // Clean up the timer and callback.
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_publish_actor_creation_notification(
+    TableCallbackData *callback_data) {
+  DBHandle *db = callback_data->db_handle;
+
+  ActorCreationNotificationData *data =
+      (ActorCreationNotificationData *) callback_data->data->Get();
+
+  int status = redisAsyncCommand(
+      db->context, redis_publish_actor_creation_notification_callback,
+      (void *) callback_data->timer_id, "PUBLISH actor_notifications %b",
+      &data->flatbuffer_data[0], data->size);
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context,
+                    "error in redis_publish_actor_creation_notification");
+  }
+}
+
 void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
                                                        void *r,
                                                        void *privdata) {
@@ -1554,43 +1589,22 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
                  << message_type->str;
 
   if (strcmp(message_type->str, "message") == 0) {
-    /* Handle an actor notification message. Parse the payload and call the
-     * subscribe callback. */
+    // Handle an actor notification message. Parse the payload and call the
+    // subscribe callback.
     redisReply *payload = reply->element[2];
     ActorNotificationTableSubscribeData *data =
         (ActorNotificationTableSubscribeData *) callback_data->data->Get();
-    /* The payload should be the concatenation of three IDs. */
-    ActorID actor_id;
-    WorkerID driver_id;
-    DBClientID local_scheduler_id;
-    bool reconstruct;
-    RAY_CHECK(sizeof(actor_id) + sizeof(driver_id) +
-                  sizeof(local_scheduler_id) + 1 ==
-              payload->len);
-    char *current_ptr = payload->str;
-    /* Parse the actor ID. */
-    memcpy(&actor_id, current_ptr, sizeof(actor_id));
-    current_ptr += sizeof(actor_id);
-    /* Parse the driver ID. */
-    memcpy(&driver_id, current_ptr, sizeof(driver_id));
-    current_ptr += sizeof(driver_id);
-    /* Parse the local scheduler ID. */
-    memcpy(&local_scheduler_id, current_ptr, sizeof(local_scheduler_id));
-    current_ptr += sizeof(local_scheduler_id);
-    /* Parse the reconstruct bit. */
-    if (*current_ptr == '1') {
-      reconstruct = true;
-    } else if (*current_ptr == '0') {
-      reconstruct = false;
-    } else {
-      reconstruct = false;  // We set this value to avoid a compiler warning.
-      RAY_LOG(FATAL) << "This code should be unreachable.";
-    }
-    current_ptr += 1;
+
+    auto message =
+        flatbuffers::GetRoot<ActorCreationNotification>(payload->str);
+    ActorID actor_id = from_flatbuf(*message->actor_id());
+    WorkerID driver_id = from_flatbuf(*message->driver_id());
+    DBClientID local_scheduler_id =
+        from_flatbuf(*message->local_scheduler_id());
 
     if (data->subscribe_callback) {
       data->subscribe_callback(actor_id, driver_id, local_scheduler_id,
-                               reconstruct, data->subscribe_context);
+                               data->subscribe_context);
     }
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE command. */
@@ -1651,7 +1665,7 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
   int status = redisAsyncCommand(
       db->context, redis_push_error_rpush_callback,
       (void *) callback_data->timer_id, "RPUSH ErrorKeys Error:%b:%b",
-      info->driver_id.data(), sizeof(info->driver_id), info->error_key,
+      info->driver_id.data(), sizeof(info->driver_id), info->error_key.data(),
       sizeof(info->error_key));
   if ((status == REDIS_ERR) || db->subscribe_context->err) {
     LOG_REDIS_DEBUG(db->subscribe_context, "error in redis_push_error rpush");
@@ -1661,18 +1675,17 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
 void redis_push_error(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   ErrorInfo *info = (ErrorInfo *) callback_data->data->Get();
-  RAY_CHECK(info->error_index < MAX_ERROR_INDEX && info->error_index >= 0);
-  /* Look up the error type. */
-  const char *error_type = error_types[info->error_index];
-  const char *error_message = error_messages[info->error_index];
+  RAY_CHECK(info->error_type < MAX_ERROR_INDEX && info->error_type >= 0);
+  /// Look up the error type.
+  const char *error_type = error_types[info->error_type];
 
   /* Set the error information. */
   int status = redisAsyncCommand(
       db->context, redis_push_error_hmset_callback,
       (void *) callback_data->timer_id,
-      "HMSET Error:%b:%b type %s message %s data %b", info->driver_id.data(),
-      sizeof(info->driver_id), info->error_key, sizeof(info->error_key),
-      error_type, error_message, info->data, info->data_length);
+      "HMSET Error:%b:%b type %s message %b data %b", info->driver_id.data(),
+      sizeof(info->driver_id), info->error_key.data(), sizeof(info->error_key),
+      error_type, info->error_message, info->size, "None", strlen("None"));
   if ((status == REDIS_ERR) || db->subscribe_context->err) {
     LOG_REDIS_DEBUG(db->subscribe_context, "error in redis_push_error hmset");
   }

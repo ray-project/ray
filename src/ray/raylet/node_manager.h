@@ -2,12 +2,13 @@
 #define RAY_RAYLET_NODE_MANAGER_H
 
 // clang-format off
+#include "ray/raylet/task.h"
+#include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/scheduling_resources.h"
-#include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"
 #include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
@@ -52,7 +53,7 @@ class NodeManager {
                                  int64_t message_type, const uint8_t *message);
 
   void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                   std::shared_ptr<ClientTableDataT> data);
+                   const ClientTableDataT &data);
 
   void HeartbeatHandler(gcs::AsyncGcsClient *client, const ClientID &id,
                         std::shared_ptr<ClientTableDataT> data);

@@ -18,8 +18,8 @@ ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
   auto data = std::make_shared<ObjectTableDataT>();
   data->managers.push_back(client_id.binary());
   ray::Status status = gcs_client_->object_table().Add(
-      job_id, object_id, data, [](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                  std::shared_ptr<ObjectTableDataT> data) {
+      job_id, object_id, data,
+      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &data) {
         // Do nothing.
       });
   return status;
@@ -79,9 +79,9 @@ ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
   ray::Status status = gcs_client_->object_table().Lookup(
       job_id, object_id,
       [this, object_id](gcs::AsyncGcsClient *client, const UniqueID &id,
-                        std::shared_ptr<ObjectTableDataT> data) {
+                        const ObjectTableDataT &data) {
         std::vector<ClientID> remote_connections;
-        for (auto client_id_binary : data->managers) {
+        for (auto client_id_binary : data.managers) {
           ClientID client_id = ClientID::from_binary(client_id_binary);
           remote_connections.push_back(client_id);
         }

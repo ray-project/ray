@@ -1,14 +1,9 @@
 Ray RLlib: Scalable Reinforcement Learning
 ==========================================
 
-Ray RLlib is an RL execution toolkit built on the Ray distributed execution framework. RLlib implements a collection of distributed *policy optimizers* that make it easy to use a variety of training strategies with existing RL algorithms written in frameworks such as PyTorch, TensorFlow, and Theano. This enables complex architectures for RL training (e.g., Ape-X, IMPALA), to be implemented once and reused many times across different RL algorithms and libraries.
+Ray RLlib is an RL execution toolkit built on the Ray distributed execution framework. RLlib implements a collection of distributed *policy optimizers* that make it easy to use a variety of training strategies with existing RL algorithms written in frameworks such as PyTorch, TensorFlow, and Theano.
 
 You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the paper `here <https://arxiv.org/abs/1712.09381>`__.
-
-.. note::
-
-    To use RLlib's policy optimizers outside of RLlib, see the `RLlib policy optimizers documentation <policy-optimizers.html>`__.
-
 
 RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, which include:
 
@@ -28,6 +23,10 @@ RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, w
 
 These algorithms can be run on any `OpenAI Gym MDP <https://github.com/openai/gym>`__,
 including custom ones written and registered by the user.
+
+.. note::
+
+    To use RLlib's policy optimizers outside of RLlib, see the `policy optimizers documentation <policy-optimizers.html>`__.
 
 Installation
 ------------
@@ -301,9 +300,10 @@ in the ``config`` section of the experiments.
         'cartpole-ppo': {
             'run': 'PPO',
             'env': 'CartPole-v0',
-            'resources': {
-                'cpu': 2,
-                'driver_cpu_limit': 1},
+            'trial_resources': {
+                'cpu': 1,
+                'extra_cpu': 2,  # for workers
+            },
             'stop': {
                 'episode_reward_mean': 200,
                 'time_total_s': 180

@@ -685,6 +685,26 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(k2.remote(1)), 2)
         self.assertEqual(ray.get(m.remote(1)), 2)
 
+    def testSubmitAPI(self):
+        self.init_ray(num_gpus=1, resources={"Custom": 1}, num_workers=1)
+
+        @ray.remote
+        def f(n):
+            return list(range(n))
+
+        @ray.remote
+        def g():
+            return ray.get_gpu_ids()
+
+        assert f._submit([0], num_return_vals=0) is None
+        assert ray.get(f._submit(args=[1], num_return_vals=1)) == [0]
+        assert ray.get(f._submit(args=[2], num_return_vals=2)) == [0, 1]
+        assert ray.get(f._submit(args=[3], num_return_vals=3)) == [0, 1, 2]
+        assert ray.get(g._submit(args=[],
+                                 num_cpus=1,
+                                 num_gpus=1,
+                                 resources={"Custom": 1})) == [0]
+
     def testGetMultiple(self):
         self.init_ray()
         object_ids = [ray.put(i) for i in range(10)]
@@ -1357,6 +1377,28 @@ class ResourcesTest(unittest.TestCase):
         a1 = Actor1.remote()
         ray.get(a1.test.remote())
 
+    def testZeroCPUs(self):
+        ray.worker._init(
+            start_ray_local=True,
+            num_local_schedulers=2,
+            num_cpus=[0, 2])
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(num_cpus=0)
+        def f():
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote
+        class Foo(object):
+            def method(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Make sure tasks and actors run on the remote local scheduler.
+        self.assertNotEqual(ray.get(f.remote()), local_plasma)
+        a = Foo.remote()
+        self.assertNotEqual(ray.get(a.method.remote()), local_plasma)
+
     def testMultipleLocalSchedulers(self):
         # This test will define a bunch of tasks that can only be assigned to
         # specific local schedulers, and we will check that they are assigned
@@ -1798,7 +1840,10 @@ class GlobalStateAPI(unittest.TestCase):
         with self.assertRaises(Exception):
             ray.global_state.log_files()
 
-        ray.init()
+        ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+
+        resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
+        assert ray.global_state.cluster_resources() == resources
 
         self.assertEqual(ray.global_state.object_table(), dict())
 
@@ -1907,7 +1952,7 @@ class GlobalStateAPI(unittest.TestCase):
                          ray.global_state.object_table(result_id))
 
     def testLogFileAPI(self):
-        ray.init(redirect_output=True)
+        ray.init(redirect_worker_output=True)
 
         message = "unique message"
 
@@ -1971,7 +2016,7 @@ class GlobalStateAPI(unittest.TestCase):
     def testWorkers(self):
         num_workers = 3
         ray.init(
-            redirect_output=True,
+            redirect_worker_output=True,
             num_cpus=num_workers,
             num_workers=num_workers)
 

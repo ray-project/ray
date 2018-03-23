@@ -109,7 +109,7 @@ class Lineage {
   ///
   /// \param task_request The request to construct the lineage from. All
   ///        uncommitted tasks in the request will be added to the lineage.
-  Lineage(const ForwardTaskRequest &task_request);
+  Lineage(const protocol::ForwardTaskRequest &task_request);
 
   /// Get an entry from the lineage.
   ///
@@ -148,7 +148,7 @@ class Lineage {
   ///        flatbuffer.
   /// \return An offset to the serialized lineage. The serialization includes
   ///         all task and object entries in the lineage.
-  flatbuffers::Offset<ForwardTaskRequest> ToFlatbuffer(
+  flatbuffers::Offset<protocol::ForwardTaskRequest> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb, const TaskID &entry_id) const;
 
  private:
@@ -164,7 +164,7 @@ class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
-  LineageCache(gcs::Storage<TaskID, TaskFlatbuffer> &task_storage);
+  LineageCache(gcs::Storage<TaskID, protocol::Task> &task_storage);
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
   /// These entries will not be written to the GCS until set to ready.
@@ -203,7 +203,7 @@ class LineageCache {
   void HandleEntryCommitted(const TaskID &unique_id);
 
   /// The durable storage system for task information.
-  gcs::Storage<TaskID, TaskFlatbuffer> &task_storage_;
+  gcs::Storage<TaskID, protocol::Task> &task_storage_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;

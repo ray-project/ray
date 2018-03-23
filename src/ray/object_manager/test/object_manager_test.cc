@@ -177,17 +177,16 @@ class TestObjectManagerCommands : public TestObjectManager {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::AsyncGcsClient *client, const ClientID &id,
-               std::shared_ptr<ClientTableDataT> data) {
-          ClientID parsed_id = ClientID::from_binary(data->client_id);
-          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-            num_connected_clients += 1;
-          }
-          if (num_connected_clients == 2) {
-            StartTests();
-          }
-        });
+    gcs_client_1->client_table().RegisterClientAddedCallback([this](
+        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      ClientID parsed_id = ClientID::from_binary(data.client_id);
+      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+        num_connected_clients += 1;
+      }
+      if (num_connected_clients == 2) {
+        StartTests();
+      }
+    });
   }
 
   void StartTests() {

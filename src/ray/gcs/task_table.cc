@@ -45,10 +45,9 @@ Status TaskTableAdd(AsyncGcsClient *gcs_client, legacy::Task *task) {
   TaskSpec *spec = execution_spec.Spec();
   auto data = MakeTaskTableData(execution_spec, Task_local_scheduler(task),
                                 static_cast<SchedulingState>(Task_state(task)));
-  return gcs_client->legacy_task_table().Add(
+  return gcs_client->task_table().Add(
       ray::JobID::nil(), TaskSpec_task_id(spec), data,
-      [](gcs::AsyncGcsClient *client, const TaskID &id,
-         std::shared_ptr<TaskTableDataT> data) {});
+      [](gcs::AsyncGcsClient *client, const TaskID &id, const TaskTableDataT &data) {});
 }
 
 // TODO(pcm): This is a helper method that should go away once we get rid of
@@ -61,8 +60,8 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
   data->test_scheduler_id = local_scheduler_id.binary();
   data->test_state_bitmask = test_state_bitmask;
   data->update_state = update_state;
-  return gcs_client->legacy_task_table().TestAndUpdate(ray::JobID::nil(), task_id, data,
-                                                       callback);
+  return gcs_client->task_table().TestAndUpdate(ray::JobID::nil(), task_id, data,
+                                                callback);
 }
 
 }  // namespace legacy

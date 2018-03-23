@@ -12,7 +12,10 @@ import os
 
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger, pretty_print
-from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
+# NOTE(rkn): We import ray.tune.registry here instead of importing the names we
+# need because there are cyclic imports that may cause specific names to not
+# have been defined yet. See https://github.com/ray-project/ray/issues/1716.
+import ray.tune.registry
 from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR
 from ray.utils import random_string, binary_to_hex
 
@@ -25,34 +28,32 @@ def date_str():
 
 
 class Resources(
-        namedtuple("Resources", [
-            "cpu", "gpu", "driver_cpu_limit", "driver_gpu_limit"])):
+        namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
     """Ray resources required to schedule a trial.
 
     Attributes:
-        cpu (int): Number of CPUs required for the trial total.
-        gpu (int): Number of GPUs required for the trial total.
-        driver_cpu_limit (int): Max CPUs allocated to the driver.
-            Defaults to all of the required CPUs.
-        driver_gpu_limit (int): Max GPUs allocated to the driver.
-            Defaults to all of the required GPUs.
+        cpu (int): Number of CPUs to allocate to the trial.
+        gpu (int): Number of GPUs to allocate to the trial.
+        extra_cpu (int): Extra CPUs to reserve in case the trial needs to
+            launch additional Ray actors that use CPUs.
+        extra_gpu (int): Extra GPUs to reserve in case the trial needs to
+            launch additional Ray actors that use GPUs.
     """
     __slots__ = ()
 
-    def __new__(cls, cpu, gpu, driver_cpu_limit=None, driver_gpu_limit=None):
-        if driver_cpu_limit is not None:
-            assert driver_cpu_limit <= cpu
-        else:
-            driver_cpu_limit = cpu
-        if driver_gpu_limit is not None:
-            assert driver_gpu_limit <= gpu
-        else:
-            driver_gpu_limit = gpu
+    def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
         return super(Resources, cls).__new__(
-            cls, cpu, gpu, driver_cpu_limit, driver_gpu_limit)
+            cls, cpu, gpu, extra_cpu, extra_gpu)
 
     def summary_string(self):
-        return "{} CPUs, {} GPUs".format(self.cpu, self.gpu)
+        return "{} CPUs, {} GPUs".format(
+            self.cpu + self.extra_cpu, self.gpu + self.extra_gpu)
+
+    def cpu_total(self):
+        return self.cpu + self.extra_cpu
+
+    def gpu_total(self):
+        return self.gpu + self.extra_gpu
 
 
 class Trial(object):
@@ -63,9 +64,6 @@ class Trial(object):
 
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
-
-    The driver for the trial will be allocated at most `driver_cpu_limit` and
-    `driver_gpu_limit` CPUs and GPUs.
     """
 
     PENDING = "PENDING"
@@ -76,7 +74,7 @@ class Trial(object):
 
     def __init__(
             self, trainable_name, config=None, local_dir=DEFAULT_RESULTS_DIR,
-            experiment_tag=None, resources=Resources(cpu=1, gpu=0),
+            experiment_tag="", resources=Resources(cpu=1, gpu=0),
             stopping_criterion=None, checkpoint_freq=0,
             restore_path=None, upload_dir=None, max_failures=0):
         """Initialize a new trial.
@@ -85,8 +83,8 @@ class Trial(object):
         in ray.tune.config_parser.
         """
 
-        if not _default_registry.contains(
-                TRAINABLE_CLASS, trainable_name):
+        if not ray.tune.registry._default_registry.contains(
+                ray.tune.registry.TRAINABLE_CLASS, trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
         if stopping_criterion:
@@ -341,11 +339,11 @@ class Trial(object):
 
     def _setup_runner(self):
         self.status = Trial.RUNNING
-        trainable_cls = get_registry().get(
-            TRAINABLE_CLASS, self.trainable_name)
+        trainable_cls = ray.tune.registry.get_registry().get(
+            ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
         cls = ray.remote(
-            num_cpus=self.resources.driver_cpu_limit,
-            num_gpus=self.resources.driver_gpu_limit)(trainable_cls)
+            num_cpus=self.resources.cpu,
+            num_gpus=self.resources.gpu)(trainable_cls)
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
@@ -367,7 +365,7 @@ class Trial(object):
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         self.runner = cls.remote(
-            config=self.config, registry=get_registry(),
+            config=self.config, registry=ray.tune.registry.get_registry(),
             logger_creator=logger_creator)
 
     def set_verbose(self, verbose):
