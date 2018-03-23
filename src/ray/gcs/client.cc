@@ -41,6 +41,8 @@ ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
 
 TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
 
+raylet::TaskTable &AsyncGcsClient::raylet_task_table() { return *raylet_task_table_; }
+
 ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 
 FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }

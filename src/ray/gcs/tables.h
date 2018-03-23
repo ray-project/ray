@@ -12,6 +12,7 @@
 
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/raylet/format/node_manager_generated.h"
 
 // TODO(pcm): Remove this
 #include "task.h"
@@ -164,6 +165,10 @@ using ClassTable = Table<ClassID, ClassTableData>;
 
 // TODO(swang): Set the pubsub channel for the actor table.
 using ActorTable = Table<ActorID, ActorTableData>;
+
+namespace raylet {
+using TaskTable = Table<TaskID, ray::protocol::Task>;
+}
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:

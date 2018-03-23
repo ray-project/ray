@@ -45,6 +45,7 @@ class RAY_EXPORT AsyncGcsClient {
   inline ConfigTable &config_table();
   ObjectTable &object_table();
   TaskTable &task_table();
+  raylet::TaskTable &raylet_task_table();
   ClientTable &client_table();
   inline ErrorTable &error_table();
 
@@ -63,6 +64,7 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ClassTable> class_table_;
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<TaskTable> task_table_;
+  std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ClientTable> client_table_;
   std::shared_ptr<RedisContext> context_;
   std::unique_ptr<RedisAsioClient> asio_async_client_;

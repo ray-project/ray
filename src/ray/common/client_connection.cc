@@ -40,7 +40,7 @@ template <class T>
 void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &error) {
   if (error) {
     // If there was an error, disconnect the client.
-    read_type_ = MessageType_DisconnectClient;
+    read_type_ = protocol::MessageType_DisconnectClient;
     read_length_ = 0;
     ProcessMessage(error);
     return;
@@ -81,7 +81,7 @@ template <class T>
 void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error) {
   if (error) {
     // TODO(hme): Disconnect differently & remove dependency on node_manager_generated.h
-    read_type_ = MessageType_DisconnectClient;
+    read_type_ = protocol::MessageType_DisconnectClient;
   }
   manager_.ProcessClientMessage(this->shared_from_this(), read_type_,
                                 read_message_.data());
