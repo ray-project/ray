@@ -20,7 +20,7 @@ class Experiment(object):
             empty dict.
         config (dict): Algorithm-specific configuration
             (e.g. env, hyperparams). Defaults to empty dict.
-        resources (dict): Machine resources to allocate per trial,
+        trial_resources (dict): Machine resources to allocate per trial,
             e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
             assigned unless you specify them here. Defaults to 1 CPU and 0
             GPUs.
@@ -36,13 +36,13 @@ class Experiment(object):
             checkpointing is enabled. Defaults to 3.
     """
     def __init__(self, name, run, stop=None, config=None,
-                 resources=None, repeat=1, local_dir=None,
+                 trial_resources=None, repeat=1, local_dir=None,
                  upload_dir="", checkpoint_freq=0, max_failures=3):
         spec = {
             "run": run,
             "stop": stop or {},
             "config": config or {},
-            "resources": resources or {"cpu": 1, "gpu": 0},
+            "trial_resources": trial_resources or {"cpu": 1, "gpu": 0},
             "repeat": repeat,
             "local_dir": local_dir or DEFAULT_RESULTS_DIR,
             "upload_dir": upload_dir,

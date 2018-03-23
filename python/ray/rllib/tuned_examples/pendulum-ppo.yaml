@@ -2,9 +2,9 @@
 pendulum-ppo:
     env: Pendulum-v0
     run: PPO
-    resources:
-        cpu: 5
-        driver_cpu_limit: 1
+    trial_resources:
+        cpu: 1
+        extra_cpu: 4
     config:
         timesteps_per_batch: 2048
         num_workers: 4

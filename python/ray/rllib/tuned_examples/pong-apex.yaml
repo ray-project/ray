@@ -4,11 +4,11 @@
 pong-apex:
     env: PongNoFrameskip-v4
     run: APEX
-    resources:
-        cpu:
-            eval: 1 + spec.config.num_workers
-        driver_cpu_limit: 1
+    trial_resources:
+        cpu: 1
         gpu: 1
+        extra_cpu:
+            eval: 4 + spec.config.num_workers
     config:
         target_network_update_freq: 50000
         num_workers: 32

@@ -300,9 +300,10 @@ in the ``config`` section of the experiments.
         'cartpole-ppo': {
             'run': 'PPO',
             'env': 'CartPole-v0',
-            'resources': {
-                'cpu': 2,
-                'driver_cpu_limit': 1},
+            'trial_resources': {
+                'cpu': 1,
+                'extra_cpu': 2,  # for workers
+            },
             'stop': {
                 'episode_reward_mean': 200,
                 'time_total_s': 180

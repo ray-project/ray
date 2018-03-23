@@ -31,7 +31,7 @@ run_experiments({
     "carla-ppo": {
         "run": "PPO",
         "env": "carla_env",
-        "resources": {"cpu": 4, "gpu": 1},
+        "trial_resources": {"cpu": 4, "gpu": 1},
         "config": {
             "env_config": env_config,
             "model": {
