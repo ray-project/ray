@@ -49,6 +49,12 @@ class Resources(
         return "{} CPUs, {} GPUs".format(
             self.cpu + self.extra_cpu, self.gpu + self.extra_gpu)
 
+    def cpu_total(self):
+        return self.cpu + self.extra_cpu
+
+    def gpu_total(self):
+        return self.gpu + self.extra_gpu
+
 
 class Trial(object):
     """A trial object holds the state for one model training run.
@@ -68,7 +74,7 @@ class Trial(object):
 
     def __init__(
             self, trainable_name, config=None, local_dir=DEFAULT_RESULTS_DIR,
-            experiment_tag=None, resources=Resources(cpu=1, gpu=0),
+            experiment_tag="", resources=Resources(cpu=1, gpu=0),
             stopping_criterion=None, checkpoint_freq=0,
             restore_path=None, upload_dir=None, max_failures=0):
         """Initialize a new trial.
