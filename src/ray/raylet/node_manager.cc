@@ -32,8 +32,8 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (message_type) {
-  case MessageType_RegisterClientRequest: {
-    auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_data);
+  case protocol::MessageType_RegisterClientRequest: {
+    auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     if (message->is_worker()) {
       // Create a new worker from the registration request.
       std::shared_ptr<Worker> worker(new Worker(message->worker_pid(), client));
@@ -45,14 +45,15 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     // is legacy code and should be removed once actor creation tasks are
     // implemented.
     flatbuffers::FlatBufferBuilder fbb;
-    auto reply = CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
+    auto reply =
+        protocol::CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
     fbb.Finish(reply);
     // Reply to the worker's registration request, then listen for more
     // messages.
-    client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(),
+    client->WriteMessage(protocol::MessageType_RegisterClientReply, fbb.GetSize(),
                          fbb.GetBufferPointer());
   } break;
-  case MessageType_GetTask: {
+  case protocol::MessageType_GetTask: {
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     RAY_CHECK(worker);
     // If the worker was assigned a task, mark it as finished.
@@ -69,16 +70,16 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       AssignTask(scheduled_tasks.front());
     }
   } break;
-  case MessageType_DisconnectClient: {
+  case protocol::MessageType_DisconnectClient: {
     // Remove the dead worker from the pool and stop listening for messages.
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     if (worker) {
       worker_pool_.DisconnectWorker(worker);
     }
   } break;
-  case MessageType_SubmitTask: {
+  case protocol::MessageType_SubmitTask: {
     // Read the task submitted by the client.
-    auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_data);
+    auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
     TaskExecutionSpecification task_execution_spec(
         from_flatbuf(*message->execution_dependencies()));
     TaskSpecification task_spec(*message->task_spec());
@@ -152,10 +153,10 @@ void NodeManager::AssignTask(const Task &task) {
 
   flatbuffers::FlatBufferBuilder fbb;
   const TaskSpecification &spec = task.GetTaskSpecification();
-  auto message = CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
-                                    fbb.CreateVector(std::vector<int>()));
+  auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
+                                              fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
-  worker->Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(),
+  worker->Connection()->WriteMessage(protocol::MessageType_ExecuteTask, fbb.GetSize(),
                                      fbb.GetBufferPointer());
   worker->AssignTaskId(spec.TaskId());
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
