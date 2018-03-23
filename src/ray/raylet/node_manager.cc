@@ -313,9 +313,7 @@ ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
   Task &lineage_cache_entry_task = uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.GetTaskExecutionSpec().IncrementNumForwards();
-  RAY_LOG(INFO) << "AFTER: " << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
 
-  RAY_LOG(INFO) << "[FORWARDTASK] " << uncommitted_lineage.GetEntry(task_id)->TaskData().GetTaskExecutionSpecReadonly().NumForwards();
   flatbuffers::FlatBufferBuilder fbb;
   auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
   fbb.Finish(request);

@@ -26,7 +26,7 @@ if __name__ == '__main__':
     driver.node_manager_client.submit(task)
 
     logger.debug("Return values were", task.returns())
-    print("[DRIVER] Return values were", task.returns())
+    print("[DRIVER] task1 return values", task.returns())
     task2 = ray.local_scheduler.Task(
         ray.local_scheduler.ObjectID(random_string()),
         ray.local_scheduler.ObjectID(random_string()),
