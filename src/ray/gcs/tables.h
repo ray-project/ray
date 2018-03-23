@@ -218,10 +218,10 @@ class Table : private Log<ID, Data> {
   using Log<ID, Data>::prefix_;
 };
 
-class ObjectTable : public Table<ObjectID, ObjectTableData> {
+class ObjectTable : public Log<ObjectID, ObjectTableData> {
  public:
   ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : Table(context, client) {
+      : Log(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
     prefix_ = TablePrefix_OBJECT;
   };
