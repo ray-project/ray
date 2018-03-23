@@ -229,6 +229,7 @@ void NodeManager::ScheduleTasks() {
       RAY_CHECK(1 == tasks.size());
       Task &task = tasks.front();
       // TODO(swang): Handle forward task failure.
+      // TODO(swang): Unsubscribe this task in the task dependency manager.
       RAY_CHECK_OK(ForwardTask(task, client_id));
     }
   }
