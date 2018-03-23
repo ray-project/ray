@@ -755,9 +755,7 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
   // Lookup the current value at the key.
   RedisModuleKey *table_key =
       OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
-  if (table_key == nullptr) {
-    RedisModule_ReplyWithNull(ctx);
-  } else {
+  if (table_key != nullptr) {
     // Publish the current value at the key to the client that is requesting
     // notifications.
     flatbuffers::FlatBufferBuilder fbb;
