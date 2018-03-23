@@ -67,10 +67,12 @@ void ObjectManager::StopIOService() {
 }
 
 void ObjectManager::NotifyDirectoryObjectAdd(const ObjectID &object_id) {
+  local_objects_.insert(object_id);
   ray::Status status = object_directory_->ReportObjectAdded(object_id, client_id_);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
+  local_objects_.erase(object_id);
   ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
 }
 
@@ -96,7 +98,6 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
-  // TODO(hme): don't pull if object is local.
   main_service_->post([this, object_id]() { RAY_CHECK_OK(Pull_(object_id)); });
   return Status::OK();
 };
@@ -136,6 +137,11 @@ void ObjectManager::GetLocationsFailed(ray::Status status, const ObjectID &objec
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
+  // Check if object is already local, and client_id is not itself.
+  if (local_objects_.count(object_id) != 0 || client_id == client_id_){
+    return ray::Status::OK();
+  }
+
   Status status =
       connection_pool_.GetSender(ConnectionPool::MESSAGE, client_id,
                                  [this, object_id](SenderConnection::pointer conn) {

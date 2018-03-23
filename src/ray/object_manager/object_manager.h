@@ -194,6 +194,9 @@ class ObjectManager {
   /// Read length for push receives.
   uint64_t read_length_;
 
+  /// Cache of locally available objects.
+  std::unordered_set<ObjectID, UniqueIDHasher> local_objects_;
+
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
   void IOServiceLoop();
