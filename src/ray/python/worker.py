@@ -11,8 +11,10 @@ logger = logging.getLogger(__name__)
 # The default return value to put in the object store.
 RETURN_VALUE = 0
 
-
 class Worker(object):
+
+    total_task_count = 0
+
     def __init__(self, raylet_socket_name, object_store_socket_name,
                  is_worker):
         # Connect to the Raylet and object store.
@@ -20,6 +22,8 @@ class Worker(object):
             raylet_socket_name, random_string(), is_worker)
         self.plasma_client = plasma.connect(object_store_socket_name, "", 0)
         self.serialization_context = pyarrow.default_serialization_context()
+        self.raylet_socket_name = raylet_socket_name
+        self.object_store_socket_name = object_store_socket_name
 
     def main_loop(self):
         while True:
@@ -33,13 +37,16 @@ class Worker(object):
         values = self.plasma_client.get(plasma_ids, timeout_ms,
                                         self.serialization_context)
         logger.debug(values)
-        assert(all(value == RETURN_VALUE for value in values))
+        logger.debug("[WORKER] values=", values)
+        assert(all(value[0] == RETURN_VALUE for value in values))
         return values
 
     def get_task(self):
-        logger.debug("Worker waiting for task")
+        print("[WORKER] waiting for task")
+        logger.debug("[WORKER] waiting for task")
         task = self.node_manager_client.get_task()
-        logger.debug("Worker assigned", task.task_id(),
+        #logger.debug("Worker assigned", task.task_id(),
+        print("[WORKER] Worker assigned", task.task_id(),
                      "arguments", [ray.utils.binary_to_hex(argument.id()) for
                                    argument in task.arguments()])
 
@@ -48,9 +55,14 @@ class Worker(object):
         arguments = self.get(task.arguments())
 
         for object_id in task.returns():
-            self.plasma_client.put(RETURN_VALUE,
+            self.plasma_client.put((RETURN_VALUE,self.raylet_socket_name),
                                    plasma.ObjectID(object_id.id()))
-        logger.debug("Worker returned",
+            objval = self.plasma_client.get([plasma.ObjectID(object_id.id())])
+            print("[WORKER.GETTASK]: value put matches value get: ", objval)
+            assert(all([o[0] == RETURN_VALUE for o in objval]))
+
+        print("Worker returned",
+        #logger.debug("Worker returned",
                      [ray.utils.binary_to_hex(return_id.id()) for return_id in
                       task.returns()])
 

@@ -9,7 +9,7 @@ namespace ray {
 namespace raylet {
 
 SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
-    : scheduling_queue_(scheduling_queue) {}
+    : scheduling_queue_(scheduling_queue), gen_(rd_()) {}
 
 std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
@@ -18,8 +18,6 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
       const std::vector<ClientID> &others) {
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
-  // Random number generator.
-  std::default_random_engine gen;
   // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
   for (const auto &client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
@@ -60,10 +58,10 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     // Initialize a uniform integer distribution over the key space.
     // TODO(atumanov): change uniform random to discrete, weighted by resource capacity.
     std::uniform_int_distribution<int> distribution(0, client_keys.size()-1);
-    int client_key_index = distribution(gen);
+    int client_key_index = distribution(gen_);
     decision[task_id] = client_keys[client_key_index];
-    RAY_LOG(INFO) << "[SchedulingPolicy] assigned: " << task_id.hex() << " --> "
-                  << client_keys[client_key_index].hex();
+    RAY_LOG(INFO) << "[SchedulingPolicy] idx=" << client_key_index << " "
+                  << task_id.hex() << " --> " << client_keys[client_key_index].hex();
   }
   return decision;
 }

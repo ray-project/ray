@@ -1,6 +1,7 @@
 #ifndef RAY_RAYLET_SCHEDULING_POLICY_H
 #define RAY_RAYLET_SCHEDULING_POLICY_H
 
+#include <random>
 #include <unordered_map>
 
 #include "ray/raylet/scheduling_queue.h"
@@ -39,6 +40,10 @@ class SchedulingPolicy {
  private:
   /// An immutable reference to the scheduling task queues.
   const SchedulingQueue &scheduling_queue_;
+  /// Internally maintained random number engine device.
+  std::random_device rd_;
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 };
 
 } // namespace raylet
