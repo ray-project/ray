@@ -26,11 +26,9 @@ Raylet::Raylet(boost::asio::io_service &main_service,
           main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       node_manager_socket_(main_service),
       gcs_client_(gcs_client),
-      lineage_cache_(gcs_client->raylet_task_table()),
       object_manager_(main_service, std::move(object_manager_service),
                       object_manager_config, gcs_client),
-      node_manager_(main_service, node_manager_config, object_manager_, lineage_cache_,
-                    gcs_client_) {
+      node_manager_(main_service, node_manager_config, object_manager_, gcs_client_) {
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();

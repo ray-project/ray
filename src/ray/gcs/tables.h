@@ -28,21 +28,21 @@ class RedisContext;
 class AsyncGcsClient;
 
 template <typename ID, typename Data>
-class Storage {
+class TableInterface {
  public:
   using DataT = typename Data::NativeTableType;
   using Callback =
       std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
   virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<DataT> data,
                      const Callback &done) = 0;
-  virtual ~Storage(){};
+  virtual ~TableInterface(){};
 };
 
 template <typename ID, typename Data>
-class Table : public Storage<ID, Data> {
+class Table : public TableInterface<ID, Data> {
  public:
-  using DataT = typename Storage<ID, Data>::DataT;
-  using Callback = typename Storage<ID, Data>::Callback;
+  using DataT = typename TableInterface<ID, Data>::DataT;
+  using Callback = typename TableInterface<ID, Data>::Callback;
   /// The callback to call when a lookup fails because there is no entry at the
   /// key.
   using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;

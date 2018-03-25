@@ -9,7 +9,6 @@ namespace raylet {
 
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
-                         LineageCache &lineage_cache,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : io_service_(io_service),
       local_resources_(config.resource_config),
@@ -21,12 +20,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           object_manager,
           // reconstruction_policy_,
           [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
-      lineage_cache_(lineage_cache),
+      lineage_cache_(gcs_client->raylet_task_table()),
       gcs_client_(gcs_client),
       remote_clients_(),
       remote_server_connections_(),
       object_manager_(object_manager) {
-
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id, SchedulingResources(config.resource_config));

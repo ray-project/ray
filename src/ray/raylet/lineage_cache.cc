@@ -123,7 +123,7 @@ flatbuffers::Offset<protocol::ForwardTaskRequest> Lineage::ToFlatbuffer(
   return request;
 }
 
-LineageCache::LineageCache(gcs::Storage<TaskID, protocol::Task> &task_storage)
+LineageCache::LineageCache(gcs::TableInterface<TaskID, protocol::Task> &task_storage)
     : task_storage_(task_storage) {}
 
 /// A helper function to merge one lineage into another, in DFS order.

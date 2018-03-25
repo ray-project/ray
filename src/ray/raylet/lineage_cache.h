@@ -164,7 +164,7 @@ class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
-  LineageCache(gcs::Storage<TaskID, protocol::Task> &task_storage);
+  LineageCache(gcs::TableInterface<TaskID, protocol::Task> &task_storage);
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
   /// These entries will not be written to the GCS until set to ready.
@@ -203,7 +203,7 @@ class LineageCache {
   void HandleEntryCommitted(const TaskID &unique_id);
 
   /// The durable storage system for task information.
-  gcs::Storage<TaskID, protocol::Task> &task_storage_;
+  gcs::TableInterface<TaskID, protocol::Task> &task_storage_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;

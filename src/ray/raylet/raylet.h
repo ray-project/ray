@@ -75,8 +75,6 @@ class Raylet {
 
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
-  // TODO(swang): Lineage cache.
-  LineageCache lineage_cache_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// Manages client requests for task submission and execution.

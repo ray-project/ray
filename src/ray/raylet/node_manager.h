@@ -31,7 +31,7 @@ class NodeManager {
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
   NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
-              ObjectManager &object_manager, LineageCache &lineage_cache,
+              ObjectManager &object_manager,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
   /// Process a new client connection.
@@ -90,7 +90,7 @@ class NodeManager {
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
   /// The lineage cache for the GCS object and task tables.
-  LineageCache &lineage_cache_;
+  LineageCache lineage_cache_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   std::vector<ClientID> remote_clients_;

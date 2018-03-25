@@ -14,12 +14,12 @@ namespace ray {
 
 namespace raylet {
 
-class MockGcs : virtual public gcs::Storage<TaskID, protocol::Task> {
+class MockGcs : virtual public gcs::TableInterface<TaskID, protocol::Task> {
  public:
   MockGcs(){};
   Status Add(const JobID &job_id, const TaskID &task_id,
              std::shared_ptr<protocol::TaskT> task_data,
-             const gcs::Storage<TaskID, protocol::Task>::Callback &done) {
+             const gcs::TableInterface<TaskID, protocol::Task>::Callback &done) {
     task_table_[task_id] = task_data;
     callbacks_.push_back(
         std::pair<gcs::raylet::TaskTable::Callback, TaskID>(done, task_id));
