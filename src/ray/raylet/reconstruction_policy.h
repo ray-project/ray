@@ -30,9 +30,11 @@ class ReconstructionPolicy {
   ReconstructionPolicy(
       boost::asio::io_service &io_service,
       gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log,
-      const ReconstructionCallback &reconstruction_handler)
-      : reconstruction_handler_(reconstruction_handler),
-        task_reconstruction_log_(task_reconstruction_log) {}
+      const ReconstructionCallback &reconstruction_handler,
+      uint64_t reconstruction_timeout_ms)
+      : task_reconstruction_log_(task_reconstruction_log),
+        reconstruction_handler_(reconstruction_handler),
+        reconstruction_timeout_ms_(reconstruction_timeout_ms) {}
 
   /// Listen for information about this object. If no notifications arrive
   /// within the timeout, or if a notification about object eviction or failure
@@ -68,8 +70,9 @@ class ReconstructionPolicy {
                           const std::vector<ObjectTableDataT> new_locations);
   void Reconstruct(const ObjectID &object_id);
 
+  gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;
   const ReconstructionCallback reconstruction_handler_;
-  gcs::LogStorage<TaskID, TaskReconstructionData> &task_reconstruction_log_;
+  uint64_t reconstruction_timeout_ms_;
   /// The objects that we are listening for.
   std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> listening_objects_;
   /// The objects that we have not received a notification for since the last
