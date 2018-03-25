@@ -27,6 +27,17 @@ class RedisContext;
 
 class AsyncGcsClient;
 
+template <typename ID, typename Data>
+class LogInterface {
+ public:
+  using DataT = typename Data::NativeTableType;
+  using WriteCallback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                           std::shared_ptr<DataT> data)>;
+  virtual Status Append(const JobID &job_id, const ID &task_id,
+                        std::shared_ptr<DataT> data, const WriteCallback &done) = 0;
+  virtual ~LogInterface(){};
+};
+
 /// \class Log
 ///
 /// A GCS table where every entry is an append-only log.
@@ -36,7 +47,7 @@ class AsyncGcsClient;
 ///   ClientTable: Stores a log of which GCS clients have been added or deleted
 ///                from the system.
 template <typename ID, typename Data>
-class Log {
+class Log : public LogInterface<ID, Data> {
  public:
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
