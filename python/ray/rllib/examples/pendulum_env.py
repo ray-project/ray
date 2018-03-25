@@ -1,10 +1,8 @@
-from gym.spaces import Box, Tuple
-from gym.utils import seeding
+from gym.spaces import Tuple
 from gym.envs.classic_control.pendulum import PendulumEnv
-import numpy as np
 
 """
- Multiagent pendulum that sums its torques to generate an action
+Single agent pendulum that spoofs being a multiagent pendulum
 """
 
 
@@ -15,11 +13,15 @@ class AlteredPendulumEnv(PendulumEnv):
     }
 
     def __init__(self):
-        super().__init__()
-        self.action_space = [Box(low=-self.max_torque,
-                                 high=self.max_torque,
-                                 shape=(1,),
-                                 dtype=np.float32)
-                             for _ in range(2)]
-        self.observation_space = Tuple([
-            Box(low=-high, high=high, dtype=np.float32)])
+        super(AlteredPendulumEnv, self).__init__()
+        self.action_space = [self.action_space]
+        self.observation_space = Tuple([self.observation_space])
+
+    def step(self, u):
+        action = u[0][0]
+        state, rew, done, _ = super(AlteredPendulumEnv, self).step(action)
+        return [state], rew, done, {}
+
+    def reset(self):
+        obs = super(AlteredPendulumEnv, self).reset()
+        return [obs]
