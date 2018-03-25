@@ -8,7 +8,6 @@
 #include "ray/raylet/task.h"
 #include "ray/raylet/task_execution_spec.h"
 #include "ray/raylet/task_spec.h"
-#include "ray/raylet/task_spec.h"
 
 namespace ray {
 
@@ -33,8 +32,8 @@ class MockGcs : virtual public gcs::TableInterface<TaskID, protocol::Task> {
     callbacks_.clear();
   };
 
-  std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
-      &TaskTable() {
+  const std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
+      &TaskTable() const {
     return task_table_;
   }
 
