@@ -1,5 +1,5 @@
 """ Run script for multiagent pendulum env. Each agent outputs a
-torque which is summed to form the total torque. This is a
+torque which is applied to separate pendulums. This is a
 continuous multiagent example
 """
 
@@ -37,14 +37,14 @@ def create_env(env_config):
 if __name__ == '__main__':
     register_env(env_name, lambda env_config: create_env(env_config))
     config = ppo.DEFAULT_CONFIG.copy()
-    num_cpus = 4
+    num_cpus = 8
     ray.init(num_cpus=num_cpus, redirect_output=False)
     config["num_workers"] = num_cpus
-    config["timesteps_per_batch"] = 50000
+    config["timesteps_per_batch"] = 2048*4
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.95
     config["horizon"] = 200
-    config["use_gae"] = False
+    config["use_gae"] = True
     config["lambda"] = 0.1
     config["sgd_stepsize"] = .0003
     config["sgd_batchsize"] = 64
@@ -67,6 +67,6 @@ if __name__ == '__main__':
                 "checkpoint_freq": 20,
                 "max_failures": 999,
                 "stop": {"training_iteration": 100},
-                "resources": {"cpu": num_cpus, "gpu": 0}
+                "trial_resources": {"cpu": 1, "gpu": 0, "extra_cpus": 0}
             },
         })
