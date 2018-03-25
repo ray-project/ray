@@ -203,11 +203,7 @@ class LineageCache {
   void HandleEntryCommitted(const TaskID &unique_id);
 
   /// The durable storage system for task information.
-<<<<<<< HEAD
   gcs::TableInterface<TaskID, protocol::Task> &task_storage_;
-=======
-  gcs::TableStorage<TaskID, protocol::Task> &task_storage_;
->>>>>>> 7a9847a... Virtual classes LogStorage and TableStorage
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;
