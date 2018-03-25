@@ -37,9 +37,9 @@ def create_env(env_config):
 if __name__ == '__main__':
     register_env(env_name, lambda env_config: create_env(env_config))
     config = ppo.DEFAULT_CONFIG.copy()
-    config["timesteps_per_batch"] = 4096
+    config["timesteps_per_batch"] = 100
     num_cpus = 2
-    ray.init(num_cpus=num_cpus, redirect_output=False)
+    ray.init(redirect_output=False)
     options = {"multiagent_obs_shapes": [4, 4],
                "multiagent_act_shapes": [1, 1],
                "multiagent_shared_model": False,
@@ -56,7 +56,7 @@ if __name__ == '__main__':
                 },
                 "checkpoint_freq": 20,
                 "max_failures": 999,
-                "stop": {"training_iteration": 100},
-                "resources": {"cpu": num_cpus}
+                "stop": {"training_iteration": 2},
+                "trial_resources": {"cpu": 1, "extra_cpu": 0}
             },
         })

@@ -38,9 +38,9 @@ if __name__ == '__main__':
     register_env(env_name, lambda env_config: create_env(env_config))
     config = ppo.DEFAULT_CONFIG.copy()
     num_cpus = 8
-    ray.init(num_cpus=num_cpus, redirect_output=False)
-    config["num_workers"] = num_cpus
-    config["timesteps_per_batch"] = 2048*4
+    ray.init(redirect_output=False)
+    config["num_workers"] = 4
+    config["timesteps_per_batch"] = 64
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.95
     config["horizon"] = 200
@@ -66,7 +66,7 @@ if __name__ == '__main__':
                 },
                 "checkpoint_freq": 20,
                 "max_failures": 999,
-                "stop": {"training_iteration": 100},
-                "trial_resources": {"cpu": 1, "gpu": 0, "extra_cpus": 0}
+                "stop": {"training_iteration": 2},
+                "trial_resources": {"cpu": 1, "gpu": 0, "extra_cpu": 0}
             },
         })
