@@ -59,7 +59,7 @@ class ProximalPolicyLoss(object):
         self.entropy = tf.add_n(self.entropy)
         self.surr1 = [ratio_i * advantages for ratio_i in self.ratio]
         self.surr2 = [tf.clip_by_value(ratio_i, 1 - config["clip_param"],
-                                      1 + config["clip_param"]) * advantages
+                                       1 + config["clip_param"]) * advantages
                       for ratio_i in self.ratio]
         self.surr = [tf.minimum(surr1_i, surr2_i) for surr1_i, surr2_i in
                      zip(self.surr1, self.surr2)]

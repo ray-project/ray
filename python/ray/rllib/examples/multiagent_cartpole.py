@@ -56,7 +56,7 @@ if __name__ == '__main__':
                 },
                 "checkpoint_freq": 20,
                 "max_failures": 999,
-                "stop": {"training_iteration": 2},
+                "stop": {"training_iteration": 1},
                 "trial_resources": {"cpu": 1, "extra_cpu": 0}
             },
         })
