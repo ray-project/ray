@@ -38,17 +38,32 @@ class ProximalPolicyLoss(object):
                     registry, observations, 1, vf_config).outputs
             self.value_function = tf.reshape(self.value_function, [-1])
 
-        # Make loss functions.
-        self.ratio = tf.exp(self.curr_dist.logp(actions) -
-                            self.prev_dist.logp(actions))
+        curr_logp = self.curr_dist.logp(actions)
+        prev_logp = self.prev_dist.logp(actions)
         self.kl = self.prev_dist.kl(self.curr_dist)
-        self.mean_kl = tf.reduce_mean(self.kl)
         self.entropy = self.curr_dist.entropy()
+
+        if not isinstance(curr_logp, list):
+            self.kl = [self.kl]
+            curr_logp = [curr_logp]
+            prev_logp = [prev_logp]
+            self.entropy = [self.entropy]
+        kl_prod = tf.add_n([kl_coeff[i]*kl_i for
+                            i, kl_i in enumerate(self.kl)])
+
+        # Make loss functions.
+        self.ratio = [tf.exp(curr - prev)
+                      for curr, prev in zip(curr_logp, prev_logp)]
+        self.mean_kl = [tf.reduce_mean(kl_i) for kl_i in self.kl]
         self.mean_entropy = tf.reduce_mean(self.entropy)
-        self.surr1 = self.ratio * advantages
-        self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
+        self.entropy = tf.add_n(self.entropy)
+        self.surr1 = [ratio_i * advantages for ratio_i in self.ratio]
+        self.surr2 = [tf.clip_by_value(ratio_i, 1 - config["clip_param"],
                                       1 + config["clip_param"]) * advantages
-        self.surr = tf.minimum(self.surr1, self.surr2)
+                      for ratio_i in self.ratio]
+        self.surr = [tf.minimum(surr1_i, surr2_i) for surr1_i, surr2_i in
+                     zip(self.surr1, self.surr2)]
+        self.surr = tf.add_n(self.surr)
         self.mean_policy_loss = tf.reduce_mean(-self.surr)
 
         if config["use_gae"]:
@@ -63,14 +78,14 @@ class ProximalPolicyLoss(object):
             self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
             self.loss = tf.reduce_mean(
-                -self.surr + kl_coeff * self.kl +
+                -self.surr + kl_prod +
                 config["vf_loss_coeff"] * self.vf_loss -
                 config["entropy_coeff"] * self.entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
             self.loss = tf.reduce_mean(
                 -self.surr +
-                kl_coeff * self.kl -
+                kl_prod -
                 config["entropy_coeff"] * self.entropy)
 
         self.sess = sess

@@ -134,24 +134,24 @@ class MultiActionDistribution(ActionDistribution):
             # Remove extra categorical dimension
             if isinstance(distribution, Categorical):
                 split_list[i] = tf.squeeze(split_list[i], axis=-1)
-        log_list = np.asarray([distribution.logp(split_x) for
+        log_list = [distribution.logp(split_x) for
                               distribution, split_x in
-                               zip(self.child_distributions, split_list)])
-        return np.sum(log_list)
+                               zip(self.child_distributions, split_list)]
+        return log_list
 
     def kl(self, other):
         """The KL-divergence between two action distributions."""
-        kl_list = np.asarray([distribution.kl(other_distribution) for
+        kl_list = [distribution.kl(other_distribution) for
                               distribution, other_distribution in
                               zip(self.child_distributions,
-                                  other.child_distributions)])
-        return np.sum(kl_list)
+                                  other.child_distributions)]
+        return kl_list
 
     def entropy(self):
         """The entropy of the action distribution."""
-        entropy_list = np.array([s.entropy() for s in
-                                 self.child_distributions])
-        return np.sum(entropy_list)
+        entropy_list = [s.entropy() for s in
+                                 self.child_distributions]
+        return entropy_list
 
     def sample(self):
         """Draw a sample from the action distribution."""
