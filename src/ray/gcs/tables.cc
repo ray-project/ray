@@ -335,6 +335,7 @@ template class Log<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;
+template class Log<TaskID, TaskReconstructionData>;
 
 }  // namespace gcs
 

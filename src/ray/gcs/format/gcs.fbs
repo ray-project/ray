@@ -10,7 +10,8 @@ enum TablePrefix:int {
   RAYLET_TASK,
   CLIENT,
   OBJECT,
-  FUNCTION
+  FUNCTION,
+  TASK_RECONSTRUCTION
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -38,6 +39,11 @@ table ObjectTableData {
   object_size: long;
   manager: string;
   is_eviction: bool;
+}
+
+table TaskReconstructionData {
+  num_executions: int;
+  node_manager_id: string;
 }
 
 enum SchedulingState:int {

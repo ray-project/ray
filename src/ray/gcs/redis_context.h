@@ -65,12 +65,12 @@ class RedisContext {
   /// \param pubsub_channel
   /// \param callback_index
   /// \param log_index The RAY.TABLE_APPEND command takes in an optional index
-  ///        at which the data must be appended. For all other commands, this
-  ///        is unused. If this set, then data must be provided.
+  ///        at which the data must be appended. For all other commands, set to
+  ///        -1 for unused. If set, then data must be provided.
   Status RunAsync(const std::string &command, const UniqueID &id, const uint8_t *data,
                   int64_t length, const TablePrefix prefix,
                   const TablePubsub pubsub_channel, int64_t callback_index,
-                  int log_index = 1);
+                  int log_index = -1);
 
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         int64_t callback_index);

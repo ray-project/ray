@@ -232,8 +232,8 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
     test->IncrementNumCallbacks();
   };
 
-  RAY_CHECK_OK(
-      client->task_reconstruction_log().Append(job_id, task_id, data_log[0], nullptr));
+  RAY_CHECK_OK(client->task_reconstruction_log().Append(job_id, task_id, data_log.front(),
+                                                        nullptr));
   RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(job_id, task_id, data_log[1],
                                                           nullptr, failure_callback, 0));
   RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(job_id, task_id, data_log[1],

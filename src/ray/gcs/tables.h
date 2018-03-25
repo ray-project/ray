@@ -244,6 +244,15 @@ using ClassTable = Table<ClassID, ClassTableData>;
 // TODO(swang): Set the pubsub channel for the actor table.
 using ActorTable = Table<ActorID, ActorTableData>;
 
+class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
+ public:
+  TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
+                        AsyncGcsClient *client)
+      : Log(context, client) {
+    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+  }
+};
+
 namespace raylet {
 
 class TaskTable : public Table<TaskID, ray::protocol::Task> {
