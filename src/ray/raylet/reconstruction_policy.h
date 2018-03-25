@@ -9,6 +9,7 @@
 #include <boost/asio/error.hpp>
 
 #include "ray/gcs/format/gcs_generated.h"
+#include "ray/gcs/tables.h"
 #include "ray/id.h"
 
 namespace ray {
@@ -19,14 +20,19 @@ namespace raylet {
 
 class ReconstructionPolicy {
  public:
+  using ReconstructionCallback = std::function<void(const TaskID &)>;
   /// Create the reconstruction policy.
   ///
   /// \param reconstruction_handler The handler to call if a task needs to be
   /// re-executed.
   // TODO(swang): This requires at minimum references to the Raylet's lineage
   // cache and GCS client.
-  ReconstructionPolicy(boost::asio::io_service &io_service,
-                       std::function<void(const TaskID &)> reconstruction_handler) {}
+  ReconstructionPolicy(
+      boost::asio::io_service &io_service,
+      gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log,
+      const ReconstructionCallback &reconstruction_handler)
+      : reconstruction_handler_(reconstruction_handler),
+        task_reconstruction_log_(task_reconstruction_log) {}
 
   /// Listen for information about this object. If no notifications arrive
   /// within the timeout, or if a notification about object eviction or failure
@@ -62,6 +68,8 @@ class ReconstructionPolicy {
                           const std::vector<ObjectTableDataT> new_locations);
   void Reconstruct(const ObjectID &object_id);
 
+  const ReconstructionCallback reconstruction_handler_;
+  gcs::LogStorage<TaskID, TaskReconstructionData> &task_reconstruction_log_;
   /// The objects that we are listening for.
   std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> listening_objects_;
   /// The objects that we have not received a notification for since the last

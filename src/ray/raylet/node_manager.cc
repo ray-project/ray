@@ -17,7 +17,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       worker_pool_(config.num_initial_workers, config.worker_command),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
-      reconstruction_policy_(io_service,
+      reconstruction_policy_(io_service, gcs_client_->task_reconstruction_log(),
                              [this](const TaskID &task_id) { ResubmitTask(task_id); }),
       task_dependency_manager_(
           object_manager,
