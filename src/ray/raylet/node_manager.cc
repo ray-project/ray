@@ -11,6 +11,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : io_service_(io_service),
+      heartbeat_timer_(io_service),
+      heartbeat_period_ms_(config.heartbeat_period_ms),
       local_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.worker_command),
       local_queues_(SchedulingQueue()),
@@ -25,9 +27,21 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       remote_clients_(),
       remote_server_connections_(),
       object_manager_(object_manager) {
+  RAY_CHECK(heartbeat_period_ms_ > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id, SchedulingResources(config.resource_config));
+}
+
+void NodeManager::Heartbeat() {
+  // TODO(atumanov): Send the heartbeat to the GCS.
+
+  auto heartbeat_period = boost::posix_time::milliseconds(heartbeat_period_ms_);
+  heartbeat_timer_.expires_from_now(heartbeat_period);
+  heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
+    RAY_CHECK(!error);
+    Heartbeat();
+  });
 }
 
 void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
@@ -35,6 +49,9 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
   ClientID client_id = ClientID::from_binary(data.client_id);
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
+    // We got a notification for ourselves, so we are connected to the GCS now.
+    // Start sending heartbeats to the GCS.
+    Heartbeat();
     return;
   }
   // TODO(atumanov): make remote client lookup O(1)

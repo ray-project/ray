@@ -22,6 +22,7 @@ struct NodeManagerConfig {
   ResourceSet resource_config;
   int num_initial_workers;
   std::vector<const char *> worker_command;
+  uint64_t heartbeat_period_ms;
 };
 
 class NodeManager {
@@ -73,8 +74,12 @@ class NodeManager {
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
   ray::Status ForwardTask(Task &task, const ClientID &node_id);
+  /// Send heartbeats to the GCS.
+  void Heartbeat();
 
   boost::asio::io_service &io_service_;
+  boost::asio::deadline_timer heartbeat_timer_;
+  uint64_t heartbeat_period_ms_;
   /// The resources local to this node.
   SchedulingResources local_resources_;
   // TODO(atumanov): Add resource information from other nodes.

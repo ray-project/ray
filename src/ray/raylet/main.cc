@@ -23,6 +23,8 @@ int main(int argc, char *argv[]) {
       "../../../src/ray/python/default_worker.py");
   node_manager_config.worker_command.push_back(raylet_socket_name.c_str());
   node_manager_config.worker_command.push_back(store_socket_name.c_str());
+  // TODO(swang): Set this from a global config.
+  node_manager_config.heartbeat_period_ms = 100;
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig om_config;
