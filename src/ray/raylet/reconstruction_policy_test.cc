@@ -40,9 +40,10 @@ class ReconstructionPolicyTest : public ::testing::Test {
  public:
   ReconstructionPolicyTest() : io_service_(), mock_gcs_() {}
 
-  ReconstructionPolicy MakeReconstructionPolicy(uint64_t reconstruction_timeout_ms) {
-    return ReconstructionPolicy(
-        io_service_, mock_gcs_,
+  std::shared_ptr<ReconstructionPolicy> MakeReconstructionPolicy(
+      uint64_t reconstruction_timeout_ms) {
+    return std::make_shared<ReconstructionPolicy>(
+        io_service_, ClientID::from_random(), mock_gcs_,
         [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
         reconstruction_timeout_ms);
   }
@@ -101,12 +102,14 @@ class ReconstructionPolicyTest : public ::testing::Test {
 
 TEST_F(ReconstructionPolicyTest, TestReconstruction) {
   TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
   ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
   uint64_t timeout_ms = 500;
   auto reconstruction_policy = MakeReconstructionPolicy(timeout_ms);
-  reconstruction_policy.Listen(object_id);
+  reconstruction_policy->Listen(object_id);
+  reconstruction_policy->Tick();
   // Run the test for longer than the reconstruction timeout.
   Run(timeout_ms * 1.1);
 
@@ -114,20 +117,22 @@ TEST_F(ReconstructionPolicyTest, TestReconstruction) {
   // object.
   auto reconstructions = ReconstructionsTriggered();
   ASSERT_EQ(reconstructions.size(), 1);
-  ASSERT_TRUE(reconstructions[task_id] == 1);
+  ASSERT_EQ(reconstructions[task_id], 1);
 }
 
 TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   // Create two object IDs produced by the same task.
   TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
   ObjectID object_id1 = ComputeReturnId(task_id, 1);
   ObjectID object_id2 = ComputeReturnId(task_id, 2);
 
   // Listen for both objects.
   uint64_t timeout_ms = 500;
   auto reconstruction_policy = MakeReconstructionPolicy(timeout_ms);
-  reconstruction_policy.Listen(object_id1);
-  reconstruction_policy.Listen(object_id2);
+  reconstruction_policy->Listen(object_id1);
+  reconstruction_policy->Listen(object_id2);
+  reconstruction_policy->Tick();
   // Run the test for longer than the reconstruction timeout.
   Run(timeout_ms * 1.1);
 
@@ -135,18 +140,19 @@ TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   // both objects.
   auto reconstructions = ReconstructionsTriggered();
   ASSERT_EQ(reconstructions.size(), 1);
-  ASSERT_TRUE(reconstructions[task_id] == 1);
+  ASSERT_EQ(reconstructions[task_id], 1);
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
   ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
   uint64_t timeout_ms = 500;
-  auto reconstruction_policy =
-      std::make_shared<ReconstructionPolicy>(MakeReconstructionPolicy(timeout_ms));
+  auto reconstruction_policy = MakeReconstructionPolicy(timeout_ms);
   reconstruction_policy->Listen(object_id);
+  reconstruction_policy->Tick();
   // Send the reconstruction manager heartbeats about the object.
   SetTimer(timeout_ms / 2, [reconstruction_policy,
                             object_id]() { reconstruction_policy->Notify(object_id); },
@@ -161,13 +167,14 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
   ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
   uint64_t timeout_ms = 500;
-  auto reconstruction_policy =
-      std::make_shared<ReconstructionPolicy>(MakeReconstructionPolicy(timeout_ms));
+  auto reconstruction_policy = MakeReconstructionPolicy(timeout_ms);
   reconstruction_policy->Listen(object_id);
+  reconstruction_policy->Tick();
   // Halfway through the reconstruction timeout, cancel the object
   // reconstruction.
   SetTimer(timeout_ms / 2, [reconstruction_policy,

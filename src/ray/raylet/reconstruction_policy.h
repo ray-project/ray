@@ -28,13 +28,19 @@ class ReconstructionPolicy {
   // TODO(swang): This requires at minimum references to the Raylet's lineage
   // cache and GCS client.
   ReconstructionPolicy(
-      boost::asio::io_service &io_service,
+      boost::asio::io_service &io_service, ClientID client_id,
       gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log,
       const ReconstructionCallback &reconstruction_handler,
       uint64_t reconstruction_timeout_ms)
-      : task_reconstruction_log_(task_reconstruction_log),
+      : reconstruction_timer_(io_service),
+        client_id_(client_id),
+        task_reconstruction_log_(task_reconstruction_log),
         reconstruction_handler_(reconstruction_handler),
-        reconstruction_timeout_ms_(reconstruction_timeout_ms) {}
+        reconstruction_timeout_ms_(reconstruction_timeout_ms) {
+    Tick();
+  }
+
+  void Tick();
 
   /// Listen for information about this object. If no notifications arrive
   /// within the timeout, or if a notification about object eviction or failure
@@ -60,7 +66,7 @@ class ReconstructionPolicy {
     ObjectID object_id;
     int version;
     std::vector<ObjectTableDataT> location_entries;
-    boost::asio::deadline_timer reconstruction_timer;
+    int num_ticks;
   };
 
   /// Handle a notification for an object's new locations. The list of new
@@ -68,16 +74,22 @@ class ReconstructionPolicy {
   /// creating the object.
   void HandleNotification(const ObjectID &object_id,
                           const std::vector<ObjectTableDataT> new_locations);
+  void HandleTaskLogAppend(const TaskID &task_id,
+                           std::shared_ptr<TaskReconstructionDataT> data);
   void Reconstruct(const ObjectID &object_id);
 
+  boost::asio::deadline_timer reconstruction_timer_;
+  ClientID client_id_;
   gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;
   const ReconstructionCallback reconstruction_handler_;
   uint64_t reconstruction_timeout_ms_;
   /// The objects that we are listening for.
   std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> listening_objects_;
+  /// The objects that we are attempting to reconstruct.
+  std::unordered_map<TaskID, std::vector<ObjectID>, UniqueIDHasher> reconstructing_tasks_;
   /// The objects that we have not received a notification for since the last
   /// timer reset.
-  std::unordered_set<ObjectID, UniqueIDHasher> timed_out_objects_;
+  std::unordered_map<ObjectID, int, UniqueIDHasher> object_ticks_;
 };
 
 }  // namespace raylet
