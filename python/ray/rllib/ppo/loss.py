@@ -45,9 +45,10 @@ class ProximalPolicyLoss(object):
         self.kl = self.prev_dist.kl(self.curr_dist)
         self.entropy = self.curr_dist.entropy()
         # if the model is shared there's only one kl term
+        # so add up the kls
         if self.shared_model:
-            self.kl = tf.add_n(self.kl)
-            self.entropy = tf.add_n(self.entropy)
+            self.kl = [tf.add_n(self.kl)/len(self.kl)]
+            self.entropy = [tf.add_n(self.entropy)/len(self.entropy)]
 
         if not isinstance(curr_logp, list):
             self.kl = [self.kl]

@@ -52,7 +52,7 @@ if __name__ == '__main__':
     config["model"].update({"fcnet_hiddens": [32, 32]})
     options = {"multiagent_obs_shapes": [3, 3],
                "multiagent_act_shapes": [1, 1],
-               "multiagent_shared_model": False,
+               "multiagent_shared_model": True,
                "multiagent_fcnet_hiddens": [[16, 16]] * 2}
     config["model"].update({"custom_options": options})
     register_env("DoubleMultiAgentPendulumEnv-v0", create_env)
