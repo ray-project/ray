@@ -16,12 +16,12 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
   // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
-  RAY_LOG(INFO) << "[Schedule] cluster resource map: ";
+  RAY_LOG(DEBUG) << "[Schedule] cluster resource map: ";
   for (const auto &client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
     const ClientID &client_id = client_resource_pair.first;
     const SchedulingResources &resources = client_resource_pair.second;
-    RAY_LOG(INFO) << "client_id: " << client_id.hex() << " "
+    RAY_LOG(DEBUG) << "client_id: " << client_id.hex() << " "
                   << resources.GetAvailableResources().ToString();
   }
 
@@ -30,7 +30,7 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     // Get task's resource demand
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     const TaskID &task_id = t.GetTaskSpecification().TaskId();
-    RAY_LOG(INFO) << "[SchedulingPolicy]: task=" << task_id.hex()
+    RAY_LOG(DEBUG) << "[SchedulingPolicy]: task=" << task_id.hex()
                   << " numforwards=" << t.GetTaskExecutionSpecReadonly().NumForwards()
                   << " resources="
                   << t.GetTaskSpecification().GetRequiredResources().ToString();
@@ -62,7 +62,7 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
     int client_key_index = distribution(gen_);
     decision[task_id] = client_keys[client_key_index];
-    RAY_LOG(INFO) << "[SchedulingPolicy] idx=" << client_key_index << " " << task_id.hex()
+    RAY_LOG(DEBUG) << "[SchedulingPolicy] idx=" << client_key_index << " " << task_id.hex()
                   << " --> " << client_keys[client_key_index].hex();
   }
   return decision;

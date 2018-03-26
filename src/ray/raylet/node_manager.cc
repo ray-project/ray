@@ -88,7 +88,7 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
     ray::Status status = client->heartbeat_table().Subscribe(
         UniqueID::nil(), UniqueID::nil(), heartbeat_added,
         [this](gcs::AsyncGcsClient *client) {
-          RAY_LOG(INFO) << "heartbeat table subscription done callback called.";
+          RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
         });
     RAY_CHECK_OK(status);
 
@@ -97,7 +97,7 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
   // TODO(atumanov): make remote client lookup O(1)
   if (std::find(remote_clients_.begin(), remote_clients_.end(), client_id) ==
       remote_clients_.end()) {
-    RAY_LOG(INFO) << "a new client: " << client_id.hex();
+    RAY_LOG(DEBUG) << "a new client: " << client_id.hex();
     remote_clients_.push_back(client_id);
   } else {
     // NodeManager connection to this client was already established.
@@ -226,7 +226,6 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
 
 void NodeManager::ProcessNewNodeManager(
     std::shared_ptr<TcpClientConnection> node_manager_client) {
-  RAY_LOG(INFO) << "a new node manager connected!";
   node_manager_client->ProcessMessages();
 }
 
@@ -261,11 +260,11 @@ void NodeManager::ScheduleTasks() {
   auto policy_decision = scheduling_policy_.Schedule(
       cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(),
       remote_clients_);
-  RAY_LOG(INFO) << "[NM ScheduleTasks] policy decision:";
+  RAY_LOG(DEBUG) << "[NM ScheduleTasks] policy decision:";
   for (const auto &pair : policy_decision) {
     TaskID task_id = pair.first;
     ClientID client_id = pair.second;
-    RAY_LOG(INFO) << task_id.hex() << " --> " << client_id.hex();
+    RAY_LOG(DEBUG) << task_id.hex() << " --> " << client_id.hex();
   }
 
   // Extract decision for this local scheduler.
