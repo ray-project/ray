@@ -215,6 +215,61 @@ TEST_F(TestGcsWithAsio, TestTableLookupFailure) {
   TestTableLookupFailure(job_id_, client_);
 }
 
+void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
+  TaskID task_id = TaskID::from_random();
+  std::vector<std::string> managers = {"A", "B"};
+  std::vector<std::shared_ptr<TaskReconstructionDataT>> data_log;
+  for (const auto &manager : managers) {
+    auto data = std::make_shared<TaskReconstructionDataT>();
+    data->node_manager_id = manager;
+    data_log.push_back(data);
+  }
+
+  // Check that we added the correct task.
+  auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                    const std::shared_ptr<TaskReconstructionDataT> d) {
+    ASSERT_EQ(id, task_id);
+    test->IncrementNumCallbacks();
+  };
+
+  RAY_CHECK_OK(
+      client->task_reconstruction_log().Append(job_id, task_id, data_log[0], nullptr));
+  RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(job_id, task_id, data_log[1],
+                                                          nullptr, failure_callback, 0));
+  RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(job_id, task_id, data_log[1],
+                                                          nullptr, failure_callback, 2));
+  RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(job_id, task_id, data_log[1],
+                                                          nullptr, failure_callback, 1));
+
+  auto lookup_callback = [task_id, managers](
+      gcs::AsyncGcsClient *client, const UniqueID &id,
+      const std::vector<TaskReconstructionDataT> &data) {
+    std::vector<std::string> appended_managers;
+    for (const auto &entry : data) {
+      appended_managers.push_back(entry.node_manager_id);
+    }
+    ASSERT_EQ(appended_managers, managers);
+    test->Stop();
+  };
+  RAY_CHECK_OK(
+      client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
+  // Run the event loop. The loop will only stop if the Lookup callback is
+  // called (or an assertion failure).
+  test->Start();
+  ASSERT_EQ(test->NumCallbacks(), 2);
+}
+
+TEST_F(TestGcsWithAe, TestLogAppendAt) {
+  test = this;
+  TestLogAppendAt(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAsio, TestLogAppendAt) {
+  test = this;
+  TestLogAppendAt(job_id_, client_);
+}
+
+// Task table callbacks.
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
                const std::shared_ptr<TaskTableDataT> data) {
   ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);

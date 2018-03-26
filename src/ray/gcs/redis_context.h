@@ -53,9 +53,25 @@ class RedisContext {
   ~RedisContext();
   Status Connect(const std::string &address, int port);
   Status AttachToEventLoop(aeEventLoop *loop);
+
+  /// Run an operation on some table key.
+  ///
+  /// \param command The command to run. This must match a registered Ray Redis
+  ///        command. These are strings of the format "RAY.TABLE_*".
+  /// \param id The table key to run the operation at.
+  /// \param data The data to add to the table key, if any.
+  /// \param length The length of the data to be added, if data is provided.
+  /// \param prefix
+  /// \param pubsub_channel
+  /// \param callback_index
+  /// \param log_index The RAY.TABLE_APPEND command takes in an optional index
+  ///        at which the data must be appended. For all other commands, this
+  ///        is unused. If this set, then data must be provided.
   Status RunAsync(const std::string &command, const UniqueID &id, const uint8_t *data,
-                  int64_t length, int index, const TablePrefix prefix,
-                  const TablePubsub pubsub_channel, int64_t callback_index);
+                  int64_t length, const TablePrefix prefix,
+                  const TablePubsub pubsub_channel, int64_t callback_index,
+                  int log_index = 1);
+
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         int64_t callback_index);
   redisAsyncContext *async_context() { return async_context_; }

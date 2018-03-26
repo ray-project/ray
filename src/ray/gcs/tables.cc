@@ -24,7 +24,7 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, data.get()));
   return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            -1, prefix_, pubsub_channel_, callback_index);
+                            prefix_, pubsub_channel_, callback_index);
 }
 
 template <typename ID, typename Data>
@@ -50,7 +50,7 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, data.get()));
   return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            index, prefix_, pubsub_channel_, callback_index);
+                            prefix_, pubsub_channel_, callback_index, index);
 }
 
 template <typename ID, typename Data>
@@ -77,7 +77,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
         return true;
       });
   std::vector<uint8_t> nil;
-  return context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), -1, prefix_,
+  return context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), prefix_,
                             pubsub_channel_, callback_index);
 }
 
@@ -131,7 +131,7 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), -1, prefix_, pubsub_channel_,
+                            client_id.size(), prefix_, pubsub_channel_,
                             /*callback_index=*/-1);
 }
 
@@ -141,7 +141,7 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), -1, prefix_, pubsub_channel_,
+                            client_id.size(), prefix_, pubsub_channel_,
                             /*callback_index=*/-1);
 }
 
@@ -161,7 +161,7 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, data.get()));
   return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            -1, prefix_, pubsub_channel_, callback_index);
+                            prefix_, pubsub_channel_, callback_index);
 }
 
 template <typename ID, typename Data>
