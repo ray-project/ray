@@ -15,12 +15,18 @@ namespace raylet {
 class MockGcs : virtual public gcs::LogStorage<TaskID, TaskReconstructionData> {
  public:
   MockGcs(){};
-  Status Append(
+  Status AppendAt(
       const JobID &job_id, const TaskID &task_id,
       std::shared_ptr<TaskReconstructionDataT> task_reconstruction_data,
-      const gcs::LogStorage<TaskID, TaskReconstructionData>::WriteCallback &done) {
-    task_log_[task_id].push_back(task_reconstruction_data);
-    done(NULL, task_id, task_reconstruction_data);
+      const gcs::LogStorage<TaskID, TaskReconstructionData>::WriteCallback &done,
+      const gcs::LogStorage<TaskID, TaskReconstructionData>::WriteCallback &failure,
+      int index) {
+    if (task_log_[task_id].size() == static_cast<size_t>(index)) {
+      task_log_[task_id].push_back(task_reconstruction_data);
+      done(NULL, task_id, task_reconstruction_data);
+    } else {
+      failure(NULL, task_id, task_reconstruction_data);
+    }
     return ray::Status::OK();
   };
 
@@ -38,14 +44,19 @@ class MockGcs : virtual public gcs::LogStorage<TaskID, TaskReconstructionData> {
 
 class ReconstructionPolicyTest : public ::testing::Test {
  public:
-  ReconstructionPolicyTest() : io_service_(), mock_gcs_() {}
+  ReconstructionPolicyTest()
+      : io_service_(),
+        mock_gcs_(),
+        reconstruction_timeout_ms_(100),
+        reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
+            io_service_, ClientID::from_random(), mock_gcs_,
+            [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
+            reconstruction_timeout_ms_)),
+        timer_canceled_(false) {}
 
-  std::shared_ptr<ReconstructionPolicy> MakeReconstructionPolicy(
-      uint64_t reconstruction_timeout_ms) {
-    return std::make_shared<ReconstructionPolicy>(
-        io_service_, ClientID::from_random(), mock_gcs_,
-        [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
-        reconstruction_timeout_ms);
+  uint64_t GetReconstructionTimeoutMs() const { return reconstruction_timeout_ms_; }
+  std::shared_ptr<ReconstructionPolicy> GetReconstructionPolicy() {
+    return reconstruction_policy_;
   }
 
   const std::unordered_map<TaskID, int, UniqueIDHasher> &ReconstructionsTriggered()
@@ -61,6 +72,9 @@ class ReconstructionPolicyTest : public ::testing::Test {
             std::shared_ptr<boost::asio::deadline_timer> timer,
             boost::posix_time::milliseconds timer_period, bool periodic,
             const boost::system::error_code &error) {
+    if (timer_canceled_) {
+      return;
+    }
     ASSERT_FALSE(error);
     handler();
     if (periodic) {
@@ -74,6 +88,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
 
   void SetTimer(uint64_t period_ms, const std::function<void(void)> &handler,
                 bool periodic) {
+    timer_canceled_ = false;
     auto timer_period = boost::posix_time::milliseconds(period_ms);
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
     timer->async_wait([this, handler, timer, timer_period,
@@ -82,45 +97,58 @@ class ReconstructionPolicyTest : public ::testing::Test {
     });
   }
 
+  void CancelTimer() { timer_canceled_ = true; }
+
   void Run(uint64_t reconstruction_timeout_ms) {
     auto timer_period = boost::posix_time::milliseconds(reconstruction_timeout_ms);
-    test_timer_ =
-        std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
-    test_timer_->async_wait([this](const boost::system::error_code &error) {
+    auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
+    timer->async_wait([this](const boost::system::error_code &error) {
       ASSERT_FALSE(error);
       io_service_.stop();
     });
     io_service_.run();
+    io_service_.reset();
   }
 
  protected:
   boost::asio::io_service io_service_;
   MockGcs mock_gcs_;
+  uint64_t reconstruction_timeout_ms_;
+  std::shared_ptr<ReconstructionPolicy> reconstruction_policy_;
+  bool timer_canceled_;
   std::unordered_map<TaskID, int, UniqueIDHasher> reconstructions_triggered_;
-  std::shared_ptr<boost::asio::deadline_timer> test_timer_;
 };
 
 TEST_F(ReconstructionPolicyTest, TestReconstruction) {
+  auto reconstruction_policy = GetReconstructionPolicy();
+  auto timeout_ms = GetReconstructionTimeoutMs();
   TaskID task_id = TaskID::from_random();
   task_id = FinishTaskId(task_id);
   ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
-  uint64_t timeout_ms = 500;
-  auto reconstruction_policy = MakeReconstructionPolicy(timeout_ms);
   reconstruction_policy->Listen(object_id);
   reconstruction_policy->Tick();
   // Run the test for longer than the reconstruction timeout.
   Run(timeout_ms * 1.1);
-
   // Check that reconstruction was triggered for the task that created the
   // object.
   auto reconstructions = ReconstructionsTriggered();
   ASSERT_EQ(reconstructions.size(), 1);
   ASSERT_EQ(reconstructions[task_id], 1);
+
+  // Run the test again.
+  reconstruction_policy->Tick();
+  Run(timeout_ms * 1.1);
+  // Check that reconstruction was triggered again.
+  reconstructions = ReconstructionsTriggered();
+  ASSERT_EQ(reconstructions.size(), 1);
+  ASSERT_EQ(reconstructions[task_id], 2);
 }
 
 TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
+  auto reconstruction_policy = GetReconstructionPolicy();
+  auto timeout_ms = GetReconstructionTimeoutMs();
   // Create two object IDs produced by the same task.
   TaskID task_id = TaskID::from_random();
   task_id = FinishTaskId(task_id);
@@ -128,29 +156,34 @@ TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   ObjectID object_id2 = ComputeReturnId(task_id, 2);
 
   // Listen for both objects.
-  uint64_t timeout_ms = 500;
-  auto reconstruction_policy = MakeReconstructionPolicy(timeout_ms);
   reconstruction_policy->Listen(object_id1);
   reconstruction_policy->Listen(object_id2);
   reconstruction_policy->Tick();
   // Run the test for longer than the reconstruction timeout.
   Run(timeout_ms * 1.1);
-
   // Check that reconstruction is only triggered once for the task that created
   // both objects.
   auto reconstructions = ReconstructionsTriggered();
   ASSERT_EQ(reconstructions.size(), 1);
   ASSERT_EQ(reconstructions[task_id], 1);
+
+  // Run the test again.
+  reconstruction_policy->Tick();
+  Run(timeout_ms * 1.1);
+  // Check that reconstruction is again only triggered once.
+  reconstructions = ReconstructionsTriggered();
+  ASSERT_EQ(reconstructions.size(), 1);
+  ASSERT_EQ(reconstructions[task_id], 2);
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
+  auto reconstruction_policy = GetReconstructionPolicy();
+  auto timeout_ms = GetReconstructionTimeoutMs();
   TaskID task_id = TaskID::from_random();
   task_id = FinishTaskId(task_id);
   ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
-  uint64_t timeout_ms = 500;
-  auto reconstruction_policy = MakeReconstructionPolicy(timeout_ms);
   reconstruction_policy->Listen(object_id);
   reconstruction_policy->Tick();
   // Send the reconstruction manager heartbeats about the object.
@@ -159,20 +192,29 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
            /*periodic=*/true);
   // Run the test for much longer than the reconstruction timeout.
   Run(timeout_ms * 2);
-
   // Check that reconstruction is suppressed.
   auto reconstructions = ReconstructionsTriggered();
   ASSERT_EQ(reconstructions.size(), 0);
+
+  // Cancel the heartbeats to the reconstruction manager.
+  CancelTimer();
+  // Run the test again.
+  reconstruction_policy->Tick();
+  Run(timeout_ms * 1.1);
+  // Check that this time, reconstruction is triggered.
+  reconstructions = ReconstructionsTriggered();
+  ASSERT_EQ(reconstructions.size(), 1);
+  ASSERT_EQ(reconstructions[task_id], 1);
 }
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
+  auto reconstruction_policy = GetReconstructionPolicy();
+  auto timeout_ms = GetReconstructionTimeoutMs();
   TaskID task_id = TaskID::from_random();
   task_id = FinishTaskId(task_id);
   ObjectID object_id = ComputeReturnId(task_id, 1);
 
   // Listen for an object.
-  uint64_t timeout_ms = 500;
-  auto reconstruction_policy = MakeReconstructionPolicy(timeout_ms);
   reconstruction_policy->Listen(object_id);
   reconstruction_policy->Tick();
   // Halfway through the reconstruction timeout, cancel the object
@@ -181,10 +223,19 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
                             object_id]() { reconstruction_policy->Cancel(object_id); },
            /*periodic=*/false);
   Run(timeout_ms * 2);
-
   // Check that reconstruction is suppressed.
   auto reconstructions = ReconstructionsTriggered();
   ASSERT_EQ(reconstructions.size(), 0);
+
+  // Listen for the object again.
+  reconstruction_policy->Listen(object_id);
+  // Run the test again.
+  reconstruction_policy->Tick();
+  Run(timeout_ms * 1.1);
+  // Check that this time, reconstruction is triggered.
+  reconstructions = ReconstructionsTriggered();
+  ASSERT_EQ(reconstructions.size(), 1);
+  ASSERT_EQ(reconstructions[task_id], 1);
 }
 
 }  // namespace raylet
