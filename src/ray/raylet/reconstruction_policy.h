@@ -75,7 +75,7 @@ class ReconstructionPolicy {
   void HandleNotification(const ObjectID &object_id,
                           const std::vector<ObjectTableDataT> new_locations);
   void HandleTaskLogAppend(const TaskID &task_id,
-                           std::shared_ptr<TaskReconstructionDataT> data);
+                           std::shared_ptr<TaskReconstructionDataT> data, bool appended);
   void Reconstruct(const ObjectID &object_id);
 
   boost::asio::deadline_timer reconstruction_timer_;

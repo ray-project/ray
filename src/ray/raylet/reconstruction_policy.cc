@@ -36,10 +36,8 @@ void ReconstructionPolicy::Listen(const ObjectID &object_id) {
 }
 
 void ReconstructionPolicy::Notify(const ObjectID &object_id) {
-  auto num_ticks = listening_objects_[object_id].num_ticks;
-  RAY_CHECK(num_ticks > 0);
   // Reset this object's timer.
-  object_ticks_[object_id] = num_ticks;
+  object_ticks_[object_id] = listening_objects_[object_id].num_ticks;
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
@@ -61,20 +59,26 @@ void ReconstructionPolicy::HandleNotification(
 }
 
 void ReconstructionPolicy::HandleTaskLogAppend(
-    const TaskID &task_id, std::shared_ptr<TaskReconstructionDataT> data) {
+    const TaskID &task_id, std::shared_ptr<TaskReconstructionDataT> data, bool appended) {
   auto task_entry = reconstructing_tasks_.find(task_id);
   RAY_CHECK(task_entry != reconstructing_tasks_.end());
   auto object_ids = std::move(task_entry->second);
   reconstructing_tasks_.erase(task_entry);
   if (object_ids.empty()) {
+    // If we are no longer listening for objects created by this task, then do
+    // not trigger reconstruction.
     return;
   }
 
-  // We are still listening for objects created by this task. Trigger
+  // If we successfully appended this task re-execution, then trigger
   // reconstruction by calling the registered handler.
-  // TODO(swang): Handle failure to Append.
-  RAY_LOG(DEBUG) << "reconstruction triggered: " << task_id.hex();
-  reconstruction_handler_(task_id);
+  if (appended) {
+    RAY_LOG(DEBUG) << "reconstruction triggered: " << task_id.hex();
+    reconstruction_handler_(task_id);
+  }
+
+  // Compute the index at which we should try to append the task reconstruction
+  // entry next.
   int max_version = data->num_executions;
   for (const auto &object_id : object_ids) {
     if (listening_objects_[object_id].version > max_version) {
@@ -87,7 +91,7 @@ void ReconstructionPolicy::HandleTaskLogAppend(
   for (const auto &object_id : object_ids) {
     auto entry = listening_objects_.find(object_id);
     entry->second.version = max_version;
-    object_ticks_.insert({object_id, entry->second.num_ticks});
+    object_ticks_[object_id] = entry->second.num_ticks;
   }
 }
 
@@ -102,27 +106,30 @@ void ReconstructionPolicy::Reconstruct(const ObjectID &object_id) {
     reconstruction_entry->num_executions = object_entry->second.version + 1;
     reconstruction_entry->node_manager_id = client_id_.binary();
     // TODO(swang): JobID.
-    RAY_CHECK_OK(task_reconstruction_log_.Append(
+    RAY_CHECK_OK(task_reconstruction_log_.AppendAt(
         JobID::nil(), task_id, reconstruction_entry,
+        /*success_callback=*/
         [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
                std::shared_ptr<TaskReconstructionDataT> data) {
-          HandleTaskLogAppend(task_id, data);
-        }));
+          HandleTaskLogAppend(task_id, data, true);
+        },
+        /*failure_callback=*/
+        [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
+               std::shared_ptr<TaskReconstructionDataT> data) {
+          HandleTaskLogAppend(task_id, data, false);
+        },
+        object_entry->second.version));
   }
 }
 
 void ReconstructionPolicy::Tick() {
-  for (auto it = object_ticks_.begin(); it != object_ticks_.end();) {
+  for (auto it = object_ticks_.begin(); it != object_ticks_.end(); it++) {
     // Decrement the number of ticks left before timeout.
     it->second--;
     if (it->second == 0) {
       // It's been at least `num_ticks` since the last notification for this
       // object. Try to re-execute the task that created the object.
       Reconstruct(it->first);
-      // Stop the timer for this object.
-      it = object_ticks_.erase(it);
-    } else {
-      it++;
     }
   }
 
