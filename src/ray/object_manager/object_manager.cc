@@ -138,7 +138,7 @@ void ObjectManager::GetLocationsFailed(ray::Status status, const ObjectID &objec
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
   // Check if object is already local, and client_id is not itself.
-  if (local_objects_.count(object_id) != 0 || client_id == client_id_){
+  if (local_objects_.count(object_id) != 0 || client_id == client_id_) {
     return ray::Status::OK();
   }
 

@@ -58,11 +58,11 @@ class MockServer {
         [this](std::shared_ptr<ReceiverConnection> client) {
           object_manager_.ProcessNewClient(client);
         };
-    ReceiverMessageHandler message_handler = [this](
-        std::shared_ptr<ReceiverConnection> client, int64_t message_type,
-        const uint8_t *message) {
-      object_manager_.ProcessClientMessage(client, message_type, message);
-    };
+    ReceiverMessageHandler message_handler =
+        [this](std::shared_ptr<ReceiverConnection> client, int64_t message_type,
+               const uint8_t *message) {
+          object_manager_.ProcessClientMessage(client, message_type, message);
+        };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = ReceiverConnection::Create(client_handler, message_handler,
                                                      std::move(object_manager_socket_));
@@ -177,16 +177,17 @@ class TestObjectManagerCommands : public TestObjectManager {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback([this](
-        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-      ClientID parsed_id = ClientID::from_binary(data.client_id);
-      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-        num_connected_clients += 1;
-      }
-      if (num_connected_clients == 2) {
-        StartTests();
-      }
-    });
+    gcs_client_1->client_table().RegisterClientAddedCallback(
+        [this](gcs::AsyncGcsClient *client, const ClientID &id,
+               const ClientTableDataT &data) {
+          ClientID parsed_id = ClientID::from_binary(data.client_id);
+          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+            num_connected_clients += 1;
+          }
+          if (num_connected_clients == 2) {
+            StartTests();
+          }
+        });
   }
 
   void StartTests() {

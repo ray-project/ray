@@ -37,4 +37,4 @@ void ObjectStorePool::Add() {
                                          PLASMA_DEFAULT_RELEASE_DELAY));
   available_clients.push_back(clients.back());
 }
-}
+}  // namespace ray

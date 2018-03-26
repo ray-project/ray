@@ -57,6 +57,6 @@ class ObjectStorePool {
   std::vector<std::shared_ptr<plasma::PlasmaClient>> clients;
   std::string store_socket_name_;
 };
-}
+}  // namespace ray
 
 #endif  // RAY_OBJECT_STORE_POOL_H
