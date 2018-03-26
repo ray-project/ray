@@ -502,63 +502,6 @@ int TaskTableAdd(RedisModuleCtx *ctx,
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
-// TODO(swang): Implement the client table as an append-only log so that we
-// don't need this special case for client table publication.
-int ClientTableAdd(RedisModuleCtx *ctx,
-                   RedisModuleString *pubsub_channel_str,
-                   RedisModuleString *data) {
-  const char *buf = RedisModule_StringPtrLen(data, NULL);
-  auto client_data = flatbuffers::GetRoot<ClientTableData>(buf);
-
-  RedisModuleKey *clients_key = (RedisModuleKey *) RedisModule_OpenKey(
-      ctx, pubsub_channel_str, REDISMODULE_READ | REDISMODULE_WRITE);
-  // If this is a client addition, send all previous notifications, in order.
-  // NOTE(swang): This will go to all clients, so some clients will get
-  // duplicate notifications.
-  if (client_data->is_insertion() &&
-      RedisModule_KeyType(clients_key) != REDISMODULE_KEYTYPE_EMPTY) {
-    // NOTE(swang): Sets are not implemented yet, so we use ZSETs instead.
-    CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
-                    clients_key, REDISMODULE_NEGATIVE_INFINITE,
-                    REDISMODULE_POSITIVE_INFINITE, 1, 1),
-                "Unable to initialize zset iterator");
-    do {
-      RedisModuleString *message =
-          RedisModule_ZsetRangeCurrentElement(clients_key, NULL);
-      RedisModuleCallReply *reply =
-          RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, message);
-      if (reply == NULL) {
-        RedisModule_CloseKey(clients_key);
-        return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
-      }
-    } while (RedisModule_ZsetRangeNext(clients_key));
-  }
-
-  // Append this notification to the past notifications so that it will get
-  // sent to new clients in the future.
-  size_t index = RedisModule_ValueLength(clients_key);
-  // Serialize the notification to send.
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateGcsNotification(fbb, fbb.CreateString(""),
-                                       RedisStringToFlatbuf(fbb, data));
-  fbb.Finish(message);
-  auto notification = RedisModule_CreateString(
-      ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
-      fbb.GetSize());
-  RedisModule_ZsetAdd(clients_key, index, notification, NULL);
-  // Publish the notification about this client.
-  RedisModuleCallReply *reply =
-      RedisModule_Call(ctx, "PUBLISH", "ss", pubsub_channel_str, notification);
-  RedisModule_FreeString(ctx, notification);
-  if (reply == NULL) {
-    RedisModule_CloseKey(clients_key);
-    return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
-  }
-
-  RedisModule_CloseKey(clients_key);
-  return RedisModule_ReplyWithSimpleString(ctx, "OK");
-}
-
 /// Publish a notification for a new entry at a key. This publishes a
 /// notification to all subscribers of the table, as well as every client that
 /// has requested notifications for this key.
@@ -575,8 +518,9 @@ int PublishTableAdd(RedisModuleCtx *ctx,
                     RedisModuleString *data) {
   // Serialize the notification to send.
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateGcsNotification(fbb, RedisStringToFlatbuf(fbb, id),
-                                       RedisStringToFlatbuf(fbb, data));
+  auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
+  auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, id),
+                                     fbb.CreateVector(&data_flatbuf, 1));
   fbb.Finish(message);
 
   // Write the data back to any subscribers that are listening to all table
@@ -654,9 +598,6 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
     // TODO(swang): This is only necessary for legacy Ray and should be removed
     // once we switch to using the new GCS API for the task table.
     return TaskTableAdd(ctx, id, data);
-  } else if (pubsub_channel == TablePubsub_CLIENT) {
-    // Publish all previous client table additions to the new client.
-    return ClientTableAdd(ctx, pubsub_channel_str, data);
   } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the channel.
     return PublishTableAdd(ctx, pubsub_channel_str, id, data);
@@ -665,28 +606,109 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
   }
 }
 
-// This is a temporary redis command that will be removed once
-// the GCS uses https://github.com/pcmoritz/credis.
+int TableAppend_RedisCommand(RedisModuleCtx *ctx,
+                             RedisModuleString **argv,
+                             int argc) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+
+  // Set the keys in the table.
+  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
+                                        REDISMODULE_READ | REDISMODULE_WRITE);
+  size_t index = RedisModule_ValueLength(key);
+  RedisModule_ZsetAdd(key, index, data, NULL);
+  RedisModule_CloseKey(key);
+
+  // Publish a message on the requested pubsub channel if necessary.
+  TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
+  if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+    // All other pubsub channels write the data back directly onto the channel.
+    return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+  } else {
+    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+  }
+}
+
+/// A helper function to create and finish a GcsTableEntry, based on the
+/// current value or values at the given key.
+void TableEntryToFlatbuf(RedisModuleKey *table_key,
+                         RedisModuleString *entry_id,
+                         flatbuffers::FlatBufferBuilder &fbb) {
+  auto key_type = RedisModule_KeyType(table_key);
+  switch (key_type) {
+  case REDISMODULE_KEYTYPE_STRING: {
+    // Build the flatbuffer from the string data.
+    size_t data_len = 0;
+    char *data_buf =
+        RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
+    auto data = fbb.CreateString(data_buf, data_len);
+    auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, entry_id),
+                                       fbb.CreateVector(&data, 1));
+    fbb.Finish(message);
+  } break;
+  case REDISMODULE_KEYTYPE_ZSET: {
+    // Build the flatbuffer from the set of log entries.
+    RAY_CHECK(RedisModule_ZsetFirstInScoreRange(
+                  table_key, REDISMODULE_NEGATIVE_INFINITE,
+                  REDISMODULE_POSITIVE_INFINITE, 1, 1) == REDISMODULE_OK);
+    std::vector<flatbuffers::Offset<flatbuffers::String>> data;
+    for (; !RedisModule_ZsetRangeEndReached(table_key);
+         RedisModule_ZsetRangeNext(table_key)) {
+      data.push_back(RedisStringToFlatbuf(
+          fbb, RedisModule_ZsetRangeCurrentElement(table_key, NULL)));
+    }
+    auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, entry_id),
+                                       fbb.CreateVector(data));
+    fbb.Finish(message);
+  } break;
+  default:
+    RAY_LOG(FATAL) << "Invalid Redis type during lookup: " << key_type;
+  }
+}
+
+/// Lookup the current value or values at a key. Returns the current value or
+/// values at the key.
+///
+/// This is called from a client with the command:
+//
+///    RAY.TABLE_LOOKUP <table_prefix> <pubsub_channel> <id>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for
+///        this key should be published to. This field is unused for lookups.
+/// \param id The ID of the key to lookup.
+/// \return nil if the key is empty, the current value if the key type is a
+///         string, or an array of the current values if the key type is a set.
 int TableLookup_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
-  if (argc != 4) {
+  if (argc < 4) {
     return RedisModule_WrongArity(ctx);
   }
 
   RedisModuleString *prefix_str = argv[1];
   RedisModuleString *id = argv[3];
 
-  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
-  if (key == nullptr) {
-    return RedisModule_ReplyWithNull(ctx);
+  // Lookup the data at the key.
+  RedisModuleKey *table_key =
+      OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
+  if (table_key == nullptr) {
+    RedisModule_ReplyWithNull(ctx);
+  } else {
+    // Serialize the data to a flatbuffer to return to the client.
+    flatbuffers::FlatBufferBuilder fbb;
+    TableEntryToFlatbuf(table_key, id, fbb);
+    RedisModule_ReplyWithStringBuffer(
+        ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+        fbb.GetSize());
   }
-  size_t len = 0;
-  const char *buf = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
-
-  RedisModule_ReplyWithStringBuffer(ctx, buf, len);
-
-  RedisModule_CloseKey(key);
+  RedisModule_CloseKey(table_key);
 
   return REDISMODULE_OK;
 }
@@ -706,7 +728,8 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
 ///        client, the channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to publish notifications for.
 /// \param client_id The ID of the client that is being notified.
-/// \return The current value at the key, or OK if there is no value.
+/// \return nil if the key is empty, the current value if the key type is a
+///         string, or an array of the current values if the key type is a set.
 int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
                                            RedisModuleString **argv,
                                            int argc) {
@@ -728,36 +751,27 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
   CHECK_ERROR(RedisModule_ZsetAdd(notification_key, 0.0, client_channel, NULL),
               "ZsetAdd failed.");
   RedisModule_CloseKey(notification_key);
-  RedisModule_FreeString(ctx, client_channel);
 
-  // Return the current value at the key, if any, to the client that requested
-  // a notification.
+  // Lookup the current value at the key.
   RedisModuleKey *table_key =
       OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
   if (table_key != nullptr) {
-    // Serialize the notification to send.
-    size_t data_len = 0;
-    char *data_buf =
-        RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
+    // Publish the current value at the key to the client that is requesting
+    // notifications.
     flatbuffers::FlatBufferBuilder fbb;
-    auto message = CreateGcsNotification(fbb, RedisStringToFlatbuf(fbb, id),
-                                         fbb.CreateString(data_buf, data_len));
-    fbb.Finish(message);
-
-    int result = RedisModule_ReplyWithStringBuffer(
-        ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+    TableEntryToFlatbuf(table_key, id, fbb);
+    RedisModule_Call(ctx, "PUBLISH", "sb", client_channel, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
         fbb.GetSize());
-    RedisModule_CloseKey(table_key);
-    return result;
-  } else {
-    RedisModule_CloseKey(table_key);
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
-    return REDISMODULE_OK;
   }
+  RedisModule_CloseKey(table_key);
+
+  RedisModule_FreeString(ctx, client_channel);
+  return RedisModule_ReplyWithNull(ctx);
 }
 
 /// Cancel notifications for changes to a key. The client will no longer
-/// receive notifications for this key.
+/// receive notifications for this key. This does not check if the client
+/// first requested notifications before canceling them.
 ///
 /// This is called from a client with the command:
 //
@@ -769,9 +783,8 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
 ///        this key should be published to. If publishing to a specific client,
 ///        then the channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to publish notifications for.
-/// \param client_id The ID of the client that is being notified.
-/// \return OK if the requesting client was removed, or an error if the client
-///         was not found.
+/// \param client_id The ID of the client to cancel notifications for.
+/// \return OK.
 int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx,
                                           RedisModuleString **argv,
                                           int argc) {
@@ -789,10 +802,10 @@ int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx,
   // there are changes to the key.
   RedisModuleKey *notification_key = OpenBroadcastKey(
       ctx, pubsub_channel_str, id, REDISMODULE_READ | REDISMODULE_WRITE);
-  RAY_CHECK(RedisModule_KeyType(notification_key) != REDISMODULE_KEYTYPE_EMPTY);
-  int deleted;
-  RedisModule_ZsetRem(notification_key, client_channel, &deleted);
-  RAY_CHECK(deleted);
+  if (RedisModule_KeyType(notification_key) != REDISMODULE_KEYTYPE_EMPTY) {
+    RAY_CHECK(RedisModule_ZsetRem(notification_key, client_channel, NULL) ==
+              REDISMODULE_OK);
+  }
   RedisModule_CloseKey(notification_key);
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");
@@ -1658,6 +1671,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_CreateCommand(ctx, "ray.table_add", TableAdd_RedisCommand,
                                 "write", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_append",
+                                TableAppend_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

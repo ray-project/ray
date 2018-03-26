@@ -23,9 +23,9 @@ enum TablePubsub:int {
   ACTOR
 }
 
-table GcsNotification {
+table GcsTableEntry {
   id: string;
-  data: string;
+  entries: [string];
 }
 
 table FunctionTableData {
