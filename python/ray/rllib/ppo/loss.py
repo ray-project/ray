@@ -64,9 +64,9 @@ class ProximalPolicyLoss(object):
                             i, entropy_i in enumerate(self.entropy)])
         # if we have a shared model, we need to rescale the term
         # in the penalty to undo the mean
-        if self.shared_model:
-            kl_prod *= self.num_agents
-            entropy_prod *= self.num_agents
+        # if self.shared_model:
+        #     kl_prod *= self.num_agents
+        #     entropy_prod *= self.num_agents
 
         # Make loss functions.
         self.ratio = [tf.exp(curr - prev)
