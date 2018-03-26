@@ -16,7 +16,7 @@ ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource
 ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
-  for (int i = 0; i < resource_labels.size(); i++) {
+  for (uint i = 0; i < resource_labels.size(); i++) {
     RAY_CHECK(this->AddResource(resource_labels[i], resource_capacity[i]));
   }
 }
