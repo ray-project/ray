@@ -25,7 +25,7 @@ void ProcessCallback(int64_t callback_index, const std::vector<std::string> &dat
     }
   }
 }
-}
+}  // namespace
 
 namespace ray {
 

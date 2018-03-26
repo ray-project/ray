@@ -157,8 +157,7 @@ class Table : public TableInterface<ID, Data> {
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
  public:
-  ObjectTable(const std::shared_ptr<RedisContext> &context,
-              AsyncGcsClient *client)
+  ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
     prefix_ = TablePrefix_OBJECT;
@@ -168,12 +167,12 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
 
 class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
  public:
-  HeartbeatTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client) :
-      Table(context, client) {
+  HeartbeatTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Table(context, client) {
     pubsub_channel_ = TablePubsub_HEARTBEAT;
     prefix_ = TablePrefix_HEARTBEAT;
   }
-  virtual ~HeartbeatTable(){}
+  virtual ~HeartbeatTable() {}
 };
 
 class FunctionTable : public Table<ObjectID, FunctionTableData> {
@@ -200,12 +199,11 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
     prefix_ = TablePrefix_RAYLET_TASK;
   }
 };
-}
+}  // namespace raylet
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
-  TaskTable(const std::shared_ptr<RedisContext> &context,
-            AsyncGcsClient *client)
+  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
     pubsub_channel_ = TablePubsub_TASK;
     prefix_ = TablePrefix_TASK;
@@ -271,19 +269,15 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   ///        TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
   /// \param callback Function to be called when database returns result.
   /// \return Status
-  Status SubscribeToTask(const JobID &job_id,
-                         const ClientID &local_scheduler_id,
-                         int state_filter,
-                         const SubscribeToTaskCallback &callback,
+  Status SubscribeToTask(const JobID &job_id, const ClientID &local_scheduler_id,
+                         int state_filter, const SubscribeToTaskCallback &callback,
                          const Callback &done);
 };
 
 Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
-Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
-                              const TaskID &task_id,
-                              const ClientID &local_scheduler_id,
-                              int test_state_bitmask,
+Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
+                              const ClientID &local_scheduler_id, int test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
