@@ -18,6 +18,8 @@ class ProximalPolicyLoss(object):
             prev_logits, prev_vf_preds, logit_dim,
             kl_coeff, distribution_class, config, sess, registry):
         self.prev_dist = distribution_class(prev_logits)
+        self.shared_model = (config["model"].get("custom_options", {}).
+                        get("multiagent_shared_model", False))
 
         # Saved so that we can compute actions given different observations
         self.observations = observations
@@ -42,6 +44,10 @@ class ProximalPolicyLoss(object):
         prev_logp = self.prev_dist.logp(actions)
         self.kl = self.prev_dist.kl(self.curr_dist)
         self.entropy = self.curr_dist.entropy()
+        # if the model is shared there's only one kl term
+        if self.shared_model:
+            self.kl = tf.add_n(self.kl)
+            self.entropy = tf.add_n(self.entropy)
 
         if not isinstance(curr_logp, list):
             self.kl = [self.kl]

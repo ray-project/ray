@@ -49,11 +49,11 @@ if __name__ == '__main__':
     config["sgd_stepsize"] = .0003
     config["sgd_batchsize"] = 64
     config["min_steps_per_task"] = 100
-    config["model"].update({"fcnet_hiddens": [256, 256]})
+    config["model"].update({"fcnet_hiddens": [32, 32]})
     options = {"multiagent_obs_shapes": [3, 3],
                "multiagent_act_shapes": [1, 1],
                "multiagent_shared_model": False,
-               "multiagent_fcnet_hiddens": [[64, 64]] * 2}
+               "multiagent_fcnet_hiddens": [[16, 16]] * 2}
     config["model"].update({"custom_options": options})
     register_env("DoubleMultiAgentPendulumEnv-v0", create_env)
 
