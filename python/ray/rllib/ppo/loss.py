@@ -20,6 +20,8 @@ class ProximalPolicyLoss(object):
         self.prev_dist = distribution_class(prev_logits)
         self.shared_model = (config["model"].get("custom_options", {}).
                         get("multiagent_shared_model", False))
+        self.num_agents = len(config["model"].get(
+            "custom_options", {}).get("multiagent_obs_shapes", [1]))
 
         # Saved so that we can compute actions given different observations
         self.observations = observations
@@ -47,16 +49,24 @@ class ProximalPolicyLoss(object):
         # if the model is shared there's only one kl term
         # so add up the kls
         if self.shared_model:
-            self.kl = [tf.add_n(self.kl)]
-            self.entropy = [tf.add_n(self.entropy)]
+            self.kl = [tf.add_n(self.kl)/len(self.kl)]
+            self.entropy = [tf.add_n(self.entropy)/len(self.entropy)]
 
         if not isinstance(curr_logp, list):
             self.kl = [self.kl]
             curr_logp = [curr_logp]
             prev_logp = [prev_logp]
             self.entropy = [self.entropy]
+
         kl_prod = tf.add_n([kl_coeff[i]*kl_i for
                             i, kl_i in enumerate(self.kl)])
+        entropy_prod = tf.add_n([config["entropy_coeff"]*entropy_i for
+                            i, entropy_i in enumerate(self.entropy)])
+        # if we have a shared model, we need to rescale the term
+        # in the penalty
+        if self.shared_model:
+            kl_prod *= self.num_agents
+            entropy_prod *= self.num_agents
 
         # Make loss functions.
         self.ratio = [tf.exp(curr - prev)
@@ -87,12 +97,12 @@ class ProximalPolicyLoss(object):
             self.loss = tf.reduce_mean(
                 -self.surr + kl_prod +
                 config["vf_loss_coeff"] * self.vf_loss -
-                config["entropy_coeff"] * self.entropy)
+                entropy_prod)
         else:
             self.mean_vf_loss = tf.constant(0.0)
             self.loss = tf.reduce_mean(
                 -self.surr +
-                kl_prod -
+                kl_prod-
                 config["entropy_coeff"] * self.entropy)
 
         self.sess = sess
