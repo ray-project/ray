@@ -6,6 +6,14 @@ import ray
 
 
 def flush_redis_unsafe():
+    """This removes some non-critical state from the primary Redis shard.
+
+    This removes the log files as well as the event log from Redis. This can
+    be used to try to address out-of-memory errors caused by the accumulation
+    of metadata in Redis. However, it will only partially address the issue as
+    much of the data is in the task table (and object table), which are not
+    flushed.
+    """
     if not hasattr(ray.worker.global_worker, "redis_client"):
         raise Exception("ray.experimental.flush_redis_unsafe cannot be called "
                         "before ray.init() has been called.")
