@@ -31,7 +31,7 @@ class SchedulingPolicy {
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> Schedule(
       const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
       &cluster_resources,
-      const ClientID &me,
+      const ClientID &local_client_id,
       const std::vector<ClientID> &others);
 
   /// \brief SchedulingPolicy destructor.

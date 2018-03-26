@@ -1,7 +1,5 @@
 #include "scheduling_policy.h"
 
-#include <random>
-
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -14,7 +12,7 @@ SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
 std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
     &cluster_resources,
-      const ClientID &me,
+      const ClientID &local_client_id,
       const std::vector<ClientID> &others) {
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
@@ -39,7 +37,7 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     // TODO(atumanov): replace the simple spillback policy with exponential backoff based
     // policy.
     if (t.GetTaskExecutionSpecReadonly().NumForwards() >= 1) {
-      decision[task_id] = me;
+      decision[task_id] = local_client_id;
       continue;
     }
     // Construct a set of viable node candidates and randomly pick between them.

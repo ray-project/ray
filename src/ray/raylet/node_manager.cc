@@ -84,7 +84,8 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
       this->HeartbeatAdded(client, id, heartbeat_data);
     };
     ray::Status status = client->heartbeat_table().Subscribe(
-        UniqueID::nil(), client_id, heartbeat_added, [this](gcs::AsyncGcsClient *client) {
+        UniqueID::nil(), UniqueID::nil(), heartbeat_added,
+        [this](gcs::AsyncGcsClient *client) {
           RAY_LOG(INFO) << "heartbeat table subscription done callback called.";
         });
     RAY_CHECK_OK(status);
@@ -122,7 +123,6 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
 
 void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
-  RAY_LOG(INFO) << "[HeartbeatAdded] received heartbeat from " << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // Skip heartbeats from self.
     return;
@@ -179,18 +179,20 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
         auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});
         AssignTask(scheduled_tasks.front());
       }
-    }
-      break;
+    } break;
     case protocol::MessageType_DisconnectClient: {
       // Remove the dead worker from the pool and stop listening for messages.
       const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
       if (worker) {
-        // TODO(swang): Clean up any tasks that were assigned to the worker.
+        if (!worker->GetAssignedTaskId().is_nil()) {
+          // TODO(swang): Clean up any tasks that were assigned to the worker.
+          // Release any resources that may be held by this worker.
+          FinishTask(worker->GetAssignedTaskId());
+        }
         worker_pool_.DisconnectWorker(worker);
       }
       return;
-    }
-      break;
+    } break;
     case protocol::MessageType_SubmitTask: {
       // Read the task submitted by the client.
       auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
@@ -201,20 +203,20 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       // Submit the task to the local scheduler. Since the task was submitted
       // locally, there is no uncommitted lineage.
       SubmitTask(task, Lineage());
-      // Listen for more messages.
-    }
-      break;
+    } break;
     case protocol::MessageType_ReconstructObject: {
       // TODO(hme): handle multiple object ids.
       auto message = flatbuffers::GetRoot<protocol::ReconstructObject>(message_data);
       ObjectID object_id = from_flatbuf(*message->object_id());
-      RAY_LOG(INFO) << "reconstructing object " << object_id.hex();
+      RAY_LOG(DEBUG) << "reconstructing object " << object_id.hex();
       RAY_CHECK_OK(object_manager_.Pull(object_id));
     } break;
-    default:RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
+
+    default:
+      RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
 
-  RAY_CHECK(message_type != protocol::MessageType_DisconnectClient);
+  // Listen for more messages.
   client->ProcessMessages();
 }
 
@@ -229,14 +231,13 @@ void NodeManager::ProcessNodeManagerMessage(
     const uint8_t *message_data) {
   switch (message_type) {
   case protocol::MessageType_ForwardTaskRequest: {
-    RAY_LOG(INFO) << "ForwardTaskRequest received";
     auto message = flatbuffers::GetRoot<protocol::ForwardTaskRequest>(message_data);
     TaskID task_id = from_flatbuf(*message->task_id());
 
     Lineage uncommitted_lineage(*message);
     const Task &task = uncommitted_lineage.GetEntry(task_id)->TaskData();
-    RAY_LOG(INFO) << "got task " << task.GetTaskSpecification().TaskId()
-                  << "with numforwards=" << task.GetTaskExecutionSpecReadonly().NumForwards();
+    RAY_LOG(DEBUG) << "got task " << task.GetTaskSpecification().TaskId()
+                   << " spillback=" << task.GetTaskExecutionSpecReadonly().NumForwards();
     SubmitTask(task, uncommitted_lineage);
   } break;
   default:
@@ -265,7 +266,6 @@ void NodeManager::ScheduleTasks() {
 
   // Extract decision for this local scheduler.
   std::unordered_set<TaskID, UniqueIDHasher> local_task_ids;
-  //std::unordered_set<TaskID, UniqueIDHasher> remote_task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks to run on the local client.
   for (const auto &task_schedule : policy_decision) {
     TaskID task_id = task_schedule.first;
@@ -273,7 +273,6 @@ void NodeManager::ScheduleTasks() {
     if (client_id == gcs_client_->client_table().GetLocalClientId()) {
       local_task_ids.insert(task_id);
     } else {
-      //remote_task_ids.insert(task_id);
       auto tasks = local_queues_.RemoveTasks({task_id});
       RAY_CHECK(1 == tasks.size());
       Task &task = tasks.front();
@@ -310,7 +309,6 @@ void NodeManager::AssignTask(const Task &task) {
       task.GetTaskSpecification().GetRequiredResources()));
 
   if (worker_pool_.PoolSize() == 0) {
-    // Start a new worker.
     worker_pool_.StartWorker();
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
@@ -370,8 +368,9 @@ ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
   auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
   fbb.Finish(request);
 
-  RAY_LOG(INFO) << "Forwarding task " << task_id.hex() << " to " << node_id.hex()
-                << " with numforwards=" << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
+  RAY_LOG(DEBUG) << "Forwarding task " << task_id.hex() << " to " << node_id.hex()
+                 << " spillback="
+                 << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
 
   auto client_info = gcs_client_->client_table().GetClient(node_id);
 

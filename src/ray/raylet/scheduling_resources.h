@@ -138,6 +138,10 @@ class SchedulingResources {
   /// \return Immutable set of resources with currently available capacity.
   const ResourceSet &GetAvailableResources() const;
 
+  /// \brief Overwrite available resource capacity with the specified resource set.
+  ///
+  /// \param newset: The set of resources that replaces available resource capacity.
+  /// \return None.
   void SetAvailableResources(ResourceSet &&newset);
 
   const ResourceSet &GetTotalResources() const;
