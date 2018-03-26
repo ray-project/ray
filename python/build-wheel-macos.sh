@@ -50,7 +50,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   pushd python
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
-    $PIP_CMD install -q setuptools_scm
+    $PIP_CMD install -q setuptools_scm==1.17.0
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
     $PIP_CMD install -q numpy==1.10.4 cython==0.27.3
