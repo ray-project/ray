@@ -687,9 +687,10 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeCancel) {
   TestLogSubscribeCancel(job_id_, client_);
 }
 
-void ClientTableNotification(gcs::AsyncGcsClient *client, const UniqueID &id,
+void ClientTableNotification(gcs::AsyncGcsClient *client, const ClientID &client_id,
                              const ClientTableDataT &data, bool is_insertion) {
   ClientID added_id = client->client_table().GetLocalClientId();
+  ASSERT_EQ(client_id, added_id);
   ASSERT_EQ(ClientID::from_binary(data.client_id), added_id);
   ASSERT_EQ(data.is_insertion, is_insertion);
 
