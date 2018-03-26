@@ -22,7 +22,7 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     const ClientID &client_id = client_resource_pair.first;
     const SchedulingResources &resources = client_resource_pair.second;
     RAY_LOG(DEBUG) << "client_id: " << client_id.hex() << " "
-                  << resources.GetAvailableResources().ToString();
+                   << resources.GetAvailableResources().ToString();
   }
 
   // Iterate over running tasks, get their resource demand and try to schedule.
@@ -31,9 +31,9 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     const TaskID &task_id = t.GetTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "[SchedulingPolicy]: task=" << task_id.hex()
-                  << " numforwards=" << t.GetTaskExecutionSpecReadonly().NumForwards()
-                  << " resources="
-                  << t.GetTaskSpecification().GetRequiredResources().ToString();
+                   << " numforwards=" << t.GetTaskExecutionSpecReadonly().NumForwards()
+                   << " resources="
+                   << t.GetTaskSpecification().GetRequiredResources().ToString();
     // TODO(atumanov): replace the simple spillback policy with exponential backoff based
     // policy.
     if (t.GetTaskExecutionSpecReadonly().NumForwards() >= 1) {
@@ -62,8 +62,8 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
     int client_key_index = distribution(gen_);
     decision[task_id] = client_keys[client_key_index];
-    RAY_LOG(DEBUG) << "[SchedulingPolicy] idx=" << client_key_index << " " << task_id.hex()
-                  << " --> " << client_keys[client_key_index].hex();
+    RAY_LOG(DEBUG) << "[SchedulingPolicy] idx=" << client_key_index << " "
+                   << task_id.hex() << " --> " << client_keys[client_key_index].hex();
   }
   return decision;
 }
