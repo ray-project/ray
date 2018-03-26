@@ -12,14 +12,14 @@ namespace ray {
 
 namespace raylet {
 
-class MockGcs : virtual public gcs::LogStorage<TaskID, TaskReconstructionData> {
+class MockGcs : virtual public gcs::LogInterface<TaskID, TaskReconstructionData> {
  public:
   MockGcs(){};
   Status AppendAt(
       const JobID &job_id, const TaskID &task_id,
       std::shared_ptr<TaskReconstructionDataT> task_reconstruction_data,
-      const gcs::LogStorage<TaskID, TaskReconstructionData>::WriteCallback &done,
-      const gcs::LogStorage<TaskID, TaskReconstructionData>::WriteCallback &failure,
+      const gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &done,
+      const gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &failure,
       int index) {
     if (task_log_[task_id].size() == static_cast<size_t>(index)) {
       task_log_[task_id].push_back(task_reconstruction_data);

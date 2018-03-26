@@ -49,7 +49,7 @@ table ObjectTableData {
 }
 
 table TaskReconstructionData {
-  num_executions: int;
+  num_reconstructions: int;
   node_manager_id: string;
 }
 

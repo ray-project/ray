@@ -33,8 +33,9 @@ class LogInterface {
   using DataT = typename Data::NativeTableType;
   using WriteCallback = std::function<void(AsyncGcsClient *client, const ID &id,
                                            std::shared_ptr<DataT> data)>;
-  virtual Status Append(const JobID &job_id, const ID &task_id,
-                        std::shared_ptr<DataT> data, const WriteCallback &done) = 0;
+  virtual Status AppendAt(const JobID &job_id, const ID &task_id,
+                          std::shared_ptr<DataT> data, const WriteCallback &done,
+                          const WriteCallback &failure, int log_length) = 0;
   virtual ~LogInterface(){};
 };
 
