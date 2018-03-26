@@ -47,7 +47,7 @@ class ProximalPolicyLoss(object):
         self.kl = self.prev_dist.kl(self.curr_dist)
         self.entropy = self.curr_dist.entropy()
         # if the model is shared there's only one kl term
-        # so add up the kls
+        # so add up the kl and take its mean for kl_coeff updating
         if self.shared_model:
             self.kl = [tf.add_n(self.kl)/len(self.kl)]
             self.entropy = [tf.add_n(self.entropy)/len(self.entropy)]
@@ -63,7 +63,7 @@ class ProximalPolicyLoss(object):
         entropy_prod = tf.add_n([config["entropy_coeff"]*entropy_i for
                             i, entropy_i in enumerate(self.entropy)])
         # if we have a shared model, we need to rescale the term
-        # in the penalty
+        # in the penalty to undo the mean
         if self.shared_model:
             kl_prod *= self.num_agents
             entropy_prod *= self.num_agents
