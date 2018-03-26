@@ -80,7 +80,7 @@ class NodeManager {
   boost::asio::deadline_timer heartbeat_timer_;
   uint64_t heartbeat_period_ms_;
   /// The resources local to this node.
-  SchedulingResources local_resources_;
+  const SchedulingResources local_resources_;
   // TODO(atumanov): Add resource information from other nodes.
   std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> cluster_resource_map_;
   /// A pool of workers.

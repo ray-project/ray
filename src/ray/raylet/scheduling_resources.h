@@ -31,7 +31,8 @@ class ResourceSet {
 
   /// \brief Constructs REsourceSet from two equal-length vectors with label and capacity
   /// specification.
-  ResourceSet(const std::vector<std::string> &resource_labels, const std::vector<double> resource_capacity);
+  ResourceSet(const std::vector<std::string> &resource_labels,
+              const std::vector<double> resource_capacity);
 
   /// \brief Empty ResourceSet destructor.
   ~ResourceSet();

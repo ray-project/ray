@@ -62,10 +62,35 @@ bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
 }
 bool ResourceSet::SubtractResources(const ResourceSet &other) {
-  throw std::runtime_error("Method not implemented");
+  // Return failure if attempting to perform vector subtraction with unknown labels.
+  // TODO(atumanov): make the implementation atomic. Currently, if false is returned
+  // the resource capacity may be partially mutated. To reverse, call AddResources.
+  for (const auto &resource_pair : other.GetResourceMap()) {
+    const std::string &resource_label = resource_pair.first;
+    const double &resource_capacity = resource_pair.second;
+    if (resource_capacity_.count(resource_label) == 0) {
+      return false;
+    } else {
+      resource_capacity_[resource_label] -= resource_capacity;
+    }
+  }
+  return true;
 }
+
 bool ResourceSet::AddResources(const ResourceSet &other) {
-  throw std::runtime_error("Method not implemented");
+  // Return failure if attempting to perform vector addition with unknown labels.
+  // TODO(atumanov): make the implementation atomic. Currently, if false is returned
+  // the resource capacity may be partially mutated. To reverse, call SubtractResources.
+  for (const auto &resource_pair : other.GetResourceMap()) {
+    const std::string &resource_label = resource_pair.first;
+    const double &resource_capacity = resource_pair.second;
+    if (resource_capacity_.count(resource_label) == 0) {
+      return false;
+    } else {
+      resource_capacity_[resource_label] += resource_capacity;
+    }
+  }
+  return true;
 }
 
 bool ResourceSet::GetResource(const std::string &resource_name, double *value) const {

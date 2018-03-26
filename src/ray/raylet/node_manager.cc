@@ -35,23 +35,29 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
 void NodeManager::Heartbeat() {
 
+  RAY_LOG(DEBUG) << "[Heartbeat] sending heartbeat.";
   auto &heartbeat_table = gcs_client_->heartbeat_table();
   auto heartbeat_data =std::make_shared<HeartbeatTableDataT>();
   auto client_id = gcs_client_->client_table().GetLocalClientId();
+  const SchedulingResources &local_resources = cluster_resource_map_[client_id];
   heartbeat_data->client_id = client_id.hex();
-  // TODO(atumanov): use and send ResourceSet directly.
-  for (const auto &resource_pair : local_resources_.GetAvailableResources().GetResourceMap()) {
+  // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
+  // TODO(atumanov): implement a ResourceSet const_iterator.
+  for (const auto &resource_pair : local_resources.GetAvailableResources().GetResourceMap()) {
     heartbeat_data->resources_available_label.push_back(resource_pair.first);
     heartbeat_data->resources_available_capacity.push_back(resource_pair.second);
   }
-  for (const auto &resource_pair : local_resources_.GetTotalResources().GetResourceMap()) {
+  for (const auto &resource_pair : local_resources.GetTotalResources().GetResourceMap()) {
     heartbeat_data->resources_total_label.push_back(resource_pair.first);
     heartbeat_data->resources_total_capacity.push_back(resource_pair.second);
   }
 
   ray::Status status = heartbeat_table.Add(UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(),
                        heartbeat_data,
-                       [](ray::gcs::AsyncGcsClient *client, const ClientID &id, const HeartbeatTableDataT &data) {});
+                       [this](ray::gcs::AsyncGcsClient *client, const ClientID &id, const HeartbeatTableDataT &data) {
+                         RAY_LOG(DEBUG) << "[HEARTBEAT] hearbeat sent callback";
+                       });
+  RAY_CHECK_OK(status);
 
   // Reset the timer.
   auto heartbeat_period = boost::posix_time::milliseconds(heartbeat_period_ms_);
@@ -68,6 +74,8 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
+    // Save this NodeManager's resource information in the cluster resource map.
+    cluster_resource_map_[client_id] = local_resources_;
     // Start sending heartbeats to the GCS.
     Heartbeat();
     // Subscribe to heartbeats.
@@ -76,21 +84,27 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
       this->HeartbeatAdded(client, id, heartbeat_data);
     };
     ray::Status status = client->heartbeat_table().Subscribe(
-        UniqueID::nil(), client_id, heartbeat_added, [](gcs::AsyncGcsClient *client) {});
+        UniqueID::nil(), client_id, heartbeat_added, [this](gcs::AsyncGcsClient *client) {
+          RAY_LOG(INFO) << "heartbeat table subscription done callback called.";
+        });
+    RAY_CHECK_OK(status);
 
     return;
   }
   // TODO(atumanov): make remote client lookup O(1)
-  if (std::find(remote_clients_.begin(), remote_clients_.end(), client_id) == remote_clients_.end()) {
+  if (std::find(remote_clients_.begin(), remote_clients_.end(), client_id) ==
+      remote_clients_.end()) {
     RAY_LOG(INFO) << "a new client: " << client_id.hex();
     remote_clients_.push_back(client_id);
   } else {
     // NodeManager connection to this client was already established.
-    RAY_LOG(DEBUG) << "received a new client connection that already exists: " << client_id.hex();
+    RAY_LOG(DEBUG) << "received a new client connection that already exists: "
+                   << client_id.hex();
     return;
   }
 
-  ResourceSet resources_total(client_data.resources_total_label, client_data.resources_total_capacity);
+  ResourceSet resources_total(client_data.resources_total_label,
+                              client_data.resources_total_capacity);
   this->cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
 
   // Establish a new NodeManager connection to this GCS client.
@@ -290,22 +304,23 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 }
 
 void NodeManager::AssignTask(const Task &task) {
+  // Resource accounting: acquire resources for the scheduled task.
+  const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
+  RAY_CHECK(this->cluster_resource_map_[my_client_id].Acquire(
+      task.GetTaskSpecification().GetRequiredResources()));
+
   if (worker_pool_.PoolSize() == 0) {
     // Start a new worker.
     worker_pool_.StartWorker();
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
     local_queues_.QueueScheduledTasks(std::vector<Task>({task}));
-    // TODO(swang): Acquire resources here or when a worker becomes available?
     return;
   }
 
   const TaskSpecification &spec = task.GetTaskSpecification();
   std::shared_ptr<Worker> worker = worker_pool_.PopWorker();
   RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
-
-  // TODO(swang): Acquire resources for the task.
-  // local_resources_.Acquire(task.GetTaskSpecification().GetRequiredResources());
 
   worker->AssignTaskId(spec.TaskId());
   local_queues_.QueueRunningTasks(std::vector<Task>({task}));
@@ -333,7 +348,9 @@ void NodeManager::FinishTask(const TaskID &task_id) {
   RAY_CHECK(tasks.size() == 1);
   auto task = *tasks.begin();
 
-  // TODO(swang): Release resources that were held for the task.
+  // Resource accounting: release task's resources.
+  RAY_CHECK(this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+      task.GetTaskSpecification().GetRequiredResources()));
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
@@ -342,7 +359,6 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
 
 ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
   auto task_id = task.GetTaskSpecification().TaskId();
-
 
   // Get and serialize the task's uncommitted lineage.
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);

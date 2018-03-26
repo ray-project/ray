@@ -19,11 +19,13 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
   // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
+  RAY_LOG(INFO) << "[Schedule] cluster resource map: ";
   for (const auto &client_resource_pair : cluster_resources) {
     // pair = ClientID, SchedulingResources
-    ClientID key = client_resource_pair.first;
-    SchedulingResources value = client_resource_pair.second;
-    RAY_LOG(INFO) << key.hex() << " " << value.GetAvailableResources().ToString();
+    const ClientID &client_id = client_resource_pair.first;
+    const SchedulingResources &resources = client_resource_pair.second;
+    RAY_LOG(INFO) << "client_id: " << client_id.hex() << " "
+                  << resources.GetAvailableResources().ToString();
   }
 
   // Iterate over running tasks, get their resource demand and try to schedule.
@@ -47,6 +49,8 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
       // pair = ClientID, SchedulingResources
       ClientID node_client_id = client_resource_pair.first;
       SchedulingResources node_resources = client_resource_pair.second;
+      RAY_LOG(DEBUG) << "client_id " << node_client_id << " res: "
+                    << node_resources.GetAvailableResources().ToString();
       if (resource_demand.IsSubset(node_resources.GetTotalResources())) {
         // This node is a feasible candidate.
         client_keys.push_back(node_client_id);
