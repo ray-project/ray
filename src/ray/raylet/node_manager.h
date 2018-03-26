@@ -56,8 +56,8 @@ class NodeManager {
   void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
                    const ClientTableDataT &data);
 
-  void HeartbeatHandler(gcs::AsyncGcsClient *client, const ClientID &id,
-                        std::shared_ptr<ClientTableDataT> data);
+  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
+                      const HeartbeatTableDataT &data);
 
  private:
   /// Submit a task to this node.
@@ -68,8 +68,7 @@ class NodeManager {
   void FinishTask(const TaskID &task_id);
   /// Schedule tasks.
   void ScheduleTasks();
-  /// Handle a task whose local dependencies were missing and are now
-  /// available.
+  /// Handle a task whose local dependencies were missing and are now available.
   void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);

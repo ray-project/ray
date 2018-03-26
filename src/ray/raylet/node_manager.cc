@@ -34,8 +34,26 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 }
 
 void NodeManager::Heartbeat() {
-  // TODO(atumanov): Send the heartbeat to the GCS.
 
+  auto &heartbeat_table = gcs_client_->heartbeat_table();
+  auto heartbeat_data =std::make_shared<HeartbeatTableDataT>();
+  auto client_id = gcs_client_->client_table().GetLocalClientId();
+  heartbeat_data->client_id = client_id.hex();
+  // TODO(atumanov): use and send ResourceSet directly.
+  for (const auto &resource_pair : local_resources_.GetAvailableResources().GetResourceMap()) {
+    heartbeat_data->resources_available_label.push_back(resource_pair.first);
+    heartbeat_data->resources_available_capacity.push_back(resource_pair.second);
+  }
+  for (const auto &resource_pair : local_resources_.GetTotalResources().GetResourceMap()) {
+    heartbeat_data->resources_total_label.push_back(resource_pair.first);
+    heartbeat_data->resources_total_capacity.push_back(resource_pair.second);
+  }
+
+  ray::Status status = heartbeat_table.Add(UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(),
+                       heartbeat_data,
+                       [](ray::gcs::AsyncGcsClient *client, const ClientID &id, const HeartbeatTableDataT &data) {});
+
+  // Reset the timer.
   auto heartbeat_period = boost::posix_time::milliseconds(heartbeat_period_ms_);
   heartbeat_timer_.expires_from_now(heartbeat_period);
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
@@ -45,13 +63,21 @@ void NodeManager::Heartbeat() {
 }
 
 void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                              const ClientTableDataT &data) {
-  ClientID client_id = ClientID::from_binary(data.client_id);
+                              const ClientTableDataT &client_data) {
+  ClientID client_id = ClientID::from_binary(client_data.client_id);
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Start sending heartbeats to the GCS.
     Heartbeat();
+    // Subscribe to heartbeats.
+    const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
+                                  const HeartbeatTableDataT &heartbeat_data) {
+      this->HeartbeatAdded(client, id, heartbeat_data);
+    };
+    ray::Status status = client->heartbeat_table().Subscribe(
+        UniqueID::nil(), client_id, heartbeat_added, [](gcs::AsyncGcsClient *client) {});
+
     return;
   }
   // TODO(atumanov): make remote client lookup O(1)
@@ -64,11 +90,7 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
     return;
   }
 
-  ResourceSet resources_total;
-  for (uint i = 0; i < data.resources_total_label.size(); i++) {
-    resources_total.AddResource(data.resources_total_label[i],
-                                data.resources_total_capacity[i]);
-  }
+  ResourceSet resources_total(client_data.resources_total_label, client_data.resources_total_capacity);
   this->cluster_resource_map_.emplace(client_id, SchedulingResources(resources_total));
 
   // Establish a new NodeManager connection to this GCS client.
@@ -84,13 +106,26 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
   remote_server_connections_.emplace(client_id, std::move(server_conn));
 }
 
-void NodeManager::HeartbeatHandler(gcs::AsyncGcsClient *client, const ClientID &id,
-                                   std::shared_ptr<ClientTableDataT> data) {
-  RAY_LOG(INFO) << "received heartbeat from " << id.hex();
-  if (id == gcs_client_->client_table().GetLocalClientId()) {
+void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
+                                 const HeartbeatTableDataT &heartbeat_data) {
+  RAY_LOG(INFO) << "[HeartbeatAdded] received heartbeat from " << client_id.hex();
+  if (client_id == gcs_client_->client_table().GetLocalClientId()) {
+    // Skip heartbeats from self.
     return;
   }
-  // TODO(atumanov): Locate the client id in remote client table and save heartbeat information.
+  // Locate the client id in remote client table and update available resources based on
+  // the received heartbeat information.
+  if (this->cluster_resource_map_.count(client_id) == 0) {
+    // Haven't received the client registration for this client yet, skip this heartbeat.
+    RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id " << client_id.hex();
+    return;
+  }
+  SchedulingResources &resources = this->cluster_resource_map_[client_id];
+  ResourceSet heartbeat_resource_available(heartbeat_data.resources_available_label,
+                                           heartbeat_data.resources_available_capacity);
+  resources.SetAvailableResources(ResourceSet(heartbeat_data.resources_available_label,
+                                              heartbeat_data.resources_available_capacity));
+  RAY_CHECK(this->cluster_resource_map_[client_id].GetAvailableResources() == heartbeat_resource_available);
 }
 
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {

@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace ray {
 
@@ -27,6 +28,10 @@ class ResourceSet {
 
   /// \brief Constructs ResourceSet from the specified resource map.
   ResourceSet(const std::unordered_map<std::string, double> &resource_map);
+
+  /// \brief Constructs REsourceSet from two equal-length vectors with label and capacity
+  /// specification.
+  ResourceSet(const std::vector<std::string> &resource_labels, const std::vector<double> resource_capacity);
 
   /// \brief Empty ResourceSet destructor.
   ~ResourceSet();
@@ -131,6 +136,8 @@ class SchedulingResources {
   ///
   /// \return Immutable set of resources with currently available capacity.
   const ResourceSet &GetAvailableResources() const;
+
+  void SetAvailableResources(ResourceSet &&newset);
 
   const ResourceSet &GetTotalResources() const;
 
