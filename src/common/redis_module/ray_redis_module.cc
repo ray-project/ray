@@ -638,7 +638,8 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
 /// A helper function to create and finish a GcsTableEntry, based on the
 /// current value or values at the given key.
 void TableEntryToFlatbuf(RedisModuleKey *table_key,
-                         RedisModuleString *entry_id, flatbuffers::FlatBufferBuilder &fbb) {
+                         RedisModuleString *entry_id,
+                         flatbuffers::FlatBufferBuilder &fbb) {
   auto key_type = RedisModule_KeyType(table_key);
   switch (key_type) {
   case REDISMODULE_KEYTYPE_STRING: {
