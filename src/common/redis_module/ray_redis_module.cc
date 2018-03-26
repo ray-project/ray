@@ -637,9 +637,8 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
 
 /// A helper function to create and finish a GcsTableEntry, based on the
 /// current value or values at the given key.
-void TableEntryToFlatbuf(flatbuffers::FlatBufferBuilder &fbb,
-                         RedisModuleKey *table_key,
-                         RedisModuleString *entry_id) {
+void TableEntryToFlatbuf(RedisModuleKey *table_key,
+                         RedisModuleString *entry_id, flatbuffers::FlatBufferBuilder &fbb) {
   auto key_type = RedisModule_KeyType(table_key);
   switch (key_type) {
   case REDISMODULE_KEYTYPE_STRING: {
@@ -703,7 +702,7 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
   } else {
     // Serialize the data to a flatbuffer to return to the client.
     flatbuffers::FlatBufferBuilder fbb;
-    TableEntryToFlatbuf(fbb, table_key, id);
+    TableEntryToFlatbuf(table_key, id, fbb);
     RedisModule_ReplyWithStringBuffer(
         ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
         fbb.GetSize());
@@ -759,7 +758,7 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
     // Publish the current value at the key to the client that is requesting
     // notifications.
     flatbuffers::FlatBufferBuilder fbb;
-    TableEntryToFlatbuf(fbb, table_key, id);
+    TableEntryToFlatbuf(table_key, id, fbb);
     RedisModule_Call(ctx, "PUBLISH", "sb", client_channel, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
         fbb.GetSize());
   }

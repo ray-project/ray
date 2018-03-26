@@ -42,7 +42,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
               auto data_root =
                   flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
               data_root->UnPackTo(&result);
-              results.push_back(result);
+              results.emplace_back(std::move(result));
             }
           }
           (d->callback)(d->client, d->id, results);
@@ -85,7 +85,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
               auto data_root =
                   flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
               data_root->UnPackTo(&result);
-              results.push_back(result);
+              results.emplace_back(std::move(result));
             }
             (d->callback)(d->client, id, results);
             }

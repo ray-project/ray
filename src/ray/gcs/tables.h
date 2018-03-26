@@ -30,6 +30,11 @@ class AsyncGcsClient;
 /// \class Log
 ///
 /// A GCS table where every entry is an append-only log.
+/// Example tables backed by Log:
+///   ObjectTable: Stores a log of which clients have added or evicted an
+///                object.
+///   ClientTable: Stores a log of which GCS clients have been added or deleted
+///                from the system.
 template <typename ID, typename Data>
 class Log {
  public:
@@ -145,6 +150,8 @@ class Log {
 /// \class Table
 ///
 /// A GCS table where every entry is a single data item.
+/// Example tables backed by Log:
+///   TaskTable: Stores Task metadata needed for executing the task.
 template <typename ID, typename Data>
 class Table : private Log<ID, Data> {
  public:
@@ -326,6 +333,15 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
+/// \class ClientTable
+///
+/// The ClientTable stores information about active and inactive clients. It is
+/// structured as a single log stored at a key known to all clients. When a
+/// client connects, it appends an entry to the log indicating that it is
+/// alive. When a client disconnects, or if another client detects its failure,
+/// it should append an entry to the log indicating that it is dead. A client
+/// that is marked as dead should never again be marked as alive; if it needs
+/// to reconnect, it must connect with a different ClientID.
 class ClientTable : private Log<UniqueID, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
@@ -333,6 +349,8 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
               const ClientTableDataT &local_client)
       : Log(context, client),
+        // We set the client log's key equal to nil so that all instances of
+        // ClientTable have the same key.
         client_log_key_(UniqueID::nil()),
         disconnected_(false),
         client_id_(ClientID::from_binary(local_client.client_id)),
@@ -393,7 +411,9 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// Handle this client's successful connection to the GCS.
   void HandleConnected(AsyncGcsClient *client, const ClientTableDataT &notifications);
 
-  /// The key to append client table entries to.
+  /// The key at which the log of client information is stored. This key must
+  /// be kept the same across all instances of the ClientTable, so that all
+  /// clients append and read from the same key.
   UniqueID client_log_key_;
   /// Whether this client has called Disconnect().
   bool disconnected_;
