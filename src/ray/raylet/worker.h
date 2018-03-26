@@ -34,7 +34,7 @@ class Worker {
   TaskID assigned_task_id_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

@@ -51,9 +51,9 @@ TaskSpecification::TaskSpecification(
   // Compute hashes.
   SHA256_CTX ctx;
   sha256_init(&ctx);
-  sha256_update(&ctx, (BYTE *) &driver_id, sizeof(driver_id));
-  sha256_update(&ctx, (BYTE *) &parent_task_id, sizeof(parent_task_id));
-  sha256_update(&ctx, (BYTE *) &parent_counter, sizeof(parent_counter));
+  sha256_update(&ctx, (BYTE *)&driver_id, sizeof(driver_id));
+  sha256_update(&ctx, (BYTE *)&parent_task_id, sizeof(parent_task_id));
+  sha256_update(&ctx, (BYTE *)&parent_counter, sizeof(parent_counter));
   // sha256_update(&ctx, (BYTE *) &actor_id, sizeof(actor_id));
   // sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
   // sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
@@ -165,6 +165,6 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
   return ResourceSet(required_resources);
 }
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray

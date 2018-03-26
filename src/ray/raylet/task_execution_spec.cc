@@ -11,7 +11,7 @@ TaskExecutionSpecification::TaskExecutionSpecification(
 
 TaskExecutionSpecification::TaskExecutionSpecification(
     const std::vector<ObjectID> &&dependencies, int num_forwards) {
-  //TaskExecutionSpecification(std::move(dependencies));
+  // TaskExecutionSpecification(std::move(dependencies));
   SetExecutionDependencies(dependencies);
   execution_spec_.num_forwards = num_forwards;
 }
@@ -53,6 +53,6 @@ void TaskExecutionSpecification::SetLastTimestamp(int64_t new_timestamp) {
   execution_spec_.last_timestamp = new_timestamp;
 }
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray

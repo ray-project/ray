@@ -15,9 +15,7 @@ std::string store_executable;  // NOLINT
 // TODO(hme): Get this working once the dust settles.
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() {
-    RAY_LOG(INFO) << "TestObjectManagerBase: started.";
-  }
+  TestObjectManagerBase() { RAY_LOG(INFO) << "TestObjectManagerBase: started."; }
 
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
@@ -137,16 +135,17 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback([this](
-        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-      ClientID parsed_id = ClientID::from_binary(data.client_id);
-      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-        num_connected_clients += 1;
-      }
-      if (num_connected_clients == 2) {
-        StartTests();
-      }
-    });
+    gcs_client_1->client_table().RegisterClientAddedCallback(
+        [this](gcs::AsyncGcsClient *client, const ClientID &id,
+               const ClientTableDataT &data) {
+          ClientID parsed_id = ClientID::from_binary(data.client_id);
+          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+            num_connected_clients += 1;
+          }
+          if (num_connected_clients == 2) {
+            StartTests();
+          }
+        });
   }
 
   void StartTests() {
@@ -176,7 +175,6 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   }
 
   void TestPush(int64_t data_size) {
-
     ray::Status status = ray::Status::OK();
 
     num_expected_objects = (uint)1;
@@ -226,9 +224,9 @@ TEST_F(TestObjectManagerIntegration, StartTestObjectManagerPush) {
   main_service.run();
 }
 
-}  // namespace ray
-
 }  // namespace raylet
+
+}  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

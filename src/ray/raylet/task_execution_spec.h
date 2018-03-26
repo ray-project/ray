@@ -82,7 +82,7 @@ class TaskExecutionSpecification {
   protocol::TaskExecutionSpecificationT execution_spec_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

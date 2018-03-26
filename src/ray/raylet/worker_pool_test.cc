@@ -13,8 +13,10 @@ class WorkerPoolTest : public ::testing::Test {
   WorkerPoolTest() : worker_pool_(0, {}), io_service_() {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid) {
-    std::function<void(std::shared_ptr<LocalClientConnection>)> client_handler = [this](
-        std::shared_ptr<LocalClientConnection> client) { HandleNewClient(client); };
+    std::function<void(std::shared_ptr<LocalClientConnection>)> client_handler =
+        [this](std::shared_ptr<LocalClientConnection> client) {
+          HandleNewClient(client);
+        };
     std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
         message_handler = [this](std::shared_ptr<LocalClientConnection> client,
                                  int64_t message_type, const uint8_t *message) {
@@ -72,7 +74,7 @@ TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   ASSERT_TRUE(workers.count(popped_worker) > 0);
 }
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

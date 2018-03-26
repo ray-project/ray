@@ -30,9 +30,8 @@ class SchedulingPolicy {
   /// \return Scheduling decision, mapping tasks to node managers for placement.
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> Schedule(
       const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
-      &cluster_resources,
-      const ClientID &local_client_id,
-      const std::vector<ClientID> &others);
+          &cluster_resources,
+      const ClientID &local_client_id, const std::vector<ClientID> &others);
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();
@@ -46,7 +45,7 @@ class SchedulingPolicy {
   std::mt19937_64 gen_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

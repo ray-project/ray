@@ -106,7 +106,7 @@ class SchedulingQueue {
   std::unordered_map<ActorID, ActorInformation, UniqueIDHasher> actor_registry_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

@@ -31,7 +31,7 @@ class ReconstructionPolicy {
  private:
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

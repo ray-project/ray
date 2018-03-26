@@ -166,7 +166,7 @@ class SchedulingResources {
   /// gpu_map - replace with ResourceMap (for generality).
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

@@ -30,20 +30,21 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK(heartbeat_period_ms_ > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
-  cluster_resource_map_.emplace(local_client_id, SchedulingResources(config.resource_config));
+  cluster_resource_map_.emplace(local_client_id,
+                                SchedulingResources(config.resource_config));
 }
 
 void NodeManager::Heartbeat() {
-
   RAY_LOG(DEBUG) << "[Heartbeat] sending heartbeat.";
   auto &heartbeat_table = gcs_client_->heartbeat_table();
-  auto heartbeat_data =std::make_shared<HeartbeatTableDataT>();
+  auto heartbeat_data = std::make_shared<HeartbeatTableDataT>();
   auto client_id = gcs_client_->client_table().GetLocalClientId();
   const SchedulingResources &local_resources = cluster_resource_map_[client_id];
   heartbeat_data->client_id = client_id.hex();
   // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
   // TODO(atumanov): implement a ResourceSet const_iterator.
-  for (const auto &resource_pair : local_resources.GetAvailableResources().GetResourceMap()) {
+  for (const auto &resource_pair :
+       local_resources.GetAvailableResources().GetResourceMap()) {
     heartbeat_data->resources_available_label.push_back(resource_pair.first);
     heartbeat_data->resources_available_capacity.push_back(resource_pair.second);
   }
@@ -52,11 +53,12 @@ void NodeManager::Heartbeat() {
     heartbeat_data->resources_total_capacity.push_back(resource_pair.second);
   }
 
-  ray::Status status = heartbeat_table.Add(UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(),
-                       heartbeat_data,
-                       [this](ray::gcs::AsyncGcsClient *client, const ClientID &id, const HeartbeatTableDataT &data) {
-                         RAY_LOG(DEBUG) << "[HEARTBEAT] hearbeat sent callback";
-                       });
+  ray::Status status = heartbeat_table.Add(
+      UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
+      [this](ray::gcs::AsyncGcsClient *client, const ClientID &id,
+             const HeartbeatTableDataT &data) {
+        RAY_LOG(DEBUG) << "[HEARTBEAT] hearbeat sent callback";
+      });
   RAY_CHECK_OK(status);
 
   // Reset the timer.
@@ -80,7 +82,7 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
     Heartbeat();
     // Subscribe to heartbeats.
     const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
-                                  const HeartbeatTableDataT &heartbeat_data) {
+                                        const HeartbeatTableDataT &heartbeat_data) {
       this->HeartbeatAdded(client, id, heartbeat_data);
     };
     ray::Status status = client->heartbeat_table().Subscribe(
@@ -110,9 +112,9 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
 
   // Establish a new NodeManager connection to this GCS client.
   auto client_info = gcs_client_->client_table().GetClient(client_id);
-  RAY_LOG(DEBUG) <<"[ClientAdded] CONNECTING TO: "
-                 << " " << client_info.node_manager_address.c_str()
-                 << " " << client_info.node_manager_port;
+  RAY_LOG(DEBUG) << "[ClientAdded] CONNECTING TO: "
+                 << " " << client_info.node_manager_address.c_str() << " "
+                 << client_info.node_manager_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
   RAY_CHECK_OK(TcpConnect(socket, client_info.node_manager_address,
@@ -131,15 +133,18 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   // the received heartbeat information.
   if (this->cluster_resource_map_.count(client_id) == 0) {
     // Haven't received the client registration for this client yet, skip this heartbeat.
-    RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id " << client_id.hex();
+    RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
+                  << client_id.hex();
     return;
   }
   SchedulingResources &resources = this->cluster_resource_map_[client_id];
   ResourceSet heartbeat_resource_available(heartbeat_data.resources_available_label,
                                            heartbeat_data.resources_available_capacity);
-  resources.SetAvailableResources(ResourceSet(heartbeat_data.resources_available_label,
-                                              heartbeat_data.resources_available_capacity));
-  RAY_CHECK(this->cluster_resource_map_[client_id].GetAvailableResources() == heartbeat_resource_available);
+  resources.SetAvailableResources(
+      ResourceSet(heartbeat_data.resources_available_label,
+                  heartbeat_data.resources_available_capacity));
+  RAY_CHECK(this->cluster_resource_map_[client_id].GetAvailableResources() ==
+            heartbeat_resource_available);
 }
 
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
@@ -161,59 +166,58 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
     }
+  } break;
+  case protocol::MessageType_GetTask: {
+    const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    RAY_CHECK(worker);
+    // If the worker was assigned a task, mark it as finished.
+    if (!worker->GetAssignedTaskId().is_nil()) {
+      FinishTask(worker->GetAssignedTaskId());
     }
-      break;
-    case protocol::MessageType_GetTask: {
-      const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-      RAY_CHECK(worker);
-      // If the worker was assigned a task, mark it as finished.
+    // Return the worker to the idle pool.
+    worker_pool_.PushWorker(worker);
+    auto scheduled_tasks = local_queues_.GetScheduledTasks();
+    if (!scheduled_tasks.empty()) {
+      const TaskID &scheduled_task_id =
+          scheduled_tasks.front().GetTaskSpecification().TaskId();
+      auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});
+      AssignTask(scheduled_tasks.front());
+    }
+  } break;
+  case protocol::MessageType_DisconnectClient: {
+    // Remove the dead worker from the pool and stop listening for messages.
+    const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker) {
       if (!worker->GetAssignedTaskId().is_nil()) {
+        // TODO(swang): Clean up any tasks that were assigned to the worker.
+        // Release any resources that may be held by this worker.
         FinishTask(worker->GetAssignedTaskId());
       }
-      // Return the worker to the idle pool.
-      worker_pool_.PushWorker(worker);
-      auto scheduled_tasks = local_queues_.GetScheduledTasks();
-      if (!scheduled_tasks.empty()) {
-        const TaskID &scheduled_task_id =
-            scheduled_tasks.front().GetTaskSpecification().TaskId();
-        auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});
-        AssignTask(scheduled_tasks.front());
-      }
-    } break;
-    case protocol::MessageType_DisconnectClient: {
-      // Remove the dead worker from the pool and stop listening for messages.
-      const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-      if (worker) {
-        if (!worker->GetAssignedTaskId().is_nil()) {
-          // TODO(swang): Clean up any tasks that were assigned to the worker.
-          // Release any resources that may be held by this worker.
-          FinishTask(worker->GetAssignedTaskId());
-        }
-        worker_pool_.DisconnectWorker(worker);
-      }
-      return;
-    } break;
-    case protocol::MessageType_SubmitTask: {
-      // Read the task submitted by the client.
-      auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-      TaskExecutionSpecification task_execution_spec(
-          from_flatbuf(*message->execution_dependencies()));
-      TaskSpecification task_spec(*message->task_spec());
-      Task task(task_execution_spec, task_spec);
-      // Submit the task to the local scheduler. Since the task was submitted
-      // locally, there is no uncommitted lineage.
-      SubmitTask(task, Lineage());
-    } break;
-    case protocol::MessageType_ReconstructObject: {
-      // TODO(hme): handle multiple object ids.
-      auto message = flatbuffers::GetRoot<protocol::ReconstructObject>(message_data);
-      ObjectID object_id = from_flatbuf(*message->object_id());
-      RAY_LOG(DEBUG) << "reconstructing object " << object_id.hex();
-      RAY_CHECK_OK(object_manager_.Pull(object_id));
-    } break;
+      worker_pool_.DisconnectWorker(worker);
+    }
+    return;
+  } break;
+  case protocol::MessageType_SubmitTask: {
+    // Read the task submitted by the client.
+    auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
+    TaskExecutionSpecification task_execution_spec(
+        from_flatbuf(*message->execution_dependencies()));
+    TaskSpecification task_spec(*message->task_spec());
+    Task task(task_execution_spec, task_spec);
+    // Submit the task to the local scheduler. Since the task was submitted
+    // locally, there is no uncommitted lineage.
+    SubmitTask(task, Lineage());
+  } break;
+  case protocol::MessageType_ReconstructObject: {
+    // TODO(hme): handle multiple object ids.
+    auto message = flatbuffers::GetRoot<protocol::ReconstructObject>(message_data);
+    ObjectID object_id = from_flatbuf(*message->object_id());
+    RAY_LOG(DEBUG) << "reconstructing object " << object_id.hex();
+    RAY_CHECK_OK(object_manager_.Pull(object_id));
+  } break;
 
-    default:
-      RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
+  default:
+    RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
 
   // Listen for more messages.
@@ -254,11 +258,11 @@ void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
 }
 
 void NodeManager::ScheduleTasks() {
-
   auto policy_decision = scheduling_policy_.Schedule(
-      cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(), remote_clients_);
+      cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(),
+      remote_clients_);
   RAY_LOG(INFO) << "[NM ScheduleTasks] policy decision:";
-  for (const auto & pair: policy_decision) {
+  for (const auto &pair : policy_decision) {
     TaskID task_id = pair.first;
     ClientID client_id = pair.second;
     RAY_LOG(INFO) << task_id.hex() << " --> " << client_id.hex();
@@ -347,8 +351,9 @@ void NodeManager::FinishTask(const TaskID &task_id) {
   auto task = *tasks.begin();
 
   // Resource accounting: release task's resources.
-  RAY_CHECK(this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-      task.GetTaskSpecification().GetRequiredResources()));
+  RAY_CHECK(
+      this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+          task.GetTaskSpecification().GetRequiredResources()));
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
@@ -360,7 +365,8 @@ ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
 
   // Get and serialize the task's uncommitted lineage.
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
-  Task &lineage_cache_entry_task = uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
+  Task &lineage_cache_entry_task =
+      uncommitted_lineage.GetEntryMutable(task_id)->TaskDataMutable();
   // Increment forward count for the forwarded task.
   lineage_cache_entry_task.GetTaskExecutionSpec().IncrementNumForwards();
 
@@ -377,7 +383,8 @@ ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
   // Lookup remote server connection for this node_id and use it to send the request.
   if (remote_server_connections_.count(node_id) == 0) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
-    RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id.hex();
+    RAY_LOG(INFO) << "No NodeManager connection found for GCS client id "
+                  << node_id.hex();
     return ray::Status::IOError("NodeManager connection not found");
   }
 
@@ -390,13 +397,14 @@ ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
   } else {
-    // TODO(atumanov): caller must handle ForwardTask failure to ensure tasks are not lost.
-    RAY_LOG(FATAL) << "[NodeManager][ForwardTask] failed to forward task " << task_id.hex()
-                   << " to node " << node_id.hex();
+    // TODO(atumanov): caller must handle ForwardTask failure to ensure tasks are not
+    // lost.
+    RAY_LOG(FATAL) << "[NodeManager][ForwardTask] failed to forward task "
+                   << task_id.hex() << " to node " << node_id.hex();
   }
   return status;
 }
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray

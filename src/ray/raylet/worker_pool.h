@@ -83,7 +83,7 @@ class WorkerPool {
   std::list<std::shared_ptr<Worker>> registered_workers_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

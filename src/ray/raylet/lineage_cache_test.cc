@@ -70,8 +70,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
 }
 
 std::vector<ObjectID> InsertTaskChain(LineageCache &lineage_cache,
-                                      std::vector<Task> &inserted_tasks,
-                                      int chain_size,
+                                      std::vector<Task> &inserted_tasks, int chain_size,
                                       const std::vector<ObjectID> &initial_arguments,
                                       int64_t num_returns) {
   Lineage empty_lineage;
@@ -253,8 +252,9 @@ TEST_F(LineageCacheTest, TestRemoveWaitingTask) {
 
   const Task &task = uncommitted_lineage.GetEntry(task_id_to_remove)->TaskData();
   RAY_LOG(INFO) << "removing task " << task.GetTaskSpecification().TaskId()
-                << "with numforwards=" << task.GetTaskExecutionSpecReadonly().NumForwards();
-  ASSERT_EQ(task.GetTaskExecutionSpecReadonly().NumForwards(),1);
+                << "with numforwards="
+                << task.GetTaskExecutionSpecReadonly().NumForwards();
+  ASSERT_EQ(task.GetTaskExecutionSpecReadonly().NumForwards(), 1);
 
   lineage_cache_.RemoveWaitingTask(task_id_to_remove);
   lineage_cache_.AddWaitingTask(task_to_remove, uncommitted_lineage);

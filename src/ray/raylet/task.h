@@ -83,7 +83,7 @@ class Task {
   TaskSpecification task_spec_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

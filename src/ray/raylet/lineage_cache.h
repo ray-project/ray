@@ -90,7 +90,7 @@ class LineageEntry {
   GcsStatus status_;
   /// The task data to be written to the GCS. This is nullptr if the entry is
   /// an object.
-//  const Task task_;
+  //  const Task task_;
   Task task_;
 };
 
@@ -209,7 +209,7 @@ class LineageCache {
   Lineage lineage_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

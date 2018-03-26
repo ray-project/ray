@@ -90,6 +90,6 @@ bool SchedulingQueue::RegisterActor(ActorID actor_id,
   return true;
 }
 
-}
+}  // namespace raylet
 
 }  // namespace ray

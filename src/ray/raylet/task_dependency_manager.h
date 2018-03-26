@@ -28,7 +28,7 @@ class TaskDependencyManager {
   /// \param handler The handler to call for subscribed tasks whose
   /// dependencies have become available locally.
   TaskDependencyManager(ObjectManager &object_manager,
-      // ReconstructionPolicy &reconstruction_policy,
+                        // ReconstructionPolicy &reconstruction_policy,
                         std::function<void(const TaskID &)> handler);
 
   /// Check whether a task's object dependencies are locally available.
@@ -79,7 +79,7 @@ class TaskDependencyManager {
   std::function<void(const TaskID &)> task_ready_callback_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

@@ -39,10 +39,9 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service main_service;
   std::unique_ptr<boost::asio::io_service> object_manager_service;
   object_manager_service.reset(new boost::asio::io_service());
-  ray::raylet::Raylet server(main_service,
-                             std::move(object_manager_service),
-                             std::string(argv[1]),
-                             node_manager_config, om_config, gcs_client);
+  ray::raylet::Raylet server(main_service, std::move(object_manager_service),
+                             std::string(argv[1]), node_manager_config, om_config,
+                             gcs_client);
   main_service.run();
 }
 #endif

@@ -11,9 +11,7 @@ flatbuffers::Offset<protocol::Task> Task::ToFlatbuffer(
   return task;
 }
 
-TaskExecutionSpecification &Task::GetTaskExecutionSpec() {
-  return task_execution_spec_;
-}
+TaskExecutionSpecification &Task::GetTaskExecutionSpec() { return task_execution_spec_; }
 
 const TaskExecutionSpecification &Task::GetTaskExecutionSpecReadonly() const {
   return task_execution_spec_;
@@ -60,6 +58,6 @@ bool Task::DependsOn(const ObjectID &object_id) const {
   return false;
 }
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray

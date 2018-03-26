@@ -108,6 +108,6 @@ void TaskDependencyManager::MarkDependencyReady(const ObjectID &object) {
   throw std::runtime_error("Method not implemented");
 }
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray

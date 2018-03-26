@@ -10,7 +10,6 @@ namespace raylet {
 /// A constructor that initializes a worker pool with num_workers workers.
 WorkerPool::WorkerPool(int num_workers, const std::vector<const char *> &worker_command)
     : worker_command_(worker_command) {
-
   worker_command_.push_back(NULL);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
@@ -96,6 +95,6 @@ bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
   return removeWorker(pool_, worker);
 }
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray

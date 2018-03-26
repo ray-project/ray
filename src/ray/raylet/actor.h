@@ -24,7 +24,7 @@ class ActorInformation {
   ActorID id_;
 };  // class ActorInformation
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 

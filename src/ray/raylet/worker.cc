@@ -24,6 +24,6 @@ const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
   return connection_;
 }
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // end namespace ray

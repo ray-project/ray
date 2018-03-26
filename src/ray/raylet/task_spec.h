@@ -141,7 +141,7 @@ class TaskSpecification {
   std::vector<uint8_t> spec_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
 }  // namespace ray
 
