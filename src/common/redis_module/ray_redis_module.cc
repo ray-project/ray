@@ -609,7 +609,7 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 int TableAppend_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
-  if (argc != 5) {
+  if (argc < 5 || argc > 6) {
     return RedisModule_WrongArity(ctx);
   }
 
@@ -617,21 +617,38 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *pubsub_channel_str = argv[2];
   RedisModuleString *id = argv[3];
   RedisModuleString *data = argv[4];
+  RedisModuleString *index_str = nullptr;
+  if (argc == 6) {
+    index_str = argv[5];
+  }
 
   // Set the keys in the table.
   RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
                                         REDISMODULE_READ | REDISMODULE_WRITE);
   size_t index = RedisModule_ValueLength(key);
-  RedisModule_ZsetAdd(key, index, data, NULL);
-  RedisModule_CloseKey(key);
-
-  // Publish a message on the requested pubsub channel if necessary.
-  TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
-  if (pubsub_channel != TablePubsub_NO_PUBLISH) {
-    // All other pubsub channels write the data back directly onto the channel.
-    return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+  if (index_str != nullptr) {
+    long long requested_index;
+    RAY_CHECK(RedisModule_StringToLongLong(index_str, &requested_index) ==
+              REDISMODULE_OK);
+    RAY_CHECK(requested_index >= 0);
+    index = static_cast<size_t>(requested_index);
+  }
+  if (index == RedisModule_ValueLength(key)) {
+    RedisModule_ZsetAdd(key, index, data, NULL);
+    RedisModule_CloseKey(key);
+    // Publish a message on the requested pubsub channel if necessary.
+    TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
+    if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+      // All other pubsub channels write the data back directly onto the
+      // channel.
+      return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+    } else {
+      return RedisModule_ReplyWithSimpleString(ctx, "OK");
+    }
   } else {
-    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+    RedisModule_CloseKey(key);
+    const char *reply = "ERR entry exists";
+    return RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
   }
 }
 

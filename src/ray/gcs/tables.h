@@ -77,6 +77,9 @@ class Log {
   Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
                 const WriteCallback &done);
 
+  Status AppendAt(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+                  const WriteCallback &done, const WriteCallback &failure, int index);
+
   /// Lookup the log values at a key asynchronously.
   ///
   /// \param job_id The ID of the job (= driver).
@@ -295,8 +298,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
     flatbuffers::FlatBufferBuilder fbb;
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_TEST_AND_UPDATE", id,
-                                         fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
-                                         pubsub_channel_, callback_index));
+                                         fbb.GetBufferPointer(), fbb.GetSize(), -1,
+                                         prefix_, pubsub_channel_, callback_index));
     return Status::OK();
   }
 

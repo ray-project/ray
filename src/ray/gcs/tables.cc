@@ -14,6 +14,7 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
       new CallbackData({id, data, nullptr, nullptr, this, client_}));
   int64_t callback_index =
       RedisCallbackManager::instance().add([d, done](const std::string &data) {
+        RAY_CHECK(data.empty());
         if (done != nullptr) {
           (done)(d->client, d->id, d->data);
         }
@@ -23,7 +24,33 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, data.get()));
   return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, callback_index);
+                            -1, prefix_, pubsub_channel_, callback_index);
+}
+
+template <typename ID, typename Data>
+Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
+                               std::shared_ptr<DataT> data, const WriteCallback &done,
+                               const WriteCallback &failure, int index) {
+  auto d = std::shared_ptr<CallbackData>(
+      new CallbackData({id, data, nullptr, nullptr, this, client_}));
+  int64_t callback_index =
+      RedisCallbackManager::instance().add([d, done, failure](const std::string &data) {
+        if (data.empty()) {
+          if (done != nullptr) {
+            (done)(d->client, d->id, d->data);
+          }
+        } else {
+          if (failure != nullptr) {
+            (failure)(d->client, d->id, d->data);
+          }
+        }
+        return true;
+      });
+  flatbuffers::FlatBufferBuilder fbb;
+  fbb.ForceDefaults(true);
+  fbb.Finish(Data::Pack(fbb, data.get()));
+  return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
+                            index, prefix_, pubsub_channel_, callback_index);
 }
 
 template <typename ID, typename Data>
@@ -50,7 +77,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
         return true;
       });
   std::vector<uint8_t> nil;
-  return context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), prefix_,
+  return context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), -1, prefix_,
                             pubsub_channel_, callback_index);
 }
 
@@ -104,7 +131,7 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), prefix_, pubsub_channel_,
+                            client_id.size(), -1, prefix_, pubsub_channel_,
                             /*callback_index=*/-1);
 }
 
@@ -114,7 +141,7 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), prefix_, pubsub_channel_,
+                            client_id.size(), -1, prefix_, pubsub_channel_,
                             /*callback_index=*/-1);
 }
 
@@ -134,7 +161,7 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, data.get()));
   return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, callback_index);
+                            -1, prefix_, pubsub_channel_, callback_index);
 }
 
 template <typename ID, typename Data>
