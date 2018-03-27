@@ -223,7 +223,7 @@ class ObjectManager {
                            const ray::ObjectID &object_id);
 
   /// Private callback implementation for failure on get location. Called inside OD.
-  void GetLocationsFailed(ray::Status status, const ObjectID &object_id);
+  void GetLocationsFailed(const ObjectID &object_id);
 
   /// Synchronously send a pull request.
   /// Invoked once a connection to a remote manager that contains the required ObjectID

@@ -56,7 +56,7 @@ void NodeManager::Heartbeat() {
   ray::Status status = heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
       [this](ray::gcs::AsyncGcsClient *client, const ClientID &id,
-             const HeartbeatTableDataT &data) {
+             const std::shared_ptr<HeartbeatTableDataT> data) {
         RAY_LOG(DEBUG) << "[HEARTBEAT] hearbeat sent callback";
       });
   RAY_CHECK_OK(status);

@@ -18,16 +18,16 @@ class MockGcs : virtual public gcs::TableInterface<TaskID, protocol::Task> {
   MockGcs(){};
   Status Add(const JobID &job_id, const TaskID &task_id,
              std::shared_ptr<protocol::TaskT> task_data,
-             const gcs::TableInterface<TaskID, protocol::Task>::Callback &done) {
+             const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
     task_table_[task_id] = task_data;
     callbacks_.push_back(
-        std::pair<gcs::raylet::TaskTable::Callback, TaskID>(done, task_id));
+        std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>(done, task_id));
     return ray::Status::OK();
   };
 
   void Flush() {
     for (const auto &callback : callbacks_) {
-      callback.first(NULL, callback.second, *task_table_[callback.second]);
+      callback.first(NULL, callback.second, task_table_[callback.second]);
     }
     callbacks_.clear();
   };
@@ -40,7 +40,7 @@ class MockGcs : virtual public gcs::TableInterface<TaskID, protocol::Task> {
  private:
   std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
       task_table_;
-  std::vector<std::pair<gcs::raylet::TaskTable::Callback, TaskID>> callbacks_;
+  std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
 };
 
 class LineageCacheTest : public ::testing::Test {

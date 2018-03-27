@@ -9,13 +9,13 @@ namespace gcs {
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
-                             std::shared_ptr<DataT> data, const Callback &done) {
+                             std::shared_ptr<DataT> data, const WriteCallback &done) {
   auto d = std::shared_ptr<CallbackData>(
-      new CallbackData({id, data, done, nullptr, this, client_}));
+      new CallbackData({id, data, nullptr, nullptr, this, client_}));
   int64_t callback_index =
-      RedisCallbackManager::instance().add([d](const std::string &data) {
-        if (d->callback != nullptr) {
-          (d->callback)(d->client, d->id, {*d->data});
+      RedisCallbackManager::instance().add([d, done](const std::string &data) {
+        if (done != nullptr) {
+          (done)(d->client, d->id, d->data);
         }
         return true;
       });
@@ -120,13 +120,13 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
 
 template <typename ID, typename Data>
 Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
-                            std::shared_ptr<DataT> data, const Callback &done) {
+                            std::shared_ptr<DataT> data, const WriteCallback &done) {
   auto d = std::shared_ptr<CallbackData>(
-      new CallbackData({id, data, done, nullptr, this, client_}));
+      new CallbackData({id, data, nullptr, nullptr, this, client_}));
   int64_t callback_index =
-      RedisCallbackManager::instance().add([d](const std::string &data) {
-        if (d->callback != nullptr) {
-          (d->callback)(d->client, d->id, *d->data);
+      RedisCallbackManager::instance().add([d, done](const std::string &data) {
+        if (done != nullptr) {
+          (done)(d->client, d->id, d->data);
         }
         return true;
       });
@@ -232,8 +232,9 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   }
 }
 
-void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT &data) {
-  auto connected_client_id = ClientID::from_binary(data.client_id);
+void ClientTable::HandleConnected(AsyncGcsClient *client,
+                                  const std::shared_ptr<ClientTableDataT> data) {
+  auto connected_client_id = ClientID::from_binary(data->client_id);
   RAY_CHECK(client_id_ == connected_client_id) << connected_client_id.hex() << " "
                                                << client_id_.hex();
 }
@@ -262,10 +263,9 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
   // Callback to handle our own successful connection once we've added
   // ourselves.
   auto add_callback = [this](AsyncGcsClient *client, const UniqueID &log_key,
-                             const std::vector<ClientTableDataT> &data) {
+                             std::shared_ptr<ClientTableDataT> data) {
     RAY_CHECK(log_key == client_log_key_);
-    RAY_CHECK(data.size() == 1);
-    HandleConnected(client, data[0]);
+    HandleConnected(client, data);
   };
   // Callback to add ourselves once we've successfully subscribed.
   auto subscription_callback = [this, data, add_callback](AsyncGcsClient *c) {
@@ -285,9 +285,8 @@ Status ClientTable::Disconnect() {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   data->is_insertion = true;
   auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
-                             const std::vector<ClientTableDataT> &data) {
-    RAY_CHECK(data.size() == 1);
-    HandleConnected(client, data[0]);
+                             std::shared_ptr<ClientTableDataT> data) {
+    HandleConnected(client, data);
     RAY_CHECK_OK(CancelNotifications(JobID::nil(), client_log_key_, id));
   };
   RAY_RETURN_NOT_OK(Append(JobID::nil(), client_log_key_, data, add_callback));
@@ -309,12 +308,10 @@ const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
 }
 
 template class Log<ObjectID, ObjectTableData>;
+template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;
-template class Table<ObjectID, ObjectTableData>;
 template class Table<ClientID, HeartbeatTableData>;
-template class Table<ClassID, ClassTableData>;
-template class Table<ClientID, ClientTableData>;
 
 }  // namespace gcs
 

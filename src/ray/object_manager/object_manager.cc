@@ -118,9 +118,7 @@ ray::Status ObjectManager::Pull_(const ObjectID &object_id) {
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
         return GetLocationsSuccess(client_ids, object_id);
       },
-      [this](ray::Status status, const ObjectID &object_id) {
-        return GetLocationsFailed(status, object_id);
-      });
+      [this](const ObjectID &object_id) { return GetLocationsFailed(object_id); });
   return status_code;
 }
 
@@ -132,7 +130,7 @@ void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client
   ray::Status status_code = Pull(object_id, client_id);
 };
 
-void ObjectManager::GetLocationsFailed(ray::Status status, const ObjectID &object_id) {
+void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
   SchedulePull(object_id, config_.pull_timeout_ms);
 };
 

@@ -16,10 +16,11 @@ ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
   std::lock_guard<std::mutex> lock(gcs_mutex);
   JobID job_id = JobID::from_random();
   auto data = std::make_shared<ObjectTableDataT>();
-  data->managers.push_back(client_id.binary());
-  ray::Status status = gcs_client_->object_table().Add(
-      job_id, object_id, data,
-      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &data) {
+  data->manager = client_id.binary();
+  data->is_eviction = false;
+  ray::Status status = gcs_client_->object_table().Append(
+      job_id, object_id, data, [](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                  const std::shared_ptr<ObjectTableDataT> data) {
         // Do nothing.
       });
   return status;
@@ -78,39 +79,39 @@ ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
   JobID job_id = JobID::from_random();
   ray::Status status = gcs_client_->object_table().Lookup(
       job_id, object_id,
-      [this, object_id](gcs::AsyncGcsClient *client, const UniqueID &id,
-                        const ObjectTableDataT &data) {
-        std::vector<ClientID> remote_connections;
-        for (auto client_id_binary : data.managers) {
-          ClientID client_id = ClientID::from_binary(client_id_binary);
-          remote_connections.push_back(client_id);
-        }
-        (void)GetLocationsComplete(Status::OK(), object_id, remote_connections);
-      },
-      [this, object_id](gcs::AsyncGcsClient *client, const UniqueID &id) {
-        std::vector<ClientID> remote_connections;
-        (void)GetLocationsComplete(Status::RedisError("Key not found."), object_id,
-                                   remote_connections);
+      [this, object_id](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+                        const std::vector<ObjectTableDataT> &data) {
+        GetLocationsComplete(object_id, data);
       });
   return status;
 };
 
-ray::Status ObjectDirectory::GetLocationsComplete(
-    const ray::Status &status, const ObjectID &object_id,
-    const std::vector<ClientID> &remote_connections) {
-  bool success = status.ok();
-  // Only invoke a callback if the request was not cancelled.
-  if (existing_requests_.count(object_id) > 0) {
-    ODCallbacks cbs = existing_requests_[object_id];
-    if (success) {
-      cbs.success_cb(remote_connections, object_id);
+void ObjectDirectory::GetLocationsComplete(
+    const ObjectID &object_id, const std::vector<ObjectTableDataT> &location_entries) {
+  auto request = existing_requests_.find(object_id);
+  // Do not invoke a callback if the request was cancelled.
+  if (request == existing_requests_.end()) {
+    return;
+  }
+  // Build the set of current locations based on the entries in the log.
+  std::unordered_set<ClientID, UniqueIDHasher> locations;
+  for (auto entry : location_entries) {
+    ClientID client_id = ClientID::from_binary(entry.manager);
+    if (!entry.is_eviction) {
+      locations.insert(client_id);
     } else {
-      cbs.fail_cb(status, object_id);
+      locations.erase(client_id);
     }
   }
-  existing_requests_.erase(object_id);
-  return status;
-};
+  // Invoke the callback.
+  std::vector<ClientID> locations_vector(locations.begin(), locations.end());
+  if (locations_vector.empty()) {
+    request->second.fail_cb(object_id);
+  } else {
+    request->second.success_cb(locations_vector, object_id);
+  }
+  existing_requests_.erase(request);
+}
 
 ray::Status ObjectDirectory::Cancel(const ObjectID &object_id) {
   existing_requests_.erase(object_id);
