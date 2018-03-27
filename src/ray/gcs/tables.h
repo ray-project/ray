@@ -27,25 +27,20 @@ class RedisContext;
 
 class AsyncGcsClient;
 
+/// \class Log
+///
+/// A GCS table where every entry is an append-only log.
+/// Example tables backed by Log:
+///   ObjectTable: Stores a log of which clients have added or evicted an
+///                object.
+///   ClientTable: Stores a log of which GCS clients have been added or deleted
+///                from the system.
 template <typename ID, typename Data>
-class TableInterface {
+class Log {
  public:
   using DataT = typename Data::NativeTableType;
-  using Callback =
-      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
-  virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<DataT> data,
-                     const Callback &done) = 0;
-  virtual ~TableInterface(){};
-};
-
-template <typename ID, typename Data>
-class Table : public TableInterface<ID, Data> {
- public:
-  using DataT = typename TableInterface<ID, Data>::DataT;
-  using Callback = typename TableInterface<ID, Data>::Callback;
-  /// The callback to call when a lookup fails because there is no entry at the
-  /// key.
-  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
+  using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                      const std::vector<DataT> &data)>;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
@@ -54,47 +49,44 @@ class Table : public TableInterface<ID, Data> {
     ID id;
     std::shared_ptr<DataT> data;
     Callback callback;
-    FailureCallback failure;
     // An optional callback to call for subscription operations, where the
     // first message is a notification of subscription success.
     SubscriptionCallback subscription_callback;
-    Table<ID, Data> *table;
+    Log<ID, Data> *log;
     AsyncGcsClient *client;
   };
 
-  Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+  Log(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : context_(context),
         client_(client),
         pubsub_channel_(TablePubsub_NO_PUBLISH),
         prefix_(TablePrefix_UNUSED),
         subscribe_callback_index_(-1){};
 
-  virtual ~Table(){};
-
-  /// Add an entry to the table.
+  /// Append a log entry to a key.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is added to the GCS.
-  /// \param data Data that is added to the GCS.
+  /// \param data Data to append to the log.
   /// \param done Callback that is called once the data has been written to the
   ///        GCS.
   /// \return Status
-  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
-             const Callback &done);
+  Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+                const Callback &done);
 
-  /// Lookup an entry asynchronously.
+  /// Lookup the log values at a key asynchronously.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param id The ID of the data that is looked up in the GCS.
   /// \param lookup Callback that is called after lookup. If the callback is
   ///        called with an empty vector, then there was no data at the key.
   /// \return Status
-  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
-                const FailureCallback &failure);
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
 
-  /// Subscribe to any Add operations to this table. The caller may choose to
-  /// subscribe to all Adds, or to subscribe only to keys that it requests
-  /// notifications for. This may only be called once per Table instance.
+  /// Subscribe to any Append operations to this table. The caller may choose
+  /// to subscribe to all Appends, or to subscribe only to keys that it
+  /// requests notifications for. This may only be called once per Log
+  /// instance.
   ///
   /// \param job_id The ID of the job (= driver).
   /// \param client_id The type of update to listen to. If this is nil, then a
@@ -115,8 +107,8 @@ class Table : public TableInterface<ID, Data> {
   ///
   /// The notifications will be returned via the subscribe callback that was
   /// registered by `Subscribe`.  An initial notification will be returned for
-  /// the current value(s) at the key, if any, and a subsequent notification
-  /// will be published for every following `Add` to the key. Before
+  /// the current values at the key, if any, and a subsequent notification will
+  /// be published for every following `Append` to the key. Before
   /// notifications can be requested, the caller must first call `Subscribe`,
   /// with the same `client_id`.
   ///
@@ -153,6 +145,84 @@ class Table : public TableInterface<ID, Data> {
   /// when we receive notifications. This is >= 0 iff we have subscribed to the
   /// table, otherwise -1.
   int64_t subscribe_callback_index_;
+};
+
+template <typename ID, typename Data>
+class TableInterface {
+ public:
+  using DataT = typename Data::NativeTableType;
+  using Callback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<DataT> data,
+                     const Callback &done) = 0;
+  virtual ~TableInterface(){};
+};
+
+/// \class Table
+///
+/// A GCS table where every entry is a single data item.
+/// Example tables backed by Log:
+///   TaskTable: Stores Task metadata needed for executing the task.
+template <typename ID, typename Data>
+class Table : private Log<ID, Data>, public TableInterface<ID, Data> {
+ public:
+  using DataT = typename Log<ID, Data>::DataT;
+  using Callback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  /// The callback to call when a Lookup call returns an empty entry.
+  using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
+  /// The callback to call when a Subscribe call completes and we are ready to
+  /// request and receive notifications.
+  using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
+
+  struct CallbackData {
+    ID id;
+    std::shared_ptr<DataT> data;
+    Callback callback;
+    // An optional callback to call for subscription operations, where the
+    // first message is a notification of subscription success.
+    SubscriptionCallback subscription_callback;
+    Log<ID, Data> *log;
+    AsyncGcsClient *client;
+  };
+
+  Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log<ID, Data>(context, client) {}
+
+  using Log<ID, Data>::RequestNotifications;
+  using Log<ID, Data>::CancelNotifications;
+
+  /// Add an entry to the table. This overwrites any existing data at the key.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data that is added to the GCS.
+  /// \param done Callback that is called once the data has been written to the
+  ///        GCS.
+  /// \return Status
+  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+             const Callback &done);
+
+  /// Lookup an entry asynchronously.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is looked up in the GCS.
+  /// \param lookup Callback that is called after lookup if there was data the
+  ///        key.
+  /// \param failure Callback that is called after lookup if there was no data
+  ///        at the key.
+  /// \return Status
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
+                const FailureCallback &failure);
+
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const Callback &subscribe, const SubscriptionCallback &done);
+
+ protected:
+  using Log<ID, Data>::context_;
+  using Log<ID, Data>::client_;
+  using Log<ID, Data>::pubsub_channel_;
+  using Log<ID, Data>::prefix_;
 };
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
@@ -234,10 +304,9 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
     int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, callback, id](const std::vector<std::string> &data) {
-          RAY_CHECK(data.size() == 1);
+        [this, callback, id](const std::string &data) {
           auto result = std::make_shared<TaskTableDataT>();
-          auto root = flatbuffers::GetRoot<TaskTableData>(data[0].data());
+          auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
           root->UnPackTo(result.get());
           callback(client_, id, *result, root->updated());
           return true;
@@ -287,13 +356,25 @@ using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
 
 using ConfigTable = Table<ConfigID, ConfigTableData>;
 
-class ClientTable : private Table<ClientID, ClientTableData> {
+/// \class ClientTable
+///
+/// The ClientTable stores information about active and inactive clients. It is
+/// structured as a single log stored at a key known to all clients. When a
+/// client connects, it appends an entry to the log indicating that it is
+/// alive. When a client disconnects, or if another client detects its failure,
+/// it should append an entry to the log indicating that it is dead. A client
+/// that is marked as dead should never again be marked as alive; if it needs
+/// to reconnect, it must connect with a different ClientID.
+class ClientTable : private Log<UniqueID, ClientTableData> {
  public:
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
   ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
               const ClientID &client_id)
-      : Table(context, client),
+      : Log(context, client),
+        // We set the client log's key equal to nil so that all instances of
+        // ClientTable have the same key.
+        client_log_key_(UniqueID::nil()),
         disconnected_(false),
         client_id_(client_id),
         local_client_() {
@@ -354,12 +435,14 @@ class ClientTable : private Table<ClientID, ClientTableData> {
 
  private:
   /// Handle a client table notification.
-  void HandleNotification(AsyncGcsClient *client, const ClientID &channel_id,
-                          const ClientTableDataT &notifications);
+  void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(AsyncGcsClient *client, const ClientID &client_id,
-                       const ClientTableDataT &notifications);
+  void HandleConnected(AsyncGcsClient *client, const ClientTableDataT &notifications);
 
+  /// The key at which the log of client information is stored. This key must
+  /// be kept the same across all instances of the ClientTable, so that all
+  /// clients append and read from the same key.
+  UniqueID client_log_key_;
   /// Whether this client has called Disconnect().
   bool disconnected_;
   /// This client's ID.

@@ -25,9 +25,9 @@ enum TablePubsub:int {
   HEARTBEAT
 }
 
-table GcsNotification {
+table GcsTableEntry {
   id: string;
-  data: string;
+  entries: [string];
 }
 
 table FunctionTableData {
