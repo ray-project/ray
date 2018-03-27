@@ -49,17 +49,8 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   pushd python
     # Install setuptools_scm because otherwise when building the wheel for
-    # Python 3.6, we see an error. NOTE(rkn): We retry this command because it
-    # seems to fail a lot. See https://github.com/ray-project/ray/issues/1782.
-    attempt=0
-    until [ $attempt -ge 20 ]
-    do
-      $PIP_CMD install -q setuptools_scm && break
-      attempt=$[$attempt+1]
-    done
-    if [ $attempt -eq 20 ]; then
-      exit -1
-    fi
+    # Python 3.6, we see an error
+    pip install git+https://github.com/pypa/setuptools_scm#egg=proj
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
     $PIP_CMD install -q numpy==1.10.4 cython==0.27.3
