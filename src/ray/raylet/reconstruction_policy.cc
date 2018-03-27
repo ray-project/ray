@@ -1,5 +1,28 @@
 #include "reconstruction_policy.h"
 
+namespace {
+
+/// A helper function to process location entries from the object table log.
+/// Each location entry contains a node manager ID and a flag indicating
+/// whether the object was added or evicted from that node.
+void ReduceObjectTableDataT(std::unordered_set<ClientID, UniqueIDHasher> &locations,
+                            const std::vector<ObjectTableDataT> &new_location_entries) {
+  for (const auto &location_entry : new_location_entries) {
+    ClientID node_manager_id = ClientID::from_binary(location_entry.manager);
+    if (location_entry.is_eviction) {
+      // The object was evicted from the node. Erase the node manager from the
+      // set of known locations.
+      locations.erase(node_manager_id);
+    } else {
+      // The object was made available at the node. Add the node manager to the
+      // set of known locations.
+      RAY_CHECK(locations.count(node_manager_id) == 0);
+      locations.insert(node_manager_id);
+    }
+  }
+}
+}
+
 namespace ray {
 
 namespace raylet {
@@ -38,14 +61,6 @@ void ReconstructionPolicy::Listen(const ObjectID &object_id) {
   }
 }
 
-void ReconstructionPolicy::Notify(const ObjectID &object_id) {
-  auto entry = listening_objects_.find(object_id);
-  if (entry != listening_objects_.end()) {
-    // Reset this object's timer.
-    object_ticks_[object_id] = entry->second.num_ticks;
-  }
-}
-
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
   // Stop listening for the object.
   listening_objects_.erase(object_id);
@@ -64,8 +79,40 @@ void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
 }
 
 void ReconstructionPolicy::HandleNotification(
-    const ObjectID &object_id, const std::vector<ObjectTableDataT> new_locations) {
-  throw std::runtime_error("Method not implemented");
+    const ObjectID &object_id, const std::vector<ObjectTableDataT> new_location_entries) {
+  auto entry = listening_objects_.find(object_id);
+  // Do nothing for objects we are not listening for.
+  if (entry == listening_objects_.end()) {
+    return;
+  }
+  // Reset the timer for this object ID. If the object ID does not have a
+  // corresponding timer, but we are listening to the object, then we do
+  // nothing since we are already attempting to reconstruct it.
+  auto timer = object_ticks_.find(object_id);
+  if (timer != object_ticks_.end()) {
+    // Apply the new location entries from the log to the cached set of
+    // locations.
+    ReduceObjectTableDataT(entry->second.locations, new_location_entries);
+    // Check whether the object now exists at some location.
+    if (entry->second.locations.empty()) {
+      if (new_location_entries.empty()) {
+        // Notifications with empty data are heartbeats. Reset the timer for the
+        // object ID and wait for the node creating the object to finish.
+        timer->second = entry->second.num_ticks;
+      } else {
+        // We received a notification with a new location entry, but now there
+        // are no more known locations for the object. The object must have been
+        // evicted or lost from failure, so erase the timer and attempt to
+        // reconstruct the object.
+        object_ticks_.erase(timer);
+        Reconstruct(object_id);
+      }
+    } else {
+      // There is a known location for the object. Reset the timer for the
+      // object ID and wait for the transfer.
+      timer->second = entry->second.num_ticks;
+    }
+  }
 }
 
 void ReconstructionPolicy::HandleTaskLogAppend(

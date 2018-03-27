@@ -65,12 +65,20 @@ class ReconstructionPolicy {
   /// \param object_id The object to listen for and reconstruct.
   void Listen(const ObjectID &object_id);
 
-  /// Notify the reconstruction policy that this object is pending creation. If
-  /// we are currently listening to this object, then this resets the timer for
-  /// that object.
+  /// Handle a notification for an object's new locations.
+  ///
+  /// The list of new locations may be empty, which indicates a heartbeat from
+  /// a node that is creating the object. If the notification is for a new
+  /// location or a heartbeat, then this resets the timer for that object.
+  /// Else, the notification is for eviction or failure, so reconstruction is
+  /// triggered.
   ///
   /// \param object_id The object that the notification is about.
-  void Notify(const ObjectID &object_id);
+  /// \param new_location_entries The new locations that have been broadcasted
+  ///        for this object. Each location entry represents either an addition
+  ///        or deletion.
+  void HandleNotification(const ObjectID &object_id,
+                          const std::vector<ObjectTableDataT> new_location_entries);
 
   /// Stop listening for information about this object. Reconstruction will not
   /// be triggered for this object unless `Listen` is called on it again.
@@ -87,19 +95,14 @@ class ReconstructionPolicy {
     /// before. This is incremented every time we attempt to reconstruct this
     /// object by adding an entry to the task reconstruction log.
     int num_reconstructions;
-    /// A cached copy of the object table log for this object. This may be
-    /// stale.
-    std::vector<ObjectTableDataT> location_entries;
+    /// All known locations of the object, computed by applying the entries in
+    /// a cached copy of the object table log. This may be stale.
+    std::unordered_set<ClientID, UniqueIDHasher> locations;
     /// The number of reconstruction timer ticks that must pass before
     /// reconstruction for this object will be attempted.
     int num_ticks;
   };
 
-  /// Handle a notification for an object's new locations. The list of new
-  /// locations may be empty, which indicates a heartbeat from a node that is
-  /// creating the object.
-  void HandleNotification(const ObjectID &object_id,
-                          const std::vector<ObjectTableDataT> new_locations);
   /// Handle the callback for a possibly failed append operation to the task
   /// reconstruction log.
   void HandleTaskLogAppend(const TaskID &task_id,

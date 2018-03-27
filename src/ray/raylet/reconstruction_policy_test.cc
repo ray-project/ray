@@ -70,34 +70,32 @@ class ReconstructionPolicyTest : public ::testing::Test {
 
   void Tick(const std::function<void(void)> &handler,
             std::shared_ptr<boost::asio::deadline_timer> timer,
-            boost::posix_time::milliseconds timer_period, bool periodic,
+            boost::posix_time::milliseconds timer_period,
             const boost::system::error_code &error) {
     if (timer_canceled_) {
       return;
     }
     ASSERT_FALSE(error);
     handler();
-    if (periodic) {
-      timer->expires_at(timer->expires_at() + timer_period);
-      timer->async_wait([this, handler, timer, timer_period,
-                         periodic](const boost::system::error_code &error) {
-        Tick(handler, timer, timer_period, periodic, error);
-      });
-    }
+    // Fire the timer again after another period.
+    timer->expires_from_now(timer_period);
+    timer->async_wait(
+        [this, handler, timer, timer_period](const boost::system::error_code &error) {
+          Tick(handler, timer, timer_period, error);
+        });
   }
 
-  void SetTimer(uint64_t period_ms, const std::function<void(void)> &handler,
-                bool periodic) {
+  void SetPeriodicTimer(uint64_t period_ms, const std::function<void(void)> &handler) {
     timer_canceled_ = false;
     auto timer_period = boost::posix_time::milliseconds(period_ms);
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
-    timer->async_wait([this, handler, timer, timer_period,
-                       periodic](const boost::system::error_code &error) {
-      Tick(handler, timer, timer_period, periodic, error);
-    });
+    timer->async_wait(
+        [this, handler, timer, timer_period](const boost::system::error_code &error) {
+          Tick(handler, timer, timer_period, error);
+        });
   }
 
-  void CancelTimer() { timer_canceled_ = true; }
+  void CancelPeriodicTimer() { timer_canceled_ = true; }
 
   void Run(uint64_t reconstruction_timeout_ms) {
     auto timer_period = boost::posix_time::milliseconds(reconstruction_timeout_ms);
@@ -176,6 +174,47 @@ TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   ASSERT_EQ(reconstructions[task_id], 2);
 }
 
+TEST_F(ReconstructionPolicyTest, TestReconstructionEviction) {
+  auto reconstruction_policy = GetReconstructionPolicy();
+  auto timeout_ms = GetReconstructionTimeoutMs();
+  TaskID task_id = TaskID::from_random();
+  task_id = FinishTaskId(task_id);
+  ObjectID object_id = ComputeReturnId(task_id, 1);
+
+  // Create one addition entry and one deletion entry for a different object
+  // manager.
+  ObjectTableDataT addition_entry;
+  addition_entry.manager = "A";
+  addition_entry.is_eviction = false;
+  ObjectTableDataT deletion_entry;
+  deletion_entry.manager = "B";
+  deletion_entry.is_eviction = false;
+
+  // Listen for an object.
+  reconstruction_policy->Listen(object_id);
+  reconstruction_policy->Tick();
+  // Send the reconstruction manager information about the current locations of
+  // the object. The reconstruction manager should now record the object as
+  // being available at the node listed in the addition entry.
+  reconstruction_policy->HandleNotification(object_id, {addition_entry, deletion_entry});
+  // Run the test for longer than the reconstruction timeout.
+  Run(timeout_ms * 1.1);
+  // Check that reconstruction is suppressed because the object was at a known
+  // location.
+  auto reconstructions = ReconstructionsTriggered();
+  ASSERT_EQ(reconstructions.size(), 0);
+
+  // Send the reconstruction manager information about the object being evicted
+  // from the known object manager location. The reconstruction manager should
+  // now record the object as being evicted from all locations.
+  deletion_entry.manager = addition_entry.manager;
+  reconstruction_policy->HandleNotification(object_id, {deletion_entry});
+  // Check that reconstruction is triggered immediately.
+  reconstructions = ReconstructionsTriggered();
+  ASSERT_EQ(reconstructions.size(), 1);
+  ASSERT_EQ(reconstructions[task_id], 1);
+}
+
 TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   auto reconstruction_policy = GetReconstructionPolicy();
   auto timeout_ms = GetReconstructionTimeoutMs();
@@ -187,9 +226,9 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   reconstruction_policy->Listen(object_id);
   reconstruction_policy->Tick();
   // Send the reconstruction manager heartbeats about the object.
-  SetTimer(timeout_ms / 2, [reconstruction_policy,
-                            object_id]() { reconstruction_policy->Notify(object_id); },
-           /*periodic=*/true);
+  SetPeriodicTimer(timeout_ms / 2, [reconstruction_policy, object_id]() {
+    reconstruction_policy->HandleNotification(object_id, {});
+  });
   // Run the test for much longer than the reconstruction timeout.
   Run(timeout_ms * 2);
   // Check that reconstruction is suppressed.
@@ -197,7 +236,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   ASSERT_EQ(reconstructions.size(), 0);
 
   // Cancel the heartbeats to the reconstruction manager.
-  CancelTimer();
+  CancelPeriodicTimer();
   // Run the test again.
   reconstruction_policy->Tick();
   Run(timeout_ms * 1.1);
@@ -219,9 +258,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   reconstruction_policy->Tick();
   // Halfway through the reconstruction timeout, cancel the object
   // reconstruction.
-  SetTimer(timeout_ms / 2, [reconstruction_policy,
-                            object_id]() { reconstruction_policy->Cancel(object_id); },
-           /*periodic=*/false);
+  reconstruction_policy->Cancel(object_id);
   Run(timeout_ms * 2);
   // Check that reconstruction is suppressed.
   auto reconstructions = ReconstructionsTriggered();
