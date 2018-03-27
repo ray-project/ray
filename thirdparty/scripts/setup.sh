@@ -36,6 +36,11 @@ bash "$TP_SCRIPT_DIR/build_credis.sh"
 bash "$TP_SCRIPT_DIR/build_boost.sh"
 
 ##############################################
+# gtest
+##############################################
+bash "$TP_SCRIPT_DIR/build_gtest.sh"
+
+##############################################
 # flatbuffers if necessary
 ##############################################
 if [[ "$unamestr" == "Linux" ]]; then
