@@ -43,7 +43,7 @@ class PolicyOptimizer(object):
         """
 
         local_evaluator = evaluator_cls(*evaluator_args)
-        remote_cls = ray.remote(num_cpus=1)(evaluator_cls)
+        remote_cls = ray.remote(evaluator_cls)
         remote_evaluators = [
             remote_cls.remote(*evaluator_args)
             for _ in range(num_workers)]
