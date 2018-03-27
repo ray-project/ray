@@ -606,6 +606,26 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
   }
 }
 
+/// Append an entry to the log stored at a key. Publishes a notification about
+/// the update to all subscribers, if a pubsub channel is provided.
+///
+/// This is called from a client with the command:
+//
+///    RAY.TABLE_APPEND <table_prefix> <pubsub_channel> <id> <data>
+///                     <index (optional)>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for
+///        this key should be published to. When publishing to a specific
+///        client, the channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key to append to.
+/// \param data The data to append to the key.
+/// \param index If this is set, then the data must be appended at this index.
+///        If the current log is shorter or longer than the requested index,
+///        then the append will fail and an error message will be returned as a
+///        string.
+/// \return OK if the append succeeds, or an error message string if the append
+///         fails.
 int TableAppend_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
@@ -625,16 +645,22 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
   // Set the keys in the table.
   RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
                                         REDISMODULE_READ | REDISMODULE_WRITE);
+  // Determine the index at which the data should be appended. If no index is
+  // requested, then is the current length of the log.
   size_t index = RedisModule_ValueLength(key);
   if (index_str != nullptr) {
+    // Parse the requested index.
     long long requested_index;
     RAY_CHECK(RedisModule_StringToLongLong(index_str, &requested_index) ==
               REDISMODULE_OK);
     RAY_CHECK(requested_index >= 0);
     index = static_cast<size_t>(requested_index);
   }
+  // Only perform the append if the requested index matches the current length
+  // of the log, or if no index was requested.
   if (index == RedisModule_ValueLength(key)) {
-    // Do nothing if the data is already in the log.
+    // The requested index matches the current length of the log or no index
+    // was requested. Perform the append.
     int flags = REDISMODULE_ZADD_NX;
     RedisModule_ZsetAdd(key, index, data, &flags);
     // Check that we actually add a new entry during the append. This is only
@@ -652,6 +678,8 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
       return RedisModule_ReplyWithSimpleString(ctx, "OK");
     }
   } else {
+    // The requested index did not match the current length of the log. Return
+    // an error message as a string.
     RedisModule_CloseKey(key);
     const char *reply = "ERR entry exists";
     return RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));

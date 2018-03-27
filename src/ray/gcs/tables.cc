@@ -30,7 +30,7 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
 template <typename ID, typename Data>
 Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
                                std::shared_ptr<DataT> data, const WriteCallback &done,
-                               const WriteCallback &failure, int index) {
+                               const WriteCallback &failure, int log_length) {
   auto d = std::shared_ptr<CallbackData>(
       new CallbackData({id, data, nullptr, nullptr, this, client_}));
   int64_t callback_index =
@@ -50,7 +50,7 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, data.get()));
   return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, callback_index, index);
+                            prefix_, pubsub_channel_, callback_index, log_length);
 }
 
 template <typename ID, typename Data>
