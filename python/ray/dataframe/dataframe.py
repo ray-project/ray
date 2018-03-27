@@ -42,7 +42,8 @@ from . import get_npartitions
 class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
-                 copy=False, col_partitions=None, row_partitions=None):
+                 copy=False, col_partitions=None, row_partitions=None,
+                 blk_partitions=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -63,7 +64,8 @@ class DataFrame(object):
         """
         # Check type of data and use appropriate constructor
         if data is not None or (col_partitions is None and
-                                row_partitions is None):
+                                row_partitions is None and
+                                blk_partitions is None):
 
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
@@ -71,33 +73,63 @@ class DataFrame(object):
                 _partition_pandas_dataframe(pd_df, num_partitions=get_npartitions())
             columns = pd_df.columns
             index = pd_df.index
-
-        # this _index object is a pd.DataFrame
-        # and we use that DataFrame's Index to index the rows.
-        if row_partitions is not None:
-            self._row_lengths, self._row_index = \
-                _compute_length_and_index.remote(row_partitions, index)
         else:
-            if index is None:
-                self._row_index = ray.get(_deploy_func.remote(lambda df: df.index,
-                                                                     col_partitions[0]))
-            else:
-                self._row_index = index
-            self._row_lengths = len(self._row_index)
-        
-        if col_partitions is not None:
-            self._col_lengths, self._col_index = \
-                _compute_width_and_index.remote(col_partitions, columns)
-        else:
-            if columns is None:
-                self._col_index = ray.get(_deploy_func.remote(lambda df: df.columns,
-                                                                     row_partitions[0]))
-            else:
-                self._col_index = columns
-            self._col_lengths = len(self._col_index)
+            # created this invariant to make sure we never have to go into the
+            # partitions to get the columns
+            assert columns is not None, \
+                "Columns not defined, must define columns for internal" \
+                "DataFrame creations"
 
-        self._col_partitions = col_partitions
-        self._row_partitions = row_partitions
+            if blk_partitions is not None:
+                # put in numpy array here to make accesses easier since it's 2D
+                self._blk_partitions = np.array(blk_partitions)
+            if row_partitions is not None:
+                self._blk_partitions = \
+                    self._create_blk_partitions(row_partitions, axis=0)
+            elif col_partitions is not None:
+                self._blk_partitions = \
+                    self._create_blk_partitions(col_partitions, axis=1)
+
+        # if row_partitions is not None:
+        #     self._row_lengths, self._row_index = \
+        #         _compute_length_and_index.remote(row_partitions, index)
+        # else:
+        #     if index is None:
+        #         self._row_index = ray.get(_deploy_func.remote(lambda df: df.index,
+        #                                                              col_partitions[0]))
+        #     else:
+        #         self._row_index = index
+        #     self._row_lengths = len(self._row_index)
+        #
+        # if col_partitions is not None:
+        #     self._col_lengths, self._col_index = \
+        #         _compute_width_and_index.remote(col_partitions, columns)
+        # else:
+        #     if columns is None:
+        #         self._col_index = ray.get(_deploy_func.remote(lambda df: df.columns,
+        #                                                              row_partitions[0]))
+        #     else:
+        #         self._col_index = columns
+        #     self._col_lengths = len(self._col_index)
+        #
+        # self._col_partitions = col_partitions
+        # self._row_partitions = row_partitions
+
+    def _create_blk_partitions(self, partitions, axis=0):
+
+        @ray.remote
+        def repartition(df, npartitions, axis):
+            block_size = df.shape[1] // npartitions
+            return [df.iloc[:, i * block_size: (i + 1) * block_size]
+                    if axis == 0
+                    else df.iloc[i * block_size: (i + 1) * block_size, :]
+                    for i in range(npartitions)]
+
+        x = [repartition._submit(args=(partition, get_npartitions(), axis),
+                                 num_return_vals=get_npartitions())
+             for partition in partitions]
+
+        return np.array(x)
 
     def __str__(self):
         return repr(self)
