@@ -125,6 +125,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+
+  /// Map from object ID to the number of times it's been evicted on this
+  /// node before.
+  std::unordered_map<ObjectID, int, UniqueIDHasher> object_evictions_;
 };
 
 }  // namespace ray

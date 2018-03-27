@@ -18,6 +18,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = false;
+  data->num_evictions = object_evictions_[object_id];
   ray::Status status = gcs_client_->object_table().Append(
       job_id, object_id, data, [](gcs::AsyncGcsClient *client, const UniqueID &id,
                                   const std::shared_ptr<ObjectTableDataT> data) {
@@ -28,21 +29,19 @@ ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
 
 ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
                                                  const ClientID &client_id) {
-  // TODO(hme): uncomment when Remove is implemented.
-  //  JobID job_id = JobID::from_random();
-  //  auto data = std::make_shared<ObjectTableDataT>();
-  //  data->managers.push_back(client_id.binary());
-  //  ray::Status status = gcs_client_->object_table().Remove(
-  //      job_id,
-  //      object_id,
-  //      [](
-  //          gcs::AsyncGcsClient *client,
-  //          const UniqueID &id,
-  //          std::shared_ptr<ObjectTableDataT> data){
-  //        std::cout << "Removed: " << id << std::endl;
-  //      });
-  //  return status;
-  return Status::OK();
+  JobID job_id = JobID::from_random();
+  auto data = std::make_shared<ObjectTableDataT>();
+  data->manager = client_id.binary();
+  data->is_eviction = true;
+  data->num_evictions = object_evictions_[object_id];
+  ray::Status status = gcs_client_->object_table().Append(
+      job_id, object_id, data, [](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                  const std::shared_ptr<ObjectTableDataT> data) {
+        // Do nothing.
+      });
+  // Increment the number of times we've evicted this object.
+  object_evictions_[object_id]++;
+  return status;
 };
 
 ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
