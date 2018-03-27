@@ -634,7 +634,13 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
     index = static_cast<size_t>(requested_index);
   }
   if (index == RedisModule_ValueLength(key)) {
-    RedisModule_ZsetAdd(key, index, data, NULL);
+    // Do nothing if the data is already in the log.
+    int flags = REDISMODULE_ZADD_NX;
+    RedisModule_ZsetAdd(key, index, data, &flags);
+    // Check that we actually add a new entry during the append. This is only
+    // necessary since we implement the log with a sorted set, so all entries
+    // must be unique, or else we will have gaps in the log.
+    RAY_CHECK(flags == REDISMODULE_ZADD_ADDED) << "Appended a duplicate entry";
     RedisModule_CloseKey(key);
     // Publish a message on the requested pubsub channel if necessary.
     TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
