@@ -881,7 +881,8 @@ class Worker(object):
         while key not in self.imported_actor_classes:
             time.sleep(0.001)
 
-        self.fetch_and_register_actor(key, task.required_resources(), self)
+        with self.lock:
+            self.fetch_and_register_actor(key, task.required_resources(), self)
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
