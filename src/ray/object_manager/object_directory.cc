@@ -1,10 +1,6 @@
-#include <mutex>
-
 #include "object_directory.h"
 
 namespace ray {
-
-std::mutex gcs_mutex;
 
 ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client) {
   gcs_client_ = gcs_client;
@@ -13,7 +9,6 @@ ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client
 ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
                                                const ClientID &client_id) {
   // TODO(hme): Determine whether we need to do lookup to append.
-  std::lock_guard<std::mutex> lock(gcs_mutex);
   JobID job_id = JobID::from_random();
   auto data = std::make_shared<ObjectTableDataT>();
   data->managers.push_back(client_id.binary());
@@ -63,7 +58,6 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
 ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
                                           const OnLocationsSuccess &success_cb,
                                           const OnLocationsFailure &fail_cb) {
-  std::lock_guard<std::mutex> lock(gcs_mutex);
   ray::Status status_code = ray::Status::OK();
   if (existing_requests_.count(object_id) == 0) {
     existing_requests_[object_id] = ODCallbacks({success_cb, fail_cb});
@@ -75,7 +69,10 @@ ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
 };
 
 ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
+  std::lock_guard<std::mutex> lock(gcs_mutex);
   JobID job_id = JobID::from_random();
+  // Note: Lookup must be synchronous for thread-safe access.
+  // For now, this is only accessed by the main thread.
   ray::Status status = gcs_client_->object_table().Lookup(
       job_id, object_id,
       [this, object_id](gcs::AsyncGcsClient *client, const UniqueID &id,

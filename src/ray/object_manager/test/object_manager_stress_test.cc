@@ -122,6 +122,8 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
+    om_config_1.num_threads = 4;
+    om_config_1.max_transfers = 4;
     server1.reset(new MockServer(main_service, std::move(object_manager_service_1),
                                  om_config_1, gcs_client_1));
 
@@ -129,6 +131,8 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
+    om_config_2.num_threads = 4;
+    om_config_2.max_transfers = 4;
     server2.reset(new MockServer(main_service, std::move(object_manager_service_2),
                                  om_config_2, gcs_client_2));
 

@@ -34,6 +34,8 @@ struct ObjectManagerConfig {
   // The time in milliseconds to wait before retrying a pull
   // that failed due to client id lookup.
   int pull_timeout_ms = 100;
+  int num_threads = 1;
+  int max_transfers = 2;
   // TODO(hme): Implement num retries (to avoid infinite retries).
   std::string store_socket_name;
 };
@@ -163,16 +165,18 @@ class ObjectManager {
   /// Used to create "work" for an io service, so when it's run, it doesn't exit.
   boost::asio::io_service::work work_;
 
-  /// Single thread for executing asynchronous handlers.
-  /// This runs the (currently only) io_service, which handles
-  /// all outgoing requests and object transfers (push).
-  std::thread io_thread_;
+  /// Execute control-related functions on strand.
+  /// This prevents the main thread from blocking the object manager
+  /// while allowing thread-safe execution on the thread pool.
+  boost::asio::io_service::strand control_strand_;
+
+  /// Thread pool for executing asynchronous handlers.
+  /// These run the object_manager_service_, which handle
+  /// all incoming and outgoing object transfers.
+  std::vector<std::thread> io_threads_;
 
   /// Connection pool provides connections to other object managers.
   ConnectionPool connection_pool_;
-
-  /// Relatively simple way to add thread pooling.
-  // boost::thread_group thread_group_;
 
   /// Timeout for failed pull requests.
   using Timer = std::shared_ptr<boost::asio::deadline_timer>;
@@ -213,10 +217,11 @@ class ObjectManager {
   /// is GetLocationsFailed.
   void SchedulePull(const ObjectID &object_id, int wait_ms);
 
-  /// Invokes a pull and removes the deadline timer
-  /// that was added to schedule the pull.
-  /// Guaranteed to execute on main_service_ thread.
+  /// Invokes a pull. Guaranteed to execute on main_service_ thread.
   ray::Status Pull_(const ObjectID &object_id);
+
+  /// Invokes a pull with known ClientID. Guaranteed to execute on main_service_ thread.
+  ray::Status Pull_(const ObjectID &object_id, const ClientID &client_id);
 
   /// Private callback implementation for success on get location. Called inside OD.
   void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
@@ -236,6 +241,9 @@ class ObjectManager {
   /// Starts as many queued transfers as possible without exceeding max_transfers_
   /// concurrent transfers. Alternates between queued sends and receives.
   ray::Status DequeueTransfers();
+
+  /// Guranteed to execute on main thread.
+  ray::Status DequeueTransfers_();
 
   /// Invoked when a transfer is completed. This method will decrement num_transfers_
   /// and invoke DequeueTransfers.
@@ -266,6 +274,7 @@ class ObjectManager {
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<ReceiverConnection> &conn,
                           const uint8_t *message);
+
   /// Handles connect message of a new client connection.
   void ConnectClient(std::shared_ptr<ReceiverConnection> &conn, const uint8_t *message);
   /// Handles disconnect message of an existing client connection.

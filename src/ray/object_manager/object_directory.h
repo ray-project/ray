@@ -2,6 +2,7 @@
 #define RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
 
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -107,7 +108,14 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// Ray only (not part of the OD interface).
   ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
+  /// This object cannot be copied for thread-safety.
+  ObjectDirectory &operator=(const ObjectDirectory &o) {
+    throw std::runtime_error("Can't copy ObjectDirectory.");
+  }
+
  private:
+  std::mutex gcs_mutex;
+
   /// Callbacks associated with a call to GetLocations.
   // TODO(hme): I think these can be removed.
   struct ODCallbacks {

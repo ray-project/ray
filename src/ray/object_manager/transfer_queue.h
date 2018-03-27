@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <thread>
+#include <mutex>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -104,7 +105,22 @@ class TransferQueue {
   /// \return The status of invoking this method.
   ray::Status RemoveContext(const UniqueID &id);
 
+  /// This object cannot be copied for thread-safety.
+  TransferQueue &operator=(const TransferQueue &o) {
+    throw std::runtime_error("Can't copy TransferQueue.");
+  }
+
  private:
+  // TODO(hme): make this a shared mutex.
+  typedef std::mutex Lock;
+  typedef std::unique_lock<Lock> WriteLock;
+  // TODO(hme): make this a shared lock.
+  typedef std::unique_lock<Lock> ReadLock;
+  Lock send_mutex;
+  Lock receive_mutex;
+  Lock context_mutex;
+
+
   std::deque<SendRequest> send_queue_;
   std::deque<ReceiveRequest> receive_queue_;
   std::unordered_map<ray::UniqueID, SendContext, ray::UniqueIDHasher> send_context_set_;

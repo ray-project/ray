@@ -18,6 +18,7 @@
 #include "format/object_manager_generated.h"
 #include "object_directory.h"
 #include "object_manager_client_connection.h"
+#include <mutex>
 
 namespace asio = boost::asio;
 
@@ -86,6 +87,11 @@ class ConnectionPool {
   // TODO(hme): Implement with error handling.
   ray::Status RemoveSender(ConnectionType type, SenderConnection::pointer conn);
 
+  /// This object cannot be copied for thread-safety.
+  ConnectionPool &operator=(const ConnectionPool &o) {
+    throw std::runtime_error("Can't copy ConnectionPool.");
+  }
+
  private:
   /// A container type that maps ClientID to a connection type.
   using SenderMapType =
@@ -129,6 +135,8 @@ class ConnectionPool {
                                 SuccessCallback success_callback,
                                 FailureCallback failure_callback);
 
+  // TODO(hme): Optimize with separate mutex per collection.
+  std::mutex connection_mutex;
   // TODO(hme): make this a shared_ptr.
   ObjectDirectoryInterface *object_directory_;
   asio::io_service *connection_service_;
