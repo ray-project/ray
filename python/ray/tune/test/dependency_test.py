@@ -9,8 +9,10 @@ import sys
 import ray
 from ray.tune import register_trainable, run_experiments
 
+
 def f(config, reporter):
     reporter(timesteps_total=1)
+
 
 if __name__ == "__main__":
     ray.init()
