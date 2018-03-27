@@ -57,6 +57,9 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
       $PIP_CMD install -q setuptools_scm && break
       attempt=$[$attempt+1]
     done
+    if [ $attempt -eq 20 ]; then
+      exit -1
+    fi
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
     $PIP_CMD install -q numpy==1.10.4 cython==0.27.3
