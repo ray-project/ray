@@ -10,9 +10,6 @@
 #include "ray/constants.h"
 #include "ray/util/visibility.h"
 
-// TODO(swang): Make task ID prefix of any object ID return values and puts so
-// that we can co-locate task and object entries in the GCS.
-
 namespace ray {
 
 class RAY_EXPORT UniqueID {
@@ -61,7 +58,8 @@ typedef UniqueID DriverID;
 typedef UniqueID ConfigID;
 typedef UniqueID ClientID;
 
-// TODO(swang): Move these to class definitions.
+// TODO(swang): ObjectID and TaskID should derive from UniqueID. Then, we
+// can make these methods of the derived classes.
 /// Finish computing a task ID. Since objects created by the task share a
 /// prefix of the ID, the suffix of the task ID is zeroed out by this function.
 ///

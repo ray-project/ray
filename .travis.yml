@@ -105,6 +105,7 @@ install:
   # Raylet tests.
   - bash ../../../src/ray/test/run_object_manager_tests.sh
   - bash ../../../src/ray/test/run_task_test.sh
+  - ./src/ray/raylet/task_test
   - ./src/ray/raylet/worker_pool_test
   - ./src/ray/raylet/lineage_cache_test
 
