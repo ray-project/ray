@@ -101,6 +101,8 @@ class TestObjectManager : public ::testing::Test {
   }
 
   void SetUp() {
+    flushall_redis();
+
     object_manager_service_1.reset(new boost::asio::io_service());
     object_manager_service_2.reset(new boost::asio::io_service());
 

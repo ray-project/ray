@@ -1,5 +1,6 @@
 #include <iostream>
 #include <thread>
+#include <chrono>
 
 #include "gtest/gtest.h"
 
@@ -8,6 +9,19 @@
 namespace ray {
 
 std::string store_executable;  // NOLINT
+
+static inline void flushall_redis(void) {
+  redisContext *context = redisConnect("127.0.0.1", 6379);
+  freeReplyObject(redisCommand(context, "FLUSHALL"));
+  redisFree(context);
+}
+
+int64_t current_time_ms() {
+  std::chrono::milliseconds ms_since_epoch =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now().time_since_epoch());
+  return ms_since_epoch.count();
+}
 
 class MockServer {
  public:
@@ -95,6 +109,8 @@ class TestObjectManagerBase : public ::testing::Test {
   }
 
   void SetUp() {
+    flushall_redis();
+
     object_manager_service_1.reset(new boost::asio::io_service());
     object_manager_service_2.reset(new boost::asio::io_service());
 
@@ -187,6 +203,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
   ClientID client_id_1;
   ClientID client_id_2;
 
+  int64_t start_time;
+
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
@@ -277,8 +295,9 @@ class StressTestObjectManager : public TestObjectManagerBase {
   }
 
   void TransferTestComplete() {
+    int64_t elapsed = current_time_ms() - start_time;
     RAY_LOG(INFO) << "TransferTestComplete: " << async_loop_patterns[async_loop_index]
-                  << " " << v1.size() << " " << v2.size();
+                  << " " << v1.size() << " " << elapsed;
     ASSERT_TRUE(v1.size() == v2.size());
     for (int i = -1; ++i < (int)v1.size();) {
       ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
@@ -311,6 +330,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
     } else {
       num_expected_objects = (uint)num_trials;
     }
+
+    start_time = current_time_ms();
 
     switch (transfer_pattern) {
     case PUSH_A_B: {
