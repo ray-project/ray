@@ -184,11 +184,11 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEviction) {
   // Create one addition entry and one deletion entry for a different object
   // manager.
   ObjectTableDataT addition_entry;
-  addition_entry.manager = "A";
+  addition_entry.manager = ClientID::from_random().binary();
   addition_entry.is_eviction = false;
   ObjectTableDataT deletion_entry;
-  deletion_entry.manager = "B";
-  deletion_entry.is_eviction = false;
+  deletion_entry.manager = ClientID::from_random().binary();
+  deletion_entry.is_eviction = true;
 
   // Listen for an object.
   reconstruction_policy->Listen(object_id);
