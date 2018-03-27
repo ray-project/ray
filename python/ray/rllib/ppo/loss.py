@@ -51,8 +51,8 @@ class ProximalPolicyLoss(object):
         # so add up the kl and take its mean for kl_coeff updating
         if self.shared_model:
             print(tf.reduce_mean(self.kl))
-            self.kl = [tf.add_n(self.kl)]
-            self.entropy = [tf.add_n(self.entropy)]
+            self.kl = [tf.add_n(self.kl)/self.num_agents]
+            self.entropy = [tf.add_n(self.entropy)/self.num_agents]
 
         if not isinstance(curr_logp, list):
             self.kl = [self.kl]
@@ -61,9 +61,10 @@ class ProximalPolicyLoss(object):
             self.entropy = [self.entropy]
 
         kl_prod = tf.add_n([kl_coeff[i]*kl_i for
-                            i, kl_i in enumerate(self.kl)])
-        entropy_prod = tf.add_n([config["entropy_coeff"]*entropy_i for
-                                i, entropy_i in enumerate(self.entropy)])
+                            i, kl_i in enumerate(self.kl)])*self.num_agents
+        entropy_prod = (tf.add_n([config["entropy_coeff"]*entropy_i for
+                                i, entropy_i in enumerate(self.entropy)])*
+                        self.num_agents)
 
         # Make loss functions.
         self.ratio = [tf.exp(curr - prev)
