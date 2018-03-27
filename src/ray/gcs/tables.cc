@@ -14,6 +14,7 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
       new CallbackData({id, data, nullptr, nullptr, this, client_}));
   int64_t callback_index =
       RedisCallbackManager::instance().add([d, done](const std::string &data) {
+        RAY_CHECK(data.empty());
         if (done != nullptr) {
           (done)(d->client, d->id, d->data);
         }
@@ -24,6 +25,32 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
   fbb.Finish(Data::Pack(fbb, data.get()));
   return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
                             prefix_, pubsub_channel_, callback_index);
+}
+
+template <typename ID, typename Data>
+Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
+                               std::shared_ptr<DataT> data, const WriteCallback &done,
+                               const WriteCallback &failure, int log_length) {
+  auto d = std::shared_ptr<CallbackData>(
+      new CallbackData({id, data, nullptr, nullptr, this, client_}));
+  int64_t callback_index =
+      RedisCallbackManager::instance().add([d, done, failure](const std::string &data) {
+        if (data.empty()) {
+          if (done != nullptr) {
+            (done)(d->client, d->id, d->data);
+          }
+        } else {
+          if (failure != nullptr) {
+            (failure)(d->client, d->id, d->data);
+          }
+        }
+        return true;
+      });
+  flatbuffers::FlatBufferBuilder fbb;
+  fbb.ForceDefaults(true);
+  fbb.Finish(Data::Pack(fbb, data.get()));
+  return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
+                            prefix_, pubsub_channel_, callback_index, log_length);
 }
 
 template <typename ID, typename Data>
@@ -308,6 +335,7 @@ template class Log<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;
+template class Log<TaskID, TaskReconstructionData>;
 
 }  // namespace gcs
 
