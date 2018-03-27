@@ -4,7 +4,6 @@ import ray
 from worker import Worker, logger
 from ray.utils import random_string
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("raylet_socket_name")
 parser.add_argument("object_store_socket_name")
@@ -22,11 +21,10 @@ if __name__ == '__main__':
         1,
         ray.local_scheduler.ObjectID(random_string()),
         0)
-    logger.debug("submitting", task.task_id())
+    logger.debug("submitting %s", task.task_id())
     driver.node_manager_client.submit(task)
 
-    logger.debug("Return values were", task.returns())
-    print("[DRIVER] task1 return values", task.returns())
+    logger.debug("Return values were %s", task.returns())
     task2 = ray.local_scheduler.Task(
         ray.local_scheduler.ObjectID(random_string()),
         ray.local_scheduler.ObjectID(random_string()),
@@ -34,10 +32,9 @@ if __name__ == '__main__':
         1,
         ray.local_scheduler.ObjectID(random_string()),
         0)
-    logger.debug("submitting dependent task 2", task2.task_id())
+    logger.debug("Submitting dependent task 2 %s", task2.task_id())
     driver.node_manager_client.submit(task2)
 
     # Make sure the tasks get executed and we can get the result of the last
     # task.
     obj = driver.get(task2.returns(), timeout_ms=1000)
-    print("[DRIVER]: task2 return value ", obj)

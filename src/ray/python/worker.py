@@ -6,10 +6,12 @@ import pyarrow.plasma as plasma
 from ray.utils import random_string
 
 
+logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 # The default return value to put in the object store.
 RETURN_VALUE = 0
+
 
 class Worker(object):
 
@@ -36,35 +38,30 @@ class Worker(object):
                       object_ids]
         values = self.plasma_client.get(plasma_ids, timeout_ms,
                                         self.serialization_context)
-        logger.debug(values)
-        logger.debug("[WORKER] values=", values)
         assert(all(value[0] == RETURN_VALUE for value in values))
         return values
 
     def get_task(self):
-        print("[WORKER] waiting for task")
         logger.debug("[WORKER] waiting for task")
         task = self.node_manager_client.get_task()
-        #logger.debug("Worker assigned", task.task_id(),
-        print("[WORKER] Worker assigned", task.task_id(),
-                     "arguments", [ray.utils.binary_to_hex(argument.id()) for
-                                   argument in task.arguments()])
+        logger.debug("Worker assigned %s with arguments %s",
+                     ray.utils.binary_to_hex(task.task_id().id()),
+                     " ".join([ray.utils.binary_to_hex(argument.id()) for
+                               argument in task.arguments()]))
 
         # Get the arguments. NOTE(swang): This will hang forever if the
         # arguments have been evicted.
         arguments = self.get(task.arguments())
 
         for object_id in task.returns():
-            self.plasma_client.put((RETURN_VALUE,self.raylet_socket_name),
+            self.plasma_client.put((RETURN_VALUE, self.raylet_socket_name),
                                    plasma.ObjectID(object_id.id()))
             objval = self.plasma_client.get([plasma.ObjectID(object_id.id())])
-            print("[WORKER.GETTASK]: value put matches value get: ", objval)
             assert(all([o[0] == RETURN_VALUE for o in objval]))
 
-        print("Worker returned",
-        #logger.debug("Worker returned",
-                     [ray.utils.binary_to_hex(return_id.id()) for return_id in
-                      task.returns()])
+        logger.debug("Worker returned %s",
+                     " ".join([ray.utils.binary_to_hex(return_id.id()) for
+                               return_id in task.returns()]))
 
         # Release the arguments.
         del arguments

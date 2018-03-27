@@ -14,3 +14,5 @@ bash ../../../src/ray/test/start_raylets.sh
 # Connect a driver to the raylet and make sure it completes.
 python ../../../src/ray/python/test_driver.py /tmp/raylet1 /tmp/store1
 
+./src/common/thirdparty/redis/src/redis-cli -p 6379 shutdown
+sleep 1s
