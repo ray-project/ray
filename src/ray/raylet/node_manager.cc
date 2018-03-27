@@ -20,7 +20,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       reconstruction_policy_(io_service, gcs_client->client_table().GetLocalClientId(),
                              gcs_client_->task_reconstruction_log(),
                              [this](const TaskID &task_id) { ResubmitTask(task_id); },
-                             /*reconstruction_timeout_ms=*/0),
+                             /*reconstruction_timeout_ms=*/heartbeat_period_ms_ * 4),
       task_dependency_manager_(
           object_manager,
           // reconstruction_policy_,
@@ -35,6 +35,13 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
+
+  object_manager_.RegisterFailureCallback([this](const ObjectID &object_id) {
+      reconstruction_policy_.Listen(object_id);
+      });
+  object_manager_.SubscribeObjAdded([this](const ObjectID &object_id) {
+      reconstruction_policy_.Cancel(object_id);
+      });
 }
 
 void NodeManager::Heartbeat() {
