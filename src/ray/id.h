@@ -65,7 +65,7 @@ typedef UniqueID ClientID;
 ///
 /// \param task_id A task ID to finish.
 /// \return The finished task ID. It may now be used to compute IDs for objects
-///         created by the task.
+/// created by the task.
 const TaskID FinishTaskId(const TaskID &task_id);
 
 /// Compute the object ID of an object returned by the task.
@@ -92,8 +92,8 @@ const TaskID ComputeTaskId(const ObjectID &object_id);
 ///
 /// \param object_id The object ID.
 /// \return The index of object creation according to the task that created
-///         this object. This is positive if the task returned the object and
-///         negative if created by a put.
+/// this object. This is positive if the task returned the object and negative
+/// if created by a put.
 int64_t ComputeObjectIndex(const ObjectID &object_id);
 
 }  // namespace ray
