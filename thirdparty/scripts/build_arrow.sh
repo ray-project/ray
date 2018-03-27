@@ -91,11 +91,13 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
     # find plasma.
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     PYARROW_WITH_PLASMA=1 \
+    PYARROW_WITH_STATIC_BOOST=1 \
     PYARROW_BUNDLE_ARROW_CPP=1 \
     $PYTHON_EXECUTABLE setup.py build
 
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     PYARROW_WITH_PLASMA=1 \
+    PYARROW_WITH_STATIC_BOOST=1 \
     PYARROW_BUNDLE_ARROW_CPP=1 \
     PARQUET_HOME=$TP_DIR/pkg/arrow/cpp/build/cpp-install \
     PYARROW_WITH_PARQUET=1 \
