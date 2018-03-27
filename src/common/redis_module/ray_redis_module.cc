@@ -606,10 +606,30 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
   }
 }
 
+/// Append an entry to the log stored at a key. Publishes a notification about
+/// the update to all subscribers, if a pubsub channel is provided.
+///
+/// This is called from a client with the command:
+//
+///    RAY.TABLE_APPEND <table_prefix> <pubsub_channel> <id> <data>
+///                     <index (optional)>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for
+///        this key should be published to. When publishing to a specific
+///        client, the channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key to append to.
+/// \param data The data to append to the key.
+/// \param index If this is set, then the data must be appended at this index.
+///        If the current log is shorter or longer than the requested index,
+///        then the append will fail and an error message will be returned as a
+///        string.
+/// \return OK if the append succeeds, or an error message string if the append
+///         fails.
 int TableAppend_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
-  if (argc != 5) {
+  if (argc < 5 || argc > 6) {
     return RedisModule_WrongArity(ctx);
   }
 
@@ -617,21 +637,52 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *pubsub_channel_str = argv[2];
   RedisModuleString *id = argv[3];
   RedisModuleString *data = argv[4];
+  RedisModuleString *index_str = nullptr;
+  if (argc == 6) {
+    index_str = argv[5];
+  }
 
   // Set the keys in the table.
   RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
                                         REDISMODULE_READ | REDISMODULE_WRITE);
+  // Determine the index at which the data should be appended. If no index is
+  // requested, then is the current length of the log.
   size_t index = RedisModule_ValueLength(key);
-  RedisModule_ZsetAdd(key, index, data, NULL);
-  RedisModule_CloseKey(key);
-
-  // Publish a message on the requested pubsub channel if necessary.
-  TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
-  if (pubsub_channel != TablePubsub_NO_PUBLISH) {
-    // All other pubsub channels write the data back directly onto the channel.
-    return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+  if (index_str != nullptr) {
+    // Parse the requested index.
+    long long requested_index;
+    RAY_CHECK(RedisModule_StringToLongLong(index_str, &requested_index) ==
+              REDISMODULE_OK);
+    RAY_CHECK(requested_index >= 0);
+    index = static_cast<size_t>(requested_index);
+  }
+  // Only perform the append if the requested index matches the current length
+  // of the log, or if no index was requested.
+  if (index == RedisModule_ValueLength(key)) {
+    // The requested index matches the current length of the log or no index
+    // was requested. Perform the append.
+    int flags = REDISMODULE_ZADD_NX;
+    RedisModule_ZsetAdd(key, index, data, &flags);
+    // Check that we actually add a new entry during the append. This is only
+    // necessary since we implement the log with a sorted set, so all entries
+    // must be unique, or else we will have gaps in the log.
+    RAY_CHECK(flags == REDISMODULE_ZADD_ADDED) << "Appended a duplicate entry";
+    RedisModule_CloseKey(key);
+    // Publish a message on the requested pubsub channel if necessary.
+    TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
+    if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+      // All other pubsub channels write the data back directly onto the
+      // channel.
+      return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+    } else {
+      return RedisModule_ReplyWithSimpleString(ctx, "OK");
+    }
   } else {
-    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+    // The requested index did not match the current length of the log. Return
+    // an error message as a string.
+    RedisModule_CloseKey(key);
+    const char *reply = "ERR entry exists";
+    return RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
   }
 }
 

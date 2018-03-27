@@ -77,6 +77,23 @@ class Log {
   Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
                 const WriteCallback &done);
 
+  /// Append a log entry to a key if and only if the log has the given number
+  /// of entries.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data to append to the log.
+  /// \param done Callback that is called if the data was appended to the log.
+  /// \param failure Callback that is called if the data was not appended to
+  ///        the log because the log length did not match the given
+  ///        `log_length`.
+  /// \param log_length The number of entries that the log must have for the
+  ///        append to succeed.
+  /// \return Status
+  Status AppendAt(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+                  const WriteCallback &done, const WriteCallback &failure,
+                  int log_length);
+
   /// Lookup the log values at a key asynchronously.
   ///
   /// \param job_id The ID of the job (= driver).
@@ -240,6 +257,15 @@ using ClassTable = Table<ClassID, ClassTableData>;
 
 // TODO(swang): Set the pubsub channel for the actor table.
 using ActorTable = Table<ActorID, ActorTableData>;
+
+class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
+ public:
+  TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
+                        AsyncGcsClient *client)
+      : Log(context, client) {
+    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+  }
+};
 
 namespace raylet {
 
