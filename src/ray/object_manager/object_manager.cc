@@ -132,6 +132,9 @@ void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client
 
 void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
   SchedulePull(object_id, config_.pull_timeout_ms);
+  if (failure_callback_ != nullptr) {
+    failure_callback_(object_id);
+  }
 };
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {

@@ -147,6 +147,11 @@ class ObjectManager {
   /// \return Whether this object was successfully terminated.
   ray::Status Terminate();
 
+  void RegisterFailureCallback(std::function<void(const ObjectID &object_id)> handler) {
+    RAY_CHECK(failure_callback_ == nullptr);
+    failure_callback_ = handler;
+  }
+
  private:
   ClientID client_id_;
   ObjectManagerConfig config_;
@@ -196,6 +201,8 @@ class ObjectManager {
 
   /// Cache of locally available objects.
   std::unordered_set<ObjectID, UniqueIDHasher> local_objects_;
+
+  std::function<void(const ObjectID &object_id)> failure_callback_;
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
