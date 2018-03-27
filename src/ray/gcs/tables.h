@@ -41,6 +41,9 @@ class Log {
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
+  /// The callback to call when a write to a key succeeds.
+  using WriteCallback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                           std::shared_ptr<DataT> data)>;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
@@ -72,7 +75,7 @@ class Log {
   ///        GCS.
   /// \return Status
   Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
-                const Callback &done);
+                const WriteCallback &done);
 
   /// Lookup the log values at a key asynchronously.
   ///
@@ -158,6 +161,7 @@ class Table : private Log<ID, Data> {
   using DataT = typename Log<ID, Data>::DataT;
   using Callback =
       std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  using WriteCallback = typename Log<ID, Data>::WriteCallback;
   /// The callback to call when a Lookup call returns an empty entry.
   using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
   /// The callback to call when a Subscribe call completes and we are ready to
@@ -190,7 +194,7 @@ class Table : private Log<ID, Data> {
   ///        GCS.
   /// \return Status
   Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
-             const Callback &done);
+             const WriteCallback &done);
 
   /// Lookup an entry asynchronously.
   ///
@@ -214,10 +218,10 @@ class Table : private Log<ID, Data> {
   using Log<ID, Data>::prefix_;
 };
 
-class ObjectTable : public Table<ObjectID, ObjectTableData> {
+class ObjectTable : public Log<ObjectID, ObjectTableData> {
  public:
   ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : Table(context, client) {
+      : Log(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
     prefix_ = TablePrefix_OBJECT;
   };
@@ -409,7 +413,8 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// Handle a client table notification.
   void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(AsyncGcsClient *client, const ClientTableDataT &notifications);
+  void HandleConnected(AsyncGcsClient *client,
+                       const std::shared_ptr<ClientTableDataT> client_data);
 
   /// The key at which the log of client information is stored. This key must
   /// be kept the same across all instances of the ClientTable, so that all
