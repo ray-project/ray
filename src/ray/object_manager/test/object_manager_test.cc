@@ -7,6 +7,12 @@
 
 namespace ray {
 
+static inline void flushall_redis(void) {
+  redisContext *context = redisConnect("127.0.0.1", 6379);
+  freeReplyObject(redisCommand(context, "FLUSHALL"));
+  redisFree(context);
+}
+
 std::string store_executable;  // NOLINT
 
 class MockServer {
@@ -220,7 +226,7 @@ class TestObjectManagerCommands : public TestObjectManager {
     RAY_LOG(INFO) << "\n"
                   << "Server client ids:"
                   << "\n";
-    const ClientTableDataT &data = gcs_client_2->client_table().GetClient(client_id_1);
+    const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
     RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
     RAY_LOG(INFO) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(INFO) << "Server 1 ClientIp=" << data.node_manager_address;

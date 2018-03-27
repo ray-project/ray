@@ -368,7 +368,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
                   << "\n";
-    const ClientTableDataT &data = gcs_client_2->client_table().GetClient(client_id_1);
+    const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
     RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
     RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
     RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
