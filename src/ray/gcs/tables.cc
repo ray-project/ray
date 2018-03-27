@@ -89,8 +89,8 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
       << "Client called Subscribe twice on the same table";
   auto d = std::shared_ptr<CallbackData>(
       new CallbackData({client_id, nullptr, subscribe, done, this, client_}));
-  int64_t callback_index = RedisCallbackManager::instance().add(
-      [this, d](const std::string &data) {
+  int64_t callback_index =
+      RedisCallbackManager::instance().add([this, d](const std::string &data) {
         if (data.empty()) {
           // No notification data is provided. This is the callback for the
           // initial subscription request.
@@ -115,7 +115,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
               results.emplace_back(std::move(result));
             }
             (d->callback)(d->client, id, results);
-            }
+          }
         }
         // We do not delete the callback after calling it since there may be
         // more subscription messages.
@@ -270,8 +270,11 @@ const ClientID &ClientTable::GetLocalClientId() { return client_id_; }
 
 const ClientTableDataT &ClientTable::GetLocalClient() { return local_client_; }
 
-Status ClientTable::Connect() {
+Status ClientTable::Connect(const ClientTableDataT &local_client) {
   RAY_CHECK(!disconnected_) << "Tried to reconnect a disconnected client.";
+
+  RAY_CHECK(local_client.client_id == local_client_.client_id);
+  local_client_ = local_client;
 
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   data->is_insertion = true;
@@ -336,6 +339,7 @@ template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;
 template class Log<TaskID, TaskReconstructionData>;
+template class Table<ClientID, HeartbeatTableData>;
 
 }  // namespace gcs
 

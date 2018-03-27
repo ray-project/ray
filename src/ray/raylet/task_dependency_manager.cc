@@ -2,6 +2,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 TaskDependencyManager::TaskDependencyManager(
     ObjectManager &object_manager,
     // ReconstructionPolicy &reconstruction_policy,
@@ -59,6 +61,8 @@ bool TaskDependencyManager::TaskReady(const Task &task) const {
 }
 
 void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
+  // TODO(swang): Don't pull arguments that are going to be created by a queued
+  // or running task.
   TaskID task_id = task.GetTaskSpecification().TaskId();
   const std::vector<ObjectID> arguments = task.GetDependencies();
   // Add the task's arguments to the table of subscribed tasks.
@@ -103,5 +107,7 @@ void TaskDependencyManager::UnsubscribeTaskReady(const TaskID &task_id) {
 void TaskDependencyManager::MarkDependencyReady(const ObjectID &object) {
   throw std::runtime_error("Method not implemented");
 }
+
+}  // namespace raylet
 
 }  // namespace ray

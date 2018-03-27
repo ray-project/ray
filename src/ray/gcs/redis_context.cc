@@ -25,7 +25,7 @@ void ProcessCallback(int64_t callback_index, const std::string &data) {
     }
   }
 }
-}
+}  // namespace
 
 namespace ray {
 
@@ -98,9 +98,10 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
 }
 
 int64_t RedisCallbackManager::add(const RedisCallback &function) {
+  num_callbacks += 1;
   callbacks_.emplace(num_callbacks, std::unique_ptr<RedisCallback>(
                                         new RedisCallback(function)));
-  return num_callbacks++;
+  return num_callbacks;
 }
 
 RedisCallbackManager::RedisCallback &RedisCallbackManager::get(

@@ -6,8 +6,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/gcs/client.h"
 #include "ray/id.h"
-#include "ray/raylet/mock_gcs_client.h"
 #include "ray/status.h"
 
 namespace ray {
@@ -42,10 +42,9 @@ class ObjectDirectoryInterface {
                                      const InfoFailureCallback &fail_cb) = 0;
 
   // Callbacks for GetLocations.
-  using OnLocationsSuccess = std::function<void(
-      const std::vector<ray::RemoteConnectionInfo> &v, const ray::ObjectID &object_id)>;
-  using OnLocationsFailure =
-      std::function<void(ray::Status status, const ray::ObjectID &object_id)>;
+  using OnLocationsSuccess = std::function<void(const std::vector<ray::ClientID> &v,
+                                                const ray::ObjectID &object_id)>;
+  using OnLocationsFailure = std::function<void(const ray::ObjectID &object_id)>;
 
   /// Asynchronously obtain the locations of an object by ObjectID.
   /// This is used to handle object pulls.
@@ -105,7 +104,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).
-  ObjectDirectory(std::shared_ptr<GcsClient> gcs_client);
+  ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
  private:
   /// Callbacks associated with a call to GetLocations.
@@ -115,18 +114,17 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     OnLocationsFailure fail_cb;
   };
 
-  /// Maintain map of in-flight GetLocation requests.
-  std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
-
-  /// Reference to the gcs client.
-  std::shared_ptr<GcsClient> gcs_client_;
-
   /// GetLocations registers a request for locations.
   /// This function actually carries out that request.
   ray::Status ExecuteGetLocations(const ObjectID &object_id);
   /// Invoked when call to ExecuteGetLocations completes.
-  ray::Status GetLocationsComplete(const ray::Status &status, const ObjectID &object_id,
-                                   const std::vector<RemoteConnectionInfo> &v);
+  void GetLocationsComplete(const ObjectID &object_id,
+                            const std::vector<ObjectTableDataT> &location_entries);
+
+  /// Maintain map of in-flight GetLocation requests.
+  std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
+  /// Reference to the gcs client.
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
 };
 
 }  // namespace ray
