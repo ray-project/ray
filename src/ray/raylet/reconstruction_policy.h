@@ -42,12 +42,14 @@ class ReconstructionPolicy {
   ///        triggering reconstruction.
   ReconstructionPolicy(
       boost::asio::io_service &io_service, ClientID client_id,
+      gcs::PubsubInterface<ObjectID> &object_pubsub,
       gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log,
       const ReconstructionCallback &reconstruction_handler,
       uint64_t reconstruction_timeout_ms)
       : reconstruction_timeout_ms_(reconstruction_timeout_ms),
         reconstruction_timer_(io_service),
         client_id_(client_id),
+        object_pubsub_(object_pubsub),
         task_reconstruction_log_(task_reconstruction_log),
         reconstruction_handler_(reconstruction_handler) {
     // Start the reconstruction timer.
@@ -118,6 +120,8 @@ class ReconstructionPolicy {
   /// The client ID for this node. This will be added to the task
   /// reconstruction log when a task needs to be re-executed.
   ClientID client_id_;
+  /// The pubsub system for object location notifications.
+  gcs::PubsubInterface<ObjectID> &object_pubsub_;
   /// The storage system for the task reconstruction log.
   gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;
   /// The handler to call when reconstruction is required.

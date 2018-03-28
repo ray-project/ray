@@ -12,7 +12,8 @@ namespace ray {
 
 namespace raylet {
 
-class MockGcs : virtual public gcs::LogInterface<TaskID, TaskReconstructionData> {
+class MockGcs : virtual public gcs::LogInterface<TaskID, TaskReconstructionData>,
+                virtual public gcs::PubsubInterface<ObjectID> {
  public:
   MockGcs(){};
   Status AppendAt(
@@ -29,6 +30,11 @@ class MockGcs : virtual public gcs::LogInterface<TaskID, TaskReconstructionData>
     }
     return ray::Status::OK();
   };
+
+  Status RequestNotifications(const JobID &job_id, const ObjectID &object_id,
+                              const ClientID &client_id) {
+    return ray::Status::OK();
+  }
 
   const std::unordered_map<TaskID, std::vector<std::shared_ptr<TaskReconstructionDataT>>,
                            UniqueIDHasher>
@@ -49,7 +55,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
         mock_gcs_(),
         reconstruction_timeout_ms_(100),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
-            io_service_, ClientID::from_random(), mock_gcs_,
+            io_service_, ClientID::from_random(), mock_gcs_, mock_gcs_,
             [this](const TaskID &task_id) { TriggerReconstruction(task_id); },
             reconstruction_timeout_ms_)),
         timer_canceled_(false) {}

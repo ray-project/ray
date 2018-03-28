@@ -59,6 +59,8 @@ void ReconstructionPolicy::Listen(const ObjectID &object_id) {
     // object.
     object_ticks_.insert({object_id, entry.num_ticks});
   }
+
+  RAY_CHECK_OK(object_pubsub_.RequestNotifications(JobID::nil(), object_id, client_id_));
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
