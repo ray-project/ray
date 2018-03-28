@@ -2,7 +2,7 @@
 pendulum-ddpg-1:
     env: Pendulum-v0
     run: DDPG
-    resources:
+    trial_resources:
         cpu: 4
         gpu: 1
     stop:
