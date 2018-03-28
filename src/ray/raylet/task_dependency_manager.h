@@ -63,6 +63,24 @@ class TaskDependencyManager {
   void HandleObjectMissing(const ray::ObjectID &object_id);
 
  private:
+  enum class ObjectAvailability : unsigned int {
+    kRemote = 0,
+    kWaiting,
+    kCreating,
+    kLocal,
+  };
+
+  struct ObjectEntry {
+    std::vector<ray::TaskID> dependent_tasks;
+    ObjectAvailability status;
+  };
+
+  struct TaskEntry {
+    std::vector<ObjectID> arguments;
+    std::vector<ObjectID> returns;
+    int64_t num_missing_arguments;
+  };
+
   /// Check whether the given list of objects are ready.
   bool argumentsReady(const std::vector<ObjectID> arguments) const;
 
