@@ -28,6 +28,7 @@ import ray.global_scheduler as global_scheduler
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_WORKER = "worker"
+PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_LOCAL_SCHEDULER = "local_scheduler"
 PROCESS_TYPE_PLASMA_MANAGER = "plasma_manager"
 PROCESS_TYPE_PLASMA_STORE = "plasma_store"
@@ -43,6 +44,7 @@ PROCESS_TYPE_WEB_UI = "web_ui"
 all_processes = OrderedDict([(PROCESS_TYPE_MONITOR, []),
                              (PROCESS_TYPE_LOG_MONITOR, []),
                              (PROCESS_TYPE_WORKER, []),
+                             (PROCESS_TYPE_RAYLET, []),
                              (PROCESS_TYPE_LOCAL_SCHEDULER, []),
                              (PROCESS_TYPE_PLASMA_MANAGER, []),
                              (PROCESS_TYPE_PLASMA_STORE, []),
@@ -51,6 +53,7 @@ all_processes = OrderedDict([(PROCESS_TYPE_MONITOR, []),
                              (PROCESS_TYPE_WEB_UI, [])],)
 
 # True if processes are run in the valgrind profiler.
+RUN_RAYLET_PROFILER = False
 RUN_LOCAL_SCHEDULER_PROFILER = False
 RUN_PLASMA_MANAGER_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
@@ -74,6 +77,10 @@ CREDIS_MEMBER_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/credis/build/src/libmember.so")
 
+# Location of the raylet executable.
+RAYLET_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/ray/raylet/raylet")
 
 # ObjectStoreAddress tuples contain all information necessary to connect to an
 # object store. The fields are:
@@ -123,8 +130,8 @@ def kill_process(p):
     if p.poll() is not None:
         # The process has already terminated.
         return True
-    if any([RUN_LOCAL_SCHEDULER_PROFILER, RUN_PLASMA_MANAGER_PROFILER,
-            RUN_PLASMA_STORE_PROFILER]):
+    if any([RUN_RAYLET_PROFILER, RUN_LOCAL_SCHEDULER_PROFILER,
+            RUN_PLASMA_MANAGER_PROFILER, RUN_PLASMA_STORE_PROFILER]):
         # Give process signal to write profiler data.
         os.kill(p.pid, signal.SIGINT)
         # Wait for profiling data to be written.
@@ -860,12 +867,60 @@ def start_local_scheduler(redis_address,
     return local_scheduler_name
 
 
+def start_raylet(redis_address,
+                 node_ip_address,
+                 plasma_store_name,
+                 worker_path,
+                 #plasma_address=None,
+                 stdout_file=None,
+                 stderr_file=None,
+                 cleanup=True,
+                 #resources=None,
+                 #num_workers=0
+                 ):
+    """Start a raylet, which is a combined local scheduler and object manager.
+
+    Args:
+        ...
+    """
+    gcs_ip_address, gcs_port = redis_address.split(":")
+    raylet_name = "/tmp/raylet{}".format(random_name())
+
+    # Create the command that the Raylet will use to start workers.
+    start_worker_command = ("{} {} "
+                            "--node-ip-address={} "
+                            "--object-store-name={} "
+                            "--raylet-name={} "
+                            "--redis-address={}"
+                            .format(sys.executable,
+                                    worker_path,
+                                    node_ip_address,
+                                    plasma_store_name,
+                                    raylet_name,
+                                    redis_address))
+
+    command = [RAYLET_EXECUTABLE,
+               raylet_name,
+               plasma_store_name,
+               gcs_ip_address,
+               gcs_port,
+               start_worker_command]
+    pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+
+    if cleanup:
+        all_processes[PROCESS_TYPE_RAYLET].append(pid)
+    record_log_files_in_redis(redis_address, node_ip_address,
+                              [stdout_file, stderr_file])
+
+    return raylet_name
+
+
 def start_objstore(node_ip_address, redis_address,
                    object_manager_port=None, store_stdout_file=None,
                    store_stderr_file=None, manager_stdout_file=None,
                    manager_stderr_file=None, objstore_memory=None,
                    cleanup=True, plasma_directory=None,
-                   huge_pages=False):
+                   huge_pages=False, use_raylet=False):
     """This method starts an object store process.
 
     Args:
@@ -893,6 +948,7 @@ def start_objstore(node_ip_address, redis_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        use_raylet: TODO
 
     Return:
         A tuple of the Plasma store socket name, the Plasma manager socket
@@ -936,33 +992,42 @@ def start_objstore(node_ip_address, redis_address,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages)
     # Start the plasma manager.
-    if object_manager_port is not None:
-        (plasma_manager_name, p2,
-         plasma_manager_port) = ray.plasma.start_plasma_manager(
-            plasma_store_name,
-            redis_address,
-            plasma_manager_port=object_manager_port,
-            node_ip_address=node_ip_address,
-            num_retries=1,
-            run_profiler=RUN_PLASMA_MANAGER_PROFILER,
-            stdout_file=manager_stdout_file,
-            stderr_file=manager_stderr_file)
-        assert plasma_manager_port == object_manager_port
+    if not use_raylet:
+        if object_manager_port is not None:
+            (plasma_manager_name, p2,
+             plasma_manager_port) = ray.plasma.start_plasma_manager(
+                plasma_store_name,
+                redis_address,
+                plasma_manager_port=object_manager_port,
+                node_ip_address=node_ip_address,
+                num_retries=1,
+                run_profiler=RUN_PLASMA_MANAGER_PROFILER,
+                stdout_file=manager_stdout_file,
+                stderr_file=manager_stderr_file)
+            assert plasma_manager_port == object_manager_port
+        else:
+            (plasma_manager_name, p2,
+             plasma_manager_port) = ray.plasma.start_plasma_manager(
+                plasma_store_name,
+                redis_address,
+                node_ip_address=node_ip_address,
+                run_profiler=RUN_PLASMA_MANAGER_PROFILER,
+                stdout_file=manager_stdout_file,
+                stderr_file=manager_stderr_file)
     else:
-        (plasma_manager_name, p2,
-         plasma_manager_port) = ray.plasma.start_plasma_manager(
-            plasma_store_name,
-            redis_address,
-            node_ip_address=node_ip_address,
-            run_profiler=RUN_PLASMA_MANAGER_PROFILER,
-            stdout_file=manager_stdout_file,
-            stderr_file=manager_stderr_file)
+        plasma_manager_port = None
+        plasma_manager_name = None
+
     if cleanup:
         all_processes[PROCESS_TYPE_PLASMA_STORE].append(p1)
-        all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
     record_log_files_in_redis(redis_address, node_ip_address,
-                              [store_stdout_file, store_stderr_file,
-                               manager_stdout_file, manager_stderr_file])
+                              [store_stdout_file, store_stderr_file])
+    if not use_raylet:
+        if cleanup:
+            all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
+        record_log_files_in_redis(redis_address, node_ip_address,
+                                  [manager_stdout_file, manager_stderr_file])
+
 
     return ObjectStoreAddress(plasma_store_name, plasma_manager_name,
                               plasma_manager_port)
@@ -1059,7 +1124,8 @@ def start_ray_processes(address_info=None,
                         resources=None,
                         plasma_directory=None,
                         huge_pages=False,
-                        autoscaling_config=None):
+                        autoscaling_config=None,
+                        use_raylet=False):
     """Helper method to start Ray processes.
 
     Args:
@@ -1112,6 +1178,7 @@ def start_ray_processes(address_info=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
+        use_raylet: TODO
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1193,7 +1260,7 @@ def start_ray_processes(address_info=None,
                           cleanup=cleanup)
 
     # Start the global scheduler, if necessary.
-    if include_global_scheduler:
+    if include_global_scheduler and not use_raylet:
         global_scheduler_stdout_file, global_scheduler_stderr_file = (
             new_log_files("global_scheduler", redirect_output))
         start_global_scheduler(redis_address,
@@ -1235,71 +1302,90 @@ def start_ray_processes(address_info=None,
             manager_stderr_file=plasma_manager_stderr_file,
             objstore_memory=object_store_memory,
             cleanup=cleanup, plasma_directory=plasma_directory,
-            huge_pages=huge_pages)
+            huge_pages=huge_pages,
+            use_raylet=use_raylet)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
 
     # Start any local schedulers that do not yet exist.
-    for i in range(len(local_scheduler_socket_names), num_local_schedulers):
-        # Connect the local scheduler to the object store at the same index.
-        object_store_address = object_store_addresses[i]
-        plasma_address = "{}:{}".format(node_ip_address,
-                                        object_store_address.manager_port)
-        # Determine how many workers this local scheduler should start.
-        if start_workers_from_local_scheduler:
-            num_local_scheduler_workers = workers_per_local_scheduler[i]
-            workers_per_local_scheduler[i] = 0
-        else:
-            # If we're starting the workers from Python, the local scheduler
-            # should not start any workers.
-            num_local_scheduler_workers = 0
-        # Start the local scheduler. Note that if we do not wish to redirect
-        # the worker output, then we cannot redirect the local scheduler
-        # output.
-        local_scheduler_stdout_file, local_scheduler_stderr_file = (
-            new_log_files("local_scheduler_{}".format(i),
-                          redirect_output=redirect_worker_output))
-        local_scheduler_name = start_local_scheduler(
+    if not use_raylet:
+        for i in range(len(local_scheduler_socket_names),
+                       num_local_schedulers):
+            # Connect the local scheduler to the object store at the same
+            # index.
+            object_store_address = object_store_addresses[i]
+            plasma_address = "{}:{}".format(node_ip_address,
+                                            object_store_address.manager_port)
+            # Determine how many workers this local scheduler should start.
+            if start_workers_from_local_scheduler:
+                num_local_scheduler_workers = workers_per_local_scheduler[i]
+                workers_per_local_scheduler[i] = 0
+            else:
+                # If we're starting the workers from Python, the local
+                # scheduler should not start any workers.
+                num_local_scheduler_workers = 0
+            # Start the local scheduler. Note that if we do not wish to
+            # redirect the worker output, then we cannot redirect the local
+            # scheduler output.
+            local_scheduler_stdout_file, local_scheduler_stderr_file = (
+                new_log_files("local_scheduler_{}".format(i),
+                              redirect_output=redirect_worker_output))
+            local_scheduler_name = start_local_scheduler(
+                redis_address,
+                node_ip_address,
+                object_store_address.name,
+                object_store_address.manager_name,
+                worker_path,
+                plasma_address=plasma_address,
+                stdout_file=local_scheduler_stdout_file,
+                stderr_file=local_scheduler_stderr_file,
+                cleanup=cleanup,
+                resources=resources[i],
+                num_workers=num_local_scheduler_workers)
+            local_scheduler_socket_names.append(local_scheduler_name)
+
+        # Make sure that we have exactly num_local_schedulers instances of
+        # object stores and local schedulers.
+        assert len(object_store_addresses) == num_local_schedulers
+        assert len(local_scheduler_socket_names) == num_local_schedulers
+
+    else:
+        # Start the raylet. TODO(rkn): Modify this to allow starting
+        # multiple raylets on the same machine.
+        raylet_stdout_file, raylet_stderr_file = (
+            new_log_files("raylet_{}".format(i),
+                          redirect_output=redirect_output))
+        address_info["raylet_socket_name"] = start_raylet(
             redis_address,
             node_ip_address,
-            object_store_address.name,
-            object_store_address.manager_name,
+            object_store_addresses[i].name,
             worker_path,
-            plasma_address=plasma_address,
-            stdout_file=local_scheduler_stdout_file,
-            stderr_file=local_scheduler_stderr_file,
-            cleanup=cleanup,
-            resources=resources[i],
-            num_workers=num_local_scheduler_workers)
-        local_scheduler_socket_names.append(local_scheduler_name)
-        time.sleep(0.1)
+            stdout_file=None,
+            stderr_file=None,
+            cleanup=cleanup)
 
-    # Make sure that we have exactly num_local_schedulers instances of object
-    # stores and local schedulers.
-    assert len(object_store_addresses) == num_local_schedulers
-    assert len(local_scheduler_socket_names) == num_local_schedulers
+    if not use_raylet:
+        # Start any workers that the local scheduler has not already started.
+        for i, num_local_scheduler_workers in enumerate(
+                workers_per_local_scheduler):
+            object_store_address = object_store_addresses[i]
+            local_scheduler_name = local_scheduler_socket_names[i]
+            for j in range(num_local_scheduler_workers):
+                worker_stdout_file, worker_stderr_file = new_log_files(
+                    "worker_{}_{}".format(i, j), redirect_output)
+                start_worker(node_ip_address,
+                             object_store_address.name,
+                             object_store_address.manager_name,
+                             local_scheduler_name,
+                             redis_address,
+                             worker_path,
+                             stdout_file=worker_stdout_file,
+                             stderr_file=worker_stderr_file,
+                             cleanup=cleanup)
+                workers_per_local_scheduler[i] -= 1
 
-    # Start any workers that the local scheduler has not already started.
-    for i, num_local_scheduler_workers in enumerate(
-            workers_per_local_scheduler):
-        object_store_address = object_store_addresses[i]
-        local_scheduler_name = local_scheduler_socket_names[i]
-        for j in range(num_local_scheduler_workers):
-            worker_stdout_file, worker_stderr_file = new_log_files(
-                "worker_{}_{}".format(i, j), redirect_output)
-            start_worker(node_ip_address,
-                         object_store_address.name,
-                         object_store_address.manager_name,
-                         local_scheduler_name,
-                         redis_address,
-                         worker_path,
-                         stdout_file=worker_stdout_file,
-                         stderr_file=worker_stderr_file,
-                         cleanup=cleanup)
-            workers_per_local_scheduler[i] -= 1
-
-    # Make sure that we've started all the workers.
-    assert(sum(workers_per_local_scheduler) == 0)
+        # Make sure that we've started all the workers.
+        assert(sum(workers_per_local_scheduler) == 0)
 
     # Try to start the web UI.
     if include_webui:
@@ -1327,7 +1413,8 @@ def start_ray_node(node_ip_address,
                    redirect_output=False,
                    resources=None,
                    plasma_directory=None,
-                   huge_pages=False):
+                   huge_pages=False,
+                   use_raylet=False):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1360,6 +1447,7 @@ def start_ray_node(node_ip_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        use_raylet: TODO
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1400,7 +1488,8 @@ def start_ray_head(address_info=None,
                    include_webui=True,
                    plasma_directory=None,
                    huge_pages=False,
-                   autoscaling_config=None):
+                   autoscaling_config=None,
+                   use_raylet=False):
     """Start Ray in local mode.
 
     Args:
@@ -1447,6 +1536,7 @@ def start_ray_head(address_info=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
+        use_raylet: TODO
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1474,7 +1564,8 @@ def start_ray_head(address_info=None,
         redis_max_clients=redis_max_clients,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
-        autoscaling_config=autoscaling_config)
+        autoscaling_config=autoscaling_config,
+        use_raylet=use_raylet)
 
 
 def try_to_create_directory(directory_path):

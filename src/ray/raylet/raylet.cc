@@ -69,7 +69,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
     client_info.resources_total_capacity.push_back(resource_pair.second);
   }
 
-  RAY_LOG(DEBUG) << "NM LISTENING ON: IP " << client_info.node_manager_address << " PORT "
+  RAY_LOG(DEBUG) << "Node manager listening on: IP " << client_info.node_manager_address << " port "
                  << client_info.node_manager_port;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
