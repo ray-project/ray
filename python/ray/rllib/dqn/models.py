@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
@@ -270,10 +272,10 @@ class DQNGraph(object):
         td_err = sess.run(
             self.td_error,
             feed_dict={
-                self.obs_t: obs_t,
+                self.obs_t: [np.array(ob) for ob in obs_t],
                 self.act_t: act_t,
                 self.rew_t: rew_t,
-                self.obs_tp1: obs_tp1,
+                self.obs_tp1: [np.array(ob) for ob in obs_tp1],
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
@@ -283,3 +285,18 @@ class DQNGraph(object):
         assert len(grads) == len(self.grads_and_vars)
         feed_dict = {ph: g for (g, ph) in zip(grads, self.grads)}
         sess.run(self.train_expr, feed_dict=feed_dict)
+
+    def compute_apply(
+            self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,
+            importance_weights):
+        td_err, _ = sess.run(
+            [self.td_error, self.train_expr],
+            feed_dict={
+                self.obs_t: obs_t,
+                self.act_t: act_t,
+                self.rew_t: rew_t,
+                self.obs_tp1: obs_tp1,
+                self.done_mask: done_mask,
+                self.importance_weights: importance_weights
+            })
+        return td_err

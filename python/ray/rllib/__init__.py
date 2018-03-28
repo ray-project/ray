@@ -8,13 +8,10 @@ from ray.tune.registry import register_trainable
 
 
 def _register_all():
-    for key in ["DDPG", "PPO", "ES", "DQN", "A3C", "BC", "PG", "__fake",
+    for key in ["DDPG", "PPO", "ES", "DQN", "APEX", "A3C", "BC", "PG", "__fake",
                 "__sigmoid_fake_data", "__parameter_tuning"]:
-        try:
-            from ray.rllib.agent import get_agent_class
-            register_trainable(key, get_agent_class(key))
-        except ImportError as e:
-            print("Warning: could not import {}: {}".format(key, e))
+        from ray.rllib.agent import get_agent_class
+        register_trainable(key, get_agent_class(key))
 
 
 _register_all()

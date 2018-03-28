@@ -82,6 +82,10 @@ class RayConfig {
 
   int64_t max_tasks_to_spillback() const { return max_tasks_to_spillback_; }
 
+  int64_t actor_creation_num_spillbacks_warning() const {
+    return actor_creation_num_spillbacks_warning_;
+  }
+
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
@@ -108,7 +112,8 @@ class RayConfig {
         redis_db_connect_wait_milliseconds_(100),
         plasma_default_release_delay_(64),
         L3_cache_size_bytes_(100000000),
-        max_tasks_to_spillback_(10) {}
+        max_tasks_to_spillback_(10),
+        actor_creation_num_spillbacks_warning_(100) {}
 
   ~RayConfig() {}
 
@@ -185,6 +190,12 @@ class RayConfig {
 
   /// Constants for the spillback scheduling policy.
   int64_t max_tasks_to_spillback_;
+
+  /// Every time an actor creation task has been spilled back a number of times
+  /// that is a multiple of this quantity, a warning will be pushed to the
+  /// corresponding driver. Since spillback currently occurs on a 100ms timer,
+  /// a value of 100 corresponds to a warning every 10 seconds.
+  int64_t actor_creation_num_spillbacks_warning_;
 };
 
 #endif  // RAY_CONFIG_H

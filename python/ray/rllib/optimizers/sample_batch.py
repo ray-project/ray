@@ -37,7 +37,7 @@ class SampleBatch(object):
     def concat_samples(samples):
         out = {}
         for k in samples[0].data.keys():
-            out[k] = np.concatenate([arrayify(s.data[k]) for s in samples])
+            out[k] = np.concatenate([s.data[k] for s in samples])
         return SampleBatch(out)
 
     def concat(self, other):

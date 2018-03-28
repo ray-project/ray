@@ -11,11 +11,13 @@
 #include "hiredis/hiredis.h"
 #include "hiredis/async.h"
 
-#define LOG_REDIS_ERROR(context, M, ...) \
-  LOG_ERROR("Redis error %d %s; %s", context->err, context->errstr, M)
+#define LOG_REDIS_ERROR(context, M, ...)                                     \
+  RAY_LOG(ERROR) << "Redis error " << context->err << " " << context->errstr \
+                 << "; " << M
 
-#define LOG_REDIS_DEBUG(context, M, ...) \
-  LOG_DEBUG("Redis error %d %s; %s", context->err, context->errstr, M)
+#define LOG_REDIS_DEBUG(context, M, ...)                                     \
+  RAY_LOG(DEBUG) << "Redis error " << context->err << " " << context->errstr \
+                 << "; " << M;
 
 struct DBHandle {
   /** String that identifies this client type. */
@@ -329,6 +331,14 @@ void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data);
  * @return Void.
  */
 void redis_actor_table_mark_removed(DBHandle *db, ActorID actor_id);
+
+/// Publish an actor creation notification.
+///
+/// \param callback_data Data structure containing redis connection and timeout
+///      information.
+/// \return Void.
+void redis_publish_actor_creation_notification(
+    TableCallbackData *callback_data);
 
 /**
  * Subscribe to updates about newly created actors.

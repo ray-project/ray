@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import argparse
 import binascii
-import json
 import logging
 import os
 import time
@@ -96,6 +95,9 @@ class Monitor(object):
         self.dead_local_schedulers = set()
         self.live_plasma_managers = Counter()
         self.dead_plasma_managers = set()
+        # Keep a mapping from local scheduler client ID to IP address to use
+        # for updating the load metrics.
+        self.local_scheduler_id_to_ip_map = dict()
         self.load_metrics = LoadMetrics()
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(
@@ -114,43 +116,6 @@ class Monitor(object):
         """
         self.subscribe_client.subscribe(channel)
         self.subscribed[channel] = False
-
-    def cleanup_actors(self):
-        """Recreate any live actors whose corresponding local scheduler died.
-
-        For any live actor whose local scheduler just died, we choose a new
-        local scheduler and broadcast a notification to create that actor.
-        """
-        actor_info = self.state.actors()
-        for actor_id, info in actor_info.items():
-            if (not info["removed"] and
-                    info["local_scheduler_id"] in self.dead_local_schedulers):
-                # Choose a new local scheduler to run the actor.
-                local_scheduler_id = ray.utils.select_local_scheduler(
-                    info["driver_id"],
-                    self.state.local_schedulers(), info["num_gpus"],
-                    self.redis)
-                import sys
-                sys.stdout.flush()
-                # The new local scheduler should not be the same as the old
-                # local scheduler. TODO(rkn): This should not be an assert, it
-                # should be something more benign.
-                assert (binary_to_hex(local_scheduler_id) !=
-                        info["local_scheduler_id"])
-                # Announce to all of the local schedulers that the actor should
-                # be recreated on this new local scheduler.
-                ray.utils.publish_actor_creation(
-                    hex_to_binary(actor_id),
-                    hex_to_binary(info["driver_id"]), local_scheduler_id, True,
-                    self.redis)
-                log.info("Actor {} for driver {} was on dead local scheduler "
-                         "{}. It is being recreated on local scheduler {}"
-                         .format(actor_id, info["driver_id"],
-                                 info["local_scheduler_id"],
-                                 binary_to_hex(local_scheduler_id)))
-                # Update the actor info in Redis.
-                self.redis.hset(b"Actor:" + hex_to_binary(actor_id),
-                                "local_scheduler_id", local_scheduler_id)
 
     def cleanup_task_table(self):
         """Clean up global state for failed local schedulers.
@@ -306,22 +271,15 @@ class Monitor(object):
             static = message.StaticResources(i)
             dynamic_resources[dyn.Key().decode("utf-8")] = dyn.Value()
             static_resources[static.Key().decode("utf-8")] = static.Value()
+
+        # Update the load metrics for this local scheduler.
         client_id = binascii.hexlify(message.DbClientId()).decode("utf-8")
-        clients = ray.global_state.client_table()
-        local_schedulers = [
-            entry for client in clients.values() for entry in client
-            if (entry["ClientType"] == "local_scheduler" and not
-                entry["Deleted"])
-        ]
-        ip = None
-        for ls in local_schedulers:
-            if ls["DBClientID"] == client_id:
-                ip = ls["AuxAddress"].split(":")[0]
+        ip = self.local_scheduler_id_to_ip_map.get(client_id)
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:
-            print("Warning: could not find ip for client {} in {}".format(
-                client_id, local_schedulers))
+            print("Warning: could not find ip for client {}."
+                  .format(client_id))
 
     def plasma_manager_heartbeat_handler(self, unused_channel, data):
         """Handle a plasma manager heartbeat from Redis.
@@ -473,65 +431,19 @@ class Monitor(object):
         log.info(
             "Driver {} has been removed.".format(binary_to_hex(driver_id)))
 
-        # Get a list of the local schedulers that have not been deleted.
-        local_schedulers = ray.global_state.local_schedulers()
-
         self._clean_up_entries_for_driver(driver_id)
 
-        # Release any GPU resources that have been reserved for this driver in
-        # Redis.
-        for local_scheduler in local_schedulers:
-            if local_scheduler.get("GPU", 0) > 0:
-                local_scheduler_id = local_scheduler["DBClientID"]
-
-                num_gpus_returned = 0
-
-                # Perform a transaction to return the GPUs.
-                with self.redis.pipeline() as pipe:
-                    while True:
-                        try:
-                            # If this key is changed before the transaction
-                            # below (the multi/exec block), then the
-                            # transaction will not take place.
-                            pipe.watch(local_scheduler_id)
-
-                            result = pipe.hget(local_scheduler_id,
-                                               "gpus_in_use")
-                            gpus_in_use = (dict() if result is None else
-                                           json.loads(result.decode("ascii")))
-
-                            driver_id_hex = binary_to_hex(driver_id)
-                            if driver_id_hex in gpus_in_use:
-                                num_gpus_returned = gpus_in_use.pop(
-                                    driver_id_hex)
-
-                            pipe.multi()
-
-                            pipe.hset(local_scheduler_id, "gpus_in_use",
-                                      json.dumps(gpus_in_use))
-
-                            pipe.execute()
-                            # If a WatchError is not raise, then the operations
-                            # should have gone through atomically.
-                            break
-                        except redis.WatchError:
-                            # Another client must have changed the watched key
-                            # between the time we started WATCHing it and the
-                            # pipeline's execution. We should just retry.
-                            continue
-
-                log.info("Driver {} is returning GPU IDs {} to local "
-                         "scheduler {}.".format(
-                             binary_to_hex(driver_id), num_gpus_returned,
-                             local_scheduler_id))
-
-    def process_messages(self):
+    def process_messages(self, max_messages=10000):
         """Process all messages ready in the subscription channels.
 
         This reads messages from the subscription channels and calls the
         appropriate handlers until there are no messages left.
+
+        Args:
+            max_messages: The maximum number of messages to process before
+                returning.
         """
-        while True:
+        for _ in range(max_messages):
             message = self.subscribe_client.get_message()
             if message is None:
                 return
@@ -592,7 +504,6 @@ class Monitor(object):
         # state in the state tables.
         if len(self.dead_local_schedulers) > 0:
             self.cleanup_task_table()
-            self.cleanup_actors()
         if len(self.dead_plasma_managers) > 0:
             self.cleanup_object_table()
         log.debug("{} dead local schedulers, {} plasma managers total, {} "
@@ -604,6 +515,15 @@ class Monitor(object):
 
         # Handle messages from the subscription channels.
         while True:
+            # Update the mapping from local scheduler client ID to IP address.
+            # This is only used to update the load metrics for the autoscaler.
+            local_schedulers = self.state.local_schedulers()
+            self.local_scheduler_id_to_ip_map = {}
+            for local_scheduler_info in local_schedulers:
+                client_id = local_scheduler_info["DBClientID"]
+                ip_address = local_scheduler_info["AuxAddress"].split(":")[0]
+                self.local_scheduler_id_to_ip_map[client_id] = ip_address
+
             # Process autoscaling actions
             if self.autoscaler:
                 self.autoscaler.update()
@@ -617,7 +537,6 @@ class Monitor(object):
             # dead in this round, clean up the associated state.
             if len(self.dead_local_schedulers) > num_dead_local_schedulers:
                 self.cleanup_task_table()
-                self.cleanup_actors()
             if len(self.dead_plasma_managers) > num_dead_plasma_managers:
                 self.cleanup_object_table()
 
@@ -646,6 +565,10 @@ class Monitor(object):
             # messages.
             time.sleep(ray._config.heartbeat_timeout_milliseconds() * 1e-3)
 
+        # TODO(rkn): This infinite loop should be inside of a try/except block,
+        # and if an exception is thrown we should push an error message to all
+        # drivers.
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=("Parse Redis server for the "
@@ -664,9 +587,6 @@ if __name__ == "__main__":
 
     redis_ip_address = get_ip_address(args.redis_address)
     redis_port = get_port(args.redis_address)
-
-    # Initialize the global state.
-    ray.global_state._initialize_global_state(redis_ip_address, redis_port)
 
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)

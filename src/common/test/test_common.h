@@ -22,7 +22,8 @@ static inline std::string bind_ipc_sock_retry(const char *socket_name_format,
                                               int *fd) {
   std::string socket_name;
   for (int num_retries = 0; num_retries < 5; ++num_retries) {
-    LOG_INFO("trying to find plasma socket (attempt %d)", num_retries);
+    RAY_LOG(INFO) << "trying to find plasma socket (attempt " << num_retries
+                  << ")";
     size_t size = std::snprintf(nullptr, 0, socket_name_format, rand()) + 1;
     char socket_name_c_str[size];
     std::snprintf(socket_name_c_str, size, socket_name_format, rand());

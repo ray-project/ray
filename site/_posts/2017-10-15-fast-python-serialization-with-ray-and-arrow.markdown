@@ -58,19 +58,19 @@ objects to and from the Arrow format. Some properties of this approach:
 reading the full object (requirements 1 and 4).
 - Arrow supports **zero-copy reads**, so objects can naturally be stored in
 shared memory and used by multiple processes (requirements 1 and 3).
-- We can naturally fall back to pickle for anything we can’t handle well
+- We can naturally fall back to pickle for anything we can't handle well
 (requirement 2).
 
 **Alternatives to Arrow:** We could have built on top of
 [**Protocol Buffers**][5], but protocol buffers really isn't designed for
-numerical data, and that approach wouldn’t satisfy 1, 3, or 4. Building on top
+numerical data, and that approach wouldn't satisfy 1, 3, or 4. Building on top
 of [**Flatbuffers**][6] actually could be made to work, but it would have
 required implementing a lot of the facilities that Arrow already has and we
 preferred a columnar data layout more optimized for big data.
 
 ## Speedups
 
-Here we show some performance improvements over Python’s pickle module. The
+Here we show some performance improvements over Python's pickle module. The
 experiments were done using `pickle.HIGHEST_PROTOCOL`. Code for generating these
 plots is included at the end of the post.
 

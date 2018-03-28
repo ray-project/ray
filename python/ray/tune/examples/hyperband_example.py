@@ -13,7 +13,7 @@ import numpy as np
 
 import ray
 from ray.tune import Trainable, TrainingResult, register_trainable, \
-    run_experiments
+    run_experiments, Experiment
 from ray.tune.hyperband import HyperBandScheduler
 
 
@@ -62,15 +62,14 @@ if __name__ == "__main__":
         time_attr="timesteps_total", reward_attr="episode_reward_mean",
         max_t=100)
 
-    run_experiments({
-        "hyperband_test": {
-            "run": "my_class",
-            "stop": {"training_iteration": 1 if args.smoke_test else 99999},
-            "repeat": 20,
-            "resources": {"cpu": 1, "gpu": 0},
-            "config": {
-                "width": lambda spec: 10 + int(90 * random.random()),
-                "height": lambda spec: int(100 * random.random()),
-            },
-        }
-    }, scheduler=hyperband)
+    exp = Experiment(
+        name="hyperband_test",
+        run="my_class",
+        repeat=20,
+        stop={"training_iteration": 1 if args.smoke_test else 99999},
+        config={
+            "width": lambda spec: 10 + int(90 * random.random()),
+            "height": lambda spec: int(100 * random.random())
+        })
+
+    run_experiments(exp, scheduler=hyperband)

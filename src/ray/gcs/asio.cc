@@ -69,18 +69,14 @@ void RedisAsioClient::add_read() {
   operate();
 }
 
-void RedisAsioClient::del_read() {
-  read_requested_ = false;
-}
+void RedisAsioClient::del_read() { read_requested_ = false; }
 
 void RedisAsioClient::add_write() {
   write_requested_ = true;
   operate();
 }
 
-void RedisAsioClient::del_write() {
-  write_requested_ = false;
-}
+void RedisAsioClient::del_write() { write_requested_ = false; }
 
 void RedisAsioClient::cleanup() {}
 

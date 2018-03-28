@@ -41,6 +41,8 @@ DEFAULT_CONFIG = {
         "device_count": {"CPU": 4},
         "log_device_placement": False,
         "allow_soft_placement": True,
+        "intra_op_parallelism_threads": 1,
+        "inter_op_parallelism_threads": 2,
     },
     # Batch size for policy evaluations for rollouts
     "rollout_batchsize": 1,

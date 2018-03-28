@@ -1,21 +1,11 @@
-Ray RLlib: A Scalable Reinforcement Learning Library
-====================================================
+Ray RLlib: Scalable Reinforcement Learning
+==========================================
 
-Ray RLlib is a reinforcement learning library that aims to provide both performance and composability:
+Ray RLlib is an RL execution toolkit built on the Ray distributed execution framework. RLlib implements a collection of distributed *policy optimizers* that make it easy to use a variety of training strategies with existing RL algorithms written in frameworks such as PyTorch, TensorFlow, and Theano.
 
-- Performance
-    - High performance algorithm implementions
-    - Pluggable distributed RL execution strategies
+You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the paper `here <https://arxiv.org/abs/1712.09381>`__.
 
-- Composability
-    - Integration with the `Ray Tune <tune.html>`__ hyperparam tuning tool
-    - Support for multiple frameworks (TensorFlow, PyTorch)
-    - Scalable primitives for developing new algorithms
-    - Shared models between algorithms
-
-You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the NIPS symposium paper `here <https://arxiv.org/abs/1712.09381>`__.
-
-RLlib currently provides the following algorithms:
+RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, which include:
 
 -  `Proximal Policy Optimization (PPO) <https://arxiv.org/abs/1707.06347>`__ which
    is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
@@ -24,6 +14,8 @@ RLlib currently provides the following algorithms:
 
 - `Deep Q Networks (DQN) <https://arxiv.org/abs/1312.5602>`__.
 
+- `Ape-X Distributed Prioritized Experience Replay <https://arxiv.org/abs/1803.00933>`__.
+
 -  Evolution Strategies, as described in `this
    paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
    is adapted from
@@ -31,6 +23,10 @@ RLlib currently provides the following algorithms:
 
 These algorithms can be run on any `OpenAI Gym MDP <https://github.com/openai/gym>`__,
 including custom ones written and registered by the user.
+
+.. note::
+
+    To use RLlib's policy optimizers outside of RLlib, see the `policy optimizers documentation <policy-optimizers.html>`__.
 
 Installation
 ------------
@@ -80,7 +76,7 @@ The ``train.py`` script has a number of options you can show by running
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``A3C``, ``ES`` and ``DQN``).
+(available options are ``PPO``, ``A3C``, ``ES``, ``DQN`` and ``APEX``).
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
@@ -89,8 +85,9 @@ Each algorithm has specific hyperparameters that can be set with ``--config`` - 
 ``DEFAULT_CONFIG`` variable in
 `PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ppo/ppo.py>`__,
 `A3C <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c.py>`__,
-`ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__ and
-`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__.
+`ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__,
+`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__ and
+`APEX <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__.
 
 In an example below, we train A3C by specifying 8 workers through the config flag.
 function that creates the env to refer to it by name. The contents of the env_config agent config field will be passed to that function to allow the environment to be configured. The return type should be an OpenAI gym.Env. For example:
@@ -113,12 +110,12 @@ An example of evaluating a previously trained DQN agent is as follows:
 
 .. code-block:: bash
 
-    python ray/python/ray/rllib/eval.py \
+    python ray/python/ray/rllib/rollout.py \
           ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1 \
           --run DQN --env CartPole-v0
 
 
-The ``eval.py`` helper script reconstructs a DQN agent from the checkpoint
+The ``rollout.py`` helper script reconstructs a DQN agent from the checkpoint
 located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
 
@@ -244,12 +241,12 @@ Multi-Agent Models
 ~~~~~~~~~~~~~~~~~~
 RLlib supports multi-agent training with PPO. Currently it supports both
 shared, i.e. all agents have the same model, and non-shared multi-agent models. However, it only supports shared
-rewards and does not yet support individual rewards for each agent. 
+rewards and does not yet support individual rewards for each agent.
 
 
-While Generalized Advantage Estimation is supported in multiagent scenarios, 
-it is assumed that it possible for the estimator to access the observations of 
-all of the agents. 
+While Generalized Advantage Estimation is supported in multiagent scenarios,
+it is assumed that it possible for the estimator to access the observations of
+all of the agents.
 
 
 Important config parameters are described below
@@ -261,16 +258,16 @@ Important config parameters are described below
                "multiagent_act_shapes": [1, 1], # length of each action space
                "multiagent_shared_model": True, # whether the model should be shared
                # list of dimensions of multiagent feedforward nets
-               "multiagent_fcnet_hiddens": [[32, 32]] * 2} 
+               "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
 
-For a full example of a multiagent model in code, see the 
-`MultiAgent Pendulum <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_mountaincar.py>`__. 
+For a full example of a multiagent model in code, see the
+`MultiAgent Pendulum <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_mountaincar.py>`__.
 The ``MultiAgentPendulumEnv`` defined there operates
-over a composite (Tuple) enclosing a list of Boxes; each Box represents the 
-observation of an agent. The action space is a list of Discrete actions, each 
+over a composite (Tuple) enclosing a list of Boxes; each Box represents the
+observation of an agent. The action space is a list of Discrete actions, each
 element corresponding to half of the total torque. The environment will return a list of actions
-that can be iterated over and applied to each agent. 
+that can be iterated over and applied to each agent.
 
 External Data API
 ~~~~~~~~~~~~~~~~~
@@ -303,9 +300,10 @@ in the ``config`` section of the experiments.
         'cartpole-ppo': {
             'run': 'PPO',
             'env': 'CartPole-v0',
-            'resources': {
-                'cpu': 2,
-                'driver_cpu_limit': 1},
+            'trial_resources': {
+                'cpu': 1,
+                'extra_cpu': 2,  # for workers
+            },
             'stop': {
                 'episode_reward_mean': 200,
                 'time_total_s': 180
@@ -324,6 +322,11 @@ in the ``config`` section of the experiments.
 
 For an advanced example of using Population Based Training (PBT) with RLlib,
 see the `PPO + PBT Walker2D training example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__.
+
+Using Policy Optimizers outside of RLlib
+----------------------------------------
+
+See the `RLlib policy optimizers documentation <policy-optimizers.html>`__.
 
 Contributing to RLlib
 ---------------------

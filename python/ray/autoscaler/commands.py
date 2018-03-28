@@ -16,8 +16,7 @@ except ImportError:  # py2
     from pipes import quote
 
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
-    hash_launch_conf
-from ray.autoscaler.docker import dockerize_if_needed
+    hash_launch_conf, fillout_defaults
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_NAME
@@ -31,7 +30,7 @@ def create_or_update_cluster(
 
     config = yaml.load(open(config_file).read())
     validate_config(config)
-    dockerize_if_needed(config)
+    config = fillout_defaults(config)
 
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
@@ -53,7 +52,7 @@ def teardown_cluster(config_file, yes):
 
     config = yaml.load(open(config_file).read())
     validate_config(config)
-    dockerize_if_needed(config)
+    config = fillout_defaults(config)
 
     confirm("This will destroy your cluster", yes)
 

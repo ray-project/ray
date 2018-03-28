@@ -79,7 +79,7 @@ if __name__ == "__main__":
             "run": "my_class",
             "stop": {"training_iteration": 2 if args.smoke_test else 99999},
             "repeat": 10,
-            "resources": {"cpu": 1, "gpu": 0},
+            "trial_resources": {"cpu": 1, "gpu": 0},
             "config": {
                 "factor_1": 4.0,
                 "factor_2": 1.0,

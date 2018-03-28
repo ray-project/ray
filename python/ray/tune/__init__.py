@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.tune.error import TuneError
-from ray.tune.tune import run_experiments
+from ray.tune.tune import run_experiments, Experiment
 from ray.tune.registry import register_env, register_trainable
 from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
@@ -18,4 +18,5 @@ __all__ = [
     "register_env",
     "register_trainable",
     "run_experiments",
+    "Experiment"
 ]
