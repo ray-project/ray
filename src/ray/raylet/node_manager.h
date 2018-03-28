@@ -35,6 +35,11 @@ class NodeManager {
               ObjectManager &object_manager,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
+  /// Register any necessary callbacks on the GCS.
+  ///
+  /// \return Status.
+  ray::Status RegisterGcs();
+
   /// Process a new client connection.
   void ProcessNewClient(std::shared_ptr<LocalClientConnection> client);
 
@@ -68,13 +73,15 @@ class NodeManager {
   void FinishTask(const TaskID &task_id);
   /// Schedule tasks.
   void ScheduleTasks();
-  /// Handle a task whose local dependencies were missing and are now available.
-  void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
+  /// Handle a task whose local dependencies were missing and are now available.
+  void HandleWaitingTaskReady(const TaskID &task_id);
   ray::Status ForwardTask(Task &task, const ClientID &node_id);
   /// Send heartbeats to the GCS.
   void Heartbeat();
+  /// Send notifications to the GCS about objects that are pending creation.
+  void PendingObjectsHeartbeat();
 
   boost::asio::io_service &io_service_;
   /// A client connection to the GCS.

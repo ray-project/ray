@@ -71,11 +71,8 @@ ray::Status Raylet::RegisterGcs(boost::asio::io_service &io_service,
                  << " PORT " << client_info.node_manager_port;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
-  auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                          const ClientTableDataT &data) {
-    node_manager_.ClientAdded(client, id, data);
-  };
-  gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
+  node_manager_.RegisterGcs();
+
   return Status::OK();
 }
 

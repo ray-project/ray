@@ -3,6 +3,24 @@
 #include "common_protocol.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
+namespace {
+
+/// A helper function to send out heartbeats to the given object table about
+/// all tasks in the given queue.
+void SendTaskQueueHeartbeats(ray::gcs::ObjectTable &object_table,
+                             const std::list<ray::raylet::Task> &queue) {
+  JobID job_id = JobID::nil();
+  for (const auto &task : queue) {
+    const auto &spec = task.GetTaskSpecification();
+    for (int64_t i = 0; i < spec.NumReturns(); i++) {
+      auto object_id = spec.ReturnId(i);
+      object_table.Append(job_id, object_id, nullptr, nullptr);
+    }
+  }
+}
+
+}  // namespace
+
 namespace ray {
 
 namespace raylet {
@@ -36,16 +54,67 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
+}
 
-  object_manager_.RegisterFailureCallback([this](const ObjectID &object_id) {
-      reconstruction_policy_.Listen(object_id);
-      });
-  object_manager_.SubscribeObjAdded([this](const ObjectID &object_id) {
-      reconstruction_policy_.Cancel(object_id);
-      });
+ray::Status NodeManager::RegisterGcs() {
+  // Register a callback on the client table for new clients.
+  auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                          const ClientTableDataT &data) {
+    ClientAdded(client, id, data);
+  };
+  gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
+
+  // Subscribe to node manager heartbeats.
+  const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
+                                      const HeartbeatTableDataT &heartbeat_data) {
+    HeartbeatAdded(client, id, heartbeat_data);
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->heartbeat_table().Subscribe(
+      UniqueID::nil(), UniqueID::nil(), heartbeat_added,
+      [this](gcs::AsyncGcsClient *client) {
+        RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
+      }));
+
+  // Subscribe to notifications from the object table.
+  auto object_notification_callback = [this](gcs::AsyncGcsClient *client,
+                                             const ObjectID &id,
+                                             const std::vector<ObjectTableDataT> data) {
+    // Route object table notifications to the reconstruction policy to determine
+    // whether reconstruction is necessary.
+    reconstruction_policy_.HandleNotification(id, data);
+  };
+  auto subscribed_callback = [this](gcs::AsyncGcsClient *client) {
+    // Once we've subscribed to the object table, start listening to
+    // notifications of lookup failure from the object manager.
+    object_manager_.RegisterFailureCallback(
+        [this](const ObjectID &object_id) { reconstruction_policy_.Listen(object_id); });
+    // When an object becomes available on this node, cancel reconstruction for
+    // that object.
+    object_manager_.SubscribeObjAdded(
+        [this](const ObjectID &object_id) { reconstruction_policy_.Cancel(object_id); });
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->object_table().Subscribe(
+      UniqueID::nil(), UniqueID::nil(), object_notification_callback,
+      subscribed_callback));
+
+  // Start sending heartbeats to the GCS.
+  Heartbeat();
+
+  return ray::Status::OK();
+}
+
+void NodeManager::PendingObjectsHeartbeat() {
+  auto &object_table = gcs_client_->object_table();
+  // TODO(swang): Send notifications about puts.
+  SendTaskQueueHeartbeats(object_table, local_queues_.GetWaitingTasks());
+  SendTaskQueueHeartbeats(object_table, local_queues_.GetReadyTasks());
+  SendTaskQueueHeartbeats(object_table, local_queues_.GetScheduledTasks());
+  SendTaskQueueHeartbeats(object_table, local_queues_.GetRunningTasks());
 }
 
 void NodeManager::Heartbeat() {
+  PendingObjectsHeartbeat();
+
   RAY_LOG(DEBUG) << "[Heartbeat] sending heartbeat.";
   auto &heartbeat_table = gcs_client_->heartbeat_table();
   auto heartbeat_data = std::make_shared<HeartbeatTableDataT>();
@@ -64,13 +133,12 @@ void NodeManager::Heartbeat() {
     heartbeat_data->resources_total_capacity.push_back(resource_pair.second);
   }
 
-  ray::Status status = heartbeat_table.Add(
+  RAY_CHECK_OK(heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
       [this](ray::gcs::AsyncGcsClient *client, const ClientID &id,
              const std::shared_ptr<HeartbeatTableDataT> data) {
         RAY_LOG(DEBUG) << "[HEARTBEAT] hearbeat sent callback";
-      });
-  RAY_CHECK_OK(status);
+      }));
 
   // Reset the timer.
   auto heartbeat_period = boost::posix_time::milliseconds(heartbeat_period_ms_);
@@ -89,20 +157,6 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Save this NodeManager's resource information in the cluster resource map.
     cluster_resource_map_[client_id] = local_resources_;
-    // Start sending heartbeats to the GCS.
-    Heartbeat();
-    // Subscribe to heartbeats.
-    const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
-                                        const HeartbeatTableDataT &heartbeat_data) {
-      this->HeartbeatAdded(client, id, heartbeat_data);
-    };
-    ray::Status status = client->heartbeat_table().Subscribe(
-        UniqueID::nil(), UniqueID::nil(), heartbeat_added,
-        [this](gcs::AsyncGcsClient *client) {
-          RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
-        });
-    RAY_CHECK_OK(status);
-
     return;
   }
   // TODO(atumanov): make remote client lookup O(1)
