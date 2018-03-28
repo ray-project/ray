@@ -62,7 +62,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                                 SchedulingResources(config.resource_config));
 
   RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](const ObjectID &object_id) {
-    task_dependency_manager_.HandleObjectReady(object_id);
+    task_dependency_manager_.HandleObjectLocal(object_id);
     reconstruction_policy_.Cancel(object_id);
   }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted([this](const ObjectID &object_id) {
@@ -326,6 +326,8 @@ void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
 
 void NodeManager::HandleReadyTaskWaiting(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
+  auto waiting_tasks = local_queues_.RemoveTasks({task_id});
+  local_queues_.QueueWaitingTasks(std::vector<Task>(waiting_tasks));
 }
 
 void NodeManager::ScheduleTasks() {
@@ -367,14 +369,9 @@ void NodeManager::ScheduleTasks() {
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage) {
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
-  // Queue the task according to the availability of its arguments.
-  if (task_dependency_manager_.TaskReady(task)) {
-    local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-    ScheduleTasks();
-  } else {
-    local_queues_.QueueWaitingTasks(std::vector<Task>({task}));
-    task_dependency_manager_.SubscribeTaskReady(task);
-  }
+  // Subscribe to the task's dependencies. The task will be queued according to
+  // the availability of its arguments.
+  task_dependency_manager_.SubscribeTask(task);
 }
 
 void NodeManager::AssignTask(const Task &task) {

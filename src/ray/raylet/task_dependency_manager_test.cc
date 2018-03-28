@@ -78,18 +78,18 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
     arguments.push_back(ObjectID::from_random());
   }
   Task task = ExampleTask(arguments, 0);
-  task_dependency_manager_.SubscribeTaskReady(task);
+  task_dependency_manager_.SubscribeTask(task);
   ASSERT_EQ(remote_objects_.size(), num_arguments);
   ASSERT_EQ(ready_tasks_.size(), 0);
   ASSERT_EQ(waiting_tasks_.size(), 1);
 
-  task_dependency_manager_.HandleObjectReady(arguments.front());
+  task_dependency_manager_.HandleObjectLocal(arguments.front());
   ASSERT_EQ(remote_objects_.size(), num_arguments);
   ASSERT_EQ(ready_tasks_.size(), 0);
   ASSERT_EQ(waiting_tasks_.size(), 1);
 
   for (int i = 1; i < num_arguments; i++) {
-    task_dependency_manager_.HandleObjectReady(arguments[i]);
+    task_dependency_manager_.HandleObjectLocal(arguments[i]);
   }
   ASSERT_EQ(remote_objects_.size(), num_arguments);
   ASSERT_EQ(ready_tasks_.size(), 1);
@@ -100,7 +100,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
   int num_tasks = 3;
   auto tasks = MakeTaskChain(num_tasks, {}, 1);
   for (const auto &task : tasks) {
-    task_dependency_manager_.SubscribeTaskReady(task);
+    task_dependency_manager_.SubscribeTask(task);
   }
   int num_ready_tasks = 1;
   ASSERT_EQ(remote_objects_.size(), 0);
@@ -113,41 +113,10 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
     TaskID task_id = task.GetTaskSpecification().TaskId();
     auto return_id = task.GetTaskSpecification().ReturnId(0);
 
-    // Simulate the object notifications from the task creating its outputs.
-    task_dependency_manager_.HandleObjectReady(return_id);
-    // Simulate the task finishing execution
-    task_dependency_manager_.UnsubscribeTaskReady(task_id);
-
-    num_ready_tasks++;
-    ASSERT_EQ(remote_objects_.size(), 0);
-    ASSERT_EQ(ready_tasks_.size(), num_ready_tasks);
-    ASSERT_EQ(waiting_tasks_.size(), num_tasks - num_ready_tasks);
-  }
-}
-
-TEST_F(TaskDependencyManagerTest, TestLateObjectNotification) {
-  int num_tasks = 3;
-  auto tasks = MakeTaskChain(num_tasks, {}, 1);
-  for (const auto &task : tasks) {
-    task_dependency_manager_.SubscribeTaskReady(task);
-  }
-  int num_ready_tasks = 1;
-  ASSERT_EQ(remote_objects_.size(), 0);
-  ASSERT_EQ(ready_tasks_.size(), num_ready_tasks);
-  ASSERT_EQ(waiting_tasks_.size(), num_tasks - num_ready_tasks);
-
-  while (tasks.size() > 1) {
-    auto task = tasks.front();
-    tasks.erase(tasks.begin());
-    TaskID task_id = task.GetTaskSpecification().TaskId();
-    auto return_id = task.GetTaskSpecification().ReturnId(0);
-
+    // Simulate the object notifications for the task's return values.
+    task_dependency_manager_.HandleObjectLocal(return_id);
     // Simulate the task finishing execution.
-    task_dependency_manager_.UnsubscribeTaskReady(task_id);
-    // Send the object notification after the task finishes execution. This
-    // simulates a late notification from the object store and should not
-    // trigger the remote object callback.
-    task_dependency_manager_.HandleObjectReady(return_id);
+    task_dependency_manager_.UnsubscribeExecutedTask(task_id);
 
     num_ready_tasks++;
     ASSERT_EQ(remote_objects_.size(), 0);
@@ -160,7 +129,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   int num_tasks = 3;
   auto tasks = MakeTaskChain(num_tasks, {}, 1);
   for (const auto &task : tasks) {
-    task_dependency_manager_.SubscribeTaskReady(task);
+    task_dependency_manager_.SubscribeTask(task);
   }
   int num_ready_tasks = 1;
   ASSERT_EQ(remote_objects_.size(), 0);
@@ -177,14 +146,14 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
     // Simulate forwarding the task to a remote node.
     ready_tasks_.erase(task_id);
     waiting_tasks_.erase(task_id);
-    task_dependency_manager_.UnsubscribeTaskReady(task_id);
+    task_dependency_manager_.UnsubscribeForwardedTask(task_id);
 
     ASSERT_EQ(remote_objects_.count(return_id), 1);
     ASSERT_EQ(ready_tasks_.size(), 0);
     ASSERT_EQ(waiting_tasks_.size(), tasks.size());
   }
 
-  task_dependency_manager_.HandleObjectReady(return_id);
+  task_dependency_manager_.HandleObjectLocal(return_id);
   ASSERT_EQ(ready_tasks_.size(), 1);
   ASSERT_EQ(waiting_tasks_.size(), 0);
 }
@@ -196,10 +165,10 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
     arguments.push_back(ObjectID::from_random());
   }
   Task task = ExampleTask(arguments, 0);
-  task_dependency_manager_.SubscribeTaskReady(task);
+  task_dependency_manager_.SubscribeTask(task);
 
   for (const auto &argument_id : arguments) {
-    task_dependency_manager_.HandleObjectReady(argument_id);
+    task_dependency_manager_.HandleObjectLocal(argument_id);
   }
   ASSERT_EQ(ready_tasks_.size(), 1);
   ASSERT_EQ(waiting_tasks_.size(), 0);
@@ -210,7 +179,7 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   ASSERT_EQ(ready_tasks_.size(), 0);
   ASSERT_EQ(waiting_tasks_.size(), 1);
 
-  task_dependency_manager_.HandleObjectReady(evicted_argument_id);
+  task_dependency_manager_.HandleObjectLocal(evicted_argument_id);
   ASSERT_EQ(ready_tasks_.size(), 1);
   ASSERT_EQ(waiting_tasks_.size(), 0);
 }

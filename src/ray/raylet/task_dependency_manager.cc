@@ -11,26 +11,9 @@ TaskDependencyManager::TaskDependencyManager(
     : object_remote_callback_(object_remote_handler),
       task_ready_callback_(task_ready_handler),
       task_waiting_callback_(task_waiting_handler) {
-  // TODO(swang): Subscribe to object removed notifications.
 }
 
-bool TaskDependencyManager::argumentsReady(
-    const std::vector<ObjectID> argument_ids) const {
-  for (auto &argument_id : argument_ids) {
-    // Check if any argument is missing.
-    const auto entry = local_objects_.find(argument_id);
-    if (entry == local_objects_.end()) {
-      return false;
-    }
-    if (entry->second.status == ObjectAvailability::kRemote) {
-      return false;
-    }
-  }
-  // All arguments are ready.
-  return true;
-}
-
-void TaskDependencyManager::HandleObjectReady(const ray::ObjectID &object_id) {
+void TaskDependencyManager::HandleObjectLocal(const ray::ObjectID &object_id) {
   RAY_LOG(DEBUG) << "object ready " << object_id.hex();
   // Add the object to the table of locally available objects.
   auto &object_entry = local_objects_[object_id];
@@ -76,17 +59,14 @@ void TaskDependencyManager::HandleObjectMissing(const ray::ObjectID &object_id) 
   }
   // Process callbacks for all of the tasks dependent on the object that are
   // now ready to run.
+  // TODO(swang): We should not call this for tasks that have already started
+  // executing.
   for (auto &waiting_task_id : waiting_task_ids) {
     task_waiting_callback_(waiting_task_id);
   }
 }
 
-bool TaskDependencyManager::TaskReady(const Task &task) const {
-  const std::vector<ObjectID> arguments = task.GetDependencies();
-  return argumentsReady(arguments);
-}
-
-void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
+void TaskDependencyManager::SubscribeTask(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
   TaskEntry task_entry;
 
@@ -132,7 +112,16 @@ void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
   }
 }
 
-void TaskDependencyManager::UnsubscribeTaskReady(const TaskID &task_id) {
+void TaskDependencyManager::UnsubscribeForwardedTask(const TaskID &task_id) {
+  UnsubscribeTask(task_id, ObjectAvailability::kRemote);
+}
+
+void TaskDependencyManager::UnsubscribeExecutedTask(const TaskID &task_id) {
+  UnsubscribeTask(task_id, ObjectAvailability::kCreated);
+}
+
+void TaskDependencyManager::UnsubscribeTask(const TaskID &task_id,
+                                            ObjectAvailability outputs_status) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   RAY_CHECK(it != task_dependencies_.end());
@@ -164,15 +153,10 @@ void TaskDependencyManager::UnsubscribeTaskReady(const TaskID &task_id) {
     RAY_CHECK(return_entry != local_objects_.end());
     // Some of a task's return values may already be local if this is a
     // re-executed task and it created multiple objects, only some of which
-    // needed to be reconstructed. We only want to downgrade the object to
-    // REMOTE if it was previously not available at all.
-    // TODO(swang): Pass in flag for tasks whose objects will soon be created,
-    // so that we don't mark them as remote while waiting for the object store
-    // notification.
+    // needed to be reconstructed. We only want to update the object's status
+    // if it was previously not available.
     if (return_entry->second.status == ObjectAvailability::kWaiting) {
-      // The object was pending creation on this node. Mark the object as
-      // remote.
-      return_entry->second.status = ObjectAvailability::kRemote;
+      return_entry->second.status = outputs_status;
     }
     if (return_entry->second.dependent_tasks.empty()) {
       local_objects_.erase(return_entry);
