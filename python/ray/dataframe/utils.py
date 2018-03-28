@@ -298,7 +298,7 @@ def _map_partitions(func, partitions, *argslists):
         return None
 
     assert(callable(func))
-    if argslists is None:
+    if len(argslists) == 0:
         return [_deploy_func.remote(func, part) for part in partitions]
     elif len(argslists) == 1:
         return [_deploy_func.remote(func, part, argslists[0])

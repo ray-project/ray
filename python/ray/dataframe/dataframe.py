@@ -19,6 +19,7 @@ import warnings
 import numpy as np
 import ray
 import itertools
+
 from .utils import (
     assign_partitions,
     _get_lengths,
@@ -85,10 +86,10 @@ class DataFrame(object):
                 self._blk_partitions = np.array(blk_partitions)
             if row_partitions is not None:
                 self._blk_partitions = \
-                    self._create_blk_partitions(row_partitions, axis=0)
+                    self._create_blk_partitions(row_partitions, axis=0, length=len(columns))
             elif col_partitions is not None:
                 self._blk_partitions = \
-                    self._create_blk_partitions(col_partitions, axis=1)
+                    self._create_blk_partitions(col_partitions, axis=1, length=len(index))
 
         # if row_partitions is not None:
         #     self._row_lengths, self._row_index = \
@@ -115,108 +116,130 @@ class DataFrame(object):
         # self._col_partitions = col_partitions
         # self._row_partitions = row_partitions
 
-    def _create_blk_partitions(self, partitions, axis=0):
-
+    def _create_blk_partitions(self, partitions, axis=0, length=None):
         @ray.remote
         def repartition(df, npartitions, axis):
-            block_size = df.shape[1] // npartitions
+            block_size = df.shape[axis ^ 1] // npartitions
+
             return [df.iloc[:, i * block_size: (i + 1) * block_size]
                     if axis == 0
                     else df.iloc[i * block_size: (i + 1) * block_size, :]
                     for i in range(npartitions)]
+        if length is not None and get_npartitions() > length:
+            npartitions = length
+        else:
+            npartitions = get_npartitions()
 
-        x = [repartition._submit(args=(partition, get_npartitions(), axis),
-                                 num_return_vals=get_npartitions())
+        x = [repartition._submit(args=(partition, npartitions, axis),
+                                 num_return_vals=npartitions)
              for partition in partitions]
 
         return np.array(x)
+
+    @property
+    def _row_partitions(self):
+        @ray.remote
+        def h(*partition):
+            return pd.concat(partition, axis=1, copy=False)
+
+        return [h.remote(*part) for part in self._blk_partitions]
+
+    @property
+    def _col_partitions(self):
+        @ray.remote
+        def h(*partition):
+            return pd.concat(partition, axis=0, copy=False)
+
+        return [h.remote(*self._blk_partitions[:,i])
+                for i in range(self._blk_partitions.shape[1])]
 
     def __str__(self):
         return repr(self)
 
     def __repr__(self):
-        if sum(self._row_lengths) < 40:
-            result = repr(to_pandas(self))
-            return result
+        # if sum(self._row_lengths) < 40:
+        #     result = repr(to_pandas(self))
+        #     return result
 
         def head(df, n):
             """Compute the head for this without creating a new DataFrame"""
-
             new_dfs = _map_partitions(lambda df: df.head(n),
-                                      df._col_partitions)
+                                      df)
 
-            index = df._row_index.head(n).index
+            # index = df._row_index.head(n).index
             pd_head = pd.concat(ray.get(new_dfs), axis=1)
-            pd_head.index = index
-            pd_head.columns = df.columns
+            # pd_head.index = index
+            # pd_head.columns = df.columns
             return pd_head
 
         def tail(df, n):
             """Compute the tail for this without creating a new DataFrame"""
 
             new_dfs = _map_partitions(lambda df: df.tail(n),
-                                      df._col_partitions)
+                                      df)
 
-            index = df._row_index.tail(n).index
+            # index = df._row_index.tail(n).index
             pd_tail = pd.concat(ray.get(new_dfs), axis=1)
-            pd_tail.index = index
-            pd_tail.columns = df.columns
+            # pd_tail.index = index
+            # pd_tail.columns = df.columns
             return pd_tail
+        x = self._col_partitions
+        head = head(x, 30)
+        tail = tail(x, 30)
+        internal = pd.Series(["..." for _ in range(self._blk_partitions.shape[1])])
+        internal.index = head.columns
+        internal.name = "..."
 
-        head = repr(head(self, 20))
-        tail = repr(tail(self, 20))
+        result = head.append(internal).append(tail)
+        return repr(result) + "\n\n [N rows X M columns]"
 
-        result = head + "\n...\n" + tail
-
-        return result
-
-    def _get_row_partitions(self):
-        """Get the list of row partitions for this dataframe.
-
-        Returns:
-            [ObjectID]: List of row partitions.
-        """
-        if self._row_partitions_cache is None:
-            return None
-
-        if isinstance(self._row_partitions_cache,
-                      ray.local_scheduler.ObjectID):
-            self._row_partitions_cache = ray.get(self._row_partitions_cache)
-        return self._row_partitions_cache
-
-    def _set_row_partitions(self, new_row_partitions):
-        """Set the list of row partitions for this dataframe.
-
-        Args:
-            new_row_partitions: The new row partitions.
-        """
-        self._row_partitions_cache = new_row_partitions
-
-    _row_partitions = property(_get_row_partitions, _set_row_partitions)
-
-    def _get_col_partitions(self):
-        """Get the list of column partitions for this dataframe.
-
-        Returns:
-            [ObjectID]: List of column partitions.
-        """
-        if self._col_partitions_cache is None:
-            return None
-
-        if isinstance(self._col_partitions_cache,
-                      ray.local_scheduler.ObjectID):
-            self._col_partitions_cache = ray.get(self._col_partitions_cache)
-        return self._col_partitions_cache
-
-    def _set_col_partitions(self, new_col_partitions):
-        """Set the list of column partitions for this dataframe.
-
-        Args:
-            new_col_partitions: The new column partitions.
-        """
-        self._col_partitions_cache = new_col_partitions
-
-    _col_partitions = property(_get_col_partitions, _set_col_partitions)
+    # def _get_row_partitions(self):
+    #     """Get the list of row partitions for this dataframe.
+    #
+    #     Returns:
+    #         [ObjectID]: List of row partitions.
+    #     """
+    #     if self._row_partitions_cache is None:
+    #         return None
+    #
+    #     if isinstance(self._row_partitions_cache,
+    #                   ray.local_scheduler.ObjectID):
+    #         self._row_partitions_cache = ray.get(self._row_partitions_cache)
+    #     return self._row_partitions_cache
+    #
+    # def _set_row_partitions(self, new_row_partitions):
+    #     """Set the list of row partitions for this dataframe.
+    #
+    #     Args:
+    #         new_row_partitions: The new row partitions.
+    #     """
+    #     self._row_partitions_cache = new_row_partitions
+    #
+    # _row_partitions = property(_get_row_partitions, _set_row_partitions)
+    #
+    # def _get_col_partitions(self):
+    #     """Get the list of column partitions for this dataframe.
+    #
+    #     Returns:
+    #         [ObjectID]: List of column partitions.
+    #     """
+    #     if self._col_partitions_cache is None:
+    #         return None
+    #
+    #     if isinstance(self._col_partitions_cache,
+    #                   ray.local_scheduler.ObjectID):
+    #         self._col_partitions_cache = ray.get(self._col_partitions_cache)
+    #     return self._col_partitions_cache
+    #
+    # def _set_col_partitions(self, new_col_partitions):
+    #     """Set the list of column partitions for this dataframe.
+    #
+    #     Args:
+    #         new_col_partitions: The new column partitions.
+    #     """
+    #     self._col_partitions_cache = new_col_partitions
+    #
+    # _col_partitions = property(_get_col_partitions, _set_col_partitions)
 
     def _get_index(self):
         """Get the index for this DataFrame.
@@ -224,10 +247,11 @@ class DataFrame(object):
         Returns:
             The union of all indexes across the partitions.
         """
-        if isinstance(self._row_index, pd.core.indexes.range.RangeIndex) or \
-           isinstance(self._row_index, pd.core.indexes.base.Index):
-            return self._row_index
-        return self._row_index.index
+        # if isinstance(self._row_index, pd.core.indexes.range.RangeIndex) or \
+        #    isinstance(self._row_index, pd.core.indexes.base.Index):
+        #     return self._row_index
+        # return self._row_index.index
+        return self._index
 
     def _set_index(self, new_index):
         """Set the index for this DataFrame.
@@ -235,11 +259,12 @@ class DataFrame(object):
         Args:
             new_index: The new index to set this
         """
-        if isinstance(self._row_index, pd.core.indexes.range.RangeIndex) or \
-           isinstance(self._row_index, pd.core.indexes.base.Index):
-               self._row_index = new_index
-               return
-        self._row_index.index = new_index
+        # if isinstance(self._row_index, pd.core.indexes.range.RangeIndex) or \
+        #    isinstance(self._row_index, pd.core.indexes.base.Index):
+        #        self._row_index = new_index
+        #        return
+        # self._row_index.index = new_index
+        self._index = new_index
 
     index = property(_get_index, _set_index)
 
