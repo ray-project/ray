@@ -98,12 +98,12 @@ class NodeManager {
   SchedulingQueue local_queues_;
   /// The scheduling policy in effect for this local scheduler.
   SchedulingPolicy scheduling_policy_;
+  /// The reconstruction policy for deciding when to re-execute a task.
+  ReconstructionPolicy reconstruction_policy_;
   /// A manager to make waiting tasks's missing object dependencies available.
   TaskDependencyManager task_dependency_manager_;
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
-  /// The reconstruction policy for deciding when to re-execute a task.
-  ReconstructionPolicy reconstruction_policy_;
   std::vector<ClientID> remote_clients_;
   std::unordered_map<ClientID, TcpServerConnection, UniqueIDHasher>
       remote_server_connections_;

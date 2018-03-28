@@ -28,7 +28,7 @@ class TaskDependencyManager {
   /// \param handler The handler to call for subscribed tasks whose
   /// dependencies have become available locally.
   TaskDependencyManager(ObjectManager &object_manager,
-                        // ReconstructionPolicy &reconstruction_policy,
+                        ReconstructionPolicy &reconstruction_policy,
                         std::function<void(const TaskID &)> handler);
 
   /// Check whether a task's object dependencies are locally available.
@@ -62,9 +62,13 @@ class TaskDependencyManager {
   bool argumentsReady(const std::vector<ObjectID> arguments) const;
   /// Handle an object added to the object store.
   void handleObjectReady(const ray::ObjectID &object_id);
+
   /// A reference to the object manager so that we can issue Pull requests of
   /// missing objects.
   ObjectManager &object_manager_;
+  /// A reference to the reconstruction policy so that we can issue requests
+  /// to reconstruct missing objects.
+  ReconstructionPolicy &reconstruction_policy_;
   /// A mapping from task ID of each subscribed task to its list of
   /// dependencies.
   std::unordered_map<ray::TaskID, std::vector<ray::ObjectID>, UniqueIDHasher>

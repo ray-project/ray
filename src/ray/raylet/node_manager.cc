@@ -36,16 +36,15 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       worker_pool_(config.num_initial_workers, config.worker_command),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
-      task_dependency_manager_(
-          object_manager,
-          // reconstruction_policy_,
-          [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
-      lineage_cache_(gcs_client_->raylet_task_table()),
       reconstruction_policy_(io_service_, gcs_client_->client_table().GetLocalClientId(),
                              gcs_client_->object_table(),
                              gcs_client_->task_reconstruction_log(),
                              [this](const TaskID &task_id) { ResubmitTask(task_id); },
                              /*reconstruction_timeout_ms=*/1000),
+      task_dependency_manager_(
+          object_manager, reconstruction_policy_,
+          [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
+      lineage_cache_(gcs_client_->raylet_task_table()),
       remote_clients_(),
       remote_server_connections_(),
       object_manager_(object_manager) {
@@ -83,19 +82,8 @@ ray::Status NodeManager::RegisterGcs() {
     // whether reconstruction is necessary.
     reconstruction_policy_.HandleNotification(id, data);
   };
-  auto subscribed_callback = [this](gcs::AsyncGcsClient *client) {
-    // Once we've subscribed to the object table, start listening to
-    // notifications of lookup failure from the object manager.
-    object_manager_.RegisterFailureCallback(
-        [this](const ObjectID &object_id) { reconstruction_policy_.Listen(object_id); });
-    // When an object becomes available on this node, cancel reconstruction for
-    // that object.
-    object_manager_.SubscribeObjAdded(
-        [this](const ObjectID &object_id) { reconstruction_policy_.Cancel(object_id); });
-  };
   RAY_RETURN_NOT_OK(gcs_client_->object_table().Subscribe(
-      UniqueID::nil(), UniqueID::nil(), object_notification_callback,
-      subscribed_callback));
+      UniqueID::nil(), UniqueID::nil(), object_notification_callback, nullptr));
 
   // Start sending heartbeats to the GCS.
   Heartbeat();

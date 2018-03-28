@@ -4,12 +4,11 @@ namespace ray {
 
 namespace raylet {
 
-TaskDependencyManager::TaskDependencyManager(
-    ObjectManager &object_manager,
-    // ReconstructionPolicy &reconstruction_policy,
-    std::function<void(const TaskID &)> handler)
+TaskDependencyManager::TaskDependencyManager(ObjectManager &object_manager,
+                                             ReconstructionPolicy &reconstruction_policy,
+                                             std::function<void(const TaskID &)> handler)
     : object_manager_(object_manager),
-      // reconstruction_policy_(reconstruction_policy),
+      reconstruction_policy_(reconstruction_policy),
       task_ready_callback_(handler) {
   // TODO(swang): Check return status.
   ray::Status status = object_manager_.SubscribeObjAdded(
@@ -53,6 +52,9 @@ void TaskDependencyManager::handleObjectReady(const ray::ObjectID &object_id) {
     UnsubscribeTaskReady(ready_task_id);
     task_ready_callback_(ready_task_id);
   }
+
+  // The object is now available locally, so cancel reconstruction.
+  reconstruction_policy_.Cancel(object_id);
 }
 
 bool TaskDependencyManager::TaskReady(const Task &task) const {
@@ -77,6 +79,10 @@ void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
       // TODO(swang): Handle Pull failure (if object manager does not retry).
       // TODO(atumanov): pull return status should be propagated back to the caller.
       ray::Status status = object_manager_.Pull(argument);
+      // Ask the reconstruction policy to reconstruct this object if necessary.
+      // TODO(swang): Should we wait for the Lookup to fail before trying to
+      // reconstruct the object?
+      reconstruction_policy_.Listen(argument);
     }
   }
   // Check that the task has some missing arguments.
