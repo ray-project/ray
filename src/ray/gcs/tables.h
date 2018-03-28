@@ -27,6 +27,14 @@ class RedisContext;
 
 class AsyncGcsClient;
 
+template <typename ID>
+class PubsubInterface {
+ public:
+  virtual Status RequestNotifications(const JobID &job_id, const ID &id,
+                                      const ClientID &client_id);
+  virtual ~PubsubInterface(){};
+};
+
 template <typename ID, typename Data>
 class LogInterface {
  public:
@@ -48,7 +56,7 @@ class LogInterface {
 ///   ClientTable: Stores a log of which GCS clients have been added or deleted
 ///                from the system.
 template <typename ID, typename Data>
-class Log : public LogInterface<ID, Data> {
+class Log : public LogInterface<ID, Data>, public PubsubInterface<ID> {
  public:
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,

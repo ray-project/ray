@@ -525,9 +525,12 @@ int PublishTableAdd(RedisModuleCtx *ctx,
                     RedisModuleString *data) {
   // Serialize the notification to send.
   flatbuffers::FlatBufferBuilder fbb;
-  auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
+  std::vector<flatbuffers::Offset<flatbuffers::String>> notification_data;
+  if (data != nullptr) {
+    notification_data.push_back(RedisStringToFlatbuf(fbb, data));
+  }
   auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, id),
-                                     fbb.CreateVector(&data_flatbuf, 1));
+                                     fbb.CreateVector(notification_data));
   fbb.Finish(message);
 
   // Write the data back to any subscribers that are listening to all table
@@ -614,19 +617,23 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 }
 
 /// Append an entry to the log stored at a key. Publishes a notification about
-/// the update to all subscribers, if a pubsub channel is provided.
+/// the update to all subscribers, if a pubsub channel is provided and the
+/// append operation succeeded.
 ///
 /// This is called from a client with the command:
 //
 ///    RAY.TABLE_APPEND <table_prefix> <pubsub_channel> <id> <data>
 ///                     <index (optional)>
 ///
+///    or RAY.TABLE_APPEND <table_prefix> <pubsub_channel> <id>
+///
 /// \param table_prefix The prefix string for keys in this table.
 /// \param pubsub_channel The pubsub channel name that notifications for
 ///        this key should be published to. When publishing to a specific
 ///        client, the channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to append to.
-/// \param data The data to append to the key.
+/// \param data The data to append to the key. If this is not set, then no data
+///        will be appended and an empty notification will be published.
 /// \param index If this is set, then the data must be appended at this index.
 ///        If the current log is shorter or longer than the requested index,
 ///        then the append will fail and an error message will be returned as a
@@ -636,45 +643,64 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 int TableAppend_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
-  if (argc < 5 || argc > 6) {
+  if (argc < 4 || argc > 6) {
     return RedisModule_WrongArity(ctx);
   }
 
   RedisModuleString *prefix_str = argv[1];
   RedisModuleString *pubsub_channel_str = argv[2];
   RedisModuleString *id = argv[3];
-  RedisModuleString *data = argv[4];
+  RedisModuleString *data = nullptr;
   RedisModuleString *index_str = nullptr;
+  if (argc > 4) {
+    data = argv[4];
+  }
   if (argc == 6) {
     index_str = argv[5];
   }
 
-  // Set the keys in the table.
-  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
-                                        REDISMODULE_READ | REDISMODULE_WRITE);
-  // Determine the index at which the data should be appended. If no index is
-  // requested, then is the current length of the log.
-  size_t index = RedisModule_ValueLength(key);
-  if (index_str != nullptr) {
-    // Parse the requested index.
-    long long requested_index;
-    RAY_CHECK(RedisModule_StringToLongLong(index_str, &requested_index) ==
-              REDISMODULE_OK);
-    RAY_CHECK(requested_index >= 0);
-    index = static_cast<size_t>(requested_index);
-  }
-  // Only perform the append if the requested index matches the current length
-  // of the log, or if no index was requested.
-  if (index == RedisModule_ValueLength(key)) {
-    // The requested index matches the current length of the log or no index
-    // was requested. Perform the append.
-    int flags = REDISMODULE_ZADD_NX;
-    RedisModule_ZsetAdd(key, index, data, &flags);
-    // Check that we actually add a new entry during the append. This is only
-    // necessary since we implement the log with a sorted set, so all entries
-    // must be unique, or else we will have gaps in the log.
-    RAY_CHECK(flags == REDISMODULE_ZADD_ADDED) << "Appended a duplicate entry";
+  // Determine whether we need to publish this Append. The only time that we
+  // should not publish is when the append fails because the optional requested
+  // index does not match the current length of the log.
+  bool publish = true;
+  // If data is provided, append it to the log.
+  if (data != nullptr) {
+    // Set the keys in the table.
+    RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
+                                          REDISMODULE_READ | REDISMODULE_WRITE);
+    // Determine the index at which the data should be appended. If no index is
+    // requested, then is the current length of the log.
+    size_t index = RedisModule_ValueLength(key);
+    if (index_str != nullptr) {
+      // Parse the requested index.
+      long long requested_index;
+      RAY_CHECK(RedisModule_StringToLongLong(index_str, &requested_index) ==
+                REDISMODULE_OK);
+      RAY_CHECK(requested_index >= 0);
+      index = static_cast<size_t>(requested_index);
+    }
+    // Only perform the append if the requested index matches the current length
+    // of the log, or if no index was requested.
+    if (index == RedisModule_ValueLength(key)) {
+      // The requested index matches the current length of the log or no index
+      // was requested. Perform the append.
+      int flags = REDISMODULE_ZADD_NX;
+      RedisModule_ZsetAdd(key, index, data, &flags);
+      // Check that we actually add a new entry during the append. This is only
+      // necessary since we implement the log with a sorted set, so all entries
+      // must be unique, or else we will have gaps in the log.
+      RAY_CHECK(flags == REDISMODULE_ZADD_ADDED)
+          << "Appended a duplicate entry";
+    } else {
+      // The requested index did not match the length of the log. The operation
+      // failed, so do not publish.
+      publish = false;
+    }
     RedisModule_CloseKey(key);
+  }
+
+  // Publish the message if the append succeeded.
+  if (publish) {
     // Publish a message on the requested pubsub channel if necessary.
     TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
     if (pubsub_channel != TablePubsub_NO_PUBLISH) {
@@ -687,7 +713,6 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
   } else {
     // The requested index did not match the current length of the log. Return
     // an error message as a string.
-    RedisModule_CloseKey(key);
     const char *reply = "ERR entry exists";
     return RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
   }
