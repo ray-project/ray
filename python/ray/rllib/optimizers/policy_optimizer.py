@@ -26,6 +26,8 @@ class PolicyOptimizer(object):
         remote_evaluators (list): List of remote evaluator replicas, or [].
         num_steps_trained (int): Number of timesteps trained on so far.
         num_steps_sampled (int): Number of timesteps sampled so far.
+        evaluator_resources (dict): Optional resource requests to set for
+            evaluators created by this optimizer.
     """
 
     @classmethod
