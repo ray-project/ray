@@ -4,15 +4,13 @@ namespace ray {
 
 namespace raylet {
 
-TaskDependencyManager::TaskDependencyManager(ObjectManager &object_manager,
-                                             ReconstructionPolicy &reconstruction_policy,
-                                             std::function<void(const TaskID &)> handler)
-    : object_manager_(object_manager),
-      reconstruction_policy_(reconstruction_policy),
-      task_ready_callback_(handler) {
-  // TODO(swang): Check return status.
-  ray::Status status = object_manager_.SubscribeObjAdded(
-      [this](const ObjectID &object_id) { handleObjectReady(object_id); });
+TaskDependencyManager::TaskDependencyManager(
+    std::function<void(const ObjectID)> object_missing_handler,
+    std::function<void(const TaskID &)> task_ready_handler,
+    std::function<void(const TaskID &)> task_waiting_handler)
+    : object_missing_callback_(object_missing_handler),
+      task_ready_callback_(task_ready_handler),
+      task_waiting_callback_(task_waiting_handler) {
   // TODO(swang): Subscribe to object removed notifications.
 }
 

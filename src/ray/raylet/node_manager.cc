@@ -30,6 +30,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : io_service_(io_service),
       gcs_client_(gcs_client),
+      object_manager_(object_manager),
       heartbeat_timer_(io_service),
       heartbeat_period_ms_(config.heartbeat_period_ms),
       local_resources_(config.resource_config),
@@ -42,17 +43,31 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                              [this](const TaskID &task_id) { ResubmitTask(task_id); },
                              /*reconstruction_timeout_ms=*/1000),
       task_dependency_manager_(
-          object_manager, reconstruction_policy_,
+          [this](const ObjectID &object_id) {
+            RAY_CHECK_OK(object_manager_.Pull(object_id));
+            // Ask the reconstruction policy to reconstruct this object if necessary.
+            // TODO(swang): Should we wait for the Lookup to fail before trying to
+            // reconstruct the object?
+            reconstruction_policy_.Listen(object_id);
+          },
+          [this](const TaskID &task_id) { HandleReadyTaskWaiting(task_id); },
           [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
       lineage_cache_(gcs_client_->raylet_task_table()),
       remote_clients_(),
-      remote_server_connections_(),
-      object_manager_(object_manager) {
+      remote_server_connections_() {
   RAY_CHECK(heartbeat_period_ms_ > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
+
+  RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](const ObjectID &object_id) {
+    task_dependency_manager_.HandleObjectReady(object_id);
+    reconstruction_policy_.Cancel(object_id);
+  }));
+  RAY_CHECK_OK(object_manager_.SubscribeObjDeleted([this](const ObjectID &object_id) {
+    task_dependency_manager_.HandleObjectMissing(object_id);
+  }));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -307,6 +322,10 @@ void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
   local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
   // Schedule the newly ready tasks if possible.
   ScheduleTasks();
+}
+
+void NodeManager::HandleReadyTaskWaiting(const TaskID &task_id) {
+  throw std::runtime_error("Method not implemented");
 }
 
 void NodeManager::ScheduleTasks() {

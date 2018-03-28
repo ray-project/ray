@@ -27,9 +27,9 @@ class TaskDependencyManager {
   /// dependency manager can issue requests to transfer objects.
   /// \param handler The handler to call for subscribed tasks whose
   /// dependencies have become available locally.
-  TaskDependencyManager(ObjectManager &object_manager,
-                        ReconstructionPolicy &reconstruction_policy,
-                        std::function<void(const TaskID &)> handler);
+  TaskDependencyManager(std::function<void(const ObjectID)> object_missing_handler,
+                        std::function<void(const TaskID &)> task_ready_handler,
+                        std::function<void(const TaskID &)> task_waiting_handler);
 
   /// Check whether a task's object dependencies are locally available.
   ///
@@ -50,37 +50,33 @@ class TaskDependencyManager {
   /// \param task_id The task ID of the task with missing dependencies.
   void UnsubscribeTaskReady(const TaskID &task_id);
 
-  /// Mark an object as locally available. This is used for objects that do not
-  /// have a stored value (e.g., actor execution dependencies).
+  /// Handle an object becoming locally available.
   ///
   /// \param object_id The object ID of the object to mark as locally
   /// available.
-  void MarkDependencyReady(const ObjectID &object_id);
+  void HandleObjectReady(const ray::ObjectID &object_id);
+
+  /// Handle an object that is no longer locally available.
+  ///
+  /// \param object_id The object ID of the object that was previously locally
+  /// available.
+  void HandleObjectMissing(const ray::ObjectID &object_id);
 
  private:
   /// Check whether the given list of objects are ready.
   bool argumentsReady(const std::vector<ObjectID> arguments) const;
-  /// Handle an object added to the object store.
-  void handleObjectReady(const ray::ObjectID &object_id);
 
-  /// A reference to the object manager so that we can issue Pull requests of
-  /// missing objects.
-  ObjectManager &object_manager_;
-  /// A reference to the reconstruction policy so that we can issue requests
-  /// to reconstruct missing objects.
-  ReconstructionPolicy &reconstruction_policy_;
-  /// A mapping from task ID of each subscribed task to its list of
-  /// dependencies.
-  std::unordered_map<ray::TaskID, std::vector<ray::ObjectID>, UniqueIDHasher>
-      task_dependencies_;
-  // A mapping from object ID of each object that is not locally available to
-  // the list of subscribed tasks that are dependent on it.
-  std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>, UniqueIDHasher>
-      remote_object_dependencies_;
-  // The set of locally available objects.
-  std::unordered_set<ray::ObjectID, UniqueIDHasher> local_objects_;
+  std::function<void(const ObjectID &)> object_missing_callback_;
   // The callback to call when a subscribed task becomes ready.
   std::function<void(const TaskID &)> task_ready_callback_;
+  // The callback to call when a subscribed task becomes ready.
+  std::function<void(const TaskID &)> task_waiting_callback_;
+  /// A mapping from task ID of each subscribed task to its list of
+  /// dependencies.
+  std::unordered_map<ray::TaskID, TaskEntry, UniqueIDHasher> task_dependencies_;
+  // Information about each object that is locally available or pending
+  // creation by a locally queued task.
+  std::unordered_map<ray::ObjectID, ObjectEntry, UniqueIDHasher> local_objects_;
 };
 
 }  // namespace raylet

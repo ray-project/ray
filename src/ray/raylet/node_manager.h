@@ -77,6 +77,7 @@ class NodeManager {
   void ResubmitTask(const TaskID &task_id);
   /// Handle a task whose local dependencies were missing and are now available.
   void HandleWaitingTaskReady(const TaskID &task_id);
+  void HandleReadyTaskWaiting(const TaskID &task_id);
   ray::Status ForwardTask(Task &task, const ClientID &node_id);
   /// Send heartbeats to the GCS.
   void Heartbeat();
@@ -86,6 +87,7 @@ class NodeManager {
   boost::asio::io_service &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  ObjectManager &object_manager_;
   boost::asio::deadline_timer heartbeat_timer_;
   uint64_t heartbeat_period_ms_;
   /// The resources local to this node.
@@ -107,7 +109,6 @@ class NodeManager {
   std::vector<ClientID> remote_clients_;
   std::unordered_map<ClientID, TcpServerConnection, UniqueIDHasher>
       remote_server_connections_;
-  ObjectManager &object_manager_;
 };
 
 }  // namespace raylet
