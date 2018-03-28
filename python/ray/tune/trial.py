@@ -90,7 +90,7 @@ class Trial(object):
 
         if not has_trainable(trainable_name):
             # Make sure rllib agents are registered
-            from ray import rllib  # noqa # pylint: disable=unused-import
+            from ray import rllib  # noqa: F401
             if not has_trainable(trainable_name):
                 raise TuneError("Unknown trainable: " + trainable_name)
 
