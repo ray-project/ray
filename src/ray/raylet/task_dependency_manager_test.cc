@@ -119,7 +119,30 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
   }
 }
 
-TEST_F(TaskDependencyManagerTest, TestEviction) {}
+TEST_F(TaskDependencyManagerTest, TestEviction) {
+  int num_arguments = 3;
+  std::vector<ObjectID> arguments;
+  for (int i = 0; i < num_arguments; i++) {
+    arguments.push_back(ObjectID::from_random());
+  }
+  Task task = ExampleTask(arguments, 0);
+  task_dependency_manager_.SubscribeTaskReady(task);
+
+  for (const auto &argument_id : arguments) {
+    task_dependency_manager_.HandleObjectReady(argument_id);
+  }
+  ASSERT_EQ(ready_tasks_.size(), 1);
+  ASSERT_EQ(waiting_tasks_.size(), 0);
+
+  ObjectID evicted_argument_id = arguments[1];
+  task_dependency_manager_.HandleObjectMissing(evicted_argument_id);
+  ASSERT_EQ(ready_tasks_.size(), 0);
+  ASSERT_EQ(waiting_tasks_.size(), 1);
+
+  task_dependency_manager_.HandleObjectReady(evicted_argument_id);
+  ASSERT_EQ(ready_tasks_.size(), 1);
+  ASSERT_EQ(waiting_tasks_.size(), 0);
+}
 
 }  // namespace raylet
 
