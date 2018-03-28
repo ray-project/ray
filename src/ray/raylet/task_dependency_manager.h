@@ -27,7 +27,7 @@ class TaskDependencyManager {
   /// dependency manager can issue requests to transfer objects.
   /// \param handler The handler to call for subscribed tasks whose
   /// dependencies have become available locally.
-  TaskDependencyManager(std::function<void(const ObjectID)> object_missing_handler,
+  TaskDependencyManager(std::function<void(const ObjectID)> object_remote_handler,
                         std::function<void(const TaskID &)> task_ready_handler,
                         std::function<void(const TaskID &)> task_waiting_handler);
 
@@ -84,7 +84,7 @@ class TaskDependencyManager {
   /// Check whether the given list of objects are ready.
   bool argumentsReady(const std::vector<ObjectID> arguments) const;
 
-  std::function<void(const ObjectID &)> object_missing_callback_;
+  std::function<void(const ObjectID &)> object_remote_callback_;
   // The callback to call when a subscribed task becomes ready.
   std::function<void(const TaskID &)> task_ready_callback_;
   // The callback to call when a subscribed task becomes ready.
