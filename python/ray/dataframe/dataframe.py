@@ -363,7 +363,8 @@ class DataFrame(object):
                             else self._row_partitions)),
                             axis=0)
 
-        result_series.index = self.columns if axis == 0 else self.index
+        result_series.index = self.columns[result_series.index] if axis == 0 \
+            else self.index
         return result_series
 
     @property
@@ -773,32 +774,10 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies df.all(axis=1)
             to the transpose of df.
         """
-        # TODO: Clean up this function, particularly on the reindexing
-        # TODO: broken after col_partitions rewrite
-        if axis is not None:
-            self._row_index._get_axis_name(axis)
-        # Use .copy() to prevent read-only error
-        partitions, res_index = (self._row_partitions, self._row_index.copy()) \
-                if axis == 1 or axis == 'rows' \
-                else (self._col_partitions, self._col_index.copy())
+        remote_func = lambda df: df.all(axis=axis, bool_only=bool_only,
+                                        skipna=skipna, level=level, **kwargs)
 
-        series = ray.get(
-                    _map_partitions(
-                        lambda df: df.all(axis, bool_only, skipna, level, **kwargs),
-                        partitions))
-
-        def indexify(i, s):
-            df = s.to_frame()
-            df['partition'] = i
-            df['index_within_partition'] = df.index
-            return df.set_index(['partition', 'index_within_partition'])
-
-        indexed_series = pd.concat([indexify(i, s) for i, s in enumerate(series)])
-        joined = indexed_series.merge(res_index,
-                                      left_index=True,
-                                      right_on=['partition', 'index_within_partition'])
-
-        return joined.loc[:,0].rename(None)
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def any(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
@@ -808,29 +787,10 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies on the column partitions,
             otherwise operates on row partitions
         """
-        # TODO: Clean up this function, particularly on the reindexing
-        # TODO: broken after col_partitions rewrite
-        # Use .copy() to prevent read-only error
-        partitions, res_index = (self._row_partitions, self._row_index.copy()) \
-                if axis == 1 else (self._col_partitions, self._col_index.copy())
+        remote_func = lambda df: df.any(axis=axis, bool_only=bool_only,
+                                        skipna=skipna, level=level, **kwargs)
 
-        series = ray.get(
-                    _map_partitions(
-                        lambda df: df.any(axis, bool_only, skipna, level, **kwargs),
-                        partitions))
-
-        def indexify(i, s):
-            df = s.to_frame()
-            df['partition'] = i
-            df['index_within_partition'] = df.index
-            return df.set_index(['partition', 'index_within_partition'])
-
-        indexed_series = pd.concat([indexify(i, s) for i, s in enumerate(series)])
-        joined = indexed_series.merge(res_index,
-                                      left_index=True,
-                                      right_on=['partition', 'index_within_partition'])
-
-        return joined.loc[:,0].rename(None)
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def append(self, other, ignore_index=False, verify_integrity=False):
         raise NotImplementedError(
@@ -1135,7 +1095,7 @@ class DataFrame(object):
             lambda df: df.describe(percentiles=percentiles,
                                    include=include,
                                    exclude=exclude), self._col_partitions))),
-                           axis=1)
+                           axis=1, copy=False)
         result.columns = self.columns
         return result
 
@@ -2226,38 +2186,23 @@ class DataFrame(object):
                     index is the columns of self and the values
                     are the quantiles.
         """
+        if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
+            # In the case of a list, we build it one at a time.
+            # TODO Revisit for performance
+            quantiles = []
+            for q_i in q:
+                remote_func = lambda df: df.quantile(q=q_i, axis=axis,
+                                                     numeric_only=numeric_only,
+                                                     interpolation=interpolation)
+                quantiles.append(self._arithmetic_helper(remote_func, axis))
 
-        if (type(q) is list):
-            return DataFrame([self.quantile(q_i, axis=axis,
-                                            numeric_only=numeric_only,
-                                            interpolation=interpolation)
-                              for q_i in q], q, self.index)
-
-        # this section can be replaced with select_dtypes()
-
-        obj_columns = [self.columns[i]
-                       for i, t in enumerate(self.dtypes)
-                       if t == np.dtype('O')]
-
-        rdf = self.drop(columns=obj_columns)
-
-        if axis == 0 or axis is None:
-            return rdf.T.quantile(q, axis=1, numeric_only=numeric_only,
-                                  interpolation=interpolation)
+            return pd.concat(quantiles, axis=1).T
         else:
-            computed_quantiles = [
-                _deploy_func.remote(
-                        lambda df: df.quantile(q, axis=1,
-                                               numeric_only=numeric_only,
-                                               interpolation=interpolation
-                                               ), part)
-                for part in self._df]
+            remote_func = lambda df: df.quantile(q=q, axis=axis,
+                                                 numeric_only=numeric_only,
+                                                 interpolation=interpolation)
 
-            items = ray.get(computed_quantiles)
-
-            _quantile = pd.concat(items)
-
-            return _quantile
+            return self._arithmetic_helper(remote_func, axis)
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression

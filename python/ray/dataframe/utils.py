@@ -261,21 +261,25 @@ def _prepend_partitions(last_vals, index, partition, func):
 
 
 def _create_blk_partitions(partitions, axis=0, length=None):
-    @ray.remote
-    def repartition(df, npartitions, axis):
-        block_size = df.shape[axis ^ 1] // npartitions
 
-        return [df.iloc[:, i * block_size: (i + 1) * block_size]
-                if axis == 0
-                else df.iloc[i * block_size: (i + 1) * block_size, :]
-                for i in range(npartitions)]
     if length is not None and get_npartitions() > length:
         npartitions = length
     else:
         npartitions = get_npartitions()
 
-    x = [repartition._submit(args=(partition, npartitions, axis),
-                             num_return_vals=npartitions)
+    x = [create_blocks._submit(args=(partition, npartitions, axis),
+                               num_return_vals=npartitions)
          for partition in partitions]
 
     return np.array(x)
+
+@ray.remote
+def create_blocks(df, npartitions, axis):
+    block_size = df.shape[axis ^ 1] // npartitions
+
+    df.columns = pd.RangeIndex(0, len(df.columns))
+
+    return [df.iloc[:, i * block_size: (i + 1) * block_size]
+            if axis == 0
+            else df.iloc[i * block_size: (i + 1) * block_size, :]
+            for i in range(npartitions)]

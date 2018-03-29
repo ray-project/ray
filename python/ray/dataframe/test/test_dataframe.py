@@ -698,6 +698,9 @@ def test_align():
 @pytest.fixture
 def test_all(ray_df, pd_df):
     assert pd_df.all().equals(ray_df.all())
+    print(ray_df.all(axis=1))
+    print(ray_df.index)
+    print(pd_df.all(axis=1))
     assert pd_df.all(axis=1).equals(ray_df.all(axis=1))
 
 
