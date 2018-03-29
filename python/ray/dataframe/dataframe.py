@@ -75,9 +75,8 @@ class DataFrame(object):
                                             num_partitions=get_npartitions())
 
             self._blk_partitions = \
-                self._create_blk_partitions(row_partitions,
-                                            axis=0,
-                                            length=len(columns))
+                _create_blk_partitions(row_partitions, axis=0,
+                                       length=len(pd_df.columns))
             columns = pd_df.columns
             index = pd_df.index
         else:
@@ -113,7 +112,7 @@ class DataFrame(object):
     def _get_row_partitions(self):
         @ray.remote
         def h(*partition):
-            return pd.concat(partition, axis=1, copy=False)
+            return pd.concat(partition, axis=1, copy=False).reset_index(drop=True)
 
         return [h.remote(*part) for part in self._blk_partitions]
 
@@ -127,7 +126,7 @@ class DataFrame(object):
     def _get_col_partitions(self):
         @ray.remote
         def h(*partition):
-            return pd.concat(partition, axis=0, copy=False)
+            return pd.concat(partition, axis=0, copy=False).reset_index(drop=True)
 
         return [h.remote(*self._blk_partitions[:,i])
                 for i in range(self._blk_partitions.shape[1])]
@@ -203,9 +202,9 @@ class DataFrame(object):
         """
         if isinstance(self._row_index, pd.core.indexes.range.RangeIndex) or \
            isinstance(self._row_index, pd.core.indexes.base.Index):
-               self._row_index = new_index
-               return
-        self._row_index.index = new_index
+                self._row_index = new_index
+        else:
+            self._row_index.index = new_index
 
     index = property(_get_index, _set_index)
 
@@ -350,30 +349,22 @@ class DataFrame(object):
 
     _col_lengths = property(_get_col_lengths, _set_col_lengths)
 
-    def _arithmetic_helper(self, remote_func, local_func, axis):
-        is_rows = self._row_partitions is not None
-        is_columns = self._col_partitions is not None
+    def _arithmetic_helper(self, remote_func, axis, level=None):
+        # TODO: We don't support `level` right now
+        if level is not None:
+            raise NotImplementedError("Level not yet supported.")
 
-        #concat the series output by _map_partitions as rows if the specified
-        #axis corresponds to the partitions, otherwise concat as columns and reduce 
-        concat_axis = 1 if (axis == 'index' and is_rows) or \
-                           (axis == 'columns' and is_columns) else 0
+        axis = self._row_index._get_axis_number(axis) if axis is not None \
+            else 0
 
         result_series = pd.concat(ray.get(
             _map_partitions(remote_func,
-                            self._row_partitions if is_rows 
-                            else self._col_partitions)),
-                            axis=concat_axis)
+                            self._col_partitions if axis == 0
+                            else self._row_partitions)),
+                            axis=0)
 
-        # if series_sum is a df, reduce across the columns to get the result
-        # otherwise return series_sum as is
-        if concat_axis:
-            rows_result_series = local_func(result_series)
-            rows_result_series.index = self.columns
-            return rows_result_series
-        else:
-            result_series.index = self.index
-            return result_series
+        result_series.index = self.columns if axis == 0 else self.index
+        return result_series
 
     @property
     def size(self):
@@ -512,8 +503,7 @@ class DataFrame(object):
             A new DataFrame containing the new column names.
         """
         new_cols = self.columns.map(lambda x: str(prefix) + str(x))
-        return DataFrame(row_partitions=self._row_partitions,
-                         col_partitions=self._col_partitions,
+        return DataFrame(blk_partitions=self._blk_partitions,
                          columns=new_cols,
                          index=self.index)
 
@@ -524,8 +514,7 @@ class DataFrame(object):
             A new DataFrame containing the new column names.
         """
         new_cols = self.columns.map(lambda x: str(x) + str(suffix))
-        return DataFrame(row_partitions=self._row_partitions,
-                         col_partitions=self._col_partitions,
+        return DataFrame(blk_partitions=self._blk_partitions,
                          columns=new_cols,
                          index=self.index)
 
@@ -633,19 +622,12 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
-        # TODO: We don't support `level` right now, so df.sum always returns a pd.Series
-        axis = self._row_index._get_axis_name(axis) if axis is not None \
-            else 'index'
-
-        assert self._row_partitions is not None or self._col_partitions is not \
-            None
-
         remote_func = lambda df: df.sum(axis=axis,
                                         skipna=skipna,
                                         level=level,
                                         numeric_only=numeric_only)
-        local_func = lambda df: df.sum(axis=1)
-        return self._arithmetic_helper(remote_func, local_func, axis)
+
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def abs(self):
         """Apply an absolute value function to all numberic columns.
@@ -658,11 +640,11 @@ class DataFrame(object):
                 # TODO Give a more accurate error to Pandas
                 raise TypeError("bad operand type for abs():", "str")
 
-        new_rows = _map_partitions(lambda df: df.abs(), self._row_partitions)
-        new_cols = _map_partitions(lambda df: df.abs(), self._col_partitions)
+        new_blk_partitions = np.array([_map_partitions(lambda df: df.abs(),
+                                                       blk)
+                                       for blk in self._blk_partitions])
 
-        return DataFrame(col_partitions=new_cols,
-                         row_partitions=new_rows,
+        return DataFrame(blk_partitions=new_blk_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -678,13 +660,10 @@ class DataFrame(object):
             True: cell is contained in values.
             False: otherwise
         """
-        new_rows = _map_partitions(lambda df: df.isin(values),
-                                   self._row_partitions)
-        new_cols = _map_partitions(lambda df: df.isin(values),
-                                   self._col_partitions)
+        new_blk_partitions = np.array([_map_partitions(
+            lambda df: df.isin(values), blk) for blk in self._blk_partitions])
 
-        return DataFrame(col_partitions=new_cols,
-                         row_partitions=new_rows,
+        return DataFrame(blk_partitions=new_blk_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -697,11 +676,10 @@ class DataFrame(object):
             True: cell contains NA.
             False: otherwise.
         """
-        new_rows = _map_partitions(lambda df: df.isna(), self._row_partitions)
-        new_cols = _map_partitions(lambda df: df.isna(), self._col_partitions)
+        new_blk_partitions = np.array([_map_partitions(
+            lambda df: df.isna(), blk) for blk in self._blk_partitions])
 
-        return DataFrame(col_partitions=new_cols,
-                         row_partitions=new_rows,
+        return DataFrame(blk_partitions=new_blk_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -714,11 +692,10 @@ class DataFrame(object):
             True: cell contains null.
             False: otherwise.
         """
-        new_rows = _map_partitions(lambda df: df.isnull, self._row_partitions)
-        new_cols = _map_partitions(lambda df: df.isnull, self._col_partitions)
+        new_blk_partitions = np.array([_map_partitions(
+            lambda df: df.isnull(), blk) for blk in self._blk_partitions])
 
-        return DataFrame(col_partitions=new_cols,
-                         row_partitions=new_rows,
+        return DataFrame(blk_partitions=new_blk_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -734,27 +711,15 @@ class DataFrame(object):
     def transpose(self, *args, **kwargs):
         """Transpose columns and rows for the DataFrame.
 
-        Note: Triggers a shuffle.
-
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
-        # TODO: test after col_partitions rewrite 
-        locally_transposed_cols = None
-        locally_transposed_rows = None
+        new_blk_partitions = np.array([_map_partitions(
+            lambda df: df.T, blk) for blk in self._blk_partitions])
 
-        if self._row_partitions is not None:
-            locally_transposed_rows = [_deploy_func.remote(lambda df: df.T, r)
-                                       for r in self._row_partitions]
-
-        if self._col_partitions is not None:
-            locally_transposed_cols = [_deploy_func.remote(lambda df: df.T, c)
-                                       for c in self._col_partitions]
-
-        return DataFrame(row_partitions=locally_transposed_cols,
-                         col_partitions=locally_transposed_rows,
-                         index=self.columns,
-                         columns=self.index)
+        return DataFrame(blk_partitions=new_blk_partitions.T,
+                         columns=self.index,
+                         index=self.columns)
 
     T = property(transpose)
 
@@ -1019,18 +984,11 @@ class DataFrame(object):
         Returns:
             The count, in a Series (or DataFrame if level is specified).
         """
-        # TODO: doesn't work for multi-level indices
-        axis = self._row_index._get_axis_name(axis) if axis is not None \
-                else 'index'
-
-        assert self._row_partitions is not None or self._col_partitions is not \
-            None
-
         remote_func = lambda df: df.count(axis=axis,
                                           level=level,
                                           numeric_only=numeric_only)
-        local_func = lambda df: df.sum(axis=1)
-        return self._arithmetic_helper(remote_func, local_func, axis)
+
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def cov(self, min_periods=None):
         raise NotImplementedError(
@@ -1173,42 +1131,13 @@ class DataFrame(object):
 
         Returns: Series/DataFrame of summary statistics
         """
-
-        obj_columns = [self.columns[i]
-                       for i, t in enumerate(self.dtypes)
-                       if t == np.dtype('O')]
-
-        rdf = self.drop(columns=obj_columns)
-
-        transposed = rdf.T
-
-        count_df = rdf.count()
-        mean_df = transposed.mean(axis=1)
-        std_df = transposed.std(axis=1)
-        min_df = to_pandas(rdf.min())
-
-        if percentiles is None:
-            percentiles = [.25, .50, .75]
-
-        percentiles_dfs = [transposed.quantile(q, axis=1)
-                           for q in percentiles]
-
-        max_df = to_pandas(rdf.max())
-
-        describe_df = pd.DataFrame()
-        describe_df['count'] = count_df
-        describe_df['mean'] = mean_df
-        describe_df['std'] = std_df
-        describe_df['min'] = min_df
-
-        for i in range(len(percentiles)):
-            percentile_str = "{0:.0f}%".format(percentiles[i]*100)
-
-            describe_df[percentile_str] = percentiles_dfs[i]
-
-        describe_df['max'] = max_df
-
-        return describe_df.T
+        result = pd.concat(ray.get((_map_partitions(
+            lambda df: df.describe(percentiles=percentiles,
+                                   include=include,
+                                   exclude=exclude), self._col_partitions))),
+                           axis=1)
+        result.columns = self.columns
+        return result
 
     def diff(self, periods=1, axis=0):
         raise NotImplementedError(
@@ -1763,39 +1692,11 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
-        #TODO: need to fix after column partitions rewrite
-        for dtype in self.dtypes:
-            if dtype == np.dtype('O'):
-                raise TypeError('invalid datatype for comparison')
+        remote_func = lambda df: df.idxmax(axis=axis, skipna=skipna)
 
-        axis = self._row_index._get_axis_name(axis)
-        
-        if axis == 'index':
-            idxmax_series = pd.concat(ray.get(
-                _map_partitions(lambda df: df.idxmax(axis=axis,
-                                                     skipna=skipna),
-                                self._row_partitions)),
-                                axis=1)
-            max_series = pd.concat(ray.get(
-                _map_partitions(lambda df: df.max(axis=axis,
-                                                  skipna=skipna),
-                                self._row_partitions)),
-                                axis=1)
-            #TODO: readjust indices for the global df and not partition
-            # and compare with df of maxes to get global max indices 
-
-            rows_idxmax_series = idxmax_series.max(axis = 1)
-            rows_idxmax_series.index = self.columns
-            return rows_idxmax_series
-        else:
-            #should be fine
-            idxmax_series = pd.concat(ray.get(
-                _map_partitions(lambda df: df.idxmax(axis=axis,
-                                                     skipna=skipna),
-                                self._row_partitions)),
-                                axis=0)
-            idmax_series.index = self.index
-            return idmax_series
+        internal_indices = self._arithmetic_helper(remote_func, axis)
+        # do this to convert internal indices to correct index
+        return internal_indices.apply(lambda x: self.index[x])
 
     def idxmin(self, axis=0, skipna=True):
         """Get the index of the first occurrence of the min value of the axis.
@@ -1808,22 +1709,11 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
-        #TODO: need to fix after column partitions rewrite
-        for dtype in self.dtypes:
-            if dtype == np.dtype('O'):
-                raise TypeError('invalid datatype for comparison')
+        remote_func = lambda df: df.idxmin(axis=axis, skipna=skipna)
 
-        axis = self._row_index._get_axis_name(axis)
-
-        idxmin_series = pd.concat(ray.get(
-            _map_partitions(lambda df: df.idxmin(axis=axis,
-                                              skipna=skipna),
-                            self._row_partitions if axis == 'columns'
-                            else self._col_partitions)))
-
-        idxmin_series.index = self.columns if axis == 'index' else self.index
-
-        return idxmin_series
+        internal_indices = self._arithmetic_helper(remote_func, axis)
+        # do this to convert internal indices to correct index
+        return internal_indices.apply(lambda x: self.index[x])
 
     def infer_objects(self):
         raise NotImplementedError(
@@ -2086,20 +1976,13 @@ class DataFrame(object):
         Returns:
             The max of the DataFrame.
         """
-        # TODO: doesn't work for multi-level indices
-        axis = self._row_index._get_axis_name(axis) if axis is not None \
-                else 'index'
-
-        assert self._row_partitions is not None or self._col_partitions is not \
-            None
-
         remote_func = lambda df: df.max(axis=axis,
                                         skipna=skipna,
                                         level=level,
                                         numeric_only=numeric_only,
                                         **kwargs)
-        local_func = lambda df: df.max(axis=1)
-        return self._arithmetic_helper(remote_func, local_func, axis)
+
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
@@ -2112,21 +1995,13 @@ class DataFrame(object):
         Returns:
             The mean of the DataFrame. (Pandas series)
         """
+        remote_func = lambda df: df.mean(axis=axis,
+                                         skipna=skipna,
+                                         level=level,
+                                         numeric_only=numeric_only,
+                                         **kwargs)
 
-        axis = self._row_index._get_axis_number(axis) if axis is not None \
-            else 0
-
-        result = pd.concat(ray.get(
-            _map_partitions(lambda df: df.mean(axis=axis,
-                                               skipna=skipna,
-                                               level=level,
-                                               numeric_only=numeric_only),
-                            self._col_partitions if axis == 0
-                            else self._row_partitions)), axis=0, copy=False)
-
-        result.index = self.columns if axis == 0 else self.index
-        return result
-
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
                **kwargs):
@@ -2139,23 +2014,13 @@ class DataFrame(object):
         Returns:
             The median of the DataFrame. (Pandas series)
         """
-        if axis == 0 or axis is None:
-            return self.T.median(
-                                axis=1, level=level, numeric_only=numeric_only
-                                )
-        else:
+        remote_func = lambda df: df.median(axis=axis,
+                                           skipna=skipna,
+                                           level=level,
+                                           numeric_only=numeric_only,
+                                           **kwargs)
 
-            func = (lambda df: df.T.median(axis=0, level=level,
-                                           numeric_only=numeric_only))
-
-            computed_medians = [
-                    _deploy_func.remote(func, part) for part in self._df]
-
-            items = ray.get(computed_medians)
-
-            _median = pd.concat(items)
-
-            return _median
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def melt(self, id_vars=None, value_vars=None, var_name=None,
              value_name='value', col_level=None):
@@ -2187,20 +2052,13 @@ class DataFrame(object):
         Returns:
             The min of the DataFrame.
         """
-        # TODO: doesn't work for multi-level indices
-        axis = self._row_index._get_axis_name(axis) if axis is not None \
-                else 'index'
-
-        assert self._row_partitions is not None or self._col_partitions is not \
-            None
-
         remote_func = lambda df: df.min(axis=axis,
                                         skipna=skipna,
                                         level=level,
                                         numeric_only=numeric_only,
                                         **kwargs)
-        local_func = lambda df: df.min(axis=1)
-        return self._arithmetic_helper(remote_func, local_func, axis)
+
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def mod(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -2242,11 +2100,12 @@ class DataFrame(object):
             Boolean DataFrame where value is False if corresponding
             value is NaN, True otherwise
         """
-        new_rows = _map_partitions(lambda df: df.notna(), self._row_partitions)
-        new_cols = _map_partitions(lambda df: df.notna(), self._col_partitions)
-        return DataFrame(columns=self.columns,
-                         row_partitions=new_rows,
-                         col_partitions=new_cols)
+        new_blk_partitions = np.array([_map_partitions(
+            lambda df: df.notna(), blk) for blk in self._blk_partitions])
+
+        return DataFrame(blk_partitions=new_blk_partitions,
+                         columns=self.columns,
+                         index=self.index)
 
     def notnull(self):
         """Perform notnull across the DataFrame.
@@ -2258,13 +2117,12 @@ class DataFrame(object):
             Boolean DataFrame where value is False if corresponding
             value is NaN, True otherwise
         """
-        new_rows = _map_partitions(lambda df: df.notnull(),
-                                   self._row_partitions)
-        new_cols = _map_partitions(lambda df: df.notnull(),
-                                   self._col_partitions)
-        return DataFrame(columns=self.columns,
-                         row_partitions=new_rows,
-                         col_partitions=new_cols)
+        new_blk_partitions = np.array([_map_partitions(
+            lambda df: df.notnull(), blk) for blk in self._blk_partitions])
+
+        return DataFrame(blk_partitions=new_blk_partitions,
+                         columns=self.columns,
+                         index=self.index)
 
     def nsmallest(self, n, columns, keep='first'):
         raise NotImplementedError(
@@ -2676,18 +2534,13 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def round(self, decimals=0, *args, **kwargs):
-        new_rows = _map_partitions(lambda df: df.round(decimals=decimals,
-                                                       *args,
-                                                       **kwargs),
-                                   self._row_partitions)
-        new_cols = _map_partitions(lambda df: df.round(decimals=decimals,
-                                                       *args,
-                                                       **kwargs),
-                                   self._col_partitions)
-        return DataFrame(columns=self.columns,
-                         index=self.index,
-                         row_partitions=new_rows,
-                         col_partitions=new_cols)
+        new_blk_partitions = np.array([_map_partitions(
+            lambda df: df.round(decimals=decimals, *args, **kwargs), blk)
+            for blk in self._blk_partitions])
+
+        return DataFrame(blk_partitions=new_blk_partitions,
+                         columns=self.columns,
+                         index=self.index)
 
     def rpow(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -2900,24 +2753,10 @@ class DataFrame(object):
         Returns:
             The std of the DataFrame (Pandas Series)
         """
-        if axis == 0 or axis is None:
-            return self.T.std(
-                        axis=1, skipna=skipna, level=level,
-                        ddof=ddof, numeric_only=numeric_only)
-        else:
-
-            computed_stds = [_deploy_func.remote(
-                                        lambda df: df.T.std(
-                                            axis=0, skipna=skipna, level=level,
-                                            ddof=ddof,
-                                            numeric_only=numeric_only), part)
-                             for part in self._df]
-
-            items = ray.get(computed_stds)
-
-            _stds = pd.concat(items)
-
-            return _stds
+        remote_func = lambda df: df.std(axis=axis, skipna=skipna, level=level,
+                                        ddof=ddof, numeric_only=numeric_only,
+                                        **kwargs)
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -3166,22 +3005,10 @@ class DataFrame(object):
         Returns:
             The variance of the DataFrame.
         """
-        if axis == 0 or axis is None:
-            return self.T.var(axis=1, skipna=skipna, level=level, ddof=ddof,
-                              numeric_only=numeric_only)
-        else:
-            computed_vars = [_deploy_func.remote(lambda df: df.T.var(
-                                            axis=0, skipna=skipna, level=level,
-                                            ddof=ddof,
-                                            numeric_only=numeric_only),
-                                          part)
-                             for part in self._df]
-
-            items = ray.get(computed_vars)
-
-            _var = pd.concat(items)
-
-            return _var
+        remote_func = lambda df: df.var(axis=axis, skipna=skipna, level=level,
+                                        ddof=ddof, numeric_only=numeric_only,
+                                        **kwargs)
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):
@@ -3561,15 +3388,12 @@ class DataFrame(object):
                 raise TypeError("Unary negative expects numeric dtype, not {}"
                                 .format(t))
 
-        new_rows = _map_partitions(lambda df: df.__neg__(),
-                                   self._row_partitions)
-        new_cols = _map_partitions(lambda df: df.__neg__(),
-                                   self._col_partitions)
+        new_blk_partitions = np.array([_map_partitions(
+            lambda df: df.__neg__(), blk) for blk in self._blk_partitions])
 
-        return DataFrame(columns=self.columns,
-                         index=self.index,
-                         row_partitions=new_rows,
-                         col_partitions=new_cols)
+        return DataFrame(blk_partitions=new_blk_partitions,
+                         columns=self.columns,
+                         index=self.index)
 
     def __floordiv__(self, other):
         raise NotImplementedError(
