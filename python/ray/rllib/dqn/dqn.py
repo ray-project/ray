@@ -106,6 +106,8 @@ DEFAULT_CONFIG = dict(
     num_workers=0,
     # Whether to allocate GPUs for workers (if > 0).
     num_gpus_per_worker=0,
+    # Whether to reserve CPUs for workers (if not None).
+    num_cpus_per_worker=None,
     # Optimizer class to use.
     optimizer_class="LocalSyncReplayOptimizer",
     # Config to pass to the optimizer.
@@ -126,7 +128,8 @@ class DQNAgent(Agent):
         self.local_evaluator = DQNEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, 0)
         remote_cls = ray.remote(
-            num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
+            num_cpus=self.config["num_cpus_per_worker"],
+            num_gpus=self.config["num_gpus_per_worker"])(
             DQNEvaluator)
         self.remote_evaluators = [
             remote_cls.remote(
