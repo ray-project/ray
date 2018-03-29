@@ -49,10 +49,10 @@ class ProximalPolicyLoss(object):
 
         # if the model is shared there's only one kl term
         # so add up the kl and take its mean for kl_coeff updating
-        if self.shared_model:
-            print(tf.reduce_mean(self.kl))
-            self.kl = [tf.add_n(self.kl)/self.num_agents]
-            self.entropy = [tf.add_n(self.entropy)/self.num_agents]
+        # if self.shared_model:
+        #     print(tf.reduce_mean(self.kl))
+        #     self.kl = [tf.add_n(self.kl)/self.num_agents]
+        #     self.entropy = [tf.add_n(self.entropy)/self.num_agents]
 
         if not isinstance(curr_logp, list):
             self.kl = [self.kl]
@@ -60,11 +60,16 @@ class ProximalPolicyLoss(object):
             prev_logp = [prev_logp]
             self.entropy = [self.entropy]
 
-        kl_prod = tf.add_n([kl_coeff[i]*kl_i for
-                            i, kl_i in enumerate(self.kl)])*self.num_agents
-        entropy_prod = (tf.add_n([config["entropy_coeff"]*entropy_i for
-                                i, entropy_i in enumerate(self.entropy)])*
-                        self.num_agents)
+        if self.shared_model:
+            kl_prod = tf.add_n([kl_coeff[0] * kl_i for
+                                i, kl_i in enumerate(self.kl)])
+            entropy_prod = tf.add_n([config["entropy_coeff"] * entropy_i for
+                                     i, entropy_i in enumerate(self.entropy)])
+        else:
+            kl_prod = tf.add_n([kl_coeff[i]*kl_i for
+                                i, kl_i in enumerate(self.kl)])
+            entropy_prod = tf.add_n([config["entropy_coeff"]*entropy_i for
+                                    i, entropy_i in enumerate(self.entropy)])
 
         # Make loss functions.
         self.ratio = [tf.exp(curr - prev)
@@ -100,13 +105,12 @@ class ProximalPolicyLoss(object):
             self.mean_vf_loss = tf.constant(0.0)
             self.loss = tf.reduce_mean(
                 -self.surr +
-                kl_prod -
-                config["entropy_coeff"] * self.entropy)
+                kl_prod - entropy_prod)
 
         # rescale the loss across all agents, otherwise the SGD
         # step is actually num_agents times bigger
-        if self.shared_model:
-            self.loss /= self.num_agents
+        # if self.shared_model:
+        #     self.loss /= self.num_agents
 
         self.sess = sess
 
