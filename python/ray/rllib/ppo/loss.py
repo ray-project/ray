@@ -109,8 +109,9 @@ class ProximalPolicyLoss(object):
 
         # rescale the loss across all agents, otherwise the SGD
         # step is actually num_agents times bigger
-        # if self.shared_model:
-        #     self.loss /= self.num_agents
+        if self.shared_model:
+            self.loss /= self.num_agents
+        kl_prod /= self.num_agents
 
         self.sess = sess
 
