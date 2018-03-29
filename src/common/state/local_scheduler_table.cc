@@ -1,5 +1,6 @@
-#include "common_protocol.h"
 #include "local_scheduler_table.h"
+
+#include "common_protocol.h"
 #include "redis.h"
 
 void local_scheduler_table_subscribe(

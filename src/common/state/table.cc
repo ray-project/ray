@@ -43,18 +43,18 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
                                        table_done_callback done_callback,
                                        table_retry_callback retry_callback,
                                        void *user_context) {
-  CHECK(db_handle);
-  CHECK(db_handle->loop);
-  CHECK(data);
+  RAY_CHECK(db_handle);
+  RAY_CHECK(db_handle->loop);
+  RAY_CHECK(data);
   /* If no retry info is provided, use the default retry info. */
   if (retry == NULL) {
     retry = (RetryInfo *) &default_retry;
   }
-  CHECK(retry);
+  RAY_CHECK(retry);
   /* Allocate and initialize callback data structure for object table */
   TableCallbackData *callback_data =
       (TableCallbackData *) malloc(sizeof(TableCallbackData));
-  CHECKM(callback_data != NULL, "Memory allocation error!")
+  RAY_CHECK(callback_data != NULL) << "Memory allocation error!";
   callback_data->id = id;
   callback_data->label = label;
   callback_data->retry = *retry;
@@ -70,8 +70,8 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
   callback_data->timer_id = callback_data_id++;
   outstanding_callbacks_add(callback_data);
 
-  LOG_DEBUG("Initializing table command %s with timer ID %" PRId64,
-            callback_data->label, callback_data->timer_id);
+  RAY_LOG(DEBUG) << "Initializing table command " << callback_data->label
+                 << " with timer ID " << callback_data->timer_id;
   callback_data->retry_callback(callback_data);
 
   return callback_data;
@@ -92,12 +92,12 @@ void remove_timer_callback(event_loop *loop, TableCallbackData *callback_data) {
 }
 
 void destroy_table_callback(TableCallbackData *callback_data) {
-  CHECK(callback_data != NULL);
+  RAY_CHECK(callback_data != NULL);
 
   if (callback_data->requests_info)
     free(callback_data->requests_info);
 
-  CHECK(callback_data->data != NULL);
+  RAY_CHECK(callback_data->data != NULL);
   delete callback_data->data;
   callback_data->data = NULL;
 
@@ -110,20 +110,20 @@ void destroy_table_callback(TableCallbackData *callback_data) {
 int64_t table_timeout_handler(event_loop *loop,
                               int64_t timer_id,
                               void *user_context) {
-  CHECK(loop != NULL);
-  CHECK(user_context != NULL);
+  RAY_CHECK(loop != NULL);
+  RAY_CHECK(user_context != NULL);
   TableCallbackData *callback_data = (TableCallbackData *) user_context;
 
-  CHECK(callback_data->retry.num_retries >= 0 ||
-        callback_data->retry.num_retries == -1);
-  LOG_WARN("retrying operation %s, retry_count = %d", callback_data->label,
-           callback_data->retry.num_retries);
+  RAY_CHECK(callback_data->retry.num_retries >= 0 ||
+            callback_data->retry.num_retries == -1);
+  RAY_LOG(WARNING) << "retrying operation " << callback_data->label
+                   << ", retry_count = " << callback_data->retry.num_retries;
 
   if (callback_data->retry.num_retries == 0) {
     /* We didn't get a response from the database after exhausting all retries;
      * let user know, cleanup the state, and remove the timer. */
-    LOG_WARN("Table command %s with timer ID %" PRId64 " failed",
-             callback_data->label, timer_id);
+    RAY_LOG(WARNING) << "Table command " << callback_data->label
+                     << " with timer ID " << timer_id << " failed";
     if (callback_data->retry.fail_callback) {
       callback_data->retry.fail_callback(callback_data->id,
                                          callback_data->user_context,

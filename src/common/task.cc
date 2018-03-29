@@ -37,8 +37,10 @@ class TaskBuilder {
   void Start(UniqueID driver_id,
              TaskID parent_task_id,
              int64_t parent_counter,
+             ActorID actor_creation_id,
+             ObjectID actor_creation_dummy_object_id,
              ActorID actor_id,
-             ActorID actor_handle_id,
+             ActorHandleID actor_handle_id,
              int64_t actor_counter,
              bool is_actor_checkpoint_method,
              FunctionID function_id,
@@ -46,6 +48,8 @@ class TaskBuilder {
     driver_id_ = driver_id;
     parent_task_id_ = parent_task_id;
     parent_counter_ = parent_counter;
+    actor_creation_id_ = actor_creation_id;
+    actor_creation_dummy_object_id_ = actor_creation_dummy_object_id;
     actor_id_ = actor_id;
     actor_handle_id_ = actor_handle_id;
     actor_counter_ = actor_counter;
@@ -58,6 +62,9 @@ class TaskBuilder {
     sha256_update(&ctx, (BYTE *) &driver_id, sizeof(driver_id));
     sha256_update(&ctx, (BYTE *) &parent_task_id, sizeof(parent_task_id));
     sha256_update(&ctx, (BYTE *) &parent_counter, sizeof(parent_counter));
+    sha256_update(&ctx, (BYTE *) &actor_creation_id, sizeof(actor_creation_id));
+    sha256_update(&ctx, (BYTE *) &actor_creation_dummy_object_id,
+                  sizeof(actor_creation_dummy_object_id));
     sha256_update(&ctx, (BYTE *) &actor_id, sizeof(actor_id));
     sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
     sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
@@ -80,7 +87,7 @@ class TaskBuilder {
   }
 
   void SetRequiredResource(const std::string &resource_name, double value) {
-    CHECK(resource_map_.count(resource_name) == 0);
+    RAY_CHECK(resource_map_.count(resource_name) == 0);
     resource_map_[resource_name] = value;
   }
 
@@ -91,7 +98,7 @@ class TaskBuilder {
     BYTE buff[DIGEST_SIZE];
     sha256_final(&ctx, buff);
     TaskID task_id;
-    CHECK(sizeof(task_id) <= DIGEST_SIZE);
+    RAY_CHECK(sizeof(task_id) <= DIGEST_SIZE);
     memcpy(&task_id, buff, sizeof(task_id));
     /* Add return object IDs. */
     std::vector<flatbuffers::Offset<flatbuffers::String>> returns;
@@ -103,6 +110,8 @@ class TaskBuilder {
     auto message = CreateTaskInfo(
         fbb, to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
         to_flatbuf(fbb, parent_task_id_), parent_counter_,
+        to_flatbuf(fbb, actor_creation_id_),
+        to_flatbuf(fbb, actor_creation_dummy_object_id_),
         to_flatbuf(fbb, actor_id_), to_flatbuf(fbb, actor_handle_id_),
         actor_counter_, is_actor_checkpoint_method_,
         to_flatbuf(fbb, function_id_), arguments, fbb.CreateVector(returns),
@@ -127,6 +136,8 @@ class TaskBuilder {
   UniqueID driver_id_;
   TaskID parent_task_id_;
   int64_t parent_counter_;
+  ActorID actor_creation_id_;
+  ObjectID actor_creation_dummy_object_id_;
   ActorID actor_id_;
   ActorID actor_handle_id_;
   int64_t actor_counter_;
@@ -170,15 +181,18 @@ void TaskSpec_start_construct(TaskBuilder *builder,
                               UniqueID driver_id,
                               TaskID parent_task_id,
                               int64_t parent_counter,
+                              ActorID actor_creation_id,
+                              ObjectID actor_creation_dummy_object_id,
                               ActorID actor_id,
                               ActorID actor_handle_id,
                               int64_t actor_counter,
                               bool is_actor_checkpoint_method,
                               FunctionID function_id,
                               int64_t num_returns) {
-  builder->Start(driver_id, parent_task_id, parent_counter, actor_id,
-                 actor_handle_id, actor_counter, is_actor_checkpoint_method,
-                 function_id, num_returns);
+  builder->Start(driver_id, parent_task_id, parent_counter, actor_creation_id,
+                 actor_creation_dummy_object_id, actor_id, actor_handle_id,
+                 actor_counter, is_actor_checkpoint_method, function_id,
+                 num_returns);
 }
 
 TaskSpec *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
@@ -206,25 +220,25 @@ void TaskSpec_set_required_resource(TaskBuilder *builder,
 /* Functions for reading tasks. */
 
 TaskID TaskSpec_task_id(const TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->task_id());
 }
 
 FunctionID TaskSpec_function(TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->function_id());
 }
 
 ActorID TaskSpec_actor_id(TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->actor_id());
 }
 
 ActorID TaskSpec_actor_handle_id(TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->actor_handle_id());
 }
@@ -233,20 +247,38 @@ bool TaskSpec_is_actor_task(TaskSpec *spec) {
   return !TaskSpec_actor_id(spec).is_nil();
 }
 
+ActorID TaskSpec_actor_creation_id(TaskSpec *spec) {
+  RAY_CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(*message->actor_creation_id());
+}
+
+ObjectID TaskSpec_actor_creation_dummy_object_id(TaskSpec *spec) {
+  RAY_CHECK(spec);
+  // The task must be an actor method.
+  RAY_CHECK(TaskSpec_is_actor_task(spec));
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(*message->actor_creation_dummy_object_id());
+}
+
+bool TaskSpec_is_actor_creation_task(TaskSpec *spec) {
+  return !TaskSpec_actor_creation_id(spec).is_nil();
+}
+
 int64_t TaskSpec_actor_counter(TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return std::abs(message->actor_counter());
 }
 
 bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->is_actor_checkpoint_method();
 }
 
 ObjectID TaskSpec_actor_dummy_object(TaskSpec *spec) {
-  CHECK(TaskSpec_is_actor_task(spec));
+  RAY_CHECK(TaskSpec_is_actor_task(spec));
   /* The last return value for actor tasks is the dummy object that
    * represents that this task has completed execution. */
   int64_t num_returns = TaskSpec_num_returns(spec);
@@ -254,25 +286,25 @@ ObjectID TaskSpec_actor_dummy_object(TaskSpec *spec) {
 }
 
 UniqueID TaskSpec_driver_id(const TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->driver_id());
 }
 
 TaskID TaskSpec_parent_task_id(const TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->parent_task_id());
 }
 
 int64_t TaskSpec_parent_counter(TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->parent_counter();
 }
 
 int64_t TaskSpec_num_args(TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->args()->size();
 }
@@ -289,45 +321,45 @@ int64_t TaskSpec_num_args_by_ref(TaskSpec *spec) {
 }
 
 int TaskSpec_arg_id_count(TaskSpec *spec, int64_t arg_index) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   auto ids = message->args()->Get(arg_index)->object_ids();
   return ids->size();
 }
 
 ObjectID TaskSpec_arg_id(TaskSpec *spec, int64_t arg_index, int64_t id_index) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(
       *message->args()->Get(arg_index)->object_ids()->Get(id_index));
 }
 
 const uint8_t *TaskSpec_arg_val(TaskSpec *spec, int64_t arg_index) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return (uint8_t *) message->args()->Get(arg_index)->data()->c_str();
 }
 
 int64_t TaskSpec_arg_length(TaskSpec *spec, int64_t arg_index) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->args()->Get(arg_index)->data()->size();
 }
 
 int64_t TaskSpec_num_returns(TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->returns()->size();
 }
 
 bool TaskSpec_arg_by_ref(TaskSpec *spec, int64_t arg_index) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->args()->Get(arg_index)->object_ids()->size() != 0;
 }
 
 ObjectID TaskSpec_return(TaskSpec *spec, int64_t return_index) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->returns()->Get(return_index));
 }
@@ -336,7 +368,7 @@ double TaskSpec_get_required_resource(const TaskSpec *spec,
                                       const std::string &resource_name) {
   // This is a bit ugly. However it shouldn't be much of a performance issue
   // because there shouldn't be many distinct resources in a single task spec.
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   for (size_t i = 0; i < message->required_resources()->size(); i++) {
     const ResourcePair *resource_pair = message->required_resources()->Get(i);
@@ -349,7 +381,7 @@ double TaskSpec_get_required_resource(const TaskSpec *spec,
 
 const std::unordered_map<std::string, double> TaskSpec_get_required_resources(
     const TaskSpec *spec) {
-  CHECK(spec);
+  RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return map_from_flatbuf(*message->required_resources());
 }
@@ -446,7 +478,7 @@ int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) const {
   } else {
     /* Index into the execution dependencies. */
     dependency_index -= num_args;
-    CHECK((size_t) dependency_index < execution_dependencies_.size());
+    RAY_CHECK((size_t) dependency_index < execution_dependencies_.size());
     /* All elements in the execution dependency list have exactly one ID. */
     return 1;
   }
@@ -465,7 +497,7 @@ ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
   } else {
     /* Index into the execution dependencies. */
     dependency_index -= num_args;
-    CHECK((size_t) dependency_index < execution_dependencies_.size());
+    RAY_CHECK((size_t) dependency_index < execution_dependencies_.size());
     return execution_dependencies_[dependency_index];
   }
 }

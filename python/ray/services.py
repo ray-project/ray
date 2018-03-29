@@ -55,6 +55,26 @@ RUN_LOCAL_SCHEDULER_PROFILER = False
 RUN_PLASMA_MANAGER_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
 
+# Location of the redis server and module.
+REDIS_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/common/thirdparty/redis/src/redis-server")
+REDIS_MODULE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/common/redis_module/libray_redis_module.so")
+
+# Location of the credis server and modules.
+CREDIS_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/credis/redis/src/redis-server")
+CREDIS_MASTER_MODULE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/credis/build/src/libmaster.so")
+CREDIS_MEMBER_MODULE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/credis/build/src/libmember.so")
+
+
 # ObjectStoreAddress tuples contain all information necessary to connect to an
 # object store. The fields are:
 # - name: The socket name for the object store
@@ -367,6 +387,72 @@ def check_version_info(redis_client):
             print(error_message)
 
 
+def start_credis(node_ip_address,
+                 redis_address,
+                 port=None,
+                 redirect_output=False,
+                 cleanup=True):
+    """Start the credis global state store.
+
+    Credis is a chain replicated reliable redis store. It consists
+    of one master process that acts as a controller and a number of
+    chain members (currently two, the head and the tail).
+
+    Args:
+        node_ip_address: The IP address of the current node. This is only used
+            for recording the log filenames in Redis.
+        redis_address (str): The IP address and port of the primary redis
+            server.
+        port (int): If provided, the primary Redis shard will be started on
+            this port.
+        redirect_output (bool): True if output should be redirected to a file
+            and false otherwise.
+        cleanup (bool): True if using Ray in local mode. If cleanup is true,
+            then all Redis processes started by this method will be killed by
+            services.cleanup() when the Python process that imported services
+            exits.
+
+    Returns:
+        The address (ip_address:port) of the credis master process.
+    """
+
+    components = ["credis_master", "credis_head", "credis_tail"]
+    modules = [CREDIS_MASTER_MODULE, CREDIS_MEMBER_MODULE,
+               CREDIS_MEMBER_MODULE]
+    ports = []
+
+    for i, component in enumerate(components):
+        stdout_file, stderr_file = new_log_files(
+            component, redirect_output)
+
+        new_port, _ = start_redis_instance(
+            node_ip_address=node_ip_address, port=port,
+            stdout_file=stdout_file, stderr_file=stderr_file,
+            cleanup=cleanup,
+            module=modules[i],
+            executable=CREDIS_EXECUTABLE)
+
+        ports.append(new_port)
+
+    [master_port, head_port, tail_port] = ports
+
+    # Connect the members to the master
+
+    master_client = redis.StrictRedis(host=node_ip_address, port=master_port)
+    master_client.execute_command("MASTER.ADD", node_ip_address, head_port)
+    master_client.execute_command("MASTER.ADD", node_ip_address, tail_port)
+
+    credis_address = address(node_ip_address, master_port)
+
+    # Register credis master in redis
+    redis_ip_address, redis_port = redis_address.split(":")
+    redis_client = redis.StrictRedis(host=redis_ip_address,
+                                     port=redis_port)
+    redis_client.set("credis_address", credis_address)
+
+    return credis_address
+
+
 def start_redis(node_ip_address,
                 port=None,
                 redis_shard_ports=None,
@@ -462,7 +548,9 @@ def start_redis_instance(node_ip_address="127.0.0.1",
                          num_retries=20,
                          stdout_file=None,
                          stderr_file=None,
-                         cleanup=True):
+                         cleanup=True,
+                         executable=REDIS_EXECUTABLE,
+                         module=REDIS_MODULE):
     """Start a single Redis server.
 
     Args:
@@ -480,6 +568,9 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
+        executable (str): Full path tho the redis-server executable.
+        module (str): Full path to the redis module that will be loaded in this
+            redis server.
 
     Returns:
         A tuple of the port used by Redis and a handle to the process that was
@@ -489,14 +580,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
-    redis_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "./core/src/common/thirdparty/redis/src/redis-server")
-    redis_module = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "./core/src/common/redis_module/libray_redis_module.so")
-    assert os.path.isfile(redis_filepath)
-    assert os.path.isfile(redis_module)
+    assert os.path.isfile(executable)
+    assert os.path.isfile(module)
     counter = 0
     if port is not None:
         # If a port is specified, then try only once to connect.
@@ -506,10 +591,10 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     while counter < num_retries:
         if counter > 0:
             print("Redis failed to start, retrying now.")
-        p = subprocess.Popen([redis_filepath,
+        p = subprocess.Popen([executable,
                               "--port", str(port),
                               "--loglevel", "warning",
-                              "--loadmodule", redis_module],
+                              "--loadmodule", module],
                              stdout=stdout_file, stderr=stderr_file)
         time.sleep(0.1)
         # Check if Redis successfully started (or at least if it the executable
@@ -965,6 +1050,7 @@ def start_ray_processes(address_info=None,
                         redis_max_clients=None,
                         worker_path=None,
                         cleanup=True,
+                        redirect_worker_output=False,
                         redirect_output=False,
                         include_global_scheduler=False,
                         include_log_monitor=False,
@@ -1005,8 +1091,10 @@ def start_ray_processes(address_info=None,
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
-        redirect_output (bool): True if stdout and stderr should be redirected
-            to a file.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         include_global_scheduler (bool): If include_global_scheduler is True,
             then start a global scheduler process.
         include_log_monitor (bool): If True, then start a log monitor to
@@ -1029,6 +1117,8 @@ def start_ray_processes(address_info=None,
         A dictionary of the address information for the processes that were
             started.
     """
+    print("Process STDOUT and STDERR is being redirected to /tmp/raylogs/.")
+
     if resources is None:
         resources = {}
     if not isinstance(resources, list):
@@ -1064,8 +1154,13 @@ def start_ray_processes(address_info=None,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             redirect_output=True,
-            redirect_worker_output=redirect_output, cleanup=cleanup)
+            redirect_worker_output=redirect_worker_output,
+            cleanup=cleanup)
         address_info["redis_address"] = redis_address
+        if "RAY_USE_NEW_GCS" in os.environ:
+            credis_address = start_credis(
+                node_ip_address, redis_address, cleanup=cleanup)
+            address_info["credis_address"] = credis_address
         time.sleep(0.1)
 
         # Start monitoring the processes.
@@ -1158,9 +1253,12 @@ def start_ray_processes(address_info=None,
             # If we're starting the workers from Python, the local scheduler
             # should not start any workers.
             num_local_scheduler_workers = 0
-        # Start the local scheduler.
+        # Start the local scheduler. Note that if we do not wish to redirect
+        # the worker output, then we cannot redirect the local scheduler
+        # output.
         local_scheduler_stdout_file, local_scheduler_stderr_file = (
-            new_log_files("local_scheduler_{}".format(i), redirect_output))
+            new_log_files("local_scheduler_{}".format(i),
+                          redirect_output=redirect_worker_output))
         local_scheduler_name = start_local_scheduler(
             redis_address,
             node_ip_address,
@@ -1225,6 +1323,7 @@ def start_ray_node(node_ip_address,
                    object_store_memory=None,
                    worker_path=None,
                    cleanup=True,
+                   redirect_worker_output=False,
                    redirect_output=False,
                    resources=None,
                    plasma_directory=None,
@@ -1251,8 +1350,10 @@ def start_ray_node(node_ip_address,
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
-        redirect_output (bool): True if stdout and stderr should be redirected
-            to a file.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         resources: A dictionary mapping resource name to the available quantity
             of that resource.
         plasma_directory: A directory where the Plasma memory mapped files will
@@ -1274,6 +1375,7 @@ def start_ray_node(node_ip_address,
                                worker_path=worker_path,
                                include_log_monitor=True,
                                cleanup=cleanup,
+                               redirect_worker_output=redirect_worker_output,
                                redirect_output=redirect_output,
                                resources=resources,
                                plasma_directory=plasma_directory,
@@ -1289,6 +1391,7 @@ def start_ray_head(address_info=None,
                    object_store_memory=None,
                    worker_path=None,
                    cleanup=True,
+                   redirect_worker_output=False,
                    redirect_output=False,
                    start_workers_from_local_scheduler=True,
                    resources=None,
@@ -1325,8 +1428,10 @@ def start_ray_head(address_info=None,
         cleanup (bool): If cleanup is true, then the processes started here
             will be killed by services.cleanup() when the Python process that
             called this method exits.
-        redirect_output (bool): True if stdout and stderr should be redirected
-            to a file.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         start_workers_from_local_scheduler (bool): If this flag is True, then
             start the initial workers from the local scheduler. Else, start
             them from Python.
@@ -1358,6 +1463,7 @@ def start_ray_head(address_info=None,
         object_store_memory=object_store_memory,
         worker_path=worker_path,
         cleanup=cleanup,
+        redirect_worker_output=redirect_worker_output,
         redirect_output=redirect_output,
         include_global_scheduler=True,
         include_log_monitor=True,

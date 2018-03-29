@@ -28,14 +28,14 @@ void init_pickle_module(void) {
 #else
   pickle_module = PyImport_ImportModuleNoBlock("cPickle");
 #endif
-  CHECK(pickle_module != NULL);
-  CHECK(PyObject_HasAttrString(pickle_module, "loads"));
-  CHECK(PyObject_HasAttrString(pickle_module, "dumps"));
-  CHECK(PyObject_HasAttrString(pickle_module, "HIGHEST_PROTOCOL"));
+  RAY_CHECK(pickle_module != NULL);
+  RAY_CHECK(PyObject_HasAttrString(pickle_module, "loads"));
+  RAY_CHECK(PyObject_HasAttrString(pickle_module, "dumps"));
+  RAY_CHECK(PyObject_HasAttrString(pickle_module, "HIGHEST_PROTOCOL"));
   pickle_loads = PyUnicode_FromString("loads");
   pickle_dumps = PyUnicode_FromString("dumps");
   pickle_protocol = PyObject_GetAttrString(pickle_module, "HIGHEST_PROTOCOL");
-  CHECK(pickle_protocol != NULL);
+  RAY_CHECK(pickle_protocol != NULL);
 }
 
 TaskBuilder *g_task_builder = NULL;
@@ -272,9 +272,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   /* ID of the driver that this task originates from. */
   UniqueID driver_id;
   /* ID of the actor this task should run on. */
-  UniqueID actor_id = UniqueID::nil();
+  UniqueID actor_id = ActorID::nil();
   /* ID of the actor handle used to submit this task. */
-  UniqueID actor_handle_id = UniqueID::nil();
+  UniqueID actor_handle_id = ActorHandleID::nil();
   /* How many tasks have been launched on the actor so far? */
   int actor_counter = 0;
   /* True if this is an actor checkpoint task and false otherwise. */
@@ -289,15 +289,21 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   TaskID parent_task_id;
   /* The number of tasks that the parent task has called prior to this one. */
   int parent_counter;
+  // The actor creation ID.
+  ActorID actor_creation_id = ActorID::nil();
+  // The dummy object for the actor creation task (if this is an actor method).
+  ObjectID actor_creation_dummy_object_id = ObjectID::nil();
   /* Arguments of the task that are execution-dependent. These must be
    * PyObjectIDs). */
   PyObject *execution_arguments = NULL;
   /* Dictionary of resource requirements for this task. */
   PyObject *resource_map = NULL;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOOO", &PyObjectToUniqueID,
+  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&O&O&iOOO", &PyObjectToUniqueID,
                         &driver_id, &PyObjectToUniqueID, &function_id,
                         &arguments, &num_returns, &PyObjectToUniqueID,
                         &parent_task_id, &parent_counter, &PyObjectToUniqueID,
+                        &actor_creation_id, &PyObjectToUniqueID,
+                        &actor_creation_dummy_object_id, &PyObjectToUniqueID,
                         &actor_id, &PyObjectToUniqueID, &actor_handle_id,
                         &actor_counter, &is_actor_checkpoint_method_object,
                         &execution_arguments, &resource_map)) {
@@ -312,10 +318,11 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   Py_ssize_t size = PyList_Size(arguments);
   /* Construct the task specification. */
-  TaskSpec_start_construct(g_task_builder, driver_id, parent_task_id,
-                           parent_counter, actor_id, actor_handle_id,
-                           actor_counter, is_actor_checkpoint_method,
-                           function_id, num_returns);
+  TaskSpec_start_construct(
+      g_task_builder, driver_id, parent_task_id, parent_counter,
+      actor_creation_id, actor_creation_dummy_object_id, actor_id,
+      actor_handle_id, actor_counter, is_actor_checkpoint_method, function_id,
+      num_returns);
   /* Add the task arguments. */
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
@@ -449,8 +456,8 @@ static PyObject *PyTask_arguments(PyObject *self) {
       assert(count == 1);
       PyList_SetItem(arg_list, i, PyObjectID_make(TaskSpec_arg_id(task, i, 0)));
     } else {
-      CHECK(pickle_module != NULL);
-      CHECK(pickle_loads != NULL);
+      RAY_CHECK(pickle_module != NULL);
+      RAY_CHECK(pickle_loads != NULL);
       PyObject *str =
           PyBytes_FromStringAndSize((char *) TaskSpec_arg_val(task, i),
                                     (Py_ssize_t) TaskSpec_arg_length(task, i));
@@ -461,6 +468,21 @@ static PyObject *PyTask_arguments(PyObject *self) {
     }
   }
   return arg_list;
+}
+
+static PyObject *PyTask_actor_creation_id(PyObject *self) {
+  ActorID actor_creation_id =
+      TaskSpec_actor_creation_id(((PyTask *) self)->spec);
+  return PyObjectID_make(actor_creation_id);
+}
+
+static PyObject *PyTask_actor_creation_dummy_object_id(PyObject *self) {
+  ActorID actor_creation_dummy_object_id = ActorID::nil();
+  if (TaskSpec_is_actor_task(((PyTask *) self)->spec)) {
+    actor_creation_dummy_object_id =
+        TaskSpec_actor_creation_dummy_object_id(((PyTask *) self)->spec);
+  }
+  return PyObjectID_make(actor_creation_dummy_object_id);
 }
 
 static PyObject *PyTask_required_resources(PyObject *self) {
@@ -520,6 +542,11 @@ static PyMethodDef PyTask_methods[] = {
      "Return the task ID for this task."},
     {"arguments", (PyCFunction) PyTask_arguments, METH_NOARGS,
      "Return the arguments for the task."},
+    {"actor_creation_id", (PyCFunction) PyTask_actor_creation_id, METH_NOARGS,
+     "Return the actor creation ID for the task."},
+    {"actor_creation_dummy_object_id",
+     (PyCFunction) PyTask_actor_creation_dummy_object_id, METH_NOARGS,
+     "Return the actor creation dummy object ID for the task."},
     {"required_resources", (PyCFunction) PyTask_required_resources, METH_NOARGS,
      "Return the resource vector of the task."},
     {"returns", (PyCFunction) PyTask_returns, METH_NOARGS,

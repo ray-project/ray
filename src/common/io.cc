@@ -24,7 +24,7 @@ int bind_inet_sock(const int port, bool shall_listen) {
   struct sockaddr_in name;
   int socket_fd = socket(PF_INET, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-    LOG_ERROR("socket() failed for port %d.", port);
+    RAY_LOG(ERROR) << "socket() failed for port " << port;
     return -1;
   }
   name.sin_family = AF_INET;
@@ -33,23 +33,23 @@ int bind_inet_sock(const int port, bool shall_listen) {
   int on = 1;
   /* TODO(pcm): http://stackoverflow.com/q/1150635 */
   if (ioctl(socket_fd, FIONBIO, (char *) &on) < 0) {
-    LOG_ERROR("ioctl failed");
+    RAY_LOG(ERROR) << "ioctl failed";
     close(socket_fd);
     return -1;
   }
   int *const pon = (int *const) & on;
   if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, pon, sizeof(on)) < 0) {
-    LOG_ERROR("setsockopt failed for port %d", port);
+    RAY_LOG(ERROR) << "setsockopt failed for port " << port;
     close(socket_fd);
     return -1;
   }
   if (bind(socket_fd, (struct sockaddr *) &name, sizeof(name)) < 0) {
-    LOG_ERROR("Bind failed for port %d", port);
+    RAY_LOG(ERROR) << "Bind failed for port " << port;
     close(socket_fd);
     return -1;
   }
   if (shall_listen && listen(socket_fd, 128) == -1) {
-    LOG_ERROR("Could not listen to socket %d", port);
+    RAY_LOG(ERROR) << "Could not listen to socket " << port;
     close(socket_fd);
     return -1;
   }
@@ -60,14 +60,14 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
   struct sockaddr_un socket_address;
   int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-    LOG_ERROR("socket() failed for pathname %s.", socket_pathname);
+    RAY_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
     return -1;
   }
   /* Tell the system to allow the port to be reused. */
   int on = 1;
   if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (char *) &on,
                  sizeof(on)) < 0) {
-    LOG_ERROR("setsockopt failed for pathname %s", socket_pathname);
+    RAY_LOG(ERROR) << "setsockopt failed for pathname " << socket_pathname;
     close(socket_fd);
     return -1;
   }
@@ -76,7 +76,7 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
   memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
   if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
-    LOG_ERROR("Socket pathname is too long.");
+    RAY_LOG(ERROR) << "Socket pathname is too long.";
     close(socket_fd);
     return -1;
   }
@@ -85,12 +85,12 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
 
   if (bind(socket_fd, (struct sockaddr *) &socket_address,
            sizeof(socket_address)) != 0) {
-    LOG_ERROR("Bind failed for pathname %s.", socket_pathname);
+    RAY_LOG(ERROR) << "Bind failed for pathname " << socket_pathname;
     close(socket_fd);
     return -1;
   }
   if (shall_listen && listen(socket_fd, 128) == -1) {
-    LOG_ERROR("Could not listen to socket %s", socket_pathname);
+    RAY_LOG(ERROR) << "Could not listen to socket " << socket_pathname;
     close(socket_fd);
     return -1;
   }
@@ -108,7 +108,7 @@ int connect_ipc_sock_retry(const char *socket_pathname,
     timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
 
-  CHECK(socket_pathname);
+  RAY_CHECK(socket_pathname);
   int fd = -1;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
     fd = connect_ipc_sock(socket_pathname);
@@ -116,15 +116,15 @@ int connect_ipc_sock_retry(const char *socket_pathname,
       break;
     }
     if (num_attempts == 0) {
-      LOG_ERROR("Connection to socket failed for pathname %s.",
-                socket_pathname);
+      RAY_LOG(ERROR) << "Connection to socket failed for pathname "
+                     << socket_pathname;
     }
     /* Sleep for timeout milliseconds. */
     usleep(timeout * 1000);
   }
   /* If we could not connect to the socket, exit. */
   if (fd == -1) {
-    LOG_FATAL("Could not connect to socket %s", socket_pathname);
+    RAY_LOG(FATAL) << "Could not connect to socket " << socket_pathname;
   }
   return fd;
 }
@@ -135,14 +135,14 @@ int connect_ipc_sock(const char *socket_pathname) {
 
   socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-    LOG_ERROR("socket() failed for pathname %s.", socket_pathname);
+    RAY_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
     return -1;
   }
 
   memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
   if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
-    LOG_ERROR("Socket pathname is too long.");
+    RAY_LOG(ERROR) << "Socket pathname is too long.";
     return -1;
   }
   strncpy(socket_address.sun_path, socket_pathname,
@@ -169,7 +169,7 @@ int connect_inet_sock_retry(const char *ip_addr,
     timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
 
-  CHECK(ip_addr);
+  RAY_CHECK(ip_addr);
   int fd = -1;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
     fd = connect_inet_sock(ip_addr, port);
@@ -177,15 +177,15 @@ int connect_inet_sock_retry(const char *ip_addr,
       break;
     }
     if (num_attempts == 0) {
-      LOG_ERROR("Connection to socket failed for address %s:%d.", ip_addr,
-                port);
+      RAY_LOG(ERROR) << "Connection to socket failed for address " << ip_addr
+                     << ":" << port;
     }
     /* Sleep for timeout milliseconds. */
     usleep(timeout * 1000);
   }
   /* If we could not connect to the socket, exit. */
   if (fd == -1) {
-    LOG_FATAL("Could not connect to address %s:%d", ip_addr, port);
+    RAY_LOG(FATAL) << "Could not connect to address " << ip_addr << ":" << port;
   }
   return fd;
 }
@@ -193,13 +193,14 @@ int connect_inet_sock_retry(const char *ip_addr,
 int connect_inet_sock(const char *ip_addr, int port) {
   int fd = socket(PF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
-    LOG_ERROR("socket() failed for address %s:%d.", ip_addr, port);
+    RAY_LOG(ERROR) << "socket() failed for address " << ip_addr << ":" << port;
     return -1;
   }
 
   struct hostent *manager = gethostbyname(ip_addr); /* TODO(pcm): cache this */
   if (!manager) {
-    LOG_ERROR("Failed to get hostname from address %s:%d.", ip_addr, port);
+    RAY_LOG(ERROR) << "Failed to get hostname from address " << ip_addr << ":"
+                   << port;
     close(fd);
     return -1;
   }
@@ -219,7 +220,7 @@ int connect_inet_sock(const char *ip_addr, int port) {
 int accept_client(int socket_fd) {
   int client_fd = accept(socket_fd, NULL, NULL);
   if (client_fd < 0) {
-    LOG_ERROR("Error reading from socket.");
+    RAY_LOG(ERROR) << "Error reading from socket.";
     return -1;
   }
   return client_fd;
@@ -242,7 +243,7 @@ int write_bytes(int fd, uint8_t *cursor, size_t length) {
       /* Encountered early EOF. */
       return -1;
     }
-    CHECK(nbytes > 0);
+    RAY_CHECK(nbytes > 0);
     bytesleft -= nbytes;
     offset += nbytes;
   }
@@ -288,7 +289,7 @@ int read_bytes(int fd, uint8_t *cursor, size_t length) {
       /* Encountered early EOF. */
       return -1;
     }
-    CHECK(nbytes > 0);
+    RAY_CHECK(nbytes > 0);
     bytesleft -= nbytes;
     offset += nbytes;
   }
@@ -302,7 +303,7 @@ void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
   if (closed) {
     goto disconnected;
   }
-  CHECK(version == RayConfig::instance().ray_protocol_version());
+  RAY_CHECK(version == RayConfig::instance().ray_protocol_version());
   closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {
     goto disconnected;
@@ -332,7 +333,8 @@ uint8_t *read_message_async(event_loop *loop, int sock) {
   int error = read_bytes(sock, (uint8_t *) &size, sizeof(int64_t));
   if (error < 0) {
     /* The other side has closed the socket. */
-    LOG_DEBUG("Socket has been closed, or some other error has occurred.");
+    RAY_LOG(DEBUG) << "Socket has been closed, or some other error has "
+                   << "occurred.";
     if (loop != NULL) {
       event_loop_remove_file(loop, sock);
     }
@@ -343,7 +345,8 @@ uint8_t *read_message_async(event_loop *loop, int sock) {
   error = read_bytes(sock, message, size);
   if (error < 0) {
     /* The other side has closed the socket. */
-    LOG_DEBUG("Socket has been closed, or some other error has occurred.");
+    RAY_LOG(DEBUG) << "Socket has been closed, or some other error has "
+                   << "occurred.";
     if (loop != NULL) {
       event_loop_remove_file(loop, sock);
     }
@@ -359,7 +362,7 @@ int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
   if (closed) {
     goto disconnected;
   }
-  CHECK(version == RayConfig::instance().ray_protocol_version());
+  RAY_CHECK(version == RayConfig::instance().ray_protocol_version());
   int64_t length;
   closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {
@@ -393,6 +396,6 @@ char *read_log_message(int fd) {
   int64_t type;
   int64_t length;
   read_message(fd, &type, &length, &bytes);
-  CHECK(type == LOG_MESSAGE);
+  RAY_CHECK(type == LOG_MESSAGE);
   return (char *) bytes;
 }

@@ -10,16 +10,18 @@ import unittest
 
 import ray
 
+from ray.test.test_utils import run_and_get_output
+
 
 class MonitorTest(unittest.TestCase):
     def _testCleanupOnDriverExit(self, num_redis_shards):
-        stdout = subprocess.check_output([
+        stdout = run_and_get_output([
             "ray",
             "start",
             "--head",
             "--num-redis-shards",
             str(num_redis_shards),
-        ]).decode("ascii")
+        ])
         lines = [m.strip() for m in stdout.split("\n")]
         init_cmd = [m for m in lines if m.startswith("ray.init")]
         self.assertEqual(1, len(init_cmd))

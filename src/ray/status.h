@@ -19,6 +19,7 @@
 #include <iosfwd>
 #include <string>
 
+#include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
 

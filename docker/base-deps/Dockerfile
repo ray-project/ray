@@ -1,14 +1,30 @@
-# The deploy Docker image build a self-contained Ray instance suitable
-# for end users.
+# The base-deps Docker image installs main libraries needed to run Ray
 
 FROM ubuntu:xenial
 RUN apt-get update \
-    && apt-get install -y vim git wget \
-    && apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison
-RUN echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
-    && wget --quiet 'https://repo.continuum.io/archive/Anaconda2-4.2.0-Linux-x86_64.sh' -O /tmp/anaconda.sh \
+    && apt-get install -y \
+        git \
+        wget \
+        cmake \
+        pkg-config \
+        build-essential \
+        autoconf \
+        curl \
+        libtool \
+        unzip \
+        flex \
+        bison \
+    && apt-get clean \
+    && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
+    && wget \
+        --quiet 'https://repo.continuum.io/archive/Anaconda2-4.2.0-Linux-x86_64.sh' \
+        -O /tmp/anaconda.sh \
     && /bin/bash /tmp/anaconda.sh -b -p /opt/conda \
-    && rm /tmp/anaconda.sh
+    && rm /tmp/anaconda.sh \
+    && /opt/conda/bin/conda install -y \
+        libgcc \
+    && /opt/conda/bin/conda clean -y --all \
+    && /opt/conda/bin/pip install \
+        flatbuffers
+
 ENV PATH "/opt/conda/bin:$PATH"
-RUN conda install -y libgcc
-RUN pip install flatbuffers

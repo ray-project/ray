@@ -6,14 +6,14 @@ import pickle
 
 import ray
 from ray.rllib.models import ModelCatalog
-from ray.rllib.optimizers import Evaluator
+from ray.rllib.optimizers import PolicyEvaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler
 from ray.rllib.utils.process_rollout import process_rollout
 
 
-class A3CEvaluator(Evaluator):
+class A3CEvaluator(PolicyEvaluator):
     """Actor object to start running simulation on workers.
 
     The gradient computation is also executed from this object.
@@ -65,7 +65,7 @@ class A3CEvaluator(Evaluator):
 
     def compute_gradients(self, samples):
         gradient, info = self.policy.compute_gradients(samples)
-        return gradient
+        return gradient, {}
 
     def apply_gradients(self, grads):
         self.policy.apply_gradients(grads)

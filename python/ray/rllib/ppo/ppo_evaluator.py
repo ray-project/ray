@@ -11,7 +11,7 @@ from tensorflow.python import debug as tf_debug
 import numpy as np
 
 import ray
-from ray.rllib.optimizers import Evaluator, SampleBatch
+from ray.rllib.optimizers import PolicyEvaluator, SampleBatch
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
@@ -21,7 +21,7 @@ from ray.rllib.ppo.loss import ProximalPolicyLoss
 
 
 # TODO(rliaw): Move this onto LocalMultiGPUOptimizer
-class PPOEvaluator(Evaluator):
+class PPOEvaluator(PolicyEvaluator):
     """
     Runner class that holds the simulator environment and the policy.
 

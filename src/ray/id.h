@@ -10,6 +10,9 @@
 #include "ray/constants.h"
 #include "ray/util/visibility.h"
 
+// TODO(swang): Make task ID prefix of any object ID return values and puts so
+// that we can co-locate task and object entries in the GCS.
+
 namespace ray {
 
 class RAY_EXPORT UniqueID {
@@ -44,6 +47,8 @@ struct UniqueIDHasher {
   }
 };
 
+std::ostream &operator<<(std::ostream &os, const UniqueID &id);
+
 typedef UniqueID TaskID;
 typedef UniqueID JobID;
 typedef UniqueID ObjectID;
@@ -53,8 +58,8 @@ typedef UniqueID ActorID;
 typedef UniqueID ActorHandleID;
 typedef UniqueID WorkerID;
 typedef UniqueID DriverID;
-typedef UniqueID DBClientID;
 typedef UniqueID ConfigID;
+typedef UniqueID ClientID;
 
 }  // namespace ray
 

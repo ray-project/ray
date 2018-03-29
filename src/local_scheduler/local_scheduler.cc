@@ -73,12 +73,12 @@ void kill_worker(LocalSchedulerState *state,
                  bool suppress_warning) {
   /* Erase the local scheduler's reference to the worker. */
   auto it = std::find(state->workers.begin(), state->workers.end(), worker);
-  CHECK(it != state->workers.end());
+  RAY_CHECK(it != state->workers.end());
   state->workers.erase(it);
 
   /* Make sure that we removed the worker. */
   it = std::find(state->workers.begin(), state->workers.end(), worker);
-  CHECK(it == state->workers.end());
+  RAY_CHECK(it == state->workers.end());
 
   /* Release any resources held by the worker. It's important to do this before
    * calling handle_worker_removed and handle_actor_worker_disconnect because
@@ -121,16 +121,20 @@ void kill_worker(LocalSchedulerState *state,
           force_kill_worker, (void *) worker);
       free_worker = false;
     }
-    LOG_DEBUG("Killed worker with pid %d", worker->pid);
+    RAY_LOG(DEBUG) << "Killed worker with pid " << worker->pid;
   }
 
   /* If this worker is still running a task and we aren't cleaning up, push an
    * error message to the driver responsible for the task. */
   if (worker->task_in_progress != NULL && !cleanup && !suppress_warning) {
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
-    TaskID task_id = TaskSpec_task_id(spec);
+
+    std::ostringstream error_message;
+    error_message << "The worker with ID " << worker->client_id << " died or "
+                  << "was killed while executing the task with ID "
+                  << TaskSpec_task_id(spec);
     push_error(state->db, TaskSpec_driver_id(spec), WORKER_DIED_ERROR_INDEX,
-               sizeof(task_id), task_id.data());
+               error_message.str());
   }
 
   /* Clean up the task in progress. */
@@ -149,7 +153,7 @@ void kill_worker(LocalSchedulerState *state,
     }
   }
 
-  LOG_DEBUG("Killed worker with pid %d", worker->pid);
+  RAY_LOG(DEBUG) << "Killed worker with pid " << worker->pid;
   if (free_worker) {
     /* Clean up the client socket after killing the worker so that the worker
      * can't receive the SIGPIPE before exiting. */
@@ -173,7 +177,8 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   for (auto const &worker_pid : state->child_pids) {
     kill(worker_pid, SIGKILL);
     waitpid(worker_pid, NULL, 0);
-    LOG_INFO("Killed worker pid %d which hadn't started yet.", worker_pid);
+    RAY_LOG(INFO) << "Killed worker pid " << worker_pid
+                  << " which hadn't started yet.";
   }
 
   /* Kill any registered workers. */
@@ -225,30 +230,18 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   event_loop_destroy(loop);
 }
 
-/**
- * Start a new worker as a child process.
- *
- * @param state The state of the local scheduler.
- * @return Void.
- */
-void start_worker(LocalSchedulerState *state,
-                  ActorID actor_id,
-                  bool reconstruct) {
-  /* Non-actors can't be started in reconstruct mode. */
-  if (actor_id.is_nil()) {
-    CHECK(!reconstruct);
-  }
+void start_worker(LocalSchedulerState *state) {
   /* We can't start a worker if we don't have the path to the worker script. */
   if (state->config.start_worker_command == NULL) {
-    LOG_DEBUG(
-        "No valid command to start worker provided. Cannot start worker.");
+    RAY_LOG(DEBUG) << "No valid command to start worker provided. Cannot start "
+                   << "worker.";
     return;
   }
   /* Launch the process to create the worker. */
   pid_t pid = fork();
   if (pid != 0) {
     state->child_pids.push_back(pid);
-    LOG_DEBUG("Started worker with pid %d", pid);
+    RAY_LOG(DEBUG) << "Started worker with pid " << pid;
     return;
   }
 
@@ -260,18 +253,6 @@ void start_worker(LocalSchedulerState *state,
     command_vector.push_back(state->config.start_worker_command[i]);
   }
 
-  /* Pass in the worker's actor ID. */
-  const char *actor_id_string = "--actor-id";
-  std::string id_string = actor_id.hex();
-  command_vector.push_back(actor_id_string);
-  command_vector.push_back(id_string.c_str());
-
-  /* Add a flag for reconstructing the actor if necessary. */
-  const char *reconstruct_string = "--reconstruct";
-  if (reconstruct) {
-    command_vector.push_back(reconstruct_string);
-  }
-
   /* Add a NULL pointer to the end. */
   command_vector.push_back(NULL);
 
@@ -279,7 +260,7 @@ void start_worker(LocalSchedulerState *state,
   execvp(command_vector[0], (char *const *) command_vector.data());
 
   LocalSchedulerState_free(state);
-  LOG_FATAL("Failed to start worker");
+  RAY_LOG(FATAL) << "Failed to start worker";
 }
 
 /**
@@ -320,7 +301,7 @@ const char **parse_command(const char *command) {
   }
   free(command_copy);
 
-  CHECK(num_args == i);
+  RAY_CHECK(num_args == i);
   return command_args;
 }
 
@@ -345,9 +326,8 @@ LocalSchedulerState *LocalSchedulerState_init(
     state->config.start_worker_command = NULL;
   }
   if (start_worker_command == NULL) {
-    LOG_WARN(
-        "No valid command to start a worker provided, local scheduler will not "
-        "start any workers.");
+    RAY_LOG(WARNING) << "No valid command to start a worker provided, local "
+                     << "scheduler will not start any workers.";
   }
   state->config.global_scheduler_exists = global_scheduler_exists;
 
@@ -374,8 +354,14 @@ LocalSchedulerState *LocalSchedulerState_init(
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "local_scheduler", node_ip_address, db_connect_args);
     db_attach(state->db, loop, false);
+
+    ClientTableDataT client_info;
+    client_info.client_id = get_db_client_id(state->db).binary();
+    client_info.node_manager_address = std::string(node_ip_address);
+    client_info.local_scheduler_port = 0;
+    client_info.object_manager_port = 0;
     RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
-                                           redis_primary_port));
+                                           redis_primary_port, client_info));
     RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
   } else {
     state->db = NULL;
@@ -413,7 +399,7 @@ LocalSchedulerState *LocalSchedulerState_init(
 
   /* Start the initial set of workers. */
   for (int i = 0; i < num_workers; ++i) {
-    start_worker(state, ActorID::nil(), false);
+    start_worker(state);
   }
 
   /* Initialize the time at which the previous heartbeat was sent. */
@@ -443,14 +429,14 @@ void resource_sanity_checks(LocalSchedulerState *state,
     const std::string resource_name = resource_pair.first;
     double resource_quantity = resource_pair.second;
 
-    CHECK(state->dynamic_resources[resource_name] <=
-          state->static_resources[resource_name]);
+    RAY_CHECK(state->dynamic_resources[resource_name] <=
+              state->static_resources[resource_name]);
     if (resource_name != std::string("CPU")) {
-      CHECK(state->dynamic_resources[resource_name] >= 0);
+      RAY_CHECK(state->dynamic_resources[resource_name] >= 0);
     }
 
-    CHECK(resource_quantity >= 0);
-    CHECK(resource_quantity <= state->static_resources[resource_name]);
+    RAY_CHECK(resource_quantity >= 0);
+    RAY_CHECK(resource_quantity <= state->static_resources[resource_name]);
   }
 }
 
@@ -468,8 +454,8 @@ void acquire_resources(
     if (resource_name == std::string("GPU")) {
       if (resource_quantity != 0) {
         // Make sure that the worker isn't using any GPUs already.
-        CHECK(worker->gpus_in_use.size() == 0);
-        CHECK(state->available_gpus.size() >= resource_quantity);
+        RAY_CHECK(worker->gpus_in_use.size() == 0);
+        RAY_CHECK(state->available_gpus.size() >= resource_quantity);
         // Reserve GPUs for the worker.
         for (int i = 0; i < resource_quantity; i++) {
           worker->gpus_in_use.push_back(state->available_gpus.back());
@@ -480,12 +466,9 @@ void acquire_resources(
 
     // Do bookkeeping for general resource types.
     if (resource_name != std::string("CPU")) {
-      CHECK(state->dynamic_resources[resource_name] >= resource_quantity);
+      RAY_CHECK(state->dynamic_resources[resource_name] >= resource_quantity);
     }
     state->dynamic_resources[resource_name] -= resource_quantity;
-    if (resource_name == std::string("CPU")) {
-      CHECK(worker->resources_in_use[resource_name] == 0);
-    }
     worker->resources_in_use[resource_name] += resource_quantity;
   }
 
@@ -504,7 +487,7 @@ void release_resources(
     // Do some special handling for GPU resources.
     if (resource_name == std::string("GPU")) {
       if (resource_quantity != 0) {
-        CHECK(resource_quantity == worker->gpus_in_use.size());
+        RAY_CHECK(resource_quantity == worker->gpus_in_use.size());
         // Move the GPU IDs the worker was using back to the local scheduler.
         for (auto const &gpu_id : worker->gpus_in_use) {
           state->available_gpus.push_back(gpu_id);
@@ -514,9 +497,6 @@ void release_resources(
     }
 
     // Do bookkeeping for general resources types.
-    if (resource_name == std::string("CPU")) {
-      CHECK(resource_quantity == worker->resources_in_use[resource_name]);
-    }
     state->dynamic_resources[resource_name] += resource_quantity;
     worker->resources_in_use[resource_name] -= resource_quantity;
   }
@@ -542,14 +522,14 @@ void assign_task_to_worker(LocalSchedulerState *state,
   // non-CPU resources (in particular, GPUs) should already have been acquired
   // by the actor worker.
   if (!worker->actor_id.is_nil()) {
-    CHECK(required_resources.size() == 1);
-    CHECK(required_resources.count("CPU") == 1);
+    RAY_CHECK(required_resources.size() == 1);
+    RAY_CHECK(required_resources.count("CPU") == 1);
   }
 
-  CHECK(worker->actor_id == TaskSpec_actor_id(spec));
+  RAY_CHECK(worker->actor_id == TaskSpec_actor_id(spec));
   /* Make sure the driver for this task is still alive. */
   WorkerID driver_id = TaskSpec_driver_id(spec);
-  CHECK(is_driver_alive(state, driver_id));
+  RAY_CHECK(is_driver_alive(state, driver_id));
 
   /* Construct a flatbuffer object to send to the worker. */
   flatbuffers::FlatBufferBuilder fbb;
@@ -563,12 +543,10 @@ void assign_task_to_worker(LocalSchedulerState *state,
     if (errno == EPIPE || errno == EBADF) {
       /* Something went wrong, so kill the worker. */
       kill_worker(state, worker, false, false);
-      LOG_WARN(
-          "Failed to give task to worker on fd %d. The client may have hung "
-          "up.",
-          worker->sock);
+      RAY_LOG(WARNING) << "Failed to give task to worker on fd " << worker->sock
+                       << ". The client may have hung up.";
     } else {
-      LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
+      RAY_LOG(FATAL) << "Failed to give task to client on fd " << worker->sock;
     }
   }
 
@@ -595,20 +573,52 @@ void assign_task_to_worker(LocalSchedulerState *state,
 void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
-    /* Return dynamic resources back for the task in progress. */
-    CHECK(worker->resources_in_use["CPU"] ==
-          TaskSpec_get_required_resource(spec, "CPU"));
-    if (worker->actor_id.is_nil()) {
-      CHECK(worker->gpus_in_use.size() ==
-            TaskSpec_get_required_resource(spec, "GPU"));
+    // Return dynamic resources back for the task in progress.
+    if (TaskSpec_is_actor_creation_task(spec)) {
+      // Resources required by the actor creation task are acquired for the
+      // actor's lifetime, so don't return anything here. TODO(rkn): Should the
+      // actor creation task require 1 CPU in addition to any resources acquired
+      // for the lifetime of the actor? If not, then the local scheduler may
+      // schedule an arbitrary number of actor creation tasks concurrently (if
+      // they don't acquire any resources for their entire lifetime). In
+      // practice this will usually be rate-limited by the rate at which we can
+      // create new workers.
+
+      ActorID actor_creation_id = TaskSpec_actor_creation_id(spec);
+      WorkerID driver_id = TaskSpec_driver_id(spec);
+
+      // The driver must be alive because if the driver had been removed, then
+      // this worker would have been killed (because it was executing a task for
+      // the driver).
+      RAY_CHECK(is_driver_alive(state, driver_id));
+
+      // Update the worker struct with this actor ID.
+      RAY_CHECK(worker->actor_id.is_nil());
+      worker->actor_id = actor_creation_id;
+      // Extract the initial execution dependency from the actor creation task.
+      RAY_CHECK(TaskSpec_num_returns(spec) == 1);
+      ObjectID initial_execution_dependency = TaskSpec_return(spec, 0);
+      // Let the scheduling algorithm process the presence of this new worker.
+      handle_convert_worker_to_actor(state, state->algorithm_state,
+                                     actor_creation_id,
+                                     initial_execution_dependency, worker);
+      // Publish the actor creation notification. The corresponding callback
+      // handle_actor_creation_callback will update state->actor_mapping.
+      publish_actor_creation_notification(
+          state->db, actor_creation_id, driver_id, get_db_client_id(state->db));
+    } else if (worker->actor_id.is_nil()) {
+      // Return dynamic resources back for the task in progress.
+      RAY_CHECK(worker->resources_in_use["CPU"] ==
+                TaskSpec_get_required_resource(spec, "CPU"));
+      // Return GPU resources.
+      RAY_CHECK(worker->gpus_in_use.size() ==
+                TaskSpec_get_required_resource(spec, "GPU"));
       release_resources(state, worker, worker->resources_in_use);
     } else {
       // Actor tasks should only specify CPU requirements.
-      CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
+      RAY_CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
       std::unordered_map<std::string, double> cpu_resources;
-      cpu_resources["CPU"] = worker->resources_in_use["CPU"];
-      std::unordered_map<std::string, double> resources_to_release =
-          worker->resources_in_use;
+      cpu_resources["CPU"] = TaskSpec_get_required_resource(spec, "CPU");
       release_resources(state, worker, cpu_resources);
     }
     /* If we're connected to Redis, update tables. */
@@ -641,8 +651,8 @@ void process_plasma_notification(event_loop *loop,
   if (!notification) {
     /* The store has closed the socket. */
     LocalSchedulerState_free(state);
-    LOG_FATAL(
-        "Lost connection to the plasma store, local scheduler is exiting!");
+    RAY_LOG(FATAL) << "Lost connection to the plasma store, local scheduler is "
+                   << "exiting!";
   }
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   ObjectID object_id = from_flatbuf(*object_info->object_id());
@@ -747,20 +757,26 @@ void reconstruct_put_task_update_callback(Task *task,
          * by `ray.put` was not able to be reconstructed, and the workload will
          * likely hang. Push an error to the appropriate driver. */
         TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-        FunctionID function = TaskSpec_function(spec);
+
+        std::ostringstream error_message;
+        error_message << "The task with ID " << TaskSpec_task_id(spec)
+                      << " is still executing and so the object created by "
+                      << "ray.put could not be reconstructed.";
         push_error(state->db, TaskSpec_driver_id(spec),
-                   PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
-                   function.data());
+                   PUT_RECONSTRUCTION_ERROR_INDEX, error_message.str());
       }
     } else {
       /* (1) The task is still executing and it is the driver task. We cannot
        * restart the driver task, so the workload will hang. Push an error to
        * the appropriate driver. */
       TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-      FunctionID function = TaskSpec_function(spec);
+
+      std::ostringstream error_message;
+      error_message << "The task with ID " << TaskSpec_task_id(spec)
+                    << " is a driver task and so the object created by ray.put "
+                    << "could not be reconstructed.";
       push_error(state->db, TaskSpec_driver_id(spec),
-                 PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
-                 function.data());
+                 PUT_RECONSTRUCTION_ERROR_INDEX, error_message.str());
     }
   } else {
     /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
@@ -773,8 +789,8 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
                                                 TaskID task_id,
                                                 bool is_put,
                                                 void *user_context) {
-  CHECKM(!task_id.is_nil(),
-         "No task information found for object during reconstruction");
+  RAY_CHECK(!task_id.is_nil())
+      << "No task information found for object during reconstruction";
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
 
   task_table_test_and_update_callback done_callback;
@@ -820,9 +836,8 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
      * after this lookup returns, possibly due to concurrent clients. In most
      * cases, this is okay because the initial execution is probably still
      * pending, so for now, we log a warning and suppress reconstruction. */
-    LOG_WARN(
-        "No task information found for object during reconstruction (no object "
-        "entry yet)");
+    RAY_LOG(WARNING) << "No task information found for object during "
+                     << "reconstruction (no object entry yet)";
     return;
   }
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
@@ -852,7 +867,7 @@ void reconstruct_object_lookup_callback(
     bool never_created,
     const std::vector<DBClientID> &manager_ids,
     void *user_context) {
-  LOG_DEBUG("Manager count was %lu", manager_ids.size());
+  RAY_LOG(DEBUG) << "Manager count was " << manager_ids.size();
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
@@ -887,50 +902,26 @@ void reconstruct_object_lookup_callback(
 
 void reconstruct_object(LocalSchedulerState *state,
                         ObjectID reconstruct_object_id) {
-  LOG_DEBUG("Starting reconstruction");
+  RAY_LOG(DEBUG) << "Starting reconstruction";
   /* If the object is locally available, no need to reconstruct. */
   if (object_locally_available(state->algorithm_state, reconstruct_object_id)) {
     return;
   }
   /* Determine if reconstruction is necessary by checking if the object exists
    * on a node. */
-  CHECK(state->db != NULL);
+  RAY_CHECK(state->db != NULL);
   object_table_lookup(state->db, reconstruct_object_id, NULL,
                       reconstruct_object_lookup_callback, (void *) state);
-}
-
-void send_client_register_reply(LocalSchedulerState *state,
-                                LocalSchedulerClient *worker) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      CreateRegisterClientReply(fbb, fbb.CreateVector(worker->gpus_in_use));
-  fbb.Finish(message);
-
-  /* Send the message to the client. */
-  if (write_message(worker->sock, MessageType_RegisterClientReply,
-                    fbb.GetSize(), fbb.GetBufferPointer()) < 0) {
-    if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
-      /* Something went wrong, so kill the worker. */
-      kill_worker(state, worker, false, false);
-      LOG_WARN(
-          "Failed to give send register client reply to worker on fd %d. The "
-          "client may have hung up.",
-          worker->sock);
-    } else {
-      LOG_FATAL("Failed to send register client reply to client on fd %d.",
-                worker->sock);
-    }
-  }
 }
 
 void handle_client_register(LocalSchedulerState *state,
                             LocalSchedulerClient *worker,
                             const RegisterClientRequest *message) {
   /* Make sure this worker hasn't already registered. */
-  CHECK(!worker->registered);
+  RAY_CHECK(!worker->registered);
   worker->registered = true;
   worker->is_worker = message->is_worker();
-  CHECK(worker->client_id.is_nil());
+  RAY_CHECK(worker->client_id.is_nil());
   worker->client_id = from_flatbuf(*message->client_id());
 
   /* Register the worker or driver. */
@@ -938,43 +929,9 @@ void handle_client_register(LocalSchedulerState *state,
     /* Update the actor mapping with the actor ID of the worker (if an actor is
      * running on the worker). */
     worker->pid = message->worker_pid();
-    ActorID actor_id = from_flatbuf(*message->actor_id());
-    if (!actor_id.is_nil()) {
-      /* Make sure that the local scheduler is aware that it is responsible for
-       * this actor. */
-      CHECK(state->actor_mapping.count(actor_id) == 1);
-      CHECK(state->actor_mapping[actor_id].local_scheduler_id ==
-            get_db_client_id(state->db));
-      /* Update the worker struct with this actor ID. */
-      CHECK(worker->actor_id.is_nil());
-      worker->actor_id = actor_id;
-      /* Let the scheduling algorithm process the presence of this new
-       * worker. */
-      handle_actor_worker_connect(state, state->algorithm_state, actor_id,
-                                  worker);
-
-      /* If there are enough GPUs available, allocate them and reply to the
-       * actor. */
-      double num_gpus_required = (double) message->num_gpus();
-
-      std::unordered_map<std::string, double> gpu_resources;
-      gpu_resources["GPU"] = num_gpus_required;
-      if (check_dynamic_resources(state, gpu_resources)) {
-        acquire_resources(state, worker, gpu_resources);
-      } else {
-        /* TODO(rkn): This means that an actor wants to register but that there
-         * aren't enough GPUs for it. We should queue this request, and reply to
-         * the actor when GPUs become available. */
-        LOG_WARN(
-            "Attempting to create an actor but there aren't enough available "
-            "GPUs. We'll start the worker anyway without any GPUs, but this is "
-            "incorrect behavior.");
-      }
-    }
-
     /* Register worker process id with the scheduler. */
     /* Determine if this worker is one of our child processes. */
-    LOG_DEBUG("PID is %d", worker->pid);
+    RAY_LOG(DEBUG) << "PID is " << worker->pid;
     auto it = std::find(state->child_pids.begin(), state->child_pids.end(),
                         worker->pid);
     if (it != state->child_pids.end()) {
@@ -983,16 +940,7 @@ void handle_client_register(LocalSchedulerState *state,
        * cleanup. */
       worker->is_child = true;
       state->child_pids.erase(it);
-      LOG_DEBUG("Found matching child pid %d", worker->pid);
-    }
-
-    /* If the worker is an actor that corresponds to a driver that has been
-     * removed, then kill the worker. */
-    if (!actor_id.is_nil()) {
-      WorkerID driver_id = state->actor_mapping[actor_id].driver_id;
-      if (state->removed_drivers.count(driver_id) == 1) {
-        kill_worker(state, worker, false, false);
-      }
+      RAY_LOG(DEBUG) << "Found matching child pid " << worker->pid;
     }
   } else {
     /* Register the driver. Currently we don't do anything here. */
@@ -1018,16 +966,17 @@ void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
 
     if (!actor_id.is_nil()) {
       /* This is an actor. */
-      CHECK(state->actor_mapping.count(actor_id) == 1);
+      RAY_CHECK(state->actor_mapping.count(actor_id) == 1);
       if (state->actor_mapping[actor_id].driver_id == driver_id) {
         /* This actor was created by the removed driver, so kill the actor. */
-        LOG_DEBUG("Killing an actor for a removed driver.");
+        RAY_LOG(DEBUG) << "Killing an actor for a removed driver.";
         kill_worker(state, *it, false, true);
       }
     } else if (task != NULL) {
       TaskSpec *spec = Task_task_execution_spec(task)->Spec();
       if (TaskSpec_driver_id(spec) == driver_id) {
-        LOG_DEBUG("Killing a worker executing a task for a removed driver.");
+        RAY_LOG(DEBUG) << "Killing a worker executing a task for a removed "
+                       << "driver.";
         kill_worker(state, *it, false, true);
       }
     }
@@ -1081,13 +1030,10 @@ void handle_get_actor_frontier(LocalSchedulerState *state,
     if (errno == EPIPE || errno == EBADF) {
       /* Something went wrong, so kill the worker. */
       kill_worker(state, worker, false, false);
-      LOG_WARN(
-          "Failed to return actor frontier to worker on fd %d. The client may "
-          "have hung "
-          "up.",
-          worker->sock);
+      RAY_LOG(WARNING) << "Failed to return actor frontier to worker on fd "
+                       << worker->sock << ". The client may have hung up.";
     } else {
-      LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
+      RAY_LOG(FATAL) << "Failed to give task to client on fd " << worker->sock;
     }
   }
 }
@@ -1124,7 +1070,7 @@ void process_message(event_loop *loop,
   read_vector(client_sock, &type, state->input_buffer);
   uint8_t *input = state->input_buffer.data();
 
-  LOG_DEBUG("New event of type %" PRId64, type);
+  RAY_LOG(DEBUG) << "New event of type " << type;
 
   switch (type) {
   case MessageType_SubmitTask: {
@@ -1159,12 +1105,12 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_DisconnectClient: {
     finish_task(state, worker);
-    CHECK(!worker->disconnected);
+    RAY_CHECK(!worker->disconnected);
     worker->disconnected = true;
     /* If the disconnected worker was not an actor, start a new worker to make
      * sure there are enough workers in the pool. */
     if (worker->actor_id.is_nil()) {
-      start_worker(state, ActorID::nil(), false);
+      start_worker(state);
     }
   } break;
   case MessageType_EventLogMessage: {
@@ -1180,7 +1126,6 @@ void process_message(event_loop *loop,
   case MessageType_RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<RegisterClientRequest>(input);
     handle_client_register(state, worker, message);
-    send_client_register_reply(state, worker);
   } break;
   case MessageType_GetTask: {
     /* If this worker reports a completed task, account for resources. */
@@ -1200,10 +1145,14 @@ void process_message(event_loop *loop,
        * already blocked on an object that's not locally available, update its
        * state to blocked. */
       worker->is_blocked = true;
-      /* Return the CPU resources that the blocked worker was using, but not
-       * other resources. */
+      // Return the CPU resources that the blocked worker was using, but not
+      // other resources. If the worker is an actor, this will not return the
+      // CPU resources that the worker has acquired for its lifetime. It will
+      // only return the ones associated with the current method.
+      TaskSpec *spec =
+          Task_task_execution_spec(worker->task_in_progress)->Spec();
       std::unordered_map<std::string, double> cpu_resources;
-      cpu_resources["CPU"] = worker->resources_in_use["CPU"];
+      cpu_resources["CPU"] = TaskSpec_get_required_resource(spec, "CPU");
       release_resources(state, worker, cpu_resources);
       /* Let the scheduling algorithm process the fact that the worker is
        * blocked. */
@@ -1217,7 +1166,7 @@ void process_message(event_loop *loop,
     reconstruct_object(state, from_flatbuf(*message->object_id()));
   } break;
   case DISCONNECT_CLIENT: {
-    LOG_DEBUG("Disconnecting client on fd %d", client_sock);
+    RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_sock;
     handle_client_disconnect(state, worker);
   } break;
   case MessageType_NotifyUnblocked: {
@@ -1225,7 +1174,7 @@ void process_message(event_loop *loop,
     if (worker->task_in_progress != NULL) {
       /* If the worker was executing a task (i.e. non-driver), update its
        * state to not blocked. */
-      CHECK(worker->is_blocked);
+      RAY_CHECK(worker->is_blocked);
       worker->is_blocked = false;
       /* Lease back the CPU resources that the blocked worker needs (note that
        * it never released its GPU resources). TODO(swang): Leasing back the
@@ -1264,16 +1213,15 @@ void process_message(event_loop *loop,
   } break;
   default:
     /* This code should be unreachable. */
-    CHECK(0);
+    RAY_CHECK(0);
   }
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
   if (end_time - start_time >
       RayConfig::instance().max_time_for_handler_milliseconds()) {
-    LOG_WARN("process_message of type %" PRId64 " took %" PRId64
-             " milliseconds.",
-             type, end_time - start_time);
+    RAY_LOG(WARNING) << "process_message of type " << type << " took "
+                     << end_time - start_time << " milliseconds.";
   }
 }
 
@@ -1302,7 +1250,7 @@ void new_client_connection(event_loop *loop,
   state->workers.push_back(worker);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
                       worker);
-  LOG_DEBUG("new connection with fd %d", new_socket);
+  RAY_LOG(DEBUG) << "new connection with fd " << new_socket;
 }
 
 /* We need this code so we can clean up when we get a SIGTERM signal. */
@@ -1310,7 +1258,7 @@ void new_client_connection(event_loop *loop,
 LocalSchedulerState *g_state = NULL;
 
 void signal_handler(int signal) {
-  LOG_DEBUG("Signal was %d", signal);
+  RAY_LOG(DEBUG) << "Signal was " << signal;
   if (signal == SIGTERM) {
     /* NOTE(swang): This call removes the SIGTERM handler to ensure that we
      * free the local scheduler state at most once. If another SIGTERM is
@@ -1338,7 +1286,7 @@ void handle_task_scheduled_callback(Task *original_task,
    * scheduling algorithm. */
   WorkerID driver_id = TaskSpec_driver_id(spec);
   if (!is_driver_alive(state, driver_id)) {
-    LOG_DEBUG("Ignoring scheduled task for removed driver.");
+    RAY_LOG(DEBUG) << "Ignoring scheduled task for removed driver.";
     return;
   }
 
@@ -1361,14 +1309,12 @@ void handle_task_scheduled_callback(Task *original_task,
  * @param actor_id The ID of the actor being created.
  * @param local_scheduler_id The ID of the local scheduler that is responsible
  *        for creating the actor.
- * @param reconstruct True if the actor should be started in "reconstruct" mode.
  * @param context The context for this callback.
  * @return Void.
  */
-void handle_actor_creation_callback(ActorID actor_id,
-                                    WorkerID driver_id,
-                                    DBClientID local_scheduler_id,
-                                    bool reconstruct,
+void handle_actor_creation_callback(const ActorID &actor_id,
+                                    const WorkerID &driver_id,
+                                    const DBClientID &local_scheduler_id,
                                     void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
@@ -1377,26 +1323,19 @@ void handle_actor_creation_callback(ActorID actor_id,
     return;
   }
 
-  if (!reconstruct) {
-    /* Make sure the actor entry is not already present in the actor map table.
-     * TODO(rkn): We will need to remove this check to handle the case where the
-     * corresponding publish is retried and the case in which a task that
-     * creates an actor is resubmitted due to fault tolerance. */
-    CHECK(state->actor_mapping.count(actor_id) == 0);
-  } else {
-    /* In this case, the actor already exists. Check that the driver hasn't
-     * changed but that the local scheduler has. */
+  // TODO(rkn): If we do not have perfect task suppression and it is possible
+  // for a task to be executed simultaneously on two nodes, then we will need to
+  // detect and handle that case.
+
+  if (state->actor_mapping.count(actor_id) != 0) {
+    // This actor already exists.
     auto it = state->actor_mapping.find(actor_id);
-    CHECK(it != state->actor_mapping.end());
-    CHECK(it->second.driver_id == driver_id);
-    CHECK(!(it->second.local_scheduler_id == local_scheduler_id));
-    /* If the actor was previously assigned to this local scheduler, kill the
-     * actor. */
     if (it->second.local_scheduler_id == get_db_client_id(state->db)) {
-      /* TODO(rkn): We should kill the actor here if it is still around. Also,
-       * if it hasn't registered yet, we should keep track of its PID so we can
-       * kill it anyway. */
-      /* TODO(swang): Evict actor dummy objects as part of actor cleanup. */
+      // TODO(rkn): The actor was previously assigned to this local scheduler.
+      // We should kill the actor here if it is still around. Also, if it hasn't
+      // registered yet, we should keep track of its PID so we can kill it
+      // anyway.
+      // TODO(swang): Evict actor dummy objects as part of actor cleanup.
     }
   }
 
@@ -1408,15 +1347,9 @@ void handle_actor_creation_callback(ActorID actor_id,
   entry.driver_id = driver_id;
   state->actor_mapping[actor_id] = entry;
 
-  /* If this local scheduler is responsible for the actor, then start a new
-   * worker for the actor. */
-  if (local_scheduler_id == get_db_client_id(state->db)) {
-    start_worker(state, actor_id, reconstruct);
-  }
   /* Let the scheduling algorithm process the fact that a new actor has been
    * created. */
-  handle_actor_creation_notification(state, state->algorithm_state, actor_id,
-                                     reconstruct);
+  handle_actor_creation_notification(state, state->algorithm_state, actor_id);
 }
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
@@ -1428,12 +1361,13 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Check that the last heartbeat was not sent too long ago. */
   int64_t current_time = current_time_ms();
-  CHECK(current_time >= state->previous_heartbeat_time);
+  RAY_CHECK(current_time >= state->previous_heartbeat_time);
   if (current_time - state->previous_heartbeat_time >
       RayConfig::instance().num_heartbeats_timeout() *
           RayConfig::instance().heartbeat_timeout_milliseconds()) {
-    LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
-              current_time - state->previous_heartbeat_time);
+    RAY_LOG(FATAL) << "The last heartbeat was sent "
+                   << current_time - state->previous_heartbeat_time
+                   << " milliseconds ago.";
   }
   state->previous_heartbeat_time = current_time;
 
@@ -1515,6 +1449,12 @@ void start_server(
       loop, RayConfig::instance()
                 .local_scheduler_reconstruction_timeout_milliseconds(),
       reconstruct_object_timeout_handler, g_state);
+  // Create a timer for rerunning actor creation tasks for actor tasks that are
+  // cached locally.
+  event_loop_add_timer(
+      loop, RayConfig::instance()
+                .local_scheduler_reconstruction_timeout_milliseconds(),
+      rerun_actor_creation_tasks_timeout_handler, g_state);
   /* Run event loop. */
   event_loop_run(loop);
 }
@@ -1579,11 +1519,12 @@ int main(int argc, char *argv[]) {
       num_workers_str = optarg;
       break;
     default:
-      LOG_FATAL("unknown option %c", c);
+      RAY_LOG(FATAL) << "unknown option " << c;
     }
   }
   if (!static_resource_list) {
-    LOG_FATAL("please specify a static resource list with the -c switch");
+    RAY_LOG(FATAL) << "please specify a static resource list with the -c "
+                   << "switch";
   }
   // Parse the resource list.
   std::istringstream resource_string(static_resource_list);
@@ -1591,27 +1532,28 @@ int main(int argc, char *argv[]) {
   std::string resource_quantity;
 
   while (std::getline(resource_string, resource_name, ',')) {
-    CHECK(std::getline(resource_string, resource_quantity, ','));
+    RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
     // TODO(rkn): The line below could throw an exception. What should we do
     // about this?
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
 
   if (!scheduler_socket_name) {
-    LOG_FATAL("please specify socket for incoming connections with -s switch");
+    RAY_LOG(FATAL) << "please specify socket for incoming connections with "
+                   << "-s switch";
   }
   if (!plasma_store_socket_name) {
-    LOG_FATAL(
-        "please specify socket for connecting to Plasma store with -p switch");
+    RAY_LOG(FATAL) << "please specify socket for connecting to Plasma store "
+                   << "with -p switch";
   }
   if (!node_ip_address) {
-    LOG_FATAL("please specify the node IP address with -h switch");
+    RAY_LOG(FATAL) << "please specify the node IP address with -h switch";
   }
   int num_workers = 0;
   if (num_workers_str) {
     num_workers = strtol(num_workers_str, NULL, 10);
     if (num_workers < 0) {
-      LOG_FATAL("Number of workers must be nonnegative");
+      RAY_LOG(FATAL) << "Number of workers must be nonnegative";
     }
   }
 
@@ -1621,9 +1563,9 @@ int main(int argc, char *argv[]) {
     /* Start the local scheduler without connecting to Redis. In this case, all
      * submitted tasks will be queued and scheduled locally. */
     if (plasma_manager_socket_name) {
-      LOG_FATAL(
-          "if a plasma manager socket name is provided with the -m switch, "
-          "then a redis address must be provided with the -r switch");
+      RAY_LOG(FATAL) << "if a plasma manager socket name is provided with the "
+                     << "-m switch, then a redis address must be provided with "
+                     << "the -r switch";
     }
   } else {
     char redis_primary_addr[16];
@@ -1631,14 +1573,12 @@ int main(int argc, char *argv[]) {
     /* Parse the primary Redis address into an IP address and a port. */
     if (parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
                            &redis_primary_port) == -1) {
-      LOG_FATAL(
-          "if a redis address is provided with the -r switch, it should be "
-          "formatted like 127.0.0.1:6379");
+      RAY_LOG(FATAL) << "if a redis address is provided with the -r switch, it "
+                     << "should be formatted like 127.0.0.1:6379";
     }
     if (!plasma_manager_socket_name) {
-      LOG_FATAL(
-          "please specify socket for connecting to Plasma manager with -m "
-          "switch");
+      RAY_LOG(FATAL) << "please specify socket for connecting to Plasma "
+                     << "manager with -m switch";
     }
     redis_addr = redis_primary_addr;
     redis_port = redis_primary_port;

@@ -20,8 +20,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     If add_noise is True, the rollout will take noisy actions with
     noise drawn from that stream. Otherwise, no action noise will be added.
     """
-    env_timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
-                                           ".max_episode_steps")
+    env_timestep_limit = env.spec.max_episode_steps
     timestep_limit = (env_timestep_limit if timestep_limit is None
                       else min(timestep_limit, env_timestep_limit))
     rews = []
