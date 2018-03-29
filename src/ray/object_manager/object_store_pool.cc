@@ -2,29 +2,26 @@
 
 namespace ray {
 
-ObjectStorePool::ObjectStorePool(std::string &store_socket_name) {
-  store_socket_name_ = store_socket_name;
-}
+ObjectStorePool::ObjectStorePool(std::string &store_socket_name)
+    : store_socket_name_(store_socket_name) {}
 
 std::shared_ptr<plasma::PlasmaClient> ObjectStorePool::GetObjectStore() {
-  pool_mutex.lock();
+  std::lock_guard<std::mutex> lock(pool_mutex);
   if (available_clients.empty()) {
     Add();
   }
   std::shared_ptr<plasma::PlasmaClient> client = available_clients.back();
   available_clients.pop_back();
-  pool_mutex.unlock();
   return client;
 }
 
 void ObjectStorePool::ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client) {
-  pool_mutex.lock();
+  std::lock_guard<std::mutex> lock(pool_mutex);
   available_clients.push_back(client);
-  pool_mutex.unlock();
 }
 
 void ObjectStorePool::Terminate() {
-  for (auto client : clients) {
+  for (const auto &client : clients) {
     ARROW_CHECK_OK(client->Disconnect());
   }
   available_clients.clear();

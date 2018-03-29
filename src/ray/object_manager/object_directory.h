@@ -92,11 +92,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ~ObjectDirectory() override = default;
 
   ray::Status GetInformation(const ClientID &client_id,
-                             const InfoSuccessCallback &success_cb,
-                             const InfoFailureCallback &fail_cb) override;
+                             const InfoSuccessCallback &success_callback,
+                             const InfoFailureCallback &fail_callback) override;
   ray::Status GetLocations(const ObjectID &object_id,
-                           const OnLocationsSuccess &success_cb,
-                           const OnLocationsFailure &fail_cb) override;
+                           const OnLocationsSuccess &success_callback,
+                           const OnLocationsFailure &fail_callback) override;
   ray::Status Cancel(const ObjectID &object_id) override;
   ray::Status Terminate() override;
   ray::Status ReportObjectAdded(const ObjectID &object_id,

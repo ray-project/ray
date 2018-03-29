@@ -20,15 +20,15 @@ class TaskExecutionSpecification {
   /// Create a task execution specification.
   ///
   /// \param dependencies The task's dependencies, determined at execution
-  ///        time.
+  /// time.
   TaskExecutionSpecification(const std::vector<ObjectID> &&dependencies);
 
   /// Create a task execution specification.
   ///
   /// \param dependencies The task's dependencies, determined at execution
-  ///        time.
+  /// time.
   /// \param num_forwards The number of times this task has been forwarded by a
-  ///        node manager.
+  /// node manager.
   TaskExecutionSpecification(const std::vector<ObjectID> &&dependencies,
                              int num_forwards);
 
@@ -50,7 +50,7 @@ class TaskExecutionSpecification {
   /// Get the task's execution dependencies.
   ///
   /// \return A vector of object IDs representing this task's execution
-  ///         dependencies.
+  /// dependencies.
   std::vector<ObjectID> ExecutionDependencies() const;
 
   /// Set the task's execution dependencies.
@@ -74,8 +74,7 @@ class TaskExecutionSpecification {
   /// Set the task's last timestamp to the specified value.
   ///
   /// \param new_timestamp The new timestamp in millisecond to set the task's
-  ///        time stamp to. Tracks the last time this task entered a local
-  ///        scheduler.
+  /// time stamp to. Tracks the last time this task entered a local scheduler.
   void SetLastTimestamp(int64_t new_timestamp);
 
  private:

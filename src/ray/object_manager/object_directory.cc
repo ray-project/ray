@@ -28,46 +28,33 @@ ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
 
 ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
                                                  const ClientID &client_id) {
-  // TODO(hme): uncomment when Remove is implemented.
-  //  JobID job_id = JobID::from_random();
-  //  auto data = std::make_shared<ObjectTableDataT>();
-  //  data->managers.push_back(client_id.binary());
-  //  ray::Status status = gcs_client_->object_table().Remove(
-  //      job_id,
-  //      object_id,
-  //      [](
-  //          gcs::AsyncGcsClient *client,
-  //          const UniqueID &id,
-  //          std::shared_ptr<ObjectTableDataT> data){
-  //        std::cout << "Removed: " << id << std::endl;
-  //      });
-  //  return status;
-  return Status::OK();
+  // TODO(hme): Need corresponding remove method in GCS.
+  return ray::Status::NotImplemented("ObjectTable.Remove is not implemented");
 };
 
 ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
-                                            const InfoSuccessCallback &success_cb,
-                                            const InfoFailureCallback &fail_cb) {
+                                            const InfoSuccessCallback &success_callback,
+                                            const InfoFailureCallback &fail_callback) {
   std::lock_guard<std::mutex> lock(gcs_mutex);
   const ClientTableDataT &data = gcs_client_->client_table().GetClient(client_id);
   ClientID result_client_id = ClientID::from_binary(data.client_id);
   if (result_client_id == ClientID::nil() || !data.is_insertion) {
-    fail_cb(ray::Status::RedisError("ClientID not found."));
+    fail_callback(ray::Status::RedisError("ClientID not found."));
   } else {
     const auto &info = RemoteConnectionInfo(client_id, data.node_manager_address,
                                             (uint16_t)data.object_manager_port);
-    success_cb(info);
+    success_callback(info);
   }
   return ray::Status::OK();
 };
 
 ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
-                                          const OnLocationsSuccess &success_cb,
-                                          const OnLocationsFailure &fail_cb) {
+                                          const OnLocationsSuccess &success_callback,
+                                          const OnLocationsFailure &fail_callback) {
   std::lock_guard<std::mutex> lock(gcs_mutex);
   ray::Status status_code = ray::Status::OK();
   if (existing_requests_.count(object_id) == 0) {
-    existing_requests_[object_id] = ODCallbacks({success_cb, fail_cb});
+    existing_requests_[object_id] = ODCallbacks({success_callback, fail_callback});
     status_code = ExecuteGetLocations(object_id);
   } else {
     // Do nothing. A request is in progress.

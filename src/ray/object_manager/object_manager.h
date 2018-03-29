@@ -20,13 +20,13 @@
 #include "plasma/events.h"
 #include "plasma/plasma.h"
 
-#include "connection_pool.h"
-#include "format/object_manager_generated.h"
-#include "object_directory.h"
-#include "object_manager_client_connection.h"
-#include "object_store_notification.h"
-#include "object_store_pool.h"
-#include "transfer_queue.h"
+#include "ray/object_manager/connection_pool.h"
+#include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/object_manager_client_connection.h"
+#include "ray/object_manager/object_store_notification.h"
+#include "ray/object_manager/object_store_pool.h"
+#include "ray/object_manager/transfer_queue.h"
 
 namespace ray {
 
@@ -170,9 +170,6 @@ class ObjectManager {
 
   /// Connection pool provides connections to other object managers.
   ConnectionPool connection_pool_;
-
-  /// Relatively simple way to add thread pooling.
-  // boost::thread_group thread_group_;
 
   /// Timeout for failed pull requests.
   using Timer = std::shared_ptr<boost::asio::deadline_timer>;

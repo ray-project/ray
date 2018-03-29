@@ -2,7 +2,7 @@
 
 namespace ray {
 
-uint64_t SenderConnection::id_counter_ = 0;
+uint64_t SenderConnection::id_counter_;
 
 SenderConnection::pointer SenderConnection::Create(boost::asio::io_service &io_service,
                                                    const ClientID &client_id,

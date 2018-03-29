@@ -4,6 +4,7 @@
 
 # Cause the script to exit if a single command fails.
 set -e
+set -x
 
 # Tear down the Raylet.
 #bash ../../../src/ray/test/stop_raylets.sh

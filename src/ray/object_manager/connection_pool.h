@@ -1,5 +1,5 @@
-#ifndef RAY_CONNECTION_POOL_H
-#define RAY_CONNECTION_POOL_H
+#ifndef RAY_OBJECT_MANAGER_CONNECTION_POOL_H
+#define RAY_OBJECT_MANAGER_CONNECTION_POOL_H
 
 #include <algorithm>
 #include <cstdint>
@@ -15,9 +15,9 @@
 #include "ray/id.h"
 #include "ray/status.h"
 
-#include "format/object_manager_generated.h"
-#include "object_directory.h"
-#include "object_manager_client_connection.h"
+#include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/object_manager_client_connection.h"
 
 namespace asio = boost::asio;
 
@@ -30,7 +30,7 @@ class ConnectionPool {
   using FailureCallback = std::function<void()>;
 
   /// Connection type to distinguish between message and transfer connections.
-  enum ConnectionType { MESSAGE = 0, TRANSFER };
+  enum class ConnectionType : int { MESSAGE = 0, TRANSFER };
 
   /// Connection pool for all connections needed by the ObjectManager.
   ///
@@ -67,23 +67,24 @@ class ConnectionPool {
   /// \param success_callback The callback invoked when a sender is available.
   /// \param failure_callback The callback invoked if this method fails.
   /// \return Status of invoking this method.
-  ray::Status GetSender(ConnectionType type, ClientID client_id,
+  ray::Status GetSender(ConnectionType type, const ClientID &client_id,
                         SuccessCallback success_callback,
                         FailureCallback failure_callback);
 
-  /// Releasex a sender connection, allowing it to be used by another operation.
+  /// Releases a sender connection, allowing it to be used by another operation.
   ///
   /// \param type The type of connection.
   /// \param conn The actual connection.
   /// \return Status of invoking this method.
   ray::Status ReleaseSender(ConnectionType type, SenderConnection::pointer conn);
 
+  // TODO(hme): Implement with error handling.
   /// Remove a sender connection. This is invoked if the connection is no longer
   /// usable.
+  ///
   /// \param type The type of connection.
   /// \param conn The actual connection.
   /// \return Status of invoking this method.
-  // TODO(hme): Implement with error handling.
   ray::Status RemoveSender(ConnectionType type, SenderConnection::pointer conn);
 
  private:
@@ -118,16 +119,14 @@ class ConnectionPool {
   void Return(SenderMapType &conn_map, const ClientID &client_id,
               SenderConnection::pointer conn);
 
-  /// Asynchronously obtain a connection to client_id.
-  /// If a connection to client_id already exists, the callback is invoked immediately.
-  ray::Status CreateConnection1(ConnectionType type, const ClientID &client_id,
-                                SuccessCallback success_callback,
-                                FailureCallback failure_callback);
+  /// Asynchronously obtain a new connection to client_id.
+  ray::Status GetNewConnection(ConnectionType type, const ClientID &client_id,
+                               SuccessCallback success_callback,
+                               FailureCallback failure_callback);
 
-  /// Asynchronously create a connection to client_id.
-  ray::Status CreateConnection2(ConnectionType type, RemoteConnectionInfo info,
-                                SuccessCallback success_callback,
-                                FailureCallback failure_callback);
+  /// Synchronously create a connection to client_id.
+  SenderConnection::pointer CreateConnection(ConnectionType type,
+                                             RemoteConnectionInfo info);
 
   // TODO(hme): make this a shared_ptr.
   ObjectDirectoryInterface *object_directory_;
@@ -145,4 +144,4 @@ class ConnectionPool {
 
 }  // namespace ray
 
-#endif  // RAY_CONNECTION_POOL_H
+#endif  // RAY_OBJECT_MANAGER_CONNECTION_POOL_H

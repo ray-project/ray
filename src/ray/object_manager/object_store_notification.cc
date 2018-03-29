@@ -45,8 +45,8 @@ void ObjectStoreNotification::ProcessStoreNotification(
     throw std::runtime_error("ObjectStore may have died.");
   }
 
-  auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification_.data());
-  ObjectID object_id = from_flatbuf(*object_info->object_id());
+  const auto &object_info = flatbuffers::GetRoot<ObjectInfo>(notification_.data());
+  const auto &object_id = from_flatbuf(*object_info->object_id());
   if (object_info->is_deletion()) {
     ProcessStoreRemove(object_id);
   } else {

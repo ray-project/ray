@@ -33,7 +33,7 @@ class MockServer {
   }
 
   ~MockServer() {
-    (void)gcs_client_->client_table().Disconnect();
+    RAY_CHECK_OK(gcs_client_->client_table().Disconnect());
     RAY_CHECK_OK(object_manager_.Terminate());
   }
 
@@ -64,11 +64,11 @@ class MockServer {
         [this](std::shared_ptr<ReceiverConnection> client) {
           object_manager_.ProcessNewClient(client);
         };
-    ReceiverMessageHandler message_handler =
-        [this](std::shared_ptr<ReceiverConnection> client, int64_t message_type,
-               const uint8_t *message) {
-          object_manager_.ProcessClientMessage(client, message_type, message);
-        };
+    ReceiverMessageHandler message_handler = [this](
+        std::shared_ptr<ReceiverConnection> client, int64_t message_type,
+        const uint8_t *message) {
+      object_manager_.ProcessClientMessage(client, message_type, message);
+    };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = ReceiverConnection::Create(client_handler, message_handler,
                                                      std::move(object_manager_socket_));
@@ -143,7 +143,7 @@ class TestObjectManager : public ::testing::Test {
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
     ObjectID object_id = ObjectID::from_random();
-    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id.hex().c_str();
+    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
@@ -185,17 +185,16 @@ class TestObjectManagerCommands : public TestObjectManager {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::AsyncGcsClient *client, const ClientID &id,
-               const ClientTableDataT &data) {
-          ClientID parsed_id = ClientID::from_binary(data.client_id);
-          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-            num_connected_clients += 1;
-          }
-          if (num_connected_clients == 2) {
-            StartTests();
-          }
-        });
+    gcs_client_1->client_table().RegisterClientAddedCallback([this](
+        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      ClientID parsed_id = ClientID::from_binary(data.client_id);
+      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+        num_connected_clients += 1;
+      }
+      if (num_connected_clients == 2) {
+        StartTests();
+      }
+    });
   }
 
   void StartTests() {

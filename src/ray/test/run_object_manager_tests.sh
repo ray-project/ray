@@ -4,6 +4,7 @@
 
 # Cause the script to exit if a single command fails.
 set -e
+set -x
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"
