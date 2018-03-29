@@ -49,10 +49,10 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   pushd python
     # Upgrade pip.
-    python -m pip install -vvv --upgrade pip setuptools wheel
+    PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE -m pip install -vvv --upgrade pip setuptools wheel
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
-    pip install git+https://github.com/pypa/setuptools_scm#egg=proj
+    $PIP_CMD install -vvv git+https://github.com/pypa/setuptools_scm#egg=proj
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
     $PIP_CMD install -vvv numpy==1.10.4 cython==0.27.3
