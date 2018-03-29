@@ -178,85 +178,6 @@ def to_pandas(df):
 
 
 @ray.remote
-def _rebuild_cols(row_partitions, index, columns):
-    """Rebuild the column partitions from the row partitions.
-    Args:
-        row_partitions ([ObjectID]): List of row partitions for the dataframe.
-        index (pd.Index): The row index of the entire dataframe.
-        columns (pd.Index): The column labels of the entire dataframe.
-    Returns:
-        [ObjectID]: List of new column partitions.
-    """
-    # NOTE: Reexamine if this is the correct number of columns solution
-    n_cols = min(max(get_npartitions(), len(row_partitions)), len(columns))
-    partition_assignments = assign_partitions.remote(columns, n_cols)
-    shufflers = [ShuffleActor.remote(
-        row_partitions[i] if i < len(row_partitions) else pd.DataFrame(),
-        partition_axis=0,
-        shuffle_axis=1)
-                 for i in range(n_cols)]
-
-    shufflers_done = \
-        [shufflers[i].shuffle.remote(
-            columns,
-            partition_assignments,
-            i,
-            *shufflers)
-         for i in range(len(shufflers))]
-
-    # Block on all shuffles being complete
-    ray.get(shufflers_done)
-
-    # TODO: Determine if this is the right place to reset the index
-    def fix_indexes(df):
-        df.columns = pd.RangeIndex(0, len(df.columns))
-        df.reset_index(drop=True, inplace=True)
-        return df
-
-    return [shuffler.apply_func.remote(fix_indexes)
-            for shuffler in shufflers[:n_cols]]
-
-
-@ray.remote
-def _rebuild_rows(col_partitions, index, columns):
-    """Rebuild the row partitions from the column partitions.
-    Args:
-        col_partitions ([ObjectID]): List of col partitions for the dataframe.
-        index (pd.Index): The row index of the entire dataframe.
-        columns (pd.Index): The column labels of the entire dataframe.
-    Returns:
-        [ObjectID]: List of new row Partitions.
-    """
-    n_rows = min(max(get_npartitions(), len(col_partitions)), len(index))
-    partition_assignments = assign_partitions.remote(index, n_rows)
-    shufflers = [ShuffleActor.remote(
-        col_partitions[i] if i < len(col_partitions) else pd.DataFrame(),
-        partition_axis=1,
-        shuffle_axis=0)
-                 for i in range(n_rows)]
-
-    shufflers_done = \
-        [shufflers[i].shuffle.remote(
-            index,
-            partition_assignments,
-            i,
-            *shufflers)
-         for i in range(len(shufflers))]
-
-    # Block on all shuffles being complete
-    ray.get(shufflers_done)
-
-    # TODO: Determine if this is the right place to reset the index
-    # TODO: Determine if this needs the same changes as above
-    def fix_indexes(df):
-        df.columns = pd.RangeIndex(0, len(df.columns))
-        df.reset_index(drop=True, inplace=True)
-        return df
-
-    return [shuffler.apply_func.remote(fix_indexes) for shuffler in shufflers[:n_rows]]
-
-
-@ray.remote
 def _local_groupby(df_rows, axis=0):
     """Apply a groupby on this partition for the blocks sent to it.
     Args:
@@ -308,40 +229,28 @@ def _map_partitions(func, partitions, *argslists):
         return [_deploy_func.remote(func, part, *args) for part, *args in zip(partitions, *argslists)]
 
 
-@ray.remote(num_return_vals=2)
-def _compute_length_and_index(dfs, index):
-    """Create a default index, which is a RangeIndex
-    Returns:
-        The pd.RangeIndex object that represents this DataFrame.
-    """
+@ray.remote(num_return_vals=4)
+def _build_columns_and_index(df_row, index, df_col, columns):
+    """Build columns and index and compute lengths for each partition."""
+    # Rows and length
     lengths = ray.get([_deploy_func.remote(_get_lengths, d)
-                       for d in dfs])
+                       for d in df_row])
 
     dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(lengths))
                     for p_sub_idx in range(lengths[p_idx])]
+    col_names = ("partition", "index_within_partition")
+    index_df = pd.DataFrame(dest_indices, index=index, columns=col_names)
 
-    idx_df_col_names = ("partition", "index_within_partition")
-
-    return lengths, pd.DataFrame(dest_indices, index=index,
-                                 columns=idx_df_col_names)
-
-
-@ray.remote(num_return_vals=2)
-def _compute_width_and_index(dfs, columns):
-    """Create a default index, which is a RangeIndex
-    Returns:
-        The pd.RangeIndex object that represents this DataFrame.
-    """
-    widths = ray.get([_deploy_func.remote(_get_widths, d)
-                      for d in dfs])
-
+    # Columns and width
+    widths = ray.get([_deploy_func.remote(lambda df: len(df.columns), d)
+                      for d in df_col])
     dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(widths))
                     for p_sub_idx in range(widths[p_idx])]
 
-    idx_df_col_names = ("partition", "index_within_partition")
+    col_names = ("partition", "index_within_partition")
+    column_df = pd.DataFrame(dest_indices, index=columns, columns=col_names)
 
-    return widths, pd.DataFrame(dest_indices, index=columns,
-                                columns=idx_df_col_names)
+    return lengths, index_df, widths, column_df
 
 
 @ray.remote
@@ -349,3 +258,24 @@ def _prepend_partitions(last_vals, index, partition, func):
     appended_df = last_vals[:index].append(partition)
     cum_df = func(appended_df)
     return cum_df[index:]
+
+
+def _create_blk_partitions(partitions, axis=0, length=None):
+    @ray.remote
+    def repartition(df, npartitions, axis):
+        block_size = df.shape[axis ^ 1] // npartitions
+
+        return [df.iloc[:, i * block_size: (i + 1) * block_size]
+                if axis == 0
+                else df.iloc[i * block_size: (i + 1) * block_size, :]
+                for i in range(npartitions)]
+    if length is not None and get_npartitions() > length:
+        npartitions = length
+    else:
+        npartitions = get_npartitions()
+
+    x = [repartition._submit(args=(partition, npartitions, axis),
+                             num_return_vals=npartitions)
+         for partition in partitions]
+
+    return np.array(x)

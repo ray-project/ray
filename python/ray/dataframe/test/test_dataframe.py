@@ -6,6 +6,7 @@ import pytest
 import numpy as np
 import pandas as pd
 import pandas.util.testing as tm
+import ray
 import ray.dataframe as rdf
 from ray.dataframe.utils import (
     to_pandas,
@@ -112,8 +113,8 @@ def test_applymap(ray_df, pandas_df, testfunc):
 def test_copy(ray_df):
     new_ray_df = ray_df.copy()
 
-    assert(new_ray_df is not ray_df)
-    assert(new_ray_df._row_partitions == ray_df._row_partitions)
+    assert new_ray_df is not ray_df
+    assert np.array_equal(new_ray_df._blk_partitions, ray_df._blk_partitions)
 
 
 @pytest.fixture
@@ -1794,7 +1795,7 @@ def test_max(ray_df, pandas_df):
 
 @pytest.fixture
 def test_mean(ray_df, pandas_df):
-    assert(ray_df.mean().equals(pandas_df.mean()))
+    assert ray_df.mean().equals(pandas_df.mean())
 
 
 @pytest.fixture
