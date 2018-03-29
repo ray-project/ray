@@ -223,6 +223,7 @@ class PPOAgent(Agent):
         if not isinstance(kl, np.ndarray):
             kl = [kl]
 
+        print(kl)
         for i, kl_i in enumerate(kl):
             if kl_i > 2.0 * config["kl_target"]:
                 self.kl_coeff[i] *= 1.5
