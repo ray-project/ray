@@ -48,8 +48,10 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
   pushd python
+    # Upgrade pip.
+    python -m pip install --upgrade pip setuptools wheel
     # Install setuptools_scm because otherwise when building the wheel for
-    # Python 3.6, we see an error
+    # Python 3.6, we see an error.
     pip install git+https://github.com/pypa/setuptools_scm#egg=proj
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
