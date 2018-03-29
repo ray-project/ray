@@ -56,6 +56,11 @@ class Resources(
         return self.gpu + self.extra_gpu
 
 
+def has_trainable(trainable_name):
+    return ray.tune.registry._default_registry.contains(
+        ray.tune.registry.TRAINABLE_CLASS, trainable_name)
+
+
 class Trial(object):
     """A trial object holds the state for one model training run.
 
@@ -83,9 +88,11 @@ class Trial(object):
         in ray.tune.config_parser.
         """
 
-        if not ray.tune.registry._default_registry.contains(
-                ray.tune.registry.TRAINABLE_CLASS, trainable_name):
-            raise TuneError("Unknown trainable: " + trainable_name)
+        if not has_trainable(trainable_name):
+            # Make sure rllib agents are registered
+            from ray import rllib  # noqa: F401
+            if not has_trainable(trainable_name):
+                raise TuneError("Unknown trainable: " + trainable_name)
 
         if stopping_criterion:
             for k in stopping_criterion:
