@@ -1,6 +1,6 @@
+#include <chrono>
 #include <iostream>
 #include <thread>
-#include <chrono>
 
 #include "gtest/gtest.h"
 
@@ -41,7 +41,7 @@ class MockServer {
   }
 
   ~MockServer() {
-    (void)gcs_client_->client_table().Disconnect();
+    RAY_CHECK_OK(gcs_client_->client_table().Disconnect());
     RAY_CHECK_OK(object_manager_.Terminate());
   }
 
@@ -72,11 +72,11 @@ class MockServer {
         [this](std::shared_ptr<ReceiverConnection> client) {
           object_manager_.ProcessNewClient(client);
         };
-    ReceiverMessageHandler message_handler =
-        [this](std::shared_ptr<ReceiverConnection> client, int64_t message_type,
-               const uint8_t *message) {
-          object_manager_.ProcessClientMessage(client, message_type, message);
-        };
+    ReceiverMessageHandler message_handler = [this](
+        std::shared_ptr<ReceiverConnection> client, int64_t message_type,
+        const uint8_t *message) {
+      object_manager_.ProcessClientMessage(client, message_type, message);
+    };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = ReceiverConnection::Create(client_handler, message_handler,
                                                      std::move(object_manager_socket_));
@@ -93,7 +93,7 @@ class MockServer {
 
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() { RAY_LOG(INFO) << "TestObjectManagerBase: started."; }
+  TestObjectManagerBase() {}
 
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
@@ -155,7 +155,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
     ObjectID object_id = ObjectID::from_random();
-    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id.hex().c_str();
+    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
@@ -212,17 +212,16 @@ class StressTestObjectManager : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::AsyncGcsClient *client, const ClientID &id,
-               const ClientTableDataT &data) {
-          ClientID parsed_id = ClientID::from_binary(data.client_id);
-          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-            num_connected_clients += 1;
-          }
-          if (num_connected_clients == 2) {
-            StartTests();
-          }
-        });
+    gcs_client_1->client_table().RegisterClientAddedCallback([this](
+        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      ClientID parsed_id = ClientID::from_binary(data.client_id);
+      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+        num_connected_clients += 1;
+      }
+      if (num_connected_clients == 2) {
+        StartTests();
+      }
+    });
   }
 
   void StartTests() {
@@ -261,21 +260,21 @@ class StressTestObjectManager : public TestObjectManagerBase {
     }
   }
 
-  plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID object_id) {
+  plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID &object_id) {
     plasma::ObjectBuffer object_buffer;
     plasma::ObjectID plasma_id = object_id.to_plasma_id();
     ARROW_CHECK_OK(client.Get(&plasma_id, 1, 0, &object_buffer));
     return object_buffer;
   }
 
-  static unsigned char *GetDigest(plasma::PlasmaClient &client, ObjectID object_id) {
+  static unsigned char *GetDigest(plasma::PlasmaClient &client, ObjectID &object_id) {
     const int64_t size = sizeof(uint64_t);
     static unsigned char digest_1[size];
     ARROW_CHECK_OK(client.Hash(object_id.to_plasma_id(), &digest_1[0]));
     return digest_1;
   }
 
-  void CompareObjects(ObjectID object_id_1, ObjectID object_id_2) {
+  void CompareObjects(ObjectID &object_id_1, ObjectID &object_id_2) {
     plasma::ObjectBuffer object_buffer_1 = GetObject(client1, object_id_1);
     plasma::ObjectBuffer object_buffer_2 = GetObject(client1, object_id_1);
     uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
@@ -286,7 +285,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     }
   }
 
-  void CompareHashes(ObjectID object_id_1, ObjectID object_id_2) {
+  void CompareHashes(ObjectID &object_id_1, ObjectID &object_id_2) {
     const int64_t size = sizeof(uint64_t);
     static unsigned char *digest_1 = GetDigest(client1, object_id_1);
     static unsigned char *digest_2 = GetDigest(client2, object_id_2);
@@ -303,12 +302,12 @@ class StressTestObjectManager : public TestObjectManagerBase {
     RAY_LOG(INFO) << "TransferTestComplete: " << async_loop_patterns[async_loop_index]
                   << " " << v1.size() << " " << elapsed;
     ASSERT_TRUE(v1.size() == v2.size());
-    for (int i = -1; ++i < (int)v1.size();) {
+    for (uint i = 0; i < v1.size(); ++i) {
       ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
     }
 
     // Compare objects and their hashes.
-    for (int i = -1; ++i < (int)v1.size();) {
+    for (uint i = 0; i < v1.size(); ++i) {
       ObjectID object_id_2 = v2[i];
       ObjectID object_id_1 =
           v1[std::distance(v1.begin(), std::find(v1.begin(), v1.end(), v2[i]))];
@@ -378,6 +377,9 @@ class StressTestObjectManager : public TestObjectManagerBase {
         status = server1->object_manager_.Pull(oid2);
       }
     } break;
+    default: {
+      RAY_LOG(FATAL) << "No case for transfer_pattern " << transfer_pattern;
+    } break;
     }
   }
 
@@ -387,21 +389,20 @@ class StressTestObjectManager : public TestObjectManagerBase {
                   << "\n";
     ClientID client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     ClientID client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    RAY_LOG(INFO) << "Server 1: " << client_id_1.hex();
-    RAY_LOG(INFO) << "Server 2: " << client_id_2.hex();
+    RAY_LOG(INFO) << "Server 1: " << client_id_1 << "\n"
+                  << "Server 2: " << client_id_2;
 
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
                   << "\n";
     const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
-    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
-    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
-    RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
-    RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port;
+    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id) << "\n"
+                  << "ClientIp=" << data.node_manager_address << "\n"
+                  << "ClientPort=" << data.node_manager_port;
     const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
-    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id);
-    RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
-    RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port;
+    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id) << "\n"
+                  << "ClientIp=" << data2.node_manager_address << "\n"
+                  << "ClientPort=" << data2.node_manager_port;
   }
 };
 

@@ -29,7 +29,7 @@ class ResourceSet {
   /// \brief Constructs ResourceSet from the specified resource map.
   ResourceSet(const std::unordered_map<std::string, double> &resource_map);
 
-  /// \brief Constructs REsourceSet from two equal-length vectors with label and capacity
+  /// \brief Constructs ResourceSet from two equal-length vectors with label and capacity
   /// specification.
   ResourceSet(const std::vector<std::string> &resource_labels,
               const std::vector<double> resource_capacity);

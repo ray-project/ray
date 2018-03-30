@@ -1,5 +1,5 @@
-#ifndef RAY_TRANSFER_QUEUE_H
-#define RAY_TRANSFER_QUEUE_H
+#ifndef RAY_OBJECT_MANAGER_TRANSFER_QUEUE_H
+#define RAY_OBJECT_MANAGER_TRANSFER_QUEUE_H
 
 #include <algorithm>
 #include <cstdint>
@@ -16,11 +16,9 @@
 #include "ray/id.h"
 #include "ray/status.h"
 
-#include "format/object_manager_generated.h"
-#include "object_directory.h"
-#include "object_manager_client_connection.h"
-
-namespace asio = boost::asio;
+#include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/object_manager_client_connection.h"
 
 namespace ray {
 
@@ -128,4 +126,4 @@ class TransferQueue {
 };
 }  // namespace ray
 
-#endif  // RAY_TRANSFER_QUEUE_H
+#endif  // RAY_OBJECT_MANAGER_TRANSFER_QUEUE_H

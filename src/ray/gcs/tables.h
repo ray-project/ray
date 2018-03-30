@@ -41,6 +41,9 @@ class Log {
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
+  /// The callback to call when a write to a key succeeds.
+  using WriteCallback = std::function<void(AsyncGcsClient *client, const ID &id,
+                                           std::shared_ptr<DataT> data)>;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
@@ -72,7 +75,24 @@ class Log {
   ///        GCS.
   /// \return Status
   Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
-                const Callback &done);
+                const WriteCallback &done);
+
+  /// Append a log entry to a key if and only if the log has the given number
+  /// of entries.
+  ///
+  /// \param job_id The ID of the job (= driver).
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data to append to the log.
+  /// \param done Callback that is called if the data was appended to the log.
+  /// \param failure Callback that is called if the data was not appended to
+  ///        the log because the log length did not match the given
+  ///        `log_length`.
+  /// \param log_length The number of entries that the log must have for the
+  ///        append to succeed.
+  /// \return Status
+  Status AppendAt(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+                  const WriteCallback &done, const WriteCallback &failure,
+                  int log_length);
 
   /// Lookup the log values at a key asynchronously.
   ///
@@ -151,10 +171,9 @@ template <typename ID, typename Data>
 class TableInterface {
  public:
   using DataT = typename Data::NativeTableType;
-  using Callback =
-      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  using WriteCallback = typename Log<ID, Data>::WriteCallback;
   virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<DataT> data,
-                     const Callback &done) = 0;
+                     const WriteCallback &done) = 0;
   virtual ~TableInterface(){};
 };
 
@@ -169,6 +188,7 @@ class Table : private Log<ID, Data>, public TableInterface<ID, Data> {
   using DataT = typename Log<ID, Data>::DataT;
   using Callback =
       std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
+  using WriteCallback = typename Log<ID, Data>::WriteCallback;
   /// The callback to call when a Lookup call returns an empty entry.
   using FailureCallback = std::function<void(AsyncGcsClient *client, const ID &id)>;
   /// The callback to call when a Subscribe call completes and we are ready to
@@ -201,7 +221,7 @@ class Table : private Log<ID, Data>, public TableInterface<ID, Data> {
   ///        GCS.
   /// \return Status
   Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
-             const Callback &done);
+             const WriteCallback &done);
 
   /// Lookup an entry asynchronously.
   ///
@@ -225,10 +245,10 @@ class Table : private Log<ID, Data>, public TableInterface<ID, Data> {
   using Log<ID, Data>::prefix_;
 };
 
-class ObjectTable : public Table<ObjectID, ObjectTableData> {
+class ObjectTable : public Log<ObjectID, ObjectTableData> {
  public:
   ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
-      : Table(context, client) {
+      : Log(context, client) {
     pubsub_channel_ = TablePubsub_OBJECT;
     prefix_ = TablePrefix_OBJECT;
   };
@@ -259,6 +279,15 @@ using ClassTable = Table<ClassID, ClassTableData>;
 // TODO(swang): Set the pubsub channel for the actor table.
 using ActorTable = Table<ActorID, ActorTableData>;
 
+class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
+ public:
+  TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
+                        AsyncGcsClient *client)
+      : Log(context, client) {
+    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+  }
+};
+
 namespace raylet {
 
 class TaskTable : public Table<TaskID, ray::protocol::Task> {
@@ -269,6 +298,7 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
     prefix_ = TablePrefix_RAYLET_TASK;
   }
 };
+
 }  // namespace raylet
 
 class TaskTable : public Table<TaskID, TaskTableData> {
@@ -437,7 +467,8 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// Handle a client table notification.
   void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(AsyncGcsClient *client, const ClientTableDataT &notifications);
+  void HandleConnected(AsyncGcsClient *client,
+                       const std::shared_ptr<ClientTableDataT> client_data);
 
   /// The key at which the log of client information is stored. This key must
   /// be kept the same across all instances of the ClientTable, so that all

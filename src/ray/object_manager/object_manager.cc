@@ -31,7 +31,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   store_pool_.reset(new ObjectStorePool(config.store_socket_name));
   StartIOService();
-};
+}
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::unique_ptr<asio::io_service> object_manager_service,
@@ -54,7 +54,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   store_notification_->SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
-};
+}
 
 void ObjectManager::StartIOService() {
   for(int i=0;i<config_.num_threads;++i){
@@ -88,24 +88,24 @@ ray::Status ObjectManager::Terminate() {
   store_notification_->Terminate();
   store_pool_->Terminate();
   return status_code;
-};
+}
 
 ray::Status ObjectManager::SubscribeObjAdded(
     std::function<void(const ObjectID &)> callback) {
   store_notification_->SubscribeObjAdded(callback);
   return ray::Status::OK();
-};
+}
 
 ray::Status ObjectManager::SubscribeObjDeleted(
     std::function<void(const ObjectID &)> callback) {
   store_notification_->SubscribeObjDeleted(callback);
   return ray::Status::OK();
-};
+}
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   main_service_->dispatch([this, object_id]() { RAY_CHECK_OK(Pull_(object_id)); });
   return Status::OK();
-};
+}
 
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
   pull_requests_[object_id] = Timer(
@@ -125,9 +125,7 @@ ray::Status ObjectManager::Pull_(const ObjectID &object_id) {
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
         return GetLocationsSuccess(client_ids, object_id);
       },
-      [this](ray::Status status, const ObjectID &object_id) {
-        return GetLocationsFailed(status, object_id);
-      });
+      [this](const ObjectID &object_id) { return GetLocationsFailed(object_id); });
   return status_code;
 }
 
@@ -137,11 +135,11 @@ void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client
   ClientID client_id = client_ids.front();
   pull_requests_.erase(object_id);
   ray::Status status_code = Pull(object_id, client_id);
-};
+}
 
-void ObjectManager::GetLocationsFailed(ray::Status status, const ObjectID &object_id) {
+void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
   SchedulePull(object_id, config_.pull_timeout_ms);
-};
+}
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
   main_service_->dispatch(
@@ -156,7 +154,7 @@ ray::Status ObjectManager::Pull_(const ObjectID &object_id, const ClientID &clie
   }
 
   Status status =
-      connection_pool_.GetSender(ConnectionPool::MESSAGE, client_id,
+      connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id,
                                  [this, object_id](SenderConnection::pointer conn) {
                                    Status status = ExecutePull(object_id, conn);
                                  },
@@ -165,7 +163,7 @@ ray::Status ObjectManager::Pull_(const ObjectID &object_id, const ClientID &clie
                                    SchedulePull(object_id, config_.pull_timeout_ms);
                                  });
   return status;
-};
+}
 
 ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
                                        SenderConnection::pointer conn) {
@@ -173,17 +171,18 @@ ray::Status ObjectManager::ExecutePull(const ObjectID &object_id,
   auto message = CreatePullRequestMessage(fbb, fbb.CreateString(client_id_.binary()),
                                           fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  (void)conn->WriteMessage(OMMessageType_PullRequest, fbb.GetSize(),
-                           fbb.GetBufferPointer());
-  (void)connection_pool_.ReleaseSender(ConnectionPool::MESSAGE, conn);
+  RAY_CHECK_OK(conn->WriteMessage(OMMessageType_PullRequest, fbb.GetSize(),
+                                  fbb.GetBufferPointer()));
+  RAY_CHECK_OK(
+      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
   return ray::Status::OK();
-};
+}
 
 ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   control_strand_.dispatch(
       [this, object_id, client_id]() { RAY_CHECK_OK(Push_(object_id, client_id)); });
   return Status::OK();
-};
+}
 
 ray::Status ObjectManager::Push_(const ObjectID &object_id, const ClientID &client_id) {
   transfer_queue_.QueueSend(client_id, object_id);
@@ -247,7 +246,7 @@ ray::Status ObjectManager::DequeueTransfers_() {
     }
   }
   return status;
-};
+}
 
 ray::Status ObjectManager::TransferCompleted() {
   control_strand_.dispatch([this]() {
@@ -260,7 +259,7 @@ ray::Status ObjectManager::TransferCompleted() {
 ray::Status ObjectManager::ExecuteSend(const ObjectID &object_id,
                                        const ClientID &client_id) {
   ray::Status status;
-  status = connection_pool_.GetSender(ConnectionPool::TRANSFER, client_id,
+  status = connection_pool_.GetSender(ConnectionPool::ConnectionType::TRANSFER, client_id,
                                       [this, object_id](SenderConnection::pointer conn) {
                                         ray::Status status = SendHeaders(object_id, conn);
                                         if (!status.ok()) {
@@ -289,7 +288,8 @@ ray::Status ObjectManager::SendHeaders(const ObjectID &object_id_const,
     // If the object wasn't locally available, exit immediately. If the object
     // later appears locally, the requesting plasma manager should request the
     // transfer again.
-    (void)connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
+    RAY_CHECK_OK(
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
     return ray::Status::IOError(
         "Unable to transfer object to requesting plasma manager, object not local.");
   }
@@ -305,6 +305,7 @@ ray::Status ObjectManager::SendHeaders(const ObjectID &object_id_const,
 
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
+  // TODO(hme): use to_flatbuf
   auto message = CreatePushRequestMessage(fbb, fbb.CreateString(object_id.binary()),
                                           context.object_size);
   fbb.Finish(message);
@@ -318,7 +319,7 @@ ray::Status ObjectManager::SendHeaders(const ObjectID &object_id_const,
                     boost::bind(&ObjectManager::SendObject, this, conn, context_id,
                                 store_client, asio::placeholders::error));
   return ray::Status::OK();
-};
+}
 
 void ObjectManager::SendObject(SenderConnection::pointer conn, const UniqueID &context_id,
                                std::shared_ptr<plasma::PlasmaClient> store_client,
@@ -327,7 +328,8 @@ void ObjectManager::SendObject(SenderConnection::pointer conn, const UniqueID &c
   if (header_ec.value() != 0) {
     // push failed.
     // TODO(hme): Trash sender.
-    (void)connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
+    RAY_CHECK_OK(
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
     return;
   }
   boost::system::error_code ec;
@@ -335,19 +337,21 @@ void ObjectManager::SendObject(SenderConnection::pointer conn, const UniqueID &c
   if (ec.value() != 0) {
     // push failed.
     // TODO(hme): Trash sender.
-    (void)connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
+    RAY_CHECK_OK(
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
     return;
   }
   // Do this regardless of whether it failed or succeeded.
   ARROW_CHECK_OK(store_client->Release(context.object_id.to_plasma_id()));
   store_pool_->ReleaseObjectStore(store_client);
-  (void)connection_pool_.ReleaseSender(ConnectionPool::TRANSFER, conn);
-  (void)transfer_queue_.RemoveContext(context_id);
-  //  RAY_LOG(INFO) << "SendCompleted "
-  //      << client_id_ << " "
-  //      << context.object_id << " "
-  //      << num_transfers_ << "/"
-  //      << max_transfers_;
+  RAY_CHECK_OK(
+      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
+  RAY_CHECK_OK(transfer_queue_.RemoveContext(context_id));
+  RAY_LOG(DEBUG) << "SendCompleted "
+      << client_id_ << " "
+      << context.object_id << " "
+      << num_transfers_ << "/"
+      << max_transfers_;
   ray::Status ray_status = TransferCompleted();
 }
 
@@ -355,46 +359,42 @@ ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
   // TODO(hme): Account for pull timers.
   ray::Status status = object_directory_->Cancel(object_id);
   return ray::Status::OK();
-};
+}
 
 ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
                                 uint64_t timeout_ms, int num_ready_objects,
                                 const WaitCallback &callback) {
   // TODO: Implement wait.
   return ray::Status::OK();
-};
+}
 
 void ObjectManager::ProcessNewClient(std::shared_ptr<ReceiverConnection> conn) {
   conn->ProcessMessages();
-};
+}
 
 void ObjectManager::ProcessClientMessage(std::shared_ptr<ReceiverConnection> conn,
                                          int64_t message_type, const uint8_t *message) {
   switch (message_type) {
   case OMMessageType_PushRequest: {
-    // RAY_LOG(INFO) << "ProcessClientMessage PushRequest";
     // TODO(hme): Realize design with transfer requests handled in this manner.
     break;
   }
   case OMMessageType_PullRequest: {
-    // RAY_LOG(INFO) << "ProcessClientMessage PullRequest";
     ReceivePullRequest(conn, message);
     conn->ProcessMessages();
     break;
   }
   case OMMessageType_ConnectClient: {
-    // RAY_LOG(INFO) << "ProcessClientMessage ConnectClient";
     ConnectClient(conn, message);
     break;
   }
   case OMMessageType_DisconnectClient: {
-    // RAY_LOG(INFO) << "ProcessClientMessage DisconnectClient";
     DisconnectClient(conn, message);
     break;
   }
   default: { RAY_LOG(FATAL) << "invalid request " << message_type; }
   }
-};
+}
 
 void ObjectManager::ConnectClient(std::shared_ptr<ReceiverConnection> &conn,
                                   const uint8_t *message) {
@@ -404,13 +404,15 @@ void ObjectManager::ConnectClient(std::shared_ptr<ReceiverConnection> &conn,
   bool is_transfer = info->is_transfer();
   conn->SetClientID(client_id);
   if (is_transfer) {
-    connection_pool_.RegisterReceiver(ConnectionPool::TRANSFER, client_id, conn);
-    (void)WaitPushReceive(conn);
+    connection_pool_.RegisterReceiver(ConnectionPool::ConnectionType::TRANSFER, client_id,
+                                      conn);
+    RAY_CHECK_OK(WaitPushReceive(conn));
   } else {
-    connection_pool_.RegisterReceiver(ConnectionPool::MESSAGE, client_id, conn);
+    connection_pool_.RegisterReceiver(ConnectionPool::ConnectionType::MESSAGE, client_id,
+                                      conn);
     conn->ProcessMessages();
   }
-};
+}
 
 void ObjectManager::DisconnectClient(std::shared_ptr<ReceiverConnection> &conn,
                                      const uint8_t *message) {
@@ -418,11 +420,13 @@ void ObjectManager::DisconnectClient(std::shared_ptr<ReceiverConnection> &conn,
   ClientID client_id = ObjectID::from_binary(info->client_id()->str());
   bool is_transfer = info->is_transfer();
   if (is_transfer) {
-    connection_pool_.RemoveReceiver(ConnectionPool::TRANSFER, client_id, conn);
+    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::TRANSFER, client_id,
+                                    conn);
   } else {
-    connection_pool_.RemoveReceiver(ConnectionPool::MESSAGE, client_id, conn);
+    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::MESSAGE, client_id,
+                                    conn);
   }
-};
+}
 
 void ObjectManager::ReceivePullRequest(std::shared_ptr<ReceiverConnection> &conn,
                                        const uint8_t *message) {
@@ -432,14 +436,14 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<ReceiverConnection> &conn
   ClientID client_id = ClientID::from_binary(pr->client_id()->str());
   // Push object to requesting client.
   ray::Status push_status = Push(object_id, client_id);
-};
+}
 
 ray::Status ObjectManager::WaitPushReceive(std::shared_ptr<ReceiverConnection> conn) {
   asio::async_read(conn->GetSocket(), asio::buffer(&read_length_, sizeof(read_length_)),
                    boost::bind(&ObjectManager::HandlePushReceive, this, conn,
                                asio::placeholders::error));
   return ray::Status::OK();
-};
+}
 
 void ObjectManager::HandlePushReceive(std::shared_ptr<ReceiverConnection> conn,
                                       const boost::system::error_code &length_ec) {
@@ -486,13 +490,13 @@ ray::Status ObjectManager::ExecuteReceive(ClientID client_id, ObjectID object_id
   store_pool_->ReleaseObjectStore(store_client);
   // Wait for another push.
   ray::Status status = WaitPushReceive(conn);
-//  RAY_LOG(INFO) << "ReceiveCompleted "
-//      << client_id_ << " "
-//      << object_id << " "
-//      << num_transfers_ << "/"
-//      << max_transfers_;
+  RAY_LOG(DEBUG) << "ReceiveCompleted "
+      << client_id_ << " "
+      << object_id << " "
+      << num_transfers_ << "/"
+      << max_transfers_;
   TransferCompleted();
   return status;
-};
+}
 
 }  // namespace ray

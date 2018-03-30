@@ -45,8 +45,7 @@ class ObjectDirectoryInterface {
   // Callbacks for GetLocations.
   using OnLocationsSuccess = std::function<void(const std::vector<ray::ClientID> &v,
                                                 const ray::ObjectID &object_id)>;
-  using OnLocationsFailure =
-      std::function<void(ray::Status status, const ray::ObjectID &object_id)>;
+  using OnLocationsFailure = std::function<void(const ray::ObjectID &object_id)>;
 
   /// Asynchronously obtain the locations of an object by ObjectID.
   /// This is used to handle object pulls.
@@ -94,11 +93,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ~ObjectDirectory() override = default;
 
   ray::Status GetInformation(const ClientID &client_id,
-                             const InfoSuccessCallback &success_cb,
-                             const InfoFailureCallback &fail_cb) override;
+                             const InfoSuccessCallback &success_callback,
+                             const InfoFailureCallback &fail_callback) override;
   ray::Status GetLocations(const ObjectID &object_id,
-                           const OnLocationsSuccess &success_cb,
-                           const OnLocationsFailure &fail_cb) override;
+                           const OnLocationsSuccess &success_callback,
+                           const OnLocationsFailure &fail_callback) override;
   ray::Status Cancel(const ObjectID &object_id) override;
   ray::Status Terminate() override;
   ray::Status ReportObjectAdded(const ObjectID &object_id,
@@ -127,8 +126,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// This function actually carries out that request.
   ray::Status ExecuteGetLocations(const ObjectID &object_id);
   /// Invoked when call to ExecuteGetLocations completes.
-  ray::Status GetLocationsComplete(const ray::Status &status, const ObjectID &object_id,
-                                   const std::vector<ClientID> &v);
+  void GetLocationsComplete(const ObjectID &object_id,
+                            const std::vector<ObjectTableDataT> &location_entries);
 
   /// Maintain map of in-flight GetLocation requests.
   std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;

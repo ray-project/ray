@@ -29,9 +29,7 @@ class ObjectStorePool {
   ObjectStorePool(std::string &store_socket_name);
 
   /// This object cannot be copied due to pool_mutex.
-  ObjectStorePool &operator=(const ObjectStorePool &o) {
-    throw std::runtime_error("Can't copy ObjectStorePool.");
-  }
+  RAY_DISALLOW_COPY_AND_ASSIGN(ObjectStorePool);
 
   /// Provides a connection to the object store from the object store pool.
   /// This removes the object store client from the pool of available clients.
@@ -39,7 +37,8 @@ class ObjectStorePool {
   /// \return A connection to the object store.
   std::shared_ptr<plasma::PlasmaClient> GetObjectStore();
 
-  /// Returns a client to the object store pool.
+  /// Releases a client object and puts it back into the object store pool
+  /// for reuse.
   /// Once a client is released, it is assumed that it is not being used.
   /// \param client The client to return.
   /// \param client
@@ -57,6 +56,7 @@ class ObjectStorePool {
   std::vector<std::shared_ptr<plasma::PlasmaClient>> clients;
   std::string store_socket_name_;
 };
+
 }  // namespace ray
 
 #endif  // RAY_OBJECT_STORE_POOL_H
