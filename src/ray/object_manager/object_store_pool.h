@@ -1,5 +1,5 @@
-#ifndef RAY_OBJECT_STORE_POOL_H
-#define RAY_OBJECT_STORE_POOL_H
+#ifndef RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_POOL_H
+#define RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_POOL_H
 
 #include <list>
 #include <memory>
@@ -20,16 +20,20 @@
 
 namespace ray {
 
-class ObjectStorePool {
+/// \class ObjectStoreClientPool
+///
+/// Provides connections to the object store. Enables concurrent communication with
+/// the object store.
+class ObjectStoreClientPool {
  public:
-  /// Provides connections to the object store. Enables concurrent communication with
-  /// the object store.
+
+  /// Constructor.
   ///
   /// \param store_socket_name The object store socket name.
-  ObjectStorePool(std::string &store_socket_name);
+  ObjectStoreClientPool(const std::string &store_socket_name);
 
   /// This object cannot be copied due to pool_mutex.
-  RAY_DISALLOW_COPY_AND_ASSIGN(ObjectStorePool);
+  RAY_DISALLOW_COPY_AND_ASSIGN(ObjectStoreClientPool);
 
   /// Provides a connection to the object store from the object store pool.
   /// This removes the object store client from the pool of available clients.
@@ -59,4 +63,4 @@ class ObjectStorePool {
 
 }  // namespace ray
 
-#endif  // RAY_OBJECT_STORE_POOL_H
+#endif  // RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_POOL_H

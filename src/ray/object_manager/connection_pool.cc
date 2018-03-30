@@ -1,4 +1,4 @@
-#include "connection_pool.h"
+#include "ray/object_manager/connection_pool.h"
 
 namespace ray {
 

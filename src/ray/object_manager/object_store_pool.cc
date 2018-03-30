@@ -2,10 +2,10 @@
 
 namespace ray {
 
-ObjectStorePool::ObjectStorePool(std::string &store_socket_name)
+ObjectStoreClientPool::ObjectStoreClientPool(const std::string &store_socket_name)
     : store_socket_name_(store_socket_name) {}
 
-std::shared_ptr<plasma::PlasmaClient> ObjectStorePool::GetObjectStore() {
+std::shared_ptr<plasma::PlasmaClient> ObjectStoreClientPool::GetObjectStore() {
   std::lock_guard<std::mutex> lock(pool_mutex);
   if (available_clients.empty()) {
     Add();
@@ -15,12 +15,12 @@ std::shared_ptr<plasma::PlasmaClient> ObjectStorePool::GetObjectStore() {
   return client;
 }
 
-void ObjectStorePool::ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client) {
+void ObjectStoreClientPool::ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client) {
   std::lock_guard<std::mutex> lock(pool_mutex);
   available_clients.push_back(client);
 }
 
-void ObjectStorePool::Terminate() {
+void ObjectStoreClientPool::Terminate() {
   for (const auto &client : clients) {
     ARROW_CHECK_OK(client->Disconnect());
   }
@@ -28,7 +28,7 @@ void ObjectStorePool::Terminate() {
   clients.clear();
 }
 
-void ObjectStorePool::Add() {
+void ObjectStoreClientPool::Add() {
   clients.emplace_back(new plasma::PlasmaClient());
   ARROW_CHECK_OK(clients.back()->Connect(store_socket_name_.c_str(), "",
                                          PLASMA_DEFAULT_RELEASE_DELAY));

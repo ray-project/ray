@@ -8,7 +8,7 @@
 
 namespace ray {
 
-std::string store_executable;  // NOLINT
+std::string store_executable;
 
 static inline void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);

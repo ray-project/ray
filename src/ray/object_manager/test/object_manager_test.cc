@@ -13,7 +13,7 @@ static inline void flushall_redis(void) {
   redisFree(context);
 }
 
-std::string store_executable;  // NOLINT
+std::string store_executable;
 
 class MockServer {
  public:
