@@ -54,25 +54,44 @@ class DDPGEvaluator(PolicyEvaluator):
 
         self.sampler = SyncSampler(
                         self.env, self.model, NoFilter(),
-                        config["num_local_steps"], horizon=config["horizon"])
+                        1, horizon=config["horizon"])
+
+        self.episode_rewards = [0.0]
+        self.episode_lengths = [0.0]
 
     def initialize(self):
         self.sess.run(tf.global_variables_initializer())
 
-    def sample(self, no_replay = True):
+    def sample(self):
         """Returns a batch of samples."""
 
         rollout = self.sampler.get_data()
         rollout.data["weights"] = np.ones_like(rollout.data["rewards"])
 
+        self.episode_rewards[-1] += rollout.data["rewards"][0]
+        self.episode_lengths[-1] += 1
+        if rollout.data["dones"][0]:
+            self.episode_rewards.append(0.0)
+            self.episode_lengths.append(0.0)
+
         samples = process_rollout(
-                    rollout, MeanStdFilter(()),
-                    gamma=self.config["gamma"], use_gae=False)
+                    rollout, NoFilter(),
+                    gamma=1.0, use_gae=False)
 
         return samples
 
+    def stats(self):
+        n = self.config["smoothing_num_episodes"] + 1
+        mean_100ep_reward = round(np.mean(self.episode_rewards[-n:-1]), 5)
+        mean_100ep_length = round(np.mean(self.episode_lengths[-n:-1]), 5)
+        return {
+            "mean_100ep_reward": mean_100ep_reward,
+            "mean_100ep_length": mean_100ep_length,
+            "num_episodes": len(self.episode_rewards),
+        }
+
     def _setup_target_updates(self):
-        """Set up actor and critic updates."""
+        """Set up target actor and critic updates."""
         a_updates = []
         for var, target_var in zip(self.model.actor_var_list, self.target_model.actor_var_list):
             a_updates.append(tf.assign(target_var,
@@ -91,11 +110,6 @@ class DDPGEvaluator(PolicyEvaluator):
     def update_target(self):
         """Updates target critic and target actor."""
         self.sess.run(self.target_updates)
-        from pprint import pprint
-        pprint("After update TARGETACTOR:")
-        pprint([(k, np.linalg.norm(v)) for k, v in self.target_model.get_weights()[0].items()])
-        pprint("After update TARGETCRITIC:")
-        pprint([(k, np.linalg.norm(v)) for k, v in self.target_model.get_weights()[1].items()])
 
     def setup_gradients(self):
         """Setups critic and actor gradients."""
@@ -143,7 +157,7 @@ class DDPGEvaluator(PolicyEvaluator):
         }
         self.critic_grads = [g for g in self.critic_grads if g is not None]
         critic_grad = self.sess.run(self.critic_grads, feed_dict=critic_feed_dict)
-
+        #import ipdb; ipdb.set_trace()
         return (critic_grad, actor_grad), {}
 
     def apply_gradients(self, grads):
@@ -153,6 +167,10 @@ class DDPGEvaluator(PolicyEvaluator):
         self.sess.run(self._apply_c_gradients, feed_dict=critic_feed_dict)
         actor_feed_dict = dict(zip(self.actor_grads, a_grads))
         self.sess.run(self._apply_a_gradients, feed_dict=actor_feed_dict)
+
+    def compute_apply(self, samples):
+        grads, _ = self.compute_gradients(samples)
+        self.apply_gradients(grads)
 
     def get_weights(self):
         """Returns model weights."""

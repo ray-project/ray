@@ -11,23 +11,26 @@ from ray.tune.result import TrainingResult
 import numpy as np
 
 DEFAULT_CONFIG = {
-    "actor_model": {"fcnet_activation": "tanh"},
-    "critic_model": {"fcnet_activation": "tanh"},
+    "actor_model": {"fcnet_activation": "relu", "fcnet_hiddens": [64, 64]},
+    "critic_model": {"fcnet_activation": "relu", "fcnet_hiddens": [64, 64]},
     "env_config": {},
     "gamma": 0.99,
     "horizon": 500,
     "actor_lr": 0.0001,
     "critic_lr": 0.001,
-    "num_local_steps": 1,
     "num_workers": 0,
-    # Arguments to pass to the rllib optimizer
+
     "optimizer": {
-        "buffer_size": 10,
-        "learning_starts": 10,
+        "buffer_size": 10000,
+        "learning_starts": 500,
         "clip_rewards": False,
         "prioritized_replay": False,
-        "train_batch_size": 32,
+        "train_batch_size": 64,
     },
+
+    "parameter_noise": False,
+    "parameter_epsilon": 0.0002, # linear decay of exploration policy
+    "smoothing_num_episodes": 100,
     "tau": 0.001,
 }
 
@@ -50,35 +53,27 @@ class DDPGAgent(Agent):
         self.optimizer.step()
         # update target
         self.local_evaluator.update_target()
-        # generate training result
 
-        episode_rewards = []
-        episode_lengths = []
-        metric_lists = [a.get_completed_rollout_metrics.remote()
-                        for a in self.remote_evaluators]
-        for metrics in metric_lists:
-            for episode in ray.get(metrics):
-                episode_lengths.append(episode.episode_length)
-                episode_rewards.append(episode.episode_reward)
-        avg_reward = np.mean(episode_rewards)
-        avg_length = np.mean(episode_lengths)
-        timesteps = np.sum(episode_lengths)
+        # generate training result
+        stats = self.local_evaluator.stats()
+        if not isinstance(stats, list):
+            stats = [stats]
+
+        mean_100ep_reward = 0.0
+        mean_100ep_length = 0.0
+        num_episodes = 0
+
+        for s in stats:
+            mean_100ep_reward += s["mean_100ep_reward"] / len(stats)
+            mean_100ep_length += s["mean_100ep_length"] / len(stats)
+            num_episodes += s["num_episodes"]
 
         result = TrainingResult(
-            episode_reward_mean=avg_reward,
-            episode_len_mean=avg_length,
-            timesteps_this_iter=timesteps,
-            info={})
+            episode_reward_mean=mean_100ep_reward,
+            episode_len_mean=mean_100ep_length,
+            episodes_total=num_episodes,
+            timesteps_this_iter=1,
+            info = {}
+            )
 
         return result
-
-if __name__ == '__main__':
-    import ray
-    ray.init()
-    agent = DDPGAgent(env="Pendulum-v0")
-    for i in range(30):
-        r = agent.train()
-    r = agent.train()
-
-    from ray.tune.logger import pretty_print
-    pretty_print(r)

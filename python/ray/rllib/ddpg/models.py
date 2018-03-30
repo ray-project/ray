@@ -6,6 +6,7 @@ from copy import deepcopy
 import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.fcnet import FullyConnectedNetwork
+from ray.rllib.ddpg.random_process import OrnsteinUhlenbeckProcess
 
 import numpy as np
 import tensorflow as tf
@@ -47,8 +48,13 @@ class DDPGModel():
             self.actor_var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                                     tf.get_variable_scope().name)
 
-        self.critic_vars = ray.experimental.TensorFlowVariables(self.critic_loss, self.sess)
-        self.actor_vars = ray.experimental.TensorFlowVariables(self.actor_loss, self.sess)
+        #TODO: self.critic_vars currently also contains actor_vars; was only using this for getting/setting weights though
+        #self.critic_vars = ray.experimental.TensorFlowVariables(self.critic_loss, self.sess)
+        #self.actor_vars = ray.experimental.TensorFlowVariables(self.actor_loss, self.sess)
+
+        if (self.config["parameter_noise"]):
+            self.random_process = OrnsteinUhlenbeckProcess(size=1, theta=0.15, mu=0, sigma=0.2)
+            self.epsilon = 1.0
 
     def _setup_critic_loss(self, action_space):
         # what the target Q network gives us
@@ -100,6 +106,10 @@ class DDPGModel():
         """Returns action, given state."""
         flattened_ob = np.reshape(ob, [-1, np.prod(ob.shape)])
         action = self.sess.run(self.output_action, {self.obs: flattened_ob})
+        if (self.config["parameter_noise"]):
+            action += self.epsilon * self.random_process.sample()
+            if (self.epsilon > 0):
+                self.epsilon -= self.config["parameter_epsilon"]
         return action[0], {}
 
     def value(self, *args):
