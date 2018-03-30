@@ -51,7 +51,7 @@ class ObjectManager {
   /// \param gcs_client A client connection to the Ray GCS.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          std::unique_ptr<boost::asio::io_service> object_manager_service,
-                         ObjectManagerConfig config,
+                         const ObjectManagerConfig &config,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
   /// Takes user-defined ObjectDirectoryInterface implementation.
@@ -64,7 +64,7 @@ class ObjectManager {
   /// \param od An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          std::unique_ptr<boost::asio::io_service> object_manager_service,
-                         ObjectManagerConfig config,
+                         const ObjectManagerConfig &config,
                          std::unique_ptr<ObjectDirectoryInterface> od);
 
   /// Subscribe to notifications of objects added to local store.
@@ -151,8 +151,8 @@ class ObjectManager {
   ClientID client_id_;
   ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
-  std::unique_ptr<ObjectStoreNotification> store_notification_;
-  std::unique_ptr<ObjectStorePool> store_pool_;
+  ObjectStoreNotificationManager store_notification_;
+  std::unique_ptr<ObjectStoreClientPool> store_pool_;
 
   /// An io service for creating connections to other object managers.
   std::unique_ptr<boost::asio::io_service> object_manager_service_;

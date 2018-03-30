@@ -10,32 +10,32 @@ namespace ray {
 // disabled by running all asio components on the main thread (main_service).
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::unique_ptr<asio::io_service> object_manager_service,
-                             ObjectManagerConfig config,
+                             const ObjectManagerConfig &config,
                              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     // TODO(hme): Eliminate knowledge of GCS.
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       object_directory_(new ObjectDirectory(gcs_client)),
+      store_notification_(main_service, config.store_socket_name),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
       connection_pool_(object_directory_.get(), &main_service, client_id_),
       transfer_queue_() {
   main_service_ = &main_service;
   config_ = config;
-  store_notification_.reset(
-      new ObjectStoreNotification(main_service, config.store_socket_name));
-  store_notification_->SubscribeObjAdded(
+  store_notification_.SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
-  store_notification_->SubscribeObjDeleted(
+  store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
-  store_pool_.reset(new ObjectStorePool(config.store_socket_name));
+  store_pool_.reset(new ObjectStoreClientPool(config.store_socket_name));
   StartIOService();
 }
 
 ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::unique_ptr<asio::io_service> object_manager_service,
-                             ObjectManagerConfig config,
+                             const ObjectManagerConfig &config,
                              std::unique_ptr<ObjectDirectoryInterface> od)
     : object_directory_(std::move(od)),
+      store_notification_(main_service, config.store_socket_name),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
       connection_pool_(object_directory_.get(), &main_service, client_id_),
@@ -43,11 +43,9 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   config_ = config;
-  store_notification_ = std::unique_ptr<ObjectStoreNotification>(
-      new ObjectStoreNotification(main_service, config.store_socket_name));
-  store_notification_->SubscribeObjAdded(
+  store_notification_.SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
-  store_notification_->SubscribeObjDeleted(
+  store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
 }
@@ -77,20 +75,20 @@ ray::Status ObjectManager::Terminate() {
   StopIOService();
   ray::Status status_code = object_directory_->Terminate();
   // TODO: evaluate store client termination status.
-  store_notification_->Terminate();
+  store_notification_.Terminate();
   store_pool_->Terminate();
   return status_code;
 }
 
 ray::Status ObjectManager::SubscribeObjAdded(
     std::function<void(const ObjectID &)> callback) {
-  store_notification_->SubscribeObjAdded(callback);
+  store_notification_.SubscribeObjAdded(callback);
   return ray::Status::OK();
 }
 
 ray::Status ObjectManager::SubscribeObjDeleted(
     std::function<void(const ObjectID &)> callback) {
-  store_notification_->SubscribeObjDeleted(callback);
+  store_notification_.SubscribeObjDeleted(callback);
   return ray::Status::OK();
 }
 
@@ -278,7 +276,10 @@ void ObjectManager::SendObject(SenderConnection::pointer conn, const UniqueID &c
     return;
   }
   boost::system::error_code ec;
-  asio::write(conn->GetSocket(), asio::buffer(context.data, context.object_size), ec);
+  std::vector<asio::const_buffer> buffer;
+  buffer.push_back(asio::buffer(context.data, context.object_size));
+  conn->WriteBuffer(buffer, ec);
+
   if (ec.value() != 0) {
     // push failed.
     // TODO(hme): Trash sender.
@@ -316,7 +317,7 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<ReceiverConnection> con
                                          int64_t message_type, const uint8_t *message) {
   switch (message_type) {
   case OMMessageType_PushRequest: {
-    // TODO(hme): Realize design with transfer requests handled in this manner.
+
     break;
   }
   case OMMessageType_PullRequest: {

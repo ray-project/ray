@@ -5,14 +5,15 @@
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
 
-#include "common.h"
-#include "common_protocol.h"
+#include "common/common.h"
+#include "common/common_protocol.h"
+
 #include "ray/object_manager/object_store_notification.h"
 
 namespace ray {
 
-ObjectStoreNotification::ObjectStoreNotification(boost::asio::io_service &io_service,
-                                                 std::string &store_socket_name)
+ObjectStoreNotificationManager::ObjectStoreNotificationManager(
+    boost::asio::io_service &io_service, const std::string &store_socket_name)
     : store_client_(), socket_(io_service) {
   ARROW_CHECK_OK(
       store_client_.Connect(store_socket_name.c_str(), "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -22,24 +23,28 @@ ObjectStoreNotification::ObjectStoreNotification(boost::asio::io_service &io_ser
   socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
   assert(!ec.value());
   NotificationWait();
-};
-
-void ObjectStoreNotification::Terminate() { ARROW_CHECK_OK(store_client_.Disconnect()); }
-
-void ObjectStoreNotification::NotificationWait() {
-  boost::asio::async_read(socket_, boost::asio::buffer(&length_, sizeof(length_)),
-                          boost::bind(&ObjectStoreNotification::ProcessStoreLength, this,
-                                      boost::asio::placeholders::error));
 }
 
-void ObjectStoreNotification::ProcessStoreLength(const boost::system::error_code &error) {
-  notification_.resize(length_);
-  boost::asio::async_read(socket_, boost::asio::buffer(notification_),
-                          boost::bind(&ObjectStoreNotification::ProcessStoreNotification,
+void ObjectStoreNotificationManager::Terminate() {
+  ARROW_CHECK_OK(store_client_.Disconnect());
+}
+
+void ObjectStoreNotificationManager::NotificationWait() {
+  boost::asio::async_read(socket_, boost::asio::buffer(&length_, sizeof(length_)),
+                          boost::bind(&ObjectStoreNotificationManager::ProcessStoreLength,
                                       this, boost::asio::placeholders::error));
 }
 
-void ObjectStoreNotification::ProcessStoreNotification(
+void ObjectStoreNotificationManager::ProcessStoreLength(
+    const boost::system::error_code &error) {
+  notification_.resize(length_);
+  boost::asio::async_read(
+      socket_, boost::asio::buffer(notification_),
+      boost::bind(&ObjectStoreNotificationManager::ProcessStoreNotification, this,
+                  boost::asio::placeholders::error));
+}
+
+void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
   if (error) {
     throw std::runtime_error("ObjectStore may have died.");
@@ -60,26 +65,26 @@ void ObjectStoreNotification::ProcessStoreNotification(
   NotificationWait();
 }
 
-void ObjectStoreNotification::ProcessStoreAdd(const ObjectID &object_id) {
+void ObjectStoreNotificationManager::ProcessStoreAdd(const ObjectID &object_id) {
   for (auto handler : add_handlers_) {
     handler(object_id);
   }
-};
+}
 
-void ObjectStoreNotification::ProcessStoreRemove(const ObjectID &object_id) {
+void ObjectStoreNotificationManager::ProcessStoreRemove(const ObjectID &object_id) {
   for (auto handler : rem_handlers_) {
     handler(object_id);
   }
-};
+}
 
-void ObjectStoreNotification::SubscribeObjAdded(
+void ObjectStoreNotificationManager::SubscribeObjAdded(
     std::function<void(const ObjectID &)> callback) {
   add_handlers_.push_back(callback);
-};
+}
 
-void ObjectStoreNotification::SubscribeObjDeleted(
+void ObjectStoreNotificationManager::SubscribeObjDeleted(
     std::function<void(const ObjectID &)> callback) {
   rem_handlers_.push_back(callback);
-};
+}
 
 }  // namespace ray

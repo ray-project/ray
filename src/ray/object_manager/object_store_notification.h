@@ -13,17 +13,24 @@
 #include "plasma/events.h"
 #include "plasma/plasma.h"
 
-#include "object_directory.h"
 #include "ray/id.h"
 #include "ray/status.h"
 
+#include "ray/object_manager/object_directory.h"
+
 namespace ray {
 
-class ObjectStoreNotification {
+/// \class ObjectStoreClientPool
+///
+/// Encapsulates notification handling from the object store.
+class ObjectStoreNotificationManager {
  public:
-  /// Encapsulates notification handling from the object store.
-  ObjectStoreNotification(boost::asio::io_service &io_service,
-                          std::string &store_socket_name);
+  /// Constructor.
+  ///
+  /// \param io_service The asio service to be used.
+  /// \param store_socket_name The store socket to connect to.
+  ObjectStoreNotificationManager(boost::asio::io_service &io_service,
+                                 const std::string &store_socket_name);
 
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that

@@ -129,13 +129,13 @@ LineageCache::LineageCache(gcs::TableInterface<TaskID, protocol::Task> &task_sto
 /// A helper function to merge one lineage into another, in DFS order.
 ///
 /// \param task_id The current entry to merge from lineage_from into
-///        lineage_to.
+/// lineage_to.
 /// \param lineage_from The lineage to merge entries from. This lineage is
-///        traversed by following each entry's parent pointers in DFS order,
-///        until an entry is not found or the stopping condition is reached.
+/// traversed by following each entry's parent pointers in DFS order,
+/// until an entry is not found or the stopping condition is reached.
 /// \param lineage_to The lineage to merge entries into.
 /// \param stopping_condition A stopping condition for the DFS over
-///        lineage_from. This should return true if the merge should stop.
+/// lineage_from. This should return true if the merge should stop.
 void MergeLineageHelper(const UniqueID &task_id, const Lineage &lineage_from,
                         Lineage &lineage_to,
                         std::function<bool(GcsStatus)> stopping_condition) {

@@ -44,9 +44,17 @@ class SenderConnection : public ServerConnection<boost::asio::ip::tcp>,
   /// \return The ClientID of this connection.
   const ClientID &GetClientID() { return client_id_; }
 
+  /// Write a buffer to this connection.
+  /// 
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer, boost::system::error_code &ec){
+    boost::asio::write(socket_, buffer, ec);
+  }
+
  private:
-  friend bool operator==(const SenderConnection &conn1, const SenderConnection &conn2) {
-    return conn1.connection_id_ == conn2.connection_id_;
+  bool operator==(const SenderConnection &rhs) const {
+    return connection_id_ == rhs.connection_id_;
   }
 
   static uint64_t id_counter_;

@@ -1,4 +1,4 @@
-#include "object_manager_client_connection.h"
+#include "ray/object_manager/object_manager_client_connection.h"
 
 namespace ray {
 

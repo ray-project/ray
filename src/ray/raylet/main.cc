@@ -27,8 +27,8 @@ int main(int argc, char *argv[]) {
   node_manager_config.heartbeat_period_ms = 100;
 
   // Configuration for the object manager.
-  ray::ObjectManagerConfig om_config;
-  om_config.store_socket_name = std::string(argv[2]);
+  ray::ObjectManagerConfig object_manager_config;
+  object_manager_config.store_socket_name = store_socket_name;
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();
@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<boost::asio::io_service> object_manager_service;
   object_manager_service.reset(new boost::asio::io_service());
   ray::raylet::Raylet server(main_service, std::move(object_manager_service),
-                             std::string(argv[1]), node_manager_config, om_config,
+                             raylet_socket_name, node_manager_config, object_manager_config,
                              gcs_client);
   main_service.run();
 }

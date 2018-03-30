@@ -9,8 +9,8 @@ namespace ray {
 
 namespace raylet {
 
-std::string test_executable;   // NOLINT
-std::string store_executable;  // NOLINT
+std::string test_executable;
+std::string store_executable;
 
 // TODO(hme): Get this working once the dust settles.
 class TestObjectManagerBase : public ::testing::Test {
@@ -97,7 +97,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
     ObjectID object_id = ObjectID::from_random();
-    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id.hex().c_str();
+    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
@@ -200,8 +200,8 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
                   << "\n";
     ClientID client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     ClientID client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    RAY_LOG(INFO) << "Server 1: " << client_id_1.hex();
-    RAY_LOG(INFO) << "Server 2: " << client_id_2.hex();
+    RAY_LOG(INFO) << "Server 1: " << client_id_1;
+    RAY_LOG(INFO) << "Server 2: " << client_id_2;
 
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
