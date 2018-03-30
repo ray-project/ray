@@ -26,6 +26,19 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
     : socket_(std::move(socket)) {}
 
 template <class T>
+void ServerConnection<T>::WriteBuffer(
+    const std::vector<boost::asio::const_buffer> &buffer, boost::system::error_code &ec) {
+  boost::asio::write(socket_, buffer, ec);
+}
+
+template <class T>
+void ServerConnection<T>::ReadBuffer(
+    const std::vector<boost::asio::mutable_buffer> &buffer,
+    boost::system::error_code &ec) {
+  boost::asio::read(socket_, buffer, ec);
+}
+
+template <class T>
 ray::Status ServerConnection<T>::WriteMessage(int64_t type, size_t length,
                                               const uint8_t *message) {
   std::vector<boost::asio::const_buffer> message_buffers;

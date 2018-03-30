@@ -85,14 +85,14 @@ class MockServer {
 
 class TestObjectManager : public ::testing::Test {
  public:
-  TestObjectManager() { RAY_LOG(INFO) << "TestObjectManager: started."; }
+  TestObjectManager() {}
 
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
     store_id = store_id + id;
     std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
                                  " 1> /dev/null 2> /dev/null &";
-    RAY_LOG(INFO) << plasma_command;
+    RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
     if (ec != 0) {
       throw std::runtime_error("failed to start plasma store.");
@@ -224,19 +224,19 @@ class TestObjectManagerCommands : public TestObjectManager {
   }
 
   void TestConnections() {
-    RAY_LOG(INFO) << "\n"
-                  << "Server client ids:"
-                  << "\n";
+    RAY_LOG(DEBUG) << "\n"
+                   << "Server client ids:"
+                   << "\n";
     const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
-    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id) == ClientID::nil());
-    RAY_LOG(INFO) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
-    RAY_LOG(INFO) << "Server 1 ClientIp=" << data.node_manager_address;
-    RAY_LOG(INFO) << "Server 1 ClientPort=" << data.node_manager_port;
+    RAY_LOG(DEBUG) << (ClientID::from_binary(data.client_id) == ClientID::nil());
+    RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::from_binary(data.client_id);
+    RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address;
+    RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port;
     ASSERT_EQ(client_id_1, ClientID::from_binary(data.client_id));
     const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
-    RAY_LOG(INFO) << "Server 2 ClientID=" << ClientID::from_binary(data2.client_id);
-    RAY_LOG(INFO) << "Server 2 ClientIp=" << data2.node_manager_address;
-    RAY_LOG(INFO) << "Server 2 ClientPort=" << data2.node_manager_port;
+    RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::from_binary(data2.client_id);
+    RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address;
+    RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port;
     ASSERT_EQ(client_id_2, ClientID::from_binary(data2.client_id));
   }
 };

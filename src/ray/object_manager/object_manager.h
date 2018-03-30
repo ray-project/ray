@@ -24,8 +24,8 @@
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager_client_connection.h"
-#include "ray/object_manager/object_store_notification.h"
-#include "ray/object_manager/object_store_pool.h"
+#include "ray/object_manager/object_store_client_pool.h"
+#include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/object_manager/transfer_queue.h"
 
 namespace ray {
@@ -154,7 +154,7 @@ class ObjectManager {
   ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
   ObjectStoreNotificationManager store_notification_;
-  std::unique_ptr<ObjectStoreClientPool> store_pool_;
+  ObjectStoreClientPool store_pool_;
 
   /// An io service for creating connections to other object managers.
   std::unique_ptr<boost::asio::io_service> object_manager_service_;
@@ -179,8 +179,9 @@ class ObjectManager {
   ConnectionPool connection_pool_;
 
   /// Timeout for failed pull requests.
-  using Timer = std::shared_ptr<boost::asio::deadline_timer>;
-  std::unordered_map<ObjectID, Timer, UniqueIDHasher> pull_requests_;
+  std::unordered_map<ObjectID, std::shared_ptr<boost::asio::deadline_timer>,
+                     UniqueIDHasher>
+      pull_requests_;
 
   /// This number is incremented whenever a push is started.
   int num_transfers_ = 0;
@@ -194,9 +195,6 @@ class ObjectManager {
   /// concurrent transfers, including both sends and receives, with a single
   /// remote object manager.
   TransferQueue transfer_queue_;
-
-  /// Read length for push receives.
-  uint64_t read_length_;
 
   /// Cache of locally available objects.
   std::unordered_set<ObjectID, UniqueIDHasher> local_objects_;
@@ -217,11 +215,14 @@ class ObjectManager {
   /// is GetLocationsFailed.
   void SchedulePull(const ObjectID &object_id, int wait_ms);
 
-  /// Invokes a pull. Guaranteed to execute on main_service_ thread.
-  ray::Status Pull_(const ObjectID &object_id);
+  /// Part of an asynchronous strand of Pull methods.
+  /// Gets the location of an object before invoking PullEstablishConnection.
+  /// Guaranteed to execute on main_service_ thread.
+  ray::Status PullGetLocations(const ObjectID &object_id);
 
   /// Invokes a pull with known ClientID. Guaranteed to execute on main_service_ thread.
-  ray::Status Pull_(const ObjectID &object_id, const ClientID &client_id);
+  ray::Status PullEstablishConnection(const ObjectID &object_id,
+                                      const ClientID &client_id);
 
   /// Private callback implementation for success on get location. Called inside OD.
   void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
@@ -233,43 +234,41 @@ class ObjectManager {
   /// Synchronously send a pull request.
   /// Invoked once a connection to a remote manager that contains the required ObjectID
   /// is established.
-  ray::Status ExecutePull(const ObjectID &object_id, SenderConnection::pointer conn);
+  ray::Status PullSendRequest(const ObjectID &object_id,
+                              boost::shared_ptr<SenderConnection> conn);
 
-  /// Guaranteed to execute on main_service_ thread.
-  ray::Status Push_(const ObjectID &object_id, const ClientID &client_id);
+  /// Queue push on control_strand_.
+  ray::Status QueuePush(const ObjectID &object_id, const ClientID &client_id);
 
   /// Starts as many queued transfers as possible without exceeding max_transfers_
   /// concurrent transfers. Alternates between queued sends and receives.
+  /// Guranteed to execute on control_strand_.
   ray::Status DequeueTransfers();
-
-  /// Guranteed to execute on main thread.
-  ray::Status DequeueTransfers_();
 
   /// Invoked when a transfer is completed. This method will decrement num_transfers_
   /// and invoke DequeueTransfers.
   ray::Status TransferCompleted();
 
   /// Begin executing a send.
-  ray::Status ExecuteSend(const ObjectID &object_id, const ClientID &client_id);
+  ray::Status ExecuteSendObject(const ObjectID &object_id, const ClientID &client_id);
   /// Initiate a push. This method asynchronously sends the object id and object size
   /// to the remote object manager.
-  ray::Status SendHeaders(const ObjectID &object_id, SenderConnection::pointer client);
+  ray::Status SendObjectHeaders(const ObjectID &object_id,
+                                boost::shared_ptr<SenderConnection> client);
   /// Called by the handler for ExecutePushMeta.
   /// This method initiates the actual object transfer.
-  void SendObject(SenderConnection::pointer conn, const UniqueID &context_id,
-                  std::shared_ptr<plasma::PlasmaClient> store_client,
-                  const boost::system::error_code &header_ec);
+  ray::Status SendObjectData(boost::shared_ptr<SenderConnection> conn,
+                             const UniqueID &context_id,
+                             std::shared_ptr<plasma::PlasmaClient> store_client);
 
-  /// A socket connection doing an asynchronous read on a transfer connection that was
-  /// added by ConnectClient.
-  ray::Status WaitPushReceive(std::shared_ptr<ReceiverConnection> conn);
   /// Invoked when a remote object manager pushes an object to this object manager.
   /// This will queue the receive.
-  void HandlePushReceive(std::shared_ptr<ReceiverConnection> conn,
-                         const boost::system::error_code &length_ec);
+  void ReceivePushRequest(std::shared_ptr<ReceiverConnection> conn,
+                          const uint8_t *message);
   /// Execute a receive that was in the queue.
-  ray::Status ExecuteReceive(ClientID client_id, ObjectID object_id, uint64_t object_size,
-                             std::shared_ptr<ReceiverConnection> conn);
+  ray::Status ExecuteReceiveObject(ClientID client_id, ObjectID object_id,
+                                   uint64_t object_size,
+                                   std::shared_ptr<ReceiverConnection> conn);
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<ReceiverConnection> &conn,

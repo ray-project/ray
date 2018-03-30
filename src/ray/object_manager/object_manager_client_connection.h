@@ -16,12 +16,8 @@
 
 namespace ray {
 
-class SenderConnection : public ServerConnection<boost::asio::ip::tcp>,
-                         public boost::enable_shared_from_this<SenderConnection> {
+class SenderConnection : public boost::enable_shared_from_this<SenderConnection> {
  public:
-  /// Pointer type for this class.
-  typedef boost::shared_ptr<SenderConnection> pointer;
-
   /// Create a connection for sending data to other object managers.
   ///
   /// \param io_service The service to which the created socket should attach.
@@ -29,28 +25,45 @@ class SenderConnection : public ServerConnection<boost::asio::ip::tcp>,
   /// \param ip The ip address of the remote node server.
   /// \param port The port of the remote node server.
   /// \return A connection to the remote object manager.
-  static pointer Create(boost::asio::io_service &io_service, const ClientID &client_id,
-                        const std::string &ip, uint16_t port);
+  static boost::shared_ptr<SenderConnection> Create(boost::asio::io_service &io_service,
+                                                    const ClientID &client_id,
+                                                    const std::string &ip, uint16_t port);
 
   /// \param socket A reference to the socket created by the static Create method.
   /// \param client_id The ClientID of the remote node.
-  explicit SenderConnection(
-      boost::asio::basic_stream_socket<boost::asio::ip::tcp> &&socket,
-      const ClientID &client_id);
+  SenderConnection(boost::shared_ptr<TcpServerConnection> conn,
+                   const ClientID &client_id);
 
-  /// \return Socket for this connection.
-  boost::asio::ip::tcp::socket &GetSocket();
+  /// Write a message to the client.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status WriteMessage(int64_t type, uint64_t length, const uint8_t *message) {
+    return conn_->WriteMessage(type, length, message);
+  }
+
+  /// Write a buffer to this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer,
+                   boost::system::error_code &ec) {
+    return conn_->WriteBuffer(buffer, ec);
+  }
+
+  /// Read a buffer from this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
+                  boost::system::error_code &ec) {
+    return conn_->ReadBuffer(buffer, ec);
+  }
 
   /// \return The ClientID of this connection.
   const ClientID &GetClientID() { return client_id_; }
-
-  /// Write a buffer to this connection.
-  /// 
-  /// \param buffer The buffer.
-  /// \param ec The error code object in which to store error codes.
-  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer, boost::system::error_code &ec){
-    boost::asio::write(socket_, buffer, ec);
-  }
 
  private:
   bool operator==(const SenderConnection &rhs) const {
@@ -60,6 +73,7 @@ class SenderConnection : public ServerConnection<boost::asio::ip::tcp>,
   static uint64_t id_counter_;
   uint64_t connection_id_;
   ClientID client_id_;
+  boost::shared_ptr<TcpServerConnection> conn_;
 };
 
 class ReceiverConnection;
@@ -69,7 +83,7 @@ using ReceiverClientHandler = std::function<void(std::shared_ptr<ReceiverConnect
 using ReceiverMessageHandler =
     std::function<void(std::shared_ptr<ReceiverConnection>, int64_t, const uint8_t *)>;
 
-// TODO(hme): Implement ClientConnection by composition.
+// TODO(swang): Help melih implement ClientConnection by composition.
 // TODO(hme): Document and move implementation to .cc file once this is finalized.
 class ReceiverConnection : public ServerConnection<boost::asio::ip::tcp>,
                            public std::enable_shared_from_this<ReceiverConnection> {
@@ -82,8 +96,6 @@ class ReceiverConnection : public ServerConnection<boost::asio::ip::tcp>,
     client_handler(self);
     return self;
   }
-
-  boost::asio::basic_stream_socket<boost::asio::ip::tcp> &GetSocket() { return socket_; }
 
   void ProcessMessages() {
     // Wait for a message header from the client. The message header includes the

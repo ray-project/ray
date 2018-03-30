@@ -30,6 +30,7 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
 ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
                                             const InfoSuccessCallback &success_callback,
                                             const InfoFailureCallback &fail_callback) {
+  // This is okay since the ClientTable maintains a collection of client data.
   std::lock_guard<std::mutex> lock(gcs_mutex);
   const ClientTableDataT &data = gcs_client_->client_table().GetClient(client_id);
   ClientID result_client_id = ClientID::from_binary(data.client_id);
@@ -57,7 +58,6 @@ ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
 };
 
 ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
-  std::lock_guard<std::mutex> lock(gcs_mutex);
   JobID job_id = JobID::from_random();
   // Note: Lookup must be synchronous for thread-safe access.
   // For now, this is only accessed by the main thread.

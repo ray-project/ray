@@ -15,10 +15,10 @@
 #include "ray/id.h"
 #include "ray/status.h"
 
+#include <mutex>
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager_client_connection.h"
-#include <mutex>
 
 namespace asio = boost::asio;
 
@@ -27,7 +27,7 @@ namespace ray {
 class ConnectionPool {
  public:
   /// Callbacks for GetSender.
-  using SuccessCallback = std::function<void(SenderConnection::pointer)>;
+  using SuccessCallback = std::function<void(boost::shared_ptr<SenderConnection>)>;
   using FailureCallback = std::function<void()>;
 
   /// Connection type to distinguish between message and transfer connections.
@@ -77,7 +77,8 @@ class ConnectionPool {
   /// \param type The type of connection.
   /// \param conn The actual connection.
   /// \return Status of invoking this method.
-  ray::Status ReleaseSender(ConnectionType type, SenderConnection::pointer conn);
+  ray::Status ReleaseSender(ConnectionType type,
+                            boost::shared_ptr<SenderConnection> conn);
 
   // TODO(hme): Implement with error handling.
   /// Remove a sender connection. This is invoked if the connection is no longer
@@ -86,7 +87,7 @@ class ConnectionPool {
   /// \param type The type of connection.
   /// \param conn The actual connection.
   /// \return Status of invoking this method.
-  ray::Status RemoveSender(ConnectionType type, SenderConnection::pointer conn);
+  ray::Status RemoveSender(ConnectionType type, boost::shared_ptr<SenderConnection> conn);
 
   /// This object cannot be copied for thread-safety.
   ConnectionPool &operator=(const ConnectionPool &o) {
@@ -96,7 +97,7 @@ class ConnectionPool {
  private:
   /// A container type that maps ClientID to a connection type.
   using SenderMapType =
-      std::unordered_map<ray::ClientID, std::vector<SenderConnection::pointer>,
+      std::unordered_map<ray::ClientID, std::vector<boost::shared_ptr<SenderConnection>>,
                          ray::UniqueIDHasher>;
   using ReceiverMapType =
       std::unordered_map<ray::ClientID, std::vector<std::shared_ptr<ReceiverConnection>>,
@@ -108,7 +109,7 @@ class ConnectionPool {
 
   /// Adds a sender for ClientID to the given map.
   void Add(SenderMapType &conn_map, const ClientID &client_id,
-           SenderConnection::pointer conn);
+           boost::shared_ptr<SenderConnection> conn);
 
   /// Removes the given receiver for ClientID from the given map.
   void Remove(ReceiverMapType &conn_map, const ClientID &client_id,
@@ -119,11 +120,12 @@ class ConnectionPool {
 
   /// Removes a sender connection to ClientID from the pool of available connections.
   /// This method assumes conn_map has available connections to ClientID.
-  SenderConnection::pointer Borrow(SenderMapType &conn_map, const ClientID &client_id);
+  boost::shared_ptr<SenderConnection> Borrow(SenderMapType &conn_map,
+                                             const ClientID &client_id);
 
   /// Returns a sender connection to ClientID to the pool of available connections.
   void Return(SenderMapType &conn_map, const ClientID &client_id,
-              SenderConnection::pointer conn);
+              boost::shared_ptr<SenderConnection> conn);
 
   /// Asynchronously obtain a new connection to client_id.
   ray::Status GetNewConnection(ConnectionType type, const ClientID &client_id,
@@ -131,8 +133,8 @@ class ConnectionPool {
                                FailureCallback failure_callback);
 
   /// Synchronously create a connection to client_id.
-  SenderConnection::pointer CreateConnection(ConnectionType type,
-                                             RemoteConnectionInfo info);
+  boost::shared_ptr<SenderConnection> CreateConnection(ConnectionType type,
+                                                       RemoteConnectionInfo info);
 
   // TODO(hme): Optimize with separate mutex per collection.
   std::mutex connection_mutex;

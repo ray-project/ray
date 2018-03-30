@@ -8,7 +8,7 @@
 #include "common/common.h"
 #include "common/common_protocol.h"
 
-#include "ray/object_manager/object_store_notification.h"
+#include "ray/object_manager/object_store_notification_manager.h"
 
 namespace ray {
 

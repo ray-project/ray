@@ -1,5 +1,6 @@
 #include <chrono>
 #include <iostream>
+#include <random>
 #include <thread>
 
 #include "gtest/gtest.h"
@@ -100,7 +101,7 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id = store_id + id;
     std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
                                  " 1> /dev/null 2> /dev/null &";
-    RAY_LOG(INFO) << plasma_command;
+    RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
     if (ec != 0) {
       throw std::runtime_error("failed to start plasma store.");
@@ -194,13 +195,20 @@ class StressTestObjectManager : public TestObjectManagerBase {
     PULL_A_B,
     PULL_B_A,
     BIDIRECTIONAL_PULL,
+    BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE,
   };
 
   int async_loop_index = -1;
   uint num_expected_objects;
 
   std::vector<TransferPattern> async_loop_patterns = {
-      PUSH_A_B, PUSH_B_A, BIDIRECTIONAL_PUSH, PULL_A_B, PULL_B_A, BIDIRECTIONAL_PULL};
+      PUSH_A_B,
+      PUSH_B_A,
+      BIDIRECTIONAL_PUSH,
+      PULL_A_B,
+      PULL_B_A,
+      BIDIRECTIONAL_PULL,
+      BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE};
 
   int num_connected_clients = 0;
 
@@ -291,9 +299,6 @@ class StressTestObjectManager : public TestObjectManagerBase {
     static unsigned char *digest_2 = GetDigest(client2, object_id_2);
     for (int i = -1; ++i < size;) {
       ASSERT_TRUE(digest_1[i] == digest_2[i]);
-      if (digest_1[i] != digest_2[i]) {
-        RAY_LOG(INFO) << i << " " << digest_1[i] << " " << digest_2[i];
-      }
     }
   }
 
@@ -328,7 +333,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
     ray::Status status = ray::Status::OK();
 
     if (transfer_pattern == BIDIRECTIONAL_PULL ||
-        transfer_pattern == BIDIRECTIONAL_PUSH) {
+        transfer_pattern == BIDIRECTIONAL_PUSH ||
+        transfer_pattern == BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE) {
       num_expected_objects = (uint)2 * num_trials;
     } else {
       num_expected_objects = (uint)num_trials;
@@ -377,6 +383,17 @@ class StressTestObjectManager : public TestObjectManagerBase {
         status = server1->object_manager_.Pull(oid2);
       }
     } break;
+    case BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE: {
+      std::random_device rd;
+      std::mt19937 gen(rd());
+      std::uniform_int_distribution<> dis(1, 50);
+      for (int i = -1; ++i < num_trials;) {
+        ObjectID oid1 = WriteDataToClient(client1, data_size + dis(gen));
+        status = server2->object_manager_.Pull(oid1);
+        ObjectID oid2 = WriteDataToClient(client2, data_size + dis(gen));
+        status = server1->object_manager_.Pull(oid2);
+      }
+    } break;
     default: {
       RAY_LOG(FATAL) << "No case for transfer_pattern " << transfer_pattern;
     } break;
@@ -384,25 +401,25 @@ class StressTestObjectManager : public TestObjectManagerBase {
   }
 
   void TestConnections() {
-    RAY_LOG(INFO) << "\n"
-                  << "Server client ids:"
-                  << "\n";
+    RAY_LOG(DEBUG) << "\n"
+                   << "Server client ids:"
+                   << "\n";
     ClientID client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     ClientID client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    RAY_LOG(INFO) << "Server 1: " << client_id_1 << "\n"
-                  << "Server 2: " << client_id_2;
+    RAY_LOG(DEBUG) << "Server 1: " << client_id_1 << "\n"
+                   << "Server 2: " << client_id_2;
 
-    RAY_LOG(INFO) << "\n"
-                  << "All connected clients:"
-                  << "\n";
+    RAY_LOG(DEBUG) << "\n"
+                   << "All connected clients:"
+                   << "\n";
     const ClientTableDataT &data = gcs_client_1->client_table().GetClient(client_id_1);
-    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id) << "\n"
-                  << "ClientIp=" << data.node_manager_address << "\n"
-                  << "ClientPort=" << data.node_manager_port;
+    RAY_LOG(DEBUG) << "ClientID=" << ClientID::from_binary(data.client_id) << "\n"
+                   << "ClientIp=" << data.node_manager_address << "\n"
+                   << "ClientPort=" << data.node_manager_port;
     const ClientTableDataT &data2 = gcs_client_1->client_table().GetClient(client_id_2);
-    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id) << "\n"
-                  << "ClientIp=" << data2.node_manager_address << "\n"
-                  << "ClientPort=" << data2.node_manager_port;
+    RAY_LOG(DEBUG) << "ClientID=" << ClientID::from_binary(data2.client_id) << "\n"
+                   << "ClientIp=" << data2.node_manager_address << "\n"
+                   << "ClientPort=" << data2.node_manager_port;
   }
 };
 

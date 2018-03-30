@@ -38,6 +38,20 @@ class ServerConnection {
   /// \return Status.
   ray::Status WriteMessage(int64_t type, size_t length, const uint8_t *message);
 
+  /// Write a buffer to this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer,
+                   boost::system::error_code &ec);
+
+  /// Read a buffer from this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
+                  boost::system::error_code &ec);
+
  protected:
   /// The socket connection to the server.
   boost::asio::basic_stream_socket<T> socket_;

@@ -45,7 +45,7 @@ ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &clien
                                       : available_transfer_send_connections_;
   connection_mutex.lock();
   if (Count(avail_conn_map, client_id) > 0) {
-    SenderConnection::pointer conn = Borrow(avail_conn_map, client_id);
+    boost::shared_ptr<SenderConnection> conn = Borrow(avail_conn_map, client_id);
     connection_mutex.unlock();
     success_callback(conn);
     return Status::OK();
@@ -54,7 +54,7 @@ ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &clien
 
   return GetNewConnection(
       type, client_id,
-      [this, type, client_id, success_callback](SenderConnection::pointer conn) {
+      [this, type, client_id, success_callback](boost::shared_ptr<SenderConnection> conn) {
         connection_mutex.lock();
         // add it to the connection map to maintain ownership.
         SenderMapType &conn_map =
@@ -66,7 +66,7 @@ ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &clien
                                             : available_transfer_send_connections_;
         Add(avail_conn_map, client_id, conn);
         // "borrow" the connection.
-        SenderConnection::pointer async_conn = Borrow(avail_conn_map, client_id);
+        boost::shared_ptr<SenderConnection> async_conn = Borrow(avail_conn_map, client_id);
         connection_mutex.unlock();
         success_callback(async_conn);
       },
@@ -74,7 +74,7 @@ ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &clien
 }
 
 ray::Status ConnectionPool::ReleaseSender(ConnectionType type,
-                                          SenderConnection::pointer conn) {
+                                          boost::shared_ptr<SenderConnection> conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   SenderMapType &conn_map = (type == ConnectionType::MESSAGE) ? available_message_send_connections_
                                               : available_transfer_send_connections_;
@@ -84,17 +84,11 @@ ray::Status ConnectionPool::ReleaseSender(ConnectionType type,
 
 void ConnectionPool::Add(ReceiverMapType &conn_map, const ClientID &client_id,
                          std::shared_ptr<ReceiverConnection> conn) {
-  if (conn_map.count(client_id) == 0) {
-    conn_map[client_id] = std::vector<std::shared_ptr<ReceiverConnection>>();
-  }
   conn_map[client_id].push_back(conn);
 }
 
 void ConnectionPool::Add(SenderMapType &conn_map, const ClientID &client_id,
-                         SenderConnection::pointer conn) {
-  if (conn_map.count(client_id) == 0) {
-    conn_map[client_id] = std::vector<SenderConnection::pointer>();
-  }
+                         boost::shared_ptr<SenderConnection> conn) {
   conn_map[client_id].push_back(conn);
 }
 
@@ -119,24 +113,24 @@ uint64_t ConnectionPool::Count(SenderMapType &conn_map, const ClientID &client_i
   return conn_map[client_id].size();
 };
 
-SenderConnection::pointer ConnectionPool::Borrow(SenderMapType &conn_map,
+boost::shared_ptr<SenderConnection> ConnectionPool::Borrow(SenderMapType &conn_map,
                                                  const ClientID &client_id) {
-  SenderConnection::pointer conn = conn_map[client_id].back();
+  boost::shared_ptr<SenderConnection> conn = conn_map[client_id].back();
   conn_map[client_id].pop_back();
-//  RAY_LOG(INFO) << "Borrow "
-//                << client_id_ << " "
-//                << client_id << " "
-//                << conn_map[client_id].size();
+  RAY_LOG(DEBUG) << "Borrow "
+                 << client_id_ << " "
+                 << client_id << " "
+                 << conn_map[client_id].size();
   return conn;
 }
 
 void ConnectionPool::Return(SenderMapType &conn_map, const ClientID &client_id,
-                            SenderConnection::pointer conn) {
+                            boost::shared_ptr<SenderConnection> conn) {
   conn_map[client_id].push_back(conn);
-//  RAY_LOG(INFO) << "Return "
-//      << client_id_ << " "
-//      << client_id << " "
-//      << conn_map[client_id].size();
+  RAY_LOG(DEBUG) << "Return "
+                 << client_id_ << " "
+                 << client_id << " "
+                 << conn_map[client_id].size();
 }
 
 ray::Status ConnectionPool::GetNewConnection(ConnectionType type,
@@ -153,9 +147,9 @@ ray::Status ConnectionPool::GetNewConnection(ConnectionType type,
   return status;
 };
 
-SenderConnection::pointer ConnectionPool::CreateConnection(ConnectionType type,
+boost::shared_ptr<SenderConnection> ConnectionPool::CreateConnection(ConnectionType type,
                                                            RemoteConnectionInfo info) {
-  SenderConnection::pointer conn =
+  boost::shared_ptr<SenderConnection> conn =
       SenderConnection::Create(*connection_service_, info.client_id, info.ip, info.port);
   // Prepare client connection info buffer
   flatbuffers::FlatBufferBuilder fbb;

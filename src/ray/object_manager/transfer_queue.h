@@ -6,8 +6,8 @@
 #include <deque>
 #include <map>
 #include <memory>
-#include <thread>
 #include <mutex>
+#include <thread>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -30,7 +30,7 @@ class TransferQueue {
   struct SendContext {
     ClientID client_id;
     ObjectID object_id;
-    int64_t object_size;
+    uint64_t object_size;
     uint8_t *data;
   };
 
@@ -38,8 +38,8 @@ class TransferQueue {
   struct SendRequest {
     ClientID client_id;
     ObjectID object_id;
-    friend bool operator==(const SendRequest &o1, const SendRequest &o2) {
-      return o1.client_id == o2.client_id && o1.object_id == o2.object_id;
+    bool operator==(const SendRequest &rhs) const {
+      return client_id == rhs.client_id && object_id == rhs.object_id;
     }
   };
 
@@ -49,8 +49,8 @@ class TransferQueue {
     ObjectID object_id;
     uint64_t object_size;
     std::shared_ptr<ReceiverConnection> conn;
-    friend bool operator==(const ReceiveRequest &o1, const ReceiveRequest &o2) {
-      return o1.client_id == o2.client_id && o1.object_id == o2.object_id;
+    bool operator==(const ReceiveRequest &rhs) const {
+      return client_id == rhs.client_id && object_id == rhs.object_id;
     }
   };
 
@@ -117,7 +117,6 @@ class TransferQueue {
   Lock send_mutex;
   Lock receive_mutex;
   Lock context_mutex;
-
 
   std::deque<SendRequest> send_queue_;
   std::deque<ReceiveRequest> receive_queue_;
