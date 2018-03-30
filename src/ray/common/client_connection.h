@@ -36,7 +36,7 @@ class ServerConnection {
   /// \param length The size in bytes of the message.
   /// \param message A pointer to the message buffer.
   /// \return Status.
-  ray::Status WriteMessage(int64_t type, size_t length, const uint8_t *message);
+  ray::Status WriteMessage(int64_t type, int64_t length, const uint8_t *message);
 
   /// Write a buffer to this connection.
   ///

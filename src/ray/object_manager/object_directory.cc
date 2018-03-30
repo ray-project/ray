@@ -14,8 +14,9 @@ ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
   data->manager = client_id.binary();
   data->is_eviction = false;
   ray::Status status = gcs_client_->object_table().Append(
-      job_id, object_id, data, [](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                  const std::shared_ptr<ObjectTableDataT> data) {
+      job_id, object_id, data,
+      [](gcs::AsyncGcsClient *client, const UniqueID &id,
+         const std::shared_ptr<ObjectTableDataT> data) {
         // Do nothing.
       });
   return status;
