@@ -15,12 +15,12 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       store_pool_(config.store_socket_name),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
-      control_strand_(*object_manager_service_),
       connection_pool_(object_directory_.get(), &*object_manager_service_, client_id_),
-      transfer_queue_() {
+      transfer_queue_(),
+      num_transfers_send_(0),
+      num_transfers_receive_(0) {
   main_service_ = &main_service;
   config_ = config;
-  max_transfers_ = config_.max_transfers;
   store_notification_.SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
   store_notification_.SubscribeObjDeleted(
@@ -37,13 +37,13 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       store_pool_(config.store_socket_name),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
-      control_strand_(*object_manager_service_),
       connection_pool_(object_directory_.get(), &*object_manager_service_, client_id_),
-      transfer_queue_() {
+      transfer_queue_(),
+      num_transfers_send_(0),
+      num_transfers_receive_(0) {
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   config_ = config;
-  max_transfers_ = config_.max_transfers;
   store_notification_.SubscribeObjAdded(
       [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
   store_notification_.SubscribeObjDeleted(
@@ -176,72 +176,63 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
 }
 
 ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
-  control_strand_.dispatch(
-      [this, object_id, client_id]() { RAY_CHECK_OK(QueuePush(object_id, client_id)); });
-  return Status::OK();
-}
-
-ray::Status ObjectManager::QueuePush(const ObjectID &object_id,
-                                     const ClientID &client_id) {
   transfer_queue_.QueueSend(client_id, object_id);
-  control_strand_.dispatch([this]() { RAY_CHECK_OK(DequeueTransfers()); });
-  return ray::Status::OK();
+  return DequeueTransfers();
 }
 
 ray::Status ObjectManager::DequeueTransfers() {
   ray::Status status = ray::Status::OK();
-  while (num_transfers_ < max_transfers_) {
-    if (transfer_queue_.Empty()) {
-      return ray::Status::OK();
-    }
-
-    // this should run on the main thread, so no need to worry about
-    // concurrent changes of num_transfers_.
-    num_transfers_ += 1;
-
-    bool execute_receive;
-    if (transfer_queue_.LastTransferType() == TransferQueue::SEND) {
-      if (transfer_queue_.ReceiveCount() > 0) {
-        execute_receive = true;
+  // Dequeue sends.
+  while (true) {
+    if(std::atomic_fetch_add(&num_transfers_send_, 1) <= config_.max_sends) {
+      TransferQueue::SendRequest req;
+      bool exists = transfer_queue_.DequeueSendIfPresent(&req);
+      if (exists) {
+        object_manager_service_->dispatch([this, req]() {
+          RAY_LOG(DEBUG) << "DequeueSend " << client_id_ << " " << req.object_id << " "
+                         << num_transfers_send_ << "/" << config_.max_sends;
+          RAY_CHECK_OK(ExecuteSendObject(req.object_id, req.client_id));
+        });
       } else {
-        RAY_CHECK(transfer_queue_.SendCount() > 0);
-        execute_receive = false;
+        std::atomic_fetch_sub(&num_transfers_send_, 1);
+        break;
       }
     } else {
-      if (transfer_queue_.SendCount() > 0) {
-        execute_receive = false;
-      } else {
-        RAY_CHECK(transfer_queue_.ReceiveCount() > 0);
-        execute_receive = true;
-      }
+      std::atomic_fetch_sub(&num_transfers_send_, 1);
+      break;
     }
-    if (execute_receive) {
-      TransferQueue::ReceiveRequest req = transfer_queue_.DequeueReceive();
-      object_manager_service_->dispatch([this, req]() {
-        RAY_LOG(DEBUG) << "DequeueReceive " << client_id_ << " " << req.object_id << " "
-                       << num_transfers_ << "/" << max_transfers_;
-        RAY_CHECK_OK(ExecuteReceiveObject(req.client_id, req.object_id, req.object_size,
-                                          req.conn));
-      });
+  }
+  // Dequeue receives.
+  while (true) {
+    if(std::atomic_fetch_add(&num_transfers_receive_, 1) <= config_.max_receives) {
+      TransferQueue::ReceiveRequest req;
+      bool exists = transfer_queue_.DequeueReceiveIfPresent(&req);
+      if (exists) {
+        object_manager_service_->dispatch([this, req]() {
+          RAY_LOG(DEBUG) << "DequeueReceive " << client_id_ << " " << req.object_id << " "
+                         << num_transfers_receive_ << "/" << config_.max_receives;
+          RAY_CHECK_OK(ExecuteReceiveObject(req.client_id, req.object_id, req.object_size,
+                                            req.conn));
+        });
+      } else {
+        std::atomic_fetch_sub(&num_transfers_receive_, 1);
+        break;
+      }
     } else {
-      // send count > 0.
-      TransferQueue::SendRequest req = transfer_queue_.DequeueSend();
-      object_manager_service_->dispatch([this, req]() {
-        RAY_LOG(DEBUG) << "DequeueSend " << client_id_ << " " << req.object_id << " "
-                       << num_transfers_ << "/" << max_transfers_;
-        RAY_CHECK_OK(ExecuteSendObject(req.object_id, req.client_id));
-      });
+      std::atomic_fetch_sub(&num_transfers_receive_, 1);
+      break;
     }
   }
   return status;
 }
 
-ray::Status ObjectManager::TransferCompleted() {
-  control_strand_.dispatch([this]() {
-    num_transfers_ -= 1;
-    RAY_CHECK_OK(DequeueTransfers());
-  });
-  return ray::Status::OK();
+ray::Status ObjectManager::TransferCompleted(TransferQueue::TransferType type) {
+  if (type == TransferQueue::TransferType::SEND) {
+    std::atomic_fetch_sub(&num_transfers_send_, 1);
+  } else {
+    std::atomic_fetch_sub(&num_transfers_receive_, 1);
+  }
+  return DequeueTransfers();
 };
 
 ray::Status ObjectManager::ExecuteSendObject(const ObjectID &object_id,
@@ -335,8 +326,8 @@ ray::Status ObjectManager::SendObjectData(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
   RAY_CHECK_OK(transfer_queue_.RemoveContext(context_id));
   RAY_LOG(DEBUG) << "SendCompleted " << client_id_ << " " << context.object_id << " "
-                 << num_transfers_ << "/" << max_transfers_;
-  RAY_CHECK_OK(TransferCompleted());
+                 << num_transfers_send_ << "/" << config_.max_sends;
+  RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::SEND));
   return status;
 }
 
@@ -428,7 +419,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<ReceiverConnection> conn,
   ObjectID object_id = ObjectID::from_binary(object_header->object_id()->str());
   int64_t object_size = (int64_t)object_header->object_size();
   transfer_queue_.QueueReceive(conn->GetClientID(), object_id, object_size, conn);
-  control_strand_.dispatch([this]() { RAY_CHECK_OK(DequeueTransfers()); });
+  RAY_CHECK_OK(DequeueTransfers());
 }
 
 ray::Status ObjectManager::ExecuteReceiveObject(
@@ -465,8 +456,8 @@ ray::Status ObjectManager::ExecuteReceiveObject(
   store_pool_.ReleaseObjectStore(store_client);
   conn->ProcessMessages();
   RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
-                 << num_transfers_ << "/" << max_transfers_;
-  TransferCompleted();
+                 << num_transfers_receive_ << "/" << config_.max_receives;
+  RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::RECEIVE));
   return Status::OK();
 }
 

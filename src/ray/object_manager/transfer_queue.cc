@@ -2,27 +2,6 @@
 
 namespace ray {
 
-bool TransferQueue::Empty() {
-  ReadLock send_guard(send_mutex);
-  ReadLock receive_guard(receive_mutex);
-  return send_queue_.empty() && receive_queue_.empty();
-}
-
-uint64_t TransferQueue::SendCount() {
-  ReadLock guard(send_mutex);
-  return send_queue_.size();
-}
-
-uint64_t TransferQueue::ReceiveCount() {
-  ReadLock guard(receive_mutex);
-  return receive_queue_.size();
-}
-
-TransferQueue::TransferType TransferQueue::LastTransferType() {
-  ReadLock guard(receive_mutex);
-  return last_transfer_type_;
-}
-
 void TransferQueue::QueueSend(ClientID client_id, ObjectID object_id) {
   WriteLock guard(send_mutex);
   SendRequest req = {client_id, object_id};
@@ -32,14 +11,6 @@ void TransferQueue::QueueSend(ClientID client_id, ObjectID object_id) {
     return;
   }
   send_queue_.push_back(req);
-}
-
-TransferQueue::SendRequest TransferQueue::DequeueSend() {
-  WriteLock guard(send_mutex);
-  SendRequest req = send_queue_.front();
-  send_queue_.pop_front();
-  last_transfer_type_ = SEND;
-  return req;
 }
 
 void TransferQueue::QueueReceive(const ClientID &client_id, const ObjectID &object_id,
@@ -55,12 +26,24 @@ void TransferQueue::QueueReceive(const ClientID &client_id, const ObjectID &obje
   receive_queue_.push_back(req);
 }
 
-TransferQueue::ReceiveRequest TransferQueue::DequeueReceive() {
+bool TransferQueue::DequeueSendIfPresent(TransferQueue::SendRequest *send_ptr) {
+  WriteLock guard(send_mutex);
+  if (send_queue_.size() == 0){
+    return false;
+  }
+  *send_ptr = send_queue_.front();
+  send_queue_.pop_front();
+  return true;
+}
+
+bool TransferQueue::DequeueReceiveIfPresent(TransferQueue::ReceiveRequest *receive_ptr) {
   WriteLock guard(receive_mutex);
-  ReceiveRequest req = receive_queue_.front();
+  if (receive_queue_.size() == 0){
+    return false;
+  }
+  *receive_ptr = receive_queue_.front();
   receive_queue_.pop_front();
-  last_transfer_type_ = RECEIVE;
-  return req;
+  return true;
 }
 
 UniqueID TransferQueue::AddContext(SendContext &context) {

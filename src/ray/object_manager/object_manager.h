@@ -31,18 +31,20 @@
 namespace ray {
 
 struct ObjectManagerConfig {
-  // The time in milliseconds to wait before retrying a pull
-  // that failed due to client id lookup.
+  /// The time in milliseconds to wait before retrying a pull
+  /// that failed due to client id lookup.
   int pull_timeout_ms = 100;
-  int num_threads = 1;
-  int max_transfers = 2;
+  /// Size of thread pool.
+  int num_threads = 2;
+  /// Maximum number of sends allowed.
+  int max_sends = 20;
+  /// Maximum number of receives allowed.
+  int max_receives = 20;
   // TODO(hme): Implement num retries (to avoid infinite retries).
   std::string store_socket_name;
 };
 
-// TODO(hme): Implement connection cleanup.
 // TODO(hme): Add success/failure callbacks for push and pull.
-// TODO(hme): Use boost thread pool.
 class ObjectManager {
  public:
   /// Implicitly instantiates Ray implementation of ObjectDirectory.
@@ -165,11 +167,6 @@ class ObjectManager {
   /// Used to create "work" for an io service, so when it's run, it doesn't exit.
   boost::asio::io_service::work work_;
 
-  /// Execute control-related functions on strand.
-  /// This prevents the main thread from blocking the object manager
-  /// while allowing thread-safe execution on the thread pool.
-  boost::asio::io_service::strand control_strand_;
-
   /// Thread pool for executing asynchronous handlers.
   /// These run the object_manager_service_, which handle
   /// all incoming and outgoing object transfers.
@@ -183,18 +180,15 @@ class ObjectManager {
                      UniqueIDHasher>
       pull_requests_;
 
-  /// This number is incremented whenever a push is started.
-  int num_transfers_ = 0;
-  /// This is the maximum number of pushes allowed.
-  /// We can only increase this number if we increase the number of
-  /// plasma client connections.
-  int max_transfers_ = 1;
-
   /// Allows control of concurrent object transfers. This is a global queue,
   /// allowing for concurrent transfers with many object managers as well as
   /// concurrent transfers, including both sends and receives, with a single
   /// remote object manager.
   TransferQueue transfer_queue_;
+
+  /// This number is incremented whenever a push is started.
+  std::atomic<int> num_transfers_send_;
+  std::atomic<int> num_transfers_receive_;
 
   /// Cache of locally available objects.
   std::unordered_set<ObjectID, UniqueIDHasher> local_objects_;
@@ -237,9 +231,6 @@ class ObjectManager {
   ray::Status PullSendRequest(const ObjectID &object_id,
                               boost::shared_ptr<SenderConnection> conn);
 
-  /// Queue push on control_strand_.
-  ray::Status QueuePush(const ObjectID &object_id, const ClientID &client_id);
-
   /// Starts as many queued transfers as possible without exceeding max_transfers_
   /// concurrent transfers. Alternates between queued sends and receives.
   /// Guranteed to execute on control_strand_.
@@ -247,7 +238,7 @@ class ObjectManager {
 
   /// Invoked when a transfer is completed. This method will decrement num_transfers_
   /// and invoke DequeueTransfers.
-  ray::Status TransferCompleted();
+  ray::Status TransferCompleted(TransferQueue::TransferType type);
 
   /// Begin executing a send.
   ray::Status ExecuteSendObject(const ObjectID &object_id, const ClientID &client_id);
