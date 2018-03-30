@@ -55,10 +55,15 @@ void NodeManager::Heartbeat() {
 
   ray::Status status = heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
-      [this](ray::gcs::AsyncGcsClient *client, const ClientID &id,
-             const std::shared_ptr<HeartbeatTableDataT> data) {
-        RAY_LOG(DEBUG) << "[HEARTBEAT] hearbeat sent callback";
+      [](ray::gcs::AsyncGcsClient *client, const ClientID &id,
+             std::shared_ptr<HeartbeatTableDataT> data) {
+        RAY_LOG(DEBUG) << "[HEARTBEAT] heartbeat sent callback";
       });
+
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "heartbeat failed: string " << status.ToString() << status.message();
+    RAY_LOG(INFO) << "is redis error: " << status.IsRedisError();
+  }
   RAY_CHECK_OK(status);
 
   // Reset the timer.
@@ -91,9 +96,9 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
           RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
         });
     RAY_CHECK_OK(status);
-
     return;
   }
+
   // TODO(atumanov): make remote client lookup O(1)
   if (std::find(remote_clients_.begin(), remote_clients_.end(), client_id) ==
       remote_clients_.end()) {
@@ -125,6 +130,9 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
 
 void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
+
+  RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id "
+                << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // Skip heartbeats from self.
     return;
