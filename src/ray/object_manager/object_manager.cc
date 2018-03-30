@@ -317,7 +317,6 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<ReceiverConnection> con
                                          int64_t message_type, const uint8_t *message) {
   switch (message_type) {
   case OMMessageType_PushRequest: {
-
     break;
   }
   case OMMessageType_PullRequest: {

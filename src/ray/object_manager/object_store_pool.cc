@@ -15,7 +15,8 @@ std::shared_ptr<plasma::PlasmaClient> ObjectStoreClientPool::GetObjectStore() {
   return client;
 }
 
-void ObjectStoreClientPool::ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client) {
+void ObjectStoreClientPool::ReleaseObjectStore(
+    std::shared_ptr<plasma::PlasmaClient> client) {
   std::lock_guard<std::mutex> lock(pool_mutex);
   available_clients.push_back(client);
 }

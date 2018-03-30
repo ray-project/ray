@@ -26,7 +26,6 @@ namespace ray {
 /// the object store.
 class ObjectStoreClientPool {
  public:
-
   /// Constructor.
   ///
   /// \param store_socket_name The object store socket name.

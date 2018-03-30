@@ -67,8 +67,8 @@ ray::Status Raylet::RegisterGcs(boost::asio::io_service &io_service,
     client_info.resources_total_capacity.push_back(resource_pair.second);
   }
 
-  RAY_LOG(DEBUG) << "NM LISTENING ON: IP " << client_info.node_manager_address
-                 << " PORT " << client_info.node_manager_port;
+  RAY_LOG(DEBUG) << "NM LISTENING ON: IP " << client_info.node_manager_address << " PORT "
+                 << client_info.node_manager_port;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,

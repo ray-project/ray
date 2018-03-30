@@ -45,10 +45,11 @@ class SenderConnection : public ServerConnection<boost::asio::ip::tcp>,
   const ClientID &GetClientID() { return client_id_; }
 
   /// Write a buffer to this connection.
-  /// 
+  ///
   /// \param buffer The buffer.
   /// \param ec The error code object in which to store error codes.
-  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer, boost::system::error_code &ec){
+  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer,
+                   boost::system::error_code &ec) {
     boost::asio::write(socket_, buffer, ec);
   }
 

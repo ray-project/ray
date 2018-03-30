@@ -56,7 +56,7 @@ void NodeManager::Heartbeat() {
   ray::Status status = heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
       [](ray::gcs::AsyncGcsClient *client, const ClientID &id,
-             std::shared_ptr<HeartbeatTableDataT> data) {
+         std::shared_ptr<HeartbeatTableDataT> data) {
         RAY_LOG(DEBUG) << "[HEARTBEAT] heartbeat sent callback";
       });
 
@@ -130,9 +130,8 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
 
 void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
-
   RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id "
-                << client_id.hex();
+                 << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // Skip heartbeats from self.
     return;
