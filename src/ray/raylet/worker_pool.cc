@@ -5,8 +5,15 @@
 
 namespace ray {
 
+namespace raylet {
+
 /// A constructor that initializes a worker pool with num_workers workers.
-WorkerPool::WorkerPool(int num_workers) {
+WorkerPool::WorkerPool(int num_workers, const std::vector<const char *> &worker_command)
+    : worker_command_(worker_command) {
+  worker_command_.push_back(NULL);
+  // Ignore SIGCHLD signals. If we don't do this, then worker processes will
+  // become zombies instead of dying gracefully.
+  signal(SIGCHLD, SIG_IGN);
   for (int i = 0; i < num_workers; i++) {
     StartWorker();
   }
@@ -18,10 +25,23 @@ WorkerPool::~WorkerPool() {
   registered_workers_.clear();
 }
 
-/// Create a new worker and add it to the pool
-bool WorkerPool::StartWorker() {
-  // TODO(swang): Start the worker.
-  return true;
+void WorkerPool::StartWorker() {
+  RAY_CHECK(!worker_command_.empty()) << "No worker command provided";
+
+  // Launch the process to create the worker.
+  pid_t pid = fork();
+  if (pid != 0) {
+    RAY_LOG(DEBUG) << "Started worker with pid " << pid;
+    return;
+  }
+
+  // Reset the SIGCHLD handler for the worker.
+  signal(SIGCHLD, SIG_DFL);
+  // Try to execute the worker command.
+
+  int rv = execvp(worker_command_[0], (char *const *)worker_command_.data());
+  // The worker failed to start. This is a fatal error.
+  RAY_LOG(FATAL) << "Failed to start worker with return value " << rv;
 }
 
 uint32_t WorkerPool::PoolSize() const { return pool_.size(); }
@@ -74,5 +94,7 @@ bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
   RAY_CHECK(removeWorker(registered_workers_, worker));
   return removeWorker(pool_, worker);
 }
+
+}  // namespace raylet
 
 }  // namespace ray

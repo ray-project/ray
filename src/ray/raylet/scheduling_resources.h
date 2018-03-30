@@ -4,8 +4,11 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace ray {
+
+namespace raylet {
 
 /// Resource availability status reports whether the resource requirement is
 /// (1) infeasible, (2) feasible but currently unavailable, or (3) available.
@@ -25,6 +28,11 @@ class ResourceSet {
 
   /// \brief Constructs ResourceSet from the specified resource map.
   ResourceSet(const std::unordered_map<std::string, double> &resource_map);
+
+  /// \brief Constructs ResourceSet from two equal-length vectors with label and capacity
+  /// specification.
+  ResourceSet(const std::vector<std::string> &resource_labels,
+              const std::vector<double> resource_capacity);
 
   /// \brief Empty ResourceSet destructor.
   ~ResourceSet();
@@ -89,6 +97,11 @@ class ResourceSet {
   ///         False otherwise.
   bool GetResource(const std::string &resource_name, double *value) const;
 
+  // TODO(atumanov): implement const_iterator class for the ResourceSet container.
+  const std::unordered_map<std::string, double> &GetResourceMap() const;
+
+  const std::string ToString() const;
+
  private:
   /// Resource capacity map.
   std::unordered_map<std::string, double> resource_capacity_;
@@ -125,6 +138,14 @@ class SchedulingResources {
   /// \return Immutable set of resources with currently available capacity.
   const ResourceSet &GetAvailableResources() const;
 
+  /// \brief Overwrite available resource capacity with the specified resource set.
+  ///
+  /// \param newset: The set of resources that replaces available resource capacity.
+  /// \return None.
+  void SetAvailableResources(ResourceSet &&newset);
+
+  const ResourceSet &GetTotalResources() const;
+
   /// \brief Release the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be released.
@@ -144,6 +165,8 @@ class SchedulingResources {
   ResourceSet resources_available_;
   /// gpu_map - replace with ResourceMap (for generality).
 };
+
+}  // namespace raylet
 
 }  // namespace ray
 

@@ -4,6 +4,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 const std::list<Task> &SchedulingQueue::GetWaitingTasks() const {
   return this->waiting_tasks_;
 }
@@ -87,5 +89,7 @@ bool SchedulingQueue::RegisterActor(ActorID actor_id,
   actor_registry_[actor_id] = actor_information;
   return true;
 }
+
+}  // namespace raylet
 
 }  // namespace ray
