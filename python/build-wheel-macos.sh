@@ -49,7 +49,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   pushd python
     # Upgrade pip.
-    $PIP_CMD install --upgrade pip
+    $PIP_CMD install --upgrade pip setuptools wheel
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
     $PIP_CMD install -q git+https://github.com/pypa/setuptools_scm#egg=proj
