@@ -26,7 +26,7 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
     : socket_(std::move(socket)) {}
 
 template <class T>
-ray::Status ServerConnection<T>::WriteMessage(int64_t type, size_t length,
+ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
                                               const uint8_t *message) {
   std::vector<boost::asio::const_buffer> message_buffers;
   auto write_version = RayConfig::instance().ray_protocol_version();

@@ -52,6 +52,7 @@ enum MessageType:int {
   // before the checkpoint, and make any tasks on the frontier runnable by
   // making their execution dependencies available.
   SetActorFrontier,
+  // A node manager request to process a task forwarded from another node manager.
   ForwardTaskRequest
 }
 
