@@ -210,13 +210,13 @@ class ObjectManager {
   /// is GetLocationsFailed.
   void SchedulePull(const ObjectID &object_id, int wait_ms);
 
-  /// Part of an asynchronous strand of Pull methods.
+  /// Part of an asynchronous sequence of Pull methods.
   /// Gets the location of an object before invoking PullEstablishConnection.
   /// Guaranteed to execute on main_service_ thread.
   /// Executes on main_service_ thread.
   ray::Status PullGetLocations(const ObjectID &object_id);
 
-  /// Part of an asynchronous strand of Pull methods.
+  /// Part of an asynchronous sequence of Pull methods.
   /// Uses an existing connection or creates a connection to ClientID.
   /// Executes on main_service_ thread.
   ray::Status PullEstablishConnection(const ObjectID &object_id,
