@@ -135,6 +135,7 @@ class TrialRunner(object):
         Args:
             trial (Trial): Trial to queue.
         """
+        trial.set_verbose(self._verbose)
         self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
 

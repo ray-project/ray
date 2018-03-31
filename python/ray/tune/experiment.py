@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.tune.variant_generator import generate_trials
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
 

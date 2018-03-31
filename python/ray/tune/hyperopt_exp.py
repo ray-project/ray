@@ -1,16 +1,16 @@
-from hyperopt import FMinIter
-from hyperopt import base, utils
-from ray.tune.config_parser import make_parser, json_to_resources, resources_to_json
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import hyperopt as hpo
+from ray.tune.config_parser import make_parser
 from ray.tune.variant_generator import to_argv
 import time
 import copy
 import numpy as np
-from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.trial import Trial
 from ray.tune import TuneError
 from ray.tune import register_trainable
-from ray.tune import Trainable
-from ray.tune.result import TrainingResult
 from ray.tune.trial_scheduler import TrialScheduler
 
 from ray.tune.trial_scheduler import FIFOScheduler
@@ -29,17 +29,17 @@ def easy_objective(config, reporter):
 
 class HyperOptScheduler(FIFOScheduler):
 
-    def __init__(self, experiments, max_concurrent=10, loss_attr="mean_loss"):
+    def __init__(self, max_concurrent=10, loss_attr="mean_loss"):
         self._max_concurrent = max_concurrent  # NOTE: this is modified later
         self._loss_attr = loss_attr
         self._experiment = None
 
-    def track_experiment(self, experiment):
-        assert self._experiment is not None, "HyperOpt only tracks one experiment!"
+    def track_experiment(self, experiment, trial_runner):
+        assert self._experiment is None, "HyperOpt only tracks one experiment!"
         self._experiment = experiment
 
-        name = experiment.name
-        spec = copy.deepcopy(spec)
+        name = experiment.name  # TODO(rliaw) Find out where name is to be used
+        spec = copy.deepcopy(experiment.spec)
         if "env" in spec:
             spec["config"] = spec.get("config", {})
             spec["config"]["env"] = spec["env"]
@@ -56,12 +56,12 @@ class HyperOptScheduler(FIFOScheduler):
         self.domain = Domain(lambda spec: spec, space)
         self._hpopt_trials = Trials()
         self._tune_to_hp = {}
-        self._loss_attr = loss_attr
         self._num_trials_left = self.args.repeat
 
         self._max_concurrent = min(self._max_concurrent, self.args.repeat)
         self.rstate = np.random.RandomState()
         self.trial_generator = self._trial_generator()
+        self.refresh_queue(trial_runner)
 
     def _trial_generator(self):
         while self._num_trials_left > 0:
@@ -101,45 +101,35 @@ class HyperOptScheduler(FIFOScheduler):
 
     def on_trial_result(self, trial_runner, trial, result):
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
-        now = utils.coarse_utcnow()
+        now = hpo.utils.coarse_utcnow()
         ho_trial['book_time'] = now
         ho_trial['refresh_time'] = now
         return TrialScheduler.CONTINUE
 
     def on_trial_error(self, trial_runner, trial):
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
-        ho_trial['refresh_time'] = utils.coarse_utcnow()
-        ho_trial['state'] = base.JOB_STATE_ERROR
+        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
+        ho_trial['state'] = hpo.base.JOB_STATE_ERROR
         ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
 
     def on_trial_remove(self, trial_runner, trial):
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
-        ho_trial['refresh_time'] = utils.coarse_utcnow()
-        ho_trial['state'] = base.JOB_STATE_ERROR
+        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
+        ho_trial['state'] = hpo.base.JOB_STATE_ERROR
         ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
 
     def on_trial_complete(self, trial_runner, trial, result):
         ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
-        ho_trial['refresh_time'] = utils.coarse_utcnow()
-        ho_trial['state'] = base.JOB_STATE_DONE
+        ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
+        ho_trial['state'] = hpo.base.JOB_STATE_DONE
         hp_result = self._convert_result(result)
         ho_trial['result'] = hp_result
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
-
-    def choose_trial_to_run(self, trial_runner):
-        assert self.
-        while self.ready():
-            try:
-                trial_runner.add_trial(next(self.trial_generator))
-            except StopIteration:
-                break
-        super(HyperOptScheduler, self).choose_trial_to_run(trial_runner)
-
 
     def _convert_result(self, result):
         return {"loss": getattr(result, self._loss_attr),
@@ -154,56 +144,31 @@ class HyperOptScheduler(FIFOScheduler):
     def get_hyperopt_trials(self):
         return self._hpopt_trials
 
-    def ready(self):
+    def choose_trial_to_run(self, trial_runner):
+        self.refresh_queue(trial_runner)
+        FIFOScheduler.choose_trial_to_run(self, trial_runner)
+
+    def refresh_queue(self, trial_runner):
         """Checks if there is a next trial ready to be queued.
 
         This is determined by tracking the number of concurrent
         experiments and trials left to run."""
-        return (self._num_trials_left > 0 and
-                self._num_live_trials() < self._max_concurrent)
+        while (self._num_trials_left > 0 and
+               self._num_live_trials() < self._max_concurrent):
+            try:
+                trial_runner.add_trial(next(self.trial_generator))
+            except StopIteration:
+                break
 
     def _num_live_trials(self):
         return len(self._tune_to_hp)
 
 
-def run_experiments(experiments, with_server=False,
-                    server_port=4321, verbose=True):
-
-    # Make sure rllib agents are registered
-    from ray import rllib  # noqa # pylint: disable=unused-import
-
-    scheduler = HyperOptScheduler(experiments, max_concurrent=8)
-    runner = TrialRunner(
-        scheduler, launch_web_server=with_server, server_port=server_port)
-
-    # TODO(rliaw): bound this by max number of generated trials
-    for i in range(scheduler.max_concurrent):  # number of concurrent trials
-        trial = scheduler.generate_trial()
-        trial.set_verbose(verbose)
-        runner.add_trial(trial)
-    print(runner.debug_string(max_debug=99999))
-
-    last_debug = 0
-    while not runner.is_finished():
-        runner.step()
-        if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            print(runner.debug_string())
-            last_debug = time.time()
-
-    print(runner.debug_string(max_debug=99999))
-
-    for trial in runner.get_trials():
-        # TODO(rliaw): What about errored?
-        if trial.status != Trial.TERMINATED:
-            raise TuneError("Trial did not complete", trial)
-
-    return runner.get_trials()
-
-
 if __name__ == '__main__':
     import ray
-    ray.init(redirect_output=True)
     from hyperopt import hp
+    ray.init(redirect_output=True)
+    from ray.tune import run_experiments
     # register_trainable("exp", MyTrainableClass)
 
     register_trainable("exp", easy_objective)

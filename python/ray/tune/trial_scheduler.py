@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.tune.trial import Trial
+from ray.tune.variant_generator import generate_trials
 
 
 class TrialScheduler(object):
@@ -47,6 +48,10 @@ class TrialScheduler(object):
 
         raise NotImplementedError
 
+    def track_experiment(self, experiment, trial_runner):
+        """Tracks experiment to queue trials."""
+        raise NotImplementedError
+
     def choose_trial_to_run(self, trial_runner):
         """Called to choose a new trial to run.
 
@@ -65,6 +70,14 @@ class TrialScheduler(object):
 
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
+
+    def track_experiment(self, experiment, trial_runner):
+        generator = generate_trials(experiment.spec)
+        while True:
+            try:
+                trial_runner.add_trial(next(generator))
+            except StopIteration:
+                break
 
     def on_trial_add(self, trial_runner, trial):
         pass

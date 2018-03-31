@@ -68,7 +68,7 @@ def run_experiments(experiments, scheduler=None, with_server=False,
     if (type(exp_list) is list and
             all(isinstance(exp, Experiment) for exp in exp_list)):
         for experiment in exp_list:
-            runner.register_experiment(experiment)
+            scheduler.track_experiment(experiment, runner)
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 
