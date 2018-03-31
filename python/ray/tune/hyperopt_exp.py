@@ -146,7 +146,7 @@ class HyperOptScheduler(FIFOScheduler):
 
     def choose_trial_to_run(self, trial_runner):
         self.refresh_queue(trial_runner)
-        FIFOScheduler.choose_trial_to_run(self, trial_runner)
+        return FIFOScheduler.choose_trial_to_run(self, trial_runner)
 
     def refresh_queue(self, trial_runner):
         """Checks if there is a next trial ready to be queued.
@@ -184,4 +184,4 @@ if __name__ == '__main__':
             "stop": {"training_iteration": 1},
             "config": {
                 "space": space}}}
-    run_experiments(config, verbose=False)
+    run_experiments(config, verbose=False, scheduler=HyperOptScheduler())
