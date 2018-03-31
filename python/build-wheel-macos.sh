@@ -47,6 +47,11 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
+  pushd /tmp
+    # Install latest version of pip to avoid brownouts
+    curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
+  popd
+
   pushd python
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
