@@ -190,7 +190,7 @@ if __name__ == '__main__':
     config = {"my_exp": {
             "run": "exp",
             "repeat": 1000,
-            # "stop": {"training_iteration": 1},
+            "stop": {"training_iteration": 1},
             "config": {
                 "space": space}}}
     hpo_sched = HyperOptScheduler()
