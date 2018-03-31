@@ -114,7 +114,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   }
 
  private:
-
   /// Callbacks associated with a call to GetLocations.
   // TODO(hme): I think these can be removed.
   struct ODCallbacks {

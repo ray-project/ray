@@ -113,7 +113,7 @@ class ObjectManager {
   ///
   /// \param conn The connection.
   /// \return Status of whether the connection was successfully established.
-  void ProcessNewClient(std::shared_ptr<ReceiverConnection> conn);
+  void ProcessNewClient(std::shared_ptr<TcpClientConnection> conn);
 
   /// Process messages sent from other nodes. We only establish
   /// transfer connections using this method; all other transfer communication
@@ -122,7 +122,7 @@ class ObjectManager {
   /// \param conn The connection.
   /// \param message_type The message type.
   /// \param message A pointer set to the beginning of the message.
-  void ProcessClientMessage(std::shared_ptr<ReceiverConnection> conn,
+  void ProcessClientMessage(std::shared_ptr<TcpClientConnection> conn,
                             int64_t message_type, const uint8_t *message);
 
   /// Cancels all requests (Push/Pull) associated with the given ObjectID.
@@ -236,8 +236,8 @@ class ObjectManager {
   /// Guranteed to execute on control_strand_.
   ray::Status DequeueTransfers();
 
-  boost::shared_ptr<SenderConnection> CreateSenderConnection(ConnectionPool::ConnectionType type,
-                                                             RemoteConnectionInfo info);
+  boost::shared_ptr<SenderConnection> CreateSenderConnection(
+      ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
 
   /// Invoked when a transfer is completed. This method will decrement num_transfers_
   /// and invoke DequeueTransfers.
@@ -258,21 +258,21 @@ class ObjectManager {
 
   /// Invoked when a remote object manager pushes an object to this object manager.
   /// This will queue the receive.
-  void ReceivePushRequest(std::shared_ptr<ReceiverConnection> conn,
+  void ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn,
                           const uint8_t *message);
   /// Execute a receive that was in the queue.
   ray::Status ExecuteReceiveObject(ClientID client_id, ObjectID object_id,
                                    uint64_t object_size,
-                                   std::shared_ptr<ReceiverConnection> conn);
+                                   std::shared_ptr<TcpClientConnection> conn);
 
   /// Handles receiving a pull request message.
-  void ReceivePullRequest(std::shared_ptr<ReceiverConnection> &conn,
+  void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
                           const uint8_t *message);
 
   /// Handles connect message of a new client connection.
-  void ConnectClient(std::shared_ptr<ReceiverConnection> &conn, const uint8_t *message);
+  void ConnectClient(std::shared_ptr<TcpClientConnection> &conn, const uint8_t *message);
   /// Handles disconnect message of an existing client connection.
-  void DisconnectClient(std::shared_ptr<ReceiverConnection> &conn,
+  void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                         const uint8_t *message);
 };
 

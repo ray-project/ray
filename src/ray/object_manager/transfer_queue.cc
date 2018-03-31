@@ -2,7 +2,8 @@
 
 namespace ray {
 
-void TransferQueue::QueueSend(ClientID client_id, ObjectID object_id, const RemoteConnectionInfo &info) {
+void TransferQueue::QueueSend(ClientID client_id, ObjectID object_id,
+                              const RemoteConnectionInfo &info) {
   WriteLock guard(send_mutex);
   SendRequest req = {client_id, object_id, info};
   // TODO(hme): Use a set to speed this up.
@@ -15,7 +16,7 @@ void TransferQueue::QueueSend(ClientID client_id, ObjectID object_id, const Remo
 
 void TransferQueue::QueueReceive(const ClientID &client_id, const ObjectID &object_id,
                                  uint64_t object_size,
-                                 std::shared_ptr<ReceiverConnection> conn) {
+                                 std::shared_ptr<TcpClientConnection> conn) {
   WriteLock guard(receive_mutex);
   ReceiveRequest req = {client_id, object_id, object_size, conn};
   if (std::find(receive_queue_.begin(), receive_queue_.end(), req) !=
@@ -28,7 +29,7 @@ void TransferQueue::QueueReceive(const ClientID &client_id, const ObjectID &obje
 
 bool TransferQueue::DequeueSendIfPresent(TransferQueue::SendRequest *send_ptr) {
   WriteLock guard(send_mutex);
-  if (send_queue_.size() == 0){
+  if (send_queue_.size() == 0) {
     return false;
   }
   *send_ptr = send_queue_.front();
@@ -38,7 +39,7 @@ bool TransferQueue::DequeueSendIfPresent(TransferQueue::SendRequest *send_ptr) {
 
 bool TransferQueue::DequeueReceiveIfPresent(TransferQueue::ReceiveRequest *receive_ptr) {
   WriteLock guard(receive_mutex);
-  if (receive_queue_.size() == 0){
+  if (receive_queue_.size() == 0) {
     return false;
   }
   *receive_ptr = receive_queue_.front();

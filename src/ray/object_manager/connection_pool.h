@@ -42,7 +42,7 @@ class ConnectionPool {
   /// \param client_id The ClientID of the remote object manager.
   /// \param conn The actual connection.
   void RegisterReceiver(ConnectionType type, const ClientID &client_id,
-                        std::shared_ptr<ReceiverConnection> &conn);
+                        std::shared_ptr<TcpClientConnection> &conn);
 
   /// Remove a receiver connection.
   ///
@@ -50,7 +50,7 @@ class ConnectionPool {
   /// \param client_id The ClientID of the remote object manager.
   /// \param conn The actual connection.
   void RemoveReceiver(ConnectionType type, const ClientID &client_id,
-                      std::shared_ptr<ReceiverConnection> &conn);
+                      std::shared_ptr<TcpClientConnection> &conn);
 
   /// Register a receiver connection.
   ///
@@ -100,12 +100,12 @@ class ConnectionPool {
       std::unordered_map<ray::ClientID, std::vector<boost::shared_ptr<SenderConnection>>,
                          ray::UniqueIDHasher>;
   using ReceiverMapType =
-      std::unordered_map<ray::ClientID, std::vector<std::shared_ptr<ReceiverConnection>>,
+      std::unordered_map<ray::ClientID, std::vector<std::shared_ptr<TcpClientConnection>>,
                          ray::UniqueIDHasher>;
 
   /// Adds a receiver for ClientID to the given map.
   void Add(ReceiverMapType &conn_map, const ClientID &client_id,
-           std::shared_ptr<ReceiverConnection> conn);
+           std::shared_ptr<TcpClientConnection> conn);
 
   /// Adds a sender for ClientID to the given map.
   void Add(SenderMapType &conn_map, const ClientID &client_id,
@@ -113,7 +113,7 @@ class ConnectionPool {
 
   /// Removes the given receiver for ClientID from the given map.
   void Remove(ReceiverMapType &conn_map, const ClientID &client_id,
-              std::shared_ptr<ReceiverConnection> conn);
+              std::shared_ptr<TcpClientConnection> conn);
 
   /// Returns the count of sender connections to ClientID.
   uint64_t Count(SenderMapType &conn_map, const ClientID &client_id);

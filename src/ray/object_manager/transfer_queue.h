@@ -49,7 +49,7 @@ class TransferQueue {
     ClientID client_id;
     ObjectID object_id;
     uint64_t object_size;
-    std::shared_ptr<ReceiverConnection> conn;
+    std::shared_ptr<TcpClientConnection> conn;
     bool operator==(const ReceiveRequest &rhs) const {
       return client_id == rhs.client_id && object_id == rhs.object_id;
     }
@@ -59,7 +59,8 @@ class TransferQueue {
   ///
   /// \param client_id The ClientID to which the object needs to be sent.
   /// \param object_id The ObjectID of the object to be sent.
-  void QueueSend(ClientID client_id, ObjectID object_id, const RemoteConnectionInfo &info);
+  void QueueSend(ClientID client_id, ObjectID object_id,
+                 const RemoteConnectionInfo &info);
 
   /// If send_queue_ is not empty, removes a SendRequest from send_queue_ and assigns
   /// it to send_ptr. The queue is FIFO.
@@ -73,9 +74,10 @@ class TransferQueue {
   /// \param client_id The ClientID from which the object is being received.
   /// \param object_id The ObjectID of the object to be received.
   void QueueReceive(const ClientID &client_id, const ObjectID &object_id,
-                    uint64_t object_size, std::shared_ptr<ReceiverConnection> conn);
+                    uint64_t object_size, std::shared_ptr<TcpClientConnection> conn);
 
-  /// If receive_queue_ is not empty, removes a ReceiveRequest from receive_queue_ and assigns
+  /// If receive_queue_ is not empty, removes a ReceiveRequest from receive_queue_ and
+  /// assigns
   /// it to receive_ptr. The queue is FIFO.
   /// \param receive_ptr A pointer to an empty ReceiveRequest.
   /// \return A bool indicating whether the queue was empty at the time this method

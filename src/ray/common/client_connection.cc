@@ -75,6 +75,16 @@ ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
     : ServerConnection<T>(std::move(socket)), message_handler_(message_handler) {}
 
 template <class T>
+const ClientID &ClientConnection<T>::GetClientID() {
+  return client_id_;
+}
+
+template <class T>
+void ClientConnection<T>::SetClientID(const ClientID &client_id) {
+  client_id_ = client_id;
+}
+
+template <class T>
 void ClientConnection<T>::ProcessMessages() {
   // Wait for a message header from the client. The message header includes the
   // protocol version, the message type, and the length of the message.

@@ -5,7 +5,7 @@ namespace ray {
 ConnectionPool::ConnectionPool() {}
 
 void ConnectionPool::RegisterReceiver(ConnectionType type, const ClientID &client_id,
-                                      std::shared_ptr<ReceiverConnection> &conn) {
+                                      std::shared_ptr<TcpClientConnection> &conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   switch (type) {
   case ConnectionType::MESSAGE: {
@@ -18,7 +18,7 @@ void ConnectionPool::RegisterReceiver(ConnectionType type, const ClientID &clien
 }
 
 void ConnectionPool::RemoveReceiver(ConnectionType type, const ClientID &client_id,
-                                    std::shared_ptr<ReceiverConnection> &conn) {
+                                    std::shared_ptr<TcpClientConnection> &conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   switch (type) {
   case ConnectionType::MESSAGE: {
@@ -66,7 +66,7 @@ ray::Status ConnectionPool::ReleaseSender(ConnectionType type,
 }
 
 void ConnectionPool::Add(ReceiverMapType &conn_map, const ClientID &client_id,
-                         std::shared_ptr<ReceiverConnection> conn) {
+                         std::shared_ptr<TcpClientConnection> conn) {
   conn_map[client_id].push_back(conn);
 }
 
@@ -76,11 +76,11 @@ void ConnectionPool::Add(SenderMapType &conn_map, const ClientID &client_id,
 }
 
 void ConnectionPool::Remove(ReceiverMapType &conn_map, const ClientID &client_id,
-                            std::shared_ptr<ReceiverConnection> conn) {
+                            std::shared_ptr<TcpClientConnection> conn) {
   if (conn_map.count(client_id) == 0) {
     return;
   }
-  std::vector<std::shared_ptr<ReceiverConnection>> &connections = conn_map[client_id];
+  std::vector<std::shared_ptr<TcpClientConnection>> &connections = conn_map[client_id];
   int64_t pos =
       std::find(connections.begin(), connections.end(), conn) - connections.begin();
   if (pos >= (int64_t)connections.size()) {
