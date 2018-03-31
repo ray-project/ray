@@ -54,7 +54,7 @@ class DDPGEvaluator(PolicyEvaluator):
 
         self.sampler = SyncSampler(
                         self.env, self.model, NoFilter(),
-                        1, horizon=config["horizon"])
+                        config["num_local_steps"], horizon=config["horizon"])
 
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]

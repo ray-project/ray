@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
     "horizon": 500,
     "actor_lr": 0.0001,
     "critic_lr": 0.001,
+    "num_local_steps": 1,
     "num_workers": 0,
 
     "optimizer": {
@@ -52,7 +53,8 @@ class DDPGAgent(Agent):
     def _train(self):
         self.optimizer.step()
         # update target
-        self.local_evaluator.update_target()
+        if self.optimizer.num_steps_trained > 0:
+            self.local_evaluator.update_target()
 
         # generate training result
         stats = self.local_evaluator.stats()
