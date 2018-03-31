@@ -2,29 +2,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import hyperopt as hpo
-from ray.tune.config_parser import make_parser
-from ray.tune.variant_generator import to_argv
-import time
+import os
 import copy
 import numpy as np
+import hyperopt as hpo
+
 from ray.tune.trial import Trial
 from ray.tune import TuneError
-from ray.tune import register_trainable
-from ray.tune.trial_scheduler import TrialScheduler
-
-from ray.tune.trial_scheduler import FIFOScheduler
-from hyperopt import tpe, Domain, Trials
-
-
-def easy_objective(config, reporter):
-
-    # val = config["height"]
-    time.sleep(0.2)
-    reporter(
-        timesteps_total=1,
-        mean_loss=((config["height"] - 14) ** 2 + abs(config["width"] - 3)))
-    time.sleep(0.2)
+from ray.tune.registry import register_trainable
+from ray.tune.trial_scheduler import TrialScheduler, FIFOScheduler
+from ray.tune.config_parser import make_parser
+from ray.tune.variant_generator import to_argv
 
 
 class HyperOptScheduler(FIFOScheduler):
@@ -35,11 +23,21 @@ class HyperOptScheduler(FIFOScheduler):
         self._experiment = None
 
     def track_experiment(self, experiment, trial_runner):
+        """Tracks one experiment.
+
+        Will error if one tries to track multiple experiments.
+        """
         assert self._experiment is None, "HyperOpt only tracks one experiment!"
         self._experiment = experiment
 
-        name = experiment.name  # TODO(rliaw) Find out where name is to be used
+        self._output_path = experiment.name
         spec = copy.deepcopy(experiment.spec)
+
+        # Set Scheduler field, as Tune Parser will set to FIFO
+        assert spec.get("scheduler") in [None, "HyperOpt"], "Incorrectly " \
+            "specified scheduler!"
+        spec["scheduler"] = "HyperOpt"
+
         if "env" in spec:
             spec["config"] = spec.get("config", {})
             spec["config"]["env"] = spec["env"]
@@ -50,11 +48,12 @@ class HyperOptScheduler(FIFOScheduler):
 
         self.parser = make_parser()
         self.args = self.parser.parse_args(to_argv(spec))
+        self.args.scheduler = "HyperOpt"
         self.default_config = copy.deepcopy(spec["config"])
 
-        self.algo = tpe.suggest
-        self.domain = Domain(lambda spec: spec, space)
-        self._hpopt_trials = Trials()
+        self.algo = hpo.tpe.suggest
+        self.domain = hpo.Domain(lambda spec: spec, space)
+        self._hpopt_trials = hpo.Trials()
         self._tune_to_hp = {}
         self._num_trials_left = self.args.repeat
 
@@ -83,17 +82,17 @@ class HyperOptScheduler(FIFOScheduler):
             kv_str = "_".join(["{}={}".format(k, str(v)[:5])
                                for k, v in suggested_config.items()])
             experiment_tag = "hyperopt_{}_{}".format(new_trial_id, kv_str)
-
             trial = Trial(
                 trainable_name=self.args.run,
                 config=new_cfg,
-                local_dir=self.args.local_dir,
+                local_dir=os.path.join(self.args.local_dir, self._output_path),
                 experiment_tag=experiment_tag,
-                resources=self.args.resources,
-                stopping_criterion=self.args.stop,
+                resources=self.args.resources,  #check this
+                stopping_criterion=self.args.stop,  #check this
                 checkpoint_freq=self.args.checkpoint_freq,
                 restore_path=self.args.restore,
-                upload_dir=self.args.upload_dir)
+                upload_dir=self.args.upload_dir,
+                max_failures=self.args.max_failures)
 
             self._tune_to_hp[trial] = new_trial_id
             self._num_trials_left -= 1
@@ -165,11 +164,19 @@ class HyperOptScheduler(FIFOScheduler):
 
 
 if __name__ == '__main__':
+
+    def easy_objective(config, reporter):
+        import time
+        time.sleep(0.2)
+        reporter(
+            timesteps_total=1,
+            mean_loss=((config["height"] - 14) ** 2 + abs(config["width"] - 3)))
+        time.sleep(0.2)
+
     import ray
     from hyperopt import hp
     ray.init(redirect_output=True)
     from ray.tune import run_experiments
-    # register_trainable("exp", MyTrainableClass)
 
     register_trainable("exp", easy_objective)
 
@@ -181,7 +188,8 @@ if __name__ == '__main__':
     config = {"my_exp": {
             "run": "exp",
             "repeat": 1000,
-            "stop": {"training_iteration": 1},
+            # "stop": {"training_iteration": 1},
             "config": {
                 "space": space}}}
-    run_experiments(config, verbose=False, scheduler=HyperOptScheduler())
+    hpo_sched = HyperOptScheduler()
+    run_experiments(config, verbose=False, scheduler=hpo_sched)

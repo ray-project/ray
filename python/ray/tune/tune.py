@@ -8,6 +8,7 @@ from ray.tune import TuneError
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
+from ray.tune.hpo_scheduler import HyperOptScheduler
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
@@ -21,6 +22,7 @@ _SCHEDULERS = {
     "MedianStopping": MedianStoppingRule,
     "HyperBand": HyperBandScheduler,
     "AsyncHyperBand": AsyncHyperBandScheduler,
+    "HyperOpt": HyperOptScheduler,
 }
 
 
@@ -41,7 +43,7 @@ def run_experiments(experiments, scheduler=None, with_server=False,
         experiments (Experiment | list | dict): Experiments to run.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
-            AsyncHyperBand, or HyperBand.
+            AsyncHyperBand, HyperBand, or HyperOpt.
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.

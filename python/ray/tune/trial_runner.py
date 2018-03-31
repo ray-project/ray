@@ -88,7 +88,7 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
-        next_trial = self._check_next_trial()
+        next_trial = self._get_next_trial()
         if next_trial is not None:
             self._launch_trial(next_trial)
         elif self._running:
@@ -191,7 +191,7 @@ class TrialRunner(object):
         gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
         return resources.cpu <= cpu_avail and resources.gpu <= gpu_avail
 
-    def _check_next_trial(self):
+    def _get_next_trial(self):
         self._update_avail_resources()
         trial = self._scheduler_alg.choose_trial_to_run(self)
         return trial
