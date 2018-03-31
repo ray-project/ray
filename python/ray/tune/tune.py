@@ -49,9 +49,6 @@ def run_experiments(experiments, scheduler=None, with_server=False,
         verbose (bool): How much output should be printed for each trial.
     """
 
-    # Make sure rllib agents are registered
-    from ray import rllib  # noqa # pylint: disable=unused-import
-
     if scheduler is None:
         scheduler = FIFOScheduler()
 

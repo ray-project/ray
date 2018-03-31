@@ -26,11 +26,14 @@ class PolicyOptimizer(object):
         remote_evaluators (list): List of remote evaluator replicas, or [].
         num_steps_trained (int): Number of timesteps trained on so far.
         num_steps_sampled (int): Number of timesteps sampled so far.
+        evaluator_resources (dict): Optional resource requests to set for
+            evaluators created by this optimizer.
     """
 
     @classmethod
     def make(
-            cls, evaluator_cls, evaluator_args, num_workers, optimizer_config):
+            cls, evaluator_cls, evaluator_args, num_workers, optimizer_config,
+            evaluator_resources={"num_cpus": None}):
         """Create evaluators and an optimizer instance using those evaluators.
 
         Args:
@@ -43,7 +46,7 @@ class PolicyOptimizer(object):
         """
 
         local_evaluator = evaluator_cls(*evaluator_args)
-        remote_cls = ray.remote(num_cpus=1)(evaluator_cls)
+        remote_cls = ray.remote(**evaluator_resources)(evaluator_cls)
         remote_evaluators = [
             remote_cls.remote(*evaluator_args)
             for _ in range(num_workers)]
