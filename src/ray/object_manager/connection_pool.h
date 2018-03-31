@@ -77,8 +77,7 @@ class ConnectionPool {
   /// \param type The type of connection.
   /// \param conn The actual connection.
   /// \return Status of invoking this method.
-  ray::Status ReleaseSender(ConnectionType type,
-                            std::shared_ptr<SenderConnection> conn);
+  ray::Status ReleaseSender(ConnectionType type, std::shared_ptr<SenderConnection> conn);
 
   // TODO(hme): Implement with error handling.
   /// Remove a sender connection. This is invoked if the connection is no longer
@@ -121,7 +120,7 @@ class ConnectionPool {
   /// Removes a sender connection to ClientID from the pool of available connections.
   /// This method assumes conn_map has available connections to ClientID.
   std::shared_ptr<SenderConnection> Borrow(SenderMapType &conn_map,
-                                             const ClientID &client_id);
+                                           const ClientID &client_id);
 
   /// Returns a sender connection to ClientID to the pool of available connections.
   void Return(SenderMapType &conn_map, const ClientID &client_id,

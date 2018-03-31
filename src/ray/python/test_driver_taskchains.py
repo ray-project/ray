@@ -16,7 +16,7 @@ def submit_task_withdep(driver_handle, task_object_dependencies=[]):
         ray.local_scheduler.ObjectID(random_string()),
         ray.local_scheduler.ObjectID(random_string()),
         task_object_dependencies,
-        1, # num_returns
+        1,  # num_returns
         ray.local_scheduler.ObjectID(random_string()),
         0)
     logger.debug("[DRIVER]: submitting task ", task.task_id())
@@ -32,7 +32,7 @@ def submit_tasks_nodep(driver_handle, num_tasks):
             ray.local_scheduler.ObjectID(random_string()),
             ray.local_scheduler.ObjectID(random_string()),
             [],
-            1, # num_returns
+            1,  # num_returns
             ray.local_scheduler.ObjectID(random_string()),
             0)
 

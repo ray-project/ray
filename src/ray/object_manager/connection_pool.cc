@@ -97,7 +97,7 @@ uint64_t ConnectionPool::Count(SenderMapType &conn_map, const ClientID &client_i
 }
 
 std::shared_ptr<SenderConnection> ConnectionPool::Borrow(SenderMapType &conn_map,
-                                                           const ClientID &client_id) {
+                                                         const ClientID &client_id) {
   std::shared_ptr<SenderConnection> conn = conn_map[client_id].back();
   conn_map[client_id].pop_back();
   RAY_LOG(DEBUG) << "Borrow " << client_id << " " << conn_map[client_id].size();

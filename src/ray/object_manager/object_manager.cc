@@ -496,8 +496,8 @@ ray::Status ObjectManager::ExecuteReceiveObject(
   // Try to create shared buffer.
   std::shared_ptr<Buffer> data;
   std::shared_ptr<plasma::PlasmaClient> store_client = store_pool_.GetObjectStore();
-  arrow::Status s = store_client->Create(plasma_id, object_size, NULL,
-                                         metadata_size, &data);
+  arrow::Status s =
+      store_client->Create(plasma_id, object_size, NULL, metadata_size, &data);
   std::vector<boost::asio::mutable_buffer> buffer;
   if (s.ok()) {
     // Read object into store.
