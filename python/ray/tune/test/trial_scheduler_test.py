@@ -862,6 +862,15 @@ class HyperOptSuite(unittest.TestCase):
     def basicSetup(self, scheduler):
         pass
 
+    def testCorrectArgs(self):
+        pass
+
+    def testAlternateMetrics(self):
+        pass
+
+    def testMultipleExperiments(self):
+        pass
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
