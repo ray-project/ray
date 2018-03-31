@@ -13,8 +13,8 @@ namespace raylet {
 
 Raylet::Raylet(boost::asio::io_service &main_service,
                std::unique_ptr<boost::asio::io_service> object_manager_service,
-               const std::string &socket_name,
-               const NodeManagerConfig &node_manager_config,
+               const std::string &socket_name, const std::string &redis_address,
+               int redis_port, const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
@@ -34,7 +34,7 @@ Raylet::Raylet(boost::asio::io_service &main_service,
   DoAcceptObjectManager();
   DoAcceptNodeManager();
 
-  RAY_CHECK_OK(RegisterGcs(main_service, node_manager_config));
+  RAY_CHECK_OK(RegisterGcs(redis_address, redis_port, main_service, node_manager_config));
 
   RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
 }
@@ -50,10 +50,10 @@ ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {
   return ray::Status::OK();
 }
 
-ray::Status Raylet::RegisterGcs(boost::asio::io_service &io_service,
+ray::Status Raylet::RegisterGcs(const std::string &redis_address, int redis_port,
+                                boost::asio::io_service &io_service,
                                 const NodeManagerConfig &node_manager_config) {
-  // TODO(hme): Clean up constants.
-  RAY_RETURN_NOT_OK(gcs_client_->Connect("127.0.0.1", 6379));
+  RAY_RETURN_NOT_OK(gcs_client_->Connect(redis_address, redis_port));
   RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
 
   ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
