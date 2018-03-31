@@ -91,7 +91,7 @@ elif [[ "$MAC_WHEELS" == "1" ]]; then
   # "HTTPError: 403 Client Error:
   # Brownout of Legacy TLS for url: https://pypi.python.org/pypi/pip/json"
   # for pip installs
-  brew upgrade openssl > /dev/null
+  brew upgrade openssl
   # We use true to avoid exiting with an error code because the brew install can
   # fail if a package is already installed.
   true
