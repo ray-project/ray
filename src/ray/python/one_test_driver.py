@@ -27,7 +27,7 @@ if __name__ == '__main__':
 
     logger.debug("Return values were", task1.returns())
     print("[DRIVER] Return values were", task1.returns())
-    # Make sure the tasks get executed and we can get the result of the last task
+    # Make sure the tasks get executed and we can get the result of the
+    # last task
     obj = driver.get(task1.returns(), timeout_ms=1000)
     print("[DRIVER]: task1 driver.get result ", obj)
-
