@@ -5,10 +5,14 @@ from __future__ import print_function
 import os
 import copy
 import numpy as np
-import hyperopt as hpo
+try:
+    import hyperopt as hpo
+except Exception as e:
+    print("HyperOpt not found; perhaps not installed?")
+    raise e
 
 from ray.tune.trial import Trial
-from ray.tune import TuneError
+from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
 from ray.tune.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.config_parser import make_parser

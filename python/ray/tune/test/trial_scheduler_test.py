@@ -858,5 +858,10 @@ class AsyncHyperBandSuite(unittest.TestCase):
             TrialScheduler.CONTINUE)
 
 
+class HyperOptSuite(unittest.TestCase):
+    def basicSetup(self, scheduler):
+        pass
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

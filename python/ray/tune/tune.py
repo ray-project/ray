@@ -4,29 +4,49 @@ from __future__ import print_function
 
 import time
 
-from ray.tune import TuneError
-from ray.tune.hyperband import HyperBandScheduler
-from ray.tune.async_hyperband import AsyncHyperBandScheduler
-from ray.tune.median_stopping_rule import MedianStoppingRule
-from ray.tune.hpo_scheduler import HyperOptScheduler
+from ray.tune.trial_scheduler import FIFOScheduler
+from ray.tune.error import TuneError
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.web_server import TuneServer
 from ray.tune.experiment import Experiment, JSONExperiment
 
 
-_SCHEDULERS = {
-    "FIFO": FIFOScheduler,
-    "MedianStopping": MedianStoppingRule,
-    "HyperBand": HyperBandScheduler,
-    "AsyncHyperBand": AsyncHyperBandScheduler,
-    "HyperOpt": HyperOptScheduler,
-}
+_SCHEDULERS = {}
+
+
+def get_scheduler(alg):
+    if alg == "FIFO":
+        return FIFOScheduler
+    elif alg == "MedianStopping":
+        from ray.tune.median_stopping_rule import MedianStoppingRule
+        return MedianStoppingRule
+    elif alg == "HyperBand":
+        from ray.tune.hyperband import HyperBandScheduler
+        return HyperBandScheduler
+    elif alg == "AsyncHyperBand":
+        from ray.tune.async_hyperband import AsyncHyperBandScheduler
+        return AsyncHyperBandScheduler
+    elif alg == "HyperOpt":
+        from ray.tune.hpo_scheduler import HyperOptScheduler
+        return HyperOptScheduler
+    else:
+        raise Exception(
+            ("Unknown scheduler {}.").format(alg))
+
+
+def import_schedulers():
+    for key in ["FIFO", "MedianStopping", "HyperBand",
+                "AsyncHyperBand", "HyperOpt"]:
+        try:
+            _SCHEDULERS[key] = get_scheduler(key)
+        except ImportError as e:
+            print("Could not import scheduler: {}".format(key))
 
 
 def _make_scheduler(args):
+    import_schedulers()
     if args.scheduler in _SCHEDULERS:
         return _SCHEDULERS[args.scheduler](**args.scheduler_config)
     else:
