@@ -2,13 +2,7 @@
 
 namespace ray {
 
-ConnectionPool::ConnectionPool(ObjectDirectoryInterface *object_directory,
-                               asio::io_service *connection_service,
-                               const ClientID &client_id) {
-  object_directory_ = object_directory;
-  connection_service_ = connection_service;
-  client_id_ = client_id;
-}
+ConnectionPool::ConnectionPool() {}
 
 void ConnectionPool::RegisterReceiver(ConnectionType type, const ClientID &client_id,
                                       std::shared_ptr<ReceiverConnection> &conn) {
@@ -37,47 +31,36 @@ void ConnectionPool::RemoveReceiver(ConnectionType type, const ClientID &client_
   // TODO(hme): appropriately dispose of client connection.
 }
 
+void ConnectionPool::RegisterSender(ConnectionType type, const ClientID &client_id,
+                                    boost::shared_ptr<SenderConnection> &conn) {
+  std::unique_lock<std::mutex> guard(connection_mutex);
+  SenderMapType &conn_map = (type == ConnectionType::MESSAGE)
+                                ? message_send_connections_
+                                : transfer_send_connections_;
+  Add(conn_map, client_id, conn);
+  // Don't add to available connections. It will become available once it is released.
+}
+
 ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &client_id,
-                                      SuccessCallback success_callback,
-                                      FailureCallback failure_callback) {
+                                      boost::shared_ptr<SenderConnection> *conn) {
+  std::unique_lock<std::mutex> guard(connection_mutex);
   SenderMapType &avail_conn_map = (type == ConnectionType::MESSAGE)
                                       ? available_message_send_connections_
                                       : available_transfer_send_connections_;
-  connection_mutex.lock();
   if (Count(avail_conn_map, client_id) > 0) {
-    boost::shared_ptr<SenderConnection> conn = Borrow(avail_conn_map, client_id);
-    connection_mutex.unlock();
-    success_callback(conn);
-    return Status::OK();
+    *conn = Borrow(avail_conn_map, client_id);
+  } else {
+    *conn = nullptr;
   }
-  connection_mutex.unlock();
-
-  return GetNewConnection(
-      type, client_id,
-      [this, type, client_id, success_callback](boost::shared_ptr<SenderConnection> conn) {
-        connection_mutex.lock();
-        // add it to the connection map to maintain ownership.
-        SenderMapType &conn_map =
-            (type == ConnectionType::MESSAGE) ? message_send_connections_ : transfer_send_connections_;
-        Add(conn_map, client_id, conn);
-        // add it to the available connections
-        SenderMapType &avail_conn_map = (type == ConnectionType::MESSAGE)
-                                            ? available_message_send_connections_
-                                            : available_transfer_send_connections_;
-        Add(avail_conn_map, client_id, conn);
-        // "borrow" the connection.
-        boost::shared_ptr<SenderConnection> async_conn = Borrow(avail_conn_map, client_id);
-        connection_mutex.unlock();
-        success_callback(async_conn);
-      },
-      failure_callback);
+  return ray::Status::OK();
 }
 
 ray::Status ConnectionPool::ReleaseSender(ConnectionType type,
                                           boost::shared_ptr<SenderConnection> conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
-  SenderMapType &conn_map = (type == ConnectionType::MESSAGE) ? available_message_send_connections_
-                                              : available_transfer_send_connections_;
+  SenderMapType &conn_map = (type == ConnectionType::MESSAGE)
+                                ? available_message_send_connections_
+                                : available_transfer_send_connections_;
   Return(conn_map, conn->GetClientID(), conn);
   return ray::Status::OK();
 }
@@ -111,57 +94,20 @@ uint64_t ConnectionPool::Count(SenderMapType &conn_map, const ClientID &client_i
     return 0;
   };
   return conn_map[client_id].size();
-};
+}
 
 boost::shared_ptr<SenderConnection> ConnectionPool::Borrow(SenderMapType &conn_map,
-                                                 const ClientID &client_id) {
+                                                           const ClientID &client_id) {
   boost::shared_ptr<SenderConnection> conn = conn_map[client_id].back();
   conn_map[client_id].pop_back();
-  RAY_LOG(DEBUG) << "Borrow "
-                 << client_id_ << " "
-                 << client_id << " "
-                 << conn_map[client_id].size();
+  RAY_LOG(DEBUG) << "Borrow " << client_id << " " << conn_map[client_id].size();
   return conn;
 }
 
 void ConnectionPool::Return(SenderMapType &conn_map, const ClientID &client_id,
                             boost::shared_ptr<SenderConnection> conn) {
   conn_map[client_id].push_back(conn);
-  RAY_LOG(DEBUG) << "Return "
-                 << client_id_ << " "
-                 << client_id << " "
-                 << conn_map[client_id].size();
+  RAY_LOG(DEBUG) << "Return " << client_id << " " << conn_map[client_id].size();
 }
-
-ray::Status ConnectionPool::GetNewConnection(ConnectionType type,
-                                             const ClientID &client_id,
-                                             SuccessCallback success_callback,
-                                             FailureCallback failure_callback) {
-  ray::Status status = Status::OK();
-  status = object_directory_->GetInformation(
-      client_id,
-      [this, type, success_callback, failure_callback](RemoteConnectionInfo info) {
-        success_callback(CreateConnection(type, info));
-      },
-      [this, failure_callback](const Status &status) { failure_callback(); });
-  return status;
-};
-
-boost::shared_ptr<SenderConnection> ConnectionPool::CreateConnection(ConnectionType type,
-                                                           RemoteConnectionInfo info) {
-  boost::shared_ptr<SenderConnection> conn =
-      SenderConnection::Create(*connection_service_, info.client_id, info.ip, info.port);
-  // Prepare client connection info buffer
-  flatbuffers::FlatBufferBuilder fbb;
-  bool is_transfer = (type == ConnectionType::TRANSFER);
-  auto message =
-      CreateConnectClientMessage(fbb, fbb.CreateString(client_id_.binary()), is_transfer);
-  fbb.Finish(message);
-  // Send synchronously.
-  RAY_CHECK_OK(conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(),
-                                  fbb.GetBufferPointer()));
-  // The connection is ready, return to caller.
-  return conn;
-};
 
 }  // namespace ray

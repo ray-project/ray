@@ -34,14 +34,7 @@ class ConnectionPool {
   enum class ConnectionType : int { MESSAGE = 0, TRANSFER };
 
   /// Connection pool for all connections needed by the ObjectManager.
-  ///
-  /// \param object_directory The object directory, used for obtaining
-  /// remote object manager connection information.
-  /// \param connection_service The io_service the connection pool should use
-  /// to create new connections.
-  /// \param client_id The ClientID of this node.
-  ConnectionPool(ObjectDirectoryInterface *object_directory,
-                 asio::io_service *connection_service, const ClientID &client_id);
+  ConnectionPool();
 
   /// Register a receiver connection.
   ///
@@ -59,18 +52,25 @@ class ConnectionPool {
   void RemoveReceiver(ConnectionType type, const ClientID &client_id,
                       std::shared_ptr<ReceiverConnection> &conn);
 
-  /// Get a sender connection from the connection pool.
-  /// The connection must be released or removed when the operation for which the
-  /// connection was obtained is completed.
+  /// Register a receiver connection.
   ///
   /// \param type The type of connection.
   /// \param client_id The ClientID of the remote object manager.
-  /// \param success_callback The callback invoked when a sender is available.
-  /// \param failure_callback The callback invoked if this method fails.
+  /// \param conn The actual connection.
+  void RegisterSender(ConnectionType type, const ClientID &client_id,
+                      boost::shared_ptr<SenderConnection> &conn);
+
+  /// Get a sender connection from the connection pool.
+  /// The connection must be released or removed when the operation for which the
+  /// connection was obtained is completed. If the connection pool is empty, the
+  /// connection pointer passed in is set to a null pointer.
+  ///
+  /// \param[in] type The type of connection.
+  /// \param[in] client_id The ClientID of the remote object manager.
+  /// \param[out] conn An empty pointer to a shared pointer.
   /// \return Status of invoking this method.
   ray::Status GetSender(ConnectionType type, const ClientID &client_id,
-                        SuccessCallback success_callback,
-                        FailureCallback failure_callback);
+                        boost::shared_ptr<SenderConnection> *conn);
 
   /// Releases a sender connection, allowing it to be used by another operation.
   ///
@@ -127,21 +127,8 @@ class ConnectionPool {
   void Return(SenderMapType &conn_map, const ClientID &client_id,
               boost::shared_ptr<SenderConnection> conn);
 
-  /// Asynchronously obtain a new connection to client_id.
-  ray::Status GetNewConnection(ConnectionType type, const ClientID &client_id,
-                               SuccessCallback success_callback,
-                               FailureCallback failure_callback);
-
-  /// Synchronously create a connection to client_id.
-  boost::shared_ptr<SenderConnection> CreateConnection(ConnectionType type,
-                                                       RemoteConnectionInfo info);
-
   // TODO(hme): Optimize with separate mutex per collection.
   std::mutex connection_mutex;
-  // TODO(hme): make this a shared_ptr.
-  ObjectDirectoryInterface *object_directory_;
-  asio::io_service *connection_service_;
-  ClientID client_id_;
 
   SenderMapType message_send_connections_;
   SenderMapType transfer_send_connections_;

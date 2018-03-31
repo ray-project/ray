@@ -186,7 +186,7 @@ class ObjectManager {
   /// remote object manager.
   TransferQueue transfer_queue_;
 
-  /// This number is incremented whenever a push is started.
+  /// Variables to track number of concurrent sends and receives.
   std::atomic<int> num_transfers_send_;
   std::atomic<int> num_transfers_receive_;
 
@@ -236,12 +236,16 @@ class ObjectManager {
   /// Guranteed to execute on control_strand_.
   ray::Status DequeueTransfers();
 
+  boost::shared_ptr<SenderConnection> CreateSenderConnection(ConnectionPool::ConnectionType type,
+                                                             RemoteConnectionInfo info);
+
   /// Invoked when a transfer is completed. This method will decrement num_transfers_
   /// and invoke DequeueTransfers.
   ray::Status TransferCompleted(TransferQueue::TransferType type);
 
   /// Begin executing a send.
-  ray::Status ExecuteSendObject(const ObjectID &object_id, const ClientID &client_id);
+  ray::Status ExecuteSendObject(const ObjectID &object_id, const ClientID &client_id,
+                                const RemoteConnectionInfo &connection_info);
   /// Initiate a push. This method asynchronously sends the object id and object size
   /// to the remote object manager.
   ray::Status SendObjectHeaders(const ObjectID &object_id,

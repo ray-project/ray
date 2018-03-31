@@ -14,6 +14,7 @@
 namespace ray {
 
 struct RemoteConnectionInfo {
+  RemoteConnectionInfo() = default;
   RemoteConnectionInfo(const ClientID &id, const std::string &ip_address,
                        uint16_t port_num)
       : client_id(id), ip(ip_address), port(port_num) {}
@@ -113,7 +114,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   }
 
  private:
-  std::mutex gcs_mutex;
 
   /// Callbacks associated with a call to GetLocations.
   // TODO(hme): I think these can be removed.

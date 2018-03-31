@@ -2,9 +2,9 @@
 
 namespace ray {
 
-void TransferQueue::QueueSend(ClientID client_id, ObjectID object_id) {
+void TransferQueue::QueueSend(ClientID client_id, ObjectID object_id, const RemoteConnectionInfo &info) {
   WriteLock guard(send_mutex);
-  SendRequest req = {client_id, object_id};
+  SendRequest req = {client_id, object_id, info};
   // TODO(hme): Use a set to speed this up.
   if (std::find(send_queue_.begin(), send_queue_.end(), req) != send_queue_.end()) {
     // already queued.

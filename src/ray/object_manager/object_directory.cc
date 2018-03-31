@@ -31,8 +31,6 @@ ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
 ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
                                             const InfoSuccessCallback &success_callback,
                                             const InfoFailureCallback &fail_callback) {
-  // This is okay since the ClientTable maintains a collection of client data.
-  std::lock_guard<std::mutex> lock(gcs_mutex);
   const ClientTableDataT &data = gcs_client_->client_table().GetClient(client_id);
   ClientID result_client_id = ClientID::from_binary(data.client_id);
   if (result_client_id == ClientID::nil() || !data.is_insertion) {

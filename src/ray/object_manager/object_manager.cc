@@ -15,7 +15,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       store_pool_(config.store_socket_name),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
-      connection_pool_(object_directory_.get(), &*object_manager_service_, client_id_),
+      connection_pool_(),
       transfer_queue_(),
       num_transfers_send_(0),
       num_transfers_receive_(0) {
@@ -37,7 +37,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       store_pool_(config.store_socket_name),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
-      connection_pool_(object_directory_.get(), &*object_manager_service_, client_id_),
+      connection_pool_(),
       transfer_queue_(),
       num_transfers_send_(0),
       num_transfers_receive_(0) {
@@ -150,15 +150,35 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
     return ray::Status::OK();
   }
 
-  Status status = connection_pool_.GetSender(
-      ConnectionPool::ConnectionType::MESSAGE, client_id,
-      [this, object_id](boost::shared_ptr<SenderConnection> conn) {
-        Status status = PullSendRequest(object_id, conn);
-      },
-      [this, object_id]() {
-        // connection failed, so reschedule pull.
-        SchedulePull(object_id, config_.pull_timeout_ms);
-      });
+  // Acquire a message connection and send pull request.
+  ray::Status status;
+  boost::shared_ptr<SenderConnection> conn;
+  // TODO(hme): There is no cap on the number of pull request connections.
+  status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id,
+                                      &conn);
+  if (!status.ok()) {
+    // TODO(hme): Keep track of retries,
+    // and only retry on object not local
+    // for now.
+    SchedulePull(object_id, config_.pull_timeout_ms);
+    return status;
+  }
+  if (conn == nullptr) {
+    status = object_directory_->GetInformation(
+        client_id,
+        [this, object_id, client_id](const RemoteConnectionInfo &connection_info) {
+          boost::shared_ptr<SenderConnection> async_conn = CreateSenderConnection(
+              ConnectionPool::ConnectionType::MESSAGE, connection_info);
+          connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
+                                          client_id, async_conn);
+          RAY_CHECK_OK(PullSendRequest(object_id, async_conn));
+        },
+        [this, object_id](const Status &status) {
+          SchedulePull(object_id, config_.pull_timeout_ms);
+        });
+  } else {
+    RAY_CHECK_OK(PullSendRequest(object_id, conn));
+  }
   return status;
 }
 
@@ -176,22 +196,36 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
 }
 
 ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
-  transfer_queue_.QueueSend(client_id, object_id);
-  return DequeueTransfers();
+  // TODO(hme): Cache this data in ObjectDirectory.
+  // Okay for now since the GCS client caches this data.
+  main_service_->dispatch([this, object_id, client_id]() {
+    Status status = object_directory_->GetInformation(
+        client_id,
+        [this, object_id, client_id](const RemoteConnectionInfo &info) {
+          transfer_queue_.QueueSend(client_id, object_id, info);
+          RAY_CHECK_OK(DequeueTransfers());
+        },
+        [this](const Status &status) {
+          // Push is best effort, so do nothing here.
+        });
+    RAY_CHECK_OK(status);
+  });
+  return ray::Status::OK();
 }
 
 ray::Status ObjectManager::DequeueTransfers() {
   ray::Status status = ray::Status::OK();
   // Dequeue sends.
   while (true) {
-    if(std::atomic_fetch_add(&num_transfers_send_, 1) <= config_.max_sends) {
+    if (std::atomic_fetch_add(&num_transfers_send_, 1) <= config_.max_sends) {
       TransferQueue::SendRequest req;
       bool exists = transfer_queue_.DequeueSendIfPresent(&req);
       if (exists) {
         object_manager_service_->dispatch([this, req]() {
           RAY_LOG(DEBUG) << "DequeueSend " << client_id_ << " " << req.object_id << " "
                          << num_transfers_send_ << "/" << config_.max_sends;
-          RAY_CHECK_OK(ExecuteSendObject(req.object_id, req.client_id));
+          RAY_CHECK_OK(
+              ExecuteSendObject(req.object_id, req.client_id, req.connection_info));
         });
       } else {
         std::atomic_fetch_sub(&num_transfers_send_, 1);
@@ -204,7 +238,7 @@ ray::Status ObjectManager::DequeueTransfers() {
   }
   // Dequeue receives.
   while (true) {
-    if(std::atomic_fetch_add(&num_transfers_receive_, 1) <= config_.max_receives) {
+    if (std::atomic_fetch_add(&num_transfers_receive_, 1) <= config_.max_receives) {
       TransferQueue::ReceiveRequest req;
       bool exists = transfer_queue_.DequeueReceiveIfPresent(&req);
       if (exists) {
@@ -235,24 +269,32 @@ ray::Status ObjectManager::TransferCompleted(TransferQueue::TransferType type) {
   return DequeueTransfers();
 };
 
-ray::Status ObjectManager::ExecuteSendObject(const ObjectID &object_id,
-                                             const ClientID &client_id) {
+ray::Status ObjectManager::ExecuteSendObject(
+    const ObjectID &object_id, const ClientID &client_id,
+    const RemoteConnectionInfo &connection_info) {
   ray::Status status;
-  status = connection_pool_.GetSender(
-      ConnectionPool::ConnectionType::TRANSFER, client_id,
-      [this, object_id](boost::shared_ptr<SenderConnection> conn) {
-        ray::Status status = SendObjectHeaders(object_id, conn);
-        if (!status.ok()) {
-          // TODO(hme): Keep track of retries,
-          // and only retry on object not local
-          // for now.
-          Push(object_id, conn->GetClientID());
-        }
-      },
-      [this, object_id]() {
-        // Push is best effort, so do nothing on failure.
-      });
-  return status;
+  boost::shared_ptr<SenderConnection> conn;
+  status = connection_pool_.GetSender(ConnectionPool::ConnectionType::TRANSFER, client_id,
+                                      &conn);
+  if (!status.ok()) {
+    // TODO(hme): Keep track of retries,
+    // and only retry on object not local
+    // for now.
+    RAY_CHECK_OK(Push(object_id, conn->GetClientID()));
+    return Status::OK();
+  }
+  if (conn == nullptr) {
+    conn =
+        CreateSenderConnection(ConnectionPool::ConnectionType::TRANSFER, connection_info);
+    connection_pool_.RegisterSender(ConnectionPool::ConnectionType::TRANSFER, client_id,
+                                    conn);
+  }
+  status = SendObjectHeaders(object_id, conn);
+  if (!status.ok()) {
+    RAY_CHECK_OK(Push(object_id, conn->GetClientID()));
+    return Status::OK();
+  }
+  return Status::OK();
 }
 
 ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
@@ -299,7 +341,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
     return status;
   }
 
-  // TODO(hme): Make this async again.
+  // TODO(hme): Make this async.
   return SendObjectData(conn, context_id, store_client);
 }
 
@@ -342,6 +384,23 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
                                 const WaitCallback &callback) {
   // TODO: Implement wait.
   return ray::Status::OK();
+}
+
+boost::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
+    ConnectionPool::ConnectionType type, RemoteConnectionInfo info) {
+  boost::shared_ptr<SenderConnection> conn = SenderConnection::Create(
+      *object_manager_service_, info.client_id, info.ip, info.port);
+  // Prepare client connection info buffer
+  flatbuffers::FlatBufferBuilder fbb;
+  bool is_transfer = (type == ConnectionPool::ConnectionType::TRANSFER);
+  auto message =
+      CreateConnectClientMessage(fbb, fbb.CreateString(client_id_.binary()), is_transfer);
+  fbb.Finish(message);
+  // Send synchronously.
+  RAY_CHECK_OK(conn->WriteMessage(OMMessageType_ConnectClient, fbb.GetSize(),
+                                  fbb.GetBufferPointer()));
+  // The connection is ready; return to caller.
+  return conn;
 }
 
 void ObjectManager::ProcessNewClient(std::shared_ptr<ReceiverConnection> conn) {

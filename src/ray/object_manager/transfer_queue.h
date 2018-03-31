@@ -38,6 +38,7 @@ class TransferQueue {
   struct SendRequest {
     ClientID client_id;
     ObjectID object_id;
+    RemoteConnectionInfo connection_info;
     bool operator==(const SendRequest &rhs) const {
       return client_id == rhs.client_id && object_id == rhs.object_id;
     }
@@ -58,7 +59,7 @@ class TransferQueue {
   ///
   /// \param client_id The ClientID to which the object needs to be sent.
   /// \param object_id The ObjectID of the object to be sent.
-  void QueueSend(ClientID client_id, ObjectID object_id);
+  void QueueSend(ClientID client_id, ObjectID object_id, const RemoteConnectionInfo &info);
 
   /// If send_queue_ is not empty, removes a SendRequest from send_queue_ and assigns
   /// it to send_ptr. The queue is FIFO.
