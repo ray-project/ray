@@ -871,6 +871,9 @@ class HyperOptSuite(unittest.TestCase):
     def testMultipleExperiments(self):
         pass
 
+    def testMaxConcurrentNone(self):
+        pass
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

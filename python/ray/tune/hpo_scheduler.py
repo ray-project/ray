@@ -8,8 +8,7 @@ import numpy as np
 try:
     import hyperopt as hpo
 except Exception as e:
-    print("HyperOpt not found; perhaps not installed?")
-    raise e
+    hpo = None
 
 from ray.tune.trial import Trial
 from ray.tune.error import TuneError
@@ -20,13 +19,26 @@ from ray.tune.variant_generator import to_argv
 
 
 class HyperOptScheduler(FIFOScheduler):
+    """FIFOScheduler that uses HyperOpt to provide trial suggestions.
 
-    def __init__(self, max_concurrent=10, loss_attr="mean_loss"):
+    Requires HyperOpt to be installed. Uses the Tree of Parzen Estimators
+    algorithm. Note that this class takes in a loss attribute
+    rather than a reward.
+
+    Parameters:
+        max_concurrent (int): Number of maximum concurrent trials.
+        loss_attr (str): The TrainingResult objective value attribute.
+            This may refer to any decreasing value. Suggestion procedures
+            will use this attribute.
+    """
+
+    def __init__(self, max_concurrent=None, loss_attr="mean_loss"):
+        assert hpo is not None, "HyperOpt must be installed!"
         self._max_concurrent = max_concurrent  # NOTE: this is modified later
         self._loss_attr = loss_attr
         self._experiment = None
 
-    def track_experiment(self, experiment, trial_runner):
+    def add_experiment(self, experiment, trial_runner):
         """Tracks one experiment.
 
         Will error if one tries to track multiple experiments.
@@ -61,10 +73,12 @@ class HyperOptScheduler(FIFOScheduler):
         self._tune_to_hp = {}
         self._num_trials_left = self.args.repeat
 
-        self._max_concurrent = min(self._max_concurrent, self.args.repeat)
+        if self._max_concurrent:
+            self._max_concurrent = min(self._max_concurrent, self.args.repeat)
+
         self.rstate = np.random.RandomState()
         self.trial_generator = self._trial_generator()
-        self.refresh_queue(trial_runner)
+        self._add_new_trials_if_needed(trial_runner)
 
     def _trial_generator(self):
         while self._num_trials_left > 0:
@@ -105,14 +119,14 @@ class HyperOptScheduler(FIFOScheduler):
             yield trial
 
     def on_trial_result(self, trial_runner, trial, result):
-        ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
+        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
         now = hpo.utils.coarse_utcnow()
         ho_trial['book_time'] = now
         ho_trial['refresh_time'] = now
         return TrialScheduler.CONTINUE
 
     def on_trial_error(self, trial_runner, trial):
-        ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
+        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         ho_trial['state'] = hpo.base.JOB_STATE_ERROR
         ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
@@ -120,7 +134,7 @@ class HyperOptScheduler(FIFOScheduler):
         del self._tune_to_hp[trial]
 
     def on_trial_remove(self, trial_runner, trial):
-        ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
+        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         ho_trial['state'] = hpo.base.JOB_STATE_ERROR
         ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
@@ -128,42 +142,44 @@ class HyperOptScheduler(FIFOScheduler):
         del self._tune_to_hp[trial]
 
     def on_trial_complete(self, trial_runner, trial, result):
-        ho_trial = self._get_dynamic_trial(self._tune_to_hp[trial])
+        ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         ho_trial['state'] = hpo.base.JOB_STATE_DONE
-        hp_result = self._convert_result(result)
+        hp_result = self._to_hyperopt_result(result)
         ho_trial['result'] = hp_result
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
 
-    def _convert_result(self, result):
+    def _to_hyperopt_result(self, result):
         return {"loss": getattr(result, self._loss_attr),
                 "status": "ok"}
 
-    def _get_dynamic_trial(self, tid):
+    def _get_hyperopt_trial(self, tid):
         return [t for t in self._hpopt_trials.trials if t["tid"] == tid][0]
 
-    def _continue(self):
-        return self._num_trials_left > 0
-
-    def get_hyperopt_trials(self):
-        return self._hpopt_trials
-
     def choose_trial_to_run(self, trial_runner):
-        self.refresh_queue(trial_runner)
+        self._add_new_trials_if_needed(trial_runner)
         return FIFOScheduler.choose_trial_to_run(self, trial_runner)
 
-    def refresh_queue(self, trial_runner):
+    def _add_new_trials_if_needed(self, trial_runner):
         """Checks if there is a next trial ready to be queued.
 
         This is determined by tracking the number of concurrent
-        experiments and trials left to run."""
-        while (self._num_trials_left > 0 and
-               self._num_live_trials() < self._max_concurrent):
-            try:
+        experiments and trials left to run. If self._max_concurrent is None,
+        scheduler will add new trial if there is none that are pending.
+        """
+        pending = [t for t in trial_runner.get_trials()
+                   if t.status == Trial.PENDING]
+        if self._max_concurrent is None:
+            if len(pending) == 0:
                 trial_runner.add_trial(next(self.trial_generator))
-            except StopIteration:
-                break
+        else:
+            while (self._num_trials_left > 0 and
+                   self._num_live_trials() < self._max_concurrent):
+                try:
+                    trial_runner.add_trial(next(self.trial_generator))
+                except StopIteration:
+                    break
 
     def _num_live_trials(self):
         return len(self._tune_to_hp)

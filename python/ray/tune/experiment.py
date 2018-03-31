@@ -52,9 +52,14 @@ class Experiment(object):
         self.name = name
         self.spec = spec
 
+    @classmethod
+    def from_json(cls, name, spec):
+        """Generates an Experiment object from JSON.
 
-class JSONExperiment(Experiment):
-    """Tracks experiment specifications given JSON."""
-    def __init__(self, name, spec):
-        self.name = name
-        self.spec = spec
+        Args:
+            name (str): Name of Experiment.
+            spec (dict): JSON configuration of experiment.
+        """
+        exp = cls(name, spec["run"])
+        exp.name = name
+        exp.spec = spec

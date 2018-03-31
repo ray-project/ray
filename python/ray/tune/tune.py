@@ -4,49 +4,29 @@ from __future__ import print_function
 
 import time
 
-from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.error import TuneError
+from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.async_hyperband import AsyncHyperBandScheduler
+from ray.tune.median_stopping_rule import MedianStoppingRule
+from ray.tune.hpo_scheduler import HyperOptScheduler
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.web_server import TuneServer
-from ray.tune.experiment import Experiment, JSONExperiment
+from ray.tune.experiment import Experiment
 
 
-_SCHEDULERS = {}
-
-
-def get_scheduler(alg):
-    if alg == "FIFO":
-        return FIFOScheduler
-    elif alg == "MedianStopping":
-        from ray.tune.median_stopping_rule import MedianStoppingRule
-        return MedianStoppingRule
-    elif alg == "HyperBand":
-        from ray.tune.hyperband import HyperBandScheduler
-        return HyperBandScheduler
-    elif alg == "AsyncHyperBand":
-        from ray.tune.async_hyperband import AsyncHyperBandScheduler
-        return AsyncHyperBandScheduler
-    elif alg == "HyperOpt":
-        from ray.tune.hpo_scheduler import HyperOptScheduler
-        return HyperOptScheduler
-    else:
-        raise Exception(
-            ("Unknown scheduler {}.").format(alg))
-
-
-def import_schedulers():
-    for key in ["FIFO", "MedianStopping", "HyperBand",
-                "AsyncHyperBand", "HyperOpt"]:
-        try:
-            _SCHEDULERS[key] = get_scheduler(key)
-        except ImportError as e:
-            print("Could not import scheduler: {}".format(key))
+_SCHEDULERS = {
+    "FIFO": FIFOScheduler,
+    "MedianStopping": MedianStoppingRule,
+    "HyperBand": HyperBandScheduler,
+    "AsyncHyperBand": AsyncHyperBandScheduler,
+    "HyperOpt": HyperOptScheduler,
+}
 
 
 def _make_scheduler(args):
-    import_schedulers()
     if args.scheduler in _SCHEDULERS:
         return _SCHEDULERS[args.scheduler](**args.scheduler_config)
     else:
@@ -84,13 +64,13 @@ def run_experiments(experiments, scheduler=None, with_server=False,
     if isinstance(experiments, Experiment):
         exp_list = [experiments]
     elif type(experiments) is dict:
-        exp_list = [JSONExperiment(name, spec)
+        exp_list = [Experiment.from_json(name, spec)
                     for name, spec in experiments.items()]
 
     if (type(exp_list) is list and
             all(isinstance(exp, Experiment) for exp in exp_list)):
         for experiment in exp_list:
-            scheduler.track_experiment(experiment, runner)
+            scheduler.add_experiment(experiment, runner)
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 

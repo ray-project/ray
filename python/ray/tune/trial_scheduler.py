@@ -48,8 +48,14 @@ class TrialScheduler(object):
 
         raise NotImplementedError
 
-    def track_experiment(self, experiment, trial_runner):
-        """Tracks experiment from which trials and generated and queued."""
+    def add_experiment(self, experiment, trial_runner):
+        """Adds an experiment to the scheduler.
+
+        The scheduler is responsible for adding the trials of the experiment
+        to the runner, which can be done immediately (if there are a finite
+        set of trials), or over time (if there is an infinite stream of trials
+        or if the scheduler is iterative in nature).
+        """
 
         raise NotImplementedError
 
@@ -57,7 +63,7 @@ class TrialScheduler(object):
         """Called to choose a new trial to run.
 
         This should return one of the trials in trial_runner that is in
-        the PENDING or PAUSED state. This is assumed to be idempotent.
+        the PENDING or PAUSED state. This function must be idempotent.
 
         If no trial is ready, return None."""
 
@@ -72,7 +78,7 @@ class TrialScheduler(object):
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
 
-    def track_experiment(self, experiment, trial_runner):
+    def add_experiment(self, experiment, trial_runner):
         generator = generate_trials(experiment.spec, experiment.name)
         while True:
             try:
