@@ -33,7 +33,7 @@ class HyperOptScheduler(FIFOScheduler):
         self._output_path = experiment.name
         spec = copy.deepcopy(experiment.spec)
 
-        # Set Scheduler field, as Tune Parser will set to FIFO
+        # Set Scheduler field, as Tune Parser will default to FIFO
         assert spec.get("scheduler") in [None, "HyperOpt"], "Incorrectly " \
             "specified scheduler!"
         spec["scheduler"] = "HyperOpt"
@@ -68,27 +68,29 @@ class HyperOptScheduler(FIFOScheduler):
             new_ids = self._hpopt_trials.new_trial_ids(1)
             self._hpopt_trials.refresh()
 
+            # Get new suggestion from
             new_trials = self.algo(
                 new_ids, self.domain, self._hpopt_trials,
                 self.rstate.randint(2 ** 31 - 1))
-
             self._hpopt_trials.insert_trial_docs(new_trials)
             self._hpopt_trials.refresh()
             new_trial = new_trials[0]
             new_trial_id = new_trial["tid"]
-
             suggested_config = hpo.base.spec_from_misc(new_trial["misc"])
             new_cfg.update(suggested_config)
+
             kv_str = "_".join(["{}={}".format(k, str(v)[:5])
                                for k, v in suggested_config.items()])
             experiment_tag = "hyperopt_{}_{}".format(new_trial_id, kv_str)
+
+            # Keep this consistent with tune.variant_generator
             trial = Trial(
                 trainable_name=self.args.run,
                 config=new_cfg,
                 local_dir=os.path.join(self.args.local_dir, self._output_path),
                 experiment_tag=experiment_tag,
-                resources=self.args.resources,  #check this
-                stopping_criterion=self.args.stop,  #check this
+                resources=self.args.resources,
+                stopping_criterion=self.args.stop,
                 checkpoint_freq=self.args.checkpoint_freq,
                 restore_path=self.args.restore,
                 upload_dir=self.args.upload_dir,
@@ -170,7 +172,7 @@ if __name__ == '__main__':
         time.sleep(0.2)
         reporter(
             timesteps_total=1,
-            mean_loss=((config["height"] - 14) ** 2 + abs(config["width"] - 3)))
+            mean_loss=((config["height"] - 14) ** 2 + abs(config["width"]-3)))
         time.sleep(0.2)
 
     import ray
