@@ -29,6 +29,9 @@ PY_MMS=("2.7"
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
 
+# To find the SSL installed by brew instead of the Apple one (for pip).
+export PATH="/usr/local/opt/openssl/bin:$PATH"
+
 for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PY_VERSION=${PY_VERSIONS[i]}
   PY_INST=${PY_INSTS[i]}
