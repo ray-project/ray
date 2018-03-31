@@ -80,8 +80,7 @@ def _get_widths(df):
         return 0
 
 
-def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None,
-                                col_chunksize=None):
+def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None):
     """Partitions a Pandas DataFrame object.
     Args:
         df (pandas.DataFrame): The pandas DataFrame to convert.
@@ -96,12 +95,8 @@ def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None,
         row_chunksize = len(df) // num_partitions \
             if len(df) % num_partitions == 0 \
             else len(df) // num_partitions + 1
-
-        col_chunksize = len(df.columns) // num_partitions \
-            if len(df.columns) % num_partitions == 0 \
-            else len(df.columns) // num_partitions + 1
     else:
-        assert row_chunksize is not None and col_chunksize is not None
+        assert row_chunksize is not None
 
     temp_df = df
 
@@ -119,23 +114,6 @@ def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None,
         temp_df.reset_index(drop=True, inplace=True)
         temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
         row_partitions.append(ray.put(temp_df))
-
-    # temp_df = df
-    #
-    # col_partitions = []
-    # while len(temp_df.columns) > col_chunksize:
-    #     t_df = temp_df.iloc[:, 0:col_chunksize]
-    #     # reset_index here because we want a pd.RangeIndex
-    #     # within the partitions. It is smaller and sometimes faster.
-    #     t_df.reset_index(drop=True, inplace=True)
-    #     t_df.columns = pd.RangeIndex(0, len(t_df.columns))
-    #     top = ray.put(t_df)
-    #     col_partitions.append(top)
-    #     temp_df = temp_df.iloc[:, col_chunksize:]
-    # else:
-    #     temp_df.reset_index(drop=True, inplace=True)
-    #     temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
-    #     col_partitions.append(ray.put(temp_df))
 
     return row_partitions
 
@@ -226,7 +204,8 @@ def _map_partitions(func, partitions, *argslists):
                 for part in partitions]
     else:
         assert(all([len(args) == len(partitions) for args in argslists]))
-        return [_deploy_func.remote(func, part, *args) for part, *args in zip(partitions, *argslists)]
+        return [_deploy_func.remote(func, part, *args)
+                for part, *args in zip(partitions, *argslists)]
 
 
 @ray.remote(num_return_vals=4)
@@ -271,13 +250,24 @@ def _create_blk_partitions(partitions, axis=0, length=None):
                                num_return_vals=npartitions)
          for partition in partitions]
 
-    return np.array(x)
+    # In the case that axis is 1 we have to transpose because we build the
+    # columns into rows. Fortunately numpy is efficent at this.
+    return np.array(x) if axis == 0 else np.array(x).T
+
 
 @ray.remote
 def create_blocks(df, npartitions, axis):
-    block_size = df.shape[axis ^ 1] // npartitions
+    # Single partition dataframes don't need to be repartitioned
+    if npartitions == 1:
+        return df
+    # In the case that the size is not a multiple of the number of partitions,
+    # we need to add one to each partition to avoid losing data off the end
+    block_size = df.shape[axis ^ 1] // npartitions \
+        if df.shape[axis ^ 1] % npartitions == 0 \
+        else df.shape[axis ^ 1] // npartitions + 1
 
-    df.columns = pd.RangeIndex(0, len(df.columns))
+    if not isinstance(df.columns, pd.RangeIndex):
+        df.columns = pd.RangeIndex(0, len(df.columns))
 
     return [df.iloc[:, i * block_size: (i + 1) * block_size]
             if axis == 0
