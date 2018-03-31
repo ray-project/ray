@@ -49,8 +49,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   pushd /tmp
     # Install latest version of pip to avoid brownouts
-    wget https://bootstrap.pypa.io/get-pip.py
-    $PYTHON_EXE get-pip.py install
+    curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
   popd
 
   pushd python
