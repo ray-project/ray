@@ -29,9 +29,6 @@ PY_MMS=("2.7"
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
 
-# To find the SSL installed by brew instead of the Apple one (for pip).
-export PATH="/usr/local/opt/openssl/bin:$PATH"
-
 for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PY_VERSION=${PY_VERSIONS[i]}
   PY_INST=${PY_INSTS[i]}
@@ -49,6 +46,12 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
+
+  pushd /tmp
+    # Install latest version of pip to avoid brownouts
+    wget https://bootstrap.pypa.io/get-pip.py
+    $PYTHON_EXE get-pip.py install
+  popd
 
   pushd python
     # Install setuptools_scm because otherwise when building the wheel for

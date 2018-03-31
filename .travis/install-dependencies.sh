@@ -87,11 +87,6 @@ elif [[ "$MAC_WHEELS" == "1" ]]; then
     brew update > /dev/null
   fi
   brew install cmake pkg-config automake autoconf libtool openssl bison > /dev/null
-  # Need to upgrade SSL to avoid the error
-  # "HTTPError: 403 Client Error:
-  # Brownout of Legacy TLS for url: https://pypi.python.org/pypi/pip/json"
-  # for pip installs
-  brew upgrade openssl
   # We use true to avoid exiting with an error code because the brew install can
   # fail if a package is already installed.
   true
