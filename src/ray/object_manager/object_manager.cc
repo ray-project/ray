@@ -154,7 +154,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
 
   // Acquire a message connection and send pull request.
   ray::Status status;
-  boost::shared_ptr<SenderConnection> conn;
+  std::shared_ptr<SenderConnection> conn;
   // TODO(hme): There is no cap on the number of pull request connections.
   status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id,
                                       &conn);
@@ -169,7 +169,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
     status = object_directory_->GetInformation(
         client_id,
         [this, object_id, client_id](const RemoteConnectionInfo &connection_info) {
-          boost::shared_ptr<SenderConnection> async_conn = CreateSenderConnection(
+          std::shared_ptr<SenderConnection> async_conn = CreateSenderConnection(
               ConnectionPool::ConnectionType::MESSAGE, connection_info);
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
@@ -185,7 +185,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
 }
 
 ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
-                                           boost::shared_ptr<SenderConnection> conn) {
+                                           std::shared_ptr<SenderConnection> conn) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
@@ -275,7 +275,7 @@ ray::Status ObjectManager::ExecuteSendObject(
     const ObjectID &object_id, const ClientID &client_id,
     const RemoteConnectionInfo &connection_info) {
   ray::Status status;
-  boost::shared_ptr<SenderConnection> conn;
+  std::shared_ptr<SenderConnection> conn;
   status = connection_pool_.GetSender(ConnectionPool::ConnectionType::TRANSFER, client_id,
                                       &conn);
   if (!status.ok()) {
@@ -300,7 +300,7 @@ ray::Status ObjectManager::ExecuteSendObject(
 }
 
 ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
-                                             boost::shared_ptr<SenderConnection> conn) {
+                                             std::shared_ptr<SenderConnection> conn) {
   ObjectID object_id = ObjectID(object_id_const);
   // Allocate and append the request to the transfer queue.
   plasma::ObjectBuffer object_buffer;
@@ -349,7 +349,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
 }
 
 ray::Status ObjectManager::SendObjectData(
-    boost::shared_ptr<SenderConnection> conn, const UniqueID &context_id,
+    std::shared_ptr<SenderConnection> conn, const UniqueID &context_id,
     std::shared_ptr<plasma::PlasmaClient> store_client) {
   TransferQueue::SendContext context = transfer_queue_.GetContext(context_id);
   boost::system::error_code ec;
@@ -389,9 +389,9 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
   return ray::Status::OK();
 }
 
-boost::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
+std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
     ConnectionPool::ConnectionType type, RemoteConnectionInfo info) {
-  boost::shared_ptr<SenderConnection> conn = SenderConnection::Create(
+  std::shared_ptr<SenderConnection> conn = SenderConnection::Create(
       *object_manager_service_, info.client_id, info.ip, info.port);
   // Prepare client connection info buffer
   flatbuffers::FlatBufferBuilder fbb;
@@ -488,14 +488,15 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn
 }
 
 ray::Status ObjectManager::ExecuteReceiveObject(
-    ClientID client_id, ObjectID object_id, uint64_t object_size,
+    const ClientID &client_id, const ObjectID &object_id, uint64_t object_size,
     std::shared_ptr<TcpClientConnection> conn) {
   boost::system::error_code ec;
   int64_t metadata_size = 0;
+  const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
   // Try to create shared buffer.
   std::shared_ptr<Buffer> data;
   std::shared_ptr<plasma::PlasmaClient> store_client = store_pool_.GetObjectStore();
-  arrow::Status s = store_client->Create(object_id.to_plasma_id(), object_size, NULL,
+  arrow::Status s = store_client->Create(plasma_id, object_size, NULL,
                                          metadata_size, &data);
   std::vector<boost::asio::mutable_buffer> buffer;
   if (s.ok()) {
@@ -504,18 +505,19 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     buffer.push_back(asio::buffer(mutable_data, object_size));
     conn->ReadBuffer(buffer, ec);
     if (!ec.value()) {
-      ARROW_CHECK_OK(store_client->Seal(object_id.to_plasma_id()));
-      ARROW_CHECK_OK(store_client->Release(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client->Seal(plasma_id));
+      ARROW_CHECK_OK(store_client->Release(plasma_id));
     } else {
-      ARROW_CHECK_OK(store_client->Release(object_id.to_plasma_id()));
-      ARROW_CHECK_OK(store_client->Abort(object_id.to_plasma_id()));
+      ARROW_CHECK_OK(store_client->Release(plasma_id));
+      ARROW_CHECK_OK(store_client->Abort(plasma_id));
       RAY_LOG(ERROR) << "Receive Failed";
     }
   } else {
     RAY_LOG(ERROR) << "Buffer Create Failed: " << s.message();
     // Read object into empty buffer.
-    uint8_t *mutable_data = (uint8_t *)malloc(object_size + metadata_size);
-    buffer.push_back(asio::buffer(mutable_data, object_size));
+    std::vector<uint8_t> mutable_data;
+    mutable_data.resize(object_size + metadata_size);
+    buffer.push_back(asio::buffer(mutable_data, object_size + metadata_size));
     conn->ReadBuffer(buffer, ec);
   }
   store_pool_.ReleaseObjectStore(store_client);

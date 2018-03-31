@@ -32,7 +32,7 @@ void ConnectionPool::RemoveReceiver(ConnectionType type, const ClientID &client_
 }
 
 void ConnectionPool::RegisterSender(ConnectionType type, const ClientID &client_id,
-                                    boost::shared_ptr<SenderConnection> &conn) {
+                                    std::shared_ptr<SenderConnection> &conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   SenderMapType &conn_map = (type == ConnectionType::MESSAGE)
                                 ? message_send_connections_
@@ -42,7 +42,7 @@ void ConnectionPool::RegisterSender(ConnectionType type, const ClientID &client_
 }
 
 ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &client_id,
-                                      boost::shared_ptr<SenderConnection> *conn) {
+                                      std::shared_ptr<SenderConnection> *conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   SenderMapType &avail_conn_map = (type == ConnectionType::MESSAGE)
                                       ? available_message_send_connections_
@@ -56,7 +56,7 @@ ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &clien
 }
 
 ray::Status ConnectionPool::ReleaseSender(ConnectionType type,
-                                          boost::shared_ptr<SenderConnection> conn) {
+                                          std::shared_ptr<SenderConnection> conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   SenderMapType &conn_map = (type == ConnectionType::MESSAGE)
                                 ? available_message_send_connections_
@@ -71,7 +71,7 @@ void ConnectionPool::Add(ReceiverMapType &conn_map, const ClientID &client_id,
 }
 
 void ConnectionPool::Add(SenderMapType &conn_map, const ClientID &client_id,
-                         boost::shared_ptr<SenderConnection> conn) {
+                         std::shared_ptr<SenderConnection> conn) {
   conn_map[client_id].push_back(conn);
 }
 
@@ -96,16 +96,16 @@ uint64_t ConnectionPool::Count(SenderMapType &conn_map, const ClientID &client_i
   return conn_map[client_id].size();
 }
 
-boost::shared_ptr<SenderConnection> ConnectionPool::Borrow(SenderMapType &conn_map,
+std::shared_ptr<SenderConnection> ConnectionPool::Borrow(SenderMapType &conn_map,
                                                            const ClientID &client_id) {
-  boost::shared_ptr<SenderConnection> conn = conn_map[client_id].back();
+  std::shared_ptr<SenderConnection> conn = conn_map[client_id].back();
   conn_map[client_id].pop_back();
   RAY_LOG(DEBUG) << "Borrow " << client_id << " " << conn_map[client_id].size();
   return conn;
 }
 
 void ConnectionPool::Return(SenderMapType &conn_map, const ClientID &client_id,
-                            boost::shared_ptr<SenderConnection> conn) {
+                            std::shared_ptr<SenderConnection> conn) {
   conn_map[client_id].push_back(conn);
   RAY_LOG(DEBUG) << "Return " << client_id << " " << conn_map[client_id].size();
 }

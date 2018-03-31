@@ -159,6 +159,7 @@ class ObjectManager {
   ObjectStoreClientPool store_pool_;
 
   /// An io service for creating connections to other object managers.
+  /// This runs on a thread pool.
   std::unique_ptr<boost::asio::io_service> object_manager_service_;
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
@@ -172,7 +173,7 @@ class ObjectManager {
   /// all incoming and outgoing object transfers.
   std::vector<std::thread> io_threads_;
 
-  /// Connection pool provides connections to other object managers.
+  /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;
 
   /// Timeout for failed pull requests.
@@ -212,47 +213,55 @@ class ObjectManager {
   /// Part of an asynchronous strand of Pull methods.
   /// Gets the location of an object before invoking PullEstablishConnection.
   /// Guaranteed to execute on main_service_ thread.
+  /// Executes on main_service_ thread.
   ray::Status PullGetLocations(const ObjectID &object_id);
 
-  /// Invokes a pull with known ClientID. Guaranteed to execute on main_service_ thread.
+  /// Part of an asynchronous strand of Pull methods.
+  /// Uses an existing connection or creates a connection to ClientID.
+  /// Executes on main_service_ thread.
   ray::Status PullEstablishConnection(const ObjectID &object_id,
                                       const ClientID &client_id);
 
-  /// Private callback implementation for success on get location. Called inside OD.
+  /// Private callback implementation for success on get location. Called from
+  /// ObjectDirectory.
   void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
                            const ray::ObjectID &object_id);
 
-  /// Private callback implementation for failure on get location. Called inside OD.
+  /// Private callback implementation for failure on get location. Called from
+  /// ObjectDirectory.
   void GetLocationsFailed(const ObjectID &object_id);
 
-  /// Synchronously send a pull request.
-  /// Invoked once a connection to a remote manager that contains the required ObjectID
-  /// is established.
+  /// Synchronously send a pull request via remote object manager connection.
+  /// Executes on main_service_ thread.
   ray::Status PullSendRequest(const ObjectID &object_id,
-                              boost::shared_ptr<SenderConnection> conn);
+                              std::shared_ptr<SenderConnection> conn);
 
-  /// Starts as many queued transfers as possible without exceeding max_transfers_
-  /// concurrent transfers. Alternates between queued sends and receives.
-  /// Guranteed to execute on control_strand_.
+  /// Starts as many queued sends and receives as possible without exceeding
+  /// config_.max_sends and config_.max_receives, respectively.
+  /// Executes on object_manager_service_ thread pool.
   ray::Status DequeueTransfers();
 
-  boost::shared_ptr<SenderConnection> CreateSenderConnection(
+  std::shared_ptr<SenderConnection> CreateSenderConnection(
       ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
 
-  /// Invoked when a transfer is completed. This method will decrement num_transfers_
-  /// and invoke DequeueTransfers.
+  /// Invoked when a transfer is completed. Invokes DequeueTransfers after
+  /// updating variables that track concurrent transfers.
+  /// Executes on object_manager_service_ thread pool.
   ray::Status TransferCompleted(TransferQueue::TransferType type);
 
   /// Begin executing a send.
+  /// Executes on object_manager_service_ thread pool.
   ray::Status ExecuteSendObject(const ObjectID &object_id, const ClientID &client_id,
                                 const RemoteConnectionInfo &connection_info);
-  /// Initiate a push. This method asynchronously sends the object id and object size
+  /// This method synchronously sends the object id and object size
   /// to the remote object manager.
+  /// Executes on object_manager_service_ thread pool.
   ray::Status SendObjectHeaders(const ObjectID &object_id,
-                                boost::shared_ptr<SenderConnection> client);
-  /// Called by the handler for ExecutePushMeta.
+                                std::shared_ptr<SenderConnection> client);
+
   /// This method initiates the actual object transfer.
-  ray::Status SendObjectData(boost::shared_ptr<SenderConnection> conn,
+  /// Executes on object_manager_service_ thread pool.
+  ray::Status SendObjectData(std::shared_ptr<SenderConnection> conn,
                              const UniqueID &context_id,
                              std::shared_ptr<plasma::PlasmaClient> store_client);
 
@@ -261,7 +270,7 @@ class ObjectManager {
   void ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn,
                           const uint8_t *message);
   /// Execute a receive that was in the queue.
-  ray::Status ExecuteReceiveObject(ClientID client_id, ObjectID object_id,
+  ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
                                    uint64_t object_size,
                                    std::shared_ptr<TcpClientConnection> conn);
 

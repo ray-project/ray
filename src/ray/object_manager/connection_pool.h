@@ -27,7 +27,7 @@ namespace ray {
 class ConnectionPool {
  public:
   /// Callbacks for GetSender.
-  using SuccessCallback = std::function<void(boost::shared_ptr<SenderConnection>)>;
+  using SuccessCallback = std::function<void(std::shared_ptr<SenderConnection>)>;
   using FailureCallback = std::function<void()>;
 
   /// Connection type to distinguish between message and transfer connections.
@@ -58,7 +58,7 @@ class ConnectionPool {
   /// \param client_id The ClientID of the remote object manager.
   /// \param conn The actual connection.
   void RegisterSender(ConnectionType type, const ClientID &client_id,
-                      boost::shared_ptr<SenderConnection> &conn);
+                      std::shared_ptr<SenderConnection> &conn);
 
   /// Get a sender connection from the connection pool.
   /// The connection must be released or removed when the operation for which the
@@ -70,7 +70,7 @@ class ConnectionPool {
   /// \param[out] conn An empty pointer to a shared pointer.
   /// \return Status of invoking this method.
   ray::Status GetSender(ConnectionType type, const ClientID &client_id,
-                        boost::shared_ptr<SenderConnection> *conn);
+                        std::shared_ptr<SenderConnection> *conn);
 
   /// Releases a sender connection, allowing it to be used by another operation.
   ///
@@ -78,7 +78,7 @@ class ConnectionPool {
   /// \param conn The actual connection.
   /// \return Status of invoking this method.
   ray::Status ReleaseSender(ConnectionType type,
-                            boost::shared_ptr<SenderConnection> conn);
+                            std::shared_ptr<SenderConnection> conn);
 
   // TODO(hme): Implement with error handling.
   /// Remove a sender connection. This is invoked if the connection is no longer
@@ -87,7 +87,7 @@ class ConnectionPool {
   /// \param type The type of connection.
   /// \param conn The actual connection.
   /// \return Status of invoking this method.
-  ray::Status RemoveSender(ConnectionType type, boost::shared_ptr<SenderConnection> conn);
+  ray::Status RemoveSender(ConnectionType type, std::shared_ptr<SenderConnection> conn);
 
   /// This object cannot be copied for thread-safety.
   ConnectionPool &operator=(const ConnectionPool &o) {
@@ -97,7 +97,7 @@ class ConnectionPool {
  private:
   /// A container type that maps ClientID to a connection type.
   using SenderMapType =
-      std::unordered_map<ray::ClientID, std::vector<boost::shared_ptr<SenderConnection>>,
+      std::unordered_map<ray::ClientID, std::vector<std::shared_ptr<SenderConnection>>,
                          ray::UniqueIDHasher>;
   using ReceiverMapType =
       std::unordered_map<ray::ClientID, std::vector<std::shared_ptr<TcpClientConnection>>,
@@ -109,7 +109,7 @@ class ConnectionPool {
 
   /// Adds a sender for ClientID to the given map.
   void Add(SenderMapType &conn_map, const ClientID &client_id,
-           boost::shared_ptr<SenderConnection> conn);
+           std::shared_ptr<SenderConnection> conn);
 
   /// Removes the given receiver for ClientID from the given map.
   void Remove(ReceiverMapType &conn_map, const ClientID &client_id,
@@ -120,12 +120,12 @@ class ConnectionPool {
 
   /// Removes a sender connection to ClientID from the pool of available connections.
   /// This method assumes conn_map has available connections to ClientID.
-  boost::shared_ptr<SenderConnection> Borrow(SenderMapType &conn_map,
+  std::shared_ptr<SenderConnection> Borrow(SenderMapType &conn_map,
                                              const ClientID &client_id);
 
   /// Returns a sender connection to ClientID to the pool of available connections.
   void Return(SenderMapType &conn_map, const ClientID &client_id,
-              boost::shared_ptr<SenderConnection> conn);
+              std::shared_ptr<SenderConnection> conn);
 
   // TODO(hme): Optimize with separate mutex per collection.
   std::mutex connection_mutex;

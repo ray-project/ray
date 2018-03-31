@@ -12,6 +12,8 @@ set -x
 # Set up a single Raylet.
 bash ../../../src/ray/test/start_raylets.sh
 
+sleep 1
+
 # Connect a driver to the raylet and make sure it completes.
 python ../../../src/ray/python/test_driver.py /tmp/raylet1 /tmp/store1
 

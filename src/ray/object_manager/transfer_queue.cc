@@ -2,7 +2,7 @@
 
 namespace ray {
 
-void TransferQueue::QueueSend(ClientID client_id, ObjectID object_id,
+void TransferQueue::QueueSend(const ClientID &client_id, const ObjectID &object_id,
                               const RemoteConnectionInfo &info) {
   WriteLock guard(send_mutex);
   SendRequest req = {client_id, object_id, info};
@@ -29,7 +29,7 @@ void TransferQueue::QueueReceive(const ClientID &client_id, const ObjectID &obje
 
 bool TransferQueue::DequeueSendIfPresent(TransferQueue::SendRequest *send_ptr) {
   WriteLock guard(send_mutex);
-  if (send_queue_.size() == 0) {
+  if (send_queue_.empty()) {
     return false;
   }
   *send_ptr = send_queue_.front();
@@ -39,7 +39,7 @@ bool TransferQueue::DequeueSendIfPresent(TransferQueue::SendRequest *send_ptr) {
 
 bool TransferQueue::DequeueReceiveIfPresent(TransferQueue::ReceiveRequest *receive_ptr) {
   WriteLock guard(receive_mutex);
-  if (receive_queue_.size() == 0) {
+  if (receive_queue_.empty()) {
     return false;
   }
   *receive_ptr = receive_queue_.front();

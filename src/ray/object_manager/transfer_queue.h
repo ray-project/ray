@@ -59,7 +59,7 @@ class TransferQueue {
   ///
   /// \param client_id The ClientID to which the object needs to be sent.
   /// \param object_id The ObjectID of the object to be sent.
-  void QueueSend(ClientID client_id, ObjectID object_id,
+  void QueueSend(const ClientID &client_id, const ObjectID &object_id,
                  const RemoteConnectionInfo &info);
 
   /// If send_queue_ is not empty, removes a SendRequest from send_queue_ and assigns

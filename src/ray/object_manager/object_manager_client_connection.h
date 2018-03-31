@@ -25,14 +25,13 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   /// \param ip The ip address of the remote node server.
   /// \param port The port of the remote node server.
   /// \return A connection to the remote object manager.
-  static boost::shared_ptr<SenderConnection> Create(boost::asio::io_service &io_service,
-                                                    const ClientID &client_id,
-                                                    const std::string &ip, uint16_t port);
+  static std::shared_ptr<SenderConnection> Create(boost::asio::io_service &io_service,
+                                                  const ClientID &client_id,
+                                                  const std::string &ip, uint16_t port);
 
   /// \param socket A reference to the socket created by the static Create method.
   /// \param client_id The ClientID of the remote node.
-  SenderConnection(boost::shared_ptr<TcpServerConnection> conn,
-                   const ClientID &client_id);
+  SenderConnection(std::shared_ptr<TcpServerConnection> conn, const ClientID &client_id);
 
   /// Write a message to the client.
   ///
@@ -73,7 +72,7 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
   static uint64_t id_counter_;
   uint64_t connection_id_;
   ClientID client_id_;
-  boost::shared_ptr<TcpServerConnection> conn_;
+  std::shared_ptr<TcpServerConnection> conn_;
 };
 
 }  // namespace ray
