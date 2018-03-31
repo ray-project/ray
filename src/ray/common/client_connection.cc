@@ -26,6 +26,19 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
     : socket_(std::move(socket)) {}
 
 template <class T>
+void ServerConnection<T>::WriteBuffer(
+    const std::vector<boost::asio::const_buffer> &buffer, boost::system::error_code &ec) {
+  boost::asio::write(socket_, buffer, ec);
+}
+
+template <class T>
+void ServerConnection<T>::ReadBuffer(
+    const std::vector<boost::asio::mutable_buffer> &buffer,
+    boost::system::error_code &ec) {
+  boost::asio::read(socket_, buffer, ec);
+}
+
+template <class T>
 ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
                                               const uint8_t *message) {
   std::vector<boost::asio::const_buffer> message_buffers;
@@ -60,6 +73,16 @@ template <class T>
 ClientConnection<T>::ClientConnection(MessageHandler<T> &message_handler,
                                       boost::asio::basic_stream_socket<T> &&socket)
     : ServerConnection<T>(std::move(socket)), message_handler_(message_handler) {}
+
+template <class T>
+const ClientID &ClientConnection<T>::GetClientID() {
+  return client_id_;
+}
+
+template <class T>
+void ClientConnection<T>::SetClientID(const ClientID &client_id) {
+  client_id_ = client_id;
+}
 
 template <class T>
 void ClientConnection<T>::ProcessMessages() {

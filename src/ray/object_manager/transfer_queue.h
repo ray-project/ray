@@ -6,6 +6,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <thread>
 
 #include <boost/asio.hpp>
@@ -29,7 +30,7 @@ class TransferQueue {
   struct SendContext {
     ClientID client_id;
     ObjectID object_id;
-    int64_t object_size;
+    uint64_t object_size;
     uint8_t *data;
   };
 
@@ -37,8 +38,9 @@ class TransferQueue {
   struct SendRequest {
     ClientID client_id;
     ObjectID object_id;
-    friend bool operator==(const SendRequest &o1, const SendRequest &o2) {
-      return o1.client_id == o2.client_id && o1.object_id == o2.object_id;
+    RemoteConnectionInfo connection_info;
+    bool operator==(const SendRequest &rhs) const {
+      return client_id == rhs.client_id && object_id == rhs.object_id;
     }
   };
 
@@ -47,42 +49,40 @@ class TransferQueue {
     ClientID client_id;
     ObjectID object_id;
     uint64_t object_size;
-    std::shared_ptr<ReceiverConnection> conn;
-    friend bool operator==(const ReceiveRequest &o1, const ReceiveRequest &o2) {
-      return o1.client_id == o2.client_id && o1.object_id == o2.object_id;
+    std::shared_ptr<TcpClientConnection> conn;
+    bool operator==(const ReceiveRequest &rhs) const {
+      return client_id == rhs.client_id && object_id == rhs.object_id;
     }
   };
-
-  /// \return Whether the transfer queue is empty.
-  bool Empty();
-
-  /// \return The number of sends in the transfer queue.
-  uint64_t SendCount();
-
-  /// \return The number of receives in the transfer queue.
-  uint64_t ReceiveCount();
-
-  /// \return Indicator of the last transfer type to be dequeued from the queue.
-  TransferType LastTransferType();
 
   /// Queues a send.
   ///
   /// \param client_id The ClientID to which the object needs to be sent.
   /// \param object_id The ObjectID of the object to be sent.
-  void QueueSend(ClientID client_id, ObjectID object_id);
+  void QueueSend(const ClientID &client_id, const ObjectID &object_id,
+                 const RemoteConnectionInfo &info);
 
-  /// \return Removes a SendRequest from the send queue. This queue is FIFO.
-  SendRequest DequeueSend();
+  /// If send_queue_ is not empty, removes a SendRequest from send_queue_ and assigns
+  /// it to send_ptr. The queue is FIFO.
+  /// \param send_ptr A pointer to an empty SendRequest.
+  /// \return A bool indicating whether the queue was empty at the time this method
+  /// was invoked.
+  bool DequeueSendIfPresent(TransferQueue::SendRequest *send_ptr);
 
   /// Queues a receive.
   ///
   /// \param client_id The ClientID from which the object is being received.
   /// \param object_id The ObjectID of the object to be received.
   void QueueReceive(const ClientID &client_id, const ObjectID &object_id,
-                    uint64_t object_size, std::shared_ptr<ReceiverConnection> conn);
+                    uint64_t object_size, std::shared_ptr<TcpClientConnection> conn);
 
-  /// \return Removes a ReceiveRequest from the receive queue. This queue is FIFO.
-  ReceiveRequest DequeueReceive();
+  /// If receive_queue_ is not empty, removes a ReceiveRequest from receive_queue_ and
+  /// assigns
+  /// it to receive_ptr. The queue is FIFO.
+  /// \param receive_ptr A pointer to an empty ReceiveRequest.
+  /// \return A bool indicating whether the queue was empty at the time this method
+  /// was invoked.
+  bool DequeueReceiveIfPresent(TransferQueue::ReceiveRequest *receive_ptr);
 
   /// Maintain ownership over SendContext for sends in transit.
   ///
@@ -102,11 +102,24 @@ class TransferQueue {
   /// \return The status of invoking this method.
   ray::Status RemoveContext(const UniqueID &id);
 
+  /// This object cannot be copied for thread-safety.
+  TransferQueue &operator=(const TransferQueue &o) {
+    throw std::runtime_error("Can't copy TransferQueue.");
+  }
+
  private:
+  // TODO(hme): make this a shared mutex.
+  typedef std::mutex Lock;
+  typedef std::unique_lock<Lock> WriteLock;
+  // TODO(hme): make this a shared lock.
+  typedef std::unique_lock<Lock> ReadLock;
+  Lock send_mutex;
+  Lock receive_mutex;
+  Lock context_mutex;
+
   std::deque<SendRequest> send_queue_;
   std::deque<ReceiveRequest> receive_queue_;
   std::unordered_map<ray::UniqueID, SendContext, ray::UniqueIDHasher> send_context_set_;
-  TransferType last_transfer_type_;
 };
 }  // namespace ray
 

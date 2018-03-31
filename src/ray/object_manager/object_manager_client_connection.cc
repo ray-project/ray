@@ -4,22 +4,21 @@ namespace ray {
 
 uint64_t SenderConnection::id_counter_;
 
-SenderConnection::pointer SenderConnection::Create(boost::asio::io_service &io_service,
-                                                   const ClientID &client_id,
-                                                   const std::string &ip, uint16_t port) {
+std::shared_ptr<SenderConnection> SenderConnection::Create(
+    boost::asio::io_service &io_service, const ClientID &client_id, const std::string &ip,
+    uint16_t port) {
   boost::asio::ip::tcp::socket socket(io_service);
   RAY_CHECK_OK(TcpConnect(socket, ip, port));
-  return pointer(new SenderConnection(std::move(socket), client_id));
+  std::shared_ptr<TcpServerConnection> conn =
+      std::make_shared<TcpServerConnection>(std::move(socket));
+  return std::make_shared<SenderConnection>(conn, client_id);
 };
 
-SenderConnection::SenderConnection(
-    boost::asio::basic_stream_socket<boost::asio::ip::tcp> &&socket,
-    const ClientID &client_id)
-    : ServerConnection<boost::asio::ip::tcp>(std::move(socket)) {
+SenderConnection::SenderConnection(std::shared_ptr<TcpServerConnection> conn,
+                                   const ClientID &client_id)
+    : conn_(conn) {
   client_id_ = client_id;
   connection_id_ = SenderConnection::id_counter_++;
 };
-
-boost::asio::ip::tcp::socket &SenderConnection::GetSocket() { return socket_; };
 
 }  // namespace ray

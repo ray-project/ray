@@ -2,6 +2,7 @@
 #define RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
 
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -13,6 +14,7 @@
 namespace ray {
 
 struct RemoteConnectionInfo {
+  RemoteConnectionInfo() = default;
   RemoteConnectionInfo(const ClientID &id, const std::string &ip_address,
                        uint16_t port_num)
       : client_id(id), ip(ip_address), port(port_num) {}
@@ -105,6 +107,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                                   const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).
   ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
+
+  /// This object cannot be copied for thread-safety.
+  ObjectDirectory &operator=(const ObjectDirectory &o) {
+    throw std::runtime_error("Can't copy ObjectDirectory.");
+  }
 
  private:
   /// Callbacks associated with a call to GetLocations.

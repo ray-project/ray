@@ -1,4 +1,4 @@
-#include "object_store_pool.h"
+#include "object_store_client_pool.h"
 
 namespace ray {
 

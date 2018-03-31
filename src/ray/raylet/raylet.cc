@@ -91,11 +91,11 @@ void Raylet::HandleAcceptNodeManager(const boost::system::error_code &error) {
         [this](std::shared_ptr<TcpClientConnection> client) {
           node_manager_.ProcessNewNodeManager(client);
         };
-    MessageHandler<boost::asio::ip::tcp> message_handler =
-        [this](std::shared_ptr<TcpClientConnection> client, int64_t message_type,
-               const uint8_t *message) {
-          node_manager_.ProcessNodeManagerMessage(client, message_type, message);
-        };
+    MessageHandler<boost::asio::ip::tcp> message_handler = [this](
+        std::shared_ptr<TcpClientConnection> client, int64_t message_type,
+        const uint8_t *message) {
+      node_manager_.ProcessNodeManagerMessage(client, message_type, message);
+    };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = TcpClientConnection::Create(client_handler, message_handler,
                                                       std::move(node_manager_socket_));
@@ -111,18 +111,18 @@ void Raylet::DoAcceptObjectManager() {
 }
 
 void Raylet::HandleAcceptObjectManager(const boost::system::error_code &error) {
-  ReceiverClientHandler client_handler =
-      [this](std::shared_ptr<ReceiverConnection> client) {
+  ClientHandler<boost::asio::ip::tcp> client_handler =
+      [this](std::shared_ptr<TcpClientConnection> client) {
         object_manager_.ProcessNewClient(client);
       };
-  ReceiverMessageHandler message_handler =
-      [this](std::shared_ptr<ReceiverConnection> client, int64_t message_type,
-             const uint8_t *message) {
-        object_manager_.ProcessClientMessage(client, message_type, message);
-      };
+  MessageHandler<boost::asio::ip::tcp> message_handler = [this](
+      std::shared_ptr<TcpClientConnection> client, int64_t message_type,
+      const uint8_t *message) {
+    object_manager_.ProcessClientMessage(client, message_type, message);
+  };
   // Accept a new local client and dispatch it to the node manager.
-  auto new_connection = ReceiverConnection::Create(client_handler, message_handler,
-                                                   std::move(object_manager_socket_));
+  auto new_connection = TcpClientConnection::Create(client_handler, message_handler,
+                                                    std::move(object_manager_socket_));
   DoAcceptObjectManager();
 }
 
@@ -138,11 +138,11 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
         [this](std::shared_ptr<LocalClientConnection> client) {
           node_manager_.ProcessNewClient(client);
         };
-    MessageHandler<boost::asio::local::stream_protocol> message_handler =
-        [this](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
-               const uint8_t *message) {
-          node_manager_.ProcessClientMessage(client, message_type, message);
-        };
+    MessageHandler<boost::asio::local::stream_protocol> message_handler = [this](
+        std::shared_ptr<LocalClientConnection> client, int64_t message_type,
+        const uint8_t *message) {
+      node_manager_.ProcessClientMessage(client, message_type, message);
+    };
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = LocalClientConnection::Create(client_handler, message_handler,
                                                         std::move(socket_));
