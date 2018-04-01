@@ -7,7 +7,6 @@ import unittest
 import numpy as np
 
 from ray.tune.hyperband import HyperBandScheduler
-from ray.tune.hpo_scheduler import HyperOptScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.pbt import PopulationBasedTraining, explore
 from ray.tune.median_stopping_rule import MedianStoppingRule
