@@ -2,14 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from copy import deepcopy
 import ray
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.ddpg.random_process import OrnsteinUhlenbeckProcess
 
 import numpy as np
 import tensorflow as tf
+import tflearn
 
 
 class DDPGModel():
@@ -25,10 +24,11 @@ class DDPGModel():
         obs_space = env.observation_space
         ac_space = env.action_space
 
-        obs_size = np.prod(obs_space.shape)
-        self.obs = tf.placeholder(tf.float32, [None, obs_size])
-        ac_size = np.prod(ac_space.shape)
-        self.act = tf.placeholder(tf.float32, [None, ac_size])
+        self.obs_size = np.prod(obs_space.shape)
+        self.obs = tf.placeholder(tf.float32, [None, self.obs_size])
+        self.ac_size = np.prod(ac_space.shape)
+        self.act = tf.placeholder(tf.float32, [None, self.ac_size])
+        self.action_bound = env.action_space.high # TODO: change to make more general
 
         # set up actor network
         self._setup_actor_network(obs_space, ac_space)
@@ -36,9 +36,6 @@ class DDPGModel():
         # setting up critic
         self._setup_critic_network(obs_space, ac_space)
         self._setup_critic_loss(ac_space)
-
-        # setting up actor loss
-        self._setup_actor_loss()
 
         with tf.variable_scope("critic"):
             self.critic_var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
@@ -62,35 +59,52 @@ class DDPGModel():
 
         # compare critic eval to critic_target (squared loss)
         self.reward = tf.placeholder(tf.float32, [None], name="reward")
-        self.critic_target = self.reward + self.config['gamma'] * self.target_Q
+        self.critic_target = tf.expand_dims(self.reward, 1) + self.config['gamma'] * self.target_Q
         self.critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.critic_eval))
 
     def _setup_critic_network(self, obs_space, ac_space):
         """Sets up Q network."""
-
-        self.obs_and_action = tf.concat([self.obs, self.act], 1)
-
         with tf.variable_scope("critic", reuse=tf.AUTO_REUSE):
-            self.critic_network = FullyConnectedNetwork(self.obs_and_action,
-                                                        1, self.config["critic_model"])
-        self.critic_eval = self.critic_network.outputs
+            self.critic_eval = self._create_critic_network(self.obs, self.act)
 
-        self.obs_and_actor = tf.concat([self.obs, self.output_action], 1) #output_action is output of actor network
         with tf.variable_scope("critic", reuse=True):
-            self.cn_for_loss = FullyConnectedNetwork(self.obs_and_actor,
-                                                        1, self.config["critic_model"])
+            tf.get_variable_scope().reuse_variables()
+            self.cn_for_loss = self._create_critic_network(self.obs, self.output_action)
+
+    def _create_critic_network(self, obs, action):
+        net = tflearn.fully_connected(obs, 400)
+        net = tflearn.layers.normalization.batch_normalization(net)
+        net = tflearn.activations.relu(net)
+
+        t1 = tflearn.fully_connected(net, 300)
+        t2 = tflearn.fully_connected(action, 300)
+        net = tflearn.activation(
+            tf.matmul(net, t1.W) + tf.matmul(action, t2.W) + t2.b, activation='relu')
+        # Final layer weights are init to Uniform[-3e-4, 3e-4]
+        w_init = tflearn.initializations.uniform(minval=-0.0003, maxval=0.0003)
+        out = tflearn.fully_connected(net, 1, weights_init=w_init)
+        return out
 
     def _setup_actor_network(self, obs_space, ac_space):
         dist_class, self.action_dim = ModelCatalog.get_action_dist(ac_space,
                                      dist_type = 'deterministic')
         with tf.variable_scope("actor", reuse=tf.AUTO_REUSE):
-            self.actor_network = ModelCatalog.get_model(
-                                    self.registry, self.obs, 1,
-                                    options=self.config["actor_model"])
-        self.output_action = self.actor_network.outputs
+            self.output_action = self._create_actor_network(self.obs)
 
-    def _setup_actor_loss(self):
-        self.actor_loss = -tf.reduce_mean(self.cn_for_loss.outputs)
+    def _create_actor_network(self, obs):
+        net = tflearn.fully_connected(obs, 400)
+        net = tflearn.layers.normalization.batch_normalization(net)
+        net = tflearn.activations.relu(net)
+        net = tflearn.fully_connected(net, 300)
+        net = tflearn.layers.normalization.batch_normalization(net)
+        net = tflearn.activations.relu(net)
+        # Final layer weights are init to Uniform[-3e-3, 3e-3]
+        w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
+        out = tflearn.fully_connected(
+            net, self.ac_size, activation='tanh', weights_init=w_init)
+        # Scale output to -action_bound to action_bound
+        scaled_out = tf.multiply(out, self.action_bound)
+        return scaled_out
 
     def get_weights(self):
         """Returns critic weights, actor weights."""

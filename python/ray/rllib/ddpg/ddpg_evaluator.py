@@ -40,7 +40,7 @@ class DDPGEvaluator(PolicyEvaluator):
 
         self.initialize()
 
-        # set initial target weights to match model weights
+        # Set initial target weights to match model weights.
         a_updates = []
         for var, target_var in zip(self.model.actor_var_list, self.target_model.actor_var_list):
             a_updates.append(tf.assign(target_var, var))
@@ -71,6 +71,7 @@ class DDPGEvaluator(PolicyEvaluator):
         self.episode_rewards[-1] += rollout.data["rewards"][0]
         self.episode_lengths[-1] += 1
         if rollout.data["dones"][0]:
+            print(len(self.episode_rewards), self.episode_rewards[-1])
             self.episode_rewards.append(0.0)
             self.episode_lengths.append(0.0)
 
@@ -82,11 +83,11 @@ class DDPGEvaluator(PolicyEvaluator):
 
     def stats(self):
         n = self.config["smoothing_num_episodes"] + 1
-        mean_100ep_reward = round(np.mean(self.episode_rewards[-n:-1]), 5)
-        mean_100ep_length = round(np.mean(self.episode_lengths[-n:-1]), 5)
+        mean_10ep_reward = round(np.mean(self.episode_rewards[-n:-1]), 5)
+        mean_10ep_length = round(np.mean(self.episode_lengths[-n:-1]), 5)
         return {
-            "mean_100ep_reward": mean_100ep_reward,
-            "mean_100ep_length": mean_100ep_length,
+            "mean_10ep_reward": mean_10ep_reward,
+            "mean_10ep_length": mean_10ep_length,
             "num_episodes": len(self.episode_rewards),
         }
 
@@ -118,7 +119,7 @@ class DDPGEvaluator(PolicyEvaluator):
         c_opt = tf.train.AdamOptimizer(self.config["critic_lr"])
         self._apply_c_gradients = c_opt.apply_gradients(c_grads_and_vars)
 
-        self.actor_grads = tf.gradients(self.model.actor_loss, self.model.actor_var_list)
+        self.actor_grads = tf.gradients(-self.model.cn_for_loss, self.model.actor_var_list)
         a_grads_and_vars = list(zip(self.actor_grads, self.model.actor_var_list))
         a_opt = tf.train.AdamOptimizer(self.config["actor_lr"])
         self._apply_a_gradients = a_opt.apply_gradients(a_grads_and_vars)
@@ -157,7 +158,7 @@ class DDPGEvaluator(PolicyEvaluator):
         }
         self.critic_grads = [g for g in self.critic_grads if g is not None]
         critic_grad = self.sess.run(self.critic_grads, feed_dict=critic_feed_dict)
-        #import ipdb; ipdb.set_trace()
+        
         return (critic_grad, actor_grad), {}
 
     def apply_gradients(self, grads):

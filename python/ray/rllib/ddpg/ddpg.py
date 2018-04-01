@@ -4,15 +4,14 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.optimizers import LocalSyncReplayOptimizer, LocalSyncOptimizer
 from ray.rllib.agent import Agent
 from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator, RemoteDDPGEvaluator
+from ray.rllib.optimizers import LocalSyncReplayOptimizer
 from ray.tune.result import TrainingResult
-import numpy as np
 
 DEFAULT_CONFIG = {
-    "actor_model": {"fcnet_activation": "relu", "fcnet_hiddens": [64, 64]},
-    "critic_model": {"fcnet_activation": "relu", "fcnet_hiddens": [64, 64]},
+    "actor_model": {},
+    "critic_model": {},
     "env_config": {},
     "gamma": 0.99,
     "horizon": 500,
@@ -31,7 +30,7 @@ DEFAULT_CONFIG = {
 
     "parameter_noise": False,
     "parameter_epsilon": 0.0002, # linear decay of exploration policy
-    "smoothing_num_episodes": 100,
+    "smoothing_num_episodes": 10,
     "tau": 0.001,
 }
 
@@ -61,18 +60,18 @@ class DDPGAgent(Agent):
         if not isinstance(stats, list):
             stats = [stats]
 
-        mean_100ep_reward = 0.0
-        mean_100ep_length = 0.0
+        mean_10ep_reward = 0.0
+        mean_10ep_length = 0.0
         num_episodes = 0
 
         for s in stats:
-            mean_100ep_reward += s["mean_100ep_reward"] / len(stats)
-            mean_100ep_length += s["mean_100ep_length"] / len(stats)
+            mean_10ep_reward += s["mean_10ep_reward"] / len(stats)
+            mean_10ep_length += s["mean_10ep_length"] / len(stats)
             num_episodes += s["num_episodes"]
 
         result = TrainingResult(
-            episode_reward_mean=mean_100ep_reward,
-            episode_len_mean=mean_100ep_length,
+            episode_reward_mean=mean_10ep_reward,
+            episode_len_mean=mean_10ep_length,
             episodes_total=num_episodes,
             timesteps_this_iter=1,
             info = {}
