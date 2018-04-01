@@ -2,9 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hyperopt import hp
-import argparse
-
 import ray
 from ray.tune import run_experiments, register_trainable
 from ray.tune.hpo_scheduler import HyperOptScheduler
@@ -20,6 +17,9 @@ def easy_objective(config, reporter):
 
 
 if __name__ == '__main__':
+    import argparse
+    from hyperopt import hp
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
