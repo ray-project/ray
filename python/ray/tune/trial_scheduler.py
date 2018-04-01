@@ -56,8 +56,12 @@ class TrialScheduler(object):
         set of trials), or over time (if there is an infinite stream of trials
         or if the scheduler is iterative in nature).
         """
-
-        raise NotImplementedError
+        generator = generate_trials(experiment.spec, experiment.name)
+        while True:
+            try:
+                trial_runner.add_trial(next(generator))
+            except StopIteration:
+                break
 
     def choose_trial_to_run(self, trial_runner):
         """Called to choose a new trial to run.
@@ -77,14 +81,6 @@ class TrialScheduler(object):
 
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
-
-    def add_experiment(self, experiment, trial_runner):
-        generator = generate_trials(experiment.spec, experiment.name)
-        while True:
-            try:
-                trial_runner.add_trial(next(generator))
-            except StopIteration:
-                break
 
     def on_trial_add(self, trial_runner, trial):
         pass

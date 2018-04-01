@@ -21,8 +21,8 @@ class HyperOptScheduler(FIFOScheduler):
     """FIFOScheduler that uses HyperOpt to provide trial suggestions.
 
     Requires HyperOpt to be installed. Uses the Tree of Parzen Estimators
-    algorithm. Note that this class takes in a loss attribute
-    rather than a reward.
+    algorithm. Externally added trials will not be tracked by HyperOpt.
+    Note that this class takes in a loss attribute rather than a reward.
 
     Parameters:
         max_concurrent (int | None): Number of maximum concurrent trials.
@@ -30,7 +30,8 @@ class HyperOptScheduler(FIFOScheduler):
             are available.
         loss_attr (str): The TrainingResult objective value attribute.
             This may refer to any decreasing value. Suggestion procedures
-            will use this attribute.
+            will use this attribute. Note that if this is `neg_mean_loss`,
+            then it can be an increasing value.
     """
 
     def __init__(self, max_concurrent=None, loss_attr="mean_loss"):
@@ -102,8 +103,8 @@ class HyperOptScheduler(FIFOScheduler):
             new_cfg.update(suggested_config)
 
             kv_str = "_".join(["{}={}".format(k, str(v)[:5])
-                               for k, v in suggested_config.items()])
-            experiment_tag = "hyperopt_{}_{}".format(new_trial_id, kv_str)
+                               for k, v in sorted(suggested_config.items())])
+            experiment_tag = "{}_{}".format(new_trial_id, kv_str)
 
             # Keep this consistent with tune.variant_generator
             trial = Trial(
