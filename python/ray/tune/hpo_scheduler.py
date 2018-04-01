@@ -22,25 +22,24 @@ class HyperOptScheduler(FIFOScheduler):
 
     Requires HyperOpt to be installed. Uses the Tree of Parzen Estimators
     algorithm. Externally added trials will not be tracked by HyperOpt.
-    Note that this class takes in a loss attribute rather than a reward.
 
     Parameters:
         max_concurrent (int | None): Number of maximum concurrent trials.
             If None, then trials will be queued only if resources
             are available.
-        loss_attr (str): The TrainingResult objective value attribute.
-            This may refer to any decreasing value. Suggestion procedures
-            will use this attribute. Note that if this is `neg_mean_loss`,
-            then it can be an increasing value.
+        reward_attr (str): The TrainingResult objective value attribute.
+            This refers to an increasing value, which is internally negated
+            when interacting with HyperOpt. Suggestion procedures
+            will use this attribute.
     """
 
-    def __init__(self, max_concurrent=None, loss_attr="mean_loss"):
+    def __init__(self, max_concurrent=None, reward_attr="episode_reward_mean"):
         assert hpo is not None, "HyperOpt must be installed!"
         assert type(max_concurrent) in [type(None), int]
         if type(max_concurrent) is int:
             assert max_concurrent > 0
         self._max_concurrent = max_concurrent  # NOTE: this is modified later
-        self._loss_attr = loss_attr
+        self._reward_attr = reward_attr
         self._experiment = None
 
     def add_experiment(self, experiment, trial_runner):
@@ -156,7 +155,7 @@ class HyperOptScheduler(FIFOScheduler):
         del self._tune_to_hp[trial]
 
     def _to_hyperopt_result(self, result):
-        return {"loss": getattr(result, self._loss_attr),
+        return {"loss": -getattr(result, self._reward_attr),
                 "status": "ok"}
 
     def _get_hyperopt_trial(self, tid):
@@ -175,12 +174,13 @@ class HyperOptScheduler(FIFOScheduler):
         """
         pending = [t for t in trial_runner.get_trials()
                    if t.status == Trial.PENDING]
+        if self._num_trials_left <= 0:
+            return
         if self._max_concurrent is None:
-            if len(pending) == 0:
+            if not pending:
                 trial_runner.add_trial(next(self.trial_generator))
         else:
-            while (self._num_trials_left > 0 and
-                   self._num_live_trials() < self._max_concurrent):
+            while self._num_live_trials() < self._max_concurrent:
                 try:
                     trial_runner.add_trial(next(self.trial_generator))
                 except StopIteration:

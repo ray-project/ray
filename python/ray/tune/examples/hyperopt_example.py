@@ -15,7 +15,7 @@ def easy_objective(config, reporter):
     time.sleep(0.2)
     reporter(
         timesteps_total=1,
-        mean_loss=((config["height"] - 14) ** 2 + abs(config["width"]-3)))
+        episode_reward_mean=-((config["height"] - 14) ** 2 + abs(config["width"]-3)))
     time.sleep(0.2)
 
 
@@ -24,7 +24,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init(num_cpus=4, redirect_output=True)
+    ray.init(redirect_output=True)
 
     register_trainable("exp", easy_objective)
 
@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     config = {"my_exp": {
             "run": "exp",
-            "repeat": 5 if args.smoke_test else 100,
+            "repeat": 5 if args.smoke_test else 1000,
             "stop": {"training_iteration": 1},
             "config": {
                 "space": space}}}
