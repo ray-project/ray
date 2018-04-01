@@ -5,14 +5,11 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.ddpg.models import DDPGModel
-from ray.rllib.optimizers.replay_buffer import ReplayBuffer
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.optimizers import SampleBatch
 from ray.rllib.optimizers import PolicyEvaluator
-from ray.rllib.utils.filter import NoFilter, MeanStdFilter
+from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
-from ray.tune.registry import get_registry
 
 
 import numpy as np
@@ -21,19 +18,24 @@ import tensorflow as tf
 
 class DDPGEvaluator(PolicyEvaluator):
 
-
     def __init__(self, registry, env_creator, config):
         self.registry = registry
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]), config["actor_model"])
+            registry, env_creator(config["env_config"]))
         self.config = config
 
         self.sess = tf.Session()
 
         with tf.variable_scope("model"):
-            self.model = DDPGModel(self.registry, self.env, self.config, self.sess)
+            self.model = DDPGModel(self.registry,
+                                   self.env,
+                                   self.config,
+                                   self.sess)
         with tf.variable_scope("target_model"):
-            self.target_model = DDPGModel(self.registry, self.env, self.config, self.sess)
+            self.target_model = DDPGModel(self.registry,
+                                          self.env,
+                                          self.config,
+                                          self.sess)
 
         self.setup_gradients()
         self._setup_target_updates()
@@ -42,12 +44,14 @@ class DDPGEvaluator(PolicyEvaluator):
 
         # Set initial target weights to match model weights.
         a_updates = []
-        for var, target_var in zip(self.model.actor_var_list, self.target_model.actor_var_list):
+        for var, target_var in zip(self.model.actor_var_list,
+                                   self.target_model.actor_var_list):
             a_updates.append(tf.assign(target_var, var))
         actor_updates = tf.group(*a_updates)
 
         c_updates = []
-        for var, target_var in zip(self.model.critic_var_list, self.target_model.critic_var_list):
+        for var, target_var in zip(self.model.critic_var_list,
+                                   self.target_model.critic_var_list):
             c_updates.append(tf.assign(target_var, var))
         critic_updates = tf.group(*c_updates)
         self.sess.run([actor_updates, critic_updates])
@@ -94,17 +98,23 @@ class DDPGEvaluator(PolicyEvaluator):
     def _setup_target_updates(self):
         """Set up target actor and critic updates."""
         a_updates = []
-        for var, target_var in zip(self.model.actor_var_list, self.target_model.actor_var_list):
-            a_updates.append(tf.assign(target_var,
-                    (1. - self.config["tau"]) * target_var
-                    + self.config["tau"] * var))
+        for var, target_var in zip(self.model.actor_var_list,
+                                   self.target_model.actor_var_list):
+            a_updates.append(
+                tf.assign(target_var,
+                          self.config["tau"] * var
+                          + (1. - self.config["tau"]) * target_var)
+            )
         actor_updates = tf.group(*a_updates)
 
         c_updates = []
-        for var, target_var in zip(self.model.critic_var_list, self.target_model.critic_var_list):
-            c_updates.append(tf.assign(target_var,
-                    (1. - self.config["tau"]) * target_var
-                    + self.config["tau"] * var))
+        for var, target_var in zip(self.model.critic_var_list,
+                                   self.target_model.critic_var_list):
+            c_updates.append(
+                tf.assign(target_var,
+                          self.config["tau"] * var
+                          + (1. - self.config["tau"]) * target_var)
+            )
         critic_updates = tf.group(*c_updates)
         self.target_updates = [actor_updates, critic_updates]
 
@@ -114,13 +124,17 @@ class DDPGEvaluator(PolicyEvaluator):
 
     def setup_gradients(self):
         """Setups critic and actor gradients."""
-        self.critic_grads = tf.gradients(self.model.critic_loss, self.model.critic_var_list)
-        c_grads_and_vars = list(zip(self.critic_grads, self.model.critic_var_list))
+        self.critic_grads = tf.gradients(self.model.critic_loss,
+                                         self.model.critic_var_list)
+        c_grads_and_vars = list(zip(self.critic_grads,
+                                self.model.critic_var_list))
         c_opt = tf.train.AdamOptimizer(self.config["critic_lr"])
         self._apply_c_gradients = c_opt.apply_gradients(c_grads_and_vars)
 
-        self.actor_grads = tf.gradients(-self.model.cn_for_loss, self.model.actor_var_list)
-        a_grads_and_vars = list(zip(self.actor_grads, self.model.actor_var_list))
+        self.actor_grads = tf.gradients(-self.model.cn_for_loss,
+                                        self.model.actor_var_list)
+        a_grads_and_vars = list(zip(self.actor_grads,
+                                self.model.actor_var_list))
         a_opt = tf.train.AdamOptimizer(self.config["actor_lr"])
         self._apply_a_gradients = a_opt.apply_gradients(a_grads_and_vars)
 
@@ -128,7 +142,9 @@ class DDPGEvaluator(PolicyEvaluator):
         """ Returns gradient w.r.t. samples."""
         # actor gradients
         actor_actions = self.sess.run(self.model.output_action,
-                                        feed_dict = {self.model.obs: samples["obs"]})
+                                      feed_dict={
+                                        self.model.obs: samples["obs"]
+                                      })
 
         actor_feed_dict = {
             self.model.obs: samples["obs"],
@@ -139,15 +155,16 @@ class DDPGEvaluator(PolicyEvaluator):
 
         # feed samples into target actor
         target_Q_act = self.sess.run(self.target_model.output_action,
-                                    feed_dict={
-                                        self.target_model.obs: samples["new_obs"]
-                                    })
+                                     feed_dict={
+                                      self.target_model.obs: samples["new_obs"]
+                                     })
         target_Q_dict = {
             self.target_model.obs: samples["new_obs"],
             self.target_model.act: target_Q_act,
         }
 
-        target_Q = self.sess.run(self.target_model.critic_eval, feed_dict = target_Q_dict)
+        target_Q = self.sess.run(self.target_model.critic_eval,
+                                 feed_dict=target_Q_dict)
 
         # critic gradients
         critic_feed_dict = {
@@ -157,8 +174,9 @@ class DDPGEvaluator(PolicyEvaluator):
             self.model.target_Q: target_Q,
         }
         self.critic_grads = [g for g in self.critic_grads if g is not None]
-        critic_grad = self.sess.run(self.critic_grads, feed_dict=critic_feed_dict)
-        
+        critic_grad = self.sess.run(self.critic_grads,
+                                    feed_dict=critic_feed_dict)
+
         return (critic_grad, actor_grad), {}
 
     def apply_gradients(self, grads):
@@ -183,9 +201,10 @@ class DDPGEvaluator(PolicyEvaluator):
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
-
+        
         Calling this clears the queue of completed rollout metrics.
         """
         return self.sampler.get_metrics()
+
 
 RemoteDDPGEvaluator = ray.remote(DDPGEvaluator)

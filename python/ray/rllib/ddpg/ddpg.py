@@ -1,17 +1,13 @@
-# imports
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 from ray.rllib.agent import Agent
 from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator, RemoteDDPGEvaluator
 from ray.rllib.optimizers import LocalSyncReplayOptimizer
 from ray.tune.result import TrainingResult
 
 DEFAULT_CONFIG = {
-    "actor_model": {},
-    "critic_model": {},
     "env_config": {},
     "gamma": 0.99,
     "horizon": 500,
@@ -29,10 +25,11 @@ DEFAULT_CONFIG = {
     },
 
     "parameter_noise": False,
-    "parameter_epsilon": 0.0002, # linear decay of exploration policy
+    "parameter_epsilon": 0.0002,  # linear decay of exploration policy
     "smoothing_num_episodes": 10,
     "tau": 0.001,
 }
+
 
 class DDPGAgent(Agent):
     _agent_name = "DDPG"
@@ -74,7 +71,7 @@ class DDPGAgent(Agent):
             episode_len_mean=mean_10ep_length,
             episodes_total=num_episodes,
             timesteps_this_iter=1,
-            info = {}
+            info={}
             )
 
         return result
