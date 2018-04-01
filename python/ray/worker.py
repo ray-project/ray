@@ -31,6 +31,9 @@ import ray.plasma
 from ray.utils import (FunctionProperties, random_string, binary_to_hex,
                        is_cython)
 
+# Import flatbuffer bindings.
+from ray.core.generated.ClientTableData import ClientTableData
+
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 PYTHON_MODE = 2
@@ -1163,65 +1166,89 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address,
     # Redis) must have run "CONFIG SET protected-mode no".
     redis_client = redis.StrictRedis(host=redis_ip_address,
                                      port=int(redis_port))
-    # The client table prefix must be kept in sync with the file
-    # "src/common/redis_module/ray_redis_module.cc" where it is defined.
-    REDIS_CLIENT_TABLE_PREFIX = "CL:"
-    client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
-    # Filter to live clients on the same node and do some basic checking.
-    plasma_managers = []
-    local_schedulers = []
-    raylets = []
-    for key in client_keys:
-        info = redis_client.hgetall(key)
 
-        # Ignore clients that were deleted.
-        deleted = info[b"deleted"]
-        deleted = bool(int(deleted))
-        if deleted:
-            continue
-
-        assert b"ray_client_id" in info
-        assert b"node_ip_address" in info
-        assert b"client_type" in info
-        client_node_ip_address = info[b"node_ip_address"].decode("ascii")
-        if (client_node_ip_address == node_ip_address or
-                (client_node_ip_address == "127.0.0.1" and
-                 redis_ip_address == ray.services.get_node_ip_address())):
-            if info[b"client_type"].decode("ascii") == "plasma_manager":
-                plasma_managers.append(info)
-            elif info[b"client_type"].decode("ascii") == "local_scheduler":
-                local_schedulers.append(info)
-            elif info[b"client_type"].decode("ascii") == "raylet":
-                raylets.append(info)
-    # Make sure that we got at least one plasma manager and local scheduler.
     if not use_raylet:
+        # The client table prefix must be kept in sync with the file
+        # "src/common/redis_module/ray_redis_module.cc" where it is defined.
+        REDIS_CLIENT_TABLE_PREFIX = "CL:"
+        client_keys = redis_client.keys(
+            "{}*".format(REDIS_CLIENT_TABLE_PREFIX))
+        # Filter to live clients on the same node and do some basic checking.
+        plasma_managers = []
+        local_schedulers = []
+        for key in client_keys:
+            info = redis_client.hgetall(key)
+
+            # Ignore clients that were deleted.
+            deleted = info[b"deleted"]
+            deleted = bool(int(deleted))
+            if deleted:
+                continue
+
+            assert b"ray_client_id" in info
+            assert b"node_ip_address" in info
+            assert b"client_type" in info
+            client_node_ip_address = info[b"node_ip_address"].decode("ascii")
+            if (client_node_ip_address == node_ip_address or
+                    (client_node_ip_address == "127.0.0.1" and
+                     redis_ip_address == ray.services.get_node_ip_address())):
+                if info[b"client_type"].decode("ascii") == "plasma_manager":
+                    plasma_managers.append(info)
+                elif info[b"client_type"].decode("ascii") == "local_scheduler":
+                    local_schedulers.append(info)
+        # Make sure that we got at least one plasma manager and local
+        # scheduler.
         assert len(plasma_managers) >= 1
         assert len(local_schedulers) >= 1
+        # Build the address information.
+        object_store_addresses = []
+        for manager in plasma_managers:
+            address = manager[b"manager_address"].decode("ascii")
+            port = services.get_port(address)
+            object_store_addresses.append(
+                services.ObjectStoreAddress(
+                    name=manager[b"store_socket_name"].decode("ascii"),
+                    manager_name=manager[b"manager_socket_name"].decode(
+                        "ascii"),
+                    manager_port=port))
+        scheduler_names = [
+            scheduler[b"local_scheduler_socket_name"].decode("ascii")
+            for scheduler in local_schedulers]
+        client_info = {"node_ip_address": node_ip_address,
+                       "redis_address": redis_address,
+                       "object_store_addresses": object_store_addresses,
+                       "local_scheduler_socket_names": scheduler_names,
+                       # Web UI should be running.
+                       "webui_url": _webui_url_helper(redis_client)}
+        return client_info
+
+    # Handle the raylet case.
     else:
-        assert len(raylets) >= 1
-    # Build the address information.
-    object_store_addresses = []
-    for manager in plasma_managers:
-        address = manager[b"manager_address"].decode("ascii")
-        port = services.get_port(address)
-        object_store_addresses.append(
-            services.ObjectStoreAddress(
-                name=manager[b"store_socket_name"].decode("ascii"),
-                manager_name=manager[b"manager_socket_name"].decode("ascii"),
-                manager_port=port))
-    scheduler_names = [
-        scheduler[b"local_scheduler_socket_name"].decode("ascii")
-        for scheduler in local_schedulers]
-    raylet_names = [raylet[b"raylet_socket_name"].decode("ascii")
-                    for raylet in raylets]
-    client_info = {"node_ip_address": node_ip_address,
-                   "redis_address": redis_address,
-                   "object_store_addresses": object_store_addresses,
-                   "local_scheduler_socket_names": scheduler_names,
-                   "raylet_socket_names": raylet_names,
-                   # Web UI should be running.
-                   "webui_url": _webui_url_helper(redis_client)}
-    return client_info
+        client_key = b"CLIENT:" + 20 * b"\xff"
+        clients = redis_client.zrange(client_key, 0, -1)
+        raylets = []
+        for client_message in clients:
+            client = ClientTableData.GetRootAsClientTableData(client_message,
+                                                              0)
+            client_node_ip_address = client.NodeManagerAddress().decode(
+                "ascii")
+            if (client_node_ip_address == node_ip_address or
+                    (client_node_ip_address == "127.0.0.1" and
+                     redis_ip_address == ray.services.get_node_ip_address())):
+                raylets.append(client)
+
+        # TODO(rkn): The ObjectStoreSocketName field does not exist.
+        object_store_addresses = [
+            raylet.ObjectStoreSocketName().decode("ascii")
+            for raylet in raylets]
+        raylet_socket_names = [raylet.NodeManagerAddress().decode("ascii") for
+                               raylet in raylets]
+        return {"node_ip_address": node_ip_address,
+                "redis_address": redis_address,
+                "object_store_addresses": object_store_addresses,
+                "raylet_socket_names": raylet_socket_names,
+                # Web UI should be running.
+                "webui_url": _webui_url_helper(redis_client)}
 
 
 def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5,
