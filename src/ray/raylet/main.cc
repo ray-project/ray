@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
   const std::string store_socket_name = std::string(argv[2]);
   const std::string redis_address = std::string(argv[3]);
   int redis_port = std::stoi(argv[4]);
-  const std::string node_ip_address = std::string(argv[4]);
+  const std::string node_ip_address = std::string(argv[5]);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
