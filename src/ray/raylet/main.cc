@@ -5,34 +5,45 @@
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
-  RAY_CHECK(argc == 2);
+  RAY_CHECK(argc == 5);
 
-  // start store
-  std::string executable_str = std::string(argv[0]);
-  std::string exec_dir = executable_str.substr(0, executable_str.find_last_of("/"));
-  std::string plasma_dir = exec_dir + "./../plasma";
-  std::string plasma_command =
-      plasma_dir +
-      "/plasma_store -m 1000000000 -s /tmp/store 1> /dev/null 2> /dev/null &";
-  RAY_LOG(INFO) << plasma_command;
-  int s = system(plasma_command.c_str());
-  RAY_CHECK(s == 0);
+  const std::string raylet_socket_name = std::string(argv[1]);
+  const std::string store_socket_name = std::string(argv[2]);
+  const std::string redis_address = std::string(argv[3]);
+  int redis_port = std::stoi(argv[4]);
 
-  // configure
+  // Configuration for the node manager.
+  ray::raylet::NodeManagerConfig node_manager_config;
   std::unordered_map<std::string, double> static_resource_conf;
   static_resource_conf = {{"CPU", 1}, {"GPU", 1}};
-  ray::ResourceSet resource_config(std::move(static_resource_conf));
-  ray::ObjectManagerConfig om_config;
-  om_config.store_socket_name = "/tmp/store";
+  node_manager_config.resource_config =
+      ray::raylet::ResourceSet(std::move(static_resource_conf));
+  node_manager_config.num_initial_workers = 0;
+  // Use a default worker that can execute empty tasks with dependencies.
+  node_manager_config.worker_command.push_back("python");
+  node_manager_config.worker_command.push_back(
+      "../../../src/ray/python/default_worker.py");
+  node_manager_config.worker_command.push_back(raylet_socket_name.c_str());
+  node_manager_config.worker_command.push_back(store_socket_name.c_str());
+  // TODO(swang): Set this from a global config.
+  node_manager_config.heartbeat_period_ms = 100;
+
+  // Configuration for the object manager.
+  ray::ObjectManagerConfig object_manager_config;
+  object_manager_config.store_socket_name = store_socket_name;
 
   //  initialize mock gcs & object directory
-  std::shared_ptr<ray::GcsClient> mock_gcs_client =
-      std::shared_ptr<ray::GcsClient>(new ray::GcsClient());
+  auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();
+  RAY_LOG(INFO) << "Initializing GCS client "
+                << gcs_client->client_table().GetLocalClientId();
 
   // Initialize the node manager.
-  boost::asio::io_service io_service;
-  ray::Raylet server(io_service, std::string(argv[1]), resource_config, om_config,
-                     mock_gcs_client);
-  io_service.run();
+  boost::asio::io_service main_service;
+  std::unique_ptr<boost::asio::io_service> object_manager_service;
+  object_manager_service.reset(new boost::asio::io_service());
+  ray::raylet::Raylet server(main_service, std::move(object_manager_service),
+                             raylet_socket_name, redis_address, redis_port,
+                             node_manager_config, object_manager_config, gcs_client);
+  main_service.run();
 }
 #endif

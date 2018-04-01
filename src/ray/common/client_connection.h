@@ -7,18 +7,74 @@
 #include <boost/asio/error.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
+#include "ray/id.h"
+#include "ray/status.h"
+
 namespace ray {
 
-template <class T>
-class ClientManager;
-
-/// \class ClientConnection
+/// Connect a TCP socket.
 ///
-/// A generic type representing a client connection on a server. This class can
-/// be used to process and write messages asynchronously from and to the
-/// client.
-template <class T>
-class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>> {
+/// \param socket The socket to connect.
+/// \param ip_address The IP address to connect to.
+/// \param port The port to connect to.
+/// \return Status.
+ray::Status TcpConnect(boost::asio::ip::tcp::socket &socket,
+                       const std::string &ip_address, int port);
+
+/// \typename ServerConnection
+///
+/// A generic type representing a client connection to a server. This typename
+/// can be used to write messages synchronously to the server.
+template <typename T>
+class ServerConnection {
+ public:
+  /// Create a connection to the server.
+  ServerConnection(boost::asio::basic_stream_socket<T> &&socket);
+
+  /// Write a message to the client.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status WriteMessage(int64_t type, int64_t length, const uint8_t *message);
+
+  /// Write a buffer to this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer,
+                   boost::system::error_code &ec);
+
+  /// Read a buffer from this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
+                  boost::system::error_code &ec);
+
+ protected:
+  /// The socket connection to the server.
+  boost::asio::basic_stream_socket<T> socket_;
+};
+
+template <typename T>
+class ClientConnection;
+
+template <typename T>
+using ClientHandler = std::function<void(std::shared_ptr<ClientConnection<T>>)>;
+template <typename T>
+using MessageHandler =
+    std::function<void(std::shared_ptr<ClientConnection<T>>, int64_t, const uint8_t *)>;
+
+/// \typename ClientConnection
+///
+/// A generic type representing a client connection on a server. In addition to
+/// writing messages to the client, like in ServerConnection, this typename can
+/// also be used to process messages asynchronously from client.
+template <typename T>
+class ClientConnection : public ServerConnection<T>,
+                         public std::enable_shared_from_this<ClientConnection<T>> {
  public:
   /// Allocate a new node client connection.
   ///
@@ -27,24 +83,23 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
   /// \param socket The client socket.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection<T>> Create(
-      ClientManager<T> &manager, boost::asio::basic_stream_socket<T> &&socket);
+      ClientHandler<T> &new_client_handler, MessageHandler<T> &message_handler,
+      boost::asio::basic_stream_socket<T> &&socket);
+
+  /// \return The ClientID of the remote client.
+  const ClientID &GetClientID();
+
+  /// \param client_id The ClientID of the remote client.
+  void SetClientID(const ClientID &client_id);
 
   /// Listen for and process messages from the client connection. Once a
   /// message has been fully received, the client manager's
   /// ProcessClientMessage handler will be called.
   void ProcessMessages();
 
-  /// Write a message to the client and then listen for more messages.
-  ///
-  /// \param type The message type (e.g., a flatbuffer enum).
-  /// \param length The size in bytes of the message.
-  /// \param message A pointer to the message buffer. This will be copied into
-  /// the ClientConnection's buffer.
-  void WriteMessage(int64_t type, size_t length, const uint8_t *message);
-
  private:
   /// A private constructor for a node client connection.
-  ClientConnection(ClientManager<T> &manager,
+  ClientConnection(MessageHandler<T> &message_handler,
                    boost::asio::basic_stream_socket<T> &&socket);
   /// Process an error from the last operation, then process the  message
   /// header from the client.
@@ -52,53 +107,22 @@ class ClientConnection : public std::enable_shared_from_this<ClientConnection<T>
   /// Process an error from reading the message header, then process the
   /// message from the client.
   void ProcessMessage(const boost::system::error_code &error);
-  /// Process an error from the last operation and then listen for more
-  /// messages.
-  void ProcessMessages(const boost::system::error_code &error);
 
-  /// The client socket.
-  boost::asio::basic_stream_socket<T> socket_;
-  /// A reference to the manager for this client. The manager exposes a handler
-  /// for all messages processed by this client.
-  ClientManager<T> &manager_;
+  /// The ClientID of the remote client.
+  ClientID client_id_;
+  /// The handler for a message from the client.
+  MessageHandler<T> message_handler_;
   /// Buffers for the current message being read rom the client.
   int64_t read_version_;
   int64_t read_type_;
   uint64_t read_length_;
   std::vector<uint8_t> read_message_;
-  /// Buffers for the current message being written to the client.
-  int64_t write_version_;
-  int64_t write_type_;
-  uint64_t write_length_;
-  std::vector<uint8_t> write_message_;
 };
 
+using LocalServerConnection = ServerConnection<boost::asio::local::stream_protocol>;
+using TcpServerConnection = ServerConnection<boost::asio::ip::tcp>;
 using LocalClientConnection = ClientConnection<boost::asio::local::stream_protocol>;
 using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
-
-/// \class ClientManager
-///
-/// A virtual cliant manager. Derived classes should define a method for
-/// processing a message on the server sent by the client.
-template <class T>
-class ClientManager {
- public:
-  /// Process a new client connection.
-  ///
-  /// \param client A shared pointer to the client that connected.
-  virtual void ProcessNewClient(std::shared_ptr<ClientConnection<T>> client) = 0;
-
-  /// Process a message from a client, then listen for more messages if the
-  /// client is still alive.
-  ///
-  /// \param client A shared pointer to the client that sent the message.
-  /// \param message_type The message type (e.g., a flatbuffer enum).
-  /// \param message A pointer to the message buffer.
-  virtual void ProcessClientMessage(std::shared_ptr<ClientConnection<T>> client,
-                                    int64_t message_type, const uint8_t *message) = 0;
-
-  virtual ~ClientManager() = 0;
-};
 
 }  // namespace ray
 

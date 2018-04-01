@@ -2,17 +2,19 @@
 #define RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
 
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "ray/gcs/client.h"
 #include "ray/id.h"
-#include "ray/raylet/mock_gcs_client.h"
 #include "ray/status.h"
 
 namespace ray {
 
 struct RemoteConnectionInfo {
+  RemoteConnectionInfo() = default;
   RemoteConnectionInfo(const ClientID &id, const std::string &ip_address,
                        uint16_t port_num)
       : client_id(id), ip(ip_address), port(port_num) {}
@@ -42,10 +44,9 @@ class ObjectDirectoryInterface {
                                      const InfoFailureCallback &fail_cb) = 0;
 
   // Callbacks for GetLocations.
-  using OnLocationsSuccess = std::function<void(
-      const std::vector<ray::RemoteConnectionInfo> &v, const ray::ObjectID &object_id)>;
-  using OnLocationsFailure =
-      std::function<void(ray::Status status, const ray::ObjectID &object_id)>;
+  using OnLocationsSuccess = std::function<void(const std::vector<ray::ClientID> &v,
+                                                const ray::ObjectID &object_id)>;
+  using OnLocationsFailure = std::function<void(const ray::ObjectID &object_id)>;
 
   /// Asynchronously obtain the locations of an object by ObjectID.
   /// This is used to handle object pulls.
@@ -93,11 +94,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ~ObjectDirectory() override = default;
 
   ray::Status GetInformation(const ClientID &client_id,
-                             const InfoSuccessCallback &success_cb,
-                             const InfoFailureCallback &fail_cb) override;
+                             const InfoSuccessCallback &success_callback,
+                             const InfoFailureCallback &fail_callback) override;
   ray::Status GetLocations(const ObjectID &object_id,
-                           const OnLocationsSuccess &success_cb,
-                           const OnLocationsFailure &fail_cb) override;
+                           const OnLocationsSuccess &success_callback,
+                           const OnLocationsFailure &fail_callback) override;
   ray::Status Cancel(const ObjectID &object_id) override;
   ray::Status Terminate() override;
   ray::Status ReportObjectAdded(const ObjectID &object_id,
@@ -105,7 +106,12 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).
-  ObjectDirectory(std::shared_ptr<GcsClient> gcs_client);
+  ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
+
+  /// This object cannot be copied for thread-safety.
+  ObjectDirectory &operator=(const ObjectDirectory &o) {
+    throw std::runtime_error("Can't copy ObjectDirectory.");
+  }
 
  private:
   /// Callbacks associated with a call to GetLocations.
@@ -115,18 +121,17 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     OnLocationsFailure fail_cb;
   };
 
-  /// Maintain map of in-flight GetLocation requests.
-  std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
-
-  /// Reference to the gcs client.
-  std::shared_ptr<GcsClient> gcs_client_;
-
   /// GetLocations registers a request for locations.
   /// This function actually carries out that request.
   ray::Status ExecuteGetLocations(const ObjectID &object_id);
   /// Invoked when call to ExecuteGetLocations completes.
-  ray::Status GetLocationsComplete(const ray::Status &status, const ObjectID &object_id,
-                                   const std::vector<RemoteConnectionInfo> &v);
+  void GetLocationsComplete(const ObjectID &object_id,
+                            const std::vector<ObjectTableDataT> &location_entries);
+
+  /// Maintain map of in-flight GetLocation requests.
+  std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
+  /// Reference to the gcs client.
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
 };
 
 }  // namespace ray

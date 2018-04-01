@@ -2,7 +2,18 @@
 
 namespace ray {
 
-const TaskExecutionSpecification &Task::GetTaskExecutionSpec() const {
+namespace raylet {
+
+flatbuffers::Offset<protocol::Task> Task::ToFlatbuffer(
+    flatbuffers::FlatBufferBuilder &fbb) const {
+  auto task = CreateTask(fbb, task_spec_.ToFlatbuffer(fbb),
+                         task_execution_spec_.ToFlatbuffer(fbb));
+  return task;
+}
+
+TaskExecutionSpecification &Task::GetTaskExecutionSpec() { return task_execution_spec_; }
+
+const TaskExecutionSpecification &Task::GetTaskExecutionSpecReadonly() const {
   return task_execution_spec_;
 }
 
@@ -46,5 +57,7 @@ bool Task::DependsOn(const ObjectID &object_id) const {
   // This task is not dependent on it.
   return false;
 }
+
+}  // namespace raylet
 
 }  // namespace ray

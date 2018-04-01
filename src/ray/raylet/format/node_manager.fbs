@@ -51,7 +51,9 @@ enum MessageType:int {
   // counts and execution dependencies, discard any tasks that already executed
   // before the checkpoint, and make any tasks on the frontier runnable by
   // making their execution dependencies available.
-  SetActorFrontier
+  SetActorFrontier,
+  // A node manager request to process a task forwarded from another node manager.
+  ForwardTaskRequest
 }
 
 table TaskExecutionSpecification {
@@ -82,12 +84,6 @@ table GetTaskReply {
   gpu_ids: [int];
 }
 
-table EventLogMessage {
-  key: string;
-  value: string;
-  timestamp: double;
-}
-
 // This struct is used to register a new worker with the local scheduler.
 // It is shipped as part of local_scheduler_connect.
 table RegisterClientRequest {
@@ -108,57 +104,20 @@ table RegisterClientReply {
   gpu_ids: [int];
 }
 
-table DisconnectClient {
-}
-
-table ReconstructObject {
-  // Object ID of the object that needs to be reconstructed.
-  object_id: string;
-}
-
-table PutObject {
-  // Task ID of the task that performed the put.
-  task_id: string;
-  // Object ID of the object that is being put.
-  object_id: string;
-}
-
-// The ActorFrontier is used to represent the current frontier of tasks that
-// the local scheduler has marked as runnable for a particular actor. It is
-// used to save the point in an actor's lifetime at which a checkpoint was
-// taken, so that the same frontier of tasks can be made runnable again if the
-// actor is resumed from that checkpoint.
-table ActorFrontier {
-  // Actor ID of the actor whose frontier is described.
-  actor_id: string;
-  // A list of handle IDs, representing the callers of the actor that have
-  // submitted a runnable task to the local scheduler. A nil ID represents the
-  // creator of the actor.
-  handle_ids: [string];
-  // A list representing the number of tasks executed so far, per handle. Each
-  // count in task_counters corresponds to the handle at the same in index in
-  // handle_ids.
-  task_counters: [long];
-  // A list representing the execution dependency for the next runnable task,
-  // per handle. Each execution dependency in frontier_dependencies corresponds
-  // to the handle at the same in index in handle_ids.
-  frontier_dependencies: [string];
-}
-
-table GetActorFrontierRequest {
-  actor_id: string;
-}
-
 table RegisterNodeManagerRequest {
   // GCS ClientID of the connecting node manager.
   client_id: string;
 }
 
 table ForwardTaskRequest {
-  // The task to be forwarded.
-  // TODO(swang): Replace with a Task flatbuffer type.
-  task: string;
-  // The uncommitted lineage of the forwarded task, according to the sending
-  // node manager.
-  uncommitted_lineage: [string];
+  // The ID of the task to be forwarded.
+  task_id: string;
+  // The tasks in the uncommitted lineage of the forwarded task. This
+  // should include task_id.
+  uncommitted_tasks: [Task];
+}
+
+table ReconstructObject {
+  // Object ID of the object that needs to be reconstructed.
+  object_id: string;
 }

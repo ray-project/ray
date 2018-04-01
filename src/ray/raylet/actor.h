@@ -4,6 +4,9 @@
 #include "ray/id.h"
 
 namespace ray {
+
+namespace raylet {
+
 class ActorInformation {
  public:
   /// \brief ActorInformation constructor.
@@ -20,6 +23,8 @@ class ActorInformation {
   /// Unique identifier for this actor.
   ActorID id_;
 };  // class ActorInformation
+
+}  // namespace raylet
 
 }  // namespace ray
 
