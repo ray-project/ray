@@ -12,7 +12,6 @@ except Exception as e:
 
 from ray.tune.trial import Trial
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable
 from ray.tune.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.config_parser import make_parser
 from ray.tune.variant_generator import to_argv
@@ -26,7 +25,9 @@ class HyperOptScheduler(FIFOScheduler):
     rather than a reward.
 
     Parameters:
-        max_concurrent (int): Number of maximum concurrent trials.
+        max_concurrent (int | None): Number of maximum concurrent trials.
+            If None, then trials will be queued only if resources
+            are available.
         loss_attr (str): The TrainingResult objective value attribute.
             This may refer to any decreasing value. Suggestion procedures
             will use this attribute.
@@ -34,6 +35,9 @@ class HyperOptScheduler(FIFOScheduler):
 
     def __init__(self, max_concurrent=None, loss_attr="mean_loss"):
         assert hpo is not None, "HyperOpt must be installed!"
+        assert type(max_concurrent) in [type(None), int]
+        if type(max_concurrent) is int:
+            assert max_concurrent > 0
         self._max_concurrent = max_concurrent  # NOTE: this is modified later
         self._loss_attr = loss_attr
         self._experiment = None
@@ -73,7 +77,7 @@ class HyperOptScheduler(FIFOScheduler):
         self._tune_to_hp = {}
         self._num_trials_left = self.args.repeat
 
-        if self._max_concurrent:
+        if type(self._max_concurrent) is int:
             self._max_concurrent = min(self._max_concurrent, self.args.repeat)
 
         self.rstate = np.random.RandomState()
@@ -183,35 +187,3 @@ class HyperOptScheduler(FIFOScheduler):
 
     def _num_live_trials(self):
         return len(self._tune_to_hp)
-
-
-if __name__ == '__main__':
-
-    def easy_objective(config, reporter):
-        import time
-        time.sleep(0.2)
-        reporter(
-            timesteps_total=1,
-            mean_loss=((config["height"] - 14) ** 2 + abs(config["width"]-3)))
-        time.sleep(0.2)
-
-    import ray
-    from hyperopt import hp
-    ray.init(redirect_output=True)
-    from ray.tune import run_experiments
-
-    register_trainable("exp", easy_objective)
-
-    space = {
-        'width': hp.uniform('width', 0, 20),
-        'height': hp.uniform('height', -100, 100),
-    }
-
-    config = {"my_exp": {
-            "run": "exp",
-            "repeat": 100,
-            "stop": {"training_iteration": 1},
-            "config": {
-                "space": space}}}
-    hpo_sched = HyperOptScheduler()
-    run_experiments(config, verbose=False, scheduler=hpo_sched)

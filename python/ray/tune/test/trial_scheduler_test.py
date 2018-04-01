@@ -1,4 +1,3 @@
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -8,6 +7,7 @@ import unittest
 import numpy as np
 
 from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.hpo_scheduler import HyperOptScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.pbt import PopulationBasedTraining, explore
 from ray.tune.median_stopping_rule import MedianStoppingRule
@@ -856,23 +856,6 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self.assertEqual(
             scheduler.on_trial_result(None, t2, result2(6, 0)),
             TrialScheduler.CONTINUE)
-
-
-class HyperOptSuite(unittest.TestCase):
-    def basicSetup(self, scheduler):
-        pass
-
-    def testCorrectArgs(self):
-        pass
-
-    def testAlternateMetrics(self):
-        pass
-
-    def testMultipleExperiments(self):
-        pass
-
-    def testMaxConcurrentNone(self):
-        pass
 
 
 if __name__ == "__main__":
