@@ -47,6 +47,7 @@ class Raylet {
  private:
   /// Register GCS client.
   ray::Status RegisterGcs(const std::string &redis_address, int redis_port,
+                          const std::string &node_ip_address,
                           boost::asio::io_service &io_service, const NodeManagerConfig &);
 
   ray::Status RegisterPeriodicTimer(boost::asio::io_service &io_service);
