@@ -20,8 +20,11 @@ from ray.tune.variant_generator import to_argv
 class HyperOptScheduler(FIFOScheduler):
     """FIFOScheduler that uses HyperOpt to provide trial suggestions.
 
-    Requires HyperOpt to be installed. Uses the Tree of Parzen Estimators
-    algorithm. Externally added trials will not be tracked by HyperOpt.
+    Requires HyperOpt to be installed via source.
+    Uses the Tree-structured Parzen Estimators algorithm. Externally added
+    trials will not be tracked by HyperOpt. Also,
+    variant generation will be limited, as the hyperparameter configuration
+    must be specified using HyperOpt primitives.
 
     Parameters:
         max_concurrent (int | None): Number of maximum concurrent trials.
@@ -31,6 +34,14 @@ class HyperOptScheduler(FIFOScheduler):
             This refers to an increasing value, which is internally negated
             when interacting with HyperOpt. Suggestion procedures
             will use this attribute.
+
+    Examples:
+        >>> space = {'param': hp.uniform('param', 0, 20)}
+        >>> config = {"my_exp": {
+                          "run": "exp",
+                          "repeat": 5,
+                          "config": {"space": space}}}
+        >>> run_experiments(config, scheduler=HyperOptScheduler())
     """
 
     def __init__(self, max_concurrent=None, reward_attr="episode_reward_mean"):
