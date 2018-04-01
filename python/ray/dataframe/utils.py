@@ -229,6 +229,10 @@ def _build_columns_and_index(df_row, index, df_col, columns):
     col_names = ("partition", "index_within_partition")
     column_df = pd.DataFrame(dest_indices, index=columns, columns=col_names)
 
+    # TODO Change create_blocks so we will not need this in the future.
+    column_df["index_within_partition"] = \
+        range(len(column_df["index_within_partition"]))
+
     return lengths, index_df, widths, column_df
 
 

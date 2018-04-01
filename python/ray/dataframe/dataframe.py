@@ -1122,15 +1122,26 @@ class DataFrame(object):
             dropped : type of caller
         """
         # TODO: fix - not working
-        # inplace = validate_bool_kwarg(inplace, "inplace")
+        inplace = validate_bool_kwarg(inplace, "inplace")
         if labels is not None:
             if index is not None or columns is not None:
                 raise ValueError("Cannot specify both 'labels' and "
                                  "'index'/'columns'")
-        elif index is None and columns is None:
+            axis = self._row_index._get_axis_name(axis)
+            axes = {axis, labels}
+        elif index is not None or columns is not None:
+            axes, _ = self._row_index._construct_axes_from_arguments((index,
+                                                                      columns),
+                                                                     {})
+        else:
             raise ValueError("Need to specify at least one of 'labels', "
                              "'index' or 'columns'")
+
         new_df = self
+
+        for axis, labels in axes.items():
+            
+
         is_axis_zero = axis is None or axis == 0 or axis == 'index'\
             or axis == 'rows'
         try:
@@ -1678,7 +1689,7 @@ class DataFrame(object):
             allow_duplicates (bool): Whether to allow duplicate column names.
         """
         # TODO: not working after _col_index rewrite 
-        if not is_list_like:
+        if not is_list_like(value):
             value = [value for _ in range(len(self.index))]
 
         if len(value) != len(self.index):
@@ -1694,8 +1705,6 @@ class DataFrame(object):
         if loc < 0:
             raise ValueError("unbounded slice")
 
-
-
         # Perform insert on a specific column partition
         # Determine which column partition to place it in, and where in that partition
         col_cum_lens = np.cumsum(self._col_lengths)
@@ -1709,25 +1718,6 @@ class DataFrame(object):
 
         self._col_partitions[col_part_idx] = \
                 _deploy_func.remote(insert_col_part, self._col_partitions[col_part_idx])
-
-        cumulative = np.concatenate(([0], np.cumsum(self._row_lengths)))
-        partitions = [value[cumulative[i]:cumulative[i+1]] for i in range(len(cumulative) - 1)]
-
-        # Perform insert on each row, with it's respective values
-        # TODO: Determine if we're better off shuffle-rebuilding (I don't think so?)
-        # Because insert is always inplace, we have to create this temp fn.
-        def _insert(_df, _loc, _column, _part, _allow_duplicates):
-            _df.insert(_loc, _column, _part, _allow_duplicates)
-            return _df
-
-        self._row_partitions = \
-            [_deploy_func.remote(_insert,
-                                 self._row_partitions[i],
-                                 loc,
-                                 column,
-                                 partitions[i],
-                                 allow_duplicates)
-             for i in range(len(self._row_partitions))]
 
         # Generate new column index
         new_col_index = self.columns.insert(loc, column)
@@ -1748,6 +1738,7 @@ class DataFrame(object):
 
         # Insert into cached RangeIndex, and order by new column index
         self._col_index = _col_index_copy.append(col_index_to_insert).loc[new_col_index]
+        print(self._col_index)
 
     def interpolate(self, method='linear', axis=0, limit=None, inplace=False,
                     limit_direction='forward', downcast=None, **kwargs):
@@ -2996,7 +2987,7 @@ class DataFrame(object):
             self._get_col_locations(array_key)['partition'].unique()
 
         new_col_parts = [self._getitem_indiv_col(array_key, part)
-                     for part in partitions]
+                         for part in partitions]
 
         # Pandas doesn't allow Index.get_loc for lists, so we have to do this.
         isin = self.columns.isin(array_key)
