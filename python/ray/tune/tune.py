@@ -59,7 +59,6 @@ def run_experiments(experiments, scheduler=None, with_server=False,
     runner = TrialRunner(
         scheduler, launch_web_server=with_server, server_port=server_port,
         verbose=verbose)
-
     exp_list = experiments
     if isinstance(experiments, Experiment):
         exp_list = [experiments]

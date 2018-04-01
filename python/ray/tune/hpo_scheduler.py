@@ -68,7 +68,7 @@ class HyperOptScheduler(FIFOScheduler):
         self.default_config = copy.deepcopy(spec["config"])
 
         self.algo = hpo.tpe.suggest
-        self.domain = hpo.Domain(lambda spec: spec, space)
+        self.domain = hpo.Domain(lambda spc: spc, space)
         self._hpopt_trials = hpo.Trials()
         self._tune_to_hp = {}
         self._num_trials_left = self.args.repeat
@@ -209,7 +209,7 @@ if __name__ == '__main__':
 
     config = {"my_exp": {
             "run": "exp",
-            "repeat": 1000,
+            "repeat": 100,
             "stop": {"training_iteration": 1},
             "config": {
                 "space": space}}}

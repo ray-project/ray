@@ -63,3 +63,4 @@ class Experiment(object):
         exp = cls(name, spec["run"])
         exp.name = name
         exp.spec = spec
+        return exp
