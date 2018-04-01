@@ -1,13 +1,15 @@
 #include "ray/gcs/tables.h"
 
 #include "ray/gcs/client.h"
+#include "ray/id.h"
 
 #include "common_protocol.h"
 #include "task.h"
 
 // TODO(swang): This file extends tables.cc so that we can separate out the
-// part that depends on the Task* datasturcture from the build. This should be
-// merged with tables.cc once we get rid of the Task* datastructure.
+// part that depends on the legacy Task* data structure from the build. This
+// should be merged with tables.cc once we get rid of the legacy Task*
+// datastructure.
 
 namespace {
 

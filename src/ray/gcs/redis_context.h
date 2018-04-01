@@ -49,7 +49,8 @@ class RedisCallbackManager {
 
 class RedisContext {
  public:
-  RedisContext() {}
+  RedisContext()
+      : context_(nullptr), async_context_(nullptr), subscribe_context_(nullptr) {}
   ~RedisContext();
   Status Connect(const std::string &address, int port);
   Status AttachToEventLoop(aeEventLoop *loop);

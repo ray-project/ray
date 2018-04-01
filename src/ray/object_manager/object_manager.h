@@ -12,57 +12,64 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
+#include "ray/common/client_connection.h"
+#include "ray/id.h"
+#include "ray/status.h"
+
 #include "plasma/client.h"
 #include "plasma/events.h"
 #include "plasma/plasma.h"
 
-#include "format/object_manager_generated.h"
-#include "object_directory.h"
-#include "object_manager_client_connection.h"
-#include "object_store_client.h"
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/object_manager/connection_pool.h"
+#include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/object_manager_client_connection.h"
+#include "ray/object_manager/object_store_client_pool.h"
+#include "ray/object_manager/object_store_notification_manager.h"
+#include "ray/object_manager/transfer_queue.h"
 
 namespace ray {
 
 struct ObjectManagerConfig {
-  // The time in milliseconds to wait before retrying a pull
-  // that failed due to client id lookup.
+  /// The time in milliseconds to wait before retrying a pull
+  /// that failed due to client id lookup.
   int pull_timeout_ms = 100;
+  /// Size of thread pool.
+  int num_threads = 2;
+  /// Maximum number of sends allowed.
+  int max_sends = 20;
+  /// Maximum number of receives allowed.
+  int max_receives = 20;
   // TODO(hme): Implement num retries (to avoid infinite retries).
   std::string store_socket_name;
 };
 
-// TODO(hme): Comment everything doxygen-style.
-// TODO(hme): Implement connection cleanup.
 // TODO(hme): Add success/failure callbacks for push and pull.
-// TODO(hme): Use boost thread pool.
-// TODO(hme): Add incoming connections to io_service tied to thread pool.
 class ObjectManager {
  public:
   /// Implicitly instantiates Ray implementation of ObjectDirectory.
   ///
-  /// \param io_service The asio io_service tied to the object manager.
+  /// \param main_service The main asio io_service.
+  /// \param object_manager_service The asio io_service tied to the object manager.
   /// \param config ObjectManager configuration.
   /// \param gcs_client A client connection to the Ray GCS.
-  explicit ObjectManager(boost::asio::io_service &io_service, ObjectManagerConfig config,
-                         std::shared_ptr<ray::GcsClient> gcs_client);
+  explicit ObjectManager(boost::asio::io_service &main_service,
+                         std::unique_ptr<boost::asio::io_service> object_manager_service,
+                         const ObjectManagerConfig &config,
+                         std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
   /// Takes user-defined ObjectDirectoryInterface implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
   /// the given ObjectDirectory instance.
   ///
-  /// \param io_service The asio io_service tied to the object manager.
+  /// \param main_service The main asio io_service.
+  /// \param object_manager_service The asio io_service tied to the object manager.
   /// \param config ObjectManager configuration.
   /// \param od An object implementing the object directory interface.
-  explicit ObjectManager(boost::asio::io_service &io_service, ObjectManagerConfig config,
+  explicit ObjectManager(boost::asio::io_service &main_service,
+                         std::unique_ptr<boost::asio::io_service> object_manager_service,
+                         const ObjectManagerConfig &config,
                          std::unique_ptr<ObjectDirectoryInterface> od);
-
-  /// \param client_id Set the client id associated with this node.
-  void SetClientID(const ClientID &client_id);
-
-  /// \return Get the client id associated with this node.
-  ClientID GetClientID();
 
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
@@ -106,7 +113,17 @@ class ObjectManager {
   ///
   /// \param conn The connection.
   /// \return Status of whether the connection was successfully established.
-  ray::Status AcceptConnection(TCPClientConnection::pointer conn);
+  void ProcessNewClient(std::shared_ptr<TcpClientConnection> conn);
+
+  /// Process messages sent from other nodes. We only establish
+  /// transfer connections using this method; all other transfer communication
+  /// is done separately.
+  ///
+  /// \param conn The connection.
+  /// \param message_type The message type.
+  /// \param message A pointer set to the beginning of the message.
+  void ProcessClientMessage(std::shared_ptr<TcpClientConnection> conn,
+                            int64_t message_type, const uint8_t *message);
 
   /// Cancels all requests (Push/Pull) associated with the given ObjectID.
   ///
@@ -114,7 +131,7 @@ class ObjectManager {
   /// \return Status of whether requests were successfully cancelled.
   ray::Status Cancel(const ObjectID &object_id);
 
-  // Callback definition for wait.
+  /// Callback definition for wait.
   using WaitCallback = std::function<void(const ray::Status, uint64_t,
                                           const std::vector<ray::ObjectID> &)>;
   /// Wait for timeout_ms before invoking the provided callback.
@@ -135,132 +152,137 @@ class ObjectManager {
   ray::Status Terminate();
 
  private:
-  using BoostEC = const boost::system::error_code &;
-
   ClientID client_id_;
   ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
-  std::unique_ptr<ObjectStoreClient> store_client_;
+  ObjectStoreNotificationManager store_notification_;
+  ObjectStoreClientPool store_pool_;
 
   /// An io service for creating connections to other object managers.
-  boost::asio::io_service io_service_;
+  /// This runs on a thread pool.
+  std::unique_ptr<boost::asio::io_service> object_manager_service_;
+  /// Weak reference to main service. We ensure this object is destroyed before
+  /// main_service_ is stopped.
+  boost::asio::io_service *main_service_;
 
   /// Used to create "work" for an io service, so when it's run, it doesn't exit.
   boost::asio::io_service::work work_;
 
-  /// Single thread for executing asynchronous handlers.
-  /// This runs the (currently only) io_service, which handles all outgoing requests
-  /// and object transfers (push).
-  std::thread io_thread_;
+  /// Thread pool for executing asynchronous handlers.
+  /// These run the object_manager_service_, which handle
+  /// all incoming and outgoing object transfers.
+  std::vector<std::thread> io_threads_;
 
-  /// Relatively simple way to add thread pooling.
-  /// boost::thread_group thread_group_;
+  /// Connection pool for reusing outgoing connections to remote object managers.
+  ConnectionPool connection_pool_;
 
   /// Timeout for failed pull requests.
-  using Timer = std::shared_ptr<boost::asio::deadline_timer>;
-  std::unordered_map<ObjectID, Timer, UniqueIDHasher> pull_requests_;
+  std::unordered_map<ObjectID, std::shared_ptr<boost::asio::deadline_timer>,
+                     UniqueIDHasher>
+      pull_requests_;
 
-  // TODO (hme): This needs to account for receives as well.
-  /// This number is incremented whenever a push is started.
-  int num_transfers_ = 0;
-  // TODO (hme): Allow for concurrent sends.
-  /// This is the maximum number of pushes allowed.
-  /// We can only increase this number if we increase the number of
-  /// plasma client connections.
-  int max_transfers_ = 1;
+  /// Allows control of concurrent object transfers. This is a global queue,
+  /// allowing for concurrent transfers with many object managers as well as
+  /// concurrent transfers, including both sends and receives, with a single
+  /// remote object manager.
+  TransferQueue transfer_queue_;
 
-  /// Note that (currently) receives take place on the main thread,
-  /// and sends take place on a dedicated thread.
-  std::unordered_map<ray::ClientID, SenderConnection::pointer, ray::UniqueIDHasher>
-      message_send_connections_;
-  std::unordered_map<ray::ClientID, SenderConnection::pointer, ray::UniqueIDHasher>
-      transfer_send_connections_;
+  /// Variables to track number of concurrent sends and receives.
+  std::atomic<int> num_transfers_send_;
+  std::atomic<int> num_transfers_receive_;
 
-  std::unordered_map<ray::ClientID, TCPClientConnection::pointer, ray::UniqueIDHasher>
-      message_receive_connections_;
-  std::unordered_map<ray::ClientID, TCPClientConnection::pointer, ray::UniqueIDHasher>
-      transfer_receive_connections_;
+  /// Cache of locally available objects.
+  std::unordered_set<ObjectID, UniqueIDHasher> local_objects_;
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
   void IOServiceLoop();
   void StopIOService();
 
+  /// Register object add with directory.
+  void NotifyDirectoryObjectAdd(const ObjectID &object_id);
+
+  /// Register object remove with directory.
+  void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
+
   /// Wait wait_ms milliseconds before triggering a pull request for object_id.
   /// This is invoked when a pull fails. Only point of failure currently considered
   /// is GetLocationsFailed.
   void SchedulePull(const ObjectID &object_id, int wait_ms);
 
-  /// The handler for SchedulePull. Invokes a pull and removes the deadline timer
-  /// that was added to schedule the pull.
-  ray::Status SchedulePullHandler(const ObjectID &object_id);
+  /// Part of an asynchronous sequence of Pull methods.
+  /// Gets the location of an object before invoking PullEstablishConnection.
+  /// Guaranteed to execute on main_service_ thread.
+  /// Executes on main_service_ thread.
+  ray::Status PullGetLocations(const ObjectID &object_id);
 
-  /// Synchronously send a pull request.
-  /// Invoked once a connection to a remote manager that contains the required ObjectID
-  /// is established.
-  ray::Status ExecutePull(const ObjectID &object_id, SenderConnection::pointer conn);
+  /// Part of an asynchronous sequence of Pull methods.
+  /// Uses an existing connection or creates a connection to ClientID.
+  /// Executes on main_service_ thread.
+  ray::Status PullEstablishConnection(const ObjectID &object_id,
+                                      const ClientID &client_id);
 
-  /// Invoked once a connection to the remote manager to which the ObjectID
-  /// is to be sent is established.
-  ray::Status QueuePush(const ObjectID &object_id, SenderConnection::pointer client);
-  /// Starts as many queued pushes as possible without exceeding max_transfers_
-  /// concurrent transfers.
-  ray::Status ExecutePushQueue(SenderConnection::pointer client);
-  /// Initiate a push. This method asynchronously sends the object id and object size
+  /// Private callback implementation for success on get location. Called from
+  /// ObjectDirectory.
+  void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
+                           const ray::ObjectID &object_id);
+
+  /// Private callback implementation for failure on get location. Called from
+  /// ObjectDirectory.
+  void GetLocationsFailed(const ObjectID &object_id);
+
+  /// Synchronously send a pull request via remote object manager connection.
+  /// Executes on main_service_ thread.
+  ray::Status PullSendRequest(const ObjectID &object_id,
+                              std::shared_ptr<SenderConnection> conn);
+
+  /// Starts as many queued sends and receives as possible without exceeding
+  /// config_.max_sends and config_.max_receives, respectively.
+  /// Executes on object_manager_service_ thread pool.
+  ray::Status DequeueTransfers();
+
+  std::shared_ptr<SenderConnection> CreateSenderConnection(
+      ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
+
+  /// Invoked when a transfer is completed. Invokes DequeueTransfers after
+  /// updating variables that track concurrent transfers.
+  /// Executes on object_manager_service_ thread pool.
+  ray::Status TransferCompleted(TransferQueue::TransferType type);
+
+  /// Begin executing a send.
+  /// Executes on object_manager_service_ thread pool.
+  ray::Status ExecuteSendObject(const ObjectID &object_id, const ClientID &client_id,
+                                const RemoteConnectionInfo &connection_info);
+  /// This method synchronously sends the object id and object size
   /// to the remote object manager.
-  ray::Status ExecutePushHeaders(const ObjectID &object_id,
-                                 SenderConnection::pointer client);
-  /// Called by the handler for ExecutePushMeta.
+  /// Executes on object_manager_service_ thread pool.
+  ray::Status SendObjectHeaders(const ObjectID &object_id,
+                                std::shared_ptr<SenderConnection> client);
+
   /// This method initiates the actual object transfer.
-  void ExecutePushObject(SenderConnection::pointer conn, const ObjectID &object_id,
-                         const boost::system::error_code &header_ec);
-  /// Invoked when a push is completed. This method will decrement num_transfers_
-  /// and invoke ExecutePushQueue.
-  ray::Status ExecutePushCompleted(const ObjectID &object_id,
-                                   SenderConnection::pointer client);
+  /// Executes on object_manager_service_ thread pool.
+  ray::Status SendObjectData(std::shared_ptr<SenderConnection> conn,
+                             const UniqueID &context_id,
+                             std::shared_ptr<plasma::PlasmaClient> store_client);
 
-  /// Private callback implementation for success on get location. Called inside OD.
-  void GetLocationsSuccess(const std::vector<RemoteConnectionInfo> &vec,
-                           const ObjectID &object_id);
-
-  /// Private callback implementation for failure on get location. Called inside OD.
-  void GetLocationsFailed(ray::Status status, const ObjectID &object_id);
-
-  /// Asynchronously obtain a connection to client_id.
-  /// If a connection to client_id already exists, the callback is invoked immediately.
-  ray::Status GetMsgConnection(const ClientID &client_id,
-                               std::function<void(SenderConnection::pointer)> callback);
-  /// Asynchronously create a connection to client_id.
-  ray::Status CreateMsgConnection(
-      const RemoteConnectionInfo &info,
-      std::function<void(SenderConnection::pointer)> callback);
-  /// Asynchronously create a connection to client_id.
-  ray::Status GetTransferConnection(
-      const ClientID &client_id, std::function<void(SenderConnection::pointer)> callback);
-  /// Asynchronously obtain a connection to client_id.
-  /// If a connection to client_id already exists, the callback is invoked immediately.
-  ray::Status CreateTransferConnection(
-      const RemoteConnectionInfo &info,
-      std::function<void(SenderConnection::pointer)> callback);
-
-  /// A socket connection doing an asynchronous read on a transfer connection that was
-  /// added by AcceptConnection.
-  ray::Status WaitPushReceive(TCPClientConnection::pointer conn);
   /// Invoked when a remote object manager pushes an object to this object manager.
-  void HandlePushReceive(TCPClientConnection::pointer conn, BoostEC length_ec);
+  /// This will queue the receive.
+  void ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn,
+                          const uint8_t *message);
+  /// Execute a receive that was in the queue.
+  ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
+                                   uint64_t object_size,
+                                   std::shared_ptr<TcpClientConnection> conn);
 
-  /// A socket connection doing an asynchronous read on a message connection that was
-  /// added by AcceptConnection.
-  ray::Status WaitMessage(TCPClientConnection::pointer conn);
-  /// Handle messages.
-  void HandleMessage(TCPClientConnection::pointer conn, BoostEC msg_ec);
-  /// Process the receive pull request message.
-  void ReceivePullRequest(TCPClientConnection::pointer conn);
+  /// Handles receiving a pull request message.
+  void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
+                          const uint8_t *message);
 
-  /// Register object add with directory.
-  void NotifyDirectoryObjectAdd(const ObjectID &object_id);
-  /// Register object remove with directory.
-  void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
+  /// Handles connect message of a new client connection.
+  void ConnectClient(std::shared_ptr<TcpClientConnection> &conn, const uint8_t *message);
+  /// Handles disconnect message of an existing client connection.
+  void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
+                        const uint8_t *message);
 };
 
 }  // namespace ray

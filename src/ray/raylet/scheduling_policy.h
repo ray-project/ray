@@ -1,12 +1,15 @@
 #ifndef RAY_RAYLET_SCHEDULING_POLICY_H
 #define RAY_RAYLET_SCHEDULING_POLICY_H
 
+#include <random>
 #include <unordered_map>
 
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/scheduling_resources.h"
 
 namespace ray {
+
+namespace raylet {
 
 /// \class SchedulingPolicy
 /// \brief Implements a scheduling policy for the node manager.
@@ -27,7 +30,8 @@ class SchedulingPolicy {
   /// \return Scheduling decision, mapping tasks to node managers for placement.
   std::unordered_map<TaskID, ClientID, UniqueIDHasher> Schedule(
       const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
-          &cluster_resources);
+          &cluster_resources,
+      const ClientID &local_client_id, const std::vector<ClientID> &others);
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();
@@ -35,7 +39,13 @@ class SchedulingPolicy {
  private:
   /// An immutable reference to the scheduling task queues.
   const SchedulingQueue &scheduling_queue_;
+  /// Internally maintained random number engine device.
+  std::random_device rd_;
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 };
+
+}  // namespace raylet
 
 }  // namespace ray
 

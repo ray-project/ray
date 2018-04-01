@@ -19,17 +19,18 @@ add_custom_command(
 
 add_custom_target(gen_node_manager_fbs DEPENDS ${NODE_MANAGER_FBS_OUTPUT_FILES})
 
-ADD_RAY_TEST(raylet_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})
+ADD_RAY_TEST(object_manager_integration_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})
 
 ADD_RAY_TEST(worker_pool_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
+
+ADD_RAY_TEST(task_test STATIC_LINK_LIBS ray_static gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
+ADD_RAY_TEST(lineage_cache_test STATIC_LINK_LIBS ray_static gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
 
 add_library(rayletlib raylet.cc ${NODE_MANAGER_FBS_OUTPUT_FILES})
 target_link_libraries(rayletlib ray_static ${Boost_SYSTEM_LIBRARY})
 
 add_executable(raylet main.cc)
 target_link_libraries(raylet rayletlib ${Boost_SYSTEM_LIBRARY} pthread)
-add_executable(raylet_demo remote_dependencies_demo.cc)
-target_link_libraries(raylet_demo rayletlib ${Boost_SYSTEM_LIBRARY} pthread)
 
 install(FILES
         raylet

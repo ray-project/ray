@@ -50,7 +50,14 @@
   }
 
 static const char *table_prefixes[] = {
-    NULL, "TASK:", "TASK:", "CLIENT:", "OBJECT:", "FUNCTION:",
+    NULL,
+    "TASK:",
+    "TASK:",
+    "CLIENT:",
+    "OBJECT:",
+    "FUNCTION:",
+    "TASK_RECONSTRUCTION:",
+    "HEARTBEAT:",
 };
 
 /// Parse a Redis string into a TablePubsub channel.
@@ -811,8 +818,9 @@ int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
     // notifications.
     flatbuffers::FlatBufferBuilder fbb;
     TableEntryToFlatbuf(table_key, id, fbb);
-    RedisModule_Call(ctx, "PUBLISH", "sb", client_channel, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
-        fbb.GetSize());
+    RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
+                     reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+                     fbb.GetSize());
   }
   RedisModule_CloseKey(table_key);
 

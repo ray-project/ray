@@ -9,6 +9,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 class Worker;
 
 /// \class WorkerPool
@@ -23,7 +25,7 @@ class WorkerPool {
   /// pool.
   ///
   /// \param num_workers The number of workers to start.
-  WorkerPool(int num_workers);
+  WorkerPool(int num_workers, const std::vector<const char *> &worker_command);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool();
@@ -35,10 +37,9 @@ class WorkerPool {
 
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
-  /// register a new Worker, then add itself to the pool.
-  ///
-  /// \return Whether the worker process was successfully started.
-  bool StartWorker();
+  /// register a new Worker, then add itself to the pool. Failure to start
+  /// the worker process is a fatal error.
+  void StartWorker();
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
@@ -73,6 +74,7 @@ class WorkerPool {
   std::shared_ptr<Worker> PopWorker();
 
  private:
+  std::vector<const char *> worker_command_;
   /// The pool of idle workers.
   std::list<std::shared_ptr<Worker>> pool_;
   /// All workers that have registered and are still connected, including both
@@ -80,6 +82,9 @@ class WorkerPool {
   // TODO(swang): Make this a map to make GetRegisteredWorker faster.
   std::list<std::shared_ptr<Worker>> registered_workers_;
 };
+
+}  // namespace raylet
+
 }  // namespace ray
 
 #endif  // RAY_RAYLET_WORKER_POOL_H
