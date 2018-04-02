@@ -122,7 +122,7 @@ class HyperOptScheduler(FIFOScheduler):
                 config=new_cfg,
                 local_dir=os.path.join(self.args.local_dir, self._output_path),
                 experiment_tag=experiment_tag,
-                resources=self.args.resources,
+                resources=self.args.trial_resources,
                 stopping_criterion=self.args.stop,
                 checkpoint_freq=self.args.checkpoint_freq,
                 restore_path=self.args.restore,
