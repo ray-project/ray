@@ -248,7 +248,6 @@ Status LineageCache::Flush() {
   }
 
   // Write back all ready tasks whose arguments have been committed to the GCS.
-  gcs::raylet::TaskTable::WriteCallback task_callback =
   gcs::raylet::TaskTable::WriteCallback task_callback = [this](
       ray::gcs::AsyncGcsClient *client, const TaskID &id,
       const std::shared_ptr<protocol::TaskT> data) { HandleEntryCommitted(id); };
