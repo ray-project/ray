@@ -13,7 +13,7 @@ namespace raylet {
 
 Raylet::Raylet(boost::asio::io_service &main_service,
                std::unique_ptr<boost::asio::io_service> object_manager_service,
-               const std::string &socket_name, const std::string& node_ip_address,
+               const std::string &socket_name, const std::string &node_ip_address,
                const std::string &redis_address, int redis_port,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
@@ -35,7 +35,8 @@ Raylet::Raylet(boost::asio::io_service &main_service,
   DoAcceptObjectManager();
   DoAcceptNodeManager();
 
-  RAY_CHECK_OK(RegisterGcs(node_ip_address, redis_address, redis_port, main_service, node_manager_config));
+  RAY_CHECK_OK(RegisterGcs(node_ip_address, redis_address, redis_port, main_service,
+                           node_manager_config));
 
   RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
 }
