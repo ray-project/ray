@@ -47,7 +47,8 @@ class TrialRunner(object):
             scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
             server_port (int): Port number for launching TuneServer
-            verbose (bool): How much output should be printed for each trial.
+            verbose (bool): Flag for verbosity. If False, trial results
+                will not be output.
         """
 
         self._scheduler_alg = scheduler or FIFOScheduler()
