@@ -12,7 +12,8 @@ def easy_objective(config, reporter):
     time.sleep(0.2)
     reporter(
         timesteps_total=1,
-        episode_reward_mean=-((config["height"] - 14) ** 2 + abs(config["width"]-3)))
+        episode_reward_mean=-((config["height"]-14) ** 2
+                              + abs(config["width"]-3)))
     time.sleep(0.2)
 
 
