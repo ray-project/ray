@@ -78,15 +78,18 @@ class DDPGModel():
                                self.obs, self.output_action)
 
     def _create_critic_network(self, obs, action):
-        net = slim.fully_connected(obs, 400, activation_fn=None)
+        net = slim.fully_connected(obs, 400, activation_fn=None,
+                                  weights_initializer=tf.truncated_normal_initializer())
         net = slim.batch_norm(net, activation_fn=tf.nn.relu)
-        t1 = slim.fully_connected(net, 300, activation_fn=None)
-        t2 = slim.fully_connected(action, 300, activation_fn=None)
+        t1 = slim.fully_connected(net, 300, activation_fn=None, biases_initializer=None,
+                                  weights_initializer=tf.truncated_normal_initializer())
+        t2 = slim.fully_connected(action, 300, activation_fn=None,
+                                  weights_initializer=tf.truncated_normal_initializer())
         net = tf.nn.relu(tf.add(t1, t2))
         w_init = tf.random_uniform_initializer(minval=-0.0003, maxval=0.0003)
         out = slim.fully_connected(net, 1, weights_initializer=w_init, activation_fn=None)
         return out
-        
+
         """
         net = tflearn.fully_connected(obs, 400)
         net = tflearn.layers.normalization.batch_normalization(net)

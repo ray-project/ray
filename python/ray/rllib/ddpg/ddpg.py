@@ -47,6 +47,7 @@ class DDPGAgent(Agent):
             self.remote_evaluators)
 
     def _train(self):
+        # TODO(rliaw): multiple steps
         self.optimizer.step()
         # update target
         if self.optimizer.num_steps_trained > 0:
