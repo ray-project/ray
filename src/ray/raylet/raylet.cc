@@ -13,8 +13,8 @@ namespace raylet {
 
 Raylet::Raylet(boost::asio::io_service &main_service,
                std::unique_ptr<boost::asio::io_service> object_manager_service,
-               const std::string &socket_name, const std::string &redis_address,
-               int redis_port, const std::string& node_ip_address,
+               const std::string &socket_name, const std::string& node_ip_address,
+               const std::string &redis_address, int redis_port,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
@@ -35,7 +35,7 @@ Raylet::Raylet(boost::asio::io_service &main_service,
   DoAcceptObjectManager();
   DoAcceptNodeManager();
 
-  RAY_CHECK_OK(RegisterGcs(redis_address, redis_port, node_ip_address, main_service, node_manager_config));
+  RAY_CHECK_OK(RegisterGcs(node_ip_address, redis_address, redis_port, main_service, node_manager_config));
 
   RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
 }
@@ -51,8 +51,8 @@ ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {
   return ray::Status::OK();
 }
 
-ray::Status Raylet::RegisterGcs(const std::string &redis_address, int redis_port,
-                                const std::string &node_ip_address,
+ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
+                                const std::string &redis_address, int redis_port,
                                 boost::asio::io_service &io_service,
                                 const NodeManagerConfig &node_manager_config) {
   RAY_RETURN_NOT_OK(gcs_client_->Connect(redis_address, redis_port));
