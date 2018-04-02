@@ -24,7 +24,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   main_service_ = &main_service;
   config_ = config;
   store_notification_.SubscribeObjAdded(
-      [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
+      [this](const RayObjectInfo &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -47,7 +47,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   main_service_ = &main_service;
   config_ = config;
   store_notification_.SubscribeObjAdded(
-      [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
+      [this](const RayObjectInfo &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -68,9 +68,9 @@ void ObjectManager::StopIOService() {
   }
 }
 
-void ObjectManager::NotifyDirectoryObjectAdd(const ObjectID &object_id) {
-  local_objects_.insert(object_id);
-  ray::Status status = object_directory_->ReportObjectAdded(object_id, client_id_);
+void ObjectManager::NotifyDirectoryObjectAdd(const RayObjectInfo &object_info) {
+  local_objects_[object_info.object_id] = std::move(object_info);
+  ray::Status status = object_directory_->ReportObjectAdded(object_info.object_id, client_id_);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -88,7 +88,7 @@ ray::Status ObjectManager::Terminate() {
 }
 
 ray::Status ObjectManager::SubscribeObjAdded(
-    std::function<void(const ObjectID &)> callback) {
+    std::function<void(const RayObjectInfo &)> callback) {
   store_notification_.SubscribeObjAdded(callback);
   return ray::Status::OK();
 }

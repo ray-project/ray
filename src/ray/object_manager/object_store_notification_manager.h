@@ -20,6 +20,13 @@
 
 namespace ray {
 
+struct RayObjectInfo {
+  ObjectID object_id;
+  int64_t object_size;
+  int64_t metadata_size;
+  unsigned char *digest;
+};
+
 /// \class ObjectStoreClientPool
 ///
 /// Encapsulates notification handling from the object store.
@@ -37,7 +44,7 @@ class ObjectStoreNotificationManager {
   /// already exist in the local store
   ///
   /// \param callback A callback expecting an ObjectID.
-  void SubscribeObjAdded(std::function<void(const ray::ObjectID &)> callback);
+  void SubscribeObjAdded(std::function<void(const ray::RayObjectInfo &)> callback);
 
   /// Subscribe to notifications of objects deleted from local store.
   ///
@@ -54,10 +61,10 @@ class ObjectStoreNotificationManager {
   void ProcessStoreNotification(const boost::system::error_code &error);
 
   /// Support for rebroadcasting object add/rem events.
-  void ProcessStoreAdd(const ObjectID &object_id);
+  void ProcessStoreAdd(const RayObjectInfo &object_info);
   void ProcessStoreRemove(const ObjectID &object_id);
 
-  std::vector<std::function<void(const ray::ObjectID &)>> add_handlers_;
+  std::vector<std::function<void(const ray::RayObjectInfo &)>> add_handlers_;
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
 
   plasma::PlasmaClient store_client_;

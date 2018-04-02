@@ -77,7 +77,7 @@ class ObjectManager {
   /// already exist in the local store.
   /// \param callback The callback to invoke when objects are added to the local store.
   /// \return Status of whether adding the subscription succeeded.
-  ray::Status SubscribeObjAdded(std::function<void(const ray::ObjectID &)> callback);
+  ray::Status SubscribeObjAdded(std::function<void(const ray::RayObjectInfo &)> callback);
 
   /// Subscribe to notifications of objects deleted from local store.
   ///
@@ -192,7 +192,7 @@ class ObjectManager {
   std::atomic<int> num_transfers_receive_;
 
   /// Cache of locally available objects.
-  std::unordered_set<ObjectID, UniqueIDHasher> local_objects_;
+  std::unordered_map<ObjectID, RayObjectInfo, UniqueIDHasher> local_objects_;
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
@@ -200,7 +200,7 @@ class ObjectManager {
   void StopIOService();
 
   /// Register object add with directory.
-  void NotifyDirectoryObjectAdd(const ObjectID &object_id);
+  void NotifyDirectoryObjectAdd(const RayObjectInfo &object_info);
 
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
