@@ -8,8 +8,7 @@ namespace ray {
 namespace raylet {
 
 /// A constructor that initializes a worker pool with num_workers workers.
-WorkerPool::WorkerPool(int num_workers,
-                       const std::vector<const std::string> &worker_command)
+WorkerPool::WorkerPool(int num_workers, const std::vector<std::string> &worker_command)
     : worker_command_(worker_command) {
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
