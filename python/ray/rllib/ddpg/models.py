@@ -6,6 +6,7 @@ from ray.rllib.ddpg.random_process import OrnsteinUhlenbeckProcess
 
 import numpy as np
 import tensorflow as tf
+import tensorflow.contrib.slim as slim
 import tflearn
 
 
@@ -22,9 +23,9 @@ class DDPGModel():
         obs_space = env.observation_space
         ac_space = env.action_space
 
-        self.obs_size = np.prod(obs_space.shape)
+        self.obs_size = int(np.prod(obs_space.shape))
         self.obs = tf.placeholder(tf.float32, [None, self.obs_size])
-        self.ac_size = np.prod(ac_space.shape)
+        self.ac_size = int(np.prod(ac_space.shape))
         self.act = tf.placeholder(tf.float32, [None, self.ac_size])
         self.action_bound = env.action_space.high
         # TODO: change action_bound to make more general
@@ -77,10 +78,19 @@ class DDPGModel():
                                self.obs, self.output_action)
 
     def _create_critic_network(self, obs, action):
+        net = slim.fully_connected(obs, 400, activation_fn=None)
+        net = slim.batch_norm(net, activation_fn=tf.nn.relu)
+        t1 = slim.fully_connected(net, 300, activation_fn=None)
+        t2 = slim.fully_connected(action, 300, activation_fn=None)
+        net = tf.nn.relu(tf.add(t1, t2))
+        w_init = tf.random_uniform_initializer(minval=-0.0003, maxval=0.0003)
+        out = slim.fully_connected(net, 1, weights_initializer=w_init, activation_fn=None)
+        return out
+        
+        """
         net = tflearn.fully_connected(obs, 400)
         net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
-
         t1 = tflearn.fully_connected(net, 300)
         t2 = tflearn.fully_connected(action, 300)
         net = tflearn.activation(
@@ -89,12 +99,27 @@ class DDPGModel():
         w_init = tflearn.initializations.uniform(minval=-0.0003, maxval=0.0003)
         out = tflearn.fully_connected(net, 1, weights_init=w_init)
         return out
+        """
 
     def _setup_actor_network(self, obs_space, ac_space):
         with tf.variable_scope("actor", reuse=tf.AUTO_REUSE):
             self.output_action = self._create_actor_network(self.obs)
 
     def _create_actor_network(self, obs):
+        """
+        net = slim.fully_connected(obs, 400, activation_fn=None)
+        net = slim.batch_norm(net, activation_fn=tf.nn.relu)
+        net = slim.fully_connected(net, 300, activation_fn=None)
+        net = slim.batch_norm(net, activation_fn=tf.nn.relu)
+        w_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
+        out = slim.fully_connected(net,
+                                   self.ac_size,
+                                   activation_fn=tf.nn.tanh,
+                                   weights_initializer=w_init)
+        scaled_out = tf.multiply(out, self.action_bound)
+        return scaled_out
+        """
+
         net = tflearn.fully_connected(obs, 400)
         net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
