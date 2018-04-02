@@ -871,17 +871,29 @@ def start_raylet(redis_address,
                  node_ip_address,
                  plasma_store_name,
                  worker_path,
-                 #plasma_address=None,
                  stdout_file=None,
                  stderr_file=None,
-                 cleanup=True,
-                 #resources=None,
-                 #num_workers=0
-                 ):
+                 cleanup=True):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
-        ...
+        redis_address (str): The address of the Redis instance.
+        node_ip_address (str): The IP address of the node that this local
+            scheduler is running on.
+        plasma_store_name (str): The name of the plasma store socket to connect
+            to.
+        worker_path (str): The path of the script to use when the local
+            scheduler starts up new workers.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        cleanup (bool): True if using Ray in local mode. If cleanup is true,
+            then this process will be killed by serices.cleanup() when the
+            Python process that imported services exits.
+
+    Returns:
+        The raylet socket name.
     """
     gcs_ip_address, gcs_port = redis_address.split(":")
     raylet_name = "/tmp/raylet{}".format(random_name())
@@ -948,7 +960,8 @@ def start_objstore(node_ip_address, redis_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        use_raylet: TODO
+        use_raylet: True if the new raylet code path should be used. This is
+            not supported yet.
 
     Return:
         A tuple of the Plasma store socket name, the Plasma manager socket
@@ -1027,7 +1040,6 @@ def start_objstore(node_ip_address, redis_address,
             all_processes[PROCESS_TYPE_PLASMA_MANAGER].append(p2)
         record_log_files_in_redis(redis_address, node_ip_address,
                                   [manager_stdout_file, manager_stderr_file])
-
 
     return ObjectStoreAddress(plasma_store_name, plasma_manager_name,
                               plasma_manager_port)
@@ -1178,7 +1190,8 @@ def start_ray_processes(address_info=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
-        use_raylet: TODO
+        use_raylet: True if the new raylet code path should be used. This is
+            not supported yet.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1447,7 +1460,8 @@ def start_ray_node(node_ip_address,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
-        use_raylet: TODO
+        use_raylet: True if the new raylet code path should be used. This is
+            not supported yet.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1536,7 +1550,8 @@ def start_ray_head(address_info=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         autoscaling_config: path to autoscaling config file.
-        use_raylet: TODO
+        use_raylet: True if the new raylet code path should be used. This is
+            not supported yet.
 
     Returns:
         A dictionary of the address information for the processes that were

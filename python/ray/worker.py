@@ -458,7 +458,7 @@ class Worker(object):
             if not self.use_raylet:
                 self.plasma_client.fetch(
                     plain_object_ids
-                        [i:(i + ray._config.worker_fetch_request_size())])
+                    [i:(i + ray._config.worker_fetch_request_size())])
             else:
                 print("plasma_client.fetch has not been implemented yet")
 
@@ -1382,7 +1382,8 @@ def _init(address_info=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
-        use_raylet: TODO
+        use_raylet: True if the new raylet code path should be used. This is
+            not supported yet.
 
     Returns:
         Address information about the started processes.
@@ -1567,7 +1568,9 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             UI, which is a Jupyter notebook.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
-        TODO
+        use_raylet: True if the new raylet code path should be used. This is
+            not supported yet.
+
 
     Returns:
         Address information about the started processes.
@@ -1885,7 +1888,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             deterministic.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE,
             PYTHON_MODE, and SILENT_MODE.
-        TODO
+        use_raylet: True if the new raylet code path should be used. This is
+            not supported yet.
     """
     check_main_thread()
     # Do some basic checking to make sure we didn't call ray.init twice.
