@@ -25,8 +25,8 @@ namespace ray {
 #define RAY_ERROR 2
 #define RAY_FATAL 3
 
-#define RAY_LOG_INTERNAL(level) ::ray::internal::CerrLog(level) \
-  << __FILE__ << ":" << __LINE__ << ": "
+#define RAY_LOG_INTERNAL(level) \
+  ::ray::internal::CerrLog(level) << __FILE__ << ":" << __LINE__ << ": "
 
 #define RAY_LOG(level) RAY_LOG_INTERNAL(RAY_##level)
 #define RAY_IGNORE_EXPR(expr) ((void) (expr));
@@ -69,8 +69,8 @@ class CerrLog {
     if (has_logged_) {
       std::cerr << std::endl;
     }
+    // This code is duplicated in the FatalLog class.
     if (severity_ == RAY_FATAL) {
-      // This code is duplicated in the FatalLog class.
 #if defined(_EXECINFO_H) || !defined(_WIN32)
       void *buffer[255];
       const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
