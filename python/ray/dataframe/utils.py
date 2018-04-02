@@ -229,9 +229,9 @@ def _build_columns_and_index(df_row, index, df_col, columns):
     col_names = ("partition", "index_within_partition")
     column_df = pd.DataFrame(dest_indices, index=columns, columns=col_names)
 
-    # TODO Change create_blocks so we will not need this in the future.
-    column_df["index_within_partition"] = \
-        range(len(column_df["index_within_partition"]))
+    # # TODO Change create_blocks so we will not need this in the future.
+    # column_df["index_within_partition"] = \
+    #     range(len(column_df["index_within_partition"]))
 
     return lengths, index_df, widths, column_df
 
@@ -270,10 +270,14 @@ def create_blocks(df, npartitions, axis):
         if df.shape[axis ^ 1] % npartitions == 0 \
         else df.shape[axis ^ 1] // npartitions + 1
 
-    if not isinstance(df.columns, pd.RangeIndex):
-        df.columns = pd.RangeIndex(0, len(df.columns))
+    # if not isinstance(df.columns, pd.RangeIndex):
+    #     df.columns = pd.RangeIndex(0, len(df.columns))
 
-    return [df.iloc[:, i * block_size: (i + 1) * block_size]
-            if axis == 0
-            else df.iloc[i * block_size: (i + 1) * block_size, :]
-            for i in range(npartitions)]
+    blocks = [df.iloc[:, i * block_size: (i + 1) * block_size]
+              if axis == 0
+              else df.iloc[i * block_size: (i + 1) * block_size, :]
+              for i in range(npartitions)]
+
+    for block in blocks:
+        block.columns = pd.RangeIndex(0, len(block.columns))
+    return blocks

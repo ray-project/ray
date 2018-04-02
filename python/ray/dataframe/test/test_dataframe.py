@@ -502,7 +502,7 @@ def test_mixed_dtype_dataframe():
     test_notnull(ray_df, pandas_df)
     test_cummax(ray_df, pandas_df)
     test_cummin(ray_df, pandas_df)
-    # test_cumprod(ray_df, pandas_df)
+    test_cumprod(ray_df, pandas_df)
     test_cumsum(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)

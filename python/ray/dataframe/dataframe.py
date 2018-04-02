@@ -125,7 +125,12 @@ class DataFrame(object):
     def _get_row_partitions(self):
         @ray.remote
         def h(*partition):
-            return pd.concat(partition, axis=1, copy=False).reset_index(drop=True)
+            row_part = pd.concat(partition, axis=1, copy=False)\
+                .reset_index(drop=True)
+            # Because our block partitions contain different indices (for the
+            # columns), this change is needed to ensure correctness.
+            row_part.columns = pd.RangeIndex(0, len(row_part.columns))
+            return row_part
 
         return [h.remote(*part) for part in self._blk_partitions]
 
@@ -375,14 +380,26 @@ class DataFrame(object):
         axis = self._row_index._get_axis_number(axis) if axis is not None \
             else 0
 
-        result_series = pd.concat(ray.get(
-            _map_partitions(remote_func,
-                            self._col_partitions if axis == 0
-                            else self._row_partitions)),
-                            axis=0)
+        oid_series = ray.get(_map_partitions(remote_func,
+                             self._col_partitions if axis == 0
+                             else self._row_partitions))
 
-        result_series.index = self.columns[result_series.index] if axis == 0 \
-            else self.index
+        if axis == 0:
+            # We use the index to get the internal index.
+            oid_series = [(oid_series[i], i) for i in range(len(oid_series))]
+
+            for df, index in oid_series:
+                this_partition = \
+                    self._col_index[self._col_index['partition'] == index]
+                df.index = this_partition[
+                    this_partition['index_within_partition'].isin(df.index)
+                ].index
+
+            result_series = pd.concat([obj[0] for obj in oid_series],
+                                      axis=0, copy=False)
+        else:
+            result_series = pd.concat(oid_series, axis=0, copy=False)
+            result_series.index = self.index
         return result_series
 
     @property
@@ -1074,10 +1091,20 @@ class DataFrame(object):
             except ValueError:
                 return pd.DataFrame()
 
-        result = pd.concat(ray.get(_map_partitions(describe_helper,
-                                                   self._col_partitions)),
-                           axis=1, copy=False)
-        result.columns = self.columns[result.columns]
+        # Begin fixing index based on the columns inside.
+        parts = ray.get(_map_partitions(describe_helper, self._col_partitions))
+        # We use the index to get the internal index.
+        parts = [(parts[i], i) for i in range(len(parts))]
+
+        for df, index in parts:
+            this_partition = \
+                self._col_index[self._col_index['partition'] == index]
+            df.columns = this_partition[
+                this_partition['index_within_partition'].isin(df.columns)
+            ].index
+
+        # Remove index from tuple
+        result = pd.concat([obj[0] for obj in parts], axis=1, copy=False)
         return result
 
     def diff(self, periods=1, axis=0):
@@ -1141,6 +1168,10 @@ class DataFrame(object):
         def drop_helper(obj, axis, label):
             if axis is 'index':
                 part, index = obj._row_index.loc[label]
+                print("partition", part, "index", index)
+                # print(obj._row_index.loc[label])
+                # print(ray.get(obj._row_partitions[part]))
+                # # print(ray.get(obj._row_partitions[part]).drop(labels=index))
                 x = _deploy_func.remote(lambda df: df.drop(labels=index,
                                                            axis=axis),
                                         obj._row_partitions[part])
@@ -1148,6 +1179,13 @@ class DataFrame(object):
                     [obj._row_partitions[i] if i != part
                      else x
                      for i in range(len(obj._row_partitions))]
+
+                obj._row_index.drop(labels=label, axis=axis)
+
+                x = obj._row_index[(obj._row_index['partition'] == part) & (obj._row_index['index_within_partition'] > index)]
+                obj._row_index[(obj._row_index['partition'] == part) & (obj._row_index['index_within_partition'] > index)]['index_within_partition'] = 0
+                print("HJERE")
+                print(x)
             else:
                 part, index = obj._col_index.loc[label]
                 x = _deploy_func.remote(lambda df: df.drop(labels=index,
@@ -1601,6 +1639,9 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
+        if not all([d != np.dtype('O') for d in self.dtypes]):
+            raise TypeError(
+                "reduction operation 'argmax' not allowed for this dtype")
         remote_func = lambda df: df.idxmax(axis=axis, skipna=skipna)
 
         internal_indices = self._arithmetic_helper(remote_func, axis)
@@ -1618,6 +1659,10 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
+        if not all([d != np.dtype('O') for d in self.dtypes]):
+            raise TypeError(
+                "reduction operation 'argmax' not allowed for this dtype")
+
         remote_func = lambda df: df.idxmin(axis=axis, skipna=skipna)
 
         internal_indices = self._arithmetic_helper(remote_func, axis)
@@ -2112,23 +2157,34 @@ class DataFrame(object):
                     index is the columns of self and the values
                     are the quantiles.
         """
+
+        def quantile_helper(df, q, axis, numeric_only, interpolation):
+            try:
+                return df.quantile(q=q, axis=axis, numeric_only=numeric_only,
+                                   interpolation=interpolation)
+            except ValueError:
+                return pd.Series()
+
         if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
             # In the case of a list, we build it one at a time.
             # TODO Revisit for performance
             quantiles = []
             for q_i in q:
-                remote_func = lambda df: df.quantile(q=q_i, axis=axis,
-                                                     numeric_only=numeric_only,
-                                                     interpolation=interpolation)
-                quantiles.append(self._arithmetic_helper(remote_func, axis))
+                remote_func = lambda df: quantile_helper(df,
+                    q=q_i, axis=axis, numeric_only=numeric_only,
+                    interpolation=interpolation)
+                result = self._arithmetic_helper(remote_func, axis)
+                result.name = q_i
+                quantiles.append(result)
 
             return pd.concat(quantiles, axis=1).T
         else:
-            remote_func = lambda df: df.quantile(q=q, axis=axis,
-                                                 numeric_only=numeric_only,
-                                                 interpolation=interpolation)
-
-            return self._arithmetic_helper(remote_func, axis)
+            remote_func = lambda df: quantile_helper(df,
+                q=q, axis=axis, numeric_only=numeric_only,
+                interpolation=interpolation)
+            result = self._arithmetic_helper(remote_func, axis)
+            result.name = q
+            return result
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression
@@ -3073,7 +3129,7 @@ class DataFrame(object):
         def del_helper(df, to_delete):
             cols = df.columns[to_delete]  # either int or an array of ints
 
-            if isinstance(cols, int):
+            if not is_list_like(cols):
                 cols = [cols]
 
             for col in cols:
