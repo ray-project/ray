@@ -28,7 +28,7 @@ for i in `seq 1 $NUM_RAYLETS`; do
   fi
 
   ./src/plasma/plasma_store -m 1000000000 -s $STORE_SOCKET_NAME &
-  ./src/ray/raylet/raylet $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME 127.0.0.1 6379 &
+  ./src/ray/raylet/raylet $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME 127.0.0.1 127.0.0.1 6379 &
 
   echo
   echo "WORKER COMMAND: python ../../../src/ray/python/worker.py $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME"
