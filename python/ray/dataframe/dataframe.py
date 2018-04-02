@@ -1121,14 +1121,13 @@ class DataFrame(object):
         Returns:
             dropped : type of caller
         """
-        # TODO: fix - not working
         inplace = validate_bool_kwarg(inplace, "inplace")
         if labels is not None:
             if index is not None or columns is not None:
                 raise ValueError("Cannot specify both 'labels' and "
                                  "'index'/'columns'")
             axis = self._row_index._get_axis_name(axis)
-            axes = {axis, labels}
+            axes = {axis: labels}
         elif index is not None or columns is not None:
             axes, _ = self._row_index._construct_axes_from_arguments((index,
                                                                       columns),
@@ -1137,90 +1136,56 @@ class DataFrame(object):
             raise ValueError("Need to specify at least one of 'labels', "
                              "'index' or 'columns'")
 
-        new_df = self
+        obj = self.copy()
+
+        def drop_helper(obj, axis, label):
+            if axis is 'index':
+                part, index = obj._row_index.loc[label]
+                x = _deploy_func.remote(lambda df: df.drop(labels=index,
+                                                           axis=axis),
+                                        obj._row_partitions[part])
+                obj._row_partitions = \
+                    [obj._row_partitions[i] if i != part
+                     else x
+                     for i in range(len(obj._row_partitions))]
+            else:
+                part, index = obj._col_index.loc[label]
+                x = _deploy_func.remote(lambda df: df.drop(labels=index,
+                                                           axis=axis),
+                                        obj._col_partitions[part])
+
+                obj._col_partitions = \
+                    [obj._col_partitions[i] if i != part
+                     else x
+                     for i in range(len(obj._col_partitions))]
+
+            return obj
 
         for axis, labels in axes.items():
-            
+            if is_list_like(labels):
+                for label in labels:
+                    obj = drop_helper(obj, axis, label)
+            else:
+                obj = drop_helper(obj, axis, labels)
 
-        is_axis_zero = axis is None or axis == 0 or axis == 'index'\
-            or axis == 'rows'
-        try:
-            if (is_axis_zero and columns is None) or index is not None:
-                values = labels if labels is not None else index
-                try:
-                    try:
-                        if len(values) == 0:
-                            if inplace:
-                                return
-                            else:
-                                return self
-                        filtered_index = self._row_index.loc[list(values)]
-                    except TypeError:
-                        filtered_index = self._row_index.loc[[values]]
-                except KeyError:
-                    raise ValueError(
-                        "{} is not contained in the index".format(labels))
-
-                filtered_index.dropna(inplace=True)
-
-                partition_idx = [
-                    filtered_index.loc[
-                        filtered_index['partition'] == i
-                    ]['index_within_partition']
-                    for i in range(len(self._row_partitions))
-                ]
-
-                new_df = [
-                    _deploy_func.remote(
-                        lambda df, new_labels: df.drop(
-                            new_labels, level=level, errors='ignore'),
-                        self._row_partitions[i], partition_idx[i]
-                    )
-                    for i in range(len(self._row_partitions))
-                ]
-                new_index = self._row_index.copy().drop(values, errors=errors)
-                new_df = DataFrame(row_partitions=new_df, columns=self.columns,
-                                   index=new_index.index)
-        except (ValueError, KeyError):
-            if errors == 'raise':
-                raise
-            new_df = self
-
-        try:
-            if not is_axis_zero or columns is not None:
-                values = labels if labels else columns
-                new_values = [self.columns.get_loc(i) for i in values]
-                new_df_rows = _map_partitions(
-                    lambda df: df.drop(
-                        new_values, axis=1, level=level, errors='ignore'),
-                    self._row_partitions
-                )
-                new_columns = self._col_index.drop(values)
-
-                new_df_cols = self._col_partitions.copy()
-                col_parts_to_del = pd.Series(self._col_index.loc[values, 'partition']).unique()
-                for i in col_parts_to_del:
-                    to_del = [self._col_index.loc[x, 'index_within_partition'] 
-                        for x in values if self._col_index.loc[x, 'partition'] == i]
-                    new_df_cols[i] = _deploy_func.remote(lambda df: df.drop(to_del), self._col_partitions[i])
-
-
-                new_df = DataFrame(columns=new_columns,
-                                   row_partitions=new_df_rows,
-                                   col_partitions=new_df_cols)
-        except (ValueError, KeyError):
-            if errors == 'raise':
-                raise
-            new_df = self
-
-        if inplace:
-            self._update_inplace(
-                row_partitions=new_df._row_partitions,
-                index=new_df.index,
-                columns=new_df.columns
-            )
+        if 'index' in axes:
+            new_index_df = obj._row_index.drop(index=axes['index'])
         else:
-            return new_df
+            new_index_df = obj._row_index
+
+        if 'columns' in axes:
+            new_col_df = obj._col_index.drop(index=axes['columns'])
+        else:
+            new_col_df = obj._col_index
+
+        if not inplace:
+            obj._row_index = new_index_df
+            obj._col_index = new_col_df
+            return obj
+        else:
+            self._row_index = new_index_df
+            self._col_index = new_col_df
+            self._blk_partitions = obj._blk_partitions
 
     def drop_duplicates(self, subset=None, keep='first', inplace=False):
         raise NotImplementedError(
@@ -1329,23 +1294,14 @@ class DataFrame(object):
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_rows = _map_partitions(eval_helper, self._row_partitions)
 
-        columns_copy = pd.DataFrame(columns=self.columns)
+        columns_copy = self._col_index
         columns_copy.eval(expr, inplace=True, **kwargs)
         columns = columns_copy.columns
 
         if inplace:
             # TODO: return ray series instead of ray df
             self._row_partitions = new_rows
-            # TODO: fix bc there might not be col_partitions here
-            old_num_col_partitions = len(self._col_partitions)
-            self._col_partitions = _rebuild_cols.remote(self._row_partitions,
-                                                        None, columns)
-            if len(self._col_partitions) != old_num_col_partitions:
-                self._col_index.loc[columns[-1]] = [len(self._col_partitions) - 1, 0] 
-            else:
-                new_index = self._col_index['index_within_partition'][columns[-2]] + 1
-                self._col_index.loc[columns[-1]] = [len(self._col_partitions) - 1,
-                        new_index] 
+            self._col_index = columns_copy
         else:
             return DataFrame(columns=columns, row_partitions=new_rows)
 

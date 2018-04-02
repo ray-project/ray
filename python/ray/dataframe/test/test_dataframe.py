@@ -945,7 +945,6 @@ def test_dot():
 
 
 def test_drop():
-    return
     ray_df = create_test_dataframe()
     simple = pd.DataFrame({"A": [1, 2, 3, 4], "B": [0, 1, 2, 3]})
     ray_simple = from_pandas(simple, 2)
