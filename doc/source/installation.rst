@@ -31,15 +31,15 @@ features but may be subject to more bugs. To install these wheels, run the follo
 ===================  ===================
 
 
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp36-cp36m-manylinux1_x86_64.whl
-.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp35-cp35m-manylinux1_x86_64.whl
-.. _`Linux Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp34-cp34m-manylinux1_x86_64.whl
-.. _`Linux Python 3.3`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp33-cp33m-manylinux1_x86_64.whl
-.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp27-cp27mu-manylinux1_x86_64.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp36-cp36m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp35-cp35m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp34-cp34m-macosx_10_6_intel.whl
-.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.3.1-cp27-cp27m-macosx_10_6_intel.whl
+.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp36-cp36m-manylinux1_x86_64.whl
+.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp35-cp35m-manylinux1_x86_64.whl
+.. _`Linux Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp34-cp34m-manylinux1_x86_64.whl
+.. _`Linux Python 3.3`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp33-cp33m-manylinux1_x86_64.whl
+.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp27-cp27mu-manylinux1_x86_64.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp36-cp36m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp35-cp35m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.4`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp34-cp34m-macosx_10_6_intel.whl
+.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.4.0-cp27-cp27m-macosx_10_6_intel.whl
 
 
 Building Ray from source
