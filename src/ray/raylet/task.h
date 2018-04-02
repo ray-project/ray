@@ -3,10 +3,13 @@
 
 #include <inttypes.h>
 
+#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/task_execution_spec.h"
 #include "ray/raylet/task_spec.h"
 
 namespace ray {
+
+namespace raylet {
 
 /// \class Task
 ///
@@ -27,13 +30,29 @@ class Task {
        const TaskSpecification &task_spec)
       : task_execution_spec_(execution_spec), task_spec_(task_spec) {}
 
+  /// Create a task from a serialized flatbuffer.
+  ///
+  /// \param task_flatbuffer The serialized task.
+  Task(const protocol::Task &task_flatbuffer)
+      : task_execution_spec_(*task_flatbuffer.task_execution_spec()),
+        task_spec_(*task_flatbuffer.task_specification()) {}
+
   /// Destroy the task.
   virtual ~Task() {}
+
+  /// Serialize a task to a flatbuffer.
+  ///
+  /// \param fbb The flatbuffer builder.
+  /// \return An offset to the serialized task.
+  flatbuffers::Offset<protocol::Task> ToFlatbuffer(
+      flatbuffers::FlatBufferBuilder &fbb) const;
 
   /// Get the execution specification for the task.
   ///
   /// \return The mutable specification for the task.
-  const TaskExecutionSpecification &GetTaskExecutionSpec() const;
+  TaskExecutionSpecification &GetTaskExecutionSpec();
+
+  const TaskExecutionSpecification &GetTaskExecutionSpecReadonly() const;
 
   /// Get the immutable specification for the task.
   ///
@@ -63,6 +82,8 @@ class Task {
   /// dependencies, etc.
   TaskSpecification task_spec_;
 };
+
+}  // namespace raylet
 
 }  // namespace ray
 

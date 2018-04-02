@@ -128,9 +128,13 @@ void kill_worker(LocalSchedulerState *state,
    * error message to the driver responsible for the task. */
   if (worker->task_in_progress != NULL && !cleanup && !suppress_warning) {
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
-    TaskID task_id = TaskSpec_task_id(spec);
+
+    std::ostringstream error_message;
+    error_message << "The worker with ID " << worker->client_id << " died or "
+                  << "was killed while executing the task with ID "
+                  << TaskSpec_task_id(spec);
     push_error(state->db, TaskSpec_driver_id(spec), WORKER_DIED_ERROR_INDEX,
-               sizeof(task_id), task_id.data());
+               error_message.str());
   }
 
   /* Clean up the task in progress. */
@@ -351,13 +355,8 @@ LocalSchedulerState *LocalSchedulerState_init(
                            "local_scheduler", node_ip_address, db_connect_args);
     db_attach(state->db, loop, false);
 
-    ClientTableDataT client_info;
-    client_info.client_id = get_db_client_id(state->db).binary();
-    client_info.node_manager_address = std::string(node_ip_address);
-    client_info.local_scheduler_port = 0;
-    client_info.object_manager_port = 0;
     RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
-                                           redis_primary_port, client_info));
+                                           redis_primary_port));
     RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
   } else {
     state->db = NULL;
@@ -753,20 +752,26 @@ void reconstruct_put_task_update_callback(Task *task,
          * by `ray.put` was not able to be reconstructed, and the workload will
          * likely hang. Push an error to the appropriate driver. */
         TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-        FunctionID function = TaskSpec_function(spec);
+
+        std::ostringstream error_message;
+        error_message << "The task with ID " << TaskSpec_task_id(spec)
+                      << " is still executing and so the object created by "
+                      << "ray.put could not be reconstructed.";
         push_error(state->db, TaskSpec_driver_id(spec),
-                   PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
-                   function.data());
+                   PUT_RECONSTRUCTION_ERROR_INDEX, error_message.str());
       }
     } else {
       /* (1) The task is still executing and it is the driver task. We cannot
        * restart the driver task, so the workload will hang. Push an error to
        * the appropriate driver. */
       TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-      FunctionID function = TaskSpec_function(spec);
+
+      std::ostringstream error_message;
+      error_message << "The task with ID " << TaskSpec_task_id(spec)
+                    << " is a driver task and so the object created by ray.put "
+                    << "could not be reconstructed.";
       push_error(state->db, TaskSpec_driver_id(spec),
-                 PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
-                 function.data());
+                 PUT_RECONSTRUCTION_ERROR_INDEX, error_message.str());
     }
   } else {
     /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
@@ -1135,10 +1140,14 @@ void process_message(event_loop *loop,
        * already blocked on an object that's not locally available, update its
        * state to blocked. */
       worker->is_blocked = true;
-      /* Return the CPU resources that the blocked worker was using, but not
-       * other resources. */
+      // Return the CPU resources that the blocked worker was using, but not
+      // other resources. If the worker is an actor, this will not return the
+      // CPU resources that the worker has acquired for its lifetime. It will
+      // only return the ones associated with the current method.
+      TaskSpec *spec =
+          Task_task_execution_spec(worker->task_in_progress)->Spec();
       std::unordered_map<std::string, double> cpu_resources;
-      cpu_resources["CPU"] = worker->resources_in_use["CPU"];
+      cpu_resources["CPU"] = TaskSpec_get_required_resource(spec, "CPU");
       release_resources(state, worker, cpu_resources);
       /* Let the scheduling algorithm process the fact that the worker is
        * blocked. */

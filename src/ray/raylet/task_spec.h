@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ray/../common/format/common_generated.h"
+#include "format/common_generated.h"
 #include "ray/id.h"
 #include "ray/raylet/scheduling_resources.h"
 
@@ -15,6 +15,8 @@ extern "C" {
 }
 
 namespace ray {
+
+namespace raylet {
 
 /// \class TaskArgument
 ///
@@ -28,16 +30,6 @@ class TaskArgument {
   virtual flatbuffers::Offset<Arg> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb) const = 0;
 
-  /// Get the hashable byte data.
-  ///
-  /// \return A pointer to the byte data.
-  virtual const BYTE *HashData() const = 0;
-
-  /// Get the hashable byte data length.
-  ///
-  /// \return The length of the hashable byte data.
-  virtual size_t HashDataLength() const = 0;
-
   virtual ~TaskArgument() = 0;
 };
 
@@ -45,14 +37,15 @@ class TaskArgument {
 ///
 /// A task argument consisting of a list of object ID references.
 class TaskArgumentByReference : virtual public TaskArgument {
+ public:
   /// Create a task argument by reference from a list of object IDs.
   ///
   /// \param references A list of object ID references.
   TaskArgumentByReference(const std::vector<ObjectID> &references);
 
+  ~TaskArgumentByReference(){};
+
   flatbuffers::Offset<Arg> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const;
-  const BYTE *HashData() const;
-  size_t HashDataLength() const;
 
  private:
   /// The object IDs.
@@ -63,6 +56,7 @@ class TaskArgumentByReference : virtual public TaskArgument {
 ///
 /// A task argument containing the raw value.
 class TaskArgumentByValue : public TaskArgument {
+ public:
   /// Create a task argument from a raw value.
   ///
   /// \param value A pointer to the raw value.
@@ -70,8 +64,6 @@ class TaskArgumentByValue : public TaskArgument {
   TaskArgumentByValue(const uint8_t *value, size_t length);
 
   flatbuffers::Offset<Arg> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const;
-  const BYTE *HashData() const;
-  size_t HashDataLength() const;
 
  private:
   /// The raw value.
@@ -106,7 +98,8 @@ class TaskSpecification {
                     // UniqueID actor_id,
                     // UniqueID actor_handle_id,
                     // int64_t actor_counter,
-                    FunctionID function_id, const std::vector<TaskArgument> &arguments,
+                    FunctionID function_id,
+                    const std::vector<std::shared_ptr<TaskArgument>> &arguments,
                     int64_t num_returns,
                     const std::unordered_map<std::string, double> &required_resources);
 
@@ -130,14 +123,15 @@ class TaskSpecification {
   bool ArgByRef(int64_t arg_index) const;
   int ArgIdCount(int64_t arg_index) const;
   ObjectID ArgId(int64_t arg_index, int64_t id_index) const;
+  ObjectID ReturnId(int64_t return_index) const;
   const uint8_t *ArgVal(int64_t arg_index) const;
   size_t ArgValLength(int64_t arg_index) const;
   double GetRequiredResource(const std::string &resource_name) const;
   const ResourceSet GetRequiredResources() const;
 
  private:
-  /// Task specification constructor from a pointer.
-  TaskSpecification(const uint8_t *spec, size_t spec_size);
+  /// Assign the specification data from a pointer.
+  void AssignSpecification(const uint8_t *spec, size_t spec_size);
   /// Get a pointer to the byte data.
   const uint8_t *data() const;
   /// Get the size in bytes of the task specification.
@@ -146,6 +140,8 @@ class TaskSpecification {
   /// The task specification data.
   std::vector<uint8_t> spec_;
 };
+
+}  // namespace raylet
 
 }  // namespace ray
 

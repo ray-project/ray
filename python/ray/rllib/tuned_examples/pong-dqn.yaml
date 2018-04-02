@@ -2,7 +2,7 @@
 pong-deterministic-dqn:
     env: PongDeterministic-v4
     run: DQN
-    resources:
+    trial_resources:
         cpu: 1
         gpu: 1
     stop:

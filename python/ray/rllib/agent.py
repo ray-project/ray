@@ -220,7 +220,7 @@ class _ParameterTuningAgent(_MockAgent):
 
 
 def get_agent_class(alg):
-    """Returns the class of an known agent given its name."""
+    """Returns the class of a known agent given its name."""
 
     if alg == "PPO":
         from ray.rllib import ppo

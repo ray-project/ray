@@ -7,6 +7,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 // TODO(swang): Use std::function instead of boost.
 
 class ReconstructionPolicy {
@@ -28,6 +30,8 @@ class ReconstructionPolicy {
 
  private:
 };
+
+}  // namespace raylet
 
 }  // namespace ray
 

@@ -18,7 +18,7 @@ import ray
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.optimizers.sample_batch import SampleBatch
-from ray.rllib.utils.actors import TaskPool, create_colocated
+from ray.rllib.utils.actors import TaskPool
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
@@ -163,12 +163,15 @@ class ApexOptimizer(PolicyOptimizer):
         self.learner = LearnerThread(self.local_evaluator)
         self.learner.start()
 
-        self.replay_actors = create_colocated(
-            ReplayActor,
-            [num_replay_buffer_shards, learning_starts, buffer_size,
-             train_batch_size, prioritized_replay_alpha,
-             prioritized_replay_beta, prioritized_replay_eps, clip_rewards],
-            num_replay_buffer_shards)
+        # TODO(ekl) use create_colocated() for these actors once
+        # https://github.com/ray-project/ray/issues/1734 is fixed
+        self.replay_actors = [
+            ReplayActor.remote(
+                num_replay_buffer_shards, learning_starts, buffer_size,
+                train_batch_size, prioritized_replay_alpha,
+                prioritized_replay_beta, prioritized_replay_eps, clip_rewards)
+            for _ in range(num_replay_buffer_shards)
+        ]
         assert len(self.remote_evaluators) > 0
 
         # Stats

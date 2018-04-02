@@ -4,7 +4,7 @@ cartpole-es:
     stop:
         episode_reward_mean: 200
         time_total_s: 300
-    resources:
+    trial_resources:
         cpu: 2
     config:
         num_workers: 2

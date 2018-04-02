@@ -68,7 +68,7 @@ if __name__ == "__main__":
             "run": "my_class",
             "stop": {"training_iteration": 1 if args.smoke_test else 99999},
             "repeat": 20,
-            "resources": {"cpu": 1, "gpu": 0},
+            "trial_resources": {"cpu": 1, "gpu": 0},
             "config": {
                 "width": lambda spec: 10 + int(90 * random.random()),
                 "height": lambda spec: int(100 * random.random()),

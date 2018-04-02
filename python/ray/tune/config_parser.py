@@ -15,22 +15,32 @@ def json_to_resources(data):
     if type(data) is str:
         data = json.loads(data)
     for k in data:
+        if k in ["driver_cpu_limit", "driver_gpu_limit"]:
+            raise TuneError(
+                "The field `{}` is no longer supported. Use `extra_cpu` "
+                "or `extra_gpu` instead.".format(k))
         if k not in Resources._fields:
             raise TuneError(
                 "Unknown resource type {}, must be one of {}".format(
                     k, Resources._fields))
     return Resources(
         data.get("cpu", 1), data.get("gpu", 0),
-        data.get("driver_cpu_limit"), data.get("driver_gpu_limit"))
+        data.get("extra_cpu", 0), data.get("extra_gpu", 0))
 
 
 def resources_to_json(resources):
+    if resources is None:
+        resources = Resources(cpu=1, gpu=0)
     return {
         "cpu": resources.cpu,
         "gpu": resources.gpu,
-        "driver_cpu_limit": resources.driver_cpu_limit,
-        "driver_gpu_limit": resources.driver_gpu_limit,
+        "extra_cpu": resources.extra_cpu,
+        "extra_gpu": resources.extra_gpu,
     }
+
+
+def _tune_error(msg):
+    raise TuneError(msg)
 
 
 def make_parser(**kwargs):
@@ -56,7 +66,12 @@ def make_parser(**kwargs):
         help="Algorithm-specific configuration (e.g. env, hyperparams), "
         "specified in JSON.")
     parser.add_argument(
-        "--resources", default='{"cpu": 1}', type=json_to_resources,
+        "--resources", help="Deprecated, use --trial-resources.",
+        type=lambda v: _tune_error(
+            "The `resources` argument is no longer supported. "
+            "Use `trial_resources` or --trial-resources instead."))
+    parser.add_argument(
+        "--trial-resources", default='{"cpu": 1}', type=json_to_resources,
         help="Machine resources to allocate per trial, e.g. "
         "'{\"cpu\": 64, \"gpu\": 8}'. Note that GPUs will not be assigned "
         "unless you specify them here.")

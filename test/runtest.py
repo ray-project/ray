@@ -1840,7 +1840,10 @@ class GlobalStateAPI(unittest.TestCase):
         with self.assertRaises(Exception):
             ray.global_state.log_files()
 
-        ray.init()
+        ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+
+        resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
+        assert ray.global_state.cluster_resources() == resources
 
         self.assertEqual(ray.global_state.object_table(), dict())
 
@@ -1949,7 +1952,7 @@ class GlobalStateAPI(unittest.TestCase):
                          ray.global_state.object_table(result_id))
 
     def testLogFileAPI(self):
-        ray.init(redirect_output=True)
+        ray.init(redirect_worker_output=True)
 
         message = "unique message"
 
@@ -2013,7 +2016,7 @@ class GlobalStateAPI(unittest.TestCase):
     def testWorkers(self):
         num_workers = 3
         ray.init(
-            redirect_output=True,
+            redirect_worker_output=True,
             num_cpus=num_workers,
             num_workers=num_workers)
 

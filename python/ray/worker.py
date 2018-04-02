@@ -881,7 +881,8 @@ class Worker(object):
         while key not in self.imported_actor_classes:
             time.sleep(0.001)
 
-        self.fetch_and_register_actor(key, task.required_resources(), self)
+        with self.lock:
+            self.fetch_and_register_actor(key, task.required_resources(), self)
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -1100,23 +1101,6 @@ def error_info(worker=global_worker):
     for error_key in error_keys:
         if error_applies_to_driver(error_key, worker=worker):
             error_contents = worker.redis_client.hgetall(error_key)
-            # If the error is an object hash mismatch, look up the function
-            # name for the nondeterministic task. TODO(rkn): Change this so
-            # that we don't have to look up additional information. Ideally all
-            # relevant information would already be in error_contents.
-            error_type = error_contents[b"type"]
-            if error_type in [OBJECT_HASH_MISMATCH_ERROR_TYPE,
-                              PUT_RECONSTRUCTION_ERROR_TYPE]:
-                function_id = error_contents[b"data"]
-                if function_id == NIL_FUNCTION_ID:
-                    function_name = b"Driver"
-                else:
-                    task_driver_id = worker.task_driver_id
-                    function_name = worker.redis_client.hget(
-                        (b"RemoteFunction:" + task_driver_id.id() +
-                         b":" + function_id),
-                        "name")
-                error_contents[b"data"] = function_name
             errors.append(error_contents)
 
     return errors
@@ -1191,7 +1175,10 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
         assert b"ray_client_id" in info
         assert b"node_ip_address" in info
         assert b"client_type" in info
-        if info[b"node_ip_address"].decode("ascii") == node_ip_address:
+        client_node_ip_address = info[b"node_ip_address"].decode("ascii")
+        if (client_node_ip_address == node_ip_address or
+                (client_node_ip_address == "127.0.0.1" and
+                 redis_ip_address == ray.services.get_node_ip_address())):
             if info[b"client_type"].decode("ascii") == "plasma_manager":
                 plasma_managers.append(info)
             elif info[b"client_type"].decode("ascii") == "local_scheduler":
@@ -1284,7 +1271,8 @@ def _init(address_info=None,
           num_local_schedulers=None,
           object_store_memory=None,
           driver_mode=SCRIPT_MODE,
-          redirect_output=False,
+          redirect_worker_output=False,
+          redirect_output=True,
           start_workers_from_local_scheduler=True,
           num_cpus=None,
           num_gpus=None,
@@ -1323,8 +1311,10 @@ def _init(address_info=None,
             object store with.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
-        redirect_output (bool): True if stdout and stderr for all the processes
-            should be redirected to files and false otherwise.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         start_workers_from_local_scheduler (bool): If this flag is True, then
             start the initial workers from the local scheduler. Else, start
             them from Python. The latter case is for debugging purposes only.
@@ -1404,6 +1394,7 @@ def _init(address_info=None,
             num_workers=num_workers,
             num_local_schedulers=num_local_schedulers,
             object_store_memory=object_store_memory,
+            redirect_worker_output=redirect_worker_output,
             redirect_output=redirect_output,
             start_workers_from_local_scheduler=(
                 start_workers_from_local_scheduler),
@@ -1474,7 +1465,8 @@ def _init(address_info=None,
 
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
-         num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
+         num_workers=None, driver_mode=SCRIPT_MODE,
+         redirect_worker_output=False, redirect_output=True,
          num_cpus=None, num_gpus=None, resources=None,
          num_custom_resource=None, num_redis_shards=None,
          redis_max_clients=None, plasma_directory=None,
@@ -1500,8 +1492,10 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             provided if redis_address is not provided.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
-        redirect_output (bool): True if stdout and stderr for all the processes
-            should be redirected to files and false otherwise.
+        redirect_worker_output: True if the stdout and stderr of worker
+            processes should be redirected to files.
+        redirect_output (bool): True if stdout and stderr for non-worker
+            processes should be redirected to files and false otherwise.
         num_cpus (int): Number of cpus the user wishes all local schedulers to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all local schedulers to
@@ -1538,6 +1532,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             "redis_address": redis_address}
     return _init(address_info=info, start_ray_local=(redis_address is None),
                  num_workers=num_workers, driver_mode=driver_mode,
+                 redirect_worker_output=redirect_worker_output,
                  redirect_output=redirect_output, num_cpus=num_cpus,
                  num_gpus=num_gpus, resources=resources,
                  num_redis_shards=num_redis_shards,

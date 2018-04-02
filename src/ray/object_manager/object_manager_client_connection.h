@@ -7,63 +7,72 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
+#include <boost/bind.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
+#include "common/state/ray_config.h"
+#include "ray/common/client_connection.h"
 #include "ray/id.h"
 
 namespace ray {
 
-struct SendRequest {
-  ObjectID object_id;
-  ClientID client_id;
-  int64_t object_size;
-  uint8_t *data;
-};
-
-// TODO(hme): Document public API after integration with common connection.
 class SenderConnection : public boost::enable_shared_from_this<SenderConnection> {
  public:
-  typedef boost::shared_ptr<SenderConnection> pointer;
-  typedef std::unordered_map<ray::ObjectID, SendRequest, UniqueIDHasher> SendRequestsType;
-  typedef std::deque<ray::ObjectID> SendQueueType;
+  /// Create a connection for sending data to other object managers.
+  ///
+  /// \param io_service The service to which the created socket should attach.
+  /// \param client_id The ClientID of the remote node.
+  /// \param ip The ip address of the remote node server.
+  /// \param port The port of the remote node server.
+  /// \return A connection to the remote object manager.
+  static std::shared_ptr<SenderConnection> Create(boost::asio::io_service &io_service,
+                                                  const ClientID &client_id,
+                                                  const std::string &ip, uint16_t port);
 
-  static pointer Create(boost::asio::io_service &io_service, const std::string &ip,
-                        uint16_t port);
+  /// \param socket A reference to the socket created by the static Create method.
+  /// \param client_id The ClientID of the remote node.
+  SenderConnection(std::shared_ptr<TcpServerConnection> conn, const ClientID &client_id);
 
-  explicit SenderConnection(boost::asio::io_service &io_service, const std::string &ip,
-                            uint16_t port);
+  /// Write a message to the client.
+  ///
+  /// \param type The message type (e.g., a flatbuffer enum).
+  /// \param length The size in bytes of the message.
+  /// \param message A pointer to the message buffer.
+  /// \return Status.
+  ray::Status WriteMessage(int64_t type, uint64_t length, const uint8_t *message) {
+    return conn_->WriteMessage(type, length, message);
+  }
 
-  boost::asio::ip::tcp::socket &GetSocket();
+  /// Write a buffer to this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer,
+                   boost::system::error_code &ec) {
+    return conn_->WriteBuffer(buffer, ec);
+  }
 
-  bool IsObjectIdQueueEmpty();
-  bool ObjectIdQueued(const ObjectID &object_id);
-  void QueueObjectId(const ObjectID &object_id);
-  ObjectID DequeueObjectId();
+  /// Read a buffer from this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
+                  boost::system::error_code &ec) {
+    return conn_->ReadBuffer(buffer, ec);
+  }
 
-  void AddSendRequest(const ObjectID &object_id, SendRequest &send_request);
-  void RemoveSendRequest(const ObjectID &object_id);
-  SendRequest &GetSendRequest(const ObjectID &object_id);
+  /// \return The ClientID of this connection.
+  const ClientID &GetClientID() { return client_id_; }
 
  private:
-  boost::asio::ip::tcp::socket socket_;
-  SendQueueType send_queue_;
-  SendRequestsType send_requests_;
-};
+  bool operator==(const SenderConnection &rhs) const {
+    return connection_id_ == rhs.connection_id_;
+  }
 
-// TODO(hme): Document public API after integration with common connection.
-class TCPClientConnection : public boost::enable_shared_from_this<TCPClientConnection> {
- public:
-  typedef boost::shared_ptr<TCPClientConnection> pointer;
-  static pointer Create(boost::asio::io_service &io_service);
-  boost::asio::ip::tcp::socket &GetSocket();
-
-  TCPClientConnection(boost::asio::io_service &io_service);
-
-  int64_t message_type_;
-  uint64_t message_length_;
-
- private:
-  boost::asio::ip::tcp::socket socket_;
+  static uint64_t id_counter_;
+  uint64_t connection_id_;
+  ClientID client_id_;
+  std::shared_ptr<TcpServerConnection> conn_;
 };
 
 }  // namespace ray

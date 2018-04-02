@@ -7,6 +7,7 @@
 #include "state/task_table.h"
 #include "state/actor_notification_table.h"
 #include "state/db_client_table.h"
+#include "state/error_table.h"
 #include "state/local_scheduler_table.h"
 #include "state/object_table.h"
 #include "local_scheduler_shared.h"
@@ -857,6 +858,27 @@ void spillback_tasks_handler(LocalSchedulerState *state) {
 
   for (int64_t i = 0; i < num_to_spillback; i++) {
     it->IncrementSpillbackCount();
+    // If an actor hasn't been created for a while, push a warning to the
+    // driver.
+    if (it->SpillbackCount() %
+            RayConfig::instance().actor_creation_num_spillbacks_warning() ==
+        0) {
+      TaskSpec *spec = it->Spec();
+      if (TaskSpec_is_actor_creation_task(spec)) {
+        std::ostringstream error_message;
+        error_message << "The actor with ID "
+                      << TaskSpec_actor_creation_id(spec) << " is taking a "
+                      << "while to be created. It is possible that the "
+                      << "cluster does not have enough resources to place this "
+                      << "actor. Try reducing the number of actors created or "
+                      << "increasing the number of slots available by using "
+                      << "the --num-cpus, --num-gpus, and --resources flags.";
+
+        push_error(state->db, TaskSpec_driver_id(spec),
+                   ACTOR_NOT_CREATED_ERROR_INDEX, error_message.str());
+      }
+    }
+
     give_task_to_global_scheduler(state, algorithm_state, *it);
     // Dequeue the task.
     it = algorithm_state->dispatch_task_queue->erase(it);
@@ -1264,9 +1286,14 @@ void handle_task_submitted(LocalSchedulerState *state,
   // locally, and there is an available worker, then enqueue the task in the
   // dispatch queue and trigger task dispatch. Otherwise, pass the task along to
   // the global scheduler if there is one.
+  // Note that actor creation tasks automatically go to the global scheduler.
+  // See https://github.com/ray-project/ray/issues/1756 for more discussion.
+  // This is a hack to improve actor load balancing (and to prevent the scenario
+  // where all actors are started locally).
   if (resource_constraints_satisfied(state, spec) &&
       (algorithm_state->available_workers.size() > 0) &&
-      can_run(algorithm_state, execution_spec)) {
+      can_run(algorithm_state, execution_spec) &&
+      !TaskSpec_is_actor_creation_task(spec)) {
     queue_dispatch_task(state, algorithm_state, execution_spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */

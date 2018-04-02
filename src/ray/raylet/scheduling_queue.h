@@ -11,6 +11,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 /// \class SchedulingQueue
 ///
 /// Encapsulates task queues. Each queue represents a scheduling state for a
@@ -103,6 +105,9 @@ class SchedulingQueue {
   /// The registry of known actors.
   std::unordered_map<ActorID, ActorInformation, UniqueIDHasher> actor_registry_;
 };
+
+}  // namespace raylet
+
 }  // namespace ray
 
 #endif  // RAY_RAYLET_SCHEDULING_QUEUE_H
