@@ -914,6 +914,7 @@ def start_raylet(redis_address,
     command = [RAYLET_EXECUTABLE,
                raylet_name,
                plasma_store_name,
+               node_ip_address,
                gcs_ip_address,
                gcs_port,
                start_worker_command]
