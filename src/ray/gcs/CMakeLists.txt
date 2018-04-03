@@ -19,6 +19,15 @@ add_custom_command(
 
 add_custom_target(gen_gcs_fbs DEPENDS ${GCS_FBS_OUTPUT_FILES})
 
+# Generate Python bindings for the flatbuffers objects.
+set(PYTHON_OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated/)
+add_custom_command(
+  TARGET gen_gcs_fbs
+  COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} ${GCS_FBS_SRC}
+  DEPENDS ${FBS_DEPENDS}
+  COMMENT "Running flatc compiler on ${GCS_FBS_SRC}"
+  VERBATIM)
+
 ADD_RAY_TEST(client_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})
 ADD_RAY_TEST(asio_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})
 
