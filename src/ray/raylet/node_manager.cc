@@ -92,7 +92,7 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
     };
     ray::Status status = client->heartbeat_table().Subscribe(
         UniqueID::nil(), UniqueID::nil(), heartbeat_added,
-        [this](gcs::AsyncGcsClient *client) {
+        [](gcs::AsyncGcsClient *client) {
           RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
         });
     RAY_CHECK_OK(status);
