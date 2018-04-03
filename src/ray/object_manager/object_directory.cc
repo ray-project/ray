@@ -61,7 +61,7 @@ ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
   // For now, this is only accessed by the main thread.
   ray::Status status = gcs_client_->object_table().Lookup(
       job_id, object_id,
-      [this, object_id](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+      [this](gcs::AsyncGcsClient *client, const ObjectID &object_id,
                         const std::vector<ObjectTableDataT> &data) {
         GetLocationsComplete(object_id, data);
       });
