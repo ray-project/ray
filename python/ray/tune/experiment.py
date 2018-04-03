@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.error import TuneError
 
 
 class Experiment(object):
@@ -60,6 +61,8 @@ class Experiment(object):
             name (str): Name of Experiment.
             spec (dict): JSON configuration of experiment.
         """
+        if "run" not in spec:
+            raise TuneError("No trainable specified!")
         exp = cls(name, spec["run"])
         exp.name = name
         exp.spec = spec
