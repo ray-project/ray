@@ -1162,67 +1162,99 @@ class DataFrame(object):
         else:
             raise ValueError("Need to specify at least one of 'labels', "
                              "'index' or 'columns'")
-
         obj = self.copy()
 
         def drop_helper(obj, axis, label):
-            if axis is 'index':
-                part, index = obj._row_index.loc[label]
-                print("partition", part, "index", index)
-                # print(obj._row_index.loc[label])
-                # print(ray.get(obj._row_partitions[part]))
-                # # print(ray.get(obj._row_partitions[part]).drop(labels=index))
-                x = _deploy_func.remote(lambda df: df.drop(labels=index,
-                                                           axis=axis),
-                                        obj._row_partitions[part])
-                obj._row_partitions = \
-                    [obj._row_partitions[i] if i != part
-                     else x
-                     for i in range(len(obj._row_partitions))]
+            if axis == 'index':
+                try:
+                    coords = obj._row_index.loc[label]
+                    if isinstance(coords, pd.DataFrame):
+                        partitions = list(coords['partition'])
+                        indexes = list(coords['index_within_partition'])
+                        print(partitions, indexes)
+                    else:
+                        partitions, indexes = coords
+                        partitions = [partitions]
+                        indexes = [indexes]
 
-                obj._row_index.drop(labels=label, axis=axis)
+                    for part, index in zip(partitions, indexes):
+                        x = _deploy_func.remote(lambda df: df.drop(labels=index,
+                                                                   axis=axis,
+                                                                   errors='ignore'),
+                                                obj._row_partitions[part])
+                        obj._row_partitions = \
+                            [obj._row_partitions[i] if i != part
+                             else x
+                             for i in range(len(obj._row_partitions))]
 
-                x = obj._row_index[(obj._row_index['partition'] == part) & (obj._row_index['index_within_partition'] > index)]
-                obj._row_index[(obj._row_index['partition'] == part) & (obj._row_index['index_within_partition'] > index)]['index_within_partition'] = 0
-                print("HJERE")
-                print(x)
+                        obj._row_index = obj._row_index.copy()
+                        obj._row_index.loc[(obj._row_index.partition == part) & (
+                                obj._row_index.index_within_partition > index),
+                                           'index_within_partition'] -= 1
+
+                    obj._row_index.drop(labels=label, axis=0, inplace=True)
+                except KeyError:
+                    return obj
             else:
-                part, index = obj._col_index.loc[label]
-                x = _deploy_func.remote(lambda df: df.drop(labels=index,
-                                                           axis=axis),
-                                        obj._col_partitions[part])
+                try:
+                    coords = obj._col_index.loc[label]
+                    if isinstance(coords, pd.DataFrame):
+                        partitions = list(coords['partition'])
+                        indexes = list(coords['index_within_partition'])
+                        print(indexes)
+                    else:
+                        partitions, indexes = coords
+                        partitions = [partitions]
+                        indexes = [indexes]
 
-                obj._col_partitions = \
-                    [obj._col_partitions[i] if i != part
-                     else x
-                     for i in range(len(obj._col_partitions))]
+                    for part, index in zip(partitions, indexes):
+                        x = _deploy_func.remote(lambda df: df.drop(labels=index,
+                                                                   axis=axis,
+                                                                   errors='ignore'),
+                                                obj._col_partitions[part])
+                        obj._col_partitions = \
+                            [obj._col_partitions[i] if i != part
+                             else x
+                             for i in range(len(obj._col_partitions))]
+
+                        obj._col_index = obj._col_index.copy()
+                        obj._col_index.loc[(obj._col_index.partition == part) & (
+                                    obj._col_index.index_within_partition > index),
+                                           'index_within_partition'] -= 1
+
+                    obj._col_index.drop(labels=label, axis=0, inplace=True)
+                except KeyError:
+                    return obj
+                except TypeError:
+                    print(label)
+                    print(part)
+                    print(index)
+                    print(obj._col_index.loc[label])
 
             return obj
 
         for axis, labels in axes.items():
             if is_list_like(labels):
                 for label in labels:
-                    obj = drop_helper(obj, axis, label)
+                    if errors != 'ignore' and \
+                            label not in getattr(self, axis):
+                        raise ValueError("The label [{}] is not in the [{}]",
+                                         label, axis)
+                    else:
+                        obj = drop_helper(obj, axis, label)
             else:
-                obj = drop_helper(obj, axis, labels)
-
-        if 'index' in axes:
-            new_index_df = obj._row_index.drop(index=axes['index'])
-        else:
-            new_index_df = obj._row_index
-
-        if 'columns' in axes:
-            new_col_df = obj._col_index.drop(index=axes['columns'])
-        else:
-            new_col_df = obj._col_index
+                if errors != 'ignore' and \
+                        labels not in getattr(self, axis):
+                    raise ValueError("The label [{}] is not in the [{}]",
+                                     labels, axis)
+                else:
+                    obj = drop_helper(obj, axis, labels)
 
         if not inplace:
-            obj._row_index = new_index_df
-            obj._col_index = new_col_df
             return obj
         else:
-            self._row_index = new_index_df
-            self._col_index = new_col_df
+            self._row_index = obj._row_index
+            self._col_index = obj._col_index
             self._blk_partitions = obj._blk_partitions
 
     def drop_duplicates(self, subset=None, keep='first', inplace=False):
