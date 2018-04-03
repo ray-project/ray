@@ -116,8 +116,8 @@ void TaskDependencyManager::UnsubscribeForwardedTask(const TaskID &task_id) {
   UnsubscribeTask(task_id, ObjectAvailability::kRemote);
 }
 
-void TaskDependencyManager::UnsubscribeExecutedTask(const TaskID &task_id) {
-  UnsubscribeTask(task_id, ObjectAvailability::kCreated);
+void TaskDependencyManager::UnsubscribeExecutingTask(const TaskID &task_id) {
+  UnsubscribeTask(task_id, ObjectAvailability::kConstructing);
 }
 
 void TaskDependencyManager::UnsubscribeTask(const TaskID &task_id,
@@ -155,7 +155,8 @@ void TaskDependencyManager::UnsubscribeTask(const TaskID &task_id,
     // re-executed task and it created multiple objects, only some of which
     // needed to be reconstructed. We only want to update the object's status
     // if it was previously not available.
-    if (return_entry->second.status == ObjectAvailability::kWaiting) {
+    if (return_entry->second.status != ObjectAvailability::kLocal) {
+      RAY_CHECK(return_entry->second.status == ObjectAvailability::kWaiting);
       return_entry->second.status = outputs_status;
     }
     if (return_entry->second.dependent_tasks.empty()) {

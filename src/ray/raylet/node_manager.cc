@@ -50,8 +50,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
             // reconstruct the object?
             reconstruction_policy_.Listen(object_id);
           },
-          [this](const TaskID &task_id) { HandleReadyTaskWaiting(task_id); },
-          [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
+          [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); },
+          [this](const TaskID &task_id) { HandleReadyTaskWaiting(task_id); }),
       lineage_cache_(gcs_client_->raylet_task_table()),
       remote_clients_(),
       remote_server_connections_() {
@@ -62,8 +62,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                                 SchedulingResources(config.resource_config));
 
   RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](const ObjectID &object_id) {
-    task_dependency_manager_.HandleObjectLocal(object_id);
     reconstruction_policy_.Cancel(object_id);
+    task_dependency_manager_.HandleObjectLocal(object_id);
   }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted([this](const ObjectID &object_id) {
     task_dependency_manager_.HandleObjectMissing(object_id);
@@ -325,7 +325,6 @@ void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
 }
 
 void NodeManager::HandleReadyTaskWaiting(const TaskID &task_id) {
-  throw std::runtime_error("Method not implemented");
   auto waiting_tasks = local_queues_.RemoveTasks({task_id});
   local_queues_.QueueWaitingTasks(std::vector<Task>(waiting_tasks));
 }
@@ -367,10 +366,12 @@ void NodeManager::ScheduleTasks() {
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage) {
+  // Queue the task.
+  local_queues_.QueueWaitingTasks({task});
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
-  // Subscribe to the task's dependencies. The task will be queued according to
-  // the availability of its arguments.
+  // Subscribe to the task's dependencies. The task will be moved to the ready
+  // queue depending on the availability of its arguments.
   task_dependency_manager_.SubscribeTask(task);
 }
 
@@ -404,6 +405,10 @@ void NodeManager::AssignTask(const Task &task) {
   if (status.ok()) {
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
+    // Tell the task dependency manager that we no longer need this task's
+    // object dependencies. The task dependency manager assumes that the task's
+    // return values are pending creation.
+    task_dependency_manager_.UnsubscribeExecutingTask(spec.TaskId());
   } else {
     // We failed to send the task to the worker, so disconnect the worker. The
     // task will get queued again during cleanup.
@@ -464,6 +469,9 @@ ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
+    // Tell the task dependency manager that we no longer need this task's
+    // object dependencies.
+    task_dependency_manager_.UnsubscribeForwardedTask(task_id);
   } else {
     // TODO(atumanov): caller must handle ForwardTask failure to ensure tasks are not
     // lost.

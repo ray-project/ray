@@ -113,10 +113,10 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
     TaskID task_id = task.GetTaskSpecification().TaskId();
     auto return_id = task.GetTaskSpecification().ReturnId(0);
 
+    // Simulate the task starting execution.
+    task_dependency_manager_.UnsubscribeExecutingTask(task_id);
     // Simulate the object notifications for the task's return values.
     task_dependency_manager_.HandleObjectLocal(return_id);
-    // Simulate the task finishing execution.
-    task_dependency_manager_.UnsubscribeExecutedTask(task_id);
 
     num_ready_tasks++;
     ASSERT_EQ(remote_objects_.size(), 0);
