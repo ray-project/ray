@@ -430,7 +430,21 @@ void NodeManager::FinishTask(const TaskID &task_id) {
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
-  throw std::runtime_error("Method not implemented");
+  // TODO(swang): Test this codepath for reconstruction.
+  auto lookup_callback = [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                                const protocol::TaskT &task_data) {
+    const Task task(task_data);
+    SubmitTask(task, Lineage());
+  };
+  auto failure_callback = [this](ray::gcs::AsyncGcsClient *client,
+                                 const TaskID &task_id) {
+    Lineage lineage = lineage_cache_.GetUncommittedLineage(task_id);
+    auto task_entry = lineage.GetEntry(task_id);
+    RAY_CHECK(task_entry) << "Entry not found in GCS or lineage cache!";
+    SubmitTask(task_entry->TaskData(), lineage);
+  };
+  RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
+      JobID::nil(), task_id, lookup_callback, failure_callback));
 }
 
 ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {

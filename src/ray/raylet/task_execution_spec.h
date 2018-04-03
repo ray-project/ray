@@ -40,6 +40,11 @@ class TaskExecutionSpecification {
     spec_flatbuffer.UnPackTo(&execution_spec_);
   }
 
+  TaskExecutionSpecification(
+      const protocol::TaskExecutionSpecificationT &unpacked_spec_flatbuffer) {
+    execution_spec_ = unpacked_spec_flatbuffer;
+  }
+
   /// Serialize a task execution specification to a flatbuffer.
   ///
   /// \param fbb The flatbuffer builder.
