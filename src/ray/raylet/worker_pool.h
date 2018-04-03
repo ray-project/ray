@@ -25,7 +25,7 @@ class WorkerPool {
   /// pool.
   ///
   /// \param num_workers The number of workers to start.
-  WorkerPool(int num_workers, const std::vector<const char *> &worker_command);
+  WorkerPool(int num_workers, const std::vector<std::string> &worker_command);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool();
@@ -74,7 +74,7 @@ class WorkerPool {
   std::shared_ptr<Worker> PopWorker();
 
  private:
-  std::vector<const char *> worker_command_;
+  std::vector<std::string> worker_command_;
   /// The pool of idle workers.
   std::list<std::shared_ptr<Worker>> pool_;
   /// All workers that have registered and are still connected, including both
