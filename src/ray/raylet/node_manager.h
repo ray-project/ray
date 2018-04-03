@@ -5,6 +5,7 @@
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
+#include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
@@ -62,6 +63,9 @@ class NodeManager {
   // Handler for the addition of a new GCS client.
   void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
                    const ClientTableDataT &data);
+  // Handler for the creation of an actor, possibly on a remote node.
+  void HandleActorCreation(const ActorID &actor_id,
+                           const std::vector<ActorTableDataT> &data);
   /// Submit a task to this node.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
   /// Assign a task.
@@ -103,6 +107,7 @@ class NodeManager {
   std::unordered_map<ClientID, TcpServerConnection, UniqueIDHasher>
       remote_server_connections_;
   ObjectManager &object_manager_;
+  std::unordered_map<ActorID, ActorRegistration, UniqueIDHasher> actor_registry_;
 };
 
 }  // namespace raylet

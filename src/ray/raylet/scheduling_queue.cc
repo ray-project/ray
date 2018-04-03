@@ -82,14 +82,6 @@ void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
   queueTasks(running_tasks_, tasks);
 }
 
-// RegisterActor is responsible for recording provided actor_information
-// in the actor registry.
-bool SchedulingQueue::RegisterActor(ActorID actor_id,
-                                    const ActorInformation &actor_information) {
-  actor_registry_[actor_id] = actor_information;
-  return true;
-}
-
 }  // namespace raylet
 
 }  // namespace ray

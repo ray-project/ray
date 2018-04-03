@@ -6,7 +6,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/raylet/actor.h"
 #include "ray/raylet/task.h"
 
 namespace ray {
@@ -86,12 +85,6 @@ class SchedulingQueue {
   /// \param tasks The tasks to queue.
   void QueueRunningTasks(const std::vector<Task> &tasks);
 
-  /// Register an actor.
-  ///
-  /// \param actor_id The ID of the actor to register.
-  /// \param actor_information Information about the actor.
-  bool RegisterActor(ActorID actor_id, const ActorInformation &actor_information);
-
  private:
   /// Tasks that are waiting for an object dependency to appear locally.
   std::list<Task> waiting_tasks_;
@@ -102,8 +95,6 @@ class SchedulingQueue {
   std::list<Task> scheduled_tasks_;
   /// Tasks that are running on a worker.
   std::list<Task> running_tasks_;
-  /// The registry of known actors.
-  std::unordered_map<ActorID, ActorInformation, UniqueIDHasher> actor_registry_;
 };
 
 }  // namespace raylet

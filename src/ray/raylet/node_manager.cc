@@ -26,7 +26,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       gcs_client_(gcs_client),
       remote_clients_(),
       remote_server_connections_(),
-      object_manager_(object_manager) {
+      object_manager_(object_manager),
+      actor_registry_() {
   RAY_CHECK(heartbeat_period_ms_ > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -35,6 +36,14 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 }
 
 ray::Status NodeManager::RegisterGcs() {
+  // Register a callback for actor creation notifications.
+  auto actor_creation_callback = [this](
+      gcs::AsyncGcsClient *client, const ActorID &actor_id,
+      const std::vector<ActorTableDataT> &data) { HandleActorCreation(actor_id, data); };
+
+  gcs_client_->actor_table().Subscribe(UniqueID::nil(), UniqueID::nil(),
+                                       actor_creation_callback, nullptr);
+
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
                                           const ClientTableDataT &data) {
@@ -164,6 +173,20 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
                   heartbeat_data.resources_available_capacity));
   RAY_CHECK(this->cluster_resource_map_[client_id].GetAvailableResources() ==
             heartbeat_resource_available);
+}
+
+void NodeManager::HandleActorCreation(const ActorID &actor_id,
+                                      const std::vector<ActorTableDataT> &data) {
+  RAY_LOG(DEBUG) << "Actor creation notification received: " << actor_id.hex();
+  // TODO(swang): In presence of failures, data may have size > 1, since the
+  // actor will have been created multiple times. In that case, we should
+  // only consider the last entry as valid. All previous entries should have
+  // a dead node_manager_id.
+  RAY_CHECK(data.size() == 1);
+
+  // Register the new actor.
+  actor_registry_.emplace(actor_id, ActorRegistration(data.back()));
+  // TODO(swang): Try to dispatch or forward any queued tasks for the actor.
 }
 
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
@@ -324,21 +347,28 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 }
 
 void NodeManager::AssignTask(const Task &task) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
+
   // Resource accounting: acquire resources for the scheduled task.
   const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
-  RAY_CHECK(this->cluster_resource_map_[my_client_id].Acquire(
-      task.GetTaskSpecification().GetRequiredResources()));
+  RAY_CHECK(
+      this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
 
-  if (worker_pool_.PoolSize() == 0) {
-    worker_pool_.StartWorker();
+  // Try to get an idle worker that can execute this task.
+  std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec.ActorId());
+  if (worker == nullptr) {
+    // There are no workers that can execute this task.
+    if (!spec.IsActorTask()) {
+      // There are no more non-actor workers available to execute this task.
+      // Start a new worker.
+      worker_pool_.StartWorker();
+    }
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
     local_queues_.QueueScheduledTasks(std::vector<Task>({task}));
     return;
   }
 
-  const TaskSpecification &spec = task.GetTaskSpecification();
-  std::shared_ptr<Worker> worker = worker_pool_.PopWorker();
   RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
 
   worker->AssignTaskId(spec.TaskId());
@@ -369,20 +399,22 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
 
   if (task.GetTaskSpecification().IsActorCreationTask()) {
     // If this was an actor creation task, then convert the worker to an actor.
-    worker->AssignActorId(task.GetTaskSpecification().ActorCreationId());
+    auto actor_id = task.GetTaskSpecification().ActorCreationId();
+    worker->AssignActorId(actor_id);
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
     auto actor_notification = std::make_shared<ActorTableDataT>();
-    actor_notification->actor_id = task.GetTaskSpecification().ActorId().binary();
+    actor_notification->actor_id = actor_id.binary();
     actor_notification->actor_creation_dummy_object_id =
         task.GetTaskSpecification().ActorCreationDummyObjectId().binary();
     // TODO(swang): The driver ID.
     actor_notification->driver_id = JobID::nil().binary();
     actor_notification->node_manager_id =
         gcs_client_->client_table().GetLocalClientId().binary();
-    gcs_client_->actor_table().Append(JobID::nil(), task.GetTaskSpecification().ActorId(),
-                                      actor_notification, nullptr);
+    RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id.hex();
+    gcs_client_->actor_table().Append(JobID::nil(), actor_id, actor_notification,
+                                      nullptr);
 
     // Resources required by an actor creation tasks are acquired for the
     // lifetime of the actor, so we do not release any resources here.

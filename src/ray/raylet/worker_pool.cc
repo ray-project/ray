@@ -51,8 +51,6 @@ void WorkerPool::StartWorker() {
   RAY_LOG(FATAL) << "Failed to start worker with return value " << rv;
 }
 
-uint32_t WorkerPool::PoolSize() const { return pool_.size(); }
-
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   RAY_LOG(DEBUG) << "Registering worker with pid " << worker->Pid();
   registered_workers_.push_back(worker);
@@ -80,23 +78,21 @@ void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
   }
 }
 
-std::shared_ptr<Worker> WorkerPool::PopWorker() {
-  if (pool_.empty()) {
-    return nullptr;
-  }
-  std::shared_ptr<Worker> worker = std::move(pool_.back());
-  pool_.pop_back();
-  return worker;
-}
-
 std::shared_ptr<Worker> WorkerPool::PopWorker(const ActorID &actor_id) {
-  auto actor_entry = actor_pool_.find(actor_id);
-  if (actor_entry == actor_pool_.end()) {
-    return nullptr;
+  std::shared_ptr<Worker> worker = nullptr;
+  if (actor_id.is_nil()) {
+    if (!pool_.empty()) {
+      worker = std::move(pool_.back());
+      pool_.pop_back();
+    }
+  } else {
+    auto actor_entry = actor_pool_.find(actor_id);
+    if (actor_entry != actor_pool_.end()) {
+      worker = std::move(actor_entry->second);
+      actor_pool_.erase(actor_entry);
+    }
   }
-  std::shared_ptr<Worker> actor = std::move(actor_entry->second);
-  actor_pool_.erase(actor_entry);
-  return actor;
+  return worker;
 }
 
 // A helper function to remove a worker from a list. Returns true if the worker

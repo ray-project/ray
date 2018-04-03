@@ -31,12 +31,6 @@ class WorkerPool {
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool();
 
-  /// Get the number of idle workers in the pool. This does not include actor
-  /// workers.
-  ///
-  /// \return The number of idle workers.
-  uint32_t PoolSize() const;
-
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register a new Worker, then add itself to the pool. Failure to start
@@ -71,9 +65,9 @@ class WorkerPool {
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
   ///
-  /// \return An idle worker. Returns nullptr if the pool is empty.
-  std::shared_ptr<Worker> PopWorker();
-
+  /// \param actor_id The returned worker must have this actor ID.
+  /// \return An idle worker with the requested actor ID. Returns nullptr if no
+  /// such worker exists.
   std::shared_ptr<Worker> PopWorker(const ActorID &actor_id);
 
  private:
