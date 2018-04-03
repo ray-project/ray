@@ -104,8 +104,7 @@ By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler``
 HyperOpt Integration
 --------------------
 
-Ray Tune has a scheduler implementation, ``HyperOptScheduler``,
-that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
+The``HyperOptScheduler`` is a Trial Scheduler that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
 In order to use this scheduler, you will need to install HyperOpt via the following command:
 
 .. code-block:: bash
