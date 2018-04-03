@@ -7,6 +7,7 @@
 #include <boost/asio/error.hpp>
 #include <boost/enable_shared_from_this.hpp>
 
+#include "ray/id.h"
 #include "ray/status.h"
 
 namespace ray {
@@ -36,7 +37,21 @@ class ServerConnection {
   /// \param length The size in bytes of the message.
   /// \param message A pointer to the message buffer.
   /// \return Status.
-  ray::Status WriteMessage(int64_t type, size_t length, const uint8_t *message);
+  ray::Status WriteMessage(int64_t type, int64_t length, const uint8_t *message);
+
+  /// Write a buffer to this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer,
+                   boost::system::error_code &ec);
+
+  /// Read a buffer from this connection.
+  ///
+  /// \param buffer The buffer.
+  /// \param ec The error code object in which to store error codes.
+  void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
+                  boost::system::error_code &ec);
 
  protected:
   /// The socket connection to the server.
@@ -71,6 +86,12 @@ class ClientConnection : public ServerConnection<T>,
       ClientHandler<T> &new_client_handler, MessageHandler<T> &message_handler,
       boost::asio::basic_stream_socket<T> &&socket);
 
+  /// \return The ClientID of the remote client.
+  const ClientID &GetClientID();
+
+  /// \param client_id The ClientID of the remote client.
+  void SetClientID(const ClientID &client_id);
+
   /// Listen for and process messages from the client connection. Once a
   /// message has been fully received, the client manager's
   /// ProcessClientMessage handler will be called.
@@ -87,6 +108,8 @@ class ClientConnection : public ServerConnection<T>,
   /// message from the client.
   void ProcessMessage(const boost::system::error_code &error);
 
+  /// The ClientID of the remote client.
+  ClientID client_id_;
   /// The handler for a message from the client.
   MessageHandler<T> message_handler_;
   /// Buffers for the current message being read rom the client.

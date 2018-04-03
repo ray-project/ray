@@ -1,6 +1,7 @@
 // Object Manager protocol specification
+namespace ray.object_manager.protocol;
 
-enum OMMessageType:int {
+enum MessageType:int {
   ConnectClient = 1,
   DisconnectClient,
   PushRequest,

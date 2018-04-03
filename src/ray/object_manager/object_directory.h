@@ -2,6 +2,7 @@
 #define RAY_OBJECT_MANAGER_OBJECT_DIRECTORY_H
 
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -13,6 +14,7 @@
 namespace ray {
 
 struct RemoteConnectionInfo {
+  RemoteConnectionInfo() = default;
   RemoteConnectionInfo(const ClientID &id, const std::string &ip_address,
                        uint16_t port_num)
       : client_id(id), ip(ip_address), port(port_num) {}
@@ -92,11 +94,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ~ObjectDirectory() override = default;
 
   ray::Status GetInformation(const ClientID &client_id,
-                             const InfoSuccessCallback &success_cb,
-                             const InfoFailureCallback &fail_cb) override;
+                             const InfoSuccessCallback &success_callback,
+                             const InfoFailureCallback &fail_callback) override;
   ray::Status GetLocations(const ObjectID &object_id,
-                           const OnLocationsSuccess &success_cb,
-                           const OnLocationsFailure &fail_cb) override;
+                           const OnLocationsSuccess &success_callback,
+                           const OnLocationsFailure &fail_callback) override;
   ray::Status Cancel(const ObjectID &object_id) override;
   ray::Status Terminate() override;
   ray::Status ReportObjectAdded(const ObjectID &object_id,
@@ -105,6 +107,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                                   const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).
   ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
+
+  /// This object cannot be copied for thread-safety.
+  ObjectDirectory &operator=(const ObjectDirectory &o) {
+    throw std::runtime_error("Can't copy ObjectDirectory.");
+  }
 
  private:
   /// Callbacks associated with a call to GetLocations.
@@ -125,7 +132,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
-
   /// Map from object ID to the number of times it's been evicted on this
   /// node before.
   std::unordered_map<ObjectID, int, UniqueIDHasher> object_evictions_;

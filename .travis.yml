@@ -104,7 +104,6 @@ install:
   - bash ../../../src/ray/test/run_gcs_tests.sh
   # Raylet tests.
   - bash ../../../src/ray/test/run_object_manager_tests.sh
-  - bash ../../../src/ray/test/run_task_test.sh
   - ./src/ray/raylet/task_test
   - ./src/ray/raylet/worker_pool_test
   - ./src/ray/raylet/lineage_cache_test
@@ -122,6 +121,8 @@ script:
   - python python/ray/plasma/test/test.py
   - python python/ray/local_scheduler/test/test.py
   - python python/ray/global_scheduler/test/test.py
+
+  - python -m pytest test/xray_test.py
 
   - python test/runtest.py
   - python test/array_test.py
@@ -143,6 +144,7 @@ script:
   - python -m pytest python/ray/dataframe/test/test_series.py
 
   # ray tune tests
+  - python python/ray/tune/test/dependency_test.py
   - python -m pytest python/ray/tune/test/trial_runner_test.py
   - python -m pytest python/ray/tune/test/trial_scheduler_test.py
   - python -m pytest python/ray/tune/test/tune_server_test.py

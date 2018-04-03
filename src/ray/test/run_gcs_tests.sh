@@ -4,6 +4,7 @@
 
 # Cause the script to exit if a single command fails.
 set -e
+set -x
 
 # Start Redis.
 ./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so --port 6379 &

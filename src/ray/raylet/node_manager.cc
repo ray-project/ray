@@ -52,7 +52,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           },
           [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); },
           [this](const TaskID &task_id) { HandleReadyTaskWaiting(task_id); }),
-      lineage_cache_(gcs_client_->raylet_task_table()),
+      lineage_cache_(gcs_client->raylet_task_table()),
       remote_clients_(),
       remote_server_connections_() {
   RAY_CHECK(heartbeat_period_ms_ > 0);
@@ -136,12 +136,18 @@ void NodeManager::Heartbeat() {
     heartbeat_data->resources_total_capacity.push_back(resource_pair.second);
   }
 
-  RAY_CHECK_OK(heartbeat_table.Add(
+  ray::Status status = heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
-      [this](ray::gcs::AsyncGcsClient *client, const ClientID &id,
-             const std::shared_ptr<HeartbeatTableDataT> data) {
-        RAY_LOG(DEBUG) << "[HEARTBEAT] hearbeat sent callback";
-      }));
+      [](ray::gcs::AsyncGcsClient *client, const ClientID &id,
+         std::shared_ptr<HeartbeatTableDataT> data) {
+        RAY_LOG(DEBUG) << "[HEARTBEAT] heartbeat sent callback";
+      });
+
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "heartbeat failed: string " << status.ToString() << status.message();
+    RAY_LOG(INFO) << "is redis error: " << status.IsRedisError();
+  }
+  RAY_CHECK_OK(status);
 
   // Reset the timer.
   auto heartbeat_period = boost::posix_time::milliseconds(heartbeat_period_ms_);
@@ -181,7 +187,7 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
   // Establish a new NodeManager connection to this GCS client.
   auto client_info = gcs_client_->client_table().GetClient(client_id);
   RAY_LOG(DEBUG) << "[ClientAdded] CONNECTING TO: "
-                 << " " << client_info.node_manager_address.c_str() << " "
+                 << " " << client_info.node_manager_address << " "
                  << client_info.node_manager_port;
 
   boost::asio::ip::tcp::socket socket(io_service_);
@@ -193,6 +199,8 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
 
 void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
+  RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id "
+                 << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // Skip heartbeats from self.
     return;

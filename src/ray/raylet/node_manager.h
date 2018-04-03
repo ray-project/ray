@@ -21,7 +21,7 @@ namespace raylet {
 struct NodeManagerConfig {
   ResourceSet resource_config;
   int num_initial_workers;
-  std::vector<const char *> worker_command;
+  std::vector<std::string> worker_command;
   uint64_t heartbeat_period_ms;
 };
 
@@ -73,11 +73,11 @@ class NodeManager {
   void FinishTask(const TaskID &task_id);
   /// Schedule tasks.
   void ScheduleTasks();
-  /// Resubmit a task whose return value needs to be reconstructed.
-  void ResubmitTask(const TaskID &task_id);
   /// Handle a task whose local dependencies were missing and are now available.
   void HandleWaitingTaskReady(const TaskID &task_id);
   void HandleReadyTaskWaiting(const TaskID &task_id);
+  /// Resubmit a task whose return value needs to be reconstructed.
+  void ResubmitTask(const TaskID &task_id);
   ray::Status ForwardTask(Task &task, const ClientID &node_id);
   /// Send heartbeats to the GCS.
   void Heartbeat();

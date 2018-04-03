@@ -9,8 +9,8 @@ namespace ray {
 
 namespace raylet {
 
-std::string test_executable;   // NOLINT
-std::string store_executable;  // NOLINT
+std::string test_executable;
+std::string store_executable;
 
 // TODO(hme): Get this working once the dust settles.
 class TestObjectManagerBase : public ::testing::Test {
@@ -61,16 +61,18 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     server1.reset(new ray::raylet::Raylet(
-        main_service, std::move(object_manager_service_1), "raylet_1",
-        GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
+        main_service, std::move(object_manager_service_1), "raylet_1", "0.0.0.0",
+        "127.0.0.1", 6379, GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1,
+        gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     server2.reset(new ray::raylet::Raylet(
-        main_service, std::move(object_manager_service_2), "raylet_1",
-        GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
+        main_service, std::move(object_manager_service_2), "raylet_2", "0.0.0.0",
+        "127.0.0.1", 6379, GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2,
+        gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -97,7 +99,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
     ObjectID object_id = ObjectID::from_random();
-    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id.hex().c_str();
+    RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
@@ -135,17 +137,16 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::AsyncGcsClient *client, const ClientID &id,
-               const ClientTableDataT &data) {
-          ClientID parsed_id = ClientID::from_binary(data.client_id);
-          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-            num_connected_clients += 1;
-          }
-          if (num_connected_clients == 2) {
-            StartTests();
-          }
-        });
+    gcs_client_1->client_table().RegisterClientAddedCallback([this](
+        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
+      ClientID parsed_id = ClientID::from_binary(data.client_id);
+      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+        num_connected_clients += 1;
+      }
+      if (num_connected_clients == 2) {
+        StartTests();
+      }
+    });
   }
 
   void StartTests() {
@@ -200,8 +201,8 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
                   << "\n";
     ClientID client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     ClientID client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    RAY_LOG(INFO) << "Server 1: " << client_id_1.hex();
-    RAY_LOG(INFO) << "Server 2: " << client_id_2.hex();
+    RAY_LOG(INFO) << "Server 1: " << client_id_1;
+    RAY_LOG(INFO) << "Server 2: " << client_id_2;
 
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"

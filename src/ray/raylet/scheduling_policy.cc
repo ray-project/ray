@@ -21,7 +21,7 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     // pair = ClientID, SchedulingResources
     const ClientID &client_id = client_resource_pair.first;
     const SchedulingResources &resources = client_resource_pair.second;
-    RAY_LOG(DEBUG) << "client_id: " << client_id.hex() << " "
+    RAY_LOG(DEBUG) << "client_id: " << client_id << " "
                    << resources.GetAvailableResources().ToString();
   }
 
@@ -30,7 +30,7 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     // Get task's resource demand
     const auto &resource_demand = t.GetTaskSpecification().GetRequiredResources();
     const TaskID &task_id = t.GetTaskSpecification().TaskId();
-    RAY_LOG(DEBUG) << "[SchedulingPolicy]: task=" << task_id.hex()
+    RAY_LOG(DEBUG) << "[SchedulingPolicy]: task=" << task_id
                    << " numforwards=" << t.GetTaskExecutionSpecReadonly().NumForwards()
                    << " resources="
                    << t.GetTaskSpecification().GetRequiredResources().ToString();
@@ -47,8 +47,8 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
       // pair = ClientID, SchedulingResources
       ClientID node_client_id = client_resource_pair.first;
       SchedulingResources node_resources = client_resource_pair.second;
-      RAY_LOG(DEBUG) << "client_id " << node_client_id
-                     << " res: " << node_resources.GetAvailableResources().ToString();
+      RAY_LOG(DEBUG) << "client_id " << node_client_id << " resources: "
+                     << node_resources.GetAvailableResources().ToString();
       if (resource_demand.IsSubset(node_resources.GetTotalResources())) {
         // This node is a feasible candidate.
         client_keys.push_back(node_client_id);
@@ -62,8 +62,8 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
     std::uniform_int_distribution<int> distribution(0, client_keys.size() - 1);
     int client_key_index = distribution(gen_);
     decision[task_id] = client_keys[client_key_index];
-    RAY_LOG(DEBUG) << "[SchedulingPolicy] idx=" << client_key_index << " "
-                   << task_id.hex() << " --> " << client_keys[client_key_index].hex();
+    RAY_LOG(DEBUG) << "[SchedulingPolicy] idx=" << client_key_index << " " << task_id
+                   << " --> " << client_keys[client_key_index];
   }
   return decision;
 }

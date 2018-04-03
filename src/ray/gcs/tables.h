@@ -318,6 +318,7 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
     prefix_ = TablePrefix_RAYLET_TASK;
   }
 };
+
 }  // namespace raylet
 
 class TaskTable : public Table<TaskID, TaskTableData> {

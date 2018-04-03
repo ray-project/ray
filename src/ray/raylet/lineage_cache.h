@@ -44,7 +44,7 @@ class LineageEntry {
   ///
   /// \param task The task data to eventually be written back to the GCS.
   /// \param status The status of this entry, according to its write status in
-  ///               the GCS.
+  /// the GCS.
   LineageEntry(const Task &task, GcsStatus status);
 
   /// Get this entry's GCS status.
@@ -57,7 +57,7 @@ class LineageEntry {
   /// GcsStatus enum.
   ///
   /// \param new_status Set the entry's status to this value if it is greater
-  ///        than the current status.
+  /// than the current status.
   /// \return Whether the entry was set to the new status.
   bool SetStatus(GcsStatus new_status);
 
@@ -108,14 +108,14 @@ class Lineage {
   /// Construct a Lineage from a ForwardTaskRequest.
   ///
   /// \param task_request The request to construct the lineage from. All
-  ///        uncommitted tasks in the request will be added to the lineage.
+  /// uncommitted tasks in the request will be added to the lineage.
   Lineage(const protocol::ForwardTaskRequest &task_request);
 
   /// Get an entry from the lineage.
   ///
   /// \param entry_id The ID of the entry to get.
   /// \return An optional reference to the entry. If this is empty, then the
-  ///         entry ID is not in the lineage.
+  /// entry ID is not in the lineage.
   boost::optional<const LineageEntry &> GetEntry(const TaskID &entry_id) const;
   boost::optional<LineageEntry &> GetEntryMutable(const UniqueID &task_id);
 
@@ -125,7 +125,7 @@ class Lineage {
   /// also be overwritten.
   ///
   /// \param entry The new entry to set in the lineage, if its GCS status is
-  ///        greater than the current entry.
+  /// greater than the current entry.
   /// \return Whether the entry was set.
   bool SetEntry(LineageEntry &&entry);
 
@@ -133,7 +133,7 @@ class Lineage {
   ///
   /// \param entry_id The ID of the entry to pop.
   /// \return An optional reference to the popped entry. If this is empty, then
-  ///         the entry ID is not in the lineage.
+  /// the entry ID is not in the lineage.
   boost::optional<LineageEntry> PopEntry(const TaskID &entry_id);
 
   /// Get all entries in the lineage.
@@ -145,9 +145,9 @@ class Lineage {
   /// Serialize this lineage to a ForwardTaskRequest flatbuffer.
   ///
   /// \param entry_id The task ID to include in the ForwardTaskRequest
-  ///        flatbuffer.
+  /// flatbuffer.
   /// \return An offset to the serialized lineage. The serialization includes
-  ///         all task and object entries in the lineage.
+  /// all task and object entries in the lineage.
   flatbuffers::Offset<protocol::ForwardTaskRequest> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb, const TaskID &entry_id) const;
 
@@ -171,8 +171,8 @@ class LineageCache {
   ///
   /// \param task The waiting task to add.
   /// \param uncommitted_lineage The task's uncommitted lineage. These are the
-  ///        tasks that the given task is data-dependent on, but that have not
-  ///        been made durable in the GCS, as far the task's submitter knows.
+  /// tasks that the given task is data-dependent on, but that have not
+  /// been made durable in the GCS, as far the task's submitter knows.
   void AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage);
 
   /// Add a task that is ready for GCS writeback. This overwrites the task’s
@@ -189,7 +189,7 @@ class LineageCache {
   ///
   /// \param entry_id The ID of the task to get the uncommitted lineage for.
   /// \return The uncommitted lineage of the task. The returned lineage
-  ///         includes the entry for the requested entry_id.
+  /// includes the entry for the requested entry_id.
   Lineage GetUncommittedLineage(const TaskID &entry_id) const;
 
   /// Asynchronously write any tasks that have been added since the last flush
