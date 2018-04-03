@@ -64,8 +64,8 @@ class NodeManager {
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
   /// Assign a task.
   void AssignTask(const Task &task);
-  /// Finish a task.
-  void FinishTask(const TaskID &task_id);
+  /// Handle a worker finishing its assigned task.
+  void FinishAssignedTask(std::shared_ptr<Worker> worker);
   /// Schedule tasks.
   void ScheduleTasks();
   /// Handle a task whose local dependencies were missing and are now available.

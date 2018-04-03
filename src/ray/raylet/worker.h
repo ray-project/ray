@@ -23,7 +23,7 @@ class Worker {
   pid_t Pid() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
-  void SetActorId(const ActorID &actor_id);
+  void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
   /// Return the worker's connection.
   const std::shared_ptr<LocalClientConnection> Connection() const;

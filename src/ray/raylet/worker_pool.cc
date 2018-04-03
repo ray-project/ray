@@ -58,7 +58,7 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   registered_workers_.push_back(worker);
 }
 
-const std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
+std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
     std::shared_ptr<LocalClientConnection> connection) const {
   for (auto it = registered_workers_.begin(); it != registered_workers_.end(); it++) {
     if ((*it)->Connection() == connection) {
@@ -70,7 +70,8 @@ const std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
 
 void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
   // Since the worker is now idle, unset its assigned task ID.
-  worker->AssignTaskId(TaskID::nil());
+  RAY_CHECK(worker->GetAssignedTaskId().is_nil())
+      << "Idle workers cannot have an assigned task ID";
   // Add the worker to the idle pool.
   if (worker->GetActorId().is_nil()) {
     pool_.push_back(std::move(worker));

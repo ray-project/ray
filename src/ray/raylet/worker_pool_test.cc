@@ -81,7 +81,7 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
   // Assign an actor ID to the worker.
   auto actor = worker_pool_.PopWorker();
   auto actor_id = ActorID::from_random();
-  actor->SetActorId(actor_id);
+  actor->AssignActorId(actor_id);
   worker_pool_.PushWorker(actor);
 
   // Check that there are no more non-actor workers.

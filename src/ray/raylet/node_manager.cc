@@ -175,11 +175,11 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     }
   } break;
   case protocol::MessageType_GetTask: {
-    const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     RAY_CHECK(worker);
     // If the worker was assigned a task, mark it as finished.
     if (!worker->GetAssignedTaskId().is_nil()) {
-      FinishTask(worker->GetAssignedTaskId());
+      FinishAssignedTask(worker);
     }
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(worker);
@@ -195,11 +195,10 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     // Remove the dead worker from the pool and stop listening for messages.
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     if (worker) {
-      if (!worker->GetAssignedTaskId().is_nil()) {
-        // TODO(swang): Clean up any tasks that were assigned to the worker.
-        // Release any resources that may be held by this worker.
-        FinishTask(worker->GetAssignedTaskId());
-      }
+      // TODO(swang): Handle this case. Clean up the assigned task and
+      // return an error to the driver.
+      RAY_CHECK(worker->GetAssignedTaskId().is_nil())
+          << "Worker died while executing task";
       worker_pool_.DisconnectWorker(worker);
     }
     return;
@@ -350,16 +349,39 @@ void NodeManager::AssignTask(const Task &task) {
   }
 }
 
-void NodeManager::FinishTask(const TaskID &task_id) {
+void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
+  TaskID task_id = worker->GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id.hex();
   auto tasks = local_queues_.RemoveTasks({task_id});
-  RAY_CHECK(tasks.size() == 1);
   auto task = *tasks.begin();
 
-  // Resource accounting: release task's resources.
-  RAY_CHECK(
-      this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-          task.GetTaskSpecification().GetRequiredResources()));
+  if (task.GetTaskSpecification().IsActorCreationTask()) {
+    // If this was an actor creation task, then convert the worker to an actor.
+    worker->AssignActorId(task.GetTaskSpecification().ActorCreationId());
+
+    // Publish the actor creation event to all other nodes so that methods for
+    // the actor will be forwarded directly to this node.
+    auto actor_notification = std::make_shared<ActorTableDataT>();
+    actor_notification->actor_id = task.GetTaskSpecification().ActorId().binary();
+    actor_notification->actor_creation_dummy_object_id =
+        task.GetTaskSpecification().ActorCreationDummyObjectId().binary();
+    // TODO(swang): The driver ID.
+    actor_notification->driver_id = JobID::nil().binary();
+    actor_notification->node_manager_id =
+        gcs_client_->client_table().GetLocalClientId().binary();
+    gcs_client_->actor_table().Append(JobID::nil(), task.GetTaskSpecification().ActorId(),
+                                      actor_notification, nullptr);
+
+    // Resources required by an actor creation tasks are acquired for the
+    // lifetime of the actor, so we do not release any resources here.
+  } else {
+    // Release task's resources.
+    RAY_CHECK(this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+                  .Release(task.GetTaskSpecification().GetRequiredResources()));
+  }
+
+  // Unset the worker's assigned task.
+  worker->AssignTaskId(TaskID::nil());
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {

@@ -23,7 +23,7 @@ void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; 
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
-void Worker::SetActorId(const ActorID &actor_id) {
+void Worker::AssignActorId(const ActorID &actor_id) {
   RAY_CHECK(actor_id_.is_nil())
       << "A worker that is already an actor cannot be assigned an actor ID again.";
   RAY_CHECK(!actor_id.is_nil());

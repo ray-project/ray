@@ -54,7 +54,7 @@ class WorkerPool {
   /// \param The client connection owned by a registered worker.
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
-  const std::shared_ptr<Worker> GetRegisteredWorker(
+  std::shared_ptr<Worker> GetRegisteredWorker(
       std::shared_ptr<LocalClientConnection> connection) const;
 
   /// Disconnect a registered worker.
@@ -63,8 +63,7 @@ class WorkerPool {
   /// \return Whether the given worker was in the pool of idle workers.
   bool DisconnectWorker(std::shared_ptr<Worker> worker);
 
-  /// Add an idle worker to the pool. The worker's task assignment will be
-  /// reset.
+  /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
   void PushWorker(std::shared_ptr<Worker> worker);
