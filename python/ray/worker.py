@@ -53,6 +53,7 @@ NIL_LOCAL_SCHEDULER_ID = NIL_ID
 NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
 NIL_ACTOR_HANDLE_ID = NIL_ID
+NIL_CLIENT_ID = 20 * b"\xff"
 
 # This must be kept in sync with the `error_types` array in
 # common/state/error_table.h.
@@ -1224,7 +1225,9 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address,
 
     # Handle the raylet case.
     else:
-        client_key = b"CLIENT:" + 20 * b"\xff"
+        # In the raylet code path, all client data is stored in a zset at the
+        # key for the nil client.
+        client_key = b"CLIENT:" + NIL_CLIENT_ID
         clients = redis_client.zrange(client_key, 0, -1)
         raylets = []
         for client_message in clients:
