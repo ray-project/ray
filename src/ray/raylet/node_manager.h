@@ -53,13 +53,15 @@ class NodeManager {
   void ProcessNodeManagerMessage(std::shared_ptr<TcpClientConnection> node_manager_client,
                                  int64_t message_type, const uint8_t *message);
 
-  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                   const ClientTableDataT &data);
+  ray::Status RegisterGcs();
 
   void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
                       const HeartbeatTableDataT &data);
 
  private:
+  // Handler for the addition of a new GCS client.
+  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
+                   const ClientTableDataT &data);
   /// Submit a task to this node.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
   /// Assign a task.
