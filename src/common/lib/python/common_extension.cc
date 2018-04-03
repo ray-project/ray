@@ -12,7 +12,6 @@
 #endif
 
 #include <numpy/arrayobject.h>
-#include <numpy/arrayscalars.h>
 
 #include "common.h"
 #include "common_extension.h"
@@ -852,7 +851,7 @@ bool is_simple_value(PyObject *value, int *num_elements_contained) {
   }
   if (PyArray_CheckExact(value)) {
     PyArrayObject *array = reinterpret_cast<PyArrayObject *>(value);
-    if (PyArray_NBYTES(array) < RayConfig::instance().num_elements_limit()) {
+    if (PyArray_NBYTES(array) > RayConfig::instance().num_elements_limit()) {
       return false;
     }
     int dtype = PyArray_TYPE(array);
