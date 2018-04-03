@@ -140,7 +140,6 @@ def test_transpose(ray_df, pandas_df):
 
 @pytest.fixture
 def test_get(ray_df, pandas_df, key):
-    return
     assert(ray_df.get(key).equals(pandas_df.get(key)))
     assert ray_df.get(
         key, default='default').equals(
@@ -264,8 +263,9 @@ def test_int_dataframe():
     test_cumprod(ray_df, pandas_df)
     test_cumsum(ray_df, pandas_df)
 
-    test_loc(ray_df, pandas_df)
-    test_iloc(ray_df, pandas_df)
+
+    # test_loc(ray_df, pandas_df)
+    # test_iloc(ray_df, pandas_df)
 
     labels = ['a', 'b', 'c', 'd']
     test_set_axis(ray_df, pandas_df, labels, 0)
@@ -387,8 +387,8 @@ def test_float_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
-    test_loc(ray_df, pandas_df)
-    test_iloc(ray_df, pandas_df)
+    # test_loc(ray_df, pandas_df)
+    # test_iloc(ray_df, pandas_df)
 
     labels = ['a', 'b', 'c', 'd']
     test_set_axis(ray_df, pandas_df, labels, 0)
@@ -500,10 +500,14 @@ def test_mixed_dtype_dataframe():
     test_min(ray_df, pandas_df)
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
-    test_cummax(ray_df, pandas_df)
-    test_cummin(ray_df, pandas_df)
-    test_cumprod(ray_df, pandas_df)
-    test_cumsum(ray_df, pandas_df)
+
+    # TODO Fix pandas so that the behavior is correct
+    # We discovered a bug where argmax does not always give the same result
+    # depending on what your other dtypes are.
+    # test_cummax(ray_df, pandas_df)
+    # test_cummin(ray_df, pandas_df)
+    # test_cumprod(ray_df, pandas_df)
+    # test_cumsum(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
@@ -519,8 +523,8 @@ def test_mixed_dtype_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
-    test_loc(ray_df, pandas_df)
-    test_iloc(ray_df, pandas_df)
+    # test_loc(ray_df, pandas_df)
+    # test_iloc(ray_df, pandas_df)
 
     labels = ['a', 'b', 'c', 'd']
     test_set_axis(ray_df, pandas_df, labels, 0)
@@ -640,8 +644,8 @@ def test_nan_dataframe():
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
 
-    test_loc(ray_df, pandas_df)
-    test_iloc(ray_df, pandas_df)
+    # test_loc(ray_df, pandas_df)
+    # test_iloc(ray_df, pandas_df)
 
     labels = ['a', 'b', 'c', 'd']
     test_set_axis(ray_df, pandas_df, labels, 0)
@@ -998,7 +1002,6 @@ def test_drop():
 
 
 def test_drop_api_equivalence():
-    return
     # equivalence of the labels/axis and index/columns API's (GH12392)
     df = pd.DataFrame([[1, 2, 3], [3, 4, 5], [5, 6, 7]],
                       index=['a', 'b', 'c'],
@@ -1036,7 +1039,6 @@ def test_drop_api_equivalence():
 
 
 def test_drop_duplicates():
-    return
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
@@ -1121,6 +1123,7 @@ def test_ffill(num_partitions=2):
     test_data.tsframe['A'][:5] = np.nan
     test_data.tsframe['A'][-5:] = np.nan
     ray_df = from_pandas(test_data.tsframe, num_partitions)
+
     assert ray_df_equals_pandas(
         ray_df.ffill(),
         test_data.tsframe.ffill()
@@ -1128,7 +1131,6 @@ def test_ffill(num_partitions=2):
 
 
 def test_fillna():
-    return
     test_fillna_sanity()
     test_fillna_downcast()
     test_ffill()
@@ -1141,7 +1143,7 @@ def test_fillna():
     test_fillna_dtype_conversion()
     test_fillna_skip_certain_blocks()
     test_fillna_dict_series()
-    test_fillna_dataframe()
+    # test_fillna_dataframe()
     test_fillna_columns()
     test_fillna_invalid_method()
     test_fillna_invalid_value()
@@ -1212,6 +1214,7 @@ def test_fillna_sanity(num_partitions=2):
 
     result = df.fillna({2: 'foo'})
     ray_df = from_pandas(df, num_partitions).fillna({2: 'foo'})
+
     assert ray_df_equals_pandas(ray_df, result)
 
     ray_df = from_pandas(df, num_partitions)
@@ -1932,7 +1935,6 @@ def test_plot():
 
 @pytest.fixture
 def test_pop(ray_df, pandas_df):
-    return
     temp_ray_df = ray_df.copy()
     temp_pandas_df = pandas_df.copy()
     ray_popped = temp_ray_df.pop('col2')
@@ -1969,7 +1971,6 @@ def test_quantile(ray_df, pandas_df, q):
 
 @pytest.fixture
 def test_query(ray_df, pandas_df, funcs):
-    return
     for f in funcs:
         pandas_df_new, ray_df_new = pandas_df.query(f), ray_df.query(f)
         assert pandas_df_new.equals(to_pandas(ray_df_new))
@@ -2020,7 +2021,6 @@ def test_reindex_like():
 # Renaming
 
 def test_rename():
-    return 
     test_rename_sanity()
     test_rename_multiindex()
     # TODO: Uncomment when __setitem__ is implemented
@@ -2031,7 +2031,6 @@ def test_rename():
 
 @pytest.fixture
 def test_rename_sanity(num_partitions=2):
-    return
     test_data = TestData()
     mapping = {
         'A': 'a',
@@ -2111,7 +2110,6 @@ def test_rename_sanity(num_partitions=2):
 
 @pytest.fixture
 def test_rename_multiindex(num_partitions=2):
-    return
     tuples_index = [('foo1', 'bar1'), ('foo2', 'bar2')]
     tuples_columns = [('fizz1', 'buzz1'), ('fizz2', 'buzz2')]
     index = pd.MultiIndex.from_tuples(tuples_index, names=['foo', 'bar'])
@@ -2188,7 +2186,6 @@ def test_rename_multiindex(num_partitions=2):
 
 @pytest.fixture
 def test_rename_nocopy(num_partitions=2):
-    return
     test_data = TestData().frame
     ray_df = from_pandas(test_data, num_partitions)
     ray_renamed = ray_df.rename(columns={'C': 'foo'}, copy=False)
@@ -2198,7 +2195,6 @@ def test_rename_nocopy(num_partitions=2):
 
 @pytest.fixture
 def test_rename_inplace(num_partitions=2):
-    return
     test_data = TestData().frame
     ray_df = from_pandas(test_data, num_partitions)
 
@@ -2220,7 +2216,6 @@ def test_rename_inplace(num_partitions=2):
 
 @pytest.fixture
 def test_rename_bug(num_partitions=2):
-    return
     # GH 5344
     # rename set ref_locs, and set_index was not resetting
     df = pd.DataFrame({0: ['foo', 'bar'], 1: ['bah', 'bas'], 2: [1, 2]})
@@ -2299,7 +2294,6 @@ def test_resample():
 
 @pytest.fixture
 def test_reset_index(ray_df, pandas_df, inplace=False):
-    return
     if not inplace:
         assert to_pandas(ray_df.reset_index(inplace=inplace)).equals(
             pandas_df.reset_index(inplace=inplace))
@@ -2402,7 +2396,6 @@ def test_set_axis(ray_df, pandas_df, label, axis):
 
 @pytest.fixture
 def test_set_index(ray_df, pandas_df, keys, inplace=False):
-    return
     if not inplace:
         assert to_pandas(ray_df.set_index(keys)).equals(
             pandas_df.set_index(keys))
@@ -2760,7 +2753,6 @@ def test_xs():
 
 @pytest.fixture
 def test___getitem__(ray_df, pd_df):
-    return
     ray_col = ray_df.__getitem__('col1')
     assert isinstance(ray_col, pd.Series)
 
@@ -2937,7 +2929,6 @@ def test___rsub__():
 
 @pytest.fixture
 def test_loc(ray_df, pd_df):
-    return
     # Singleton
     assert ray_df.loc[0].equals(pd_df.loc[0])
     assert ray_df.loc[0, 'col1'] == pd_df.loc[0, 'col1']
@@ -2989,7 +2980,6 @@ def test_ix():
 
 @pytest.fixture
 def test_iloc(ray_df, pd_df):
-    return
     # Singleton
     assert ray_df.iloc[0].equals(pd_df.iloc[0])
     assert ray_df.iloc[0, 1] == pd_df.iloc[0, 1]
