@@ -100,6 +100,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testBadParams2(self):
         def f():
             run_experiments({"foo": {
+                "run": "asdf",
                 "bah": "this param is not allowed",
             }})
         self.assertRaises(TuneError, f)
