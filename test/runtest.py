@@ -2032,7 +2032,7 @@ class GlobalStateAPI(unittest.TestCase):
         worker_info = ray.global_state.workers()
         self.assertEqual(len(worker_info), num_workers)
         for worker_id, info in worker_info.items():
-            self.assertEqual(info["node_ip_address"], "127.0.0.1")
+            self.assertIn("node_ip_address", info)
             self.assertIn("local_scheduler_socket", info)
             self.assertIn("plasma_manager_socket", info)
             self.assertIn("plasma_store_socket", info)

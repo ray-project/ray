@@ -5,12 +5,14 @@
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
-  RAY_CHECK(argc == 5);
+  RAY_CHECK(argc == 7);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
-  const std::string redis_address = std::string(argv[3]);
-  int redis_port = std::stoi(argv[4]);
+  const std::string node_ip_address = std::string(argv[3]);
+  const std::string redis_address = std::string(argv[4]);
+  int redis_port = std::stoi(argv[5]);
+  const std::string worker_command = std::string(argv[6]);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -20,11 +22,13 @@ int main(int argc, char *argv[]) {
       ray::raylet::ResourceSet(std::move(static_resource_conf));
   node_manager_config.num_initial_workers = 0;
   // Use a default worker that can execute empty tasks with dependencies.
-  node_manager_config.worker_command.push_back("python");
-  node_manager_config.worker_command.push_back(
-      "../../../src/ray/python/default_worker.py");
-  node_manager_config.worker_command.push_back(raylet_socket_name.c_str());
-  node_manager_config.worker_command.push_back(store_socket_name.c_str());
+
+  std::stringstream worker_command_stream(worker_command);
+  std::string token;
+  while (getline(worker_command_stream, token, ' ')) {
+    node_manager_config.worker_command.push_back(token);
+  }
+
   // TODO(swang): Set this from a global config.
   node_manager_config.heartbeat_period_ms = 100;
 
@@ -40,10 +44,12 @@ int main(int argc, char *argv[]) {
   // Initialize the node manager.
   boost::asio::io_service main_service;
   std::unique_ptr<boost::asio::io_service> object_manager_service;
+
   object_manager_service.reset(new boost::asio::io_service());
   ray::raylet::Raylet server(main_service, std::move(object_manager_service),
-                             raylet_socket_name, redis_address, redis_port,
-                             node_manager_config, object_manager_config, gcs_client);
+                             raylet_socket_name, node_ip_address, redis_address,
+                             redis_port, node_manager_config, object_manager_config,
+                             gcs_client);
   main_service.run();
 }
 #endif

@@ -8,9 +8,8 @@ namespace ray {
 namespace raylet {
 
 /// A constructor that initializes a worker pool with num_workers workers.
-WorkerPool::WorkerPool(int num_workers, const std::vector<const char *> &worker_command)
+WorkerPool::WorkerPool(int num_workers, const std::vector<std::string> &worker_command)
     : worker_command_(worker_command) {
-  worker_command_.push_back(NULL);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
@@ -37,9 +36,17 @@ void WorkerPool::StartWorker() {
 
   // Reset the SIGCHLD handler for the worker.
   signal(SIGCHLD, SIG_DFL);
-  // Try to execute the worker command.
 
-  int rv = execvp(worker_command_[0], (char *const *)worker_command_.data());
+  // Extract pointers from the worker command to pass into execvp.
+  std::vector<const char *> worker_command_args;
+  for (auto const &token : worker_command_) {
+    worker_command_args.push_back(token.c_str());
+  }
+  worker_command_args.push_back(nullptr);
+
+  // Try to execute the worker command.
+  int rv = execvp(worker_command_args[0],
+                  const_cast<char *const *>(worker_command_args.data()));
   // The worker failed to start. This is a fatal error.
   RAY_LOG(FATAL) << "Failed to start worker with return value " << rv;
 }
