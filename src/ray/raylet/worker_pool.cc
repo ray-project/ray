@@ -72,7 +72,11 @@ void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
   // Since the worker is now idle, unset its assigned task ID.
   worker->AssignTaskId(TaskID::nil());
   // Add the worker to the idle pool.
-  pool_.push_back(std::move(worker));
+  if (worker->GetActorId().is_nil()) {
+    pool_.push_back(std::move(worker));
+  } else {
+    actor_pool_[worker->GetActorId()] = std::move(worker);
+  }
 }
 
 std::shared_ptr<Worker> WorkerPool::PopWorker() {
@@ -82,6 +86,16 @@ std::shared_ptr<Worker> WorkerPool::PopWorker() {
   std::shared_ptr<Worker> worker = std::move(pool_.back());
   pool_.pop_back();
   return worker;
+}
+
+std::shared_ptr<Worker> WorkerPool::PopWorker(const ActorID &actor_id) {
+  auto actor_entry = actor_pool_.find(actor_id);
+  if (actor_entry == actor_pool_.end()) {
+    return nullptr;
+  }
+  std::shared_ptr<Worker> actor = std::move(actor_entry->second);
+  actor_pool_.erase(actor_entry);
+  return actor;
 }
 
 // A helper function to remove a worker from a list. Returns true if the worker

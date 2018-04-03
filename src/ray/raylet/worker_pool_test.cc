@@ -72,6 +72,26 @@ TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   ASSERT_TRUE(workers.count(popped_worker) > 0);
 }
 
+TEST_F(WorkerPoolTest, PopActorWorker) {
+  // Create a worker.
+  auto worker = CreateWorker(1234);
+  // Add the worker to the pool.
+  worker_pool_.PushWorker(worker);
+
+  // Assign an actor ID to the worker.
+  auto actor = worker_pool_.PopWorker();
+  auto actor_id = ActorID::from_random();
+  actor->SetActorId(actor_id);
+  worker_pool_.PushWorker(actor);
+
+  // Check that there are no more non-actor workers.
+  ASSERT_EQ(worker_pool_.PopWorker(), nullptr);
+  // Check that we can pop the actor worker.
+  actor = worker_pool_.PopWorker(actor_id);
+  ASSERT_EQ(actor, worker);
+  ASSERT_EQ(actor->GetActorId(), actor_id);
+}
+
 }  // namespace raylet
 
 }  // namespace ray
