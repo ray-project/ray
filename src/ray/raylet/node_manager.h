@@ -75,6 +75,7 @@ class NodeManager {
   void ScheduleTasks();
   /// Handle a task whose local dependencies were missing and are now available.
   void HandleWaitingTaskReady(const TaskID &task_id);
+  /// Handle a task whose local dependencies were available and are now missing.
   void HandleReadyTaskWaiting(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
@@ -87,6 +88,7 @@ class NodeManager {
   boost::asio::io_service &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  // A reference to the object manager.
   ObjectManager &object_manager_;
   boost::asio::deadline_timer heartbeat_timer_;
   uint64_t heartbeat_period_ms_;
