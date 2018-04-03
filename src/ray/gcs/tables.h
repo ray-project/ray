@@ -277,14 +277,22 @@ class FunctionTable : public Table<ObjectID, FunctionTableData> {
 using ClassTable = Table<ClassID, ClassTableData>;
 
 // TODO(swang): Set the pubsub channel for the actor table.
-using ActorTable = Table<ActorID, ActorTableData>;
+class ActorTable : public Log<ActorID, ActorTableData> {
+ public:
+  ActorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    pubsub_channel_ = TablePubsub_ACTOR;
+    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+  }
+};
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
  public:
   TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
                         AsyncGcsClient *client)
       : Log(context, client) {
-    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+    pubsub_channel_ = TablePubsub_ACTOR;
+    prefix_ = TablePrefix_ACTOR;
   }
 };
 
