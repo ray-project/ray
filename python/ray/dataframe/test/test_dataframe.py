@@ -6,7 +6,6 @@ import pytest
 import numpy as np
 import pandas as pd
 import pandas.util.testing as tm
-import ray
 import ray.dataframe as rdf
 from ray.dataframe.utils import (
     to_pandas,
@@ -24,6 +23,7 @@ def ray_df_equals_pandas(ray_df, pandas_df):
 @pytest.fixture
 def ray_series_equals_pandas(ray_df, pandas_df):
     return ray_df.sort_index().equals(pandas_df.sort_index())
+
 
 @pytest.fixture
 def ray_df_equals(ray_df1, ray_df2):
@@ -262,7 +262,6 @@ def test_int_dataframe():
     test_cummin(ray_df, pandas_df)
     test_cumprod(ray_df, pandas_df)
     test_cumsum(ray_df, pandas_df)
-
 
     # test_loc(ray_df, pandas_df)
     # test_iloc(ray_df, pandas_df)
@@ -1143,7 +1142,10 @@ def test_fillna():
     test_fillna_dtype_conversion()
     test_fillna_skip_certain_blocks()
     test_fillna_dict_series()
-    # test_fillna_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        test_fillna_dataframe()
+
     test_fillna_columns()
     test_fillna_invalid_method()
     test_fillna_invalid_value()
@@ -1159,6 +1161,8 @@ def test_fillna_sanity(num_partitions=2):
 
     zero_filled = test_data.tsframe.fillna(0)
     ray_df = from_pandas(test_data.tsframe, num_partitions).fillna(0)
+    print(ray_df)
+    print(zero_filled)
     assert ray_df_equals_pandas(ray_df, zero_filled)
 
     padded = test_data.tsframe.fillna(method='pad')

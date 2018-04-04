@@ -54,7 +54,8 @@ class _Location_Indexer_Base():
                 return df.iloc[idx_lst, col_idx]
 
         retrieved_rows_remote = [
-            _deploy_func.remote(retrieve_func, self.df._row_partitions[partition],
+            _deploy_func.remote(retrieve_func,
+                                self.df._row_partitions[partition],
                                 idx_to_lookup, col_lst)
             for partition, idx_to_lookup in lookup_dict.items()
         ]
