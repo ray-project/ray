@@ -207,7 +207,7 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
           transfer_queue_.QueueSend(client_id, object_id, info);
           RAY_CHECK_OK(DequeueTransfers());
         },
-        [this](const Status &status) {
+        [](const Status &status) {
           // Push is best effort, so do nothing here.
         });
     RAY_CHECK_OK(status);
