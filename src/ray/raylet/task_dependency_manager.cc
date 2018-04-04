@@ -12,8 +12,10 @@ TaskDependencyManager::TaskDependencyManager(
       // reconstruction_policy_(reconstruction_policy),
       task_ready_callback_(handler) {
   // TODO(swang): Check return status.
-  ray::Status status = object_manager_.SubscribeObjAdded(
-      [this](const RayObjectInfo &object_info) { handleObjectReady(object_info.object_id); });
+  ray::Status status =
+      object_manager_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
+        handleObjectReady(ObjectID::from_binary(object_info.object_id));
+      });
   // TODO(swang): Subscribe to object removed notifications.
 }
 
