@@ -176,7 +176,6 @@ class DDPGEvaluator(PolicyEvaluator):
         self.critic_grads = [g for g in self.critic_grads if g is not None]
         critic_grad = self.sess.run(self.critic_grads,
                                     feed_dict=critic_feed_dict)
-        #import ipdb; ipdb.set_trace()
         return (critic_grad, actor_grad), {}
 
     def apply_gradients(self, grads):

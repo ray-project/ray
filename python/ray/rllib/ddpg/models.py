@@ -7,7 +7,6 @@ from ray.rllib.ddpg.random_process import OrnsteinUhlenbeckProcess
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-import tflearn
 
 
 class DDPGModel():
@@ -78,61 +77,33 @@ class DDPGModel():
                                self.obs, self.output_action)
 
     def _create_critic_network(self, obs, action):
-        net = slim.fully_connected(obs, 400, activation_fn=None,
-                                  weights_initializer=tf.truncated_normal_initializer())
-        net = slim.batch_norm(net, activation_fn=tf.nn.relu)
-        t1 = slim.fully_connected(net, 300, activation_fn=None, biases_initializer=None,
-                                  weights_initializer=tf.truncated_normal_initializer())
-        t2 = slim.fully_connected(action, 300, activation_fn=None,
-                                  weights_initializer=tf.truncated_normal_initializer())
-        net = tf.nn.relu(tf.add(t1, t2))
+        w_normal = tf.truncated_normal_initializer()
         w_init = tf.random_uniform_initializer(minval=-0.0003, maxval=0.0003)
-        out = slim.fully_connected(net, 1, weights_initializer=w_init, activation_fn=None)
-        return out
+        net = slim.fully_connected(obs, 400, activation_fn=tf.nn.relu,
+                                  weights_initializer=w_normal)
+        t1 = slim.fully_connected(net, 300, activation_fn=None, biases_initializer=None,
+                                  weights_initializer=w_normal)
+        t2 = slim.fully_connected(action, 300, activation_fn=None,
+                                  weights_initializer=w_normal)
+        net = tf.nn.relu(tf.add(t1, t2))
 
-        """
-        net = tflearn.fully_connected(obs, 400)
-        net = tflearn.layers.normalization.batch_normalization(net)
-        net = tflearn.activations.relu(net)
-        t1 = tflearn.fully_connected(net, 300)
-        t2 = tflearn.fully_connected(action, 300)
-        net = tflearn.activation(
-            tf.matmul(net, t1.W) + tf.matmul(action, t2.W) + t2.b,
-            activation='relu')
-        w_init = tflearn.initializations.uniform(minval=-0.0003, maxval=0.0003)
-        out = tflearn.fully_connected(net, 1, weights_init=w_init)
+        out = slim.fully_connected(net, 1, activation_fn=None, weights_initializer=w_init)
         return out
-        """
 
     def _setup_actor_network(self, obs_space, ac_space):
         with tf.variable_scope("actor", reuse=tf.AUTO_REUSE):
             self.output_action = self._create_actor_network(self.obs)
 
     def _create_actor_network(self, obs):
-        """
-        net = slim.fully_connected(obs, 400, activation_fn=None)
-        net = slim.batch_norm(net, activation_fn=tf.nn.relu)
-        net = slim.fully_connected(net, 300, activation_fn=None)
-        net = slim.batch_norm(net, activation_fn=tf.nn.relu)
+        w_normal = tf.truncated_normal_initializer()
         w_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
+
+        net = slim.fully_connected(obs, 400, activation_fn=tf.nn.relu, weights_initializer=w_normal)
+        net = slim.fully_connected(net, 300, activation_fn=tf.nn.relu, weights_initializer=w_normal)
         out = slim.fully_connected(net,
                                    self.ac_size,
                                    activation_fn=tf.nn.tanh,
                                    weights_initializer=w_init)
-        scaled_out = tf.multiply(out, self.action_bound)
-        return scaled_out
-        """
-
-        net = tflearn.fully_connected(obs, 400)
-        net = tflearn.layers.normalization.batch_normalization(net)
-        net = tflearn.activations.relu(net)
-        net = tflearn.fully_connected(net, 300)
-        net = tflearn.layers.normalization.batch_normalization(net)
-        net = tflearn.activations.relu(net)
-        w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
-        out = tflearn.fully_connected(
-            net, self.ac_size, activation='tanh', weights_init=w_init)
-        # Scale output to -action_bound to action_bound
         scaled_out = tf.multiply(out, self.action_bound)
         return scaled_out
 
