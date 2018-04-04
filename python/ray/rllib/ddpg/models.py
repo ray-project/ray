@@ -112,6 +112,16 @@ class DDPGModel():
         actor_feed_dict = dict(zip(self.actor_grads, a_grads))
         self.sess.run(self._apply_a_gradients, feed_dict=actor_feed_dict)
 
+    def get_weights(self):
+        """Returns model weights, target model weights."""
+        return self.model.get_weights(), self.target_model.get_weights()
+
+    def set_weights(self, weights):
+        """Sets model and target model weights."""
+        model_weights, target_model_weights = weights
+        self.model.set_weights(model_weights)
+        self.target_model.set_weights(target_model_weights)
+
     def _setup_target_updates(self):
         """Set up target actor and critic updates."""
         a_updates = []

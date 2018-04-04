@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import ray
 from ray.rllib.agent import Agent
 from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator, RemoteDDPGEvaluator
 from ray.rllib.optimizers import LocalSyncReplayOptimizer
@@ -34,7 +35,7 @@ DEFAULT_CONFIG = {
     # Number of local steps taken for each call to sample
     "num_local_steps": 1,
     # Number of workers (excluding master)
-    "num_workers": 0,
+    "num_workers": 1,
 
     "optimizer": {
         # Replay buffer size
@@ -79,19 +80,27 @@ class DDPGAgent(Agent):
                 self.local_evaluator.update_target()
 
         # generate training result
+        return self._fetch_metrics_from_remote_evaluators()
+
+    def _fetch_metrics_from_remote_evaluators(self):
         episode_rewards = []
         episode_lengths = []
-        metrics = self.local_evaluator.get_completed_rollout_metrics()
-        for episode in metrics:
-            episode_lengths.append(episode.episode_length)
-            episode_rewards.append(episode.episode_reward)
-        avg_reward = np.mean(episode_rewards)
-        avg_length = np.mean(episode_lengths)
-        timesteps = np.sum(episode_lengths)
+        metric_lists = [a.get_completed_rollout_metrics.remote()
+                        for a in self.remote_evaluators]
+        for metrics in metric_lists:
+            for episode in ray.get(metrics):
+                episode_lengths.append(episode.episode_length)
+                episode_rewards.append(episode.episode_reward)
+        avg_reward = (
+            np.mean(episode_rewards) if episode_rewards else float('nan'))
+        avg_length = (
+            np.mean(episode_lengths) if episode_lengths else float('nan'))
+        timesteps = np.sum(episode_lengths) if episode_lengths else 0
 
         result = TrainingResult(
             episode_reward_mean=avg_reward,
             episode_len_mean=avg_length,
             timesteps_this_iter=timesteps,
             info={})
+
         return result
