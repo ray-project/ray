@@ -8,26 +8,51 @@ from ray.rllib.optimizers import LocalSyncReplayOptimizer
 from ray.tune.result import TrainingResult
 
 DEFAULT_CONFIG = {
-    "env_config": {},
-    "gamma": 0.99,
-    "horizon": 500,
+    # Actor learning rate
     "actor_lr": 0.0001,
+    # Critic learning rate
     "critic_lr": 0.001,
+    # Arguments to pass in to env creator
+    "env_config": {},
+    # MDP Discount factor
+    "gamma": 0.99,
+    # Number of steps after which the rollout gets cut
+    "horizon": 500,
+
+    # Number of local steps taken for each call to sample
     "num_local_steps": 1,
+    # Number of workers (excluding master)
     "num_workers": 0,
 
     "optimizer": {
+        # Replay buffer size
         "buffer_size": 10000,
+        # Number of steps in warm-up phase before learning starts
         "learning_starts": 500,
+        # Whether to clip rewards
         "clip_rewards": False,
+        # Whether to use prioritized replay
         "prioritized_replay": False,
+        # Size of batch sampled from replay buffer
         "train_batch_size": 64,
     },
 
-    "parameter_noise": False,
-    "parameter_epsilon": 0.0002,  # linear decay of exploration policy
+    # Whether to include parameter noise
+    "add_noise": True,
+    # Parameters for noise process
+    "noise_parameters": {
+        "mu": 0,
+        "sigma": 0.2,
+        "theta": 0.15,
+    },
+    # Linear decay of exploration policy
+    "parameter_epsilon": 0.0002,
+
     "smoothing_num_episodes": 10,
+    # Controls how fast target networks move
     "tau": 0.001,
+    # Number of steps taken per training iteration
+    "train_steps": 500,
 }
 
 

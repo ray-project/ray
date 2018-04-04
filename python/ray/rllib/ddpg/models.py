@@ -186,11 +186,12 @@ class DDPGActorCritic():
             self.actor_vars = TensorFlowVariables(self.output_action,
                                                   self.sess)
 
-        if (self.config["parameter_noise"]):
-            self.random_process = OrnsteinUhlenbeckProcess(size=1,
-                                                           theta=0.15,
-                                                           mu=0,
-                                                           sigma=0.2)
+        if (self.config["add_noise"]):
+            params = self.config["noise_parameters"]
+            self.rand_process = OrnsteinUhlenbeckProcess(size=self.ac_size,
+                                                         theta=params["theta"],
+                                                         mu=params["mu"],
+                                                         sigma=params["sigma"])
             self.epsilon = 1.0
 
     def _setup_critic_loss(self, action_space):
@@ -269,8 +270,8 @@ class DDPGActorCritic():
         """Returns action, given state."""
         flattened_ob = np.reshape(ob, [-1, np.prod(ob.shape)])
         action = self.sess.run(self.output_action, {self.obs: flattened_ob})
-        if (self.config["parameter_noise"]):
-            action += self.epsilon * self.random_process.sample()
+        if (self.config["add_noise"]):
+            action += self.epsilon * self.rand_process.sample()
             if (self.epsilon > 0):
                 self.epsilon -= self.config["parameter_epsilon"]
         return action[0], {}
