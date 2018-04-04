@@ -236,7 +236,7 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(job_id, task_id, data_log[1],
                                                           nullptr, failure_callback, 1));
 
-  auto lookup_callback = [task_id, managers](
+  auto lookup_callback = [managers](
       gcs::AsyncGcsClient *client, const UniqueID &id,
       const std::vector<TaskReconstructionDataT> &data) {
     std::vector<std::string> appended_managers;
