@@ -99,7 +99,7 @@ class TestObjectManagerBase : public ::testing::Test {
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
     store_id = store_id + id;
-    std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
+    std::string plasma_command = store_executable + " -m 4000000000 -s " + store_id +
                                  " 1> /dev/null 2> /dev/null &";
     RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
@@ -242,16 +242,16 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void AddTransferTestHandlers() {
     ray::Status status = ray::Status::OK();
-    status =
-        server1->object_manager_.SubscribeObjAdded([this](const RayObjectInfo &object_info) {
+    status = server1->object_manager_.SubscribeObjAdded(
+        [this](const RayObjectInfo &object_info) {
           object_added_handler_1(object_info.object_id);
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
           }
         });
     RAY_CHECK_OK(status);
-    status =
-        server2->object_manager_.SubscribeObjAdded([this](const RayObjectInfo &object_info) {
+    status = server2->object_manager_.SubscribeObjAdded(
+        [this](const RayObjectInfo &object_info) {
           object_added_handler_2(object_info.object_id);
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
@@ -264,7 +264,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     async_loop_index += 1;
     if ((uint)async_loop_index < async_loop_patterns.size()) {
       TransferPattern pattern = async_loop_patterns[async_loop_index];
-      TransferTestExecute(1000, 100, pattern);
+      TransferTestExecute(100, 3 * std::pow(10, 5) - 1, pattern);
     } else {
       main_service.stop();
     }
@@ -290,7 +290,10 @@ class StressTestObjectManager : public TestObjectManagerBase {
     uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
     uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->data());
     ASSERT_EQ(object_buffer_1.data_size, object_buffer_2.data_size);
-    for (int i = -1; ++i < object_buffer_1.data_size;) {
+    ASSERT_EQ(object_buffer_1.metadata_size, object_buffer_2.metadata_size);
+    int64_t total_size = object_buffer_1.data_size + object_buffer_1.metadata_size;
+    RAY_LOG(DEBUG) << "total_size " << total_size;
+    for (int i = -1; ++i < total_size;) {
       ASSERT_TRUE(data_1[i] == data_2[i]);
     }
   }
