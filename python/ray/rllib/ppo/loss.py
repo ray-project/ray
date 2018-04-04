@@ -47,36 +47,17 @@ class ProximalPolicyLoss(object):
         self.kl = self.prev_dist.kl(self.curr_dist)
         self.entropy = self.curr_dist.entropy()
 
-        # if the model is shared there's only one kl term
-        # so add up the kl and take its mean for kl_coeff updating
-        # if self.shared_model:
-        #     print(tf.reduce_mean(self.kl))
-        #     self.kl = [tf.add_n(self.kl)/self.num_agents]
-        #     self.entropy = [tf.add_n(self.entropy)/self.num_agents]
-
         if not isinstance(curr_logp, list):
             self.kl = [self.kl]
             curr_logp = [curr_logp]
             prev_logp = [prev_logp]
             self.entropy = [self.entropy]
 
-        if self.shared_model:
-            kl_prod = tf.add_n([kl_coeff[0] * kl_i for
-                                i, kl_i in enumerate(self.kl)])
-            entropy_prod = tf.add_n([config["entropy_coeff"] * entropy_i for
-                                     i, entropy_i in enumerate(self.entropy)])
-        else:
-            kl_prod = tf.add_n([kl_coeff[i]*kl_i for
-                                i, kl_i in enumerate(self.kl)])
-            entropy_prod = tf.add_n([config["entropy_coeff"]*entropy_i for
-                                    i, entropy_i in enumerate(self.entropy)])
-
         # Make loss functions.
         self.ratio = [tf.exp(curr - prev)
                       for curr, prev in zip(curr_logp, prev_logp)]
         self.mean_kl = [tf.reduce_mean(kl_i) for kl_i in self.kl]
         self.mean_entropy = tf.reduce_mean(self.entropy)
-        self.entropy = tf.add_n(self.entropy)
         self.surr1 = [ratio_i * advantages for ratio_i in self.ratio]
         self.surr2 = [tf.clip_by_value(ratio_i, 1 - config["clip_param"],
                                        1 + config["clip_param"]) * advantages
@@ -85,6 +66,21 @@ class ProximalPolicyLoss(object):
                      zip(self.surr1, self.surr2)]
         self.surr = tf.add_n(self.surr)
         self.mean_policy_loss = tf.reduce_mean(-self.surr)
+
+        self.entropy = tf.add_n(self.entropy)
+        entropy_prod = config["entropy_coeff"]*self.entropy
+
+        # there's only one kl value for a shared model
+        if self.shared_model:
+            kl_prod = tf.add_n([kl_coeff[0] * kl_i for
+                                i, kl_i in enumerate(self.kl)])
+            # all the above values have been rescaled by num_agents
+            self.surr /= self.num_agents
+            kl_prod /= self.num_agents
+            entropy_prod /= self.num_agents
+        else:
+            kl_prod = tf.add_n([kl_coeff[i] * kl_i for
+                                i, kl_i in enumerate(self.kl)])
 
         if config["use_gae"]:
             # We use a huber loss here to be more robust against outliers,
@@ -106,12 +102,6 @@ class ProximalPolicyLoss(object):
             self.loss = tf.reduce_mean(
                 -self.surr +
                 kl_prod - entropy_prod)
-
-        # rescale the loss across all agents, otherwise the SGD
-        # step is actually num_agents times bigger
-        if self.shared_model:
-            self.loss /= self.num_agents
-        kl_prod /= self.num_agents
 
         self.sess = sess
 

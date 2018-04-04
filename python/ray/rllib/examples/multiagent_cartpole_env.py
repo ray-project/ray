@@ -25,8 +25,8 @@ class MultiAgentCartPoleEnv(CartPoleEnv):
             self.theta_threshold_radians * 2,
             np.finfo(np.float32).max])
         self.action_space = Tuple([spaces.Discrete(2) for _ in range(2)])
-        self.observation_space = Tuple([spaces.Box(-high, high)
-                                        for _ in range(2)])
+        self.observation_space = Tuple(
+            [spaces.Box(-high, high, dtype=np.float32) for _ in range(2)])
 
     def step(self, action):
         summed_action = int(np.sum(np.asarray(action) / 2))

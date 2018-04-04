@@ -37,22 +37,24 @@ def create_env(env_config):
 if __name__ == '__main__':
     register_env(env_name, lambda env_config: create_env(env_config))
     config = ppo.DEFAULT_CONFIG.copy()
-    num_cpus = 8
+    num_cpus = 2
     ray.init(redirect_output=False)
-    config["num_workers"] = 4
-    config["timesteps_per_batch"] = 64
+    shared_model = False
+    config["num_workers"] = 2
+    config["timesteps_per_batch"] = 100
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.95
     config["horizon"] = 200
     config["use_gae"] = True
-    config["lambda"] = 0.1
+    config["lambda"] = 0.99
     config["sgd_stepsize"] = .0003
-    config["sgd_batchsize"] = 64
+    if shared_model: # shared model filters dont work
+        config["observation_filter"] = "NoFilter"
     config["min_steps_per_task"] = 100
-    config["model"].update({"fcnet_hiddens": [32, 32]})
+    config["model"].update({"fcnet_hiddens": [32, 32]})  # value function
     options = {"multiagent_obs_shapes": [3, 3],
                "multiagent_act_shapes": [1, 1],
-               "multiagent_shared_model": True,
+               "multiagent_shared_model": shared_model,
                "multiagent_fcnet_hiddens": [[16, 16]] * 2}
     config["model"].update({"custom_options": options})
     register_env("DoubleMultiAgentPendulumEnv-v0", create_env)
@@ -66,7 +68,7 @@ if __name__ == '__main__':
                 },
                 "checkpoint_freq": 20,
                 "max_failures": 999,
-                "stop": {"training_iteration": 2},
-                "trial_resources": {"cpu": 1, "gpu": 0, "extra_cpu": 0}
+                "stop": {"training_iteration": 1},
+                "trial_resources": {"cpu": 1, "gpu": 0, "extra_cpu": 3}
             },
         })
