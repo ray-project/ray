@@ -2068,6 +2068,33 @@ class GlobalStateAPI(unittest.TestCase):
         # the visualization actually renders (e.g., the context of the dumped
         # trace could be malformed).
 
+    def testFlushAPI(self):
+        ray.init(num_cpus=1)
+
+        @ray.remote
+        def f():
+            return 1
+
+        [ray.put(1) for _ in range(10)]
+        ray.get([f.remote() for _ in range(10)])
+
+        # Wait until all of the task and object information has been stored in
+        # Redis. Note that since object information and locations are added
+        # through different paths, there is a possible race condition in which
+        # we remove the key below and then it is added again.
+        while True:
+            if (len(ray.global_state.object_table()) == 20 and
+                    len(ray.global_state.task_table()) == 10 + 1):
+                break
+
+        # Flush the tables.
+        ray.experimental.flush_redis_unsafe()
+        ray.experimental.flush_task_and_object_metadata_unsafe()
+
+        # Make sure the tables are empty.
+        assert len(ray.global_state.object_table()) == 0
+        assert len(ray.global_state.task_table()) == 0
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
