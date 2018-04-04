@@ -15,16 +15,20 @@ class ActorRegistration {
   ActorRegistration(const ActorTableDataT &actor_table_data);
 
   const ClientID GetNodeManagerId() const;
+  const ObjectID GetActorCreationDependency() const;
 
-  void RegisterHandle(const ActorHandleID &handle_id);
-
-  void RegisterTask(const ActorHandleID &handle_id, const ObjectID &execution_dependency);
+  void ExtendFrontier(const ActorHandleID &handle_id,
+                      const ObjectID &execution_dependency);
 
  private:
+  struct FrontierLeaf {
+    int64_t task_counter;
+    ObjectID execution_dependency;
+  };
+
   ActorTableDataT actor_table_data_;
   ObjectID execution_dependency_;
-  std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher> frontier_task_counts_;
-  std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> frontier_dependencies;
+  std::unordered_map<ActorHandleID, FrontierLeaf, UniqueIDHasher> frontier_;
 };
 
 }  // namespace raylet

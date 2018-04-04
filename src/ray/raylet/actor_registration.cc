@@ -7,19 +7,24 @@ namespace ray {
 namespace raylet {
 
 ActorRegistration::ActorRegistration(const ActorTableDataT &actor_table_data)
-    : actor_table_data_(actor_table_data), execution_dependency_(ObjectID::nil()) {}
+    : actor_table_data_(actor_table_data),
+      execution_dependency_(ObjectID::nil()),
+      frontier_() {}
 
 const ClientID ActorRegistration::GetNodeManagerId() const {
   return ClientID::from_binary(actor_table_data_.node_manager_id);
 }
 
-void ActorRegistration::RegisterHandle(const ActorHandleID &handle_id) {
-  throw std::runtime_error("Method not implemented");
+const ObjectID ActorRegistration::GetActorCreationDependency() const {
+  return ObjectID::from_binary(actor_table_data_.actor_creation_dummy_object_id);
 }
 
-void ActorRegistration::RegisterTask(const ActorHandleID &handle_id,
-                                     const ObjectID &execution_dependency) {
-  throw std::runtime_error("Method not implemented");
+void ActorRegistration::ExtendFrontier(const ActorHandleID &handle_id,
+                                       const ObjectID &execution_dependency) {
+  auto &frontier_entry = frontier_[handle_id];
+  frontier_entry.task_counter++;
+  frontier_entry.execution_dependency = execution_dependency;
+  execution_dependency_ = execution_dependency;
 }
 
 }  // namespace raylet

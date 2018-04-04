@@ -187,9 +187,13 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
 
   // Register the new actor.
   ActorRegistration actor_registration(data.back());
-  actor_registry_.emplace(actor_id, actor_registration);
+  // Extend the frontier to include the actor creation task. NOTE(swang): The
+  // creator of the actor is always assigned nil as the actor handle ID.
+  actor_registration.ExtendFrontier(ActorHandleID::nil(),
+                                    actor_registration.GetActorCreationDependency());
+  actor_registry_.emplace(actor_id, std::move(actor_registration));
 
-  // Resubmit any methods that were submitted before the actor's location was
+  // Dequeue any methods that were submitted before the actor's location was
   // known.
   const auto &methods = local_queues_.GetUncreatedActorMethods();
   std::unordered_set<TaskID, UniqueIDHasher> created_actor_method_ids;
@@ -198,6 +202,8 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
       created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
     }
   }
+  // Resubmit the methods that were submitted before the actor's location was
+  // known.
   auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
   for (const auto &method : created_actor_methods) {
     lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId());
@@ -237,22 +243,31 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     }
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(worker);
+    // Check if there is a scheduled task that can now be assigned to the newly
+    // idle worker.
     auto scheduled_tasks = local_queues_.GetScheduledTasks();
     if (!scheduled_tasks.empty()) {
-      const TaskID &scheduled_task_id =
-          scheduled_tasks.front().GetTaskSpecification().TaskId();
-      auto scheduled_tasks = local_queues_.RemoveTasks({scheduled_task_id});
-      AssignTask(scheduled_tasks.front());
+      // Find a scheduled task that whose actor ID matches that of the newly
+      // idle worker.
+      auto worker_actor_id = worker->GetActorId();
+      for (const auto &task : scheduled_tasks) {
+        if (task.GetTaskSpecification().ActorId() == worker_actor_id) {
+          auto scheduled_tasks =
+              local_queues_.RemoveTasks({task.GetTaskSpecification().TaskId()});
+          AssignTask(scheduled_tasks.front());
+        }
+      }
     }
   } break;
   case protocol::MessageType_DisconnectClient: {
     // Remove the dead worker from the pool and stop listening for messages.
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     if (worker) {
-      // TODO(swang): Handle this case. Clean up the assigned task and
-      // return an error to the driver.
-      RAY_CHECK(worker->GetAssignedTaskId().is_nil())
-          << "Worker died while executing task";
+      // TODO(swang): Handle the case where the worker is killed while
+      // executing a task. Clean up the assigned task and return an error to
+      // the driver.
+      // RAY_CHECK(worker->GetAssignedTaskId().is_nil())
+      //    << "Worker died while executing task: " << worker->GetAssignedTaskId().hex();
       worker_pool_.DisconnectWorker(worker);
     }
     return;
@@ -428,10 +443,6 @@ void NodeManager::AssignTask(const Task &task) {
   }
 
   RAY_LOG(DEBUG) << "Assigning task to worker with pid " << worker->Pid();
-
-  worker->AssignTaskId(spec.TaskId());
-  local_queues_.QueueRunningTasks(std::vector<Task>({task}));
-
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
                                               fbb.CreateVector(std::vector<int>()));
@@ -439,11 +450,21 @@ void NodeManager::AssignTask(const Task &task) {
   auto status = worker->Connection()->WriteMessage(protocol::MessageType_ExecuteTask,
                                                    fbb.GetSize(), fbb.GetBufferPointer());
   if (status.ok()) {
+    // We successfully assigned the task to the worker.
+    worker->AssignTaskId(spec.TaskId());
+    // Mark the task as running.
+    local_queues_.QueueRunningTasks(std::vector<Task>({task}));
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
+    // If the task was an actor task, then extend the actor's frontier to
+    // include this task.
+    if (spec.IsActorTask()) {
+      auto actor_entry = actor_registry_.find(spec.ActorId());
+      RAY_CHECK(actor_entry != actor_registry_.end());
+      actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
+    }
   } else {
-    // We failed to send the task to the worker, so disconnect the worker. The
-    // task will get queued again during cleanup.
+    // We failed to send the task to the worker, so disconnect the worker.
     ProcessClientMessage(worker->Connection(), protocol::MessageType_DisconnectClient,
                          NULL);
   }
@@ -480,6 +501,17 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
     // Release task's resources.
     RAY_CHECK(this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
                   .Release(task.GetTaskSpecification().GetRequiredResources()));
+  }
+
+  // If the finished task was an actor task, mark the returned dummy object as
+  // locally available. This is not added to the object table, so the update
+  // will be invisible to both the local object manager and the other nodes.
+  // NOTE(swang): These objects are never cleaned up. We should consider
+  // removing the objects, e.g., when an actor is terminated.
+  if (task.GetTaskSpecification().IsActorCreationTask() ||
+      task.GetTaskSpecification().IsActorTask()) {
+    auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
+    task_dependency_manager_.MarkDependencyReady(dummy_object);
   }
 
   // Unset the worker's assigned task.

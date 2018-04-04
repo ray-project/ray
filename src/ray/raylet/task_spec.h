@@ -142,6 +142,7 @@ class TaskSpecification {
   ActorID ActorId() const;
   ActorHandleID ActorHandleId() const;
   int64_t ActorCounter() const;
+  ObjectID ActorDummyObject() const;
 
  private:
   /// Assign the specification data from a pointer.

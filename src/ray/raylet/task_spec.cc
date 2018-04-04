@@ -199,6 +199,11 @@ int64_t TaskSpecification::ActorCounter() const {
   return message->actor_counter();
 }
 
+ObjectID TaskSpecification::ActorDummyObject() const {
+  RAY_CHECK(IsActorTask() || IsActorCreationTask());
+  return ReturnId(NumReturns() - 1);
+}
+
 }  // namespace raylet
 
 }  // namespace ray
