@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.tune.variant_generator import generate_trials
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.error import TuneError
 
 
 class Experiment(object):
@@ -49,8 +49,21 @@ class Experiment(object):
             "checkpoint_freq": checkpoint_freq,
             "max_failures": max_failures
         }
-        self._trials = generate_trials(spec, name)
 
-    def trials(self):
-        for trial in self._trials:
-            yield trial
+        self.name = name
+        self.spec = spec
+
+    @classmethod
+    def from_json(cls, name, spec):
+        """Generates an Experiment object from JSON.
+
+        Args:
+            name (str): Name of Experiment.
+            spec (dict): JSON configuration of experiment.
+        """
+        if "run" not in spec:
+            raise TuneError("No trainable specified!")
+        exp = cls(name, spec["run"])
+        exp.name = name
+        exp.spec = spec
+        return exp
