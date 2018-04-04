@@ -13,19 +13,20 @@ from pandas.core.dtypes.common import (
     is_bool_dtype,
     is_numeric_dtype,
     is_timedelta64_dtype)
-
 import warnings
 import numpy as np
 import ray
 import itertools
+
 from .utils import (
     _get_lengths,
     to_pandas,
-    _shuffle,
-    _local_groupby,
     _deploy_func,
     _compute_length_and_index,
-    _prepend_partitions)
+    _prepend_partitions,
+    assign_partitions)
+from .shuffle import ShuffleActor
+from .groupby import DataFrameGroupBy
 
 
 class DataFrame(object):
@@ -294,43 +295,79 @@ class DataFrame(object):
             axis: The axis to groupby.
             level: The level of the groupby.
             as_index: Whether or not to store result as index.
+            sort: Whether or not to sort the result by the index.
             group_keys: Whether or not to group the keys.
             squeeze: Whether or not to squeeze.
 
         Returns:
             A new DataFrame resulting from the groupby.
         """
+        if by is None:
+            raise TypeError("You have to supply one of 'by' and 'level'")
+        elif axis != 0 and axis != 1:
+            raise TypeError("")
+        elif not as_index and axis == 1 or axis == 'columns':
+            raise ValueError("as_index=False only valid for axis=0")
 
-        indices = self.index.unique()
+        # The easy one. Everything for columns can be handled by the
+        # partitions.
+        if axis == 1 or axis == 'columns':
+            if sort:
+                new_cols = sorted(self.columns)
+            else:
+                new_cols = self.columns
+            return DataFrameGroupBy(self._map_partitions(
+                lambda df: df.groupby(by=by,
+                                      axis=axis,
+                                      level=level,
+                                      as_index=as_index,
+                                      sort=sort,
+                                      group_keys=group_keys,
+                                      squeeze=squeeze,
+                                      **kwargs))._df,
+                                    new_cols, self.index)
 
-        chunksize = int(len(indices) / len(self._df))
-        partitions = [_shuffle.remote(df, indices, chunksize)
-                      for df in self._df]
-        partitions = ray.get(partitions)
+        # Begin groupby for rows. Requires shuffle.
+        # We perform the groupby on the index first to assign the partitions
+        # for the shuffle.
+        assignments_df = self._index.groupby(by=by, axis=axis, level=level,
+                                             as_index=as_index, sort=sort,
+                                             group_keys=group_keys,
+                                             squeeze=squeeze, **kwargs)\
+            .apply(lambda x: x[:])
 
-        # Transpose the list of dataframes
-        # TODO find a better way
-        shuffle = []
-        for i in range(len(partitions[0])):
-            shuffle.append([])
-            for j in range(len(partitions)):
-                shuffle[i].append(partitions[j][i])
-        new_dfs = [_local_groupby.remote(part, axis=axis) for part in shuffle]
+        # We did a gropuby, now we have to drop the outermost layer of the
+        # grouped index to get the index we will use.
+        assignments_df.index = assignments_df.index.droplevel()
+        partition_assignments = assign_partitions.remote(assignments_df,
+                                                         len(self._df))
+        shufflers = [ShuffleActor.remote(self._df[i])
+                     for i in range(len(self._df))]
 
-        return DataFrame(new_dfs, self.columns, index=indices)
+        shuffles_done = \
+            [shufflers[i].shuffle.remote(
+                self._index[self._index['partition'] == i],
+                partition_assignments,
+                i,
+                *shufflers)
+             for i in range(len(shufflers))]
 
-    def reduce_by_index(self, func, axis=0):
-        """Perform a reduction based on the row index.
+        if as_index:
+            new_index = assignments_df.index.unique()
+        else:
+            new_index = self.index
 
-        Args:
-            func (callable): The function to call on the partition
-                after the groupby.
+        ray.get(shuffles_done)
 
-        Returns:
-            A new DataFrame with the result of the reduction.
-        """
-        return self.groupby(axis=axis)._map_partitions(
-            func, index=pd.unique(self.index))
+        return DataFrameGroupBy([shuffler.apply_func.remote(
+            lambda df: df.groupby(by=df.index,
+                                  axis=axis,
+                                  sort=sort,
+                                  group_keys=group_keys,
+                                  squeeze=squeeze,
+                                  **kwargs))
+                                for shuffler in shufflers],
+                                self.columns, new_index)
 
     def sum(self, axis=None, skipna=True, level=None, numeric_only=None):
         """Perform a sum across the DataFrame.
@@ -342,18 +379,16 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
-        intermediate_index = [idx
-                              for _ in range(len(self._df))
-                              for idx in self.columns]
+        if axis == 1:
+            return self._map_partitions(
+                lambda df: df.sum(axis=axis, skipna=skipna, level=level,
+                                  numeric_only=numeric_only))
 
-        sum_of_partitions = self._map_partitions(
-            lambda df: df.sum(axis=axis, skipna=skipna, level=level,
-                              numeric_only=numeric_only),
-            index=intermediate_index)
-
-        return sum_of_partitions.reduce_by_index(
-            lambda df: df.sum(axis=axis, skipna=skipna, level=level,
-                              numeric_only=numeric_only))
+        elif axis == 0 or axis is None:
+            return self.T.sum(axis=1, skipna=skipna, level=level,
+                              numeric_only=numeric_only)
+        else:
+            raise ValueError("axis parameter must be 0 or 1.")
 
     def abs(self):
         """Apply an absolute value function to all numberic columns.
@@ -420,6 +455,11 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
+        @ray.remote
+        def update_columns(df, columns):
+            df.columns = columns
+            return df
+
         temp_index = [idx
                       for _ in range(len(self._df))
                       for idx in self.columns]
@@ -428,22 +468,25 @@ class DataFrame(object):
             lambda df: df.transpose(*args, **kwargs), index=temp_index)
         local_transpose.columns = temp_columns
 
-        # Sum will collapse the NAs from the groupby
-        df = local_transpose.reduce_by_index(
-            lambda df: df.apply(lambda x: x), axis=1)
+        column_names = list(temp_columns)
+        x = [None] * len(self._lengths)
+        cumulative = np.cumsum(self._lengths)
 
-        # Reassign the columns within partition to self.index.
-        # We have to use _depoly_func instead of _map_partition due to
-        #    new_labels argument
-        def _reassign_columns(df, new_labels):
-            df.columns = new_labels
-            return df
-        df._df = [
-            _deploy_func.remote(
-                _reassign_columns,
-                part,
-                self.index) for part in df._df]
+        for i in range(len(cumulative)):
+            if i == 0:
+                x[i] = (column_names[:cumulative[i]])
+            elif i == len(cumulative) - 1:
+                x[i] = column_names[cumulative[i - 1]:]
+            else:
+                x[i] = (column_names[cumulative[i-1]:cumulative[i]])
 
+        for i in range(len(local_transpose._df)):
+            local_transpose._df[i] = \
+                update_columns.remote(local_transpose._df[i], x[i])
+
+        df = local_transpose.groupby(by=local_transpose.index,
+                                     sort=False)\
+            .apply(lambda x: x)
         return df
 
     T = property(transpose)
@@ -674,24 +717,23 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def count(self, axis=0, level=None, numeric_only=False):
-        if axis == 1:
-            return self.T.count(axis=0,
+        if axis == 0:
+            return self.T.count(axis=1,
                                 level=level,
                                 numeric_only=numeric_only)
-        else:
-            temp_index = [idx
-                          for _ in range(len(self._df))
-                          for idx in self.columns]
 
-            collapsed_df = sum(
+        else:
+            collapsed_df = \
                 ray.get(
                     self._map_partitions(
                         lambda df: df.count(
                             axis=axis,
                             level=level,
                             numeric_only=numeric_only),
-                        index=temp_index)._df))
-            return collapsed_df
+                        index=self.index)._df)
+            series = pd.concat(collapsed_df)
+            series.index = self.index
+            return series
 
     def cov(self, min_periods=None):
         raise NotImplementedError(
