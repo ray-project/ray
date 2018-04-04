@@ -39,28 +39,11 @@ class DDPGEvaluator(PolicyEvaluator):
         rollout = self.sampler.get_data()
         rollout.data["weights"] = np.ones_like(rollout.data["rewards"])
 
-        self.episode_rewards[-1] += rollout.data["rewards"][0]
-        self.episode_lengths[-1] += 1
-        if rollout.data["dones"][0]:
-            print(len(self.episode_rewards), self.episode_rewards[-1])
-            self.episode_rewards.append(0.0)
-            self.episode_lengths.append(0.0)
-
         samples = process_rollout(
                     rollout, NoFilter(),
                     gamma=1.0, use_gae=False)
 
         return samples
-
-    def stats(self):
-        n = self.config["smoothing_num_episodes"] + 1
-        mean_10ep_reward = round(np.mean(self.episode_rewards[-n:-1]), 5)
-        mean_10ep_length = round(np.mean(self.episode_lengths[-n:-1]), 5)
-        return {
-            "mean_10ep_reward": mean_10ep_reward,
-            "mean_10ep_length": mean_10ep_length,
-            "num_episodes": len(self.episode_rewards),
-        }
 
     def update_target(self):
         """Updates target critic and target actor."""

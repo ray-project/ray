@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from ray.rllib.agent import Agent
 from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator, RemoteDDPGEvaluator
 from ray.rllib.optimizers import LocalSyncReplayOptimizer
@@ -18,6 +19,17 @@ DEFAULT_CONFIG = {
     "gamma": 0.99,
     # Number of steps after which the rollout gets cut
     "horizon": 500,
+
+    # Whether to include parameter noise
+    "noise_add": True,
+    # Linear decay of exploration policy
+    "noise_epsilon": 0.0002,
+    # Parameters for noise process
+    "noise_parameters": {
+        "mu": 0,
+        "sigma": 0.2,
+        "theta": 0.15,
+    },
 
     # Number of local steps taken for each call to sample
     "num_local_steps": 1,
@@ -37,22 +49,10 @@ DEFAULT_CONFIG = {
         "train_batch_size": 64,
     },
 
-    # Whether to include parameter noise
-    "add_noise": True,
-    # Parameters for noise process
-    "noise_parameters": {
-        "mu": 0,
-        "sigma": 0.2,
-        "theta": 0.15,
-    },
-    # Linear decay of exploration policy
-    "parameter_epsilon": 0.0002,
-
-    "smoothing_num_episodes": 10,
     # Controls how fast target networks move
     "tau": 0.001,
     # Number of steps taken per training iteration
-    "train_steps": 500,
+    "train_steps": 600,
 }
 
 
@@ -72,32 +72,26 @@ class DDPGAgent(Agent):
             self.remote_evaluators)
 
     def _train(self):
-        # TODO(rliaw): multiple steps
-        self.optimizer.step()
-        # update target
-        if self.optimizer.num_steps_trained > 0:
-            self.local_evaluator.update_target()
+        for _ in range(self.config["train_steps"]):
+            self.optimizer.step()
+            # update target
+            if self.optimizer.num_steps_trained > 0:
+                self.local_evaluator.update_target()
 
         # generate training result
-        stats = self.local_evaluator.stats()
-        if not isinstance(stats, list):
-            stats = [stats]
-
-        mean_10ep_reward = 0.0
-        mean_10ep_length = 0.0
-        num_episodes = 0
-
-        for s in stats:
-            mean_10ep_reward += s["mean_10ep_reward"] / len(stats)
-            mean_10ep_length += s["mean_10ep_length"] / len(stats)
-            num_episodes += s["num_episodes"]
+        episode_rewards = []
+        episode_lengths = []
+        metrics = self.local_evaluator.get_completed_rollout_metrics()
+        for episode in metrics:
+            episode_lengths.append(episode.episode_length)
+            episode_rewards.append(episode.episode_reward)
+        avg_reward = np.mean(episode_rewards)
+        avg_length = np.mean(episode_lengths)
+        timesteps = np.sum(episode_lengths)
 
         result = TrainingResult(
-            episode_reward_mean=mean_10ep_reward,
-            episode_len_mean=mean_10ep_length,
-            episodes_total=num_episodes,
-            timesteps_this_iter=1,
-            info={}
-            )
-
+            episode_reward_mean=avg_reward,
+            episode_len_mean=avg_length,
+            timesteps_this_iter=timesteps,
+            info={})
         return result
