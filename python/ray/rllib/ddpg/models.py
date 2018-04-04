@@ -2,40 +2,54 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.ddpg.random_process import OrnsteinUhlenbeckProcess
-from ray.experimental.tfutils import TensorFlowVariables
-
 import numpy as np
+from ray.experimental.tfutils import TensorFlowVariables
+from ray.rllib.ddpg.random_process import OrnsteinUhlenbeckProcess
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 
 class DDPGModel():
     def __init__(self, registry, env, config):
-        self.registry = registry
-        self.env = env
         self.config = config
         self.sess = tf.Session()
 
         with tf.variable_scope("model"):
-            self.model = DDPGActorCritic(self.registry,
-                                         self.env,
+            self.model = DDPGActorCritic(registry,
+                                         env,
                                          self.config,
                                          self.sess)
         with tf.variable_scope("target_model"):
-            self.target_model = DDPGActorCritic(self.registry,
-                                                self.env,
+            self.target_model = DDPGActorCritic(registry,
+                                                env,
                                                 self.config,
                                                 self.sess)
         self._setup_gradients()
         self._setup_target_updates()
 
         self.initialize()
-        # Set initial target weights to match model weights.
         self._initialize_target_weights()
 
+    def initialize(self):
+        self.sess.run(tf.global_variables_initializer())
+
+    def _initialize_target_weights(self):
+        """Set initial target weights to match model weights."""
+        a_updates = []
+        for var, target_var in zip(self.model.actor_var_list,
+                                   self.target_model.actor_var_list):
+            a_updates.append(tf.assign(target_var, var))
+        actor_updates = tf.group(*a_updates)
+
+        c_updates = []
+        for var, target_var in zip(self.model.critic_var_list,
+                                   self.target_model.critic_var_list):
+            c_updates.append(tf.assign(target_var, var))
+        critic_updates = tf.group(*c_updates)
+        self.sess.run([actor_updates, critic_updates])
+
     def _setup_gradients(self):
-        """Setups critic and actor gradients."""
+        """Setup critic and actor gradients."""
         self.critic_grads = tf.gradients(self.model.critic_loss,
                                          self.model.critic_var_list)
         c_grads_and_vars = list(zip(self.critic_grads,
@@ -125,31 +139,12 @@ class DDPGModel():
         """Updates target critic and target actor."""
         self.sess.run(self.target_updates)
 
-    def initialize(self):
-        self.sess.run(tf.global_variables_initializer())
-
-    def _initialize_target_weights(self):
-        a_updates = []
-        for var, target_var in zip(self.model.actor_var_list,
-                                   self.target_model.actor_var_list):
-            a_updates.append(tf.assign(target_var, var))
-        actor_updates = tf.group(*a_updates)
-
-        c_updates = []
-        for var, target_var in zip(self.model.critic_var_list,
-                                   self.target_model.critic_var_list):
-            c_updates.append(tf.assign(target_var, var))
-        critic_updates = tf.group(*c_updates)
-        self.sess.run([actor_updates, critic_updates])
-
 
 class DDPGActorCritic():
     other_output = []
     is_recurrent = False
 
     def __init__(self, registry, env, config, sess):
-        self.env = env
-        self.registry = registry
         self.config = config
         self.sess = sess
 
@@ -163,10 +158,7 @@ class DDPGActorCritic():
         self.action_bound = env.action_space.high
         # TODO: change action_bound to make more general
 
-        # set up actor network
         self._setup_actor_network(obs_space, ac_space)
-
-        # setting up critic
         self._setup_critic_network(obs_space, ac_space)
         self._setup_critic_loss(ac_space)
 
@@ -195,6 +187,7 @@ class DDPGActorCritic():
             self.epsilon = 1.0
 
     def _setup_critic_loss(self, action_space):
+        """Sets up critic loss."""
         self.target_Q = tf.placeholder(tf.float32, [None, 1], name="target_q")
 
         # compare critic eval to critic_target (squared loss)
@@ -216,6 +209,7 @@ class DDPGActorCritic():
                                self.obs, self.output_action)
 
     def _create_critic_network(self, obs, action):
+        """Network for critic."""
         w_normal = tf.truncated_normal_initializer()
         w_init = tf.random_uniform_initializer(minval=-0.0003, maxval=0.0003)
         net = slim.fully_connected(obs, 400, activation_fn=tf.nn.relu,
@@ -234,10 +228,12 @@ class DDPGActorCritic():
         return out
 
     def _setup_actor_network(self, obs_space, ac_space):
+        """Sets up actor network."""
         with tf.variable_scope("actor", reuse=tf.AUTO_REUSE):
             self.output_action = self._create_actor_network(self.obs)
 
     def _create_actor_network(self, obs):
+        """Network for actor."""
         w_normal = tf.truncated_normal_initializer()
         w_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
 

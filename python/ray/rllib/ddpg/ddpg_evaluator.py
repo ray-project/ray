@@ -1,8 +1,8 @@
-# imports
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import ray
 from ray.rllib.ddpg.models import DDPGModel
 from ray.rllib.models.catalog import ModelCatalog
@@ -12,16 +12,11 @@ from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
 
 
-import numpy as np
-
-
 class DDPGEvaluator(PolicyEvaluator):
 
     def __init__(self, registry, env_creator, config):
-        self.registry = registry
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
             registry, env_creator(config["env_config"]))
-        self.config = config
 
         # contains model, target_model
         self.model = DDPGModel(registry, self.env, config)
@@ -29,9 +24,6 @@ class DDPGEvaluator(PolicyEvaluator):
         self.sampler = SyncSampler(
                         self.env, self.model.model, NoFilter(),
                         config["num_local_steps"], horizon=config["horizon"])
-
-        self.episode_rewards = [0.0]
-        self.episode_lengths = [0.0]
 
     def sample(self):
         """Returns a batch of samples."""
