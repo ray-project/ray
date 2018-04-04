@@ -3,6 +3,37 @@
 #include "common_protocol.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
+namespace {
+
+/// A helper function to determine whether a given actor task has already been executed
+/// according to the given actor registry. Returns true if the task is a duplicate.
+bool CheckDuplicateActorTask(
+    const std::unordered_map<ActorID, ray::raylet::ActorRegistration, UniqueIDHasher>
+        &actor_registry,
+    const ray::raylet::TaskSpecification &spec) {
+  auto actor_entry = actor_registry.find(spec.ActorId());
+  RAY_CHECK(actor_entry != actor_registry.end());
+  const auto &frontier = actor_entry->second.GetFrontier();
+  int64_t expected_task_counter = 0;
+  auto frontier_entry = frontier.find(spec.ActorHandleId());
+  if (frontier_entry != frontier.end()) {
+    expected_task_counter = frontier_entry->second.task_counter;
+  }
+  if (spec.ActorCounter() < expected_task_counter) {
+    // The assigned task counter is less than expected. The actor has already
+    // executed past this task, so do not assign the task again.
+    RAY_LOG(WARNING) << "A task was resubmitted, so we are ignoring it. This "
+                     << "should only happen during reconstruction.";
+    return true;
+  }
+  RAY_CHECK(spec.ActorCounter() == expected_task_counter)
+      << "Expected actor counter: " << expected_task_counter
+      << ", got: " << spec.ActorCounter();
+  return false;
+};
+
+}  // namespace
+
 namespace ray {
 
 namespace raylet {
@@ -191,7 +222,8 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   // creator of the actor is always assigned nil as the actor handle ID.
   actor_registration.ExtendFrontier(ActorHandleID::nil(),
                                     actor_registration.GetActorCreationDependency());
-  actor_registry_.emplace(actor_id, std::move(actor_registration));
+  auto inserted = actor_registry_.emplace(actor_id, std::move(actor_registration));
+  RAY_CHECK(inserted.second);
 
   // Dequeue any methods that were submitted before the actor's location was
   // known.
@@ -373,14 +405,18 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
 
-  // Check if this is a task for an actor that has not yet been created.
   if (spec.IsActorTask()) {
+    // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
     if (actor_entry != actor_registry_.end()) {
+      // We have a known location for the actor.
       auto node_manager_id = actor_entry->second.GetNodeManagerId();
       if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
+        // The actor is local. Queue the task for local execution.
         QueueTask(task);
       } else {
+        // The actor is remote. Forward the task to the node manager that owns
+        // the actor.
         ForwardTask(task, node_manager_id);
       }
     } else {
@@ -404,6 +440,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       local_queues_.QueueUncreatedActorMethods({task});
     }
   } else {
+    // This is a non-actor task. Queue the task for local execution.
     QueueTask(task);
   }
 }
@@ -421,6 +458,14 @@ void NodeManager::QueueTask(const Task &task) {
 
 void NodeManager::AssignTask(Task &task) {
   const TaskSpecification &spec = task.GetTaskSpecification();
+
+  // If this is an actor task, check that the new task has the correct counter.
+  if (spec.IsActorTask()) {
+    if (CheckDuplicateActorTask(actor_registry_, spec)) {
+      // Drop tasks that have already been executed.
+      return;
+    }
+  }
 
   // Resource accounting: acquire resources for the scheduled task.
   const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -452,8 +497,8 @@ void NodeManager::AssignTask(Task &task) {
   if (status.ok()) {
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
-    // If the task was an actor task, then record this execution for reconstruction
-    // purposes.
+    // If the task was an actor task, then record this execution to guarantee
+    // consistency in the case of reconstruction.
     if (spec.IsActorTask()) {
       // Extend the frontier to include the executing task.
       auto actor_entry = actor_registry_.find(spec.ActorId());
@@ -462,22 +507,26 @@ void NodeManager::AssignTask(Task &task) {
       // Update the task's execution dependencies to reflect the actual
       // execution order, to support deterministic reconstruction.
       // NOTE(swang): The update of an actor task's execution dependencies is
-      // performed asynchronously. This means that if this local scheduler
-      // dies, we may lose updates that are in flight to the task table. We
-      // only guarantee deterministic reconstruction ordering for tasks whose
+      // performed asynchronously. This means that if this node manager dies,
+      // we may lose updates that are in flight to the task table. We only
+      // guarantee deterministic reconstruction ordering for tasks whose
       // updates are reflected in the task table.
       TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
       mutable_spec.SetExecutionDependencies(
           {actor_entry->second.GetExecutionDependency()});
     }
-    // Mark the task as running.
-    local_queues_.QueueRunningTasks(std::vector<Task>({task}));
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
+    // Mark the task as running.
+    local_queues_.QueueRunningTasks(std::vector<Task>({task}));
   } else {
+    RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
     ProcessClientMessage(worker->Connection(), protocol::MessageType_DisconnectClient,
                          NULL);
+    // Queue this task for future assignment. The task will be assigned to a
+    // worker once one becomes available.
+    local_queues_.QueueScheduledTasks(std::vector<Task>({task}));
   }
 }
 
