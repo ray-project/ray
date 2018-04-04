@@ -296,13 +296,12 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
   };
   // Callback to add ourselves once we've successfully subscribed.
   auto subscription_callback = [this, data, add_callback](AsyncGcsClient *c) {
-    // Mark ourselves as deleted if we called Disconnect() since the last
-    // Connect() call.
-    if (disconnected_) {
-      data->is_insertion = false;
-    }
     RAY_CHECK_OK(RequestNotifications(JobID::nil(), client_log_key_, client_id_));
-    RAY_CHECK_OK(Append(JobID::nil(), client_log_key_, data, add_callback));
+    // If we called Disconnect() since the last Connect() call, do not add
+    // ourselves to the client table.
+    if (!disconnected_) {
+      RAY_CHECK_OK(Append(JobID::nil(), client_log_key_, data, add_callback));
+    }
   };
   return Subscribe(JobID::nil(), client_id_, notification_callback,
                    subscription_callback);

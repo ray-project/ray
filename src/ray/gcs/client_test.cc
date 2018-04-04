@@ -803,4 +803,30 @@ TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
   TestClientTableDisconnect(job_id_, client_);
 }
 
+void TestClientTableMarkDisconnected(const JobID &job_id,
+                                     std::shared_ptr<gcs::AsyncGcsClient> client) {
+  ClientTableDataT local_client_info = client->client_table().GetLocalClient();
+  local_client_info.node_manager_address = "127.0.0.1";
+  local_client_info.node_manager_port = 0;
+  local_client_info.object_manager_port = 0;
+  // Connect to the client table to start receiving notifications.
+  RAY_CHECK_OK(client->client_table().Connect(local_client_info));
+  // Mark a different client as dead.
+  ClientID dead_client_id = ClientID::from_random();
+  RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_client_id));
+  // Make sure we only get a notification for the removal of the client we
+  // marked as dead.
+  client->client_table().RegisterClientRemovedCallback([dead_client_id](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ASSERT_EQ(ClientID::from_binary(data.client_id), dead_client_id);
+    test->Stop();
+  });
+  test->Start();
+}
+
+TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
+  test = this;
+  TestClientTableMarkDisconnected(job_id_, client_);
+}
+
 }  // namespace
