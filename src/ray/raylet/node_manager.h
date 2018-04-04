@@ -71,7 +71,7 @@ class NodeManager {
   /// Submit a task to this node.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
   /// Assign a task.
-  void AssignTask(const Task &task);
+  void AssignTask(Task &task);
   /// Handle a worker finishing its assigned task.
   void FinishAssignedTask(std::shared_ptr<Worker> worker);
   /// Schedule tasks.

@@ -264,8 +264,8 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     if (worker) {
       // TODO(swang): Handle the case where the worker is killed while
-      // executing a task. Clean up the assigned task and return an error to
-      // the driver.
+      // executing a task. Clean up the assigned task's resources, return an
+      // error to the driver.
       // RAY_CHECK(worker->GetAssignedTaskId().is_nil())
       //    << "Worker died while executing task: " << worker->GetAssignedTaskId().hex();
       worker_pool_.DisconnectWorker(worker);
@@ -419,7 +419,7 @@ void NodeManager::QueueTask(const Task &task) {
   }
 }
 
-void NodeManager::AssignTask(const Task &task) {
+void NodeManager::AssignTask(Task &task) {
   const TaskSpecification &spec = task.GetTaskSpecification();
 
   // Resource accounting: acquire resources for the scheduled task.
@@ -452,17 +452,28 @@ void NodeManager::AssignTask(const Task &task) {
   if (status.ok()) {
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
+    // If the task was an actor task, then record this execution for reconstruction
+    // purposes.
+    if (spec.IsActorTask()) {
+      // Extend the frontier to include the executing task.
+      auto actor_entry = actor_registry_.find(spec.ActorId());
+      RAY_CHECK(actor_entry != actor_registry_.end());
+      actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
+      // Update the task's execution dependencies to reflect the actual
+      // execution order, to support deterministic reconstruction.
+      // NOTE(swang): The update of an actor task's execution dependencies is
+      // performed asynchronously. This means that if this local scheduler
+      // dies, we may lose updates that are in flight to the task table. We
+      // only guarantee deterministic reconstruction ordering for tasks whose
+      // updates are reflected in the task table.
+      TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
+      mutable_spec.SetExecutionDependencies(
+          {actor_entry->second.GetExecutionDependency()});
+    }
     // Mark the task as running.
     local_queues_.QueueRunningTasks(std::vector<Task>({task}));
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
-    // If the task was an actor task, then extend the actor's frontier to
-    // include this task.
-    if (spec.IsActorTask()) {
-      auto actor_entry = actor_registry_.find(spec.ActorId());
-      RAY_CHECK(actor_entry != actor_registry_.end());
-      actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
-    }
   } else {
     // We failed to send the task to the worker, so disconnect the worker.
     ProcessClientMessage(worker->Connection(), protocol::MessageType_DisconnectClient,

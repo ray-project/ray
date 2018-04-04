@@ -12,20 +12,23 @@ namespace raylet {
 
 class ActorRegistration {
  public:
-  ActorRegistration(const ActorTableDataT &actor_table_data);
-
-  const ClientID GetNodeManagerId() const;
-  const ObjectID GetActorCreationDependency() const;
-
-  void ExtendFrontier(const ActorHandleID &handle_id,
-                      const ObjectID &execution_dependency);
-
- private:
   struct FrontierLeaf {
     int64_t task_counter;
     ObjectID execution_dependency;
   };
 
+  ActorRegistration(const ActorTableDataT &actor_table_data);
+
+  const ClientID GetNodeManagerId() const;
+  const ObjectID GetActorCreationDependency() const;
+  const ObjectID GetExecutionDependency() const;
+  const std::unordered_map<ActorHandleID, FrontierLeaf, UniqueIDHasher> &GetFrontier()
+      const;
+
+  void ExtendFrontier(const ActorHandleID &handle_id,
+                      const ObjectID &execution_dependency);
+
+ private:
   ActorTableDataT actor_table_data_;
   ObjectID execution_dependency_;
   std::unordered_map<ActorHandleID, FrontierLeaf, UniqueIDHasher> frontier_;
