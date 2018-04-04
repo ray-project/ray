@@ -435,6 +435,8 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// \return Status
   ray::Status Disconnect();
 
+  ray::Status MarkDisconnected(const ClientID &dead_client_id);
+
   /// Register a callback to call when a new client is added.
   ///
   /// \param callback The callback to register.

@@ -310,7 +310,7 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
 
 Status ClientTable::Disconnect() {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
-  data->is_insertion = true;
+  data->is_insertion = false;
   auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
                              std::shared_ptr<ClientTableDataT> data) {
     HandleConnected(client, data);
@@ -320,6 +320,13 @@ Status ClientTable::Disconnect() {
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
   return Status::OK();
+}
+
+ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
+  auto data = std::make_shared<ClientTableDataT>();
+  data->client_id = dead_client_id.binary();
+  data->is_insertion = false;
+  return Append(JobID::nil(), client_log_key_, data, nullptr);
 }
 
 const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
