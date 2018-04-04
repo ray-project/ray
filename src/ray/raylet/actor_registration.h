@@ -14,6 +14,8 @@ class ActorRegistration {
  public:
   ActorRegistration(const ActorTableDataT &actor_table_data);
 
+  const ClientID GetNodeManagerId() const;
+
   void RegisterHandle(const ActorHandleID &handle_id);
 
   void RegisterTask(const ActorHandleID &handle_id, const ObjectID &execution_dependency);

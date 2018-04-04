@@ -178,6 +178,7 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
 void NodeManager::HandleActorCreation(const ActorID &actor_id,
                                       const std::vector<ActorTableDataT> &data) {
   RAY_LOG(DEBUG) << "Actor creation notification received: " << actor_id.hex();
+
   // TODO(swang): In presence of failures, data may have size > 1, since the
   // actor will have been created multiple times. In that case, we should
   // only consider the last entry as valid. All previous entries should have
@@ -185,8 +186,26 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   RAY_CHECK(data.size() == 1);
 
   // Register the new actor.
-  actor_registry_.emplace(actor_id, ActorRegistration(data.back()));
-  // TODO(swang): Try to dispatch or forward any queued tasks for the actor.
+  ActorRegistration actor_registration(data.back());
+  actor_registry_.emplace(actor_id, actor_registration);
+
+  // Resubmit any methods that were submitted before the actor's location was
+  // known.
+  const auto &methods = local_queues_.GetUncreatedActorMethods();
+  std::unordered_set<TaskID, UniqueIDHasher> created_actor_method_ids;
+  for (const auto &method : methods) {
+    if (method.GetTaskSpecification().ActorId() == actor_id) {
+      created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
+    }
+  }
+  auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
+  for (const auto &method : created_actor_methods) {
+    lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId());
+    // The task's uncommitted lineage was already added to the local lineage
+    // cache upon the initial submission, so it's okay to resubmit it with an
+    // empty lineage this time.
+    SubmitTask(method, Lineage());
+  }
 }
 
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
@@ -334,9 +353,48 @@ void NodeManager::ScheduleTasks() {
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
+
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
-  // Queue the task according to the availability of its arguments.
+
+  // Check if this is a task for an actor that has not yet been created.
+  if (spec.IsActorTask()) {
+    const auto actor_entry = actor_registry_.find(spec.ActorId());
+    if (actor_entry != actor_registry_.end()) {
+      auto node_manager_id = actor_entry->second.GetNodeManagerId();
+      if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
+        QueueTask(task);
+      } else {
+        ForwardTask(task, node_manager_id);
+      }
+    } else {
+      // We do not have a registered location for the object, so either the
+      // actor has not yet been created or we missed the notification for the
+      // actor creation. Look up the actor's registered location in case we
+      // missed the creation notification.
+      auto lookup_callback = [this](gcs::AsyncGcsClient *client, const ActorID &actor_id,
+                                    const std::vector<ActorTableDataT> &data) {
+        if (!data.empty()) {
+          // The actor has been created.
+          HandleActorCreation(actor_id, data);
+        } else {
+          // The actor has not yet been created.
+          // TODO(swang): Set a timer for reconstructing the actor creation
+          // task.
+        }
+      };
+      gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(), lookup_callback);
+      // Keep the task queued until we discover the actor's location.
+      local_queues_.QueueUncreatedActorMethods({task});
+    }
+  } else {
+    QueueTask(task);
+  }
+}
+
+void NodeManager::QueueTask(const Task &task) {
+  // Queue the task depending on the availability of its arguments.
   if (task_dependency_manager_.TaskReady(task)) {
     local_queues_.QueueReadyTasks(std::vector<Task>({task}));
     ScheduleTasks();
@@ -432,7 +490,7 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
 }
 
-ray::Status NodeManager::ForwardTask(Task &task, const ClientID &node_id) {
+ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) {
   auto task_id = task.GetTaskSpecification().TaskId();
 
   // Get and serialize the task's uncommitted lineage.

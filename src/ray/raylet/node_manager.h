@@ -66,6 +66,8 @@ class NodeManager {
   // Handler for the creation of an actor, possibly on a remote node.
   void HandleActorCreation(const ActorID &actor_id,
                            const std::vector<ActorTableDataT> &data);
+  // Queue a task for local execution.
+  void QueueTask(const Task &task);
   /// Submit a task to this node.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
   /// Assign a task.
@@ -78,7 +80,7 @@ class NodeManager {
   void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
-  ray::Status ForwardTask(Task &task, const ClientID &node_id);
+  ray::Status ForwardTask(const Task &task, const ClientID &node_id);
   /// Send heartbeats to the GCS.
   void Heartbeat();
 

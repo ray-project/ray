@@ -28,6 +28,13 @@ class SchedulingQueue {
   /// SchedulingQueue destructor.
   virtual ~SchedulingQueue() {}
 
+  /// Get the queue of tasks that are destined for actors that have not yet
+  /// been created.
+  ///
+  /// \return A const reference to the queue of tasks that are destined for
+  /// actors that have not yet been created.
+  const std::list<Task> &GetUncreatedActorMethods() const;
+
   /// Get the queue of tasks in the waiting state.
   ///
   /// \return A const reference to the queue of tasks that are waiting for
@@ -65,6 +72,11 @@ class SchedulingQueue {
   /// \return A vector of the tasks that were removed.
   std::vector<Task> RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher> tasks);
 
+  /// Queue tasks that are destined for actors that have not yet been created.
+  ///
+  /// \param tasks The tasks to queue.
+  void QueueUncreatedActorMethods(const std::vector<Task> &tasks);
+
   /// Queue tasks in the waiting state.
   ///
   /// \param tasks The tasks to queue.
@@ -86,6 +98,8 @@ class SchedulingQueue {
   void QueueRunningTasks(const std::vector<Task> &tasks);
 
  private:
+  /// Tasks that are destined for actors that have not yet been created.
+  std::list<Task> uncreated_actor_methods_;
   /// Tasks that are waiting for an object dependency to appear locally.
   std::list<Task> waiting_tasks_;
   /// Tasks whose object dependencies are locally available, but that are
