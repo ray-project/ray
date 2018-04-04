@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.ddpg.random_process import OrnsteinUhlenbeckProcess
+import ray.experimental.tfutils
 
 import numpy as np
 import tensorflow as tf
@@ -173,12 +174,14 @@ class DDPGActorCritic():
                                      tf.GraphKeys.TRAINABLE_VARIABLES,
                                      tf.get_variable_scope().name
                                    )
+            self.critic_vars = ray.experimental.TensorFlowVariables(self.critic_loss, self.sess)
 
         with tf.variable_scope("actor"):
             self.actor_var_list = tf.get_collection(
                                     tf.GraphKeys.TRAINABLE_VARIABLES,
                                     tf.get_variable_scope().name
                                   )
+            self.actor_vars = ray.experimental.TensorFlowVariables(self.output_action, self.sess)
 
         if (self.config["parameter_noise"]):
             self.random_process = OrnsteinUhlenbeckProcess(size=1,
@@ -241,12 +244,10 @@ class DDPGActorCritic():
 
     def get_weights(self):
         """Returns critic weights, actor weights."""
-        #TODO: Update
         return self.critic_vars.get_weights(), self.actor_vars.get_weights()
 
     def set_weights(self, weights):
         """Sets critic and actor weights."""
-        #TODO: Update
         critic_weights, actor_weights = weights
         self.critic_vars.set_weights(critic_weights)
         self.actor_vars.set_weights(actor_weights)
