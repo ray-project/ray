@@ -36,10 +36,9 @@ class MockGcs : virtual public gcs::LogInterface<TaskID, TaskReconstructionData>
     return ray::Status::OK();
   }
 
-  const std::unordered_map<TaskID, std::vector<std::shared_ptr<TaskReconstructionDataT>>,
-                           UniqueIDHasher>
-      &TaskReconstructionLog() const {
-    return task_log_;
+  Status CancelNotifications(const JobID &job_id, const ObjectID &object_id,
+                             const ClientID &client_id) {
+    return ray::Status::OK();
   }
 
  private:

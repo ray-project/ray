@@ -64,8 +64,6 @@ void ReconstructionPolicy::Listen(const ObjectID &object_id) {
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
-  // Stop listening for the object.
-  listening_objects_.erase(object_id);
   // Stop the timer for this object.
   object_ticks_.erase(object_id);
   // If we were attempting to re-execute the task that reconstructed the
@@ -77,6 +75,12 @@ void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
     if (it != task_entry->second.end()) {
       task_entry->second.erase(it);
     }
+  }
+
+  // Stop listening for the object.
+  size_t removed = listening_objects_.erase(object_id);
+  if (removed > 0) {
+    RAY_CHECK_OK(object_pubsub_.CancelNotifications(JobID::nil(), object_id, client_id_));
   }
 }
 

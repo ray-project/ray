@@ -32,6 +32,8 @@ class PubsubInterface {
  public:
   virtual Status RequestNotifications(const JobID &job_id, const ID &id,
                                       const ClientID &client_id);
+  virtual Status CancelNotifications(const JobID &job_id, const ID &id,
+                                     const ClientID &client_id);
   virtual ~PubsubInterface(){};
 };
 
