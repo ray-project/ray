@@ -2737,9 +2737,7 @@ def test_update():
 
 @pytest.fixture
 def test_var(ray_df, pandas_df):
-    print(ray_df.var())
-    print(pandas_df.var())
-    assert(ray_df.var().values.equals(pandas_df.var().values))
+    assert(ray_df.var().equals(pandas_df.var()))
 
 
 def test_where():
