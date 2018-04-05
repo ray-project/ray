@@ -186,7 +186,7 @@ def _build_index(df_row, index):
     return lengths, index_df
 
 
-def _create_blk_partitions(partitions, axis=0, length=None):
+def _create_block_partitions(partitions, axis=0, length=None):
 
     if length is not None and get_npartitions() > length:
         npartitions = length
@@ -224,3 +224,19 @@ def create_blocks(df, npartitions, axis):
     for block in blocks:
         block.columns = pd.RangeIndex(0, len(block.columns))
     return blocks
+
+
+@ray.remote
+def _blocks_to_col(*partition):
+    return pd.concat(partition, axis=0, copy=False)\
+        .reset_index(drop=True)
+
+
+@ray.remote
+def _blocks_to_row(*partition):
+    row_part = pd.concat(partition, axis=1, copy=False)\
+        .reset_index(drop=True)
+    # Because our block partitions contain different indices (for the
+    # columns), this change is needed to ensure correctness.
+    row_part.columns = pd.RangeIndex(0, len(row_part.columns))
+    return row_part

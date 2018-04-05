@@ -114,7 +114,8 @@ def test_copy(ray_df):
     new_ray_df = ray_df.copy()
 
     assert new_ray_df is not ray_df
-    assert np.array_equal(new_ray_df._blk_partitions, ray_df._blk_partitions)
+    assert np.array_equal(new_ray_df._block_partitions,
+                          ray_df._block_partitions)
 
 
 @pytest.fixture
@@ -1161,8 +1162,6 @@ def test_fillna_sanity(num_partitions=2):
 
     zero_filled = test_data.tsframe.fillna(0)
     ray_df = from_pandas(test_data.tsframe, num_partitions).fillna(0)
-    print(ray_df)
-    print(zero_filled)
     assert ray_df_equals_pandas(ray_df, zero_filled)
 
     padded = test_data.tsframe.fillna(method='pad')
@@ -2738,7 +2737,9 @@ def test_update():
 
 @pytest.fixture
 def test_var(ray_df, pandas_df):
-    assert(ray_df.var().equals(pandas_df.var()))
+    print(ray_df.var())
+    print(pandas_df.var())
+    assert(ray_df.var().values.equals(pandas_df.var().values))
 
 
 def test_where():

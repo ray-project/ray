@@ -28,8 +28,10 @@ from .utils import (
     _partition_pandas_dataframe,
     to_pandas,
     _build_index,
+    _blocks_to_col,
+    _blocks_to_row,
     _build_columns,
-    _create_blk_partitions)
+    _create_block_partitions)
 from . import get_npartitions
 
 
@@ -37,7 +39,7 @@ class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
                  copy=False, col_partitions=None, row_partitions=None,
-                 blk_partitions=None):
+                 block_partitions=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -47,7 +49,7 @@ class DataFrame(object):
             index (pandas.Index or list): The row index for this dataframe.
             columns (pandas.Index): The column names for this dataframe, in
                 pandas Index object.
-            dtype : Data type to force. Only a single dtype is allowed.
+            dtype: Data type to force. Only a single dtype is allowed.
                 If None, infer
             copy (boolean): Copy data from inputs.
                 Only affects DataFrame / 2d ndarray input
@@ -55,11 +57,12 @@ class DataFrame(object):
                 the column dataframe partitions.
             row_partitions ([ObjectID]): The list of ObjectIDs that contain the
                 row dataframe partitions.
+            block_partitions: A 2D numpy array of block partitions.
         """
         # Check type of data and use appropriate constructor
         if data is not None or (col_partitions is None and
                                 row_partitions is None and
-                                blk_partitions is None):
+                                block_partitions is None):
 
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
@@ -69,9 +72,9 @@ class DataFrame(object):
                 _partition_pandas_dataframe(pd_df,
                                             num_partitions=get_npartitions())
 
-            self._blk_partitions = \
-                _create_blk_partitions(row_partitions, axis=0,
-                                       length=len(pd_df.columns))
+            self._block_partitions = \
+                _create_block_partitions(row_partitions, axis=0,
+                                         length=len(pd_df.columns))
 
             # Set in case we were only given a single row/column for below.
             axis = 0
@@ -84,10 +87,10 @@ class DataFrame(object):
                 "Columns not defined, must define columns for internal " \
                 "DataFrame creations"
 
-            if blk_partitions is not None:
+            if block_partitions is not None:
                 # put in numpy array here to make accesses easier since it's 2D
-                self._blk_partitions = np.array(blk_partitions)
-                assert self._blk_partitions.ndim == 2, \
+                self._block_partitions = np.array(block_partitions)
+                assert self._block_partitions.ndim == 2, \
                     "Block Partitions must be 2D."
             else:
                 if row_partitions is not None:
@@ -97,55 +100,42 @@ class DataFrame(object):
                     axis = 1
                     partitions = col_partitions
 
-                self._blk_partitions = \
-                    _create_blk_partitions(partitions, axis=axis,
-                                           length=len(columns))
+                self._block_partitions = \
+                    _create_block_partitions(partitions, axis=axis,
+                                             length=len(columns))
 
         # Sometimes we only get a single column or row, which is
         # problematic for building blocks from the partitions, so we
         # add whatever dimension we're missing from the input.
-        if self._blk_partitions.ndim != 2:
-            self._blk_partitions = np.expand_dims(self._blk_partitions,
-                                                  axis=axis ^ 1)
+        if self._block_partitions.ndim != 2:
+            self._block_partitions = np.expand_dims(self._block_partitions,
+                                                    axis=axis ^ 1)
 
         # Create the row and column index objects for using our partitioning.
         self._row_lengths, self._row_index = \
-            _build_index.remote(self._blk_partitions[:, 0], index)
+            _build_index.remote(self._block_partitions[:, 0], index)
         self._col_lengths, self._col_index = \
-            _build_columns.remote(self._blk_partitions[0, :], columns)
+            _build_columns.remote(self._block_partitions[0, :], columns)
 
     def _get_row_partitions(self):
-        @ray.remote
-        def h(*partition):
-            row_part = pd.concat(partition, axis=1, copy=False)\
-                .reset_index(drop=True)
-            # Because our block partitions contain different indices (for the
-            # columns), this change is needed to ensure correctness.
-            row_part.columns = pd.RangeIndex(0, len(row_part.columns))
-            return row_part
-
-        return [h.remote(*part) for part in self._blk_partitions]
+        return [_blocks_to_row.remote(*part)
+                for part in self._block_partitions]
 
     def _set_row_partitions(self, new_row_partitions):
-        self._blk_partitions = \
-            _create_blk_partitions(new_row_partitions, axis=0,
-                                   length=len(self.columns))
+        self._block_partitions = \
+            _create_block_partitions(new_row_partitions, axis=0,
+                                     length=len(self.columns))
 
     _row_partitions = property(_get_row_partitions, _set_row_partitions)
 
     def _get_col_partitions(self):
-        @ray.remote
-        def h(*partition):
-            return pd.concat(partition, axis=0, copy=False)\
-                .reset_index(drop=True)
-
-        return [h.remote(*self._blk_partitions[:, i])
-                for i in range(self._blk_partitions.shape[1])]
+        return [_blocks_to_col.remote(*self._block_partitions[:, i])
+                for i in range(self._block_partitions.shape[1])]
 
     def _set_col_partitions(self, new_col_partitions):
-        self._blk_partitions = \
-            _create_blk_partitions(new_col_partitions, axis=1,
-                                   length=len(self.index))
+        self._block_partitions = \
+            _create_block_partitions(new_col_partitions, axis=1,
+                                     length=len(self.index))
 
     _col_partitions = property(_get_col_partitions, _set_col_partitions)
 
@@ -185,7 +175,7 @@ class DataFrame(object):
         tail = tail(x, 30)
 
         # Make the dots in between the head and tail
-        dots = pd.Series(["..." for _ in range(self._blk_partitions.shape[1])])
+        dots = pd.Series(["..." for _ in range(self._block_partitions.shape[1])])
         dots.index = head.columns
         dots.name = "..."
 
@@ -493,9 +483,9 @@ class DataFrame(object):
 
         Note:
             If `columns` or `index` are not supplied, they will revert to
-            default columns or index respectively, as this function does not
-            have enough contextual info to rebuild the indexes correctly based
-            on the addition/subtraction of rows/columns.
+                default columns or index respectively, as this function does
+                not have enough contextual info to rebuild the indexes
+                correctly based on the addition/subtraction of rows/columns.
         """
         assert row_partitions is not None or col_partitions is not None, \
             "To update inplace, new column or row partitions must be set."
@@ -510,9 +500,9 @@ class DataFrame(object):
             # At least one partition list is being updated, so recompute
             # lengths and indices
             self._row_lengths, self._row_index = \
-                _build_index.remote(self._blk_partitions[:, 0], index)
+                _build_index.remote(self._block_partitions[:, 0], index)
             self._col_lengths, self._col_index = \
-                _build_columns.remote(self._blk_partitions[0, :], columns)
+                _build_columns.remote(self._block_partitions[0, :], columns)
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -521,7 +511,7 @@ class DataFrame(object):
             A new DataFrame containing the new column names.
         """
         new_cols = self.columns.map(lambda x: str(prefix) + str(x))
-        return DataFrame(blk_partitions=self._blk_partitions,
+        return DataFrame(block_partitions=self._block_partitions,
                          columns=new_cols,
                          index=self.index)
 
@@ -532,7 +522,7 @@ class DataFrame(object):
             A new DataFrame containing the new column names.
         """
         new_cols = self.columns.map(lambda x: str(x) + str(suffix))
-        return DataFrame(blk_partitions=self._blk_partitions,
+        return DataFrame(block_partitions=self._block_partitions,
                          columns=new_cols,
                          index=self.index)
 
@@ -546,11 +536,11 @@ class DataFrame(object):
             raise ValueError(
                 "\'{0}\' object is not callable".format(type(func)))
 
-        new_blk_partitions = np.array([
-            _map_partitions(lambda df: df.applymap(func), blk)
-            for blk in self._blk_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(lambda df: df.applymap(func), block)
+            for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions,
+        return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -560,7 +550,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame pointing to the same partitions as this one.
         """
-        return DataFrame(blk_partitions=self._blk_partitions,
+        return DataFrame(block_partitions=self._block_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -609,11 +599,11 @@ class DataFrame(object):
                 # TODO Give a more accurate error to Pandas
                 raise TypeError("bad operand type for abs():", "str")
 
-        new_blk_partitions = np.array([_map_partitions(lambda df: df.abs(),
-                                                       blk)
-                                       for blk in self._blk_partitions])
+        new_block_partitions = np.array([_map_partitions(lambda df: df.abs(),
+                                                       block)
+                                       for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions,
+        return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -629,10 +619,10 @@ class DataFrame(object):
             True: cell is contained in values.
             False: otherwise
         """
-        new_blk_partitions = np.array([_map_partitions(
-            lambda df: df.isin(values), blk) for blk in self._blk_partitions])
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: df.isin(values), block) for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions,
+        return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -645,10 +635,10 @@ class DataFrame(object):
             True: cell contains NA.
             False: otherwise.
         """
-        new_blk_partitions = np.array([_map_partitions(
-            lambda df: df.isna(), blk) for blk in self._blk_partitions])
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: df.isna(), block) for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions,
+        return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -661,10 +651,10 @@ class DataFrame(object):
             True: cell contains null.
             False: otherwise.
         """
-        new_blk_partitions = np.array([_map_partitions(
-            lambda df: df.isnull(), blk) for blk in self._blk_partitions])
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: df.isnull(), block) for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions,
+        return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -683,10 +673,10 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
-        new_blk_partitions = np.array([_map_partitions(
-            lambda df: df.T, blk) for blk in self._blk_partitions])
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: df.T, block) for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions.T,
+        return DataFrame(block_partitions=new_block_partitions.T,
                          columns=self.index,
                          index=self.columns)
 
@@ -740,7 +730,7 @@ class DataFrame(object):
 
         Note:
             If axis=None or axis=0, this call applies df.all(axis=1)
-            to the transpose of df.
+                to the transpose of df.
         """
         def remote_func(df):
             return df.all(axis=axis, bool_only=bool_only, skipna=skipna,
@@ -754,7 +744,7 @@ class DataFrame(object):
 
         Note:
             If axis=None or axis=0, this call applies on the column partitions,
-            otherwise operates on row partitions
+                otherwise operates on row partitions
         """
         def remote_func(df):
             return df.any(axis=axis, bool_only=bool_only, skipna=skipna,
@@ -1081,6 +1071,10 @@ class DataFrame(object):
         Returns:
             dropped : type of caller
         """
+        # TODO implement level
+        if level is not None:
+            raise NotImplementedError("Level not yet supported for drop")
+
         inplace = validate_bool_kwarg(inplace, "inplace")
         if labels is not None:
             if index is not None or columns is not None:
@@ -1194,7 +1188,7 @@ class DataFrame(object):
         else:
             self._row_index = obj._row_index
             self._col_index = obj._col_index
-            self._blk_partitions = obj._blk_partitions
+            self._block_partitions = obj._block_partitions
 
     def drop_duplicates(self, subset=None, keep='first', inplace=False):
         raise NotImplementedError(
@@ -1985,10 +1979,10 @@ class DataFrame(object):
             Boolean DataFrame where value is False if corresponding
             value is NaN, True otherwise
         """
-        new_blk_partitions = np.array([_map_partitions(
-            lambda df: df.notna(), blk) for blk in self._blk_partitions])
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: df.notna(), block) for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions,
+        return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -2002,10 +1996,10 @@ class DataFrame(object):
             Boolean DataFrame where value is False if corresponding
             value is NaN, True otherwise
         """
-        new_blk_partitions = np.array([_map_partitions(
-            lambda df: df.notnull(), blk) for blk in self._blk_partitions])
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: df.notnull(), block) for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions,
+        return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -2345,7 +2339,7 @@ class DataFrame(object):
 
         # We're building a new default index dataframe for use later.
         _, new_index = \
-            _build_index.remote(new_obj._blk_partitions[:, 0], None)
+            _build_index.remote(new_obj._block_partitions[:, 0], None)
 
         new_index = ray.get(new_index).index
         if level is not None:
@@ -2423,11 +2417,11 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def round(self, decimals=0, *args, **kwargs):
-        new_blk_partitions = np.array([_map_partitions(
-            lambda df: df.round(decimals=decimals, *args, **kwargs), blk)
-            for blk in self._blk_partitions])
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: df.round(decimals=decimals, *args, **kwargs), block)
+            for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions,
+        return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
 
@@ -3277,10 +3271,10 @@ class DataFrame(object):
                 raise TypeError("Unary negative expects numeric dtype, not {}"
                                 .format(t))
 
-        new_blk_partitions = np.array([_map_partitions(
-            lambda df: df.__neg__(), blk) for blk in self._blk_partitions])
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: df.__neg__(), block) for block in self._block_partitions])
 
-        return DataFrame(blk_partitions=new_blk_partitions,
+        return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
 
