@@ -69,9 +69,11 @@ class ObjectDirectoryInterface {
   ///
   /// \param object_id The object id that was put into the store.
   /// \param client_id The client id corresponding to this node.
+  /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectAdded(const ObjectID &object_id,
-                                        const ClientID &client_id) = 0;
+                                        const ClientID &client_id,
+                                        const ObjectInfoT &object_info) = 0;
 
   /// Report objects removed from this client's store to the object directory.
   ///
@@ -102,7 +104,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status Cancel(const ObjectID &object_id) override;
   ray::Status Terminate() override;
   ray::Status ReportObjectAdded(const ObjectID &object_id,
-                                const ClientID &client_id) override;
+                                const ClientID &client_id,
+                                const ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).

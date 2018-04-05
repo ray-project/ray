@@ -70,8 +70,8 @@ void ObjectManager::StopIOService() {
 
 void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
-  local_objects_[object_id] = std::move(object_info);
-  ray::Status status = object_directory_->ReportObjectAdded(object_id, client_id_);
+  local_objects_[object_id] = object_info;
+  ray::Status status = object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {

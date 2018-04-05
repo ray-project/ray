@@ -7,12 +7,14 @@ ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client
 };
 
 ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
-                                               const ClientID &client_id) {
+                                               const ClientID &client_id,
+                                               const ObjectInfoT &object_info) {
   // TODO(hme): Determine whether we need to do lookup to append.
   JobID job_id = JobID::from_random();
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = false;
+  data->object_size = object_info.data_size;
   ray::Status status = gcs_client_->object_table().Append(
       job_id, object_id, data, [](gcs::AsyncGcsClient *client, const UniqueID &id,
                                   const std::shared_ptr<ObjectTableDataT> data) {
