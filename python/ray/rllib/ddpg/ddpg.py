@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
 import ray
 from ray.rllib.agent import Agent
 from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator, RemoteDDPGEvaluator

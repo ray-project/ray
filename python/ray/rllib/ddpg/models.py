@@ -3,10 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from ray.experimental.tfutils import TensorFlowVariables
-from ray.rllib.ddpg.random_process import OrnsteinUhlenbeckProcess
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+
+from ray.experimental.tfutils import TensorFlowVariables
+from ray.rllib.ddpg.random_process import OrnsteinUhlenbeckProcess
 
 
 class DDPGModel():
@@ -15,15 +16,11 @@ class DDPGModel():
         self.sess = tf.Session()
 
         with tf.variable_scope("model"):
-            self.model = DDPGActorCritic(registry,
-                                         env,
-                                         self.config,
-                                         self.sess)
+            self.model = DDPGActorCritic(
+                        registry, env, self.config, self.sess)
         with tf.variable_scope("target_model"):
-            self.target_model = DDPGActorCritic(registry,
-                                                env,
-                                                self.config,
-                                                self.sess)
+            self.target_model = DDPGActorCritic(
+                               registry, env, self.config, self.sess)
         self._setup_gradients()
         self._setup_target_updates()
 
@@ -36,41 +33,41 @@ class DDPGModel():
     def _initialize_target_weights(self):
         """Set initial target weights to match model weights."""
         a_updates = []
-        for var, target_var in zip(self.model.actor_var_list,
-                                   self.target_model.actor_var_list):
+        for var, target_var in zip(
+                self.model.actor_var_list, self.target_model.actor_var_list):
             a_updates.append(tf.assign(target_var, var))
         actor_updates = tf.group(*a_updates)
 
         c_updates = []
-        for var, target_var in zip(self.model.critic_var_list,
-                                   self.target_model.critic_var_list):
+        for var, target_var in zip(
+                self.model.critic_var_list, self.target_model.critic_var_list):
             c_updates.append(tf.assign(target_var, var))
         critic_updates = tf.group(*c_updates)
         self.sess.run([actor_updates, critic_updates])
 
     def _setup_gradients(self):
         """Setup critic and actor gradients."""
-        self.critic_grads = tf.gradients(self.model.critic_loss,
-                                         self.model.critic_var_list)
-        c_grads_and_vars = list(zip(self.critic_grads,
-                                self.model.critic_var_list))
+        self.critic_grads = tf.gradients(
+                           self.model.critic_loss, self.model.critic_var_list)
+        c_grads_and_vars = list(zip(
+                          self.critic_grads, self.model.critic_var_list))
         c_opt = tf.train.AdamOptimizer(self.config["critic_lr"])
         self._apply_c_gradients = c_opt.apply_gradients(c_grads_and_vars)
 
-        self.actor_grads = tf.gradients(-self.model.cn_for_loss,
-                                        self.model.actor_var_list)
-        a_grads_and_vars = list(zip(self.actor_grads,
-                                self.model.actor_var_list))
+        self.actor_grads = tf.gradients(
+                          -self.model.cn_for_loss, self.model.actor_var_list)
+        a_grads_and_vars = list(zip(
+                          self.actor_grads, self.model.actor_var_list))
         a_opt = tf.train.AdamOptimizer(self.config["actor_lr"])
         self._apply_a_gradients = a_opt.apply_gradients(a_grads_and_vars)
 
     def compute_gradients(self, samples):
         """ Returns gradient w.r.t. samples."""
         # actor gradients
-        actor_actions = self.sess.run(self.model.output_action,
-                                      feed_dict={
-                                        self.model.obs: samples["obs"]
-                                      })
+        actor_actions = self.sess.run(
+                          self.model.output_action,
+                          feed_dict={self.model.obs: samples["obs"]}
+                        )
 
         actor_feed_dict = {
             self.model.obs: samples["obs"],
@@ -80,17 +77,17 @@ class DDPGModel():
         actor_grad = self.sess.run(self.actor_grads, feed_dict=actor_feed_dict)
 
         # feed samples into target actor
-        target_Q_act = self.sess.run(self.target_model.output_action,
-                                     feed_dict={
-                                      self.target_model.obs: samples["new_obs"]
-                                     })
+        target_Q_act = self.sess.run(
+                         self.target_model.output_action,
+                         feed_dict={self.target_model.obs: samples["new_obs"]}
+                       )
         target_Q_dict = {
             self.target_model.obs: samples["new_obs"],
             self.target_model.act: target_Q_act,
         }
 
-        target_Q = self.sess.run(self.target_model.critic_eval,
-                                 feed_dict=target_Q_dict)
+        target_Q = self.sess.run(
+                  self.target_model.critic_eval, feed_dict=target_Q_dict)
 
         # critic gradients
         critic_feed_dict = {
@@ -100,8 +97,8 @@ class DDPGModel():
             self.model.target_Q: target_Q,
         }
         self.critic_grads = [g for g in self.critic_grads if g is not None]
-        critic_grad = self.sess.run(self.critic_grads,
-                                    feed_dict=critic_feed_dict)
+        critic_grad = self.sess.run(
+                     self.critic_grads, feed_dict=critic_feed_dict)
         return (critic_grad, actor_grad), {}
 
     def apply_gradients(self, grads):
@@ -125,23 +122,18 @@ class DDPGModel():
     def _setup_target_updates(self):
         """Set up target actor and critic updates."""
         a_updates = []
-        for var, target_var in zip(self.model.actor_var_list,
-                                   self.target_model.actor_var_list):
-            a_updates.append(
-                tf.assign(target_var,
-                          self.config["tau"] * var
-                          + (1. - self.config["tau"]) * target_var)
-            )
+        tau = self.config["tau"]
+        for var, target_var in zip(
+                self.model.actor_var_list, self.target_model.actor_var_list):
+            a_updates.append(tf.assign(
+                target_var, tau * var + (1. - tau) * target_var))
         actor_updates = tf.group(*a_updates)
 
         c_updates = []
-        for var, target_var in zip(self.model.critic_var_list,
-                                   self.target_model.critic_var_list):
-            c_updates.append(
-                tf.assign(target_var,
-                          self.config["tau"] * var
-                          + (1. - self.config["tau"]) * target_var)
-            )
+        for var, target_var in zip(
+                self.model.critic_var_list, self.target_model.critic_var_list):
+            c_updates.append(tf.assign(
+                target_var, tau * var + (1. - tau) * target_var))
         critic_updates = tf.group(*c_updates)
         self.target_updates = [actor_updates, critic_updates]
 
@@ -205,36 +197,34 @@ class DDPGActorCritic():
         self.critic_target = tf.expand_dims(self.reward, 1) + \
             self.config['gamma'] * self.target_Q
         self.critic_loss = tf.reduce_mean(tf.square(
-                                        self.critic_target - self.critic_eval))
+                          self.critic_target - self.critic_eval))
 
     def _setup_critic_network(self, obs_space, ac_space):
         """Sets up Q network."""
         with tf.variable_scope("critic", reuse=tf.AUTO_REUSE):
             self.critic_eval = self._create_critic_network(
-                               self.obs, self.act)
+                              self.obs, self.act)
 
         with tf.variable_scope("critic", reuse=True):
             tf.get_variable_scope().reuse_variables()
             self.cn_for_loss = self._create_critic_network(
-                               self.obs, self.output_action)
+                              self.obs, self.output_action)
 
     def _create_critic_network(self, obs, action):
         """Network for critic."""
         w_normal = tf.truncated_normal_initializer()
         w_init = tf.random_uniform_initializer(minval=-0.0003, maxval=0.0003)
-        net = slim.fully_connected(obs, 400, activation_fn=tf.nn.relu,
-                                   weights_initializer=w_normal)
-        t1 = slim.fully_connected(net, 300,
-                                  activation_fn=None, biases_initializer=None,
-                                  weights_initializer=w_normal)
-        t2 = slim.fully_connected(action, 300, activation_fn=None,
-                                  weights_initializer=w_normal)
+        net = slim.fully_connected(
+             obs, 400, activation_fn=tf.nn.relu, weights_initializer=w_normal)
+        t1 = slim.fully_connected(
+            net, 300, activation_fn=None, biases_initializer=None,
+            weights_initializer=w_normal)
+        t2 = slim.fully_connected(
+            action, 300, activation_fn=None, weights_initializer=w_normal)
         net = tf.nn.relu(tf.add(t1, t2))
 
-        out = slim.fully_connected(net,
-                                   1,
-                                   activation_fn=None,
-                                   weights_initializer=w_init)
+        out = slim.fully_connected(
+             net, 1, activation_fn=None, weights_initializer=w_init)
         return out
 
     def _setup_actor_network(self, obs_space, ac_space):
@@ -247,18 +237,13 @@ class DDPGActorCritic():
         w_normal = tf.truncated_normal_initializer()
         w_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
 
-        net = slim.fully_connected(obs,
-                                   400,
-                                   activation_fn=tf.nn.relu,
-                                   weights_initializer=w_normal)
-        net = slim.fully_connected(net,
-                                   300,
-                                   activation_fn=tf.nn.relu,
-                                   weights_initializer=w_normal)
-        out = slim.fully_connected(net,
-                                   self.ac_size,
-                                   activation_fn=tf.nn.tanh,
-                                   weights_initializer=w_init)
+        net = slim.fully_connected(
+             obs, 400, activation_fn=tf.nn.relu, weights_initializer=w_normal)
+        net = slim.fully_connected(
+             net, 300, activation_fn=tf.nn.relu, weights_initializer=w_normal)
+        out = slim.fully_connected(
+             net, self.ac_size, activation_fn=tf.nn.tanh,
+             weights_initializer=w_init)
         scaled_out = tf.multiply(out, self.action_bound)
         return scaled_out
 
