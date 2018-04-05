@@ -73,12 +73,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
                  << " port " << client_info.node_manager_port;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
-  auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                          const ClientTableDataT &data) {
-    node_manager_.ClientAdded(client, id, data);
-  };
-  gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
-  return Status::OK();
+  return node_manager_.RegisterGcs();
 }
 
 void Raylet::DoAcceptNodeManager() {

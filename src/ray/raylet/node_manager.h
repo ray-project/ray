@@ -53,11 +53,7 @@ class NodeManager {
   void ProcessNodeManagerMessage(std::shared_ptr<TcpClientConnection> node_manager_client,
                                  int64_t message_type, const uint8_t *message);
 
-  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                   const ClientTableDataT &data);
-
-  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
-                      const HeartbeatTableDataT &data);
+  ray::Status RegisterGcs();
 
  private:
   /// Submit a task to this node.
@@ -75,6 +71,12 @@ class NodeManager {
   ray::Status ForwardTask(Task &task, const ClientID &node_id);
   /// Send heartbeats to the GCS.
   void Heartbeat();
+  /// Handler for a notification about a new client from the GCS.
+  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
+                   const ClientTableDataT &data);
+  /// Handler for a heartbeat notification from the GCS.
+  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
+                      const HeartbeatTableDataT &data);
 
   boost::asio::io_service &io_service_;
   boost::asio::deadline_timer heartbeat_timer_;

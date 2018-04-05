@@ -35,6 +35,31 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                                 SchedulingResources(config.resource_config));
 }
 
+ray::Status NodeManager::RegisterGcs() {
+  // Register a callback on the client table for new clients.
+  auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                          const ClientTableDataT &data) {
+    ClientAdded(client, id, data);
+  };
+  gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
+
+  // Subscribe to node manager heartbeats.
+  const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
+                                      const HeartbeatTableDataT &heartbeat_data) {
+    HeartbeatAdded(client, id, heartbeat_data);
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->heartbeat_table().Subscribe(
+      UniqueID::nil(), UniqueID::nil(), heartbeat_added,
+      [this](gcs::AsyncGcsClient *client) {
+        RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
+      }));
+
+  // Start sending heartbeats to the GCS.
+  Heartbeat();
+
+  return ray::Status::OK();
+}
+
 void NodeManager::Heartbeat() {
   RAY_LOG(DEBUG) << "[Heartbeat] sending heartbeat.";
   auto &heartbeat_table = gcs_client_->heartbeat_table();
@@ -84,19 +109,6 @@ void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Save this NodeManager's resource information in the cluster resource map.
     cluster_resource_map_[client_id] = local_resources_;
-    // Start sending heartbeats to the GCS.
-    Heartbeat();
-    // Subscribe to heartbeats.
-    const auto heartbeat_added = [this](gcs::AsyncGcsClient *client, const ClientID &id,
-                                        const HeartbeatTableDataT &heartbeat_data) {
-      this->HeartbeatAdded(client, id, heartbeat_data);
-    };
-    ray::Status status = client->heartbeat_table().Subscribe(
-        UniqueID::nil(), UniqueID::nil(), heartbeat_added,
-        [](gcs::AsyncGcsClient *client) {
-          RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
-        });
-    RAY_CHECK_OK(status);
     return;
   }
 
