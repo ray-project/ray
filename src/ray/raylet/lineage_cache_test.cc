@@ -13,9 +13,15 @@ namespace ray {
 
 namespace raylet {
 
-class MockGcs : virtual public gcs::TableInterface<TaskID, protocol::Task> {
+class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
+                public gcs::PubsubInterface<TaskID> {
  public:
-  MockGcs(){};
+  MockGcs() {}
+
+  void Subscribe(const gcs::raylet::TaskTable::WriteCallback &notification_callback) {
+    notification_callback_ = notification_callback;
+  }
+
   Status Add(const JobID &job_id, const TaskID &task_id,
              std::shared_ptr<protocol::TaskT> task_data,
              const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
@@ -23,14 +29,37 @@ class MockGcs : virtual public gcs::TableInterface<TaskID, protocol::Task> {
     callbacks_.push_back(
         std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>(done, task_id));
     return ray::Status::OK();
-  };
+  }
+
+  Status RemoteAdd(const TaskID &task_id, std::shared_ptr<protocol::TaskT> task_data) {
+    task_table_[task_id] = task_data;
+    auto callback = [this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                           std::shared_ptr<protocol::TaskT> data) {
+      if (subscribed_tasks_.count(task_id) == 1) {
+        notification_callback_(client, task_id, data);
+      }
+    };
+    return Add(JobID::nil(), task_id, task_data, callback);
+  }
+
+  Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
+                              const ClientID &client_id) {
+    subscribed_tasks_.insert(task_id);
+    return ray::Status::OK();
+  }
+
+  Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
+                             const ClientID &client_id) {
+    subscribed_tasks_.erase(task_id);
+    return ray::Status::OK();
+  }
 
   void Flush() {
     for (const auto &callback : callbacks_) {
       callback.first(NULL, callback.second, task_table_[callback.second]);
     }
     callbacks_.clear();
-  };
+  }
 
   const std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
       &TaskTable() const {
@@ -41,11 +70,18 @@ class MockGcs : virtual public gcs::TableInterface<TaskID, protocol::Task> {
   std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
       task_table_;
   std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
+  gcs::raylet::TaskTable::WriteCallback notification_callback_;
+  std::unordered_set<TaskID, UniqueIDHasher> subscribed_tasks_;
 };
 
 class LineageCacheTest : public ::testing::Test {
  public:
-  LineageCacheTest() : mock_gcs_(), lineage_cache_(mock_gcs_) {}
+  LineageCacheTest() : mock_gcs_(), lineage_cache_(mock_gcs_, mock_gcs_) {
+    mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                               std::shared_ptr<ray::protocol::TaskT> data) {
+      lineage_cache_.HandleEntryCommitted(task_id);
+    });
+  }
 
  protected:
   MockGcs mock_gcs_;
