@@ -90,7 +90,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   auto d = std::shared_ptr<CallbackData>(
       new CallbackData({client_id, nullptr, subscribe, done, this, client_}));
   int64_t callback_index =
-      RedisCallbackManager::instance().add([this, d](const std::string &data) {
+      RedisCallbackManager::instance().add([d](const std::string &data) {
         if (data.empty()) {
           // No notification data is provided. This is the callback for the
           // initial subscription request.
