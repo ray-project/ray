@@ -2960,12 +2960,13 @@ class DataFrame(object):
 
     def _getitem_array(self, key):
         if com.is_bool_indexer(key):
-            if isinstance(key, pd.Series) and not key.index.equals(self.index):
+            if isinstance(key, pd.Series) and \
+                    not key.index.equals(self.index):
                 warnings.warn("Boolean Series key will be reindexed to match "
                               "DataFrame index.", UserWarning, stacklevel=3)
             elif len(key) != len(self.index):
-                raise ValueError('Item wrong length %d instead of %d.' %
-                             (len(key), len(self.index)))
+                raise ValueError('Item wrong length {} instead of {}.'.format(
+                                 len(key), len(self.index)))
             key = check_bool_indexer(self.index, key)
 
             new_parts = _map_partitions(lambda df: df[key],
