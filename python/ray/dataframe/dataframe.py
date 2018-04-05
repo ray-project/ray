@@ -1103,7 +1103,6 @@ class DataFrame(object):
                     if isinstance(coords, pd.DataFrame):
                         partitions = list(coords['partition'])
                         indexes = list(coords['index_within_partition'])
-                        print(partitions, indexes)
                     else:
                         partitions, indexes = coords
                         partitions = [partitions]
@@ -1137,7 +1136,6 @@ class DataFrame(object):
                     if isinstance(coords, pd.DataFrame):
                         partitions = list(coords['partition'])
                         indexes = list(coords['index_within_partition'])
-                        print(indexes)
                     else:
                         partitions, indexes = coords
                         partitions = [partitions]
