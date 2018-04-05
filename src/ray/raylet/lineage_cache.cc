@@ -237,6 +237,9 @@ Status LineageCache::Flush() {
       // GCS. Skip this task for now.
       if (parent && parent->GetStatus() != GcsStatus_COMMITTED) {
         // Request notifications about the parent entry's commit in the GCS.
+        // Once we receive a notification about the task's commit via
+        // HandleEntryCommitted, then this task will be ready to write on the
+        // next call to Flush().
         auto inserted = subscribed_tasks_.insert(parent_id);
         if (inserted.second) {
           task_pubsub_.RequestNotifications(JobID::nil(), parent_id, client_id_);
@@ -296,6 +299,8 @@ void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
   for (const auto &parent_id : entry->GetParentTaskIds()) {
     PopAncestorTasks(parent_id, lineage_);
   }
+  // Mark this task as COMMITTED. Any tasks that were dependent on it and are
+  // ready to be written may now be flushed to the GCS.
   RAY_CHECK(entry->SetStatus(GcsStatus_COMMITTED));
   RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
 
