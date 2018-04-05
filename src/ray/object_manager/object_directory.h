@@ -80,11 +80,6 @@ class ObjectDirectoryInterface {
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                           const ClientID &client_id) = 0;
-
-  /// Terminate this object.
-  ///
-  /// \return Status of whether termination succeeded.
-  virtual ray::Status Terminate() = 0;
 };
 
 /// Ray ObjectDirectory declaration.
@@ -100,7 +95,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                            const OnLocationsSuccess &success_callback,
                            const OnLocationsFailure &fail_callback) override;
   ray::Status Cancel(const ObjectID &object_id) override;
-  ray::Status Terminate() override;
   ray::Status ReportObjectAdded(const ObjectID &object_id,
                                 const ClientID &client_id) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,

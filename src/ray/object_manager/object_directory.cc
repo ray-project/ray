@@ -99,6 +99,4 @@ ray::Status ObjectDirectory::Cancel(const ObjectID &object_id) {
   return ray::Status::OK();
 };
 
-ray::Status ObjectDirectory::Terminate() { return ray::Status::OK(); };
-
 }  // namespace ray
