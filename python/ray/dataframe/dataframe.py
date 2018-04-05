@@ -15,7 +15,9 @@ from pandas.core.dtypes.common import (
     is_list_like,
     is_numeric_dtype,
     is_timedelta64_dtype)
-from pandas.core.indexing import convert_to_index_sliceable
+from pandas.core.indexing import (
+    check_bool_indexer,
+    convert_to_index_sliceable)
 
 import warnings
 import numpy as np
@@ -2926,7 +2928,7 @@ class DataFrame(object):
         try:
             if key in self.columns and not is_mi_columns:
                 return self._getitem_column(key)
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             pass
 
         # see if we can slice the rows
@@ -2956,25 +2958,39 @@ class DataFrame(object):
         result.index = self.index
         return result
 
-    def _getitem_array(self, array_key):
-        partitions = \
-            self._col_index.loc[array_key]['partition'].unique()
+    def _getitem_array(self, key):
+        if com.is_bool_indexer(key):
+            if isinstance(key, pd.Series) and not key.index.equals(self.index):
+                warnings.warn("Boolean Series key will be reindexed to match "
+                              "DataFrame index.", UserWarning, stacklevel=3)
+            elif len(key) != len(self.index):
+                raise ValueError('Item wrong length %d instead of %d.' %
+                             (len(key), len(self.index)))
+            key = check_bool_indexer(self.index, key)
 
-        new_col_parts = [self._getitem_indiv_col(array_key, part)
-                         for part in partitions]
+            new_parts = _map_partitions(lambda df: df[key],
+                                        self._col_partitions)
+            columns = self.columns
+            index = self.index[key]
 
-        # Pandas doesn't allow Index.get_loc for lists, so we have to do this.
-        isin = self.columns.isin(array_key)
-        indices_for_rows = [i for i in range(len(isin)) if isin[i]]
+            return DataFrame(col_partitions=new_parts,
+                             columns=columns,
+                             index=index)
+        else:
+            columns = self.columns[key]
 
-        new_row_parts = [_deploy_func.remote(
-            lambda df: df.__getitem__(indices_for_rows),
-            part) for part in self._row_partitions]
+            indices_for_rows = [self.columns.index(new_col)
+                                for new_col in columns]
 
-        return DataFrame(col_partitions=new_col_parts,
-                         row_partitions=new_row_parts,
-                         columns=array_key,
-                         index=self.index)
+            new_parts = [_deploy_func.remote(
+                lambda df: df.__getitem__(indices_for_rows),
+                part) for part in self._row_partitions]
+
+            index = self.index
+
+            return DataFrame(row_partitions=new_parts,
+                             columns=columns,
+                             index=index)
 
     def _getitem_indiv_col(self, key, part):
         loc = self._col_index.loc[key]
