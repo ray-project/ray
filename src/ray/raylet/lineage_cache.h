@@ -164,7 +164,8 @@ class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
-  LineageCache(gcs::TableInterface<TaskID, protocol::Task> &task_storage,
+  LineageCache(const ClientID &client_id,
+               gcs::TableInterface<TaskID, protocol::Task> &task_storage,
                gcs::PubsubInterface<TaskID> &task_pubsub);
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
@@ -211,12 +212,20 @@ class LineageCache {
   void HandleEntryCommitted(const TaskID &task_id);
 
  private:
+  /// The client ID, used to request notifications for specific tasks.
+  /// TODO(swang): Move the ClientID into the generic Table implementation.
+  ClientID client_id_;
   /// The durable storage system for task information.
   gcs::TableInterface<TaskID, protocol::Task> &task_storage_;
+  /// The pubsub storage system for task information. This can be used to
+  /// request notifications for the commit of a task entry.
   gcs::PubsubInterface<TaskID> &task_pubsub_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;
+  /// The tasks that we've subscribed to notifications for from the pubsub
+  /// storage system. We will receive a notification for these tasks on commit.
+  std::unordered_set<TaskID, UniqueIDHasher> subscribed_tasks_;
 };
 
 }  // namespace raylet
