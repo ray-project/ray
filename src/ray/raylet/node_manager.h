@@ -79,6 +79,9 @@ class NodeManager {
                       const HeartbeatTableDataT &data);
 
   boost::asio::io_service &io_service_;
+  ObjectManager &object_manager_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   boost::asio::deadline_timer heartbeat_timer_;
   uint64_t heartbeat_period_ms_;
   /// The resources local to this node.
@@ -97,12 +100,9 @@ class NodeManager {
   TaskDependencyManager task_dependency_manager_;
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
-  /// A client connection to the GCS.
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   std::vector<ClientID> remote_clients_;
   std::unordered_map<ClientID, TcpServerConnection, UniqueIDHasher>
       remote_server_connections_;
-  ObjectManager &object_manager_;
 };
 
 }  // namespace raylet

@@ -11,6 +11,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : io_service_(io_service),
+      object_manager_(object_manager),
+      gcs_client_(gcs_client),
       heartbeat_timer_(io_service),
       heartbeat_period_ms_(config.heartbeat_period_ms),
       local_resources_(config.resource_config),
@@ -24,10 +26,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
                      gcs_client->raylet_task_table(), gcs_client->raylet_task_table()),
-      gcs_client_(gcs_client),
       remote_clients_(),
-      remote_server_connections_(),
-      object_manager_(object_manager) {
+      remote_server_connections_() {
   RAY_CHECK(heartbeat_period_ms_ > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -36,6 +36,18 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 }
 
 ray::Status NodeManager::RegisterGcs() {
+  // Subscribe to task entry commits in the GCS. These notifications are
+  // forwarded to the lineage cache, which requests notifications about tasks
+  // that were executed remotely.
+  const auto task_committed_callback = [this](gcs::AsyncGcsClient *client,
+                                              const TaskID &task_id,
+                                              const ray::protocol::TaskT &task_data) {
+    lineage_cache_.HandleEntryCommitted(task_id);
+  };
+  gcs_client_->raylet_task_table().Subscribe(
+      JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      task_committed_callback, nullptr);
+
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
                                           const ClientTableDataT &data) {
