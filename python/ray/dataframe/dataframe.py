@@ -175,7 +175,8 @@ class DataFrame(object):
         tail = tail(x, 30)
 
         # Make the dots in between the head and tail
-        dots = pd.Series(["..." for _ in range(self._block_partitions.shape[1])])
+        dots = pd.Series(["..."
+                          for _ in range(self._block_partitions.shape[1])])
         dots.index = head.columns
         dots.name = "..."
 
@@ -600,8 +601,8 @@ class DataFrame(object):
                 raise TypeError("bad operand type for abs():", "str")
 
         new_block_partitions = np.array([_map_partitions(lambda df: df.abs(),
-                                                       block)
-                                       for block in self._block_partitions])
+                                                         block)
+                                         for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
@@ -620,7 +621,8 @@ class DataFrame(object):
             False: otherwise
         """
         new_block_partitions = np.array([_map_partitions(
-            lambda df: df.isin(values), block) for block in self._block_partitions])
+            lambda df: df.isin(values), block)
+            for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
@@ -652,7 +654,8 @@ class DataFrame(object):
             False: otherwise.
         """
         new_block_partitions = np.array([_map_partitions(
-            lambda df: df.isnull(), block) for block in self._block_partitions])
+            lambda df: df.isnull(), block)
+            for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
@@ -1997,7 +2000,8 @@ class DataFrame(object):
             value is NaN, True otherwise
         """
         new_block_partitions = np.array([_map_partitions(
-            lambda df: df.notnull(), block) for block in self._block_partitions])
+            lambda df: df.notnull(), block)
+            for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
@@ -3272,7 +3276,8 @@ class DataFrame(object):
                                 .format(t))
 
         new_block_partitions = np.array([_map_partitions(
-            lambda df: df.__neg__(), block) for block in self._block_partitions])
+            lambda df: df.__neg__(), block)
+            for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
