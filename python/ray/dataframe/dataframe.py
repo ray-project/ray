@@ -1434,24 +1434,15 @@ class DataFrame(object):
                 downcast=downcast,
                 **kwargs), parts)
 
-        if inplace:
-            if axis == 0:
-                self._update_inplace(col_partitions=new_parts,
-                                     columns=self.columns,
-                                     index=self.index)
-            else:
-                self._update_inplace(row_partitions=new_parts,
-                                     columns=self.columns,
-                                     index=self.index)
+        if axis == 0:
+            new_obj._update_inplace(col_partitions=new_parts,
+                                    columns=self.columns,
+                                    index=self.index)
         else:
-            if axis == 0:
-                new_obj._update_inplace(col_partitions=new_parts,
-                                        columns=self.columns,
-                                        index=self.index)
-            else:
-                new_obj._update_inplace(row_partitions=new_parts,
-                                        columns=self.columns,
-                                        index=self.index)
+            new_obj._update_inplace(row_partitions=new_parts,
+                                    columns=self.columns,
+                                    index=self.index)
+        if not inplace:
             return new_obj
 
     def filter(self, items=None, like=None, regex=None, axis=None):
