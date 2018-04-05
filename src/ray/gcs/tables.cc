@@ -340,6 +340,7 @@ template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;
 template class Log<TaskID, TaskReconstructionData>;
 template class Table<ClientID, HeartbeatTableData>;
+template class Log<UniqueID, ClientTableData>;
 
 }  // namespace gcs
 
