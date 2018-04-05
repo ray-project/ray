@@ -29,7 +29,8 @@ int main(int argc, char *argv[]) {
     node_manager_config.worker_command.push_back(token);
   }
 
-  node_manager_config.heartbeat_period_ms = RayConfig::instance().heartbeat_timeout_milliseconds();
+  node_manager_config.heartbeat_period_ms =
+      RayConfig::instance().heartbeat_timeout_milliseconds();
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
