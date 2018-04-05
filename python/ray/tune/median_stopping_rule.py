@@ -29,13 +29,13 @@ class MedianStoppingRule(FIFOScheduler):
             them. When all other trials are complete, paused trials will be
             resumed and allowed to run FIFO.
         verbose (bool): If True, will output the median and best result each
-            time a trial reports. Defaults to False.
+            time a trial reports. Defaults to True.
     """
 
     def __init__(
             self, time_attr="time_total_s", reward_attr="episode_reward_mean",
             grace_period=60.0, min_samples_required=3,
-            hard_stop=True, verbose=False):
+            hard_stop=True, verbose=True):
         FIFOScheduler.__init__(self)
         self._stopped_trials = set()
         self._completed_trials = set()
@@ -110,7 +110,3 @@ class MedianStoppingRule(FIFOScheduler):
     def _best_result(self, trial):
         results = self._results[trial]
         return max([getattr(r, self._reward_attr) for r in results])
-
-    def set_verbose(self, verbose):
-        """Sets verbosity for the scheduler."""
-        self._verbose = verbose
