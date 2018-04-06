@@ -72,8 +72,9 @@ ray::Status NodeManager::RegisterGcs() {
       gcs::AsyncGcsClient *client, const ActorID &actor_id,
       const std::vector<ActorTableDataT> &data) { HandleActorCreation(actor_id, data); };
 
-  gcs_client_->actor_table().Subscribe(UniqueID::nil(), UniqueID::nil(),
-                                       actor_creation_callback, nullptr);
+  RAY_RETURN_NOT_OK(gcs_client_->actor_table().Subscribe(UniqueID::nil(), UniqueID::nil(),
+                                                         actor_creation_callback,
+                                                         nullptr));
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
@@ -417,7 +418,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
       } else {
         // The actor is remote. Forward the task to the node manager that owns
         // the actor.
-        ForwardTask(task, node_manager_id);
+        // TODO(swang): Handle forward task failure.
+        RAY_CHECK_OK(ForwardTask(task, node_manager_id));
       }
     } else {
       // We do not have a registered location for the object, so either the
@@ -435,7 +437,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           // task.
         }
       };
-      gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(), lookup_callback);
+      RAY_CHECK_OK(gcs_client_->actor_table().Lookup(JobID::nil(), spec.ActorId(),
+                                                     lookup_callback));
       // Keep the task queued until we discover the actor's location.
       local_queues_.QueueUncreatedActorMethods({task});
     }
@@ -552,8 +555,8 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
     actor_notification->node_manager_id =
         gcs_client_->client_table().GetLocalClientId().binary();
     RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id;
-    gcs_client_->actor_table().Append(JobID::nil(), actor_id, actor_notification,
-                                      nullptr);
+    RAY_CHECK_OK(gcs_client_->actor_table().Append(JobID::nil(), actor_id,
+                                                   actor_notification, nullptr));
 
     // Resources required by an actor creation tasks are acquired for the
     // lifetime of the actor, so we do not release any resources here.
