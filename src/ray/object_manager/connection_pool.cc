@@ -17,13 +17,13 @@ void ConnectionPool::RegisterReceiver(ConnectionType type, const ClientID &clien
   }
 }
 
-void ConnectionPool::RemoveReceiver(std::shared_ptr<TcpClientConnection> conn){
+void ConnectionPool::RemoveReceiver(std::shared_ptr<TcpClientConnection> conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   ClientID client_id = conn->GetClientID();
-  if (message_receive_connections_.count(client_id) != 0){
+  if (message_receive_connections_.count(client_id) != 0) {
     Remove(message_receive_connections_, client_id, conn);
   }
-  if (transfer_receive_connections_.count(client_id) != 0){
+  if (transfer_receive_connections_.count(client_id) != 0) {
     Remove(transfer_receive_connections_, client_id, conn);
   }
 }
