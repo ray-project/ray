@@ -12,6 +12,8 @@ extern "C" {
 
 namespace ray {
 
+namespace gcs {
+
 namespace {
 const char *const kRandomId = "abcdefghijklmnopqrst";
 }  // namespace
@@ -131,20 +133,22 @@ TEST_F(TestGcsWithAe, TestTableLookup) {
   TestTableLookup(job_id_, client_, gcs::CommandType::kRegular);
 }
 
-TEST_F(TestGcsWithAe, TestTableLookupWithChain) {
-  test = this;
-  TestTableLookup(job_id_, client_, gcs::CommandType::kChain);
-}
-
 TEST_F(TestGcsWithAsio, TestTableLookup) {
   test = this;
   TestTableLookup(job_id_, client_, gcs::CommandType::kRegular);
+}
+
+#if RAY_USE_NEW_GCS
+TEST_F(TestGcsWithAe, TestTableLookupWithChain) {
+  test = this;
+  TestTableLookup(job_id_, client_, gcs::CommandType::kChain);
 }
 
 TEST_F(TestGcsWithAsio, TestTableLookupWithChain) {
   test = this;
   TestTableLookup(job_id_, client_, gcs::CommandType::kChain);
 }
+#endif
 
 void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Append some entries to the log at an object ID.
@@ -361,20 +365,22 @@ TEST_F(TestGcsWithAe, TestTaskTable) {
   TestTaskTable(job_id_, client_, gcs::CommandType::kRegular);
 }
 
-TEST_F(TestGcsWithAe, TestTaskTableWithChain) {
-  test = this;
-  TestTaskTable(job_id_, client_, gcs::CommandType::kChain);
-}
-
 TEST_F(TestGcsWithAsio, TestTaskTable) {
   test = this;
   TestTaskTable(job_id_, client_, gcs::CommandType::kRegular);
+}
+
+#if RAY_USE_NEW_GCS
+TEST_F(TestGcsWithAe, TestTaskTableWithChain) {
+  test = this;
+  TestTaskTable(job_id_, client_, gcs::CommandType::kChain);
 }
 
 TEST_F(TestGcsWithAsio, TestTaskTableWithChain) {
   test = this;
   TestTaskTable(job_id_, client_, gcs::CommandType::kChain);
 }
+#endif
 
 void TestTableSubscribeAll(const JobID &job_id,
                            std::shared_ptr<gcs::AsyncGcsClient> client,
@@ -423,19 +429,23 @@ TEST_F(TestGcsWithAe, TestTableSubscribeAll) {
   test = this;
   TestTableSubscribeAll(job_id_, client_, gcs::CommandType::kRegular);
 }
-TEST_F(TestGcsWithAe, TestTableSubscribeAllWithChain) {
-  test = this;
-  TestTableSubscribeAll(job_id_, client_, gcs::CommandType::kChain);
-}
 
 TEST_F(TestGcsWithAsio, TestTableSubscribeAll) {
   test = this;
   TestTableSubscribeAll(job_id_, client_, gcs::CommandType::kRegular);
 }
+
+#if RAY_USE_NEW_GCS
+TEST_F(TestGcsWithAe, TestTableSubscribeAllWithChain) {
+  test = this;
+  TestTableSubscribeAll(job_id_, client_, gcs::CommandType::kChain);
+}
+
 TEST_F(TestGcsWithAsio, TestTableSubscribeAllWithChain) {
   test = this;
   TestTableSubscribeAll(job_id_, client_, gcs::CommandType::kChain);
 }
+#endif
 
 void TestLogSubscribeAll(const JobID &job_id,
                          std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -569,19 +579,23 @@ TEST_F(TestGcsWithAe, TestTableSubscribeId) {
   test = this;
   TestTableSubscribeId(job_id_, client_, gcs::CommandType::kRegular);
 }
-TEST_F(TestGcsWithAe, TestTableSubscribeIdWithChain) {
-  test = this;
-  TestTableSubscribeId(job_id_, client_, gcs::CommandType::kChain);
-}
 
 TEST_F(TestGcsWithAsio, TestTableSubscribeId) {
   test = this;
   TestTableSubscribeId(job_id_, client_, gcs::CommandType::kRegular);
 }
+
+#if RAY_USE_NEW_GCS
+TEST_F(TestGcsWithAe, TestTableSubscribeIdWithChain) {
+  test = this;
+  TestTableSubscribeId(job_id_, client_, gcs::CommandType::kChain);
+}
+
 TEST_F(TestGcsWithAsio, TestTableSubscribeIdWithChain) {
   test = this;
   TestTableSubscribeId(job_id_, client_, gcs::CommandType::kChain);
 }
+#endif
 
 void TestLogSubscribeId(const JobID &job_id,
                         std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -734,19 +748,23 @@ TEST_F(TestGcsWithAe, TestTableSubscribeCancel) {
   test = this;
   TestTableSubscribeCancel(job_id_, client_, gcs::CommandType::kRegular);
 }
-TEST_F(TestGcsWithAe, TestTableSubscribeCancelWithChain) {
-  test = this;
-  TestTableSubscribeCancel(job_id_, client_, gcs::CommandType::kChain);
-}
 
 TEST_F(TestGcsWithAsio, TestTableSubscribeCancel) {
   test = this;
   TestTableSubscribeCancel(job_id_, client_, gcs::CommandType::kRegular);
 }
+
+#if RAY_USE_NEW_GCS
+TEST_F(TestGcsWithAe, TestTableSubscribeCancelWithChain) {
+  test = this;
+  TestTableSubscribeCancel(job_id_, client_, gcs::CommandType::kChain);
+}
+
 TEST_F(TestGcsWithAsio, TestTableSubscribeCancelWithChain) {
   test = this;
   TestTableSubscribeCancel(job_id_, client_, gcs::CommandType::kChain);
 }
+#endif
 
 void TestLogSubscribeCancel(const JobID &job_id,
                             std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -949,4 +967,5 @@ TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
   TestClientTableMarkDisconnected(job_id_, client_);
 }
 
+}  // namespace gcs
 }  // namespace ray
