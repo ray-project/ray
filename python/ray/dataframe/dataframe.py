@@ -178,7 +178,7 @@ class DataFrame(object):
 
         # Make the dots in between the head and tail
         dots = pd.Series(["..."
-                          for _ in range(self._block_partitions.shape[1])])
+                          for _ in range(len(head.columns))])
         dots.index = head.columns
         dots.name = "..."
 
