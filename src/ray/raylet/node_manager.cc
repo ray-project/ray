@@ -78,7 +78,7 @@ ray::Status NodeManager::RegisterGcs() {
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
                                           const ClientTableDataT &data) {
-    ClientAdded(client, id, data);
+    ClientAdded(data);
   };
   gcs_client_->client_table().RegisterClientAddedCallback(node_manager_client_added);
 
@@ -140,8 +140,7 @@ void NodeManager::Heartbeat() {
   });
 }
 
-void NodeManager::ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                              const ClientTableDataT &client_data) {
+void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   ClientID client_id = ClientID::from_binary(client_data.client_id);
   RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id.hex();
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
@@ -423,8 +422,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     } else {
       // We do not have a registered location for the object, so either the
       // actor has not yet been created or we missed the notification for the
-      // actor creation. Look up the actor's registered location in case we
-      // missed the creation notification.
+      // actor creation because this node joined the cluster after the actor
+      // was already created. Look up the actor's registered location in case
+      // we missed the creation notification.
+      // NOTE(swang): This codepath needs to be tested in a cluster setting.
       auto lookup_callback = [this](gcs::AsyncGcsClient *client, const ActorID &actor_id,
                                     const std::vector<ActorTableDataT> &data) {
         if (!data.empty()) {

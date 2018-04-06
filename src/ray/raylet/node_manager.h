@@ -61,8 +61,7 @@ class NodeManager {
 
  private:
   // Handler for the addition of a new GCS client.
-  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                   const ClientTableDataT &data);
+  void ClientAdded(const ClientTableDataT &data);
   // Handler for the creation of an actor, possibly on a remote node.
   void HandleActorCreation(const ActorID &actor_id,
                            const std::vector<ActorTableDataT> &data);
@@ -70,7 +69,7 @@ class NodeManager {
   void QueueTask(const Task &task);
   /// Submit a task to this node.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
-  /// Assign a task.
+  /// Assign a task. The task is assumed to not be queued in local_queues_.
   void AssignTask(Task &task);
   /// Handle a worker finishing its assigned task.
   void FinishAssignedTask(std::shared_ptr<Worker> worker);
@@ -80,6 +79,8 @@ class NodeManager {
   void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
+  /// Forward a task to another node to execute. The task is assumed to not be
+  /// queued in local_queues_.
   ray::Status ForwardTask(const Task &task, const ClientID &node_id);
   /// Send heartbeats to the GCS.
   void Heartbeat();
