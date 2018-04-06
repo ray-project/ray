@@ -29,9 +29,11 @@ matrix:
         #- echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty main" | sudo tee -a /etc/apt/sources.list > /dev/null
         - sudo apt-get update -qq
         - sudo apt-get install -qq clang-format-3.8
+        - pip install yapf
       install: []
       script:
         - .travis/check-git-clang-format-output.sh
+        - .travis/yapf.sh
         # Try generating Sphinx documentation. To do this, we need to install
         # Ray first.
         - ./.travis/install-dependencies.sh
