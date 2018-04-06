@@ -2068,6 +2068,60 @@ class GlobalStateAPI(unittest.TestCase):
         # the visualization actually renders (e.g., the context of the dumped
         # trace could be malformed).
 
+    def testFlushAPI(self):
+        ray.init(num_cpus=1)
+
+        @ray.remote
+        def f():
+            return 1
+
+        [ray.put(1) for _ in range(10)]
+        ray.get([f.remote() for _ in range(10)])
+
+        # Wait until all of the task and object information has been stored in
+        # Redis. Note that since a given key may be updated multiple times
+        # (e.g., multiple calls to TaskTableUpdate), this is an attempt to wait
+        # until all updates have happened. Note that in a real application we
+        # could encounter this kind of issue as well.
+        while True:
+            object_table = ray.global_state.object_table()
+            task_table = ray.global_state.task_table()
+
+            tables_ready = True
+
+            if len(object_table) != 20:
+                tables_ready = False
+
+            for object_info in object_table.values():
+                if len(object_info) != 5:
+                    tables_ready = False
+                if (object_info["ManagerIDs"] is None or
+                        object_info["DataSize"] == -1 or
+                        object_info["Hash"] == ""):
+                    tables_ready = False
+
+            if len(task_table) != 10 + 1:
+                tables_ready = False
+
+            driver_task_id = ray.utils.binary_to_hex(
+                ray.worker.global_worker.current_task_id.id())
+
+            for info in task_table.values():
+                if info["State"] != ray.experimental.state.TASK_STATUS_DONE:
+                    if info["TaskSpec"]["TaskID"] != driver_task_id:
+                        tables_ready = False
+
+            if tables_ready:
+                break
+
+        # Flush the tables.
+        ray.experimental.flush_redis_unsafe()
+        ray.experimental.flush_task_and_object_metadata_unsafe()
+
+        # Make sure the tables are empty.
+        assert len(ray.global_state.object_table()) == 0
+        assert len(ray.global_state.task_table()) == 0
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
