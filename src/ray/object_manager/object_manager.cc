@@ -425,7 +425,8 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> co
     ConnectClient(conn, message);
     break;
   }
-  case object_manager_protocol::MessageType_DisconnectClient: {
+  case protocol::MessageType_DisconnectClient: {
+    // TODO(hme): Disconnect without depending on the node manager protocol.
     DisconnectClient(conn, message);
     break;
   }
@@ -453,17 +454,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
 
 void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                                      const uint8_t *message) {
-  auto info =
-      flatbuffers::GetRoot<object_manager_protocol::DisconnectClientMessage>(message);
-  ClientID client_id = ObjectID::from_binary(info->client_id()->str());
-  bool is_transfer = info->is_transfer();
-  if (is_transfer) {
-    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::TRANSFER, client_id,
-                                    conn);
-  } else {
-    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::MESSAGE, client_id,
-                                    conn);
-  }
+  connection_pool_.RemoveReceiver(conn);
 }
 
 void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
