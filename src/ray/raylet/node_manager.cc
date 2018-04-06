@@ -208,7 +208,7 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
 
 void NodeManager::HandleActorCreation(const ActorID &actor_id,
                                       const std::vector<ActorTableDataT> &data) {
-  RAY_LOG(DEBUG) << "Actor creation notification received: " << actor_id.hex();
+  RAY_LOG(DEBUG) << "Actor creation notification received: " << actor_id;
 
   // TODO(swang): In presence of failures, data may have size > 1, since the
   // actor will have been created multiple times. In that case, we should
@@ -299,7 +299,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       // executing a task. Clean up the assigned task's resources, return an
       // error to the driver.
       // RAY_CHECK(worker->GetAssignedTaskId().is_nil())
-      //    << "Worker died while executing task: " << worker->GetAssignedTaskId().hex();
+      //    << "Worker died while executing task: " << worker->GetAssignedTaskId();
       worker_pool_.DisconnectWorker(worker);
     }
     return;
@@ -532,7 +532,7 @@ void NodeManager::AssignTask(Task &task) {
 
 void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
   TaskID task_id = worker->GetAssignedTaskId();
-  RAY_LOG(DEBUG) << "Finished task " << task_id.hex();
+  RAY_LOG(DEBUG) << "Finished task " << task_id;
   auto tasks = local_queues_.RemoveTasks({task_id});
   auto task = *tasks.begin();
 
@@ -551,7 +551,7 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
     actor_notification->driver_id = JobID::nil().binary();
     actor_notification->node_manager_id =
         gcs_client_->client_table().GetLocalClientId().binary();
-    RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id.hex();
+    RAY_LOG(DEBUG) << "Publishing actor creation: " << actor_id;
     gcs_client_->actor_table().Append(JobID::nil(), actor_id, actor_notification,
                                       nullptr);
 

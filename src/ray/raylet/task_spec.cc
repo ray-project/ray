@@ -38,8 +38,8 @@ TaskSpecification::TaskSpecification(const flatbuffers::String &string) {
 }
 
 TaskSpecification::TaskSpecification(
-    UniqueID driver_id, TaskID parent_task_id, int64_t parent_counter,
-    FunctionID function_id,
+    const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
+    const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources)
     : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
@@ -47,9 +47,10 @@ TaskSpecification::TaskSpecification(
                         function_id, task_arguments, num_returns, required_resources) {}
 
 TaskSpecification::TaskSpecification(
-    UniqueID driver_id, TaskID parent_task_id, int64_t parent_counter,
-    ActorID actor_creation_id, ObjectID actor_creation_dummy_object_id, ActorID actor_id,
-    ActorHandleID actor_handle_id, int64_t actor_counter, FunctionID function_id,
+    const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
+    const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
+    const ActorID &actor_id, const ActorHandleID &actor_handle_id, int64_t actor_counter,
+    const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources)
     : spec_() {
