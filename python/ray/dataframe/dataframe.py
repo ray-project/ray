@@ -202,6 +202,9 @@ class DataFrame(object):
         Returns:
             The HTML representation of a Dataframe.
         """
+        # We use pandas _repr_html_ to get a string of the HTML representation
+        # of the dataframe.
+        # We split so that we insert our correct dataframe dimensions.
         result = self._repr_helper_()._repr_html_()
         return result.split('<p>')[0] + \
             '<p>{0} rows × {1} columns</p>\n</div>'.format(len(self.index),
