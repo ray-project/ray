@@ -4,4 +4,5 @@ FROM ray-project/deploy
 RUN conda install -y -c conda-forge tensorflow
 RUN apt-get install -y zlib1g-dev
 RUN pip install gym[atari] opencv-python==3.2.0.8 smart_open
+RUN pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
 # RUN conda install -y -q pytorch torchvision -c soumith

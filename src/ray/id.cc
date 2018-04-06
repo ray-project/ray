@@ -2,6 +2,9 @@
 
 #include <random>
 
+#include "ray/constants.h"
+#include "ray/status.h"
+
 namespace ray {
 
 UniqueID::UniqueID(const plasma::UniqueID &from) {
@@ -81,6 +84,50 @@ bool UniqueID::operator==(const UniqueID &rhs) const {
 std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
   os << id.hex();
   return os;
+}
+
+const ObjectID ComputeObjectId(TaskID task_id, int64_t object_index) {
+  RAY_CHECK(object_index <= kMaxTaskReturns && object_index >= -kMaxTaskPuts);
+  ObjectID return_id = task_id;
+  int64_t *first_bytes = reinterpret_cast<int64_t *>(&return_id);
+  // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
+  // object ID.
+  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
+  *first_bytes = *first_bytes & (bitmask);
+  // OR the first byte of the object ID with the return index.
+  *first_bytes = *first_bytes | (object_index & ~bitmask);
+  return return_id;
+}
+
+const TaskID FinishTaskId(const TaskID &task_id) { return ComputeObjectId(task_id, 0); }
+
+const ObjectID ComputeReturnId(TaskID task_id, int64_t return_index) {
+  RAY_CHECK(return_index >= 1 && return_index <= kMaxTaskReturns);
+  return ComputeObjectId(task_id, return_index);
+}
+
+const ObjectID ComputePutId(TaskID task_id, int64_t put_index) {
+  RAY_CHECK(put_index >= 1 && put_index <= kMaxTaskPuts);
+  return ComputeObjectId(task_id, -1 * put_index);
+}
+
+const TaskID ComputeTaskId(const ObjectID &object_id) {
+  TaskID task_id = object_id;
+  int64_t *first_bytes = reinterpret_cast<int64_t *>(&task_id);
+  // Zero out the lowest kObjectIdIndexSize bits of the first byte of the
+  // object ID.
+  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
+  *first_bytes = *first_bytes & (bitmask);
+  return task_id;
+}
+
+int64_t ComputeObjectIndex(const ObjectID &object_id) {
+  const int64_t *first_bytes = reinterpret_cast<const int64_t *>(&object_id);
+  uint64_t bitmask = static_cast<uint64_t>(-1) << kObjectIdIndexSize;
+  int64_t index = *first_bytes & (~bitmask);
+  index <<= (8 * sizeof(int64_t) - kObjectIdIndexSize);
+  index >>= (8 * sizeof(int64_t) - kObjectIdIndexSize);
+  return index;
 }
 
 }  // namespace ray

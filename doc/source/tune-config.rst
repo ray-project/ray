@@ -31,7 +31,7 @@ dictionary.
     run_experiments({
         "my_experiment_name": {
             "run": "my_func",
-            "resources": { "cpu": 1, "gpu": 0 },
+            "trial_resources": { "cpu": 1, "gpu": 0 },
             "stop": { "mean_accuracy": 100 },
             "config": {
                 "alpha": grid_search([0.2, 0.4, 0.6]),
@@ -73,9 +73,9 @@ For more information on variant generation, see `variant_generator.py <https://g
 Resource Allocation
 -------------------
 
-Ray Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
+Ray Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``trial_resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
 If GPU resources are not requested, the ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
-Otherwise, it will be set to a GPU in the list (this is managed by Ray).
+Otherwise, it will be set to the GPUs in the list (this is managed by Ray).
 
-If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``driver_cpu_limit`` or ``driver_gpu_limit`` to tell Ray not to assign the entire resource reservation to your top-level trainable function, as described in `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__. For example, if a trainable class requires 1 GPU itself, but will launch 4 actors each using another GPU, then it should set ``"gpu": 5, "driver_gpu_limit": 1``.
+If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``extra_cpu`` or ``extra_gpu`` to reserve extra resource slots for the actors you will create. For example, if a trainable class requires 1 GPU itself, but will launch 4 actors each using another GPU, then it should set ``"gpu": 1, "extra_gpu": 4``.

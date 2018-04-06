@@ -487,13 +487,8 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
                            "plasma_manager", manager_addr, db_connect_args);
     db_attach(state->db, state->loop, false);
 
-    ClientTableDataT client_info;
-    client_info.client_id = get_db_client_id(state->db).binary();
-    client_info.node_manager_address = std::string(manager_addr);
-    client_info.local_scheduler_port = 0;
-    client_info.object_manager_port = manager_port;
     RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
-                                           redis_primary_port, client_info));
+                                           redis_primary_port));
     RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(state->loop));
   } else {
     state->db = NULL;
@@ -1307,12 +1302,15 @@ void log_object_hash_mismatch_error_task_callback(Task *task,
   RAY_CHECK(task != NULL);
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-  FunctionID function = TaskSpec_function(spec);
   /* Push the error to the Python driver that caused the nondeterministic task
    * to be submitted. */
+  std::ostringstream error_message;
+  error_message << "An object created by the task with ID "
+                << TaskSpec_task_id(spec) << " was created with a different "
+                << "hash. This may mean that a non-deterministic task was "
+                << "reexecuted.";
   push_error(state->db, TaskSpec_driver_id(spec),
-             OBJECT_HASH_MISMATCH_ERROR_INDEX, sizeof(function),
-             function.data());
+             OBJECT_HASH_MISMATCH_ERROR_INDEX, error_message.str());
 }
 
 void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
@@ -1329,10 +1327,10 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
   RAY_CHECK_OK(state->gcs_client.task_table().Lookup(
       ray::JobID::nil(), task_id,
       [user_context](gcs::AsyncGcsClient *, const TaskID &,
-                     std::shared_ptr<TaskTableDataT> t) {
+                     const TaskTableDataT &t) {
         Task *task = Task_alloc(
-            t->task_info.data(), t->task_info.size(), t->scheduling_state,
-            DBClientID::from_binary(t->scheduler_id), std::vector<ObjectID>());
+            t.task_info.data(), t.task_info.size(), t.scheduling_state,
+            DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
         log_object_hash_mismatch_error_task_callback(task, user_context);
         Task_free(task);
       },

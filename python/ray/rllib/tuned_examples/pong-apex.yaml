@@ -4,12 +4,12 @@
 pong-apex:
     env: PongNoFrameskip-v4
     run: APEX
-    resources:
-        cpu:
-            eval: spec.config.num_workers
+    trial_resources:
+        cpu: 1
         gpu: 1
+        extra_cpu:
+            eval: 4 + spec.config.num_workers
     config:
-        force_evaluators_remote: True  # set to False if you're running on a single node
         target_network_update_freq: 50000
         num_workers: 32
         lr: .0001

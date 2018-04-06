@@ -32,7 +32,7 @@ run_experiments({
     "carla-a3c": {
         "run": "A3C",
         "env": "carla_env",
-        "resources": {"cpu": 5, "gpu": 2, "driver_gpu_limit": 0},
+        "trial_resources": {"cpu": 5, "extra_gpu": 2},
         "config": {
             "env_config": env_config,
             "use_gpu_for_workers": True,

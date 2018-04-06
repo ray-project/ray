@@ -4,16 +4,16 @@ from __future__ import print_function
 
 import time
 
-from ray.tune import TuneError
+from ray.tune.error import TuneError
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
+from ray.tune.hpo_scheduler import HyperOptScheduler
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.web_server import TuneServer
-from ray.tune.variant_generator import generate_trials
 from ray.tune.experiment import Experiment
 
 
@@ -22,6 +22,7 @@ _SCHEDULERS = {
     "MedianStopping": MedianStoppingRule,
     "HyperBand": HyperBandScheduler,
     "AsyncHyperBand": AsyncHyperBandScheduler,
+    "HyperOpt": HyperOptScheduler,
 }
 
 
@@ -42,37 +43,32 @@ def run_experiments(experiments, scheduler=None, with_server=False,
         experiments (Experiment | list | dict): Experiments to run.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
-            AsyncHyperBand, or HyperBand.
+            AsyncHyperBand, HyperBand, or HyperOpt.
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.
         verbose (bool): How much output should be printed for each trial.
     """
 
-    # Make sure rllib agents are registered
-    from ray import rllib  # noqa # pylint: disable=unused-import
-
     if scheduler is None:
         scheduler = FIFOScheduler()
 
     runner = TrialRunner(
-        scheduler, launch_web_server=with_server, server_port=server_port)
+        scheduler, launch_web_server=with_server, server_port=server_port,
+        verbose=verbose)
+    exp_list = experiments
+    if isinstance(experiments, Experiment):
+        exp_list = [experiments]
+    elif type(experiments) is dict:
+        exp_list = [Experiment.from_json(name, spec)
+                    for name, spec in experiments.items()]
 
-    if type(experiments) is dict:
-        for name, spec in experiments.items():
-            for trial in generate_trials(spec, name):
-                trial.set_verbose(verbose)
-                runner.add_trial(trial)
-    elif (type(experiments) is list and
-          all(isinstance(exp, Experiment) for exp in experiments)):
-        for experiment in experiments:
-            for trial in experiment.trials():
-                trial.set_verbose(verbose)
-                runner.add_trial(trial)
-    elif isinstance(experiments, Experiment):
-        for trial in experiments.trials():
-            trial.set_verbose(verbose)
-            runner.add_trial(trial)
+    if (type(exp_list) is list and
+            all(isinstance(exp, Experiment) for exp in exp_list)):
+        for experiment in exp_list:
+            scheduler.add_experiment(experiment, runner)
+    else:
+        raise TuneError("Invalid argument: {}".format(experiments))
 
     print(runner.debug_string(max_debug=99999))
 

@@ -436,9 +436,6 @@ class ReconstructionTests(unittest.TestCase):
         # Make sure all the errors have the correct type.
         self.assertTrue(all(error[b"type"] == b"object_hash_mismatch"
                             for error in errors))
-        # Make sure all the errors have the correct function name.
-        self.assertTrue(all(error[b"data"] == b"__main__.foo"
-                            for error in errors))
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
@@ -485,7 +482,6 @@ class ReconstructionTests(unittest.TestCase):
         errors = self.wait_for_errors(error_check)
         self.assertTrue(all(error[b"type"] == b"put_reconstruction"
                             for error in errors))
-        self.assertTrue(all(error[b"data"] == b"Driver" for error in errors))
 
 
 class ReconstructionTestsMultinode(ReconstructionTests):

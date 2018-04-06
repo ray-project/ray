@@ -84,7 +84,7 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
    * scheduler gives this client a task. */
   read_message(conn->conn, &type, &reply_size, &reply);
   if (type == DISCONNECT_CLIENT) {
-    RAY_LOG(WARNING) << "Exiting because local scheduler closed connection.";
+    RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
   RAY_CHECK(type == MessageType_ExecuteTask);

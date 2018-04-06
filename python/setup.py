@@ -23,6 +23,8 @@ ray_files = [
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
     "ray/core/src/global_scheduler/global_scheduler",
+    "ray/core/src/ray/raylet/raylet_monitor",
+    "ray/core/src/ray/raylet/raylet",
     "ray/WebUI.ipynb"
 ]
 
@@ -114,7 +116,7 @@ class BinaryDistribution(Distribution):
 
 setup(name="ray",
       # The version string is also in __init__.py. TODO(pcm): Fix this.
-      version="0.3.1",
+      version="0.4.0",
       packages=find_packages(),
       cmdclass={"build_ext": build_ext},
       # The BinaryDistribution argument triggers build_ext.

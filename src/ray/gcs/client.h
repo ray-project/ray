@@ -19,6 +19,13 @@ class RedisContext;
 
 class RAY_EXPORT AsyncGcsClient {
  public:
+  /// Start a GCS client with the given client ID. To read from the GCS tables,
+  /// Connect and then Attach must be called. To read and write from the GCS
+  /// tables requires a further call to Connect to the client table.
+  ///
+  /// \param client_id The ID to assign to the client.
+  AsyncGcsClient(const ClientID &client_id);
+  /// Start a GCS client with a random client ID.
   AsyncGcsClient();
   ~AsyncGcsClient();
 
@@ -26,10 +33,8 @@ class RAY_EXPORT AsyncGcsClient {
   ///
   /// \param address The GCS IP address.
   /// \param port The GCS port.
-  /// \param client_info Information about the local client to connect.
   /// \return Status.
-  Status Connect(const std::string &address, int port,
-                 const ClientTableDataT &client_info);
+  Status Connect(const std::string &address, int port);
   /// Attach this client to a plasma event loop. Note that only
   /// one event loop should be attached at a time.
   Status Attach(plasma::EventLoop &event_loop);
@@ -40,12 +45,15 @@ class RAY_EXPORT AsyncGcsClient {
   inline FunctionTable &function_table();
   // TODO: Some API for getting the error on the driver
   inline ClassTable &class_table();
-  inline ActorTable &actor_table();
   inline CustomSerializerTable &custom_serializer_table();
   inline ConfigTable &config_table();
   ObjectTable &object_table();
   TaskTable &task_table();
+  raylet::TaskTable &raylet_task_table();
+  ActorTable &actor_table();
+  TaskReconstructionLog &task_reconstruction_log();
   ClientTable &client_table();
+  HeartbeatTable &heartbeat_table();
   inline ErrorTable &error_table();
 
   // We also need something to export generic code to run on workers from the
@@ -63,6 +71,10 @@ class RAY_EXPORT AsyncGcsClient {
   std::unique_ptr<ClassTable> class_table_;
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<TaskTable> task_table_;
+  std::unique_ptr<raylet::TaskTable> raylet_task_table_;
+  std::unique_ptr<ActorTable> actor_table_;
+  std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
+  std::unique_ptr<HeartbeatTable> heartbeat_table_;
   std::unique_ptr<ClientTable> client_table_;
   std::shared_ptr<RedisContext> context_;
   std::unique_ptr<RedisAsioClient> asio_async_client_;

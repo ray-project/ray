@@ -16,10 +16,12 @@ parser.add_argument("--redis-address", required=True, type=str,
                     help="the address to use for Redis")
 parser.add_argument("--object-store-name", required=True, type=str,
                     help="the object store's name")
-parser.add_argument("--object-store-manager-name", required=True, type=str,
+parser.add_argument("--object-store-manager-name", required=False, type=str,
                     help="the object store manager's name")
-parser.add_argument("--local-scheduler-name", required=True, type=str,
+parser.add_argument("--local-scheduler-name", required=False, type=str,
                     help="the local scheduler's name")
+parser.add_argument("--raylet-name", required=False, type=str,
+                    help="the raylet's name")
 
 
 if __name__ == "__main__":
@@ -29,9 +31,11 @@ if __name__ == "__main__":
             "redis_address": args.redis_address,
             "store_socket_name": args.object_store_name,
             "manager_socket_name": args.object_store_manager_name,
-            "local_scheduler_socket_name": args.local_scheduler_name}
+            "local_scheduler_socket_name": args.local_scheduler_name,
+            "raylet_socket_name": args.raylet_name}
 
-    ray.worker.connect(info, mode=ray.WORKER_MODE)
+    ray.worker.connect(info, mode=ray.WORKER_MODE,
+                       use_raylet=(args.raylet_name is not None))
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker

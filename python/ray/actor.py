@@ -12,16 +12,8 @@ import ray.cloudpickle as pickle
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, random_string, is_cython,
+from ray.utils import (FunctionProperties, _random_string, is_cython,
                        push_error_to_driver)
-
-
-def random_actor_id():
-    return ray.local_scheduler.ObjectID(random_string())
-
-
-def random_actor_class_id():
-    return random_string()
 
 
 def compute_actor_handle_id(actor_handle_id, num_forks):
@@ -750,7 +742,7 @@ def actor_handle_from_class(Class, class_id, actor_creation_resources,
                 raise Exception("Actors cannot be created before ray.init() "
                                 "has been called.")
 
-            actor_id = random_actor_id()
+            actor_id = ray.local_scheduler.ObjectID(_random_string())
             # The ID for this instance of ActorHandle. These should be unique
             # across instances with the same _ray_actor_id.
             actor_handle_id = ray.local_scheduler.ObjectID(
@@ -810,6 +802,8 @@ def actor_handle_from_class(Class, class_id, actor_creation_resources,
                                             actor_creation_resources,
                                             actor_method_cpus,
                                             ray.worker.global_worker)
+            # Increment the actor counter to account for the creation task.
+            actor_counter += 1
 
             # Instantiate the actor handle.
             actor_object = cls.__new__(cls)
@@ -930,7 +924,7 @@ def make_actor(cls, resources, checkpoint_interval, actor_method_cpus):
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = random_actor_class_id()
+    class_id = _random_string()
 
     return actor_handle_from_class(Class, class_id, resources,
                                    checkpoint_interval, actor_method_cpus)

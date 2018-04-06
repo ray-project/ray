@@ -1,9 +1,9 @@
 pong-a3c-pytorch-cnn:
     env: PongDeterministic-v4
     run: A3C
-    resources:
-        cpu: 17
-        driver_cpu_limit: 1
+    trial_resources:
+        cpu: 1
+        extra_cpu: 16
     config:
         num_workers: 16
         batch_size: 20

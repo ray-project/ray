@@ -62,7 +62,7 @@ if __name__ == "__main__":
                 "run": args.run,
                 "checkpoint_freq": args.checkpoint_freq,
                 "local_dir": args.local_dir,
-                "resources": resources_to_json(args.resources),
+                "trial_resources": resources_to_json(args.trial_resources),
                 "stop": args.stop,
                 "config": dict(args.config, env=args.env),
                 "restore": args.restore,

@@ -86,11 +86,13 @@ def cli():
               help="enable support for huge pages in the object store")
 @click.option("--autoscaling-config", required=False, type=str,
               help="the file that contains the autoscaling config")
+@click.option("--use-raylet", is_flag=True, default=False,
+              help="use the raylet code path, this is not supported yet")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages,
-          autoscaling_config):
+          autoscaling_config, use_raylet):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -153,6 +155,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             object_store_memory=object_store_memory,
             num_workers=num_workers,
             cleanup=False,
+            redirect_worker_output=True,
             redirect_output=True,
             resources=resources,
             num_redis_shards=num_redis_shards,
@@ -160,7 +163,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             include_webui=(not no_ui),
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
-            autoscaling_config=autoscaling_config)
+            autoscaling_config=autoscaling_config,
+            use_raylet=use_raylet)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"
@@ -222,10 +226,12 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_workers=num_workers,
             object_store_memory=object_store_memory,
             cleanup=False,
+            redirect_worker_output=True,
             redirect_output=True,
             resources=resources,
             plasma_directory=plasma_directory,
-            huge_pages=huge_pages)
+            huge_pages=huge_pages,
+            use_raylet=use_raylet)
         print(address_info)
         print("\nStarted Ray on this node. If you wish to terminate the "
               "processes that have been started, run\n\n"
@@ -240,7 +246,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 @click.command()
 def stop():
     subprocess.call(["killall global_scheduler plasma_store plasma_manager "
-                     "local_scheduler"], shell=True)
+                     "local_scheduler raylet"], shell=True)
 
     # Find the PID of the monitor process and kill it.
     subprocess.call(["kill $(ps aux | grep monitor.py | grep -v grep | "

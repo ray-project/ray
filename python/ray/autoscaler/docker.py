@@ -10,6 +10,8 @@ except ImportError:  # py2
 
 
 def dockerize_if_needed(config):
+    if "docker" not in config:
+        return config
     docker_image = config["docker"].get("image")
     cname = config["docker"].get("container_name")
     if not docker_image:
