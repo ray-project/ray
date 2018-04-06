@@ -25,14 +25,9 @@ def get_pinned_object(pinned_id):
         base64.b64decode(pinned_id[len(PINNED_OBJECT_PREFIX):]))))
 
 
-@ray.remote
-def f(x):
-    return get_pinned_object(x)
-
-
 if __name__ == '__main__':
     ray.init()
     X = pin_in_object_store("hello")
     print(X)
-    result = f.remote(X)
-    print(ray.get(result))
+    result = get_pinned_object(X)
+    print(result)

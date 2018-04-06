@@ -13,6 +13,7 @@ from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.registry import _default_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
@@ -27,6 +28,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
         _register_all()  # re-register the evicted objects
+
+    def testPinObject(self):
+        X = pin_in_object_store("hello")
+
+        @ray.remote
+        def f():
+            return get_pinned_object(X)
+
+        self.assertEqual(ray.get(f.remote()), "hello")
 
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
