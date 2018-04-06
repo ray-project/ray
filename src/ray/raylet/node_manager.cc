@@ -89,7 +89,7 @@ ray::Status NodeManager::RegisterGcs() {
   };
   RAY_RETURN_NOT_OK(gcs_client_->heartbeat_table().Subscribe(
       UniqueID::nil(), UniqueID::nil(), heartbeat_added,
-      [this](gcs::AsyncGcsClient *client) {
+      [](gcs::AsyncGcsClient *client) {
         RAY_LOG(DEBUG) << "heartbeat table subscription done callback called.";
       }));
 
