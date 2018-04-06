@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 
+# Usage: by default jemalloc is used; however, if tcmalloc is installed on the
+# system, credis' CMakeLists.txt will prefer it over jemalloc.  To avoid build
+# failures use:
+#
+#     CREDIS_TCMALLOC=1 build_credis.sh
+#
+# If building all of ray from ray/python, use:
+#
+#     env CREDIS_TCMALLOC=1 RAY_USE_NEW_GCS=on pip install -e . --verbose
+
 set -x
 
 # Cause the script to exit if a single command fails.
@@ -16,14 +26,26 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     popd
 
     pushd "$TP_DIR/pkg/credis"
-      git checkout 6be4a739ab5e795c98402b27c2e254f86e3524ea
+      # git checkout 6be4a739ab5e795c98402b27c2e254f86e3524ea
+
+      # 4/5/2018 credis/integrate branch.  With updated redis hacks.
+      git checkout 7eae7f2e58d16dfa1a95b5dfab02549f54b94e5d
+
+      # If the above commit points to different submodules' commits than
+      # origin's head, this updates the submodules.
+      git submodule update
 
       # TODO(pcm): Get the build environment for tcmalloc set up and compile redis
       # with tcmalloc.
       # NOTE(zongheng): if we don't specify MALLOC=jemalloc, then build behiavors
       # differ between Mac (libc) and Linux (jemalloc)... This breaks our CMake
       # rules.
-      pushd redis && make -j MALLOC=jemalloc && popd
+      if [[ "${CREDIS_TCMALLOC}" = 1 ]]; then
+          echo "CREDIS_MALLOC is set, using tcmalloc to build redis"
+          pushd redis && env USE_TCMALLOC=yes make -j && popd
+      else
+          pushd redis && make -j MALLOC=jemalloc && popd
+      fi
       pushd glog && cmake -DWITH_GFLAGS=off . && make -j && popd
       # NOTE(zongheng): DO NOT USE -j parallel build for leveldb as it's incorrect!
       pushd leveldb && CXXFLAGS="$CXXFLAGS -fPIC" make && popd

@@ -1,13 +1,25 @@
-#include "redismodule.h"
 #include <string.h>
-
-#include "redis_string.h"
 
 #include "common_protocol.h"
 #include "format/common_generated.h"
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/id.h"
+#include "redis_string.h"
+#include "redismodule.h"
 #include "task.h"
+
+#if RAY_USE_NEW_GCS
+// Under this flag, ray-project/credis will be loaded.  Specifically, via
+// "path/redis-server --loadmodule <credis module> --loadmodule <current
+// libray_redis_module>" (dlopen() under the hood) will a definition of "module"
+// be supplied.
+//
+// All commands in this file that depend on "module" must be wrapped by "#if
+// RAY_USE_NEW_GCS", until we switch to this launch configuration as the
+// default.
+#include "chain_module.h"
+extern RedisChainModule module;
+#endif
 
 // Various tables are maintained in redis:
 //
@@ -88,9 +100,14 @@ RedisModuleString *FormatPubsubChannel(
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 const char *prefix,
                                 RedisModuleString *keyname,
-                                int mode) {
+                                int mode,
+                                RedisModuleString **mutated_key_str) {
   RedisModuleString *prefixed_keyname =
       RedisString_Format(ctx, "%s%S", prefix, keyname);
+  // Pass out the key being mutated, should the caller request so.
+  if (mutated_key_str != nullptr) {
+    *mutated_key_str = prefixed_keyname;
+  }
   RedisModuleKey *key =
       (RedisModuleKey *) RedisModule_OpenKey(ctx, prefixed_keyname, mode);
   return key;
@@ -99,7 +116,8 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 RedisModuleString *prefix_enum,
                                 RedisModuleString *keyname,
-                                int mode) {
+                                int mode,
+                                RedisModuleString **mutated_key_str) {
   long long prefix_long;
   RAY_CHECK(RedisModule_StringToLongLong(prefix_enum, &prefix_long) ==
             REDISMODULE_OK)
@@ -109,7 +127,24 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
       << "This table has no prefix registered";
   RAY_CHECK(prefix >= TablePrefix_MIN && prefix <= TablePrefix_MAX)
       << "Prefix must be a valid TablePrefix";
-  return OpenPrefixedKey(ctx, table_prefixes[prefix], keyname, mode);
+  return OpenPrefixedKey(ctx, table_prefixes[prefix], keyname, mode,
+                         mutated_key_str);
+}
+
+RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
+                                const char *prefix,
+                                RedisModuleString *keyname,
+                                int mode) {
+  return OpenPrefixedKey(ctx, prefix, keyname, mode,
+                         /*mutated_key_str=*/nullptr);
+}
+
+RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
+                                RedisModuleString *prefix_enum,
+                                RedisModuleString *keyname,
+                                int mode) {
+  return OpenPrefixedKey(ctx, prefix_enum, keyname, mode,
+                         /*mutated_key_str=*/nullptr);
 }
 
 /// Open the key used to store the channels that should be published to when an
@@ -444,11 +479,12 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
 
 // NOTE(pcmoritz): This is a temporary redis command that will be removed once
 // the GCS uses https://github.com/pcmoritz/credis.
-int TaskTableAdd(RedisModuleCtx *ctx,
-                 RedisModuleString *id,
-                 RedisModuleString *data) {
+int PublishTaskTableAdd(RedisModuleCtx *ctx,
+                        RedisModuleString *id,
+                        RedisModuleString *data) {
   const char *buf = RedisModule_StringPtrLen(data, NULL);
   auto message = flatbuffers::GetRoot<TaskTableData>(buf);
+  RAY_CHECK(message != nullptr);
 
   if (message->scheduling_state() == SchedulingState_WAITING ||
       message->scheduling_state() == SchedulingState_SCHEDULED) {
@@ -481,9 +517,8 @@ int TaskTableAdd(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
-                                << " clients.";
-
+    RAY_CHECK(num_clients <= 1)
+        << "Published to " << num_clients << " clients.";
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
@@ -542,12 +577,61 @@ int PublishTableAdd(RedisModuleCtx *ctx,
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
+// RAY.TABLE_ADD:
+//   TableAdd_RedisCommand: the actual command handler.
+//   (helper) TableAdd_DoWrite: performs the write to redis state.
+//   (helper) TableAdd_DoPublish: performs a publish after the write.
+//   ChainTableAdd_RedisCommand: the same command, chain-enabled.
+
+int TableAdd_DoWrite(RedisModuleCtx *ctx,
+                     RedisModuleString **argv,
+                     int argc,
+                     RedisModuleString **mutated_key_str) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ | REDISMODULE_WRITE,
+                      mutated_key_str);
+  RedisModule_StringSet(key, data);
+  return REDISMODULE_OK;
+}
+
+int TableAdd_DoPublish(RedisModuleCtx *ctx,
+                       RedisModuleString **argv,
+                       int argc) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+
+  TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
+
+  if (pubsub_channel == TablePubsub_TASK) {
+    // Publish the task to its subscribers.
+    // TODO(swang): This is only necessary for legacy Ray and should be removed
+    // once we switch to using the new GCS API for the task table.
+    return PublishTaskTableAdd(ctx, id, data);
+  } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+    // All other pubsub channels write the data back directly onto the channel.
+    return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+  } else {
+    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+  }
+}
+
 /// Add an entry at a key. This overwrites any existing data at the key.
 /// Publishes a notification about the update to all subscribers, if a pubsub
 /// channel is provided.
 ///
 /// This is called from a client with the command:
-//
+///
 ///    RAY.TABLE_ADD <table_prefix> <pubsub_channel> <id> <data>
 ///
 /// \param table_prefix The prefix string for keys in this table.
@@ -561,35 +645,18 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
                           RedisModuleString **argv,
                           int argc) {
   RedisModule_AutoMemory(ctx);
-
-  if (argc != 5) {
-    return RedisModule_WrongArity(ctx);
-  }
-
-  RedisModuleString *prefix_str = argv[1];
-  RedisModuleString *pubsub_channel_str = argv[2];
-  RedisModuleString *id = argv[3];
-  RedisModuleString *data = argv[4];
-
-  // Set the keys in the table.
-  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
-                                        REDISMODULE_READ | REDISMODULE_WRITE);
-  RedisModule_StringSet(key, data);
-
-  // Publish a message on the requested pubsub channel if necessary.
-  TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
-  if (pubsub_channel == TablePubsub_TASK) {
-    // Publish the task to its subscribers.
-    // TODO(swang): This is only necessary for legacy Ray and should be removed
-    // once we switch to using the new GCS API for the task table.
-    return TaskTableAdd(ctx, id, data);
-  } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
-    // All other pubsub channels write the data back directly onto the channel.
-    return PublishTableAdd(ctx, pubsub_channel_str, id, data);
-  } else {
-    return RedisModule_ReplyWithSimpleString(ctx, "OK");
-  }
+  TableAdd_DoWrite(ctx, argv, argc, /*mutated_key_str=*/nullptr);
+  return TableAdd_DoPublish(ctx, argv, argc);
 }
+
+#if RAY_USE_NEW_GCS
+int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx,
+                               RedisModuleString **argv,
+                               int argc) {
+  return module.Mutate(ctx, argv, argc, /*node_func=*/TableAdd_DoWrite,
+                       /*tail_func=*/TableAdd_DoPublish);
+}
+#endif
 
 /// Append an entry to the log stored at a key. Publishes a notification about
 /// the update to all subscribers, if a pubsub channel is provided.
@@ -746,7 +813,6 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
         ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
         fbb.GetSize());
   }
-
   return REDISMODULE_OK;
 }
 
@@ -893,9 +959,8 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   bool do_update = data->scheduling_state() & update->test_state_bitmask();
 
   if (!is_nil(update->test_scheduler_id()->str())) {
-    do_update =
-        do_update &&
-        update->test_scheduler_id()->str() == data->scheduler_id()->str();
+    do_update = do_update && update->test_scheduler_id()->str() ==
+                                 data->scheduler_id()->str();
   }
 
   if (do_update) {
@@ -1429,8 +1494,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
-                                << " clients.";
+    RAY_CHECK(num_clients <= 1)
+        << "Published to " << num_clients << " clients.";
 
     if (reply == NULL) {
       return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
@@ -1663,7 +1728,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.table_add", TableAdd_RedisCommand,
-                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
@@ -1762,6 +1827,15 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
                                 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
+
+#if RAY_USE_NEW_GCS
+  // Chain-enabled commands that depend on ray-project/credis.
+  if (RedisModule_CreateCommand(ctx, "ray.chain.table_add",
+                                ChainTableAdd_RedisCommand, "write pubsub", 0,
+                                0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+#endif
 
   return REDISMODULE_OK;
 }

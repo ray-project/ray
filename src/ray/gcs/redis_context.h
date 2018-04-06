@@ -25,7 +25,6 @@ using RedisCallback = std::function<bool(const std::string &)>;
 
 class RedisCallbackManager {
  public:
-
   static RedisCallbackManager &instance() {
     static RedisCallbackManager instance;
     return instance;
@@ -43,7 +42,7 @@ class RedisCallbackManager {
 
   ~RedisCallbackManager() { printf("shut down callback manager\n"); }
 
-  int64_t num_callbacks;
+  int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, RedisCallback> callbacks_;
 };
 

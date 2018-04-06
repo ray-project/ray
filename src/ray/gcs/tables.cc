@@ -11,7 +11,6 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
                              std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
   auto callback = [this, id, dataT, done](const std::string &data) {
-    RAY_CHECK(data.empty());
     if (done != nullptr) {
       (done)(client_, id, *dataT);
     }
@@ -141,8 +140,16 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
   fbb.Finish(Data::Pack(fbb, dataT.get()));
-  return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, std::move(callback));
+  if (command_type == CommandType::kRegular) {
+    return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
+                              prefix_, pubsub_channel_, callback_index,
+                              std::move(callback));
+  } else {
+    RAY_CHECK(command_type == CommandType::kChain);
+    return context_->RunAsync("RAY.CHAIN.TABLE_ADD", id, fbb.GetBufferPointer(),
+                              fbb.GetSize(), prefix_, pubsub_channel_,
+                              std::move(callback));
+  }
 }
 
 template <typename ID, typename Data>
@@ -242,8 +249,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
 
 void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT &data) {
   auto connected_client_id = ClientID::from_binary(data.client_id);
-  RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
-                                               << client_id_;
+  RAY_CHECK(client_id_ == connected_client_id)
+      << connected_client_id << " " << client_id_;
 }
 
 const ClientID &ClientTable::GetLocalClientId() { return client_id_; }
@@ -268,8 +275,8 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
 
     // Callback for a notification from the client table.
     auto notification_callback = [this](
-        AsyncGcsClient *client, const UniqueID &log_key,
-        const std::vector<ClientTableDataT> &notifications) {
+                                     AsyncGcsClient *client, const UniqueID &log_key,
+                                     const std::vector<ClientTableDataT> &notifications) {
       RAY_CHECK(log_key == client_log_key_);
       for (auto &notification : notifications) {
         HandleNotification(client, notification);

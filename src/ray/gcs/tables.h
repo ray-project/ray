@@ -27,6 +27,9 @@ class RedisContext;
 
 class AsyncGcsClient;
 
+/// If kChain, chain-replicated versions of commands will be used, when available.
+enum class CommandType { kRegular, kChain };
+
 /// \class PubsubInterface
 ///
 /// The interface for a pubsub storage system. The client of a storage system
@@ -238,6 +241,10 @@ class Table : private Log<ID, Data>,
   /// \return Status
   Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
              const WriteCallback &done);
+
+  /// A general version of Add() that supports different CommandType's.
+  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+             const WriteCallback &done, CommandType command_type);
 
   /// Lookup an entry asynchronously.
   ///

@@ -1,29 +1,29 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import binascii
-from collections import namedtuple, OrderedDict
-from datetime import datetime
+import itertools
 import json
 import os
-import psutil
-import pyarrow
 import random
-import redis
 import resource
 import shutil
 import signal
 import socket
 import subprocess
 import sys
-import time
 import threading
+import time
+from collections import OrderedDict, namedtuple
+from datetime import datetime
 
+import psutil
+import redis
+
+import pyarrow
 # Ray modules
+import ray.global_scheduler as global_scheduler
 import ray.local_scheduler
 import ray.plasma
-import ray.global_scheduler as global_scheduler
 
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
@@ -63,6 +63,7 @@ REDIS_MODULE = os.path.join(
     "core/src/common/redis_module/libray_redis_module.so")
 
 # Location of the credis server and modules.
+# credis will be enabled if the environment variable RAY_USE_NEW_GCS is set.
 CREDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/credis/redis/src/redis-server")
@@ -393,73 +394,6 @@ def check_version_info(redis_client):
             print(error_message)
 
 
-def start_credis(node_ip_address,
-                 redis_address,
-                 port=None,
-                 redirect_output=False,
-                 cleanup=True):
-    """Start the credis global state store.
-
-    Credis is a chain replicated reliable redis store. It consists
-    of one master process that acts as a controller and a number of
-    chain members (currently two, the head and the tail).
-
-    Args:
-        node_ip_address: The IP address of the current node. This is only used
-            for recording the log filenames in Redis.
-        redis_address (str): The IP address and port of the primary redis
-            server.
-        port (int): If provided, the primary Redis shard will be started on
-            this port.
-        redirect_output (bool): True if output should be redirected to a file
-            and false otherwise.
-        cleanup (bool): True if using Ray in local mode. If cleanup is true,
-            then all Redis processes started by this method will be killed by
-            services.cleanup() when the Python process that imported services
-            exits.
-
-    Returns:
-        The address (ip_address:port) of the credis master process.
-    """
-
-    components = ["credis_master", "credis_head", "credis_tail"]
-    modules = [
-        CREDIS_MASTER_MODULE, CREDIS_MEMBER_MODULE, CREDIS_MEMBER_MODULE
-    ]
-    ports = []
-
-    for i, component in enumerate(components):
-        stdout_file, stderr_file = new_log_files(component, redirect_output)
-
-        new_port, _ = start_redis_instance(
-            node_ip_address=node_ip_address,
-            port=port,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            cleanup=cleanup,
-            module=modules[i],
-            executable=CREDIS_EXECUTABLE)
-
-        ports.append(new_port)
-
-    [master_port, head_port, tail_port] = ports
-
-    # Connect the members to the master
-
-    master_client = redis.StrictRedis(host=node_ip_address, port=master_port)
-    master_client.execute_command("MASTER.ADD", node_ip_address, head_port)
-    master_client.execute_command("MASTER.ADD", node_ip_address, tail_port)
-
-    credis_address = address(node_ip_address, master_port)
-
-    # Register credis master in redis
-    redis_ip_address, redis_port = redis_address.split(":")
-    redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
-    redis_client.set("credis_address", credis_address)
-
-    return credis_address
-
-
 def start_redis(node_ip_address,
                 port=None,
                 redis_shard_ports=None,
@@ -467,7 +401,8 @@ def start_redis(node_ip_address,
                 redis_max_clients=None,
                 redirect_output=False,
                 redirect_worker_output=False,
-                cleanup=True):
+                cleanup=True,
+                no_credis=True):
     """Start the Redis global state store.
 
     Args:
@@ -491,6 +426,8 @@ def start_redis(node_ip_address,
             then all Redis processes started by this method will be killed by
             services.cleanup() when the Python process that imported services
             exits.
+        no_credis (bool): defaults to True.  If False, additionally load the
+            chain-replicated libraries into the redis servers.
 
     Returns:
         A tuple of the address for the primary Redis shard and a list of
@@ -505,13 +442,26 @@ def start_redis(node_ip_address,
         raise Exception("The number of Redis shard ports does not match the "
                         "number of Redis shards.")
 
-    assigned_port, _ = start_redis_instance(
-        node_ip_address=node_ip_address,
-        port=port,
-        redis_max_clients=redis_max_clients,
-        stdout_file=redis_stdout_file,
-        stderr_file=redis_stderr_file,
-        cleanup=cleanup)
+    if no_credis:
+        assigned_port, _ = start_redis_instance(
+            node_ip_address=node_ip_address,
+            port=port,
+            redis_max_clients=redis_max_clients,
+            stdout_file=redis_stdout_file,
+            stderr_file=redis_stderr_file,
+            cleanup=cleanup)
+    else:
+        # It is import to load the credis module BEFORE the ray module, as the
+        # latter contains an extern declaration that the former supplies.
+        assigned_port, _ = start_redis_instance(
+            node_ip_address=node_ip_address,
+            port=port,
+            redis_max_clients=redis_max_clients,
+            stdout_file=redis_stdout_file,
+            stderr_file=redis_stderr_file,
+            cleanup=cleanup,
+            executable=CREDIS_EXECUTABLE,
+            modules=[CREDIS_MASTER_MODULE, REDIS_MODULE])
     if port is not None:
         assert assigned_port == port
     port = assigned_port
@@ -519,15 +469,16 @@ def start_redis(node_ip_address,
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
-    redis_client = redis.StrictRedis(host=node_ip_address, port=port)
-    redis_client.set("NumRedisShards", str(num_redis_shards))
+    primary_redis_client = redis.StrictRedis(host=node_ip_address, port=port)
+    primary_redis_client.set("NumRedisShards", str(num_redis_shards))
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
     # can access it and know whether or not to redirect their output.
-    redis_client.set("RedirectOutput", 1 if redirect_worker_output else 0)
+    primary_redis_client.set("RedirectOutput", 1
+                             if redirect_worker_output else 0)
 
     # Store version information in the primary Redis shard.
-    _put_version_info_in_redis(redis_client)
+    _put_version_info_in_redis(primary_redis_client)
 
     # Start other Redis shards. Each Redis shard logs to a separate file,
     # prefixed by "redis-<shard number>".
@@ -535,19 +486,45 @@ def start_redis(node_ip_address,
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = new_log_files(
             "redis-{}".format(i), redirect_output)
-        redis_shard_port, _ = start_redis_instance(
-            node_ip_address=node_ip_address,
-            port=redis_shard_ports[i],
-            redis_max_clients=redis_max_clients,
-            stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file,
-            cleanup=cleanup)
+        if no_credis:
+            redis_shard_port, _ = start_redis_instance(
+                node_ip_address=node_ip_address,
+                port=redis_shard_ports[i],
+                redis_max_clients=redis_max_clients,
+                stdout_file=redis_stdout_file,
+                stderr_file=redis_stderr_file,
+                cleanup=cleanup)
+        else:
+            # It is import to load the credis module BEFORE the ray module, as the
+            # latter contains an extern declaration that the former supplies.
+            assert num_redis_shards == 1, \
+                "For now, RAY_USE_NEW_GCS supports 1 shard, and credis supports" \
+                " 1-node chain for that shard only."
+            redis_shard_port, _ = start_redis_instance(
+                node_ip_address=node_ip_address,
+                port=redis_shard_ports[i],
+                redis_max_clients=redis_max_clients,
+                stdout_file=redis_stdout_file,
+                stderr_file=redis_stderr_file,
+                cleanup=cleanup,
+                executable=CREDIS_EXECUTABLE,
+                modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
+
         if redis_shard_ports[i] is not None:
             assert redis_shard_port == redis_shard_ports[i]
         shard_address = address(node_ip_address, redis_shard_port)
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
-        redis_client.rpush("RedisShards", shard_address)
+        primary_redis_client.rpush("RedisShards", shard_address)
+
+    if not no_credis:
+        # Configure the chain state.
+        primary_redis_client.execute_command("MASTER.ADD", node_ip_address,
+                                             redis_shard_port)
+        shard_client = redis.StrictRedis(
+            host=node_ip_address, port=redis_shard_port)
+        shard_client.execute_command("MEMBER.CONNECT_TO_MASTER",
+                                     node_ip_address, port)
 
     return redis_address, redis_shards
 
@@ -560,7 +537,7 @@ def start_redis_instance(node_ip_address="127.0.0.1",
                          stderr_file=None,
                          cleanup=True,
                          executable=REDIS_EXECUTABLE,
-                         module=REDIS_MODULE):
+                         modules=[REDIS_MODULE]):
     """Start a single Redis server.
 
     Args:
@@ -579,8 +556,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
         executable (str): Full path tho the redis-server executable.
-        module (str): Full path to the redis module that will be loaded in this
-            redis server.
+        modules (list of str): A list of pathnames, pointing to the redis
+            module(s) that will be loaded in this redis server.
 
     Returns:
         A tuple of the port used by Redis and a handle to the process that was
@@ -591,23 +568,25 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         Exception: An exception is raised if Redis could not be started.
     """
     assert os.path.isfile(executable)
-    assert os.path.isfile(module)
+    for module in modules:
+        assert os.path.isfile(module)
     counter = 0
     if port is not None:
         # If a port is specified, then try only once to connect.
         num_retries = 1
     else:
         port = new_port()
+
+    # Flatten to ["--loadmodule", "path/m1", ...].
+    loadmodule = list(
+        itertools.chain.from_iterable([["--loadmodule", m] for m in modules]))
+    command = [executable, "--port",
+               str(port), "--loglevel", "warning"] + loadmodule
+
     while counter < num_retries:
         if counter > 0:
             print("Redis failed to start, retrying now.")
-        p = subprocess.Popen(
-            [
-                executable, "--port",
-                str(port), "--loglevel", "warning", "--loadmodule", module
-            ],
-            stdout=stdout_file,
-            stderr=stderr_file)
+        p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
         time.sleep(0.1)
         # Check if Redis successfully started (or at least if it the executable
         # did not exit within 0.1 seconds).
@@ -1319,6 +1298,7 @@ def start_ray_processes(address_info=None,
     redis_address = address_info.get("redis_address")
     redis_shards = address_info.get("redis_shards", [])
     if redis_address is None:
+        no_credis = ("RAY_USE_NEW_GCS" not in os.environ)
         redis_address, redis_shards = start_redis(
             node_ip_address,
             port=redis_port,
@@ -1327,12 +1307,9 @@ def start_ray_processes(address_info=None,
             redis_max_clients=redis_max_clients,
             redirect_output=True,
             redirect_worker_output=redirect_worker_output,
-            cleanup=cleanup)
+            cleanup=cleanup,
+            no_credis=no_credis)
         address_info["redis_address"] = redis_address
-        if "RAY_USE_NEW_GCS" in os.environ:
-            credis_address = start_credis(
-                node_ip_address, redis_address, cleanup=cleanup)
-            address_info["credis_address"] = credis_address
         time.sleep(0.1)
 
         # Start monitoring the processes.
@@ -1351,7 +1328,6 @@ def start_ray_processes(address_info=None,
                 stdout_file=monitor_stdout_file,
                 stderr_file=monitor_stderr_file,
                 cleanup=cleanup)
-
     if redis_shards == []:
         # Get redis shards from primary redis instance.
         redis_ip_address, redis_port = redis_address.split(":")
