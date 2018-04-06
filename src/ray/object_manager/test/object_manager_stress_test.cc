@@ -103,9 +103,7 @@ class TestObjectManagerBase : public ::testing::Test {
                                  " 1> /dev/null 2> /dev/null &";
     RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
-    if (ec != 0) {
-      throw std::runtime_error("failed to start plasma store.");
-    };
+    RAY_CHECK(ec == 0);
     return store_id;
   }
 

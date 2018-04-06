@@ -108,10 +108,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// Ray only (not part of the OD interface).
   ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
-  /// This object cannot be copied for thread-safety.
-  ObjectDirectory &operator=(const ObjectDirectory &o) {
-    throw std::runtime_error("Can't copy ObjectDirectory.");
-  }
+  /// ObjectDirectory should not be copied.
+  RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
 
  private:
   /// Callbacks associated with a call to GetLocations.
