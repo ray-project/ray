@@ -105,7 +105,7 @@ void TaskDependencyManager::UnsubscribeTaskReady(const TaskID &task_id) {
 }
 
 void TaskDependencyManager::MarkDependencyReady(const ObjectID &object) {
-  throw std::runtime_error("Method not implemented");
+  handleObjectReady(object);
 }
 
 }  // namespace raylet

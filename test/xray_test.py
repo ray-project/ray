@@ -47,3 +47,18 @@ def test_basic_task_api(ray_start):
     # Test arguments passed by ID.
 
     # Test keyword arguments.
+
+
+def test_actor_api(ray_start):
+
+    @ray.remote
+    class Foo(object):
+        def __init__(self, val):
+            self.x = val
+
+        def get(self):
+            return self.x
+
+    x = 1
+    f = Foo.remote(x)
+    assert (ray.get(f.get.remote()) == x)
