@@ -122,7 +122,6 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
 template <class T>
 void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error) {
   if (error) {
-    // TODO(hme): Disconnect differently & remove dependency on node_manager_generated.h
     read_type_ = protocol::MessageType_DisconnectClient;
   }
   message_handler_(this->shared_from_this(), read_type_, read_message_.data());
