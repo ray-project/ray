@@ -46,11 +46,8 @@ class ConnectionPool {
 
   /// Remove a receiver connection.
   ///
-  /// \param type The type of connection.
-  /// \param client_id The ClientID of the remote object manager.
   /// \param conn The actual connection.
-  void RemoveReceiver(ConnectionType type, const ClientID &client_id,
-                      std::shared_ptr<TcpClientConnection> &conn);
+  void RemoveReceiver(std::shared_ptr<TcpClientConnection> conn);
 
   /// Register a receiver connection.
   ///

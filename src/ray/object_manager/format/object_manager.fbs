@@ -3,7 +3,6 @@ namespace ray.object_manager.protocol;
 
 enum MessageType:int {
   ConnectClient = 1,
-  DisconnectClient,
   PushRequest,
   PullRequest
 }
@@ -23,13 +22,6 @@ table PullRequestMessage {
 }
 
 table ConnectClientMessage {
-  // ID of the connecting client.
-  client_id: string;
-  // Whether this is a transfer connection.
-  is_transfer: bool;
-}
-
-table DisconnectClientMessage {
   // ID of the connecting client.
   client_id: string;
   // Whether this is a transfer connection.
