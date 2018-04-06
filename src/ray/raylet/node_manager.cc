@@ -557,7 +557,7 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
     RAY_CHECK_OK(gcs_client_->actor_table().Append(JobID::nil(), actor_id,
                                                    actor_notification, nullptr));
 
-    // Resources required by an actor creation tasks are acquired for the
+    // Resources required by an actor creation task are acquired for the
     // lifetime of the actor, so we do not release any resources here.
   } else {
     // Release task's resources.
