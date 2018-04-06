@@ -103,8 +103,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                            const OnLocationsFailure &fail_callback) override;
   ray::Status Cancel(const ObjectID &object_id) override;
   ray::Status Terminate() override;
-  ray::Status ReportObjectAdded(const ObjectID &object_id,
-                                const ClientID &client_id,
+  ray::Status ReportObjectAdded(const ObjectID &object_id, const ClientID &client_id,
                                 const ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
