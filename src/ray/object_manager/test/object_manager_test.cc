@@ -204,11 +204,12 @@ class TestObjectManagerCommands : public TestObjectManager {
 
   void TestNotifications() {
     ray::Status status = ray::Status::OK();
-    status =
-        server1->object_manager_.SubscribeObjAdded([this](const ObjectID &object_id) {
-          object_added_handler_1(object_id);
+    status = server1->object_manager_.SubscribeObjAdded(
+        [this](const ObjectInfoT &object_info) {
+          object_added_handler_1(ObjectID::from_binary(object_info.object_id));
           if (v1.size() == num_expected_objects) {
-            NotificationTestComplete(created_object_id, object_id);
+            NotificationTestComplete(created_object_id,
+                                     ObjectID::from_binary(object_info.object_id));
           }
         });
     RAY_CHECK_OK(status);

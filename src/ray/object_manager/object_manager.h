@@ -12,13 +12,13 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "ray/common/client_connection.h"
-#include "ray/id.h"
-#include "ray/status.h"
-
 #include "plasma/client.h"
 #include "plasma/events.h"
 #include "plasma/plasma.h"
+
+#include "ray/common/client_connection.h"
+#include "ray/id.h"
+#include "ray/status.h"
 
 #include "ray/object_manager/connection_pool.h"
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -77,7 +77,7 @@ class ObjectManager {
   /// already exist in the local store.
   /// \param callback The callback to invoke when objects are added to the local store.
   /// \return Status of whether adding the subscription succeeded.
-  ray::Status SubscribeObjAdded(std::function<void(const ray::ObjectID &)> callback);
+  ray::Status SubscribeObjAdded(std::function<void(const ObjectInfoT &)> callback);
 
   /// Subscribe to notifications of objects deleted from local store.
   ///
@@ -192,7 +192,7 @@ class ObjectManager {
   std::atomic<int> num_transfers_receive_;
 
   /// Cache of locally available objects.
-  std::unordered_set<ObjectID, UniqueIDHasher> local_objects_;
+  std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
@@ -200,7 +200,7 @@ class ObjectManager {
   void StopIOService();
 
   /// Register object add with directory.
-  void NotifyDirectoryObjectAdd(const ObjectID &object_id);
+  void NotifyDirectoryObjectAdd(const ObjectInfoT &object_info);
 
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
