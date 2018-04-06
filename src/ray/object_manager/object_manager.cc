@@ -24,7 +24,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   main_service_ = &main_service;
   config_ = config;
   store_notification_.SubscribeObjAdded(
-      [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
+      [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -47,7 +47,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   main_service_ = &main_service;
   config_ = config;
   store_notification_.SubscribeObjAdded(
-      [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
+      [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -68,9 +68,11 @@ void ObjectManager::StartIOService() {
 
 void ObjectManager::IOServiceLoop() { object_manager_service_->run(); }
 
-void ObjectManager::NotifyDirectoryObjectAdd(const ObjectID &object_id) {
-  local_objects_.insert(object_id);
-  ray::Status status = object_directory_->ReportObjectAdded(object_id, client_id_);
+void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
+  ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+  local_objects_[object_id] = object_info;
+  ray::Status status =
+      object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -79,7 +81,7 @@ void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
 }
 
 ray::Status ObjectManager::SubscribeObjAdded(
-    std::function<void(const ObjectID &)> callback) {
+    std::function<void(const ObjectInfoT &)> callback) {
   store_notification_.SubscribeObjAdded(callback);
   return ray::Status::OK();
 }
@@ -416,7 +418,8 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> co
     ConnectClient(conn, message);
     break;
   }
-  case object_manager_protocol::MessageType_DisconnectClient: {
+  case protocol::MessageType_DisconnectClient: {
+    // TODO(hme): Disconnect without depending on the node manager protocol.
     DisconnectClient(conn, message);
     break;
   }
@@ -444,17 +447,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
 
 void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                                      const uint8_t *message) {
-  auto info =
-      flatbuffers::GetRoot<object_manager_protocol::DisconnectClientMessage>(message);
-  ClientID client_id = ObjectID::from_binary(info->client_id()->str());
-  bool is_transfer = info->is_transfer();
-  if (is_transfer) {
-    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::TRANSFER, client_id,
-                                    conn);
-  } else {
-    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::MESSAGE, client_id,
-                                    conn);
-  }
+  connection_pool_.RemoveReceiver(conn);
 }
 
 void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,

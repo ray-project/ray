@@ -38,11 +38,19 @@ TaskSpecification::TaskSpecification(const flatbuffers::String &string) {
 }
 
 TaskSpecification::TaskSpecification(
-    UniqueID driver_id, TaskID parent_task_id, int64_t parent_counter,
-    // UniqueID actor_id,
-    // UniqueID actor_handle_id,
-    // int64_t actor_counter,
-    FunctionID function_id,
+    const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
+    const FunctionID &function_id,
+    const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
+    const std::unordered_map<std::string, double> &required_resources)
+    : TaskSpecification(driver_id, parent_task_id, parent_counter, ActorID::nil(),
+                        ObjectID::nil(), ActorID::nil(), ActorHandleID::nil(), -1,
+                        function_id, task_arguments, num_returns, required_resources) {}
+
+TaskSpecification::TaskSpecification(
+    const UniqueID &driver_id, const TaskID &parent_task_id, int64_t parent_counter,
+    const ActorID &actor_creation_id, const ObjectID &actor_creation_dummy_object_id,
+    const ActorID &actor_id, const ActorHandleID &actor_handle_id, int64_t actor_counter,
+    const FunctionID &function_id,
     const std::vector<std::shared_ptr<TaskArgument>> &task_arguments, int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources)
     : spec_() {
@@ -54,10 +62,6 @@ TaskSpecification::TaskSpecification(
   sha256_update(&ctx, (BYTE *)&driver_id, sizeof(driver_id));
   sha256_update(&ctx, (BYTE *)&parent_task_id, sizeof(parent_task_id));
   sha256_update(&ctx, (BYTE *)&parent_counter, sizeof(parent_counter));
-  // sha256_update(&ctx, (BYTE *) &actor_id, sizeof(actor_id));
-  // sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
-  // sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
-  //              sizeof(is_actor_checkpoint_method));
 
   // Compute the final task ID from the hash.
   BYTE buff[DIGEST_SIZE];
@@ -82,11 +86,11 @@ TaskSpecification::TaskSpecification(
   // Serialize the TaskSpecification.
   auto spec = CreateTaskInfo(
       fbb, to_flatbuf(fbb, driver_id), to_flatbuf(fbb, task_id),
-      to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, ActorID::nil()),
-      to_flatbuf(fbb, ActorID::nil()), to_flatbuf(fbb, WorkerID::nil()),
-      to_flatbuf(fbb, ActorHandleID::nil()), 0, false, to_flatbuf(fbb, function_id),
-      fbb.CreateVector(arguments), fbb.CreateVector(returns),
-      map_to_flatbuf(fbb, required_resources));
+      to_flatbuf(fbb, parent_task_id), parent_counter, to_flatbuf(fbb, actor_creation_id),
+      to_flatbuf(fbb, actor_creation_dummy_object_id), to_flatbuf(fbb, actor_id),
+      to_flatbuf(fbb, actor_handle_id), actor_counter, false,
+      to_flatbuf(fbb, function_id), fbb.CreateVector(arguments),
+      fbb.CreateVector(returns), map_to_flatbuf(fbb, required_resources));
   fbb.Finish(spec);
   AssignSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
@@ -163,6 +167,42 @@ const ResourceSet TaskSpecification::GetRequiredResources() const {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
   auto required_resources = map_from_flatbuf(*message->required_resources());
   return ResourceSet(required_resources);
+}
+
+bool TaskSpecification::IsActorCreationTask() const {
+  return !ActorCreationId().is_nil();
+}
+
+bool TaskSpecification::IsActorTask() const { return !ActorId().is_nil(); }
+
+ActorID TaskSpecification::ActorCreationId() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->actor_creation_id());
+}
+
+ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->actor_creation_dummy_object_id());
+}
+
+ActorID TaskSpecification::ActorId() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->actor_id());
+}
+
+ActorHandleID TaskSpecification::ActorHandleId() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->actor_handle_id());
+}
+
+int64_t TaskSpecification::ActorCounter() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return message->actor_counter();
+}
+
+ObjectID TaskSpecification::ActorDummyObject() const {
+  RAY_CHECK(IsActorTask() || IsActorCreationTask());
+  return ReturnId(NumReturns() - 1);
 }
 
 }  // namespace raylet

@@ -12,8 +12,10 @@ TaskDependencyManager::TaskDependencyManager(
       // reconstruction_policy_(reconstruction_policy),
       task_ready_callback_(handler) {
   // TODO(swang): Check return status.
-  ray::Status status = object_manager_.SubscribeObjAdded(
-      [this](const ObjectID &object_id) { handleObjectReady(object_id); });
+  ray::Status status =
+      object_manager_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
+        handleObjectReady(ObjectID::from_binary(object_info.object_id));
+      });
   // TODO(swang): Subscribe to object removed notifications.
 }
 
@@ -105,7 +107,7 @@ void TaskDependencyManager::UnsubscribeTaskReady(const TaskID &task_id) {
 }
 
 void TaskDependencyManager::MarkDependencyReady(const ObjectID &object) {
-  throw std::runtime_error("Method not implemented");
+  handleObjectReady(object);
 }
 
 }  // namespace raylet

@@ -57,14 +57,12 @@ void WorkerPool::StartWorker() {
   RAY_LOG(FATAL) << "Failed to start worker with return value " << rv;
 }
 
-uint32_t WorkerPool::PoolSize() const { return pool_.size(); }
-
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   RAY_LOG(DEBUG) << "Registering worker with pid " << worker->Pid();
   registered_workers_.push_back(worker);
 }
 
-const std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
+std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
     std::shared_ptr<LocalClientConnection> connection) const {
   for (auto it = registered_workers_.begin(); it != registered_workers_.end(); it++) {
     if ((*it)->Connection() == connection) {
@@ -76,17 +74,30 @@ const std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
 
 void WorkerPool::PushWorker(std::shared_ptr<Worker> worker) {
   // Since the worker is now idle, unset its assigned task ID.
-  worker->AssignTaskId(TaskID::nil());
+  RAY_CHECK(worker->GetAssignedTaskId().is_nil())
+      << "Idle workers cannot have an assigned task ID";
   // Add the worker to the idle pool.
-  pool_.push_back(std::move(worker));
+  if (worker->GetActorId().is_nil()) {
+    pool_.push_back(std::move(worker));
+  } else {
+    actor_pool_[worker->GetActorId()] = std::move(worker);
+  }
 }
 
-std::shared_ptr<Worker> WorkerPool::PopWorker() {
-  if (pool_.empty()) {
-    return nullptr;
+std::shared_ptr<Worker> WorkerPool::PopWorker(const ActorID &actor_id) {
+  std::shared_ptr<Worker> worker = nullptr;
+  if (actor_id.is_nil()) {
+    if (!pool_.empty()) {
+      worker = std::move(pool_.back());
+      pool_.pop_back();
+    }
+  } else {
+    auto actor_entry = actor_pool_.find(actor_id);
+    if (actor_entry != actor_pool_.end()) {
+      worker = std::move(actor_entry->second);
+      actor_pool_.erase(actor_entry);
+    }
   }
-  std::shared_ptr<Worker> worker = std::move(pool_.back());
-  pool_.pop_back();
   return worker;
 }
 

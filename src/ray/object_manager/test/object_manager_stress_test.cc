@@ -241,17 +241,17 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void AddTransferTestHandlers() {
     ray::Status status = ray::Status::OK();
-    status =
-        server1->object_manager_.SubscribeObjAdded([this](const ObjectID &object_id) {
-          object_added_handler_1(object_id);
+    status = server1->object_manager_.SubscribeObjAdded(
+        [this](const ObjectInfoT &object_info) {
+          object_added_handler_1(ObjectID::from_binary(object_info.object_id));
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
           }
         });
     RAY_CHECK_OK(status);
-    status =
-        server2->object_manager_.SubscribeObjAdded([this](const ObjectID &object_id) {
-          object_added_handler_2(object_id);
+    status = server2->object_manager_.SubscribeObjAdded(
+        [this](const ObjectInfoT &object_info) {
+          object_added_handler_2(ObjectID::from_binary(object_info.object_id));
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TransferTestComplete();
           }

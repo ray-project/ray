@@ -52,7 +52,7 @@ set(RAY_SRCS
   raylet/worker.cc
   raylet/worker_pool.cc
   raylet/scheduling_resources.cc
-  raylet/actor.cc
+  raylet/actor_registration.cc
   raylet/scheduling_queue.cc
   raylet/scheduling_policy.cc
   raylet/task_dependency_manager.cc
