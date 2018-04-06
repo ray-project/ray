@@ -157,10 +157,9 @@ class DataFrame(object):
     def __str__(self):
         return repr(self)
 
-    def __repr__(self):
-        if len(self._row_metadata) < 60:
-            result = repr(to_pandas(self))
-            return result
+    def _repr_helper_(self):
+        if sum(self._row_lengths) < 60:
+            return to_pandas(self)
 
         def head(df, n):
             """Compute the head for this without creating a new DataFrame"""
@@ -198,12 +197,28 @@ class DataFrame(object):
         # We have to do it this way or convert dots to a dataframe and
         # transpose. This seems better.
         result = head.append(dots).append(tail)
+        return result
 
+    def __repr__(self):
         # We use pandas repr so that we match them.
         # The split here is so that we don't repr pandas row lengths.
-        return repr(result).split("\n\n")[0] + \
+        result = self._repr_helper_()
+        final_result = repr(result).rsplit("\n\n", maxsplit=1)[0] + \
             "\n\n[{0} rows X {1} columns]".format(len(self.index),
                                                   len(self.columns))
+        return final_result
+
+    def _repr_html_(self):
+        """repr function for rendering in Jupyter Notebooks like Pandas
+        Dataframes.
+
+        Returns:
+            The HTML representation of a Dataframe.
+        """
+        result = self._repr_helper_()._repr_html_()
+        return result.split('<p>')[0] + \
+            '<p>{0} rows × {1} columns</p>\n</div>'.format(len(self.index),
+                                                           len(self.columns))
 
     def _get_index(self):
         """Get the index for this DataFrame.
