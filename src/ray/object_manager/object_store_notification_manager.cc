@@ -55,19 +55,16 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
   if (object_info->is_deletion()) {
     ProcessStoreRemove(object_id);
   } else {
-    ProcessStoreAdd(object_id);
-    // TODO(hme): Determine what data is actually needed by consumer of this notification.
-    //    ProcessStoreAdd(
-    //        object_id, object_info->data_size(),
-    //        object_info->metadata_size(),
-    //        (unsigned char *) object_info->digest()->data());
+    ObjectInfoT result;
+    object_info->UnPackTo(&result);
+    ProcessStoreAdd(result);
   }
   NotificationWait();
 }
 
-void ObjectStoreNotificationManager::ProcessStoreAdd(const ObjectID &object_id) {
+void ObjectStoreNotificationManager::ProcessStoreAdd(const ObjectInfoT &object_info) {
   for (auto handler : add_handlers_) {
-    handler(object_id);
+    handler(object_info);
   }
 }
 
@@ -78,7 +75,7 @@ void ObjectStoreNotificationManager::ProcessStoreRemove(const ObjectID &object_i
 }
 
 void ObjectStoreNotificationManager::SubscribeObjAdded(
-    std::function<void(const ObjectID &)> callback) {
+    std::function<void(const ObjectInfoT &)> callback) {
   add_handlers_.push_back(callback);
 }
 
