@@ -358,6 +358,12 @@ void handle_convert_worker_to_actor(
      * filled out, so fill out the correct worker field now. */
     algorithm_state->local_actor_infos[actor_id].worker = worker;
   }
+  /* Increment the task counter for the creator's handle to account for the
+   * actor creation task. */
+  auto &task_counters =
+      algorithm_state->local_actor_infos[actor_id].task_counters;
+  RAY_CHECK(task_counters[ActorHandleID::nil()] == 0);
+  task_counters[ActorHandleID::nil()]++;
 }
 
 /**
