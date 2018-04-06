@@ -286,7 +286,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void CompareObjects(ObjectID &object_id_1, ObjectID &object_id_2) {
     plasma::ObjectBuffer object_buffer_1 = GetObject(client1, object_id_1);
-    plasma::ObjectBuffer object_buffer_2 = GetObject(client1, object_id_1);
+    plasma::ObjectBuffer object_buffer_2 = GetObject(client2, object_id_2);
     uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
     uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->data());
     ASSERT_EQ(object_buffer_1.data_size, object_buffer_2.data_size);
