@@ -72,9 +72,8 @@ ray::Status NodeManager::RegisterGcs() {
       gcs::AsyncGcsClient *client, const ActorID &actor_id,
       const std::vector<ActorTableDataT> &data) { HandleActorCreation(actor_id, data); };
 
-  RAY_RETURN_NOT_OK(gcs_client_->actor_table().Subscribe(UniqueID::nil(), UniqueID::nil(),
-                                                         actor_creation_callback,
-                                                         nullptr));
+  RAY_RETURN_NOT_OK(gcs_client_->actor_table().Subscribe(
+      UniqueID::nil(), UniqueID::nil(), actor_creation_callback, nullptr));
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::AsyncGcsClient *client, const UniqueID &id,
