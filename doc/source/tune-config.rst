@@ -72,7 +72,7 @@ For more information on variant generation, see `variant_generator.py <https://g
 Broadcasting Objects
 --------------------
 
-You often will want compute a large object (e.g., training data, model weights) on the driver and use that object within each trial. Ray Tune provides a ``pin_in_object_store`` utility function that can be used to broadcast such large objects. Objects pinned in this way will never be evicted from the Ray object storewhile the driver process is running, and can be efficiently retrieved from any task via ``get_pinned_object``.
+You often will want compute a large object (e.g., training data, model weights) on the driver and use that object within each trial. Ray Tune provides a ``pin_in_object_store`` utility function that can be used to broadcast such large objects. Objects pinned in this way will never be evicted from the Ray object store while the driver process is running, and can be efficiently retrieved from any task via ``get_pinned_object``.
 
 .. code-block:: python
 
