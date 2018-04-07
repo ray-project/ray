@@ -50,12 +50,13 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
     return NULL;
   }
   LocalSchedulerConnection *connection =
-      reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection;
+      reinterpret_cast<PyLocalSchedulerClient *>(self)
+          ->local_scheduler_connection;
   PyTask *task = reinterpret_cast<PyTask *>(py_task);
 
   if (!use_raylet(task)) {
-    TaskExecutionSpec execution_spec =
-        TaskExecutionSpec(*task->execution_dependencies, task->spec, task->size);
+    TaskExecutionSpec execution_spec = TaskExecutionSpec(
+        *task->execution_dependencies, task->spec, task->size);
     local_scheduler_submit(connection, execution_spec);
   } else {
     local_scheduler_submit_raylet(connection, *task->execution_dependencies,
@@ -119,8 +120,8 @@ static PyObject *PyLocalSchedulerClient_compute_put_id(PyObject *self,
   int put_index;
   TaskID task_id;
   PyObject *use_raylet;
-  if (!PyArg_ParseTuple(args, "O&iO", &PyObjectToUniqueID, &task_id,
-                        &put_index, &use_raylet)) {
+  if (!PyArg_ParseTuple(args, "O&iO", &PyObjectToUniqueID, &task_id, &put_index,
+                        &use_raylet)) {
     return NULL;
   }
   ObjectID put_id;
