@@ -145,11 +145,15 @@ class DataFrame(object):
         return repr(self)
 
     def _repr_helper_(self):
-        if sum(self._row_lengths) < 60:
+        if sum(self._row_lengths) <= 60 and \
+           sum(self._col_lengths) <= 20:
             return to_pandas(self)
 
-        def head(df, n):
+        def head(df, n, get_local_head=False):
             """Compute the head for this without creating a new DataFrame"""
+            if get_local_head:
+                return df.head(n)
+
             new_dfs = _map_partitions(lambda df: df.head(n),
                                       df)
 
@@ -159,8 +163,10 @@ class DataFrame(object):
             pd_head.columns = self.columns
             return pd_head
 
-        def tail(df, n):
+        def tail(df, n, get_local_tail=False):
             """Compute the tail for this without creating a new DataFrame"""
+            if get_local_tail:
+                return df.tail(n)
 
             new_dfs = _map_partitions(lambda df: df.tail(n),
                                       df)
@@ -171,19 +177,59 @@ class DataFrame(object):
             pd_tail.columns = self.columns
             return pd_tail
 
+        def front(df, n):
+            """Get first n columns without creating a new Dataframe"""
+
+            cum_col_lengths = self._col_lengths.cumsum()
+            index = np.argmax(cum_col_lengths>=10)
+            pd_front = pd.concat(ray.get(x[:index+1]), axis=1, copy=False)
+            pd_front = pd_front.iloc[:, :n]
+            pd_front.index = self.index
+            pd_front.columns = self.columns[:n]
+            return pd_front
+
+        def back(df, n):
+            """Get last n columns without creating a new Dataframe"""
+
+            cum_col_lengths = np.flip(self._col_lengths, axis=0).cumsum()
+            index = np.argmax(cum_col_lengths>=10)
+            pd_back = pd.concat(ray.get(x[-(index+1):]), axis=1, copy=False)
+            pd_back = pd_back.iloc[:, -n:]
+            pd_back.index = self.index
+            pd_back.columns = self.columns[-n:]
+            return pd_back
+
         x = self._col_partitions
-        head = head(x, 30)
-        tail = tail(x, 30)
+        get_local_head = False  
+
+        # Get first and last 10 columns if there are more than 20 columns
+        if sum(self._col_lengths) >= 20:
+            get_local_head = True
+            front = front(x, 10)
+            back = back(x, 10)
+
+            col_dots = pd.Series(["..."
+                                for _ in range(len(self.index))])
+            col_dots.index = self.index
+            col_dots.name = "..."
+            x = pd.concat([front, col_dots, back], axis=1)
+
+            # If less than 60 rows, x is already in the correct format.
+            if sum(self._row_lengths) < 60:
+                return x
+
+        head = head(x, 30, get_local_head)
+        tail = tail(x, 30, get_local_head)
 
         # Make the dots in between the head and tail
-        dots = pd.Series(["..."
-                          for _ in range(len(head.columns))])
-        dots.index = head.columns
-        dots.name = "..."
+        row_dots = pd.Series(["..."
+                            for _ in range(len(head.columns))])
+        row_dots.index = head.columns
+        row_dots.name = "..."
 
         # We have to do it this way or convert dots to a dataframe and
         # transpose. This seems better.
-        result = head.append(dots).append(tail)
+        result = head.append(row_dots).append(tail)
         return result
 
     def __repr__(self):
@@ -316,7 +362,7 @@ class DataFrame(object):
             return None
         if isinstance(self._row_length_cache, ray.local_scheduler.ObjectID):
             self._row_length_cache = ray.get(self._row_length_cache)
-        elif isinstance(self._row_length_cache, list) and \
+        elif isinstance(self._row_length_cache, np.ndarray) and \
                 isinstance(self._row_length_cache[0],
                            ray.local_scheduler.ObjectID):
             self._row_length_cache = ray.get(self._row_length_cache)
@@ -328,9 +374,11 @@ class DataFrame(object):
         We use this because we can compute it when creating the DataFrame.
 
         Args:
-            lengths ([ObjectID or Int]): A list of lengths for each
-                partition, in order.
+            lengths ([ObjectID or Int]): A list or numpy array of lengths 
+                for each partition, in order.
         """
+        if isinstance(lengths, list):
+            lengths = np.array(lengths)
         self._row_length_cache = lengths
 
     _row_lengths = property(_get_row_lengths, _set_row_lengths)
@@ -345,7 +393,7 @@ class DataFrame(object):
             return None
         if isinstance(self._col_length_cache, ray.local_scheduler.ObjectID):
             self._col_length_cache = ray.get(self._col_length_cache)
-        elif isinstance(self._col_length_cache, list) and \
+        elif isinstance(self._col_length_cache, np.ndarray) and \
                 isinstance(self._col_length_cache[0],
                            ray.local_scheduler.ObjectID):
             self._col_length_cache = ray.get(self._col_length_cache)
@@ -357,9 +405,11 @@ class DataFrame(object):
         We use this because we can compute it when creating the DataFrame.
 
         Args:
-            lengths ([ObjectID or Int]): A list of lengths for each
-                partition, in order.
+            lengths ([ObjectID or Int]): A list or numpy array of lengths 
+                for each partition, in order.
         """
+        if isinstance(lengths, list):
+            lengths = np.array(lengths)
         self._col_length_cache = lengths
 
     _col_lengths = property(_get_col_lengths, _set_col_lengths)
