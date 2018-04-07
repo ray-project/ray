@@ -247,6 +247,9 @@ class DataFrame(object):
 
     def __repr__(self):
         # We use pandas repr so that we match them.
+        if sum(self._row_lengths) <= 60 and \
+           sum(self._col_lengths) <= 20:
+            return repr(self._repr_helper_())
         # The split here is so that we don't repr pandas row lengths.
         result = self._repr_helper_()
         final_result = repr(result).rsplit("\n\n", maxsplit=1)[0] + \
@@ -263,6 +266,9 @@ class DataFrame(object):
         """
         # We use pandas _repr_html_ to get a string of the HTML representation
         # of the dataframe.
+        if sum(self._row_lengths) <= 60 and \
+           sum(self._col_lengths) <= 20:
+            return self._repr_helper_()._repr_html_()
         # We split so that we insert our correct dataframe dimensions.
         result = self._repr_helper_()._repr_html_()
         return result.split('<p>')[0] + \
