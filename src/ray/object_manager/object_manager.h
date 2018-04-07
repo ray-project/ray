@@ -71,6 +71,8 @@ class ObjectManager {
                          const ObjectManagerConfig &config,
                          std::unique_ptr<ObjectDirectoryInterface> od);
 
+  ~ObjectManager();
+
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   ///
@@ -147,9 +149,6 @@ class ObjectManager {
   /// \return Status of whether the wait successfully initiated.
   ray::Status Wait(const std::vector<ObjectID> &object_ids, uint64_t timeout_ms,
                    int num_ready_objects, const WaitCallback &callback);
-
-  /// \return Whether this object was successfully terminated.
-  ray::Status Terminate();
 
  private:
   ClientID client_id_;

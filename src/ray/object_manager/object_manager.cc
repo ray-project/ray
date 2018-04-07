@@ -53,6 +53,13 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   StartIOService();
 }
 
+ObjectManager::~ObjectManager() {
+  object_manager_service_->stop();
+  for (int i = 0; i < config_.num_threads; ++i) {
+    io_threads_[i].join();
+  }
+}
+
 void ObjectManager::StartIOService() {
   for (int i = 0; i < config_.num_threads; ++i) {
     io_threads_.emplace_back(std::thread(&ObjectManager::IOServiceLoop, this));
@@ -60,13 +67,6 @@ void ObjectManager::StartIOService() {
 }
 
 void ObjectManager::IOServiceLoop() { object_manager_service_->run(); }
-
-void ObjectManager::StopIOService() {
-  object_manager_service_->stop();
-  for (int i = 0; i < config_.num_threads; ++i) {
-    io_threads_[i].join();
-  }
-}
 
 void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
@@ -78,15 +78,6 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   local_objects_.erase(object_id);
   ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
-}
-
-ray::Status ObjectManager::Terminate() {
-  StopIOService();
-  ray::Status status_code = object_directory_->Terminate();
-  // TODO: evaluate store client termination status.
-  store_notification_.Terminate();
-  store_pool_.Terminate();
-  return status_code;
 }
 
 ray::Status ObjectManager::SubscribeObjAdded(

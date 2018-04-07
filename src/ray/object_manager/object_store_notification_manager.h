@@ -32,6 +32,8 @@ class ObjectStoreNotificationManager {
   ObjectStoreNotificationManager(boost::asio::io_service &io_service,
                                  const std::string &store_socket_name);
 
+  ~ObjectStoreNotificationManager();
+
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   /// already exist in the local store
@@ -43,9 +45,6 @@ class ObjectStoreNotificationManager {
   ///
   /// \param callback A callback expecting an ObjectID.
   void SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
-
-  /// Terminate this object.
-  void Terminate();
 
  private:
   /// Async loop for handling object store notifications.

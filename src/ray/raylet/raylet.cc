@@ -18,18 +18,18 @@ Raylet::Raylet(boost::asio::io_service &main_service,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-    : acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
+    : gcs_client_(gcs_client),
+      object_manager_(main_service, std::move(object_manager_service),
+                      object_manager_config, gcs_client),
+      node_manager_(main_service, node_manager_config, object_manager_, gcs_client_),
+      acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service),
       object_manager_acceptor_(
           main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       object_manager_socket_(main_service),
       node_manager_acceptor_(
           main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
-      node_manager_socket_(main_service),
-      gcs_client_(gcs_client),
-      object_manager_(main_service, std::move(object_manager_service),
-                      object_manager_config, gcs_client),
-      node_manager_(main_service, node_manager_config, object_manager_, gcs_client_) {
+      node_manager_socket_(main_service) {
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
@@ -43,7 +43,6 @@ Raylet::Raylet(boost::asio::io_service &main_service,
 
 Raylet::~Raylet() {
   RAY_CHECK_OK(gcs_client_->client_table().Disconnect());
-  RAY_CHECK_OK(object_manager_.Terminate());
 }
 
 ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {

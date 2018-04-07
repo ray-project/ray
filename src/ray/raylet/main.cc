@@ -50,6 +50,15 @@ int main(int argc, char *argv[]) {
                              raylet_socket_name, node_ip_address, redis_address,
                              redis_port, node_manager_config, object_manager_config,
                              gcs_client);
+
+  // Destroy the Raylet on a SIGTERM. The pointer to main_service is
+  // guaranteed to be valid since this function will run the event loop
+  // instead of returning immediately.
+  auto handler = [&main_service](const boost::system::error_code &error,
+                                 int signal_number) { main_service.stop(); };
+  boost::asio::signal_set signals(main_service, SIGTERM);
+  signals.async_wait(handler);
+
   main_service.run();
 }
 #endif
