@@ -13,7 +13,8 @@ try:
 except ImportError:
     print(
         "WARNING: lz4 not available, disabling sample compression. "
-        "This will significantly degrade RLlib performance.")
+        "This will significantly impact RLlib performance. "
+        "To install lz4, run `pip install lz4`.")
     LZ4_ENABLED = False
 
 
