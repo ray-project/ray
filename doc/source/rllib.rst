@@ -287,7 +287,8 @@ Here is an example of using the command-line interface with RLlib:
     python ray/python/ray/rllib/train.py -f tuned_examples/cartpole-grid-search-example.yaml
 
 Here is an example using the Python API. The same config passed to ``Agents`` may be placed
-in the ``config`` section of the experiments.
+in the ``config`` section of the experiments. RLlib agents automatically declare their
+resources requirements (e.g., based on ``num_workers``) to Tune, so you don't have to.
 
 .. code-block:: python
 
@@ -300,10 +301,6 @@ in the ``config`` section of the experiments.
         'cartpole-ppo': {
             'run': 'PPO',
             'env': 'CartPole-v0',
-            'trial_resources': {
-                'cpu': 1,
-                'extra_cpu': 2,  # for workers
-            },
             'stop': {
                 'episode_reward_mean': 200,
                 'time_total_s': 180
