@@ -34,11 +34,11 @@ parser.add_argument(
     "--redis-address", default=None, type=str,
     help="The Redis address of the cluster.")
 parser.add_argument(
-    "--fake-ray-cpus", default=None, type=int,
-    help="Number of CPUs to allocate to Ray. This only works in local mode.")
+    "--ray-num-cpus", default=None, type=int,
+    help="--num-cpus to pass to Ray. This only has an affect in local mode.")
 parser.add_argument(
-    "--fake-ray-gpus", default=None, type=int,
-    help="Number of GPUs to allocate to Ray. This only works in local mode.")
+    "--ray-num-gpus", default=None, type=int,
+    help="--num-gpus to pass to Ray. This only has an affect in local mode.")
 parser.add_argument(
     "--experiment-name", default="default", type=str,
     help="Name of the subdirectory under `local_dir` to put results in.")
@@ -81,5 +81,5 @@ if __name__ == "__main__":
 
     ray.init(
         redis_address=args.redis_address,
-        num_cpus=args.fake_ray_cpus, num_gpus=args.fake_ray_gpus)
+        num_cpus=args.ray_num_cpus, num_gpus=args.ray_num_gpus)
     run_experiments(experiments, scheduler=_make_scheduler(args))

@@ -104,7 +104,8 @@ class TrialRunner(object):
                             "available. {}").format(
                                 trial.resources.summary_string(),
                                 self._avail_resources.summary_string(),
-                                trial.trainable_cls.resource_help()))
+                                trial.trainable_cls.resource_help(
+                                    trial.config)))
                 elif trial.status == Trial.PAUSED:
                     raise TuneError(
                         "There are paused trials, but no more pending "

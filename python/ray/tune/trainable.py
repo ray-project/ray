@@ -102,7 +102,7 @@ class Trainable(object):
         return Resources(cpu=1, gpu=0)
 
     @classmethod
-    def resource_help(cls):
+    def resource_help(cls, config):
         """Returns a help string for configuring this trial's resources."""
 
         return ""

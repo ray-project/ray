@@ -36,6 +36,15 @@ class ApexAgent(DQNAgent):
     _agent_name = "APEX"
     _default_config = APEX_DEFAULT_CONFIG
 
+    @classmethod
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        return Resources(
+            cpu=1 + cf["optimizer_config"]["num_replay_buffer_shards"],
+            gpu=cf["gpu"] and 1 or 0,
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
+
     def update_target_if_needed(self):
         # Ape-X updates based on num steps trained, not sampled
         if self.optimizer.num_steps_trained - self.last_target_update_ts > \

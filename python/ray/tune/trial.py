@@ -376,6 +376,11 @@ class Trial(object):
         self.runner = cls.remote(
             config=self.config, registry=ray.tune.registry.get_registry(),
             logger_creator=logger_creator)
+        print("HI")
+        self.runner.train.remote()
+        print("HI2")
+        ray.get(self.runner.train.remote())
+        print("HI3")
 
     def set_verbose(self, verbose):
         self.verbose = verbose
