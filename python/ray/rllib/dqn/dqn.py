@@ -136,7 +136,6 @@ class DQNAgent(Agent):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
-        print("CREATED DQN")
         self.local_evaluator = DQNEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, 0)
         remote_cls = ray.remote(
@@ -160,7 +159,6 @@ class DQNAgent(Agent):
         self.saver = tf.train.Saver(max_to_keep=None)
         self.last_target_update_ts = 0
         self.num_target_updates = 0
-        print("CREATED DQN OK")
 
     @property
     def global_timestep(self):

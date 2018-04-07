@@ -45,6 +45,12 @@ parser.add_argument(
 parser.add_argument(
     "--env", default=None, type=str, help="The gym environment to use.")
 parser.add_argument(
+    "--queue-trials", action='store_true',
+    help=(
+        "Whether to queue trials when the cluster does not currently have "
+        "enough resources to launch one. This should be set to True when "
+        "running on an autoscaling cluster to enable automatic scale-up."))
+parser.add_argument(
     "-f", "--config-file", default=None, type=str,
     help="If specified, use config options from this file. Note that this "
     "overrides any trial-specific options set via flags above.")
@@ -82,4 +88,6 @@ if __name__ == "__main__":
     ray.init(
         redis_address=args.redis_address,
         num_cpus=args.ray_num_cpus, num_gpus=args.ray_num_gpus)
-    run_experiments(experiments, scheduler=_make_scheduler(args))
+    run_experiments(
+        experiments, scheduler=_make_scheduler(args),
+        queue_trials=args.queue_trials)
