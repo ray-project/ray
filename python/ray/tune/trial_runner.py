@@ -101,9 +101,10 @@ class TrialRunner(object):
                         raise TuneError((
                             "Insufficient cluster resources to launch trial: "
                             "trial requested {} but the cluster only has {} "
-                            "available.").format(
+                            "available. {}").format(
                                 trial.resources.summary_string(),
-                                self._avail_resources.summary_string()))
+                                self._avail_resources.summary_string(),
+                                trial.trainable_cls.resource_help()))
                 elif trial.status == Trial.PAUSED:
                     raise TuneError(
                         "There are paused trials, but no more pending "

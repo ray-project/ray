@@ -12,6 +12,7 @@ APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
         debug=False,
     )),
     n_step=3,
+    gpu=True,
     num_workers=32,
     buffer_size=2000000,
     learning_starts=50000,

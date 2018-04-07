@@ -53,12 +53,16 @@ def generate_trials(unresolved_spec, output_path=''):
             else:
                 experiment_tag = str(i)
             i += 1
+            if "trial_resources" in spec:
+                resources = json_to_resources(spec["trial_resources"])
+            else:
+                resources = None
             yield Trial(
                 trainable_name=spec["run"],
                 config=spec.get("config", {}),
                 local_dir=os.path.join(args.local_dir, output_path),
                 experiment_tag=experiment_tag,
-                resources=json_to_resources(spec.get("trial_resources", {})),
+                resources=resources,
                 stopping_criterion=spec.get("stop", {}),
                 checkpoint_freq=args.checkpoint_freq,
                 restore_path=spec.get("restore"),

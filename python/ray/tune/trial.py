@@ -79,7 +79,7 @@ class Trial(object):
 
     def __init__(
             self, trainable_name, config=None, local_dir=DEFAULT_RESULTS_DIR,
-            experiment_tag="", resources=Resources(cpu=1, gpu=0),
+            experiment_tag="", resources=None,
             stopping_criterion=None, checkpoint_freq=0,
             restore_path=None, upload_dir=None, max_failures=0):
         """Initialize a new trial.
@@ -103,10 +103,14 @@ class Trial(object):
 
         # Trial config
         self.trainable_name = trainable_name
+        self.trainable_cls = ray.tune.registry.get_registry().get(
+            ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
         self.config = config or {}
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
-        self.resources = resources
+        self.resources = (
+            resources or
+            self.trainable_cls.default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
@@ -346,11 +350,9 @@ class Trial(object):
 
     def _setup_runner(self):
         self.status = Trial.RUNNING
-        trainable_cls = ray.tune.registry.get_registry().get(
-            ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
         cls = ray.remote(
             num_cpus=self.resources.cpu,
-            num_gpus=self.resources.gpu)(trainable_cls)
+            num_gpus=self.resources.gpu)(self.trainable_cls)
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)

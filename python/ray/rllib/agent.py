@@ -62,6 +62,15 @@ class Agent(Trainable):
     _allow_unknown_configs = False
     _allow_unknown_subkeys = []
 
+    @classmethod
+    def resource_help(cls):
+        """Returns a help string for configuring this trial's resources."""
+
+        return (
+            "You can adjust the resource requests of RLlib agents by setting "
+            "the `num_workers` config. See the config variables available "
+            "for each agent for more info.")
+
     def __init__(
             self, config=None, env=None, registry=None,
             logger_creator=None):
