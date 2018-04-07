@@ -56,7 +56,7 @@ optional_ray_files += ray_autoscaler_files
 extras = {
     "rllib": [
         "tensorflow", "pyyaml", "gym[atari]", "opencv-python",
-        "python-snappy", "scipy"]
+        "lz4", "scipy"]
 }
 
 
