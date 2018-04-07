@@ -6,14 +6,14 @@ from .utils import (
     _build_index,
     _build_columns)
 
-class CoordDFBase(object):
+class _IndexMetadataBase(object):
     """Wrapper for Pandas indexes in Ray DataFrames. Handles all of the
     metadata specific to the axis of partition (setting indexes, 
     calculating the index within partition of a value, etc.) since the 
     dataframe may be partitioned across either axis. This way we can unify the
     possible index  operations over one axis-agnostic interface.
 
-    This class is the abstract superclass for CoordDF and IndexCoordDF,
+    This class is the abstract superclass for IndexMetadata and IndexIndexMetadata,
     which handle indexes along the partitioned and non-partitioned
     axes, respectively.
 
@@ -76,7 +76,7 @@ class CoordDFBase(object):
         raise NotImplementedError()
 
     def drop(self, labels, errors='raise'):
-        """Drop the specified labels from the CoordDF
+        """Drop the specified labels from the IndexMetadata
 
         Args:
             labels (scalar or list-like): 
@@ -100,14 +100,14 @@ class CoordDFBase(object):
         """
         self._coord_df.rename_axis(mapper, axis=0, inplace=True)
 
-class CoordDF(CoordDFBase):
-    """CoordDF implementation for index across a partitioned axis. This
+class _IndexMetadata(_IndexMetadataBase):
+    """IndexMetadata implementation for index across a partitioned axis. This
     implementation assumes the underlying index lies across multiple
     partitions.
     """
 
     def __init__(self, dfs, index=None, axis=0):
-        """Inits a CoordDF from Ray DataFrame partitions
+        """Inits a IndexMetadata from Ray DataFrame partitions
         
         Args:
             dfs ([ObjectID]): ObjectIDs of dataframe partitions
@@ -115,7 +115,7 @@ class CoordDF(CoordDFBase):
             axis: Axis of partition (0=row partitions, 1=column partitions)
 
         Returns: 
-            A CoordDF backed by the specified pd.Index, partitioned off specified partitions
+            A IndexMetadata backed by the specified pd.Index, partitioned off specified partitions
         """
         # NOTE: We should call this instead of manually calling _compute_lengths_and_index in
         #       the dataframe constructor
@@ -174,7 +174,7 @@ class CoordDF(CoordDFBase):
         return self[self._coord_df['partition'] == partition, 'index_within_partition']
 
     def __len__(self):
-        # Hard to say if this is faster than CoordDFBase.__len__ if self._coord_df is
+        # Hard to say if this is faster than IndexMetadataBase.__len__ if self._coord_df is
         # non-resident
         return sum(self._lengths)
 
@@ -227,7 +227,7 @@ class CoordDF(CoordDFBase):
             else:
                 index_within_partition = loc - np.asscalar(np.concatenate(([0], cum_lens))[partition])
 
-        # TODO: Stop-gap solution until we begin passing CoordDFs
+        # TODO: Stop-gap solution until we begin passing IndexMetadatas
         return partition, index_within_partition
 
         # Generate new index
@@ -261,19 +261,19 @@ class CoordDF(CoordDFBase):
                            'index_within_partition'] -= 1
 
 
-class IndexCoordDF(CoordDFBase):
-    """CoordDF implementation for index across a non-partitioned axis. This
+class _WrappingIndexMetadata(_IndexMetadata):
+    """IndexMetadata implementation for index across a non-partitioned axis. This
     implementation assumes the underlying index lies across one partition.
     """
 
     def __init__(self, index):
-        """Inits a CoordDF from Pandas Index only.
+        """Inits a IndexMetadata from Pandas Index only.
         
         Args:
             index (pd.Index): Index to wrap.
 
         Returns: 
-            A CoordDF backed by the specified pd.Index.
+            A IndexMetadata backed by the specified pd.Index.
         """
         self._coord_df = pd.DataFrame(index=index)
         # Set _lengths as a dummy variable for future-proofing method inheritance

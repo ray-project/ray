@@ -35,7 +35,7 @@ from .utils import (
     _build_columns,
     _create_block_partitions)
 from . import get_npartitions
-from .index_df import CoordDF
+from .index_metadata import _IndexMetadata
 
 
 class DataFrame(object):
@@ -115,8 +115,8 @@ class DataFrame(object):
                                                     axis=axis ^ 1)
 
         # Create the row and column index objects for using our partitioning.
-        self._row_coords = CoordDF(self._block_partitions[:, 0], index=index, axis=0)
-        self._col_coords = CoordDF(self._block_partitions[0, :], index=columns, axis=1)
+        self._row_metadata = _IndexMetadata(self._block_partitions[:, 0], index=index, axis=0)
+        self._col_metadata = _IndexMetadata(self._block_partitions[0, :], index=columns, axis=1)
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -144,7 +144,7 @@ class DataFrame(object):
         return repr(self)
 
     def __repr__(self):
-        if len(self._row_coords) < 60:
+        if len(self._row_metadata) < 60:
             result = repr(to_pandas(self))
             return result
 
@@ -197,7 +197,7 @@ class DataFrame(object):
         Returns:
             The union of all indexes across the partitions.
         """
-        return self._row_coords.index
+        return self._row_metadata.index
 
     def _set_index(self, new_index):
         """Set the index for this DataFrame.
@@ -205,7 +205,7 @@ class DataFrame(object):
         Args:
             new_index: The new index to set this
         """
-        self._row_coords.index = new_index
+        self._row_metadata.index = new_index
 
     index = property(_get_index, _set_index)
 
@@ -215,7 +215,7 @@ class DataFrame(object):
         Returns:
             The union of all indexes across the partitions.
         """
-        return self._col_coords.index
+        return self._col_metadata.index
 
     def _set_columns(self, new_index):
         """Set the columns for this DataFrame.
@@ -223,7 +223,7 @@ class DataFrame(object):
         Args:
             new_index: The new index to set this
         """
-        self._col_coords.index = new_index
+        self._col_metadata.index = new_index
 
     columns = property(_get_columns, _set_columns)
 
@@ -244,7 +244,7 @@ class DataFrame(object):
             oid_series = [(oid_series[i], i) for i in range(len(oid_series))]
 
             for df, partition in oid_series:
-                this_partition = self._col_coords.partition_series(partition)
+                this_partition = self._col_metadata.partition_series(partition)
                 df.index = this_partition[this_partition.isin(df.index)].index
 
             result_series = pd.concat([obj[0] for obj in oid_series],
@@ -380,8 +380,8 @@ class DataFrame(object):
         if row_partitions is not None or col_partitions is not None:
             # At least one partition list is being updated, so recompute
             # lengths and indices
-            self._row_coords = CoordDF(self._block_partitions[:, 0], index=index, axis=0)
-            self._col_coords = CoordDF(self._block_partitions[0, :], index=columns, axis=1)
+            self._row_metadata = _IndexMetadata(self._block_partitions[:, 0], index=index, axis=0)
+            self._col_metadata = _IndexMetadata(self._block_partitions[0, :], index=columns, axis=1)
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -901,7 +901,7 @@ class DataFrame(object):
         parts = [(parts[i], i) for i in range(len(parts))]
 
         for df, partition in parts:
-            this_partition = self._col_coords.partition_series(partition)
+            this_partition = self._col_metadata.partition_series(partition)
             df.columns = this_partition[this_partition.isin(df.columns)].index
 
         # Remove index from tuple
@@ -975,7 +975,7 @@ class DataFrame(object):
             # leaves the coords df in an inconsistent state.
             if axis == 'index':
                 try:
-                    coords = obj._row_coords[label]
+                    coords = obj._row_metadata[label]
                     if isinstance(coords, pd.DataFrame):
                         partitions = list(coords['partition'])
                         indexes = list(coords['index_within_partition'])
@@ -997,14 +997,14 @@ class DataFrame(object):
                         # The decrement here is because we're dropping one at a
                         # time and the index is automatically updated when we
                         # convert back to blocks.
-                        obj._row_coords.squeeze(part, index)
+                        obj._row_metadata.squeeze(part, index)
 
-                    obj._row_coords.drop(labels=label)
+                    obj._row_metadata.drop(labels=label)
                 except KeyError:
                     return obj
             else:
                 try:
-                    coords = obj._col_coords[label]
+                    coords = obj._col_metadata[label]
                     if isinstance(coords, pd.DataFrame):
                         partitions = list(coords['partition'])
                         indexes = list(coords['index_within_partition'])
@@ -1026,9 +1026,9 @@ class DataFrame(object):
                         # The decrement here is because we're dropping one at a
                         # time and the index is automatically updated when we
                         # convert back to blocks.
-                        obj._col_coords.squeeze(part, index)
+                        obj._col_metadata.squeeze(part, index)
 
-                    obj._col_coords.drop(labels=label)
+                    obj._col_metadata.drop(labels=label)
                 except KeyError:
                     return obj
 
@@ -1057,8 +1057,8 @@ class DataFrame(object):
         if not inplace:
             return obj
         else:
-            self._row_coords = obj._row_coords
-            self._col_coords = obj._col_coords
+            self._row_metadata = obj._row_metadata
+            self._col_metadata = obj._col_metadata
             self._block_partitions = obj._block_partitions
 
     def drop_duplicates(self, subset=None, keep='first', inplace=False):
@@ -1092,14 +1092,14 @@ class DataFrame(object):
         other_partition = None
         other_df = None
         # TODO: Make the appropriate coord df accessor methods for this fxn
-        for i, idx in other._row_coords._coord_df.iterrows():
+        for i, idx in other._row_metadata._coord_df.iterrows():
             if idx['partition'] != other_partition:
                 other_df = ray.get(other._row_partitions[idx['partition']])
                 other_partition = idx['partition']
             # TODO: group series here into full df partitions to reduce
             # the number of remote calls to helper
             other_series = other_df.iloc[idx['index_within_partition']]
-            curr_index = self._row_coords._coord_df.iloc[i]
+            curr_index = self._row_metadata._coord_df.iloc[i]
             curr_df = self._row_partitions[int(curr_index['partition'])]
             results.append(_deploy_func.remote(helper,
                                                curr_df,
@@ -1169,7 +1169,7 @@ class DataFrame(object):
         new_rows = _map_partitions(eval_helper, self._row_partitions)
 
         # TODO: This doesn't work if the expression is not an assignment
-        columns_copy = self._col_coords._coord_df.T.copy()
+        columns_copy = self._col_metadata._coord_df.T.copy()
         columns_copy.eval(expr, inplace=True, **kwargs)
         columns = columns_copy.columns
 
@@ -1262,8 +1262,8 @@ class DataFrame(object):
         else:
             new_obj = self.copy()
 
-        parts, coords_obj = (new_obj._col_partitions, new_obj._col_coords) if axis == 0 else \
-                            (new_obj._row_partitions, new_obj._row_coords)
+        parts, coords_obj = (new_obj._col_partitions, new_obj._col_metadata) if axis == 0 else \
+                            (new_obj._row_partitions, new_obj._row_metadata)
 
         if isinstance(value, (pd.Series, dict)):
             new_vals = {}
@@ -1327,7 +1327,7 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        return self._row_coords.first_valid_index()
+        return self._row_metadata.first_valid_index()
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -1425,13 +1425,13 @@ class DataFrame(object):
         Returns:
             A new dataframe with the first n rows of the dataframe.
         """
-        if n >= len(self._row_coords):
+        if n >= len(self._row_metadata):
             return self.copy()
 
         new_dfs = _map_partitions(lambda df: df.head(n),
                                   self._col_partitions)
 
-        index = self._row_coords.index[:n]
+        index = self._row_metadata.index[:n]
 
         return DataFrame(col_partitions=new_dfs,
                          columns=self.columns,
@@ -1524,7 +1524,7 @@ class DataFrame(object):
         if loc < 0:
             raise ValueError("unbounded slice")
 
-        partition, index_within_partition = self._col_coords.insert(column, loc)
+        partition, index_within_partition = self._col_metadata.insert(column, loc)
 
         # Deploy insert function to specific column partition, and replace that
         # column
@@ -1675,7 +1675,7 @@ class DataFrame(object):
         Returns:
             scalar: type of index
         """
-        return self._row_coords.last_valid_index()
+        return self._row_metadata.last_valid_index()
 
     def le(self, other, axis='columns', level=None):
         raise NotImplementedError(
@@ -2095,7 +2095,7 @@ class DataFrame(object):
             renamed.columns.name = mapper
         else:
             renamed.index.name = mapper
-            # renamed._row_coords.rename_axis(mapper, axis=axis, copy=copy,
+            # renamed._row_metadata.rename_axis(mapper, axis=axis, copy=copy,
             #                                 inplace=True)
         if not inplace:
             return renamed
@@ -2118,7 +2118,7 @@ class DataFrame(object):
             renamed.columns.set_names(name)
         else:
             renamed.index.set_names(name)
-            # renamed._row_coords.set_names(name)
+            # renamed._row_metadata.set_names(name)
 
         if not inplace:
             return renamed
@@ -2527,13 +2527,13 @@ class DataFrame(object):
         Returns:
             A new dataframe with the last n rows of this dataframe.
         """
-        if n >= len(self._row_coords):
+        if n >= len(self._row_metadata):
             return self
 
         new_dfs = _map_partitions(lambda df: df.tail(n),
                                   self._col_partitions)
 
-        index = self._row_coords.index[-n:]
+        index = self._row_metadata.index[-n:]
         return DataFrame(col_partitions=new_dfs,
                          columns=self.columns,
                          index=index)
@@ -2781,7 +2781,7 @@ class DataFrame(object):
 
         # see if we can slice the rows
         # NOTE(patyang): ?????
-        indexer = convert_to_index_sliceable(self._row_coords._coord_df, key)
+        indexer = convert_to_index_sliceable(self._row_metadata._coord_df, key)
         if indexer is not None:
             raise NotImplementedError("To contribute to Pandas on Ray, please"
                                       "visit github.com/ray-project/ray.")
@@ -2802,7 +2802,7 @@ class DataFrame(object):
 
     def _getitem_column(self, key):
         # may result in multiple columns?
-        partition = self._col_coords[key, 'partition']
+        partition = self._col_metadata[key, 'partition']
         result = ray.get(self._getitem_indiv_col(key, partition))
         result.name = key
         result.index = self.index
@@ -2844,7 +2844,7 @@ class DataFrame(object):
                              index=index)
 
     def _getitem_indiv_col(self, key, part):
-        loc = self._col_coords[key]
+        loc = self._col_metadata[key]
         if isinstance(loc, pd.Series):
             index = loc[loc['partition'] == part]
         else:
@@ -2864,7 +2864,7 @@ class DataFrame(object):
         Returns:
             Returns an integer length of the dataframe object.
         """
-        return len(self._row_coords)
+        return len(self._row_metadata)
 
     def __unicode__(self):
         raise NotImplementedError(
@@ -2971,7 +2971,7 @@ class DataFrame(object):
             del_helper, self._row_partitions, to_delete)
 
         # This structure is used to get the correct index inside the partition.
-        del_df = self._col_coords[key]
+        del_df = self._col_metadata[key]
 
         # We need to standardize between multiple and single occurrences in the
         # columns. Putting single occurrences in a pd.DataFrame and transposing
@@ -2981,8 +2981,8 @@ class DataFrame(object):
 
         # Cast cols as pd.Series as duplicate columns mean result may be
         # np.int64 or pd.Series
-        col_parts_to_del = pd.Series(self._col_coords[key, 'partition']).unique()
-        self._col_coords.drop(key)
+        col_parts_to_del = pd.Series(self._col_metadata[key, 'partition']).unique()
+        self._col_metadata.drop(key)
         for i in col_parts_to_del:
             # Compute the correct index inside the partition to delete.
             to_delete_in_partition = \
@@ -2991,7 +2991,7 @@ class DataFrame(object):
             self._col_partitions[i] = _deploy_func.remote(
                 del_helper, self._col_partitions[i], to_delete_in_partition)
 
-        self._col_coords.reset_partition_coords(col_parts_to_del)
+        self._col_metadata.reset_partition_coords(col_parts_to_del)
 
     def __finalize__(self, other, method=None, **kwargs):
         raise NotImplementedError(
