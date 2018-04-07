@@ -2,6 +2,10 @@ import pandas as pd
 import numpy as np
 import ray
 
+from .utils import (
+    _build_index,
+    _build_columns)
+
 class CoordDFBase(object):
     """Wrapper for Pandas indexes in Ray DataFrames. Handles all of the
     metadata specific to the axis of partition (setting indexes, 
@@ -60,12 +64,18 @@ class CoordDFBase(object):
     def __len__(self):
         return len(self._coord_df)
 
+    def first_valid_index(self):
+        return self._coord_df.first_valid_index()
+
+    def last_valid_index(self):
+        return self._coord_df.last_valid_index()
+
     ### Modifier Methods ###
 
     def insert(self, key, loc=None, partition=None, index_within_partition=None):
         raise NotImplementedError()
 
-    def drop(labels, errors='raise'):
+    def drop(self, labels, errors='raise'):
         """Drop the specified labels from the CoordDF
 
         Args:
@@ -77,6 +87,7 @@ class CoordDFBase(object):
         Returns:
             DataFrame with coordinates of dropped labels
         """
+        # TODO(patyang): This produces inconsistent indexes. marking before I fall asleep
         dropped = self.coords_of(labels)
         self._coord_df.drop(labels, errors=errors, inplace=True)
         return dropped
@@ -109,7 +120,8 @@ class CoordDF(CoordDFBase):
         # NOTE: We should call this instead of manually calling _compute_lengths_and_index in
         #       the dataframe constructor
         # TODO: Make it work for axis=1 as well
-        lengths_oid, coord_df_oid = _compute_lengths_and_index(dfs, index)
+        lengths_oid, coord_df_oid = _build_index.remote(dfs, index) if axis == 0 else \
+                                    _build_columns.remote(dfs, index)
         self._coord_df = coord_df_oid
         self._lengths = lengths_oid
 
@@ -135,13 +147,16 @@ class CoordDF(CoordDFBase):
         through __getitem__
 
         Args:
-            key: item to get coordinates of
+            key: 
+                item to get coordinates of. Can also be a tuple of item
+                and {partition, index_within_partition} if caller only
+                needs one of the coordinates
 
         Returns:
             Pandas object with the keys specified. If key is a single object
             it will be a pd.Series with items `partition` and
-            `index_within_partition`, and if key is a slice it will be a
-            pd.DataFrame with said items as columns.
+            `index_within_partition`, and if key is a slice or if the key is
+            duplicate it will be a pd.DataFrame with said items as columns.
         """
         return self._coord_df.loc[key]
 
@@ -155,7 +170,35 @@ class CoordDF(CoordDFBase):
             .apply(lambda x: x[:])
         return assignments_df
 
+    def partition_series(self, partition):
+        return self[self._coord_df['partition'] == partition, 'index_within_partition']
+
+    def __len__(self):
+        # Hard to say if this is faster than CoordDFBase.__len__ if self._coord_df is
+        # non-resident
+        return sum(self._lengths)
+
     ### Modifier Methods ###
+
+    def reset_partition_coords(self, partitions=None):
+        partitions = np.array(partitions)
+
+        for partition in partitions:
+            partition_mask = (self._coord_df['partition'] == partition)
+            # Since we are replacing columns with RangeIndex inside the
+            # partition, we have to make sure that our reference to it is
+            # updated as well.
+            try:
+                self._coord_df.loc[partition_mask,
+                                   'index_within_partition'] = [
+                    p for p in range(sum(partition_mask))]
+            except ValueError:
+                # Copy the arrow sealed dataframe so we can mutate it.
+                # We only do this the first time we try to mutate the sealed.
+                self._coord_df = self._coord_df.copy()
+                self._coord_df.loc[partition_mask,
+                                   'index_within_partition'] = [
+                    p for p in range(sum(partition_mask))]
 
     def insert(self, key, loc=None, partition=None, index_within_partition=None):
         """Inserts a key at a certain location in the index, or a certain coord
@@ -175,7 +218,7 @@ class CoordDF(CoordDFBase):
         # Determine which partition to place it in, and where in that partition
         if loc is not None:
             cum_lens = np.cumsum(self._lengths)
-            partition = np.digitize(loc, cum_lens)
+            partition = np.digitize(loc, cum_lens[:-1])
             if partition >= len(cum_lens):
                 if loc > cum_lens[-1]:
                     raise IndexError("index {0} is out of bounds".format(loc))
@@ -184,7 +227,8 @@ class CoordDF(CoordDFBase):
             else:
                 index_within_partition = loc - np.asscalar(np.concatenate(([0], cum_lens))[partition])
 
-        result = self._coord_df.copy()
+        # TODO: Stop-gap solution until we begin passing CoordDFs
+        return partition, index_within_partition
 
         # Generate new index
         new_index = self.index.insert(loc, key)
@@ -208,6 +252,14 @@ class CoordDF(CoordDFBase):
 
         # Return inserted coordinate for callee
         return coord_to_insert
+
+    def squeeze(self, partition, index_within_partition):
+        self._coord_df = self._coord_df.copy()
+
+        self._coord_df.loc[(self._coord_df.partition == partition) & 
+                           (self._coord_df.index_within_partition > index_within_partition),
+                           'index_within_partition'] -= 1
+
 
 class IndexCoordDF(CoordDFBase):
     """CoordDF implementation for index across a non-partitioned axis. This
@@ -281,13 +333,3 @@ class IndexCoordDF(CoordDFBase):
         # Shouldn't really need this, but here to maintain API consistency
         return pd.DataFrame({'partition': 0, 'index_within_partition': loc},
                             index=[key])
-
-"""
-1. Think about passing one of these objs when returning a new ray.DF with same indexes (think applymap).
-   Copy is going to be necessary, Devin has ideas about this.
-2. This obj should also encompass lengths. (i.e. from_partitions should be a replacement for 
-   _compute_lengths_and_index)
-3. Decided to completely encapsulate underlying data. Expose a limited, but expandable, API for accessing
-   metadata.
-4. We decided to make an empty dataframe when we're indexing the non-partition axis (pd.DataFrame(index=pd.RangeIndex(...)))
-"""
