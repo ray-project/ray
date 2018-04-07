@@ -108,8 +108,9 @@ class TrialRunner(object):
                             "Insufficient cluster resources to launch trial: "
                             "trial requested {} but the cluster only has {} "
                             "available. Pass `queue_trials=True` in "
-                            "ray.tune.run_experiments() to queue trials until "
-                            "the cluster scales up. {}").format(
+                            "ray.tune.run_experiments() or on the command "
+                            "line to queue trials until the cluster scales "
+                            "up. {}").format(
                                 trial.resources.summary_string(),
                                 self._avail_resources.summary_string(),
                                 trial.trainable_cls.resource_help(
