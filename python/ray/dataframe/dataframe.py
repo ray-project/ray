@@ -237,7 +237,7 @@ class DataFrame(object):
         # The split here is so that we don't repr pandas row lengths.
         result = self._repr_helper_()
         final_result = repr(result).rsplit("\n\n", maxsplit=1)[0] + \
-            "\n\n[{0} rows X {1} columns]".format(len(self.index),
+            "\n\n[{0} rows x {1} columns]".format(len(self.index),
                                                   len(self.columns))
         return final_result
 
@@ -361,11 +361,11 @@ class DataFrame(object):
         if self._row_length_cache is None:
             return None
         if isinstance(self._row_length_cache, ray.local_scheduler.ObjectID):
-            self._row_length_cache = ray.get(self._row_length_cache)
+            self._row_length_cache = np.array(ray.get(self._row_length_cache))
         elif isinstance(self._row_length_cache, np.ndarray) and \
                 isinstance(self._row_length_cache[0],
                            ray.local_scheduler.ObjectID):
-            self._row_length_cache = ray.get(self._row_length_cache)
+            self._row_length_cache = np.array(ray.get(self._row_length_cache))
         return self._row_length_cache
 
     def _set_row_lengths(self, lengths):
@@ -392,11 +392,11 @@ class DataFrame(object):
         if self._col_length_cache is None:
             return None
         if isinstance(self._col_length_cache, ray.local_scheduler.ObjectID):
-            self._col_length_cache = ray.get(self._col_length_cache)
+            self._col_length_cache = np.array(ray.get(self._col_length_cache))
         elif isinstance(self._col_length_cache, np.ndarray) and \
                 isinstance(self._col_length_cache[0],
                            ray.local_scheduler.ObjectID):
-            self._col_length_cache = ray.get(self._col_length_cache)
+            self._col_length_cache = np.array(ray.get(self._col_length_cache))
         return self._col_length_cache
 
     def _set_col_lengths(self, lengths):
