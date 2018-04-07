@@ -66,8 +66,8 @@ class Agent(Trainable):
     def resource_help(cls, _):
         return (
             "You can adjust the resource requests of RLlib agents by setting "
-            "the `num_workers` and other configs. See the config variables "
-            "available for each agent for more info.")
+            "the `num_workers` and other configs. See the DEFAULT_CONFIG "
+            "defined by each agent for more info.")
 
     def __init__(
             self, config=None, env=None, registry=None,
