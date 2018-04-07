@@ -31,6 +31,8 @@ class ObjectStoreClientPool {
   /// \param store_socket_name The object store socket name.
   ObjectStoreClientPool(const std::string &store_socket_name);
 
+  ~ObjectStoreClientPool();
+
   /// This object cannot be copied due to pool_mutex.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectStoreClientPool);
 
@@ -46,9 +48,6 @@ class ObjectStoreClientPool {
   /// \param client The client to return.
   /// \param client
   void ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client);
-
-  /// Terminates this object.
-  void Terminate();
 
  private:
   /// Adds a client to the client pool and mark it as available.

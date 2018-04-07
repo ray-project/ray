@@ -1,5 +1,7 @@
 #include "ray/raylet/worker_pool.h"
 
+#include <sys/wait.h>
+
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
@@ -19,9 +21,13 @@ WorkerPool::WorkerPool(int num_workers, const std::vector<std::string> &worker_c
 }
 
 WorkerPool::~WorkerPool() {
-  // TODO(swang): Kill registered workers.
-  pool_.clear();
-  registered_workers_.clear();
+  // Kill all registered workers. NOTE(swang): This assumes that the registered
+  // workers were started by the pool.
+  for (const auto &worker : registered_workers_) {
+    RAY_CHECK(worker->Pid() > 0);
+    kill(worker->Pid(), SIGKILL);
+    waitpid(worker->Pid(), NULL, 0);
+  }
 }
 
 void WorkerPool::StartWorker() {

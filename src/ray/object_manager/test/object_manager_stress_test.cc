@@ -43,7 +43,6 @@ class MockServer {
 
   ~MockServer() {
     RAY_CHECK_OK(gcs_client_->client_table().Disconnect());
-    RAY_CHECK_OK(object_manager_.Terminate());
   }
 
  private:

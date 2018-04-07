@@ -25,7 +25,7 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
   NotificationWait();
 }
 
-void ObjectStoreNotificationManager::Terminate() {
+ObjectStoreNotificationManager::~ObjectStoreNotificationManager() {
   ARROW_CHECK_OK(store_client_.Disconnect());
 }
 
