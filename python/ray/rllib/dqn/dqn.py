@@ -130,7 +130,6 @@ class DQNAgent(Agent):
     @classmethod
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
-        print("HI", cf)
         return Resources(
             cpu=1, gpu=cf["gpu"] and 1 or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],

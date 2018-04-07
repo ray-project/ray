@@ -34,6 +34,12 @@ parser.add_argument(
     "--redis-address", default=None, type=str,
     help="The Redis address of the cluster.")
 parser.add_argument(
+    "--fake-ray-cpus", default=None, type=int,
+    help="Number of CPUs to allocate to Ray. This only works in local mode.")
+parser.add_argument(
+    "--fake-ray-gpus", default=None, type=int,
+    help="Number of GPUs to allocate to Ray. This only works in local mode.")
+parser.add_argument(
     "--experiment-name", default="default", type=str,
     help="Name of the subdirectory under `local_dir` to put results in.")
 parser.add_argument(
@@ -73,5 +79,7 @@ if __name__ == "__main__":
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
 
-    ray.init(redis_address=args.redis_address)
+    ray.init(
+        redis_address=args.redis_address,
+        num_cpus=args.fake_ray_cpus, num_gpus=args.fake_ray_gpus)
     run_experiments(experiments, scheduler=_make_scheduler(args))
