@@ -86,9 +86,7 @@ class ConnectionPool {
   ray::Status RemoveSender(ConnectionType type, std::shared_ptr<SenderConnection> conn);
 
   /// This object cannot be copied for thread-safety.
-  ConnectionPool &operator=(const ConnectionPool &o) {
-    throw std::runtime_error("Can't copy ConnectionPool.");
-  }
+  RAY_DISALLOW_COPY_AND_ASSIGN(ConnectionPool);
 
  private:
   /// A container type that maps ClientID to a connection type.
