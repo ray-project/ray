@@ -471,7 +471,12 @@ static void PyTask_dealloc(PyTask *self) {
 }
 
 static PyObject *PyTask_function_id(PyTask *self) {
-  FunctionID function_id = TaskSpec_function(self->spec);
+  FunctionID function_id;
+  if (!use_raylet(self)) {
+    function_id = TaskSpec_function(self->spec);
+  } else {
+    function_id = self->task_spec->FunctionId();
+  }
   return PyObjectID_make(function_id);
 }
 
