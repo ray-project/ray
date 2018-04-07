@@ -63,11 +63,12 @@ class Agent(Trainable):
     _allow_unknown_subkeys = []
 
     @classmethod
-    def resource_help(cls, _):
+    def resource_help(cls, config):
         return (
-            "You can adjust the resource requests of RLlib agents by setting "
-            "the `num_workers` and other configs. See the DEFAULT_CONFIG "
-            "defined by each agent for more info.")
+            "\n\nYou can adjust the resource requests of RLlib agents by "
+            "setting `num_workers` and other configs. See the "
+            "DEFAULT_CONFIG defined by each agent for more info.\n\n"
+            "The config of this agent is: " + str(config))
 
     def __init__(
             self, config=None, env=None, registry=None,
