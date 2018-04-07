@@ -210,7 +210,8 @@ class TrialRunner(object):
 
         can_overcommit = self._queue_trials
 
-        if cpu_avail <= 0 or gpu_avail <= 0:
+        if ((self._avail_resources.cpu and cpu_avail <= 0) or
+                (self._avail_resources.gpu and gpu_avail <= 0)):
             can_overcommit = False  # some resource is already saturated
 
         if can_overcommit:

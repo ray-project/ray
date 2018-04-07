@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
+from ray.tune.trial import Resources
 
 APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
     optimizer_class="ApexOptimizer",

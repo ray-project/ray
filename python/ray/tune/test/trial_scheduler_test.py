@@ -6,6 +6,7 @@ import random
 import unittest
 import numpy as np
 
+import ray
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.pbt import PopulationBasedTraining, explore
@@ -858,4 +859,5 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    ray.init()
     unittest.main(verbosity=2)
