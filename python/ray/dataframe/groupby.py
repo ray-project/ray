@@ -3,17 +3,44 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas.core.groupby
+import numpy as np
+import pandas as pd
+import ray
 
+from .utils import _map_partitions
 from .utils import _inherit_docstrings
 
 
 @_inherit_docstrings(pandas.core.groupby.DataFrameGroupBy)
 class DataFrameGroupBy(object):
 
-    def __init__(self, partitions, columns, index):
-        self._partitions = partitions
-        self._columns = columns
-        self._index = index
+    def __init__(self, df,
+                 by=None, axis=0, level=None, as_index=True, sort=True,
+                 group_keys=True, squeeze=False, **kwargs):
+
+        index = df.index
+        index_grouped = pd.Series(index).groupby(by=by, sort=sort)
+        keys_and_values = [(k, v) for k, v in index_grouped]
+
+        grouped_partitions = np.array(
+            [groupby._submit(args=(part,
+                                   by,
+                                   axis,
+                                   level,
+                                   as_index,
+                                   sort,
+                                   group_keys,
+                                   squeeze),
+                             num_return_vals=len(keys_and_values))
+             for part in df._col_partitions]).T
+
+        from .dataframe import DataFrame
+
+        self._iter = [(keys_and_values[i][0],
+                       DataFrame(col_partitions=z[i].tolist(),
+                                 columns=df.columns,
+                                 index=keys_and_values[i][1].index))
+                      for i in range(len(grouped_partitions))]
 
     def _map_partitions(self, func, index=None):
         """Apply a function on each partition.
@@ -25,17 +52,13 @@ class DataFrameGroupBy(object):
             A new DataFrame containing the result of the function.
         """
         from .dataframe import DataFrame
-        from .dataframe import _deploy_func
 
-        assert(callable(func))
-        new_df = [_deploy_func.remote(lambda df: df.apply(func), part)
-                  for part in self._partitions]
+        # for k, obj in self.p:
+        #     z = _map_partitions(func, obj._col_partitions)
+        #
 
-        if index is None:
-            index = self._index
-
-        return DataFrame(row_partitions=new_df, columns=self._columns,
-                         index=index)
+        # return DataFrame(col_partitions=new_df, index=index,
+        #                  columns=columns)
 
     @property
     def ngroups(self):
@@ -217,7 +240,7 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __iter__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._iter.__iter__()
 
     def agg(self, arg, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
@@ -267,3 +290,16 @@ class DataFrameGroupBy(object):
     @property
     def take(self):
         raise NotImplementedError("Not Yet implemented.")
+
+
+@ray.remote
+def groupby(df, by=None, axis=0, level=None, as_index=True, sort=True,
+            group_keys=True, squeeze=False):
+
+    return [v for k, v in df.groupby(by=by,
+                                    axis=axis,
+                                    level=level,
+                                    as_index=as_index,
+                                    sort=sort,
+                                    group_keys=group_keys,
+                                    squeeze=squeeze)]
