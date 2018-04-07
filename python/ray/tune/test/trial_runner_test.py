@@ -492,11 +492,11 @@ class TrialRunnerTest(unittest.TestCase):
     def testTrialErrorOnStart(self):
         ray.init()
         _default_registry.register(TRAINABLE_CLASS, "asdf", None)
-        trial = Trial("asdf")
+        trial = Trial("asdf", resources=Resources(1, 0))
         try:
             trial.start()
         except Exception as e:
-            self.assertIn("has no attribute", str(e))
+            self.assertIn("a class", str(e))
 
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
