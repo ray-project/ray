@@ -64,8 +64,6 @@ class Agent(Trainable):
 
     @classmethod
     def resource_help(cls):
-        """Returns a help string for configuring this trial's resources."""
-
         return (
             "You can adjust the resource requests of RLlib agents by setting "
             "the `num_workers` config. See the config variables available "
