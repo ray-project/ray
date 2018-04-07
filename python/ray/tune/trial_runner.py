@@ -189,7 +189,7 @@ class TrialRunner(object):
         messages.append(self._scheduler_alg.debug_string())
         if self._resources_initialized:
             messages.append(
-                "Resources used: {}/{} CPUs, {}/{} GPUs".format(
+                "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
                     self._committed_resources.cpu,
                     self._avail_resources.cpu,
                     self._committed_resources.gpu,
