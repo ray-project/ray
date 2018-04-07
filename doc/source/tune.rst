@@ -1,27 +1,15 @@
 Ray Tune: Hyperparameter Optimization Framework
 ===============================================
 
-Ray Tune is a hyperparameter optimization framework for long-running tasks such as RL and deep learning training. Ray Tune makes it easy to go from running one or more experiments on a single machine to running on a large cluster with efficient search algorithms.
+Ray Tune is a scalable hyperparameter optimization framework for reinforcement learning and deep learning. Go from running one experiment on a single machine to running on a large cluster with efficient search algorithms without changing your code.
 
 Getting Started
 ---------------
 
-To use Ray Tune, add a two-line modification to a function:
-
 .. code-block:: python
-   :emphasize-lines: 1,5
 
-    def my_func(config, reporter):  # add the reporter parameter
-        import time, numpy as np
-        i = 0
-        while True:
-            reporter(timesteps_total=i, mean_accuracy=i ** config["alpha"])
-            i += config["beta"]
-            time.sleep(.01)
-
-Then, kick off your experiment:
-
-.. code-block:: python
+    import ray
+    import ray.tune as tune
 
     tune.register_trainable("my_func", my_func)
     ray.init()
@@ -37,6 +25,19 @@ Then, kick off your experiment:
         }
     })
 
+
+For the function you wish to tune, add a two-line modification:
+
+.. code-block:: python
+   :emphasize-lines: 1,5
+
+    def my_func(config, reporter):  # add the reporter parameter
+        import time, numpy as np
+        i = 0
+        while True:
+            reporter(timesteps_total=i, mean_accuracy=i ** config["alpha"])
+            i += config["beta"]
+            time.sleep(.01)
 
 This script runs a small grid search over the ``my_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 100`` is reached (for metrics like _loss_ that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
 
@@ -104,7 +105,7 @@ By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler``
 HyperOpt Integration
 --------------------
 
-The``HyperOptScheduler`` is a Trial Scheduler that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
+The ``HyperOptScheduler`` is a Trial Scheduler that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
 In order to use this scheduler, you will need to install HyperOpt via the following command:
 
 .. code-block:: bash
