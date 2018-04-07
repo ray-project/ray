@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -x
 
 # Git pre-commit hook to check staged Python files for formatting issues with
 # yapf.
@@ -25,15 +25,14 @@ set -ex
 if [ "$TRAVIS_PULL_REQUEST" == "false" ] ; then
   # Not in a pull request, so compare against parent commit
   base_commit="HEAD^"
-  echo "Running clang-format against parent commit $(git rev-parse $base_commit)"
+  echo "Running yapf against parent commit $(git rev-parse $base_commit)"
 else
   base_commit="$TRAVIS_BRANCH"
-  echo "Running clang-format against branch $base_commit, with hash $(git rev-parse $base_commit)"
+  echo "Running yapf against branch $base_commit, with hash $(git rev-parse $base_commit)"
 fi
 
 # Find all staged Python files, and exit early if there aren't any.
-PYTHON_FILES=(`git diff ${base_commit} --name-only --cached --diff-filter=AM | \
-  grep --color=never '.py$'`)
+PYTHON_FILES=(`git diff ${base_commit} --name-only --cached --diff-filter=AM | grep --color=never '.py$'`)
 if [ ! "$PYTHON_FILES" ]; then
   exit 0
 fi
