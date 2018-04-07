@@ -103,7 +103,7 @@ class Trainable(object):
 
     @classmethod
     def resource_help(cls, config):
-        """Returns a help string for configuring this trial's resources."""
+        """Returns a help string for configuring this trainable's resources."""
 
         return ""
 
