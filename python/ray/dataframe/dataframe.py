@@ -1978,9 +1978,15 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def memory_usage(self, index=True, deep=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        result = pd.concat(ray.get(_map_partitions(lambda df: df.memory_usage(index=False,
+            deep=deep), self._col_partitions)), axis=0)
+
+        result.index = self.columns
+        if index:
+            index_value = self._row_index.memory_usage(index=True).at['Index']
+            return pd.Series(index_value, index=['Index']).append(result)
+
+        return result
 
     def merge(self, right, how='inner', on=None, left_on=None, right_on=None,
               left_index=False, right_index=False, sort=False,
