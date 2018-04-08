@@ -29,10 +29,8 @@ from .utils import (
     _map_partitions,
     _partition_pandas_dataframe,
     to_pandas,
-    _build_index,
     _blocks_to_col,
     _blocks_to_row,
-    _build_columns,
     _create_block_partitions)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
@@ -115,8 +113,10 @@ class DataFrame(object):
                                                     axis=axis ^ 1)
 
         # Create the row and column index objects for using our partitioning.
-        self._row_metadata = _IndexMetadata(self._block_partitions[:, 0], index=index, axis=0)
-        self._col_metadata = _IndexMetadata(self._block_partitions[0, :], index=columns, axis=1)
+        self._row_metadata = _IndexMetadata(self._block_partitions[:, 0],
+                                            index=index, axis=0)
+        self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
+                                            index=columns, axis=1)
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -380,8 +380,10 @@ class DataFrame(object):
         if row_partitions is not None or col_partitions is not None:
             # At least one partition list is being updated, so recompute
             # lengths and indices
-            self._row_metadata = _IndexMetadata(self._block_partitions[:, 0], index=index, axis=0)
-            self._col_metadata = _IndexMetadata(self._block_partitions[0, :], index=columns, axis=1)
+            self._row_metadata = _IndexMetadata(self._block_partitions[:, 0],
+                                                index=index, axis=0)
+            self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
+                                                index=columns, axis=1)
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -963,7 +965,7 @@ class DataFrame(object):
         elif index is not None or columns is not None:
             axes, _ = pd.DataFrame()._construct_axes_from_arguments((index,
                                                                      columns),
-                                                                     {})
+                                                                    {})
         else:
             raise ValueError("Need to specify at least one of 'labels', "
                              "'index' or 'columns'")
@@ -1262,8 +1264,10 @@ class DataFrame(object):
         else:
             new_obj = self.copy()
 
-        parts, coords_obj = (new_obj._col_partitions, new_obj._col_metadata) if axis == 0 else \
-                            (new_obj._row_partitions, new_obj._row_metadata)
+        parts, coords_obj = (new_obj._col_partitions,
+                             new_obj._col_metadata) if axis == 0 else \
+                            (new_obj._row_partitions,
+                             new_obj._row_metadata)
 
         if isinstance(value, (pd.Series, dict)):
             new_vals = {}
@@ -1524,7 +1528,8 @@ class DataFrame(object):
         if loc < 0:
             raise ValueError("unbounded slice")
 
-        partition, index_within_partition = self._col_metadata.insert(column, loc)
+        partition, index_within_partition = \
+            self._col_metadata.insert(column, loc)
 
         # Deploy insert function to specific column partition, and replace that
         # column
@@ -2194,10 +2199,7 @@ class DataFrame(object):
             return values
 
         # We're building a new default index dataframe for use later.
-        _, new_index = \
-            _build_index.remote(new_obj._block_partitions[:, 0], None)
-
-        new_index = ray.get(new_index).index
+        new_index = pd.RangeIndex(len(self))
         if level is not None:
             if not isinstance(level, (tuple, list)):
                 level = [level]
@@ -2981,7 +2983,8 @@ class DataFrame(object):
 
         # Cast cols as pd.Series as duplicate columns mean result may be
         # np.int64 or pd.Series
-        col_parts_to_del = pd.Series(self._col_metadata[key, 'partition']).unique()
+        col_parts_to_del = \
+            pd.Series(self._col_metadata[key, 'partition']).unique()
         self._col_metadata.drop(key)
         for i in col_parts_to_del:
             # Compute the correct index inside the partition to delete.
