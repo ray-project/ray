@@ -6,11 +6,13 @@ pendulum-ddpg-1:
         cpu: 6
         gpu: 1
     stop:
-        episode_reward_mean: -140
+        episode_reward_mean: -160
     config:
         random_starts: False
         clip_rewards: False
         exploration_fraction: 0.4
+        model:
+            fcnet_hiddens: []
         #tf_session_args:
         #    device_count:
         #        CPU: 2

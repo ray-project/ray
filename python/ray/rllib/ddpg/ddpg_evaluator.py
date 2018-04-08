@@ -82,8 +82,8 @@ class DDPGEvaluator(PolicyEvaluator):
 
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())
-        # hard instead of soft!
-        self.ddpg_graph.update_target_hard(self.sess)
+        # hard instead of soft
+        self.ddpg_graph.update_target(self.sess, 1.0)
         self.global_timestep = 0
         self.local_timestep = 0
 

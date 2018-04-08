@@ -10,30 +10,34 @@ import tensorflow.contrib.layers as layers
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers.multi_gpu_impl import TOWER_SCOPE_NAME
 
+
+def _build_s_network(registry, inputs, config):
+    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
+    return frontend.last_layer
+
+
 def _build_p_network(registry, inputs, dim_actions, config):
     hiddens = config["actor_hiddens"]
 
-    #with tf.variable_scope("action_value"):
     action_out = inputs
     for hidden in hiddens:
         action_out = layers.fully_connected(
             action_out, num_outputs=hidden, activation_fn=tf.nn.relu)
-    # The final output layer of the actor was a tanh layer, to bound the actions
-    # (batch_size, dim_actions)
+    # The final output layer of the actor was a sigmoid layer, to bound the actions
+    # shape of action_scores is [batch_size, dim_actions]
     action_scores = layers.fully_connected(
         action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
 
     return action_scores
 
-# As a stochastic policy for inference
-# but a deterministic policy for training
+
+# As a stochastic policy for inference, but a deterministic policy for training
 # thus ignore batch_size issue when constructing a stochastic action
 def _build_action_network(
         p_values, low_action, high_action, stochastic, eps, theta, sigma):
-    # shape: (None, dim_action)
+    # shape is [None, dim_action]
     deterministic_actions = (high_action-low_action) * p_values + low_action
 
-    #batch_size = tf.shape(p_values)[0]
     exploration_sample = tf.get_variable(name="ornstein_uhlenbeck", dtype=tf.float32, \
                          initializer=low_action.size*[.0], trainable=False)
     normal_sample = tf.random_normal(shape=[low_action.size], mean=0.0, stddev=1.0)
@@ -44,6 +48,7 @@ def _build_action_network(
     return tf.cond(
         stochastic, lambda: stochastic_actions,
         lambda: deterministic_actions)
+
 
 def _build_q_network(registry, state_inputs, action_inputs, config):
     hiddens = config["critic_hiddens"]
@@ -57,6 +62,7 @@ def _build_q_network(registry, state_inputs, action_inputs, config):
         q_out, num_outputs=1, activation_fn=None)
 
     return q_scores
+
 
 def _huber_loss(x, delta=1.0):
     """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
@@ -112,14 +118,23 @@ class ModelAndLoss(object):
     def __init__(
             self, registry, dim_actions, low_action, high_action, config,
             obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
+        # state outputs
+        with tf.variable_scope("s_func", reuse=True):
+            s_values = _build_s_network(
+                registry, obs_t, config)
+
+        with tf.variable_scope("target_s_func") as scope:
+            target_s_values = _build_s_network(
+                registry, obs_tp1, config)
+            self.target_s_func_vars = _scope_vars(scope.name)
+
         # p network evaluation
         with tf.variable_scope("p_func", reuse=True) as scope:
-            self.p_t = _build_p_network(registry, obs_t, dim_actions, config)
-            #p_func_vars = _scope_vars(scope.name)
+            self.p_t = _build_p_network(registry, s_values, dim_actions, config)
 
         # target p network evaluation
         with tf.variable_scope("target_p_func") as scope:
-            self.p_tp1 = _build_p_network(registry, obs_tp1, dim_actions, config)
+            self.p_tp1 = _build_p_network(registry, target_s_values, dim_actions, config)
             self.target_p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -146,51 +161,26 @@ class ModelAndLoss(object):
 
         # q network evaluation
         with tf.variable_scope("q_func", reuse=True) as scope:
-            self.q_t = _build_q_network(registry, obs_t, act_t, config)
+            self.q_t = _build_q_network(registry, s_values, act_t, config)
         with tf.variable_scope("q_func", reuse=True) as scope:
-            self.q_tp0 = _build_q_network(registry, obs_t, output_actions, config)
-            #q_func_vars = _scope_vars(scope.name)
+            self.q_tp0 = _build_q_network(registry, s_values, output_actions, config)
 
         # target q network evalution
         with tf.variable_scope("target_q_func") as scope:
-            self.q_tp1 = _build_q_network(registry, obs_tp1, output_actions_estimated, config)
+            self.q_tp1 = _build_q_network(registry, target_s_values, output_actions_estimated, config)
             self.target_q_func_vars = _scope_vars(scope.name)
 
-
-        # q scores for actions which we know were selected in the given state.
-        #q_t_selected = tf.reduce_sum(
-        #    self.q_t * tf.one_hot(act_t, num_actions), 1)
-        #q_t_selected = self.q_t
         q_t_selected = tf.squeeze(self.q_t)
 
-        '''
-        # compute estimate of best possible value starting from state at t + 1
-        if config["double_q"]:
-            with tf.variable_scope("q_func", reuse=True):
-                q_tp1_using_online_net = _build_q_network(
-                    registry, obs_tp1, num_actions, config)
-            q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
-            q_tp1_best = tf.reduce_sum(
-                self.q_tp1 * tf.one_hot(
-                    q_tp1_best_using_online_net, num_actions), 1)
-        else:
-            q_tp1_best = tf.reduce_max(self.q_tp1, 1)
-        '''
-        # deterministic policy
-        #q_tp1_best = self.q_tp1
-        #q_tp1_best_masked = (1.0 - tf.expand_dims(done_mask, 1)) * q_tp1_best
         q_tp1_best = tf.squeeze(input=self.q_tp1)
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
-        #q_t_selected_target = (
-        #    tf.expand_dims(rew_t, 1) + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
         q_t_selected_target = (rew_t + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
 
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
         errors = _huber_loss(self.td_error)
-        #errors = 0.5 * tf.square(self.td_error)
 
         weighted_error = tf.reduce_mean(importance_weights * errors)
 
@@ -215,11 +205,18 @@ class DDPGGraph(object):
         self.cur_observations = tf.placeholder(
             tf.float32, shape=(None,) + env.observation_space.shape)
 
-        # Action P (policy) network
+        # State outputs
+        s_scope_name = TOWER_SCOPE_NAME + "/s_func"
+        with tf.variable_scope(s_scope_name) as scope:
+            s_values = _build_s_network(
+                registry, self.cur_observations, config)
+            s_func_vars = _scope_vars(scope.name)
+
+        # Actor: P (policy) network
         p_scope_name = TOWER_SCOPE_NAME + "/p_func"
         with tf.variable_scope(p_scope_name) as scope:
             p_values = _build_p_network(
-                registry, self.cur_observations, dim_actions, config)
+                registry, s_values, dim_actions, config)
             p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -238,11 +235,10 @@ class DDPGGraph(object):
             exploration_sample = tf.get_variable(name="ornstein_uhlenbeck")
             self.reset_noise_op = tf.assign(exploration_sample, dim_actions*[.0])
 
-
-        # Action Q network
+        # Critic: Q network
         q_scope_name = TOWER_SCOPE_NAME + "/q_func"
         with tf.variable_scope(q_scope_name) as scope:
-            q_values = _build_q_network(registry, self.cur_observations, self.output_actions, config)
+            q_values = _build_q_network(registry, s_values, self.output_actions, config)
             q_func_vars = _scope_vars(scope.name)
 
         # Replay inputs
@@ -282,6 +278,7 @@ class DDPGGraph(object):
         #self.critic_loss = loss_obj.loss
         actor_loss = loss_obj.actor_loss
         weighted_error = loss_obj.loss
+        target_s_func_vars = loss_obj.target_s_func_vars
         target_p_func_vars = loss_obj.target_p_func_vars
         target_q_func_vars = loss_obj.target_q_func_vars
         self.p_t = loss_obj.p_t
@@ -290,72 +287,61 @@ class DDPGGraph(object):
         self.q_tp1 = loss_obj.q_tp1
         self.td_error = loss_obj.td_error
 
-        if config["actor_l2_reg"] is not None:
-            for var in p_func_vars:
+        if config["l2_reg"] is not None:
+            for var in s_func_vars + p_func_vars:
                 if not "bias" in var.name:
-                    actor_loss += config["actor_l2_reg"] * 0.5 * tf.nn.l2_loss(var)
-        if config["critic_l2_reg"] is not None:
-            for var in q_func_vars:
+                    actor_loss += config["l2_reg"] * 0.5 * tf.nn.l2_loss(var)
+            for var in s_func_vars + q_func_vars:
                 if not "bias" in var.name:
-                    weighted_error += config["critic_l2_reg"] * 0.5 * tf.nn.l2_loss(var)
+                    weighted_error += config["l2_reg"] * 0.5 * tf.nn.l2_loss(var)
 
         # compute optimization op (potentially with gradient clipping)
         if config["grad_norm_clipping"] is not None:
             self.actor_grads_and_vars = _minimize_and_clip(
-                actor_optimizer, actor_loss, var_list=p_func_vars,
+                actor_optimizer, actor_loss, var_list = s_func_vars + p_func_vars,
                 clip_val=config["grad_norm_clipping"])
             self.critic_grads_and_vars = _minimize_and_clip(
-                critic_optimizer, weighted_error, var_list=q_func_vars,
+                critic_optimizer, weighted_error, var_list = s_func_vars + q_func_vars,
                 clip_val=config["grad_norm_clipping"])
         else:
             self.actor_grads_and_vars = actor_optimizer.compute_gradients(
-                actor_loss, var_list=p_func_vars)
+                actor_loss, var_list = s_func_vars + p_func_vars)
             self.critic_grads_and_vars = critic_optimizer.compute_gradients(
-                weighted_error, var_list=q_func_vars)
+                weighted_error, var_list = s_func_vars + q_func_vars)
         self.actor_grads_and_vars = [
             (g, v) for (g, v) in self.actor_grads_and_vars if g is not None]
         self.critic_grads_and_vars = [
             (g, v) for (g, v) in self.critic_grads_and_vars if g is not None]
+        # have overlapping vars (i.e., s_func_vars)
         self.grads_and_vars = self.actor_grads_and_vars + self.critic_grads_and_vars
-        #self.actor_grads = [g for (g, v) in self.actor_grads_and_vars]
-        #self.critic_grads = [g for (g, v) in self.critic_grads_and_vars]
         self.grads = [g for (g, v) in self.grads_and_vars]
         self.actor_train_expr = actor_optimizer.apply_gradients(self.actor_grads_and_vars)
         self.critic_train_expr = critic_optimizer.apply_gradients(self.critic_grads_and_vars)
-        #self.train_expr = tf.group(*([self.critic_train_expr, self.actor_train_expr]))
 
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
-        tau = config.get("tau", None)
-        assert tau is not None, "please specify a \\tau for soft sync"
+        self.tau_value = config.get("tau")
+        self.tau = tf.placeholder(tf.float32, (), name="tau")
         update_target_expr = []
         for var, var_target in zip(
+            sorted(s_func_vars, key=lambda v: v.name),
+                sorted(target_s_func_vars, key=lambda v: v.name)):
+            update_target_expr.append(var_target.assign(self.tau*var+(1.0-self.tau)*var_target))
+        for var, var_target in zip(
             sorted(q_func_vars, key=lambda v: v.name),
                 sorted(target_q_func_vars, key=lambda v: v.name)):
-            update_target_expr.append(var_target.assign(tau*var+(1.0-tau)*var_target))
+            update_target_expr.append(var_target.assign(self.tau*var+(1.0-self.tau)*var_target))
         for var, var_target in zip(
             sorted(p_func_vars, key=lambda v: v.name),
                 sorted(target_p_func_vars, key=lambda v: v.name)):
-            update_target_expr.append(var_target.assign(tau*var+(1.0-tau)*var_target))
+            update_target_expr.append(var_target.assign(self.tau*var+(1.0-self.tau)*var_target))
         self.update_target_expr = tf.group(*update_target_expr)
 
-        update_target_hard_expr = []
-        for var, var_target in zip(
-            sorted(q_func_vars, key=lambda v: v.name),
-                sorted(target_q_func_vars, key=lambda v: v.name)):
-            update_target_hard_expr.append(var_target.assign(var))
-        for var, var_target in zip(
-            sorted(p_func_vars, key=lambda v: v.name),
-                sorted(target_p_func_vars, key=lambda v: v.name)):
-            update_target_hard_expr.append(var_target.assign(var))
-        self.update_target_hard_expr = tf.group(*update_target_hard_expr)
 
-
-    def update_target(self, sess):
-        return sess.run(self.update_target_expr)
-
-    def update_target_hard(self, sess):
-        return sess.run(self.update_target_hard_expr)
+    # support both hard and soft sync
+    def update_target(self, sess, tau=None):
+        return sess.run(self.update_target_expr,
+                        feed_dict={self.tau: tau or self.tau_value})
 
     def act(self, sess, obs, eps, stochastic=True):
         return sess.run(
@@ -397,8 +383,11 @@ class DDPGGraph(object):
 
     def apply_gradients(self, sess, grads):
         assert len(grads) == len(self.grads_and_vars)
-        feed_dict = {ph: g for (g, ph) in zip(grads, self.grads)}
-        sess.run([self.critic_train_expr, self.actor_train_expr], feed_dict=feed_dict)
+        len_actor_part = len(self.actor_grads_and_vars)
+        feed_dict = {ph: g for (g, ph) in zip(grads[len_actor_part:], self.grads[len_actor_part:])}
+        sess.run(self.critic_train_expr, feed_dict=feed_dict)
+        feed_dict = {ph: g for (g, ph) in zip(grads[:len_actor_part], self.grads[:len_actor_part])}
+        sess.run(self.actor_train_expr, feed_dict=feed_dict)
 
     def compute_apply(
             self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,

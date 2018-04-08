@@ -84,8 +84,7 @@ DEFAULT_CONFIG = dict(
     actor_lr=1e-4,
     critic_lr=1e-3,
     # Weights for L2 regularization
-    actor_l2_reg=1e-6,
-    critic_l2_reg=1e-6,
+    l2_reg=1e-6,
     # If not None, clip gradients during optimization at this value
     grad_norm_clipping=None,
     # How many steps of the model to sample before learning starts.
