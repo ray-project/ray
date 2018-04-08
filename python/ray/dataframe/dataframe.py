@@ -1258,12 +1258,18 @@ class DataFrame(object):
         def eval_helper(df):
             df = df.copy()
             df.columns = columns
-            df.eval(expr, inplace=True, **kwargs)
-            df.columns = pd.RangeIndex(0, len(df.columns))
-            return df
+            cdf = df.eval(expr, inplace=False, **kwargs)
+            if not isinstance(cdf, pd.Series):
+                cdf.columns = pd.RangeIndex(0, len(cdf.columns))
+            return cdf
 
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_rows = _map_partitions(eval_helper, self._row_partitions)
+        first_row = ray.get(new_rows[0])
+        if isinstance(first_row, pd.Series):
+            new_series = pd.concat(ray.get(new_rows),axis=0)
+            new_series.index = self.index
+            return new_series
 
         # TODO: This doesn't work if the expression is not an assignment
         columns_copy = self._col_metadata._coord_df.T.copy()
