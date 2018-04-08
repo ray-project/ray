@@ -66,6 +66,7 @@ class DataFrame(object):
                 Metadata for the new dataframe's columns
         """
         # Check type of data and use appropriate constructor
+        print(index)
         if data is not None or (col_partitions is None and
                                 row_partitions is None and
                                 block_partitions is None):
@@ -1717,14 +1718,17 @@ class DataFrame(object):
         # Parse lines for memory usage number
         prog = re.compile('^memory+.+')
         mems = [prog.match(line) for line in lines]
-        mems = [int(re.search(r'\d+', m[0]).group())
+        mem_vals = [float(re.search(r'\d+', m[0]).group())
                 for m in mems if m is not None]
-        if len(mems) != 0:
+
+        memory_string = ""
+
+        if len(mem_vals) != 0:
             # Sum memory usage from each partition
-            memory_string = 'memory_usage: {0} bytes'.format(sum(mems))
-        else:
-            # Memory Usage was not returned by _map_partitions call
-            memory_string = ""
+            if memory_usage != 'deep':
+                memory_string = 'memory usage: {0}+ bytes'.format(sum(mem_vals))
+            else:
+                memory_string = 'memory usage: {0} bytes'.format(sum(mem_vals))
 
         # Combine all the components of the info() output 
         result = class_string + index_string + col_header + \
@@ -2000,15 +2004,19 @@ class DataFrame(object):
 
     def memory_usage(self, index=True, deep=False):
         result = pd.concat(ray.get(_map_partitions(
-                                    lambda df: df.memory_usage(index=False,
+                                    lambda df: df.memory_usage(index=index,
                                                                deep=deep),
                                     self._col_partitions)), axis=0)
 
-        result.index = self.columns
         if index:
-            index_value = self._row_index.memory_usage(index=True, deep=deep).at['Index']
+            index_value = result['Index']
+            result = result.drop(labels=['Index'])
+            result.index = self.columns
             return pd.Series(index_value, index=['Index']).append(result)
+            # index_value = self._row_index.memory_usage(index=True, deep=deep).at['Index']
+            # return pd.Series(index_value, index=['Index']).append(result)
 
+        result.index = self.columns
         return result
 
     def merge(self, right, how='inner', on=None, left_on=None, right_on=None,
