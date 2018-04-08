@@ -14,13 +14,20 @@ from .utils import _inherit_docstrings
 @_inherit_docstrings(pandas.core.groupby.DataFrameGroupBy)
 class DataFrameGroupBy(object):
 
-    def __init__(self, df,
-                 by=None, axis=0, level=None, as_index=True, sort=True,
-                 group_keys=True, squeeze=False, **kwargs):
+    def __init__(self, df, by, axis, level, as_index, sort, group_keys,
+                 squeeze, **kwargs):
 
-        self.columns = df.columns
-        index = df.index
-        index_grouped = pd.Series(index).groupby(by=by, sort=sort)
+        self._columns = df.columns
+        self._index = df.index
+        self._axis = axis
+
+        if axis == 0:
+            partitions = df._col_partitions
+            index_grouped = pd.Series(self._index).groupby(by=by, sort=sort)
+        else:
+            partitions = df._row_partitions
+            index_grouped = pd.Series(self._columns).groupby(by=by, sort=sort)
+
         keys_and_values = [(k, v) for k, v in index_grouped]
 
         grouped_partitions = np.array(
@@ -33,17 +40,24 @@ class DataFrameGroupBy(object):
                                    group_keys,
                                    squeeze),
                              num_return_vals=len(keys_and_values))
-             for part in df._col_partitions]).T
+             for part in partitions]).T
 
         from .dataframe import DataFrame
 
-        self._iter = [(keys_and_values[i][0],
-                       DataFrame(col_partitions=grouped_partitions[i].tolist(),
-                                 columns=df.columns,
-                                 index=keys_and_values[i][1].index))
-                      for i in range(len(grouped_partitions))]
+        if axis == 0:
+            self._iter = [(yield((keys_and_values[i][0],
+                           DataFrame(col_partitions=grouped_partitions[i].tolist(),
+                                     columns=df.columns,
+                                     index=keys_and_values[i][1].index))))
+                          for i in range(len(grouped_partitions))]
+        else:
+            self._iter = [(yield((keys_and_values[i][0],
+                           DataFrame(row_partitions=grouped_partitions[i].tolist(),
+                                     columns=keys_and_values[i][1].index,
+                                     index=self._index))))
+                          for i in range(len(grouped_partitions))]
 
-    def _map_partitions(self, func, index=None):
+    def _map_partitions(self, func):
         """Apply a function on each partition.
 
         Args:
@@ -209,9 +223,16 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def sum(self, **kwargs):
-        sums_list = [pd.DataFrame(v.sum(axis=0)).T for k, v in self._iter]
+        sums_list = [pd.DataFrame(v.sum(axis=self._axis)).T
+                     for k, v in self._iter]
         new_df = pd.concat(sums_list)
-        new_df.index = [k for k, v in self._iter]
+        if self._axis == 0:
+            new_df.columns = self._columns
+            new_df.index = [k for k, v in self._iter]
+        else:
+            new_df = new_df.T
+            new_df.columns = [k for k, v in self._iter]
+            new_df.index = self._index
         return new_df
 
     def __unicode__(self):
@@ -243,7 +264,7 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __iter__(self):
-        return self._iter.__iter__()
+        return self._iter
 
     def agg(self, arg, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
@@ -300,9 +321,9 @@ def groupby(df, by=None, axis=0, level=None, as_index=True, sort=True,
             group_keys=True, squeeze=False):
 
     return [v for k, v in df.groupby(by=by,
-                                    axis=axis,
-                                    level=level,
-                                    as_index=as_index,
-                                    sort=sort,
-                                    group_keys=group_keys,
-                                    squeeze=squeeze)]
+                                     axis=axis,
+                                     level=level,
+                                     as_index=as_index,
+                                     sort=sort,
+                                     group_keys=group_keys,
+                                     squeeze=squeeze)]
