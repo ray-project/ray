@@ -21,6 +21,9 @@ import warnings
 import numpy as np
 import ray
 import itertools
+import io
+import sys
+import re
 
 from .utils import (
     _deploy_func,
@@ -1668,9 +1671,70 @@ class DataFrame(object):
 
     def info(self, verbose=None, buf=None, max_cols=None, memory_usage=None,
              null_counts=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        def info_helper(df):
+            output_buffer = io.StringIO()
+            df.info(verbose=verbose,
+                    buf=output_buffer,
+                    max_cols=max_cols,
+                    memory_usage=memory_usage,
+                    null_counts=null_counts)
+            return output_buffer.getvalue()
+
+        # Combine the per-partition info and split into lines
+        result = ''.join(ray.get(_map_partitions(info_helper,
+                                                   self._col_partitions)))
+        lines = result.split('\n')
+
+        # Class denoted in info() output
+        class_string = '<class \'ray.dataframe.dataframe.DataFrame\'>\n'
+
+        # Create the Index info() string by parsing self.index
+        index_string = self.index.summary() + '\n'
+
+        # A column header is needed in the inf() output
+        col_header = 'Data columns (total {0} columns):\n'.format(
+                len(self.columns))
+
+        # Parse the per-partition values to get the per-column details
+        # Find all the lines in the output that start with integers
+        prog = re.compile('^[0-9]+.+')
+        col_lines = [prog.match(line) for line in lines]
+        cols = [c[0] for c in col_lines if c is not None]
+        # replace the partition columns names with real column names
+        columns = ["{0}\t{1}\n".format(self.columns[i], 
+                                       cols[i].split(" ", maxsplit=1)[1])
+                   for i in range(len(cols))]
+        col_string = ''.join(columns) + '\n'
+
+        # A summary of the dtypes in the dataframe
+        dtypes_string = "dtypes: "
+        for dtype, count in self.dtypes.value_counts().iteritems():
+            dtypes_string += "{0}({1}),".format(dtype, count)
+        dtypes_string = dtypes_string[:-1] + '\n'
+
+        # Compute the memory usage by summing per-partitions return values
+        # Parse lines for memory usage number
+        prog = re.compile('^memory+.+')
+        mems = [prog.match(line) for line in lines]
+        mems = [int(re.search(r'\d+', m[0]).group())
+                for m in mems if m is not None]
+        if len(mems) != 0:
+            # Sum memory usage from each partition
+            memory_string = 'memory_usage: {0} bytes'.format(sum(mems))
+        else:
+            # Memory Usage was not returned by _map_partitions call
+            memory_string = ""
+
+        # Combine all the components of the info() output 
+        result = class_string + index_string + col_header + \
+                 col_string + dtypes_string + memory_string
+       
+        # Write to specified output buffer
+        if buf:
+            buf.write(result)
+        else:
+            sys.stdout.write(result)
 
     def insert(self, loc, column, value, allow_duplicates=False):
         """Insert column into DataFrame at specified location.
@@ -1935,12 +1999,14 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def memory_usage(self, index=True, deep=False):
-        result = pd.concat(ray.get(_map_partitions(lambda df: df.memory_usage(index=False,
-            deep=deep), self._col_partitions)), axis=0)
+        result = pd.concat(ray.get(_map_partitions(
+                                    lambda df: df.memory_usage(index=False,
+                                                               deep=deep),
+                                    self._col_partitions)), axis=0)
 
         result.index = self.columns
         if index:
-            index_value = self._row_index.memory_usage(index=True).at['Index']
+            index_value = self._row_index.memory_usage(index=True, deep=deep).at['Index']
             return pd.Series(index_value, index=['Index']).append(result)
 
         return result
