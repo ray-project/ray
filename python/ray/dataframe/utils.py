@@ -72,8 +72,9 @@ def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None):
         row_partitions.append(top)
         temp_df = temp_df[row_chunksize:]
     else:
-        temp_df.reset_index(drop=True, inplace=True)
-        temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
+        if len(df) > row_chunksize:
+            temp_df.reset_index(drop=True, inplace=True)
+            temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
         row_partitions.append(ray.put(temp_df))
 
     return row_partitions

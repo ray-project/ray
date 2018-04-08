@@ -65,7 +65,6 @@ class DataFrame(object):
             block_partitions: A 2D numpy array of block partitions.
         """
         # Check type of data and use appropriate constructor
-        print(index)
         if data is not None or (col_partitions is None and
                                 row_partitions is None and
                                 block_partitions is None):
@@ -122,7 +121,6 @@ class DataFrame(object):
             _build_index.remote(self._block_partitions[:, 0], index)
         self._col_lengths, self._col_index = \
             _build_columns.remote(self._block_partitions[0, :], columns)
-        print(self.index)
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -2048,19 +2046,15 @@ class DataFrame(object):
 
     def memory_usage(self, index=True, deep=False):
         result = pd.concat(ray.get(_map_partitions(
-                                    lambda df: df.memory_usage(index=index,
+                                    lambda df: df.memory_usage(index=False,
                                                                deep=deep),
                                     self._col_partitions)), axis=0)
 
-        if index:
-            index_value = result['Index']
-            result = result.drop(labels=['Index'])
-            result.index = self.columns
-            return pd.Series(index_value, index=['Index']).append(result)
-            # index_value = self._row_index.memory_usage(index=True, deep=deep).at['Index']
-            # return pd.Series(index_value, index=['Index']).append(result)
-
         result.index = self.columns
+        if index:
+            index_value = self._row_index.memory_usage(index=True, deep=deep).at['Index']
+            return pd.Series(index_value, index=['Index']).append(result)
+
         return result
 
     def merge(self, right, how='inner', on=None, left_on=None, right_on=None,
