@@ -10,6 +10,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 class ReconstructionPolicy;
 
 /// \class TaskDependencyManager
@@ -76,6 +78,8 @@ class TaskDependencyManager {
   // The callback to call when a subscribed task becomes ready.
   std::function<void(const TaskID &)> task_ready_callback_;
 };
+
+}  // namespace raylet
 
 }  // namespace ray
 
