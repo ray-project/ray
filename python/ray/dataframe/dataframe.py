@@ -346,11 +346,11 @@ class DataFrame(object):
         if self._row_length_cache is None:
             return None
         if isinstance(self._row_length_cache, ray.local_scheduler.ObjectID):
-            self._row_length_cache = np.array(ray.get(self._row_length_cache))
+            self._row_length_cache = ray.get(self._row_length_cache)
         elif isinstance(self._row_length_cache, np.ndarray) and \
                 isinstance(self._row_length_cache[0],
                            ray.local_scheduler.ObjectID):
-            self._row_length_cache = np.array(ray.get(self._row_length_cache))
+            self._row_length_cache = ray.get(self._row_length_cache)
         return self._row_length_cache
 
     def _set_row_lengths(self, lengths):
@@ -377,11 +377,11 @@ class DataFrame(object):
         if self._col_length_cache is None:
             return None
         if isinstance(self._col_length_cache, ray.local_scheduler.ObjectID):
-            self._col_length_cache = np.array(ray.get(self._col_length_cache))
+            self._col_length_cache = ray.get(self._col_length_cache) #np.arr here
         elif isinstance(self._col_length_cache, np.ndarray) and \
                 isinstance(self._col_length_cache[0],
                            ray.local_scheduler.ObjectID):
-            self._col_length_cache = np.array(ray.get(self._col_length_cache))
+            self._col_length_cache = ray.get(self._col_length_cache) #np here
         return self._col_length_cache
 
     def _set_col_lengths(self, lengths):
@@ -1703,7 +1703,7 @@ class DataFrame(object):
         cols = [c.group(0) for c in col_lines if c is not None]
         # replace the partition columns names with real column names
         columns = ["{0}\t{1}\n".format(self.columns[i], 
-                                       cols[i].split(" ", maxsplit=1)[1])
+                                       cols[i].split(" ", 1)[1])
                    for i in range(len(cols))]
         col_string = ''.join(columns) + '\n'
 
@@ -1730,8 +1730,8 @@ class DataFrame(object):
                 memory_string = 'memory usage: {0} bytes'.format(sum(mem_vals))
 
         # Combine all the components of the info() output 
-        result = class_string + index_string + col_header + \
-                 col_string + dtypes_string + memory_string
+        result = ''.join([class_string, index_string, col_header,
+                          col_string, dtypes_string, memory_string])
        
         # Write to specified output buffer
         if buf:
