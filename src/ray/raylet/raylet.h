@@ -48,6 +48,7 @@ class Raylet {
  private:
   /// Register GCS client.
   ray::Status RegisterGcs(const std::string &node_ip_address,
+                          const std::string &object_store_socket_name,
                           const std::string &redis_address, int redis_port,
                           boost::asio::io_service &io_service, const NodeManagerConfig &);
 
