@@ -1241,9 +1241,8 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address,
                      redis_ip_address == ray.services.get_node_ip_address())):
                 raylets.append(client)
 
-        # TODO(rkn): The ObjectStoreSocketName field does not exist.
         object_store_addresses = [
-            raylet.ObjectStoreSocketName().decode("ascii")
+            services.ObjectStoreAddress(name=raylet.ObjectStoreSocketName().decode("ascii"), manager_name=None, manager_port=None)
             for raylet in raylets]
         raylet_socket_names = [raylet.NodeManagerAddress().decode("ascii") for
                                raylet in raylets]
@@ -1515,7 +1514,7 @@ def _init(address_info=None,
                 address_info["local_scheduler_socket_names"][0])
         else:
             driver_address_info["raylet_socket_name"] = (
-                address_info["raylet_socket_name"])
+                address_info["raylet_socket_names"][0])
     connect(driver_address_info, object_id_seed=object_id_seed,
             mode=driver_mode, worker=global_worker, use_raylet=use_raylet)
     return address_info
