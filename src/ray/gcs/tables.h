@@ -167,13 +167,23 @@ class Log {
   int64_t subscribe_callback_index_;
 };
 
+template <typename ID, typename Data>
+class TableInterface {
+ public:
+  using DataT = typename Data::NativeTableType;
+  using WriteCallback = typename Log<ID, Data>::WriteCallback;
+  virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<DataT> data,
+                     const WriteCallback &done) = 0;
+  virtual ~TableInterface(){};
+};
+
 /// \class Table
 ///
 /// A GCS table where every entry is a single data item.
 /// Example tables backed by Log:
 ///   TaskTable: Stores Task metadata needed for executing the task.
 template <typename ID, typename Data>
-class Table : private Log<ID, Data> {
+class Table : private Log<ID, Data>, public TableInterface<ID, Data> {
  public:
   using DataT = typename Log<ID, Data>::DataT;
   using Callback =
@@ -242,6 +252,17 @@ class ObjectTable : public Log<ObjectID, ObjectTableData> {
     pubsub_channel_ = TablePubsub_OBJECT;
     prefix_ = TablePrefix_OBJECT;
   };
+  virtual ~ObjectTable(){};
+};
+
+class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
+ public:
+  HeartbeatTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Table(context, client) {
+    pubsub_channel_ = TablePubsub_HEARTBEAT;
+    prefix_ = TablePrefix_HEARTBEAT;
+  }
+  virtual ~HeartbeatTable() {}
 };
 
 class FunctionTable : public Table<ObjectID, FunctionTableData> {
@@ -256,14 +277,22 @@ class FunctionTable : public Table<ObjectID, FunctionTableData> {
 using ClassTable = Table<ClassID, ClassTableData>;
 
 // TODO(swang): Set the pubsub channel for the actor table.
-using ActorTable = Table<ActorID, ActorTableData>;
+class ActorTable : public Log<ActorID, ActorTableData> {
+ public:
+  ActorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    pubsub_channel_ = TablePubsub_ACTOR;
+    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+  }
+};
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
  public:
   TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
                         AsyncGcsClient *client)
       : Log(context, client) {
-    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+    pubsub_channel_ = TablePubsub_ACTOR;
+    prefix_ = TablePrefix_ACTOR;
   }
 };
 
@@ -277,7 +306,8 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
     prefix_ = TablePrefix_RAYLET_TASK;
   }
 };
-}
+
+}  // namespace raylet
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
@@ -286,6 +316,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
     pubsub_channel_ = TablePubsub_TASK;
     prefix_ = TablePrefix_TASK;
   };
+  ~TaskTable(){};
 
   using TestAndUpdateCallback =
       std::function<void(AsyncGcsClient *client, const TaskID &id,
@@ -350,18 +381,18 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                          const Callback &done);
 };
 
-using ErrorTable = Table<TaskID, ErrorTableData>;
-
-using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
-
-using ConfigTable = Table<ConfigID, ConfigTableData>;
-
 Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
 Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
                               const ClientID &local_scheduler_id, int test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
+
+using ErrorTable = Table<TaskID, ErrorTableData>;
+
+using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
+
+using ConfigTable = Table<ConfigID, ConfigTableData>;
 
 /// \class ClientTable
 ///
@@ -377,16 +408,19 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   using ClientTableCallback = std::function<void(
       AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data)>;
   ClientTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
-              const ClientTableDataT &local_client)
+              const ClientID &client_id)
       : Log(context, client),
         // We set the client log's key equal to nil so that all instances of
         // ClientTable have the same key.
         client_log_key_(UniqueID::nil()),
         disconnected_(false),
-        client_id_(ClientID::from_binary(local_client.client_id)),
-        local_client_(local_client) {
+        client_id_(client_id),
+        local_client_() {
     pubsub_channel_ = TablePubsub_CLIENT;
     prefix_ = TablePrefix_CLIENT;
+
+    // Set the local client's ID.
+    local_client_.client_id = client_id.binary();
 
     // Add a nil client to the cache so that we can serve requests for clients
     // that we have not heard about.
@@ -398,14 +432,23 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// Connect as a client to the GCS. This registers us in the client table
   /// and begins subscription to client table notifications.
   ///
+  /// \param Information about the connecting client. This must have the
+  ///        same client_id as the one set in the client table.
   /// \return Status
-  ray::Status Connect();
+  ray::Status Connect(const ClientTableDataT &local_client);
 
   /// Disconnect the client from the GCS. The client ID assigned during
   /// registration should never be reused after disconnecting.
   ///
   /// \return Status
   ray::Status Disconnect();
+
+  /// Mark a different client as disconnected. The client ID should never be
+  /// reused for a new client.
+  ///
+  /// \param dead_client_id The ID of the client to mark as dead.
+  /// \return Status
+  ray::Status MarkDisconnected(const ClientID &dead_client_id);
 
   /// Register a callback to call when a new client is added.
   ///

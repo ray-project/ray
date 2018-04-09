@@ -6,19 +6,23 @@ namespace ray {
 
 namespace gcs {
 
-AsyncGcsClient::AsyncGcsClient() {}
-
-AsyncGcsClient::~AsyncGcsClient() {}
-
-Status AsyncGcsClient::Connect(const std::string &address, int port,
-                               const ClientTableDataT &client_info) {
+AsyncGcsClient::AsyncGcsClient(const ClientID &client_id) {
   context_.reset(new RedisContext());
-  RAY_RETURN_NOT_OK(context_->Connect(address, port));
+  client_table_.reset(new ClientTable(context_, this, client_id));
   object_table_.reset(new ObjectTable(context_, this));
+  actor_table_.reset(new ActorTable(context_, this));
   task_table_.reset(new TaskTable(context_, this));
   raylet_task_table_.reset(new raylet::TaskTable(context_, this));
   task_reconstruction_log_.reset(new TaskReconstructionLog(context_, this));
-  client_table_.reset(new ClientTable(context_, this, client_info));
+  heartbeat_table_.reset(new HeartbeatTable(context_, this));
+}
+
+AsyncGcsClient::AsyncGcsClient() : AsyncGcsClient(ClientID::from_random()) {}
+
+AsyncGcsClient::~AsyncGcsClient() {}
+
+Status AsyncGcsClient::Connect(const std::string &address, int port) {
+  RAY_RETURN_NOT_OK(context_->Connect(address, port));
   // TODO(swang): Call the client table's Connect() method here. To do this,
   // we need to make sure that we are attached to an event loop first. This
   // currently isn't possible because the aeEventLoop, which we use for
@@ -45,6 +49,8 @@ TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
 
 raylet::TaskTable &AsyncGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
+ActorTable &AsyncGcsClient::actor_table() { return *actor_table_; }
+
 TaskReconstructionLog &AsyncGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;
 }
@@ -54,6 +60,8 @@ ClientTable &AsyncGcsClient::client_table() { return *client_table_; }
 FunctionTable &AsyncGcsClient::function_table() { return *function_table_; }
 
 ClassTable &AsyncGcsClient::class_table() { return *class_table_; }
+
+HeartbeatTable &AsyncGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
 }  // namespace gcs
 

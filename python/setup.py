@@ -23,6 +23,8 @@ ray_files = [
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
     "ray/core/src/global_scheduler/global_scheduler",
+    "ray/core/src/ray/raylet/raylet_monitor",
+    "ray/core/src/ray/raylet/raylet",
     "ray/WebUI.ipynb"
 ]
 
@@ -54,7 +56,7 @@ optional_ray_files += ray_autoscaler_files
 extras = {
     "rllib": [
         "tensorflow", "pyyaml", "gym[atari]", "opencv-python",
-        "python-snappy", "scipy"]
+        "lz4", "scipy"]
 }
 
 

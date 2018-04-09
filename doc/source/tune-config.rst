@@ -69,6 +69,30 @@ By default, each random variable and grid search point is sampled once. To take 
 
 For more information on variant generation, see `variant_generator.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/variant_generator.py>`__.
 
+Handling Large Datasets
+-----------------------
+
+You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial. Ray Tune provides a ``pin_in_object_store`` utility function that can be used to broadcast such large objects. Objects pinned in this way will never be evicted from the Ray object store while the driver process is running, and can be efficiently retrieved from any task via ``get_pinned_object``.
+
+.. code-block:: python
+
+    import ray
+    from ray.tune import register_trainable, run_experiments
+    from ray.tune.util import pin_in_object_store, get_pinned_object
+
+    import numpy as np
+
+    ray.init()
+
+    # X_id can be referenced in closures
+    X_id = pin_in_object_store(np.random.random(size=100000000))
+
+    def f(config, reporter):
+        X = get_pinned_object(X_id)
+        # use X
+
+    register_trainable("f", f)
+    run_experiments(...)
 
 Resource Allocation
 -------------------
