@@ -315,7 +315,7 @@ def task_timeline():
 
     breakdown_opt = widgets.Dropdown(
         options=["Basic", "Task Breakdowns"],
-        value="Basic",
+        value="Task Breakdowns",
         disabled=False,
     )
     obj_dep = widgets.Checkbox(
