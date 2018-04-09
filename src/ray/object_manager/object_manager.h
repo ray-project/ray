@@ -12,13 +12,13 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "ray/common/client_connection.h"
-#include "ray/id.h"
-#include "ray/status.h"
-
 #include "plasma/client.h"
 #include "plasma/events.h"
 #include "plasma/plasma.h"
+
+#include "ray/common/client_connection.h"
+#include "ray/id.h"
+#include "ray/status.h"
 
 #include "ray/object_manager/connection_pool.h"
 #include "ray/object_manager/format/object_manager_generated.h"
@@ -73,13 +73,15 @@ class ObjectManager {
                          const ObjectManagerConfig &config,
                          std::unique_ptr<ObjectDirectoryInterface> od);
 
+  ~ObjectManager();
+
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   ///
   /// already exist in the local store.
   /// \param callback The callback to invoke when objects are added to the local store.
   /// \return Status of whether adding the subscription succeeded.
-  ray::Status SubscribeObjAdded(std::function<void(const ray::RayObjectInfo &)> callback);
+  ray::Status SubscribeObjAdded(std::function<void(const ObjectInfoT &)> callback);
 
   /// Subscribe to notifications of objects deleted from local store.
   ///
@@ -150,9 +152,6 @@ class ObjectManager {
   ray::Status Wait(const std::vector<ObjectID> &object_ids, uint64_t timeout_ms,
                    int num_ready_objects, const WaitCallback &callback);
 
-  /// \return Whether this object was successfully terminated.
-  ray::Status Terminate();
-
  private:
   ClientID client_id_;
   ObjectManagerConfig config_;
@@ -194,7 +193,7 @@ class ObjectManager {
   std::atomic<int> num_transfers_receive_;
 
   /// Cache of locally available objects.
-  std::unordered_map<ObjectID, RayObjectInfo, UniqueIDHasher> local_objects_;
+  std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
@@ -202,7 +201,7 @@ class ObjectManager {
   void StopIOService();
 
   /// Register object add with directory.
-  void NotifyDirectoryObjectAdd(const RayObjectInfo &object_info);
+  void NotifyDirectoryObjectAdd(const ObjectInfoT &object_info);
 
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);

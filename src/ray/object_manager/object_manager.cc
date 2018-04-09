@@ -23,9 +23,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       num_transfers_receive_(0) {
   main_service_ = &main_service;
   config_ = config;
-  store_notification_.SubscribeObjAdded([this](const RayObjectInfo &object_info) {
-    NotifyDirectoryObjectAdd(object_info);
-  });
+  store_notification_.SubscribeObjAdded(
+      [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -47,12 +46,15 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   config_ = config;
-  store_notification_.SubscribeObjAdded([this](const RayObjectInfo &object_info) {
-    NotifyDirectoryObjectAdd(object_info);
-  });
+  store_notification_.SubscribeObjAdded(
+      [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
+}
+
+ObjectManager::~ObjectManager() {
+  StopIOService();
 }
 
 void ObjectManager::StartIOService() {
@@ -70,10 +72,12 @@ void ObjectManager::StopIOService() {
   }
 }
 
-void ObjectManager::NotifyDirectoryObjectAdd(const RayObjectInfo &object_info) {
-  local_objects_[object_info.object_id] = std::move(object_info);
+
+void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
+  ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+  local_objects_[object_id] = object_info;
   ray::Status status =
-      object_directory_->ReportObjectAdded(object_info.object_id, client_id_);
+      object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -81,18 +85,8 @@ void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
 }
 
-ray::Status ObjectManager::Terminate() {
-  // TODO(hme): Disconnect all remote connections.
-  StopIOService();
-  ray::Status status_code = object_directory_->Terminate();
-  // TODO: evaluate store client termination status.
-  store_notification_.Terminate();
-  buffer_pool_.Terminate();
-  return status_code;
-}
-
 ray::Status ObjectManager::SubscribeObjAdded(
-    std::function<void(const RayObjectInfo &)> callback) {
+    std::function<void(const ObjectInfoT &)> callback) {
   store_notification_.SubscribeObjAdded(callback);
   return ray::Status::OK();
 }
@@ -214,9 +208,9 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
     Status status = object_directory_->GetInformation(
         client_id,
         [this, object_id, client_id](const RemoteConnectionInfo &info) {
-          RayObjectInfo object_info = local_objects_[object_id];
+          ObjectInfoT object_info = local_objects_[object_id];
           uint64_t data_size =
-              static_cast<uint64_t>(object_info.object_size + object_info.metadata_size);
+              static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
           uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
           uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
           for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
@@ -225,7 +219,7 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
           }
           RAY_CHECK_OK(DequeueTransfers());
         },
-        [this](const Status &status) {
+        [](const Status &status) {
           // Push is best effort, so do nothing here.
         });
     RAY_CHECK_OK(status);
@@ -421,7 +415,8 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> co
     ConnectClient(conn, message);
     break;
   }
-  case object_manager_protocol::MessageType_DisconnectClient: {
+  case protocol::MessageType_DisconnectClient: {
+    // TODO(hme): Disconnect without depending on the node manager protocol.
     DisconnectClient(conn, message);
     break;
   }
@@ -449,17 +444,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
 
 void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                                      const uint8_t *message) {
-  auto info =
-      flatbuffers::GetRoot<object_manager_protocol::DisconnectClientMessage>(message);
-  ClientID client_id = ObjectID::from_binary(info->client_id()->str());
-  bool is_transfer = info->is_transfer();
-  if (is_transfer) {
-    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::TRANSFER, client_id,
-                                    conn);
-  } else {
-    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::MESSAGE, client_id,
-                                    conn);
-  }
+  connection_pool_.RemoveReceiver(conn);
 }
 
 void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,

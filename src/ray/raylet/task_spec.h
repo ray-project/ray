@@ -94,12 +94,18 @@ class TaskSpecification {
   /// \param arguments The list of task arguments.
   /// \param num_returns The number of values returned by the task.
   /// \param required_resources The task's resource demands.
-  TaskSpecification(UniqueID driver_id, TaskID parent_task_id, int64_t parent_counter,
-                    // UniqueID actor_id,
-                    // UniqueID actor_handle_id,
-                    // int64_t actor_counter,
-                    FunctionID function_id,
+  TaskSpecification(const UniqueID &driver_id, const TaskID &parent_task_id,
+                    int64_t parent_counter, const FunctionID &function_id,
                     const std::vector<std::shared_ptr<TaskArgument>> &arguments,
+                    int64_t num_returns,
+                    const std::unordered_map<std::string, double> &required_resources);
+
+  TaskSpecification(const UniqueID &driver_id, const TaskID &parent_task_id,
+                    int64_t parent_counter, const ActorID &actor_creation_id,
+                    const ObjectID &actor_creation_dummy_object_id,
+                    const ActorID &actor_id, const ActorHandleID &actor_handle_id,
+                    int64_t actor_counter, const FunctionID &function_id,
+                    const std::vector<std::shared_ptr<TaskArgument>> &task_arguments,
                     int64_t num_returns,
                     const std::unordered_map<std::string, double> &required_resources);
 
@@ -128,6 +134,16 @@ class TaskSpecification {
   size_t ArgValLength(int64_t arg_index) const;
   double GetRequiredResource(const std::string &resource_name) const;
   const ResourceSet GetRequiredResources() const;
+
+  // Methods specific to actor tasks.
+  bool IsActorCreationTask() const;
+  bool IsActorTask() const;
+  ActorID ActorCreationId() const;
+  ObjectID ActorCreationDummyObjectId() const;
+  ActorID ActorId() const;
+  ActorHandleID ActorHandleId() const;
+  int64_t ActorCounter() const;
+  ObjectID ActorDummyObject() const;
 
  private:
   /// Assign the specification data from a pointer.

@@ -69,9 +69,11 @@ class ObjectDirectoryInterface {
   ///
   /// \param object_id The object id that was put into the store.
   /// \param client_id The client id corresponding to this node.
+  /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectAdded(const ObjectID &object_id,
-                                        const ClientID &client_id) = 0;
+                                        const ClientID &client_id,
+                                        const ObjectInfoT &object_info) = 0;
 
   /// Report objects removed from this client's store to the object directory.
   ///
@@ -80,11 +82,6 @@ class ObjectDirectoryInterface {
   /// \return Status of whether this method succeeded.
   virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                           const ClientID &client_id) = 0;
-
-  /// Terminate this object.
-  ///
-  /// \return Status of whether termination succeeded.
-  virtual ray::Status Terminate() = 0;
 };
 
 /// Ray ObjectDirectory declaration.
@@ -100,18 +97,15 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                            const OnLocationsSuccess &success_callback,
                            const OnLocationsFailure &fail_callback) override;
   ray::Status Cancel(const ObjectID &object_id) override;
-  ray::Status Terminate() override;
-  ray::Status ReportObjectAdded(const ObjectID &object_id,
-                                const ClientID &client_id) override;
+  ray::Status ReportObjectAdded(const ObjectID &object_id, const ClientID &client_id,
+                                const ObjectInfoT &object_info) override;
   ray::Status ReportObjectRemoved(const ObjectID &object_id,
                                   const ClientID &client_id) override;
   /// Ray only (not part of the OD interface).
   ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
-  /// This object cannot be copied for thread-safety.
-  ObjectDirectory &operator=(const ObjectDirectory &o) {
-    throw std::runtime_error("Can't copy ObjectDirectory.");
-  }
+  /// ObjectDirectory should not be copied.
+  RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
 
  private:
   /// Callbacks associated with a call to GetLocations.

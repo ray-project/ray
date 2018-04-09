@@ -53,6 +53,8 @@ class ObjectBufferPool {
   /// \param chunk_size The chunk size into which objects are to be split.
   ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size);
 
+  ~ObjectBufferPool();
+
   /// This object cannot be copied due to pool_mutex.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectBufferPool);
 
@@ -100,10 +102,6 @@ class ObjectBufferPool {
   /// object creation will be aborted.
   /// \return The status of invoking this method.
   ray::Status SealOrAbortBuffer(const ObjectID &object_id, bool succeeded);
-
-  /// Terminates this object.
-  /// This must be called after remote client connections have been terminated.
-  void Terminate();
 
  private:
   /// Seal the object associated with a create operation.

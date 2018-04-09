@@ -8,6 +8,28 @@ ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
   chunk_size_ = chunk_size;
 }
 
+ObjectBufferPool::~ObjectBufferPool(){
+  // Abort everything in progress.
+  auto buf_state_copy = buffer_state_;
+  for (const auto &pair : buf_state_copy) {
+    switch (pair.second.state_type) {
+      case BufferStateType::GET: {
+        AbortGet(pair.first);
+      } break;
+      case BufferStateType::CREATE: {
+        AbortCreate(pair.first);
+      } break;
+    }
+  }
+  RAY_CHECK(chunk_info_.empty());
+  RAY_CHECK(buffer_state_.empty());
+  RAY_CHECK(create_failure_buffers_.empty());
+  // Disconnect plasma clients.
+  for (const auto &client : clients) {
+    ARROW_CHECK_OK(client->Disconnect());
+  }
+}
+
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) {
   return ceil(static_cast<float>(data_size) / chunk_size_);
 }
@@ -128,30 +150,6 @@ ray::Status ObjectBufferPool::SealOrAbortBuffer(const ObjectID &object_id,
     }
   }
   return ray::Status::OK();
-}
-
-void ObjectBufferPool::Terminate() {
-  // Abort everything in progress.
-  auto buf_state_copy = buffer_state_;
-  for (const auto &pair : buf_state_copy) {
-    switch (pair.second.state_type) {
-    case BufferStateType::GET: {
-      AbortGet(pair.first);
-    } break;
-    case BufferStateType::CREATE: {
-      AbortCreate(pair.first);
-    } break;
-    }
-  }
-  RAY_CHECK(chunk_info_.empty());
-  RAY_CHECK(buffer_state_.empty());
-  RAY_CHECK(create_failure_buffers_.empty());
-  // Disconnect plasma clients.
-  for (const auto &client : clients) {
-    ARROW_CHECK_OK(client->Disconnect());
-  }
-  available_clients.clear();
-  clients.clear();
 }
 
 ray::Status ObjectBufferPool::SealCreate(const ObjectID &object_id) {

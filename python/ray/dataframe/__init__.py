@@ -13,7 +13,7 @@ if pd_major == 0 and pd_minor < 22:
     raise Exception("In order to use Pandas on Ray, please upgrade your Pandas"
                     " version to >= 0.22.")
 
-DEFAULT_NPARTITIONS = 4
+DEFAULT_NPARTITIONS = 8
 
 
 def set_npartition_default(n):

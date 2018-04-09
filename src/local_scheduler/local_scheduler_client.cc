@@ -65,10 +65,24 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies =
       to_flatbuf(fbb, execution_spec.ExecutionDependencies());
-  auto task_spec = fbb.CreateString((char *) execution_spec.Spec(),
-                                    execution_spec.SpecSize());
+  auto task_spec =
+      fbb.CreateString(reinterpret_cast<char *>(execution_spec.Spec()),
+                       execution_spec.SpecSize());
   auto message =
       CreateSubmitTaskRequest(fbb, execution_dependencies, task_spec);
+  fbb.Finish(message);
+  write_message(conn->conn, MessageType_SubmitTask, fbb.GetSize(),
+                fbb.GetBufferPointer());
+}
+
+void local_scheduler_submit_raylet(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &execution_dependencies,
+    ray::raylet::TaskSpecification task_spec) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
+  auto message = CreateSubmitTaskRequest(fbb, execution_dependencies_message,
+                                         task_spec.ToFlatbuffer(fbb));
   fbb.Finish(message);
   write_message(conn->conn, MessageType_SubmitTask, fbb.GetSize(),
                 fbb.GetBufferPointer());

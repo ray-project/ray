@@ -55,6 +55,8 @@ class TransferQueue {
     }
   };
 
+  TransferQueue() = default;
+
   /// Queues a send.
   ///
   /// \param client_id The ClientID to which the object needs to be sent.
@@ -88,9 +90,7 @@ class TransferQueue {
   bool DequeueReceiveIfPresent(TransferQueue::ReceiveRequest *receive_ptr);
 
   /// This object cannot be copied for thread-safety.
-  TransferQueue &operator=(const TransferQueue &o) {
-    throw std::runtime_error("Can't copy TransferQueue.");
-  }
+  RAY_DISALLOW_COPY_AND_ASSIGN(TransferQueue);
 
  private:
   std::mutex send_mutex;
