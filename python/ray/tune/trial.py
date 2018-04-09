@@ -103,14 +103,12 @@ class Trial(object):
 
         # Trial config
         self.trainable_name = trainable_name
-        self.trainable_cls = ray.tune.registry.get_registry().get(
-            ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
         self.config = config or {}
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
         self.resources = (
             resources or
-            self.trainable_cls.default_resource_request(self.config))
+            self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
@@ -352,7 +350,7 @@ class Trial(object):
         self.status = Trial.RUNNING
         cls = ray.remote(
             num_cpus=self.resources.cpu,
-            num_gpus=self.resources.gpu)(self.trainable_cls)
+            num_gpus=self.resources.gpu)(self._get_trainable_cls())
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
@@ -376,6 +374,10 @@ class Trial(object):
         self.runner = cls.remote(
             config=self.config, registry=ray.tune.registry.get_registry(),
             logger_creator=logger_creator)
+
+    def _get_trainable_cls(self):
+        return ray.tune.registry.get_registry().get(
+            ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
 
     def set_verbose(self, verbose):
         self.verbose = verbose
