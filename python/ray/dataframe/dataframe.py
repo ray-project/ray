@@ -263,7 +263,7 @@ class DataFrame(object):
         result = self._repr_helper_()._repr_html_()
         return result.split('<p>')[0] + \
             '<p>{0} rows × {1} columns</p>\n</div>'.format(len(self.index),
-                                                            len(self.columns))
+                                                           len(self.columns))
 
     def _get_index(self):
         """Get the index for this DataFrame.
