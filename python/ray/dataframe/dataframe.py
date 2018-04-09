@@ -439,12 +439,13 @@ class DataFrame(object):
             # We use the index to get the internal index.
             oid_series = [(oid_series[i], i) for i in range(len(oid_series))]
 
-            for df, index in oid_series:
-                this_partition = \
-                    self._col_index[self._col_index['partition'] == index]
-                df.index = this_partition[
-                    this_partition['index_within_partition'].isin(df.index)
-                ].index
+            if len(oid_series) > 1:
+                for df, index in oid_series:
+                    this_partition = \
+                        self._col_index[self._col_index['partition'] == index]
+                    df.index = this_partition[
+                        this_partition['index_within_partition'].isin(df.index)
+                    ].index
 
             result_series = pd.concat([obj[0] for obj in oid_series],
                                       axis=0, copy=False)
@@ -2046,10 +2047,11 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def memory_usage(self, index=True, deep=False):
-        result = pd.concat(ray.get(_map_partitions(
-                                    lambda df: df.memory_usage(index=False,
-                                                               deep=deep),
-                                    self._col_partitions)), axis=0)
+
+        def remote_func(df):
+            return df.memory_usage(index=False, deep=deep)
+
+        result = self._arithmetic_helper(remote_func, axis=0)
 
         result.index = self.columns
         if index:
