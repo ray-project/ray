@@ -454,9 +454,9 @@ class TestDataFrameReprInfoEtc(TestData):
         N = 100
         M = len(uppercase)
         index = MultiIndex.from_product([list(uppercase),
-                                            date_range('20160101',
-                                                          periods=N)],
-                                           names=['id', 'date'])
+                                         date_range('20160101',
+                                                    periods=N)],
+                                        names=['id', 'date'])
         df = DataFrame({'value': np.random.randn(N * M)}, index=index)
 
         unstacked = df.unstack('id')

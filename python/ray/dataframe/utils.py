@@ -161,7 +161,7 @@ def _map_partitions(func, partitions, *argslists):
 def _build_columns(df_col, columns):
     """Build columns and compute lengths for each partition."""
     # Columns and width
-    widths = np.array(ray.get([_deploy_func.remote(lambda df: len(df.columns), 
+    widths = np.array(ray.get([_deploy_func.remote(lambda df: len(df.columns),
                                                    d)
                       for d in df_col]))
     dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(widths))

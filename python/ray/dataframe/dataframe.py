@@ -197,7 +197,7 @@ class DataFrame(object):
             """Get first n columns without creating a new Dataframe"""
 
             cum_col_lengths = self._col_lengths.cumsum()
-            index = np.argmax(cum_col_lengths>=10)
+            index = np.argmax(cum_col_lengths >= 10)
             pd_front = pd.concat(ray.get(x[:index+1]), axis=1, copy=False)
             pd_front = pd_front.iloc[:, :n]
             pd_front.index = self.index
@@ -208,7 +208,7 @@ class DataFrame(object):
             """Get last n columns without creating a new Dataframe"""
 
             cum_col_lengths = np.flip(self._col_lengths, axis=0).cumsum()
-            index = np.argmax(cum_col_lengths>=10)
+            index = np.argmax(cum_col_lengths >= 10)
             pd_back = pd.concat(ray.get(x[-(index+1):]), axis=1, copy=False)
             pd_back = pd_back.iloc[:, -n:]
             pd_back.index = self.index
@@ -216,7 +216,7 @@ class DataFrame(object):
             return pd_back
 
         x = self._col_partitions
-        get_local_head = False  
+        get_local_head = False
 
         # Get first and last 10 columns if there are more than 20 columns
         if sum(self._col_lengths) >= 20:
@@ -225,7 +225,7 @@ class DataFrame(object):
             back = back(x, 10)
 
             col_dots = pd.Series(["..."
-                                for _ in range(len(self.index))])
+                                  for _ in range(len(self.index))])
             col_dots.index = self.index
             col_dots.name = "..."
             x = pd.concat([front, col_dots, back], axis=1)
@@ -239,7 +239,7 @@ class DataFrame(object):
 
         # Make the dots in between the head and tail
         row_dots = pd.Series(["..."
-                            for _ in range(len(head.columns))])
+                              for _ in range(len(head.columns))])
         row_dots.index = head.columns
         row_dots.name = "..."
 
@@ -276,7 +276,7 @@ class DataFrame(object):
         result = self._repr_helper_()._repr_html_()
         return result.split('<p>')[0] + \
             '<p>{0} rows × {1} columns</p>\n</div>'.format(len(self.index),
-                                                           len(self.columns))
+                                                            len(self.columns))
 
     def _get_index(self):
         """Get the index for this DataFrame.
@@ -359,7 +359,7 @@ class DataFrame(object):
         We use this because we can compute it when creating the DataFrame.
 
         Args:
-            lengths ([ObjectID or Int]): A list or numpy array of lengths 
+            lengths ([ObjectID or Int]): A list or numpy array of lengths
                 for each partition, in order.
         """
         if isinstance(lengths, list):
@@ -377,11 +377,11 @@ class DataFrame(object):
         if self._col_length_cache is None:
             return None
         if isinstance(self._col_length_cache, ray.local_scheduler.ObjectID):
-            self._col_length_cache = ray.get(self._col_length_cache) #np.arr here
+            self._col_length_cache = ray.get(self._col_length_cache)
         elif isinstance(self._col_length_cache, np.ndarray) and \
                 isinstance(self._col_length_cache[0],
                            ray.local_scheduler.ObjectID):
-            self._col_length_cache = ray.get(self._col_length_cache) #np here
+            self._col_length_cache = ray.get(self._col_length_cache)
         return self._col_length_cache
 
     def _set_col_lengths(self, lengths):
@@ -390,7 +390,7 @@ class DataFrame(object):
         We use this because we can compute it when creating the DataFrame.
 
         Args:
-            lengths ([ObjectID or Int]): A list or numpy array of lengths 
+            lengths ([ObjectID or Int]): A list or numpy array of lengths
                 for each partition, in order.
         """
         if isinstance(lengths, list):
@@ -1683,7 +1683,7 @@ class DataFrame(object):
 
         # Combine the per-partition info and split into lines
         result = ''.join(ray.get(_map_partitions(info_helper,
-                                                   self._col_partitions)))
+                                                 self._col_partitions)))
         lines = result.split('\n')
 
         # Class denoted in info() output
@@ -1702,7 +1702,7 @@ class DataFrame(object):
         col_lines = [prog.match(line) for line in lines]
         cols = [c.group(0) for c in col_lines if c is not None]
         # replace the partition columns names with real column names
-        columns = ["{0}\t{1}\n".format(self.columns[i], 
+        columns = ["{0}\t{1}\n".format(self.columns[i],
                                        cols[i].split(" ", 1)[1])
                    for i in range(len(cols))]
         col_string = ''.join(columns) + '\n'
@@ -1718,21 +1718,22 @@ class DataFrame(object):
         prog = re.compile('^memory+.+')
         mems = [prog.match(line) for line in lines]
         mem_vals = [float(re.search(r'\d+', m.group(0)).group())
-                for m in mems if m is not None]
+                    for m in mems if m is not None]
 
         memory_string = ""
 
         if len(mem_vals) != 0:
             # Sum memory usage from each partition
             if memory_usage != 'deep':
-                memory_string = 'memory usage: {0}+ bytes'.format(sum(mem_vals))
+                memory_string = 'memory usage: {0}+ bytes'.format(
+                        sum(mem_vals))
             else:
                 memory_string = 'memory usage: {0} bytes'.format(sum(mem_vals))
 
-        # Combine all the components of the info() output 
+        # Combine all the components of the info() output
         result = ''.join([class_string, index_string, col_header,
                           col_string, dtypes_string, memory_string])
-       
+
         # Write to specified output buffer
         if buf:
             buf.write(result)
@@ -2009,7 +2010,8 @@ class DataFrame(object):
 
         result.index = self.columns
         if index:
-            index_value = self._row_index.memory_usage(index=True, deep=deep).at['Index']
+            index_value = self._row_index.memory_usage(index=True,
+                                                       deep=deep).at['Index']
             return pd.Series(index_value, index=['Index']).append(result)
 
         return result
