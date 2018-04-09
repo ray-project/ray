@@ -1739,7 +1739,7 @@ class DataFrame(object):
         # Find all the lines in the output that start with integers
         prog = re.compile('^[0-9]+.+')
         col_lines = [prog.match(line) for line in lines]
-        cols = [c[0] for c in col_lines if c is not None]
+        cols = [c.group(0) for c in col_lines if c is not None]
         # replace the partition columns names with real column names
         columns = ["{0}\t{1}\n".format(self.columns[i], 
                                        cols[i].split(" ", maxsplit=1)[1])
@@ -1756,7 +1756,7 @@ class DataFrame(object):
         # Parse lines for memory usage number
         prog = re.compile('^memory+.+')
         mems = [prog.match(line) for line in lines]
-        mem_vals = [float(re.search(r'\d+', m[0]).group())
+        mem_vals = [float(re.search(r'\d+', m.group(0)).group())
                 for m in mems if m is not None]
 
         memory_string = ""
