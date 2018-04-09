@@ -1242,8 +1242,10 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address,
                 raylets.append(client)
 
         object_store_addresses = [
-            services.ObjectStoreAddress(name=raylet.ObjectStoreSocketName().decode("ascii"), manager_name=None, manager_port=None)
-            for raylet in raylets]
+            services.ObjectStoreAddress(
+                name=raylet.ObjectStoreSocketName().decode("ascii"),
+                manager_name=None,
+                manager_port=None) for raylet in raylets]
         raylet_socket_names = [raylet.RayletSocketName().decode("ascii") for
                                raylet in raylets]
         return {"node_ip_address": node_ip_address,
