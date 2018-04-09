@@ -1515,7 +1515,6 @@ def _init(address_info=None,
         else:
             driver_address_info["raylet_socket_name"] = (
                 address_info["raylet_socket_names"][0])
-            print("XXX", driver_address_info)
     connect(driver_address_info, object_id_seed=object_id_seed,
             mode=driver_mode, worker=global_worker, use_raylet=use_raylet)
     return address_info
