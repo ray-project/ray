@@ -8,6 +8,7 @@ from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
+from pandas import compat
 from pandas.compat import lzip
 import pandas.core.common as com
 from pandas.core.dtypes.common import (
@@ -548,6 +549,16 @@ class DataFrame(object):
         axis = pd.DataFrame()._get_axis_number(axis)
         if callable(by):
             by = by(self.index)
+        elif isinstance(by, compat.string_types):
+            by = self.__getitem__(by).values.tolist()
+        elif is_list_like(by):
+            mismatch = len(by) != len(self)
+
+            if all([obj in self for obj in by]):
+                raise NotImplementedError(
+                    "Groupby with lists of columns not yet supported.")
+            elif mismatch:
+                raise KeyError(next(x for x in by if x not in self))
 
         return DataFrameGroupBy(self, by, axis, level, as_index, sort,
                                 group_keys, squeeze, **kwargs)
@@ -705,6 +716,9 @@ class DataFrame(object):
             raise NotImplementedError("Not yet")
         elif callable(func):
             
+            raise NotImplementedError("Not yet")
+        elif isinstance(func, compat.string_types):
+
             raise NotImplementedError("Not yet")
         else:
             # TODO Make pandas error

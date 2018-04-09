@@ -264,7 +264,7 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __iter__(self):
-        return self._iter
+        return self._iter.__iter__()
 
     def agg(self, arg, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
