@@ -28,7 +28,7 @@ class DataFrameGroupBy(object):
             partitions = df._row_partitions
             index_grouped = pd.Series(self._columns).groupby(by=by, sort=sort)
 
-        keys_and_values = [(k, v) for k, v in index_grouped]
+        self._keys_and_values = [(k, v) for k, v in index_grouped]
 
         grouped_partitions = np.array(
             [groupby._submit(args=(part,
@@ -39,22 +39,22 @@ class DataFrameGroupBy(object):
                                    sort,
                                    group_keys,
                                    squeeze),
-                             num_return_vals=len(keys_and_values))
+                             num_return_vals=len(self._keys_and_values))
              for part in partitions]).T
 
         from .dataframe import DataFrame
 
         if axis == 0:
-            self._iter = [(yield((keys_and_values[i][0],
+            self._iter = [((self._keys_and_values[i][0],
                            DataFrame(col_partitions=grouped_partitions[i].tolist(),
                                      columns=df.columns,
-                                     index=keys_and_values[i][1].index))))
+                                     index=self._keys_and_values[i][1].index)))
                           for i in range(len(grouped_partitions))]
         else:
-            self._iter = [(yield((keys_and_values[i][0],
+            self._iter = [((self._keys_and_values[i][0],
                            DataFrame(row_partitions=grouped_partitions[i].tolist(),
-                                     columns=keys_and_values[i][1].index,
-                                     index=self._index))))
+                                     columns=self._keys_and_values[i][1].index,
+                                     index=self._index)))
                           for i in range(len(grouped_partitions))]
 
     def _map_partitions(self, func):

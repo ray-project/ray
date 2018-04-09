@@ -695,9 +695,20 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def aggregate(self, func, axis=0, *args, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        axis = pd.DataFrame()._get_axis_name(axis)
+
+        if isinstance(func, dict):
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+        elif is_list_like(func):
+            raise NotImplementedError("Not yet")
+        elif callable(func):
+            
+            raise NotImplementedError("Not yet")
+        else:
+            # TODO Make pandas error
+            raise ValueError("type {} is not callable")
 
     def align(self, other, join='outer', axis=None, level=None, copy=True,
               fill_value=None, method=None, limit=None, fill_axis=0,
