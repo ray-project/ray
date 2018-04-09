@@ -1244,7 +1244,7 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address,
         object_store_addresses = [
             services.ObjectStoreAddress(name=raylet.ObjectStoreSocketName().decode("ascii"), manager_name=None, manager_port=None)
             for raylet in raylets]
-        raylet_socket_names = [raylet.NodeManagerAddress().decode("ascii") for
+        raylet_socket_names = [raylet.RayletSocketName().decode("ascii") for
                                raylet in raylets]
         return {"node_ip_address": node_ip_address,
                 "redis_address": redis_address,
@@ -1515,6 +1515,7 @@ def _init(address_info=None,
         else:
             driver_address_info["raylet_socket_name"] = (
                 address_info["raylet_socket_names"][0])
+            print("XXX", driver_address_info)
     connect(driver_address_info, object_id_seed=object_id_seed,
             mode=driver_mode, worker=global_worker, use_raylet=use_raylet)
     return address_info
