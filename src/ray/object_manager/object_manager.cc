@@ -309,28 +309,27 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
                                              uint64_t data_size, uint64_t metadata_size,
                                              uint64_t chunk_index,
                                              std::shared_ptr<SenderConnection> conn) {
-  ObjectBufferPool::ChunkInfo chunk_info =
-      buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
+  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> pair = buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
+  ObjectBufferPool::ChunkInfo chunk_info = pair.first;
 
-  if (!chunk_info.status.ok()) {
+  if (!pair.second.ok()) {
     // This is the first thread to invoke GetChunk => Get failed on the
     // plasma client. This object is marked as failed within the buffer pool,
     // which ensures all other calls to GetChunk for this object fail.
-    return chunk_info.status;
+    return pair.second;
   }
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(hme): use to_flatbuf
   auto message = object_manager_protocol::CreatePushRequestMessage(
-      fbb, fbb.CreateString(object_id.binary()), chunk_index, chunk_info.data_size,
-      chunk_info.metadata_size);
+      fbb, fbb.CreateString(object_id.binary()), chunk_index, data_size, metadata_size);
   fbb.Finish(message);
   ray::Status status =
       conn->WriteMessage(object_manager_protocol::MessageType_PushRequest, fbb.GetSize(),
                          fbb.GetBufferPointer());
   if (!status.ok()) {
     // Push failed. Deal with partial objects on the receiving end.
-    RAY_CHECK_OK(buffer_pool_.ReleaseBuffer(object_id));
+    RAY_CHECK_OK(buffer_pool_.ReleaseGetChunk(object_id, chunk_index));
     // TODO(hme): Try to invoke disconnect on sender connection, then remove it.
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
@@ -357,7 +356,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
   }
 
   // Do this regardless of whether it failed or succeeded.
-  RAY_CHECK_OK(buffer_pool_.ReleaseBuffer(object_id));
+  RAY_CHECK_OK(buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index));
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
   RAY_LOG(DEBUG) << "SendCompleted " << client_id_ << " " << object_id << " "
@@ -479,13 +478,37 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     std::shared_ptr<TcpClientConnection> conn) {
   RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
                  << chunk_index;
-  ObjectBufferPool::ChunkInfo chunk_info =
-      buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
-  std::vector<boost::asio::mutable_buffer> buffer;
-  buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
-  boost::system::error_code ec;
-  conn->ReadBuffer(buffer, ec);
-  buffer_pool_.SealOrAbortBuffer(object_id, ec.value() == 0);
+
+  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> pair = buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
+  ObjectBufferPool::ChunkInfo chunk_info = pair.first;
+  if (pair.second.ok()) {
+    // Avoid handling this chunk if it's already being handled by another process.
+    std::vector<boost::asio::mutable_buffer> buffer;
+    buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
+    boost::system::error_code ec;
+    conn->ReadBuffer(buffer, ec);
+    if (ec.value() == 0) {
+      buffer_pool_.SealChunk(object_id, chunk_index);
+    } else {
+      buffer_pool_.ReleaseCreateChunk(object_id, chunk_index);
+      // TODO(hme): This chunk failed, so create a pull request for this chunk.
+    }
+  } else {
+    RAY_LOG(ERROR) << "Buffer Create Failed: " << pair.second.message();
+    // Read object into empty buffer.
+    uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
+    std::vector<uint8_t> mutable_vec;
+    mutable_vec.resize(buffer_length);
+    uint8_t *mutable_data = mutable_vec.data();
+    std::vector<boost::asio::mutable_buffer> buffer;
+    buffer.push_back(asio::buffer(mutable_data, buffer_length));
+    boost::system::error_code ec;
+    conn->ReadBuffer(buffer, ec);
+    if (ec.value() != 0){
+      RAY_LOG(ERROR) << ec.message();
+    }
+    // TODO(hme): If the object isn't local, create a pull request for this chunk.
+  }
   conn->ProcessMessages();
   RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
                  << num_transfers_receive_ << "/" << config_.max_receives;
