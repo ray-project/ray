@@ -38,6 +38,7 @@ def generate_dfs():
                         'col7': [0, 0, 0, 0]})
     return df, df2
 
+
 @pytest.fixture
 def generate_none_dfs():
     df = pd.DataFrame({'col1': [0, 1, 2, 3],
