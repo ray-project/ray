@@ -197,7 +197,6 @@ class DataFrame(object):
         def front(df, n):
             """Get first n columns without creating a new Dataframe"""
 
-            # TODO: this is going to be broken
             cum_col_lengths = self._col_metadata._lengths.cumsum()
             index = np.argmax(cum_col_lengths >= 10)
             pd_front = pd.concat(ray.get(x[:index+1]), axis=1, copy=False)
@@ -209,8 +208,8 @@ class DataFrame(object):
         def back(df, n):
             """Get last n columns without creating a new Dataframe"""
 
-            # TODO: this is going to be broken
-            cum_col_lengths = np.flip(self._col_metadata._lengths, axis=0).cumsum()
+            cum_col_lengths = np.flip(self._col_metadata._lengths,
+                                      axis=0).cumsum()
             index = np.argmax(cum_col_lengths >= 10)
             pd_back = pd.concat(ray.get(x[-(index+1):]), axis=1, copy=False)
             pd_back = pd_back.iloc[:, -n:]
@@ -420,8 +419,10 @@ class DataFrame(object):
 
             if len(oid_series) > 1:
                 for df, partition in oid_series:
-                    this_partition = self._col_metadata.partition_series(partition)
-                    df.index = this_partition[this_partition.isin(df.index)].index
+                    this_partition = \
+                        self._col_metadata.partition_series(partition)
+                    df.index = \
+                        this_partition[this_partition.isin(df.index)].index
 
             result_series = pd.concat([obj[0] for obj in oid_series],
                                       axis=0, copy=False)
@@ -1778,9 +1779,6 @@ class DataFrame(object):
             df.insert(index_within_partition, column, value, allow_duplicates)
             return df
 
-        print('partition:', partition)
-        print('i_w_partition', index_within_partition)
-        print('df:\n', ray.get(self._col_partitions[partition]))
         new_obj = _deploy_func.remote(insert_col_part,
                                       self._col_partitions[partition])
         new_cols = [self._col_partitions[i]
