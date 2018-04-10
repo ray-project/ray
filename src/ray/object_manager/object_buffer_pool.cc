@@ -10,19 +10,16 @@ ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
 
 ObjectBufferPool::~ObjectBufferPool(){
   // Abort everything in progress.
-  auto buf_state_copy = buffer_state_;
-  for (const auto &pair : buf_state_copy) {
-    switch (pair.second.state_type) {
-      case BufferStateType::GET: {
-        AbortGet(pair.first);
-      } break;
-      case BufferStateType::CREATE: {
-        AbortCreate(pair.first);
-      } break;
-    }
+  auto get_buf_state_copy = get_buffer_state_;
+  for (const auto &pair : get_buf_state_copy) {
+    AbortGet(pair.first);
   }
-  RAY_CHECK(chunk_info_.empty());
-  RAY_CHECK(buffer_state_.empty());
+  auto create_buf_state_copy = create_buffer_state_;
+  for (const auto &pair : create_buf_state_copy) {
+    AbortCreate(pair.first);
+  }
+  RAY_CHECK(get_buffer_state_.empty());
+  RAY_CHECK(create_buffer_state_.empty());
   RAY_CHECK(create_failure_buffers_.empty());
   // Disconnect plasma clients.
   for (const auto &client : clients) {
@@ -31,7 +28,7 @@ ObjectBufferPool::~ObjectBufferPool(){
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) {
-  return ceil(static_cast<float>(data_size) / chunk_size_);
+  return static_cast<uint64_t>(ceil(static_cast<double>(data_size) / chunk_size_));
 }
 
 const ObjectBufferPool::ChunkInfo &ObjectBufferPool::GetChunk(const ObjectID &object_id,
@@ -48,7 +45,7 @@ const ObjectBufferPool::ChunkInfo &ObjectBufferPool::GetChunk(const ObjectID &ob
     return errored_chunk_;
   }
   RAY_LOG(DEBUG) << "GetChunk " << object_id << " " << data_size << " " << metadata_size;
-  if (chunk_info_.count(object_id) == 0) {
+  if (get_buffer_state_.count(object_id) == 0) {
     std::shared_ptr<plasma::PlasmaClient> store_client = GetObjectStore();
     plasma::ObjectBuffer object_buffer;
     plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
@@ -65,35 +62,34 @@ const ObjectBufferPool::ChunkInfo &ObjectBufferPool::GetChunk(const ObjectID &ob
     RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data_size +
                                                  object_buffer.metadata_size));
     auto *data = const_cast<uint8_t *>(object_buffer.data->data());
-    uint64_t num_chunks = BuildChunks(object_id, data, data_size, metadata_size);
-    buffer_state_.emplace(
+    uint64_t num_chunks = GetNumChunks(data_size);
+    get_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
-        std::forward_as_tuple(store_client, num_chunks, BufferStateType::GET));
+        std::forward_as_tuple(store_client, num_chunks));
+    get_buffer_state_[object_id].chunk_info = BuildChunks(object_id, data, data_size, metadata_size);
+    RAY_CHECK(get_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
-  RAY_CHECK(buffer_state_[object_id].state_type == BufferStateType::GET);
-  return chunk_info_[object_id][chunk_index];
+  return get_buffer_state_[object_id].chunk_info[chunk_index];
 }
 
 ray::Status ObjectBufferPool::ReleaseBuffer(const ObjectID &object_id) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  buffer_state_[object_id].references--;
-  if (buffer_state_[object_id].references == 0) {
-    chunk_info_.erase(object_id);
-    std::shared_ptr<plasma::PlasmaClient> store_client = buffer_state_[object_id].client;
+  get_buffer_state_[object_id].references--;
+  if (get_buffer_state_[object_id].references == 0) {
+    std::shared_ptr<plasma::PlasmaClient> store_client = get_buffer_state_[object_id].client;
     ARROW_CHECK_OK(store_client->Release(ObjectID(object_id).to_plasma_id()));
     ReleaseObjectStore(store_client);
-    buffer_state_.erase(object_id);
+    get_buffer_state_.erase(object_id);
   }
   return ray::Status::OK();
 }
 
 ray::Status ObjectBufferPool::AbortGet(const ObjectID &object_id) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  chunk_info_.erase(object_id);
-  std::shared_ptr<plasma::PlasmaClient> store_client = buffer_state_[object_id].client;
+  std::shared_ptr<plasma::PlasmaClient> store_client = get_buffer_state_[object_id].client;
   ARROW_CHECK_OK(store_client->Release(ObjectID(object_id).to_plasma_id()));
   ReleaseObjectStore(store_client);
-  buffer_state_.erase(object_id);
+  get_buffer_state_.erase(object_id);
   return ray::Status::OK();
 }
 
@@ -103,7 +99,7 @@ const ObjectBufferPool::ChunkInfo &ObjectBufferPool::CreateChunk(
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_LOG(DEBUG) << "CreateChunk " << object_id << " " << data_size << " "
                  << metadata_size;
-  if (chunk_info_.count(object_id) == 0) {
+  if (create_buffer_state_.count(object_id) == 0) {
     const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
@@ -124,26 +120,27 @@ const ObjectBufferPool::ChunkInfo &ObjectBufferPool::CreateChunk(
       mutable_data = mutable_vec.data();
       create_failure_buffers_[object_id] = mutable_vec;
     }
-    uint64_t num_chunks = BuildChunks(object_id, mutable_data, data_size, metadata_size);
-    buffer_state_.emplace(
+    uint64_t num_chunks = GetNumChunks(data_size);
+    create_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
-        std::forward_as_tuple(store_client, num_chunks, BufferStateType::CREATE));
+        std::forward_as_tuple(store_client, num_chunks));
+    create_buffer_state_[object_id].chunk_info = BuildChunks(object_id, mutable_data, data_size, metadata_size);
+    RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
-  RAY_CHECK(buffer_state_[object_id].state_type == BufferStateType::CREATE);
-  return chunk_info_[object_id][chunk_index];
+  return create_buffer_state_[object_id].chunk_info[chunk_index];
 }
 
 ray::Status ObjectBufferPool::SealOrAbortBuffer(const ObjectID &object_id,
                                                 bool succeeded) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  buffer_state_[object_id].references--;
+  create_buffer_state_[object_id].references--;
   RAY_LOG(DEBUG) << "SealOrAbortBuffer " << object_id << " "
-                 << buffer_state_[object_id].references;
+                 << create_buffer_state_[object_id].references;
   if (!succeeded) {
-    buffer_state_[object_id].one_failed = true;
+    create_buffer_state_[object_id].one_failed = true;
   }
-  if (buffer_state_[object_id].references == 0) {
-    if (buffer_state_[object_id].one_failed) {
+  if (create_buffer_state_[object_id].references == 0) {
+    if (create_buffer_state_[object_id].one_failed) {
       AbortCreate(object_id);
     } else {
       SealCreate(object_id);
@@ -154,8 +151,7 @@ ray::Status ObjectBufferPool::SealOrAbortBuffer(const ObjectID &object_id,
 
 ray::Status ObjectBufferPool::SealCreate(const ObjectID &object_id) {
   const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
-  chunk_info_.erase(object_id);
-  std::shared_ptr<plasma::PlasmaClient> store_client = buffer_state_[object_id].client;
+  std::shared_ptr<plasma::PlasmaClient> store_client = create_buffer_state_[object_id].client;
   if (create_failure_buffers_.count(object_id) == 0) {
     // This is a successful create.
     ARROW_CHECK_OK(store_client->Seal(plasma_id));
@@ -166,14 +162,13 @@ ray::Status ObjectBufferPool::SealCreate(const ObjectID &object_id) {
     RAY_LOG(ERROR) << "Receive Failed";
   }
   ReleaseObjectStore(store_client);
-  buffer_state_.erase(object_id);
+  create_buffer_state_.erase(object_id);
   return ray::Status::OK();
 }
 
 ray::Status ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
   const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
-  chunk_info_.erase(object_id);
-  std::shared_ptr<plasma::PlasmaClient> store_client = buffer_state_[object_id].client;
+  std::shared_ptr<plasma::PlasmaClient> store_client = create_buffer_state_[object_id].client;
   if (create_failure_buffers_.count(object_id) == 0) {
     // This is a failed create due to error on receiving data.
     ARROW_CHECK_OK(store_client->Release(plasma_id));
@@ -184,11 +179,11 @@ ray::Status ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
     RAY_LOG(ERROR) << "Receive Failed";
   }
   ReleaseObjectStore(store_client);
-  buffer_state_.erase(object_id);
+  create_buffer_state_.erase(object_id);
   return ray::Status::OK();
 }
 
-uint64_t ObjectBufferPool::BuildChunks(const ObjectID &object_id, uint8_t *data,
+std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(const ObjectID &object_id, uint8_t *data,
                                        uint64_t data_size, uint64_t metadata_size) {
   uint64_t space_remaining = data_size;
   std::vector<ChunkInfo> chunks;
@@ -205,8 +200,7 @@ uint64_t ObjectBufferPool::BuildChunks(const ObjectID &object_id, uint8_t *data,
       space_remaining -= chunk_size_;
     }
   }
-  chunk_info_[object_id] = chunks;
-  return chunk_info_[object_id].size();
+  return chunks;
 }
 
 std::shared_ptr<plasma::PlasmaClient> ObjectBufferPool::GetObjectStore() {

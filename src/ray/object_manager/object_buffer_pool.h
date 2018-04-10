@@ -115,8 +115,8 @@ class ObjectBufferPool {
 
   /// Builds the chunk vector for an object, and store it by object_id in chunk_info_.
   /// Returns the number of chunks into which object is split.
-  uint64_t BuildChunks(const ObjectID &object_id, uint8_t *data, uint64_t data_size,
-                       uint64_t metadata_size);
+  std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id, uint8_t *data, uint64_t data_size,
+                                     uint64_t metadata_size);
 
   /// Get an object from the object store pool.
   std::shared_ptr<plasma::PlasmaClient> GetObjectStore();
@@ -127,26 +127,39 @@ class ObjectBufferPool {
   /// Adds a client to the client pool and mark it as available.
   void Add();
 
-  /// The type of a buffer state.
-  /// Used to detect whether an object buffer is
-  /// both a get and create buffer.
-  enum class BufferStateType : int { GET = 0, CREATE };
-
-  /// Holds the state of a buffer.
-  struct BufferState {
-    BufferState() {}
-    BufferState(std::shared_ptr<plasma::PlasmaClient> client, uint64_t references,
-                BufferStateType state_type)
-        : client(client), references(references), state_type(state_type) {}
+  /// Holds the state of a get buffer.
+  struct GetBufferState {
+    GetBufferState() {}
+    GetBufferState(std::shared_ptr<plasma::PlasmaClient> client, uint64_t references)
+        : client(client), references(references) {}
     /// The plasma client used by this buffer.
     std::shared_ptr<plasma::PlasmaClient> client;
     /// The number of references that currently rely on this buffer.
     /// We expect this many calls to Release or SealOrAbortBuffer.
     uint64_t references;
-    /// The type of buffer; either GET or CREATE.
-    BufferStateType state_type;
     /// Whether a single failure has occurred.
     bool one_failed = false;
+    /// A vector maintaining information about the chunks which comprise
+    /// an object.
+    std::vector<ChunkInfo> chunk_info;
+  };
+
+  /// Holds the state of a create buffer.
+  struct CreateBufferState {
+    CreateBufferState() {}
+    CreateBufferState(std::shared_ptr<plasma::PlasmaClient> client,
+                      uint64_t references)
+        : client(client), references(references) {}
+    /// The plasma client used by this buffer.
+    std::shared_ptr<plasma::PlasmaClient> client;
+    /// The number of references that currently rely on this buffer.
+    /// We expect this many calls to Release or SealOrAbortBuffer.
+    uint64_t references;
+    /// Whether a single failure has occurred.
+    bool one_failed = false;
+    /// A vector maintaining information about the chunks which comprise
+    /// an object.
+    std::vector<ChunkInfo> chunk_info;
   };
 
   /// Returned when Get fails.
@@ -158,12 +171,10 @@ class ObjectBufferPool {
   std::mutex pool_mutex_;
   /// Determines the maximum chunk size to be transferred by a single thread.
   uint64_t chunk_size_;
-  /// A vector for each object maintaining information about the chunks which comprise
-  /// an object. ChunkInfo is used to transfer
-  std::unordered_map<ray::ObjectID, std::vector<ChunkInfo>, ray::UniqueIDHasher>
-      chunk_info_;
   /// The state of a buffer that's currently being used.
-  std::unordered_map<ray::ObjectID, BufferState, ray::UniqueIDHasher> buffer_state_;
+  std::unordered_map<ray::ObjectID, GetBufferState, ray::UniqueIDHasher> get_buffer_state_;
+  /// The state of a buffer that's currently being used.
+  std::unordered_map<ray::ObjectID, CreateBufferState, ray::UniqueIDHasher> create_buffer_state_;
   /// A set of vectors into which data is read for objects that failed to be created.
   std::unordered_map<ray::ObjectID, std::vector<uint8_t>, ray::UniqueIDHasher>
       create_failure_buffers_;
