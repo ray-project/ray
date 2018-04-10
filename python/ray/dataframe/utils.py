@@ -267,10 +267,9 @@ def _inherit_docstrings(parent):
     def decorator(cls):
         # cls.__doc__ = parent.__doc__
         for attr, obj in cls.__dict__.items():
-            if (callable(obj) or isinstance(obj, property)) \
-                    and attr != "__init__":
-                parent_obj = getattr(parent, attr, None)
-                if callable(parent_obj) or isinstance(parent_obj, property):
+            if callable(obj) and attr != "__init__":
+                parent_obj =getattr(parent, attr, None)
+                if callable(parent_obj):
                     obj.__doc__ = parent_obj.__doc__
         return cls
 
