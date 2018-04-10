@@ -67,7 +67,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
       get_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
 }
 
-ray::Status ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk_index) {
+void ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   GetBufferState &buffer_state = get_buffer_state_[object_id];
   buffer_state.references--;
@@ -77,14 +77,12 @@ ray::Status ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_
     ARROW_CHECK_OK(store_client_.Release(ObjectID(object_id).to_plasma_id()));
     get_buffer_state_.erase(object_id);
   }
-  return ray::Status::OK();
 }
 
-ray::Status ObjectBufferPool::AbortGet(const ObjectID &object_id) {
+void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   ARROW_CHECK_OK(store_client_.Release(ObjectID(object_id).to_plasma_id()));
   get_buffer_state_.erase(object_id);
-  return ray::Status::OK();
 }
 
 std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::CreateChunk(
@@ -131,7 +129,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
       ray::Status::OK());
 }
 
-ray::Status ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
+void ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
                                                  const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] == CreateChunkState::REFERENCED);
@@ -146,13 +144,12 @@ ray::Status ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
       abort &= chunk_state == CreateChunkState::AVAILABLE;
     }
     if (abort){
-      return AbortCreate(object_id);
+      AbortCreate(object_id);
     }
   }
-  return ray::Status::OK();
 }
 
-ray::Status ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk_index) {
+void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] == CreateChunkState::REFERENCED);
   create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::SEALED;
@@ -165,15 +162,13 @@ ray::Status ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_
     ARROW_CHECK_OK(store_client_.Release(plasma_id));
     create_buffer_state_.erase(object_id);
   }
-  return ray::Status::OK();
 }
 
-ray::Status ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
+void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
   const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
   ARROW_CHECK_OK(store_client_.Release(plasma_id));
   ARROW_CHECK_OK(store_client_.Abort(plasma_id));
   create_buffer_state_.erase(object_id);
-  return ray::Status::OK();
 }
 
 std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(const ObjectID &object_id,

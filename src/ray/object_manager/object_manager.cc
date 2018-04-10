@@ -14,7 +14,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
     : client_id_(gcs_client->client_table().GetLocalClientId()),
       object_directory_(new ObjectDirectory(gcs_client)),
       store_notification_(main_service, config.store_socket_name),
-      buffer_pool_(config.store_socket_name, config.object_chunk_size, 2*config.max_sends),
+      // release_delay of 2 * config.max_sends is to ensure the pool does not release
+      // an object prematurely whenever we reach the maximum number of sends.
+      buffer_pool_(config.store_socket_name, config.object_chunk_size,
+                   /*release_delay=*/2 * config.max_sends),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
       connection_pool_(),
@@ -36,7 +39,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::unique_ptr<ObjectDirectoryInterface> od)
     : object_directory_(std::move(od)),
       store_notification_(main_service, config.store_socket_name),
-      buffer_pool_(config.store_socket_name, config.object_chunk_size, 2*config.max_sends),
+      // release_delay of 2 * config.max_sends is to ensure the pool does not release
+      // an object prematurely whenever we reach the maximum number of sends.
+      buffer_pool_(config.store_socket_name, config.object_chunk_size,
+                   /*release_delay=*/2 * config.max_sends),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
       connection_pool_(),
@@ -309,14 +315,13 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
                                              uint64_t data_size, uint64_t metadata_size,
                                              uint64_t chunk_index,
                                              std::shared_ptr<SenderConnection> conn) {
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> pair = buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
-  ObjectBufferPool::ChunkInfo chunk_info = pair.first;
+  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status = buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
+  ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
 
-  if (!pair.second.ok()) {
+  if (!chunk_status.second.ok()) {
     // This is the first thread to invoke GetChunk => Get failed on the
-    // plasma client. This object is marked as failed within the buffer pool,
-    // which ensures all other calls to GetChunk for this object fail.
-    return pair.second;
+    // plasma client.
+    return chunk_status.second;
   }
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
@@ -329,7 +334,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
                          fbb.GetBufferPointer());
   if (!status.ok()) {
     // Push failed. Deal with partial objects on the receiving end.
-    RAY_CHECK_OK(buffer_pool_.ReleaseGetChunk(object_id, chunk_index));
+    buffer_pool_.ReleaseGetChunk(object_id, chunk_index);
     // TODO(hme): Try to invoke disconnect on sender connection, then remove it.
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
@@ -356,7 +361,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
   }
 
   // Do this regardless of whether it failed or succeeded.
-  RAY_CHECK_OK(buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index));
+  buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
   RAY_LOG(DEBUG) << "SendCompleted " << client_id_ << " " << object_id << " "
@@ -479,9 +484,9 @@ ray::Status ObjectManager::ExecuteReceiveObject(
   RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
                  << chunk_index;
 
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> pair = buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
-  ObjectBufferPool::ChunkInfo chunk_info = pair.first;
-  if (pair.second.ok()) {
+  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status = buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
+  ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
+  if (chunk_status.second.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
@@ -494,7 +499,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
-    RAY_LOG(ERROR) << "Buffer Create Failed: " << pair.second.message();
+    RAY_LOG(ERROR) << "Buffer Create Failed: " << chunk_status.second.message();
     // Read object into empty buffer.
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
     std::vector<uint8_t> mutable_vec;
