@@ -504,9 +504,8 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
     std::vector<uint8_t> mutable_vec;
     mutable_vec.resize(buffer_length);
-    uint8_t *mutable_data = mutable_vec.data();
     std::vector<boost::asio::mutable_buffer> buffer;
-    buffer.push_back(asio::buffer(mutable_data, buffer_length));
+    buffer.push_back(asio::buffer(mutable_vec, buffer_length));
     boost::system::error_code ec;
     conn->ReadBuffer(buffer, ec);
     if (ec.value() != 0){
