@@ -829,7 +829,7 @@ def start_local_scheduler(redis_address,
     if "CPU" not in resources:
         # By default, use the number of hardware execution threads for the
         # number of cores.
-        resources["CPU"] = psutil.cpu_count()
+        resources["CPU"] = psutil.cpu_count(logical=False)
 
     # See if CUDA_VISIBLE_DEVICES has already been set.
     gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -1239,7 +1239,7 @@ def start_ray_processes(address_info=None,
         for resource_dict in resources:
             cpus = resource_dict.get("CPU")
             workers_per_local_scheduler.append(cpus if cpus is not None
-                                               else psutil.cpu_count())
+                                               else psutil.cpu_count(logical=False))
 
     if address_info is None:
         address_info = {}
