@@ -79,24 +79,23 @@ class DataFrameGroupBy(object):
 
     @property
     def ngroups(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return len(self._keys_and_values)
 
     @property
     def skew(self):
         raise NotImplementedError("Not Yet implemented.")
 
     def ffill(self, limit=None):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.ffill(limit=limit))
 
     def sem(self, ddof=1):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.sem(ddof=ddof))
 
     def mean(self, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.mean(*args, **kwargs))
 
-    @property
     def any(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.any())
 
     @property
     def plot(self):
@@ -117,11 +116,10 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def min(self, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.min())
 
-    @property
     def idxmax(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.idxmax())
 
     @property
     def ndim(self):
@@ -134,21 +132,20 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def cumsum(self, axis=0, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.cumsum())
 
     @property
     def indices(self):
         raise NotImplementedError("Not Yet implemented.")
 
-    @property
     def pct_change(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.pct_change())
 
     def filter(self, func, dropna=True, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def cummax(self, axis=0, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.cummax(axis=axis, **kwargs))
 
     def apply(self, func, *args, **kwargs):
         return self._map_partitions(func)
@@ -158,32 +155,33 @@ class DataFrameGroupBy(object):
 
     @property
     def dtypes(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.dtypes)
 
     def first(self, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.first(offset=0, **kwargs))
 
     def backfill(self, limit=None):
         raise NotImplementedError("Not Yet implemented.")
 
     def __getitem__(self, key):
+        # This operation requires a SeriesGroupBy Object
         raise NotImplementedError("Not Yet implemented.")
 
     def cummin(self, axis=0, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.cummin(axis=axis, **kwargs))
 
     def bfill(self, limit=None):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.bfill(limit=limit))
 
-    @property
     def idxmin(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.idxmin())
 
     def prod(self, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.prod(**kwargs))
 
     def std(self, ddof=1, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.std(ddof=ddof,
+                                                      *args, **kwargs))
 
     def aggregate(self, arg, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
@@ -223,20 +221,11 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def size(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.size)
 
     def sum(self, **kwargs):
-        sums_list = [pd.DataFrame(v.sum(axis=self._axis)).T
-                     for k, v in self._iter]
-        new_df = pd.concat(sums_list)
-        if self._axis == 0:
-            new_df.columns = self._columns
-            new_df.index = [k for k, v in self._iter]
-        else:
-            new_df = new_df.T
-            new_df.columns = [k for k, v in self._iter]
-            new_df.index = self._index
-        return new_df
+        return self._apply_function(lambda df:
+                                    df.sum(axis=self._axis, **kwargs))
 
     def __unicode__(self):
         raise NotImplementedError("Not Yet implemented.")
@@ -334,6 +323,24 @@ class DataFrameGroupBy(object):
     @property
     def take(self):
         raise NotImplementedError("Not Yet implemented.")
+
+    def _apply_function(self, f):
+        if not callable(f):
+            raise ValueError(
+                "\'{0}\' object is not callable".format(type(f)))
+
+        result = [pd.DataFrame(f(v)).T
+                  for k, v in self._iter]
+
+        new_df = pd.concat(result)
+        if self._axis == 0:
+            new_df.columns = self._columns
+            new_df.index = [k for k, v in self._iter]
+        else:
+            new_df = new_df.T
+            new_df.columns = [k for k, v in self._iter]
+            new_df.index = self._index
+        return new_df
 
 
 @ray.remote
