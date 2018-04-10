@@ -252,6 +252,9 @@ def get_agent_class(alg):
         return _SigmoidFakeData
     elif alg == "__parameter_tuning":
         return _ParameterTuningAgent
+    elif alg == "DDPG":
+        from ray.rllib import ddpg
+        return ddpg.DDPGAgent
     else:
         raise Exception(
             ("Unknown algorithm {}.").format(alg))
