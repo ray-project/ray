@@ -6,6 +6,8 @@ from .utils import (
     _build_index,
     _build_columns)
 
+from pandas.core.indexing import convert_to_index_sliceable
+
 
 class _IndexMetadataBase(object):
     """Wrapper for Pandas indexes in Ray DataFrames. Handles all of the

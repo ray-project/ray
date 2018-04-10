@@ -15,9 +15,7 @@ from pandas.core.dtypes.common import (
     is_list_like,
     is_numeric_dtype,
     is_timedelta64_dtype)
-from pandas.core.indexing import (
-    check_bool_indexer,
-    convert_to_index_sliceable)
+from pandas.core.indexing import check_bool_indexer
 
 import warnings
 import numpy as np
