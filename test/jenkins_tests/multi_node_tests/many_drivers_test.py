@@ -6,8 +6,7 @@ import os
 import time
 
 import ray
-from ray.test.test_utils import (_wait_for_nodes_to_join,
-                                 _broadcast_event,
+from ray.test.test_utils import (_wait_for_nodes_to_join, _broadcast_event,
                                  _wait_for_event)
 
 # This test should be run with 5 nodes, which have 0, 0, 5, 6, and 50 GPUs for

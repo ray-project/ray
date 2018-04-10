@@ -15,14 +15,15 @@ def import_aws():
 
 def load_aws_config():
     import ray.autoscaler.aws as ray_aws
-    return os.path.join(os.path.dirname(
-        ray_aws.__file__), "example-full.yaml")
+    return os.path.join(os.path.dirname(ray_aws.__file__), "example-full.yaml")
 
 
 def import_external():
     """Mock a normal provider importer."""
+
     def return_it_back(config):
         return config
+
     return return_it_back, None
 
 
@@ -55,8 +56,7 @@ def load_class(path):
     class_data = path.split(".")
     if len(class_data) < 2:
         raise ValueError(
-            "You need to pass a valid path like mymodule.provider_class"
-            )
+            "You need to pass a valid path like mymodule.provider_class")
     module_path = ".".join(class_data[:-1])
     class_str = class_data[-1]
     module = importlib.import_module(module_path)
@@ -71,8 +71,8 @@ def get_node_provider(provider_config, cluster_name):
     importer = NODE_PROVIDERS.get(provider_config["type"])
 
     if importer is None:
-        raise NotImplementedError(
-            "Unsupported node provider: {}".format(provider_config["type"]))
+        raise NotImplementedError("Unsupported node provider: {}".format(
+            provider_config["type"]))
     _, provider_cls = importer()
     return provider_cls(provider_config, cluster_name)
 
@@ -82,8 +82,8 @@ def get_default_config(provider_config):
         return {}
     load_config = DEFAULT_CONFIGS.get(provider_config["type"])
     if load_config is None:
-        raise NotImplementedError(
-            "Unsupported node provider: {}".format(provider_config["type"]))
+        raise NotImplementedError("Unsupported node provider: {}".format(
+            provider_config["type"]))
     path_to_default = load_config()
     with open(path_to_default) as f:
         defaults = yaml.load(f)

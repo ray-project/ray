@@ -32,10 +32,13 @@ class MedianStoppingRule(FIFOScheduler):
             time a trial reports. Defaults to True.
     """
 
-    def __init__(
-            self, time_attr="time_total_s", reward_attr="episode_reward_mean",
-            grace_period=60.0, min_samples_required=3,
-            hard_stop=True, verbose=True):
+    def __init__(self,
+                 time_attr="time_total_s",
+                 reward_attr="episode_reward_mean",
+                 grace_period=60.0,
+                 min_samples_required=3,
+                 hard_stop=True,
+                 verbose=True):
         FIFOScheduler.__init__(self)
         self._stopped_trials = set()
         self._completed_trials = set()
@@ -103,9 +106,10 @@ class MedianStoppingRule(FIFOScheduler):
         results = self._results[trial]
         # TODO(ekl) we could do interpolation to be more precise, but for now
         # assume len(results) is large and the time diffs are roughly equal
-        return np.mean(
-            [getattr(r, self._reward_attr)
-                for r in results if getattr(r, self._time_attr) <= t_max])
+        return np.mean([
+            getattr(r, self._reward_attr) for r in results
+            if getattr(r, self._time_attr) <= t_max
+        ])
 
     def _best_result(self, trial):
         results = self._results[trial]

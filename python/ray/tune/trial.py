@@ -42,12 +42,12 @@ class Resources(
     __slots__ = ()
 
     def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
-        return super(Resources, cls).__new__(
-            cls, cpu, gpu, extra_cpu, extra_gpu)
+        return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
+                                             extra_gpu)
 
     def summary_string(self):
-        return "{} CPUs, {} GPUs".format(
-            self.cpu + self.extra_cpu, self.gpu + self.extra_gpu)
+        return "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
+                                         self.gpu + self.extra_gpu)
 
     def cpu_total(self):
         return self.cpu + self.extra_cpu
@@ -77,11 +77,17 @@ class Trial(object):
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
 
-    def __init__(
-            self, trainable_name, config=None, local_dir=DEFAULT_RESULTS_DIR,
-            experiment_tag="", resources=Resources(cpu=1, gpu=0),
-            stopping_criterion=None, checkpoint_freq=0,
-            restore_path=None, upload_dir=None, max_failures=0):
+    def __init__(self,
+                 trainable_name,
+                 config=None,
+                 local_dir=DEFAULT_RESULTS_DIR,
+                 experiment_tag="",
+                 resources=Resources(cpu=1, gpu=0),
+                 stopping_criterion=None,
+                 checkpoint_freq=0,
+                 restore_path=None,
+                 upload_dir=None,
+                 max_failures=0):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
@@ -166,19 +172,20 @@ class Trial(object):
         try:
             if error_msg and self.logdir:
                 self.num_failures += 1
-                error_file = os.path.join(
-                    self.logdir, "error_{}.txt".format(date_str()))
+                error_file = os.path.join(self.logdir, "error_{}.txt".format(
+                    date_str()))
                 with open(error_file, "w") as f:
                     f.write(error_msg)
                 self.error_file = error_file
             if self.runner:
                 stop_tasks = []
                 stop_tasks.append(self.runner.stop.remote())
-                stop_tasks.append(self.runner.__ray_terminate__.remote(
-                    self.runner._ray_actor_id.id()))
+                stop_tasks.append(
+                    self.runner.__ray_terminate__.remote(
+                        self.runner._ray_actor_id.id()))
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
-                        stop_tasks, num_returns=2, timeout=250)
+                    stop_tasks, num_returns=2, timeout=250)
         except Exception:
             print("Error stopping runner:", traceback.format_exc())
             self.status = Trial.ERROR
@@ -252,12 +259,12 @@ class Trial(object):
                 return '{} pid={}'.format(hostname, pid)
 
         pieces = [
-            '{} [{}]'.format(
-                self._status_string(),
-                location_string(
-                    self.last_result.hostname, self.last_result.pid)),
-            '{} s'.format(int(self.last_result.time_total_s)),
-            '{} ts'.format(int(self.last_result.timesteps_total))]
+            '{} [{}]'.format(self._status_string(),
+                             location_string(self.last_result.hostname,
+                                             self.last_result.pid)),
+            '{} s'.format(int(self.last_result.time_total_s)), '{} ts'.format(
+                int(self.last_result.timesteps_total))
+        ]
 
         if self.last_result.episode_reward_mean is not None:
             pieces.append('{} rew'.format(
@@ -274,10 +281,8 @@ class Trial(object):
         return ', '.join(pieces)
 
     def _status_string(self):
-        return "{}{}".format(
-            self.status,
-            ", {} failures: {}".format(self.num_failures, self.error_file)
-            if self.error_file else "")
+        return "{}{}".format(self.status, ", {} failures: {}".format(
+            self.num_failures, self.error_file) if self.error_file else "")
 
     def has_checkpoint(self):
         return self._checkpoint_path is not None or \
@@ -335,9 +340,8 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        if self.verbose and (
-                terminate or
-                time.time() - self.last_debug > DEBUG_PRINT_INTERVAL):
+        if self.verbose and (terminate or time.time() - self.last_debug >
+                             DEBUG_PRINT_INTERVAL):
             print("TrainingResult for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
@@ -358,8 +362,8 @@ class Trial(object):
                 prefix="{}_{}".format(
                     str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
-            self.result_logger = UnifiedLogger(
-                self.config, self.logdir, self.upload_dir)
+            self.result_logger = UnifiedLogger(self.config, self.logdir,
+                                               self.upload_dir)
         remote_logdir = self.logdir
 
         def logger_creator(config):
@@ -372,7 +376,8 @@ class Trial(object):
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         self.runner = cls.remote(
-            config=self.config, registry=ray.tune.registry.get_registry(),
+            config=self.config,
+            registry=ray.tune.registry.get_registry(),
             logger_creator=logger_creator)
 
     def set_verbose(self, verbose):
@@ -387,8 +392,8 @@ class Trial(object):
     def __str__(self):
         """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
         if "env" in self.config:
-            identifier = "{}_{}".format(
-                self.trainable_name, self.config["env"])
+            identifier = "{}_{}".format(self.trainable_name,
+                                        self.config["env"])
         else:
             identifier = self.trainable_name
         if self.experiment_tag:
