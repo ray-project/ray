@@ -22,14 +22,12 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
                              verify_integrity, copy)
 
         f1_columns, f2_columns = frame1.columns, frame2.columns
-        
+
         # Case 2: Both are different types
         if isinstance(frame1, pd.DataFrame):
             frame1 = from_pandas(frame1, len(frame1) / 2**16 + 1)
-            frame1.columns = f1_columns
         if isinstance(frame2, pd.DataFrame):
             frame2 = from_pandas(frame2, len(frame2) / 2**16 + 1)
-            frame2.columns = f2_columns
 
         new_columns = f1_columns.join(f2_columns, how=join)
 
