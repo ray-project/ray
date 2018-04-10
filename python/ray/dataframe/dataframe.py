@@ -86,6 +86,7 @@ class DataFrame(object):
             axis = 0
             columns = pd_df.columns
             index = pd_df.index
+            self._row_metadata = self._col_metadata = None
         else:
             # created this invariant to make sure we never have to go into the
             # partitions to get the columns
@@ -161,8 +162,8 @@ class DataFrame(object):
         return repr(self)
 
     def _repr_helper_(self):
-        if sum(self._row_lengths) <= 60 and \
-           sum(self._col_lengths) <= 20:
+        if len(self._row_metadata) <= 60 and \
+           len(self._col_metadata) <= 20:
             return to_pandas(self)
 
         def head(df, n, get_local_head=False):
@@ -196,7 +197,8 @@ class DataFrame(object):
         def front(df, n):
             """Get first n columns without creating a new Dataframe"""
 
-            cum_col_lengths = self._col_lengths.cumsum()
+            # TODO: this is going to be broken
+            cum_col_lengths = self._col_metadata._lengths.cumsum()
             index = np.argmax(cum_col_lengths >= 10)
             pd_front = pd.concat(ray.get(x[:index+1]), axis=1, copy=False)
             pd_front = pd_front.iloc[:, :n]
@@ -207,7 +209,8 @@ class DataFrame(object):
         def back(df, n):
             """Get last n columns without creating a new Dataframe"""
 
-            cum_col_lengths = np.flip(self._col_lengths, axis=0).cumsum()
+            # TODO: this is going to be broken
+            cum_col_lengths = np.flip(self._col_metadata._lengths, axis=0).cumsum()
             index = np.argmax(cum_col_lengths >= 10)
             pd_back = pd.concat(ray.get(x[-(index+1):]), axis=1, copy=False)
             pd_back = pd_back.iloc[:, -n:]
@@ -250,8 +253,8 @@ class DataFrame(object):
 
     def __repr__(self):
         # We use pandas repr so that we match them.
-        if sum(self._row_lengths) <= 60 and \
-           sum(self._col_lengths) <= 20:
+        if len(self._row_metadata) <= 60 and \
+           len(self._col_metadata) <= 20:
             return repr(self._repr_helper_())
         # The split here is so that we don't repr pandas row lengths.
         result = self._repr_helper_()
@@ -269,8 +272,8 @@ class DataFrame(object):
         """
         # We use pandas _repr_html_ to get a string of the HTML representation
         # of the dataframe.
-        if sum(self._row_lengths) <= 60 and \
-           sum(self._col_lengths) <= 20:
+        if len(self._row_metadata) <= 60 and \
+           len(self._col_metadata) <= 20:
             return self._repr_helper_()._repr_html_()
         # We split so that we insert our correct dataframe dimensions.
         result = self._repr_helper_()._repr_html_()
@@ -2012,8 +2015,7 @@ class DataFrame(object):
 
         result.index = self.columns
         if index:
-            index_value = self._row_index.memory_usage(index=True,
-                                                       deep=deep).at['Index']
+            index_value = self._row_metadata.index.memory_usage(deep=deep)
             return pd.Series(index_value, index=['Index']).append(result)
 
         return result
