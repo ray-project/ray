@@ -701,24 +701,48 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def agg(self, func, axis=0, *args, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.aggregate(func, axis, *args, **kwargs)
 
     def aggregate(self, func, axis=0, *args, **kwargs):
-        axis = pd.DataFrame()._get_axis_name(axis)
+        axis = pd.DataFrame()._get_axis_number(axis)
 
-        if isinstance(func, dict):
+        result = None
+
+        if axis == 0:
+            try:
+                result = self._aggregate(func, axis=0, *args, **kwargs)
+            except TypeError:
+                pass
+
+        if result is None:
+            return self.apply(func, axis=axis, args=args, **kwargs)
+
+        return result
+
+    def _aggregate(self, arg, *args, **kwargs):
+        is_aggregator = lambda x: isinstance(x, (list, tuple, dict))
+        is_nested_renamer = False
+
+        _axis = kwargs.pop('_axis', None)
+        if _axis is None:
+            _axis = getattr(self, 'axis', 0)
+        _level = kwargs.pop('_level', None)
+
+        if isinstance(arg, compat.string_types):
+            try:
+                func = getattr(self, arg)
+            except AttributeError:
+                raise ValueError(
+                    "{} is an unknown string function".format(func))
+
+            return func(*args, **kwargs)
+        elif isinstance(arg, dict):
             raise NotImplementedError(
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
-        elif is_list_like(func):
+        elif is_list_like(arg):
             raise NotImplementedError("Not yet")
-        elif callable(func):
-            
-            raise NotImplementedError("Not yet")
-        elif isinstance(func, compat.string_types):
-
+        elif callable(arg):
             raise NotImplementedError("Not yet")
         else:
             # TODO Make pandas error
@@ -766,9 +790,19 @@ class DataFrame(object):
 
     def apply(self, func, axis=0, broadcast=False, raw=False, reduce=None,
               args=(), **kwds):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        if axis == 0 and isinstance(func, (list, dict)):
+            return self.aggregate(func, axis=axis, *args, **kwds)
+
+        if isinstance(func, compat.string_types):
+            if axis == 1:
+                kwds['axis'] = axis
+            return getattr(self, func)(*args, **kwds)
+        else:
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
 
     def as_blocks(self, copy=True):
         raise NotImplementedError(
