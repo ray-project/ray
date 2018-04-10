@@ -13,14 +13,14 @@ from ray.tune.registry import register_env
 
 ACTION_SPACES_TO_TEST = {
     "discrete":
-    Discrete(5),
+        Discrete(5),
     "vector":
-    Box(0.0, 1.0, (5, ), dtype=np.float32),
-    "simple_tuple":
-    Tuple([
         Box(0.0, 1.0, (5, ), dtype=np.float32),
-        Box(0.0, 1.0, (5, ), dtype=np.float32)
-    ]),
+    "simple_tuple":
+        Tuple([
+            Box(0.0, 1.0, (5, ), dtype=np.float32),
+            Box(0.0, 1.0, (5, ), dtype=np.float32)
+        ]),
     "implicit_tuple": [
         Box(0.0, 1.0, (5, ), dtype=np.float32),
         Box(0.0, 1.0, (5, ), dtype=np.float32)
@@ -29,22 +29,23 @@ ACTION_SPACES_TO_TEST = {
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete":
-    Discrete(5),
+        Discrete(5),
     "vector":
-    Box(0.0, 1.0, (5, ), dtype=np.float32),
-    "image":
-    Box(0.0, 1.0, (80, 80, 1), dtype=np.float32),
-    "atari":
-    Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
-    "atari_ram":
-    Box(0.0, 1.0, (128, ), dtype=np.float32),
-    "simple_tuple":
-    Tuple([
         Box(0.0, 1.0, (5, ), dtype=np.float32),
-        Box(0.0, 1.0, (5, ), dtype=np.float32)
-    ]),
+    "image":
+        Box(0.0, 1.0, (80, 80, 1), dtype=np.float32),
+    "atari":
+        Box(0.0, 1.0, (210, 160, 3), dtype=np.float32),
+    "atari_ram":
+        Box(0.0, 1.0, (128, ), dtype=np.float32),
+    "simple_tuple":
+        Tuple([
+            Box(0.0, 1.0, (5, ), dtype=np.float32),
+            Box(0.0, 1.0, (5, ), dtype=np.float32)
+        ]),
     "mixed_tuple":
-    Tuple([Discrete(10), Box(0.0, 1.0, (5, ), dtype=np.float32)]),
+        Tuple([Discrete(10),
+               Box(0.0, 1.0, (5, ), dtype=np.float32)]),
 }
 
 # (alg, action_space, obs_space)

@@ -101,9 +101,12 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
     def stats(self):
         return dict(
             PolicyOptimizer.stats(), **{
-                "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
-                "load_time_ms": round(1000 * self.load_timer.mean, 3),
-                "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-                "update_time_ms": round(1000 * self.update_weights_timer.mean,
-                                        3),
+                "sample_time_ms":
+                    round(1000 * self.sample_timer.mean, 3),
+                "load_time_ms":
+                    round(1000 * self.load_timer.mean, 3),
+                "grad_time_ms":
+                    round(1000 * self.grad_timer.mean, 3),
+                "update_time_ms":
+                    round(1000 * self.update_weights_timer.mean, 3),
             })

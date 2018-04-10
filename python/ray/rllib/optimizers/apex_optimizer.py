@@ -92,11 +92,11 @@ class ReplayActor(object):
     def stats(self):
         stat = {
             "add_batch_time_ms":
-            round(1000 * self.add_batch_timer.mean, 3),
+                round(1000 * self.add_batch_timer.mean, 3),
             "replay_time_ms":
-            round(1000 * self.replay_timer.mean, 3),
+                round(1000 * self.replay_timer.mean, 3),
             "update_priorities_time_ms":
-            round(1000 * self.update_priorities_timer.mean, 3),
+                round(1000 * self.update_priorities_timer.mean, 3),
         }
         stat.update(self.replay_buffer.stats())
         return stat
@@ -283,10 +283,12 @@ class ApexOptimizer(PolicyOptimizer):
         timing["learner_dequeue_time_ms"] = round(
             1000 * self.learner.queue_timer.mean, 3)
         stats = {
-            "sample_throughput": round(self.timers["sample"].mean_throughput,
-                                       3),
-            "train_throughput": round(self.timers["train"].mean_throughput, 3),
-            "num_weight_syncs": self.num_weight_syncs,
+            "sample_throughput":
+                round(self.timers["sample"].mean_throughput, 3),
+            "train_throughput":
+                round(self.timers["train"].mean_throughput, 3),
+            "num_weight_syncs":
+                self.num_weight_syncs,
         }
         debug_stats = {
             "replay_shard_0": replay_stats,

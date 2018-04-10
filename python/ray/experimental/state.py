@@ -268,29 +268,29 @@ class GlobalState(object):
 
         task_spec_info = {
             "DriverID":
-            binary_to_hex(task_spec.driver_id().id()),
+                binary_to_hex(task_spec.driver_id().id()),
             "TaskID":
-            binary_to_hex(task_spec.task_id().id()),
+                binary_to_hex(task_spec.task_id().id()),
             "ParentTaskID":
-            binary_to_hex(task_spec.parent_task_id().id()),
+                binary_to_hex(task_spec.parent_task_id().id()),
             "ParentCounter":
-            task_spec.parent_counter(),
+                task_spec.parent_counter(),
             "ActorID":
-            binary_to_hex(task_spec.actor_id().id()),
+                binary_to_hex(task_spec.actor_id().id()),
             "ActorCreationID":
-            binary_to_hex(task_spec.actor_creation_id().id()),
+                binary_to_hex(task_spec.actor_creation_id().id()),
             "ActorCreationDummyObjectID":
-            binary_to_hex(task_spec.actor_creation_dummy_object_id().id()),
+                binary_to_hex(task_spec.actor_creation_dummy_object_id().id()),
             "ActorCounter":
-            task_spec.actor_counter(),
+                task_spec.actor_counter(),
             "FunctionID":
-            binary_to_hex(task_spec.function_id().id()),
+                binary_to_hex(task_spec.function_id().id()),
             "Args":
-            task_spec.arguments(),
+                task_spec.arguments(),
             "ReturnObjectIDs":
-            task_spec.returns(),
+                task_spec.returns(),
             "RequiredResources":
-            task_spec.required_resources()
+                task_spec.required_resources()
         }
 
         execution_dependencies_message = (
@@ -309,17 +309,17 @@ class GlobalState(object):
 
         return {
             "State":
-            task_table_message.State(),
+                task_table_message.State(),
             "LocalSchedulerID":
-            binary_to_hex(task_table_message.LocalSchedulerId()),
+                binary_to_hex(task_table_message.LocalSchedulerId()),
             "ExecutionDependenciesString":
-            task_table_message.ExecutionDependencies(),
+                task_table_message.ExecutionDependencies(),
             "ExecutionDependencies":
-            execution_dependencies,
+                execution_dependencies,
             "SpillbackCount":
-            task_table_message.SpillbackCount(),
+                task_table_message.SpillbackCount(),
             "TaskSpec":
-            task_spec_info
+                task_spec_info
         }
 
     def task_table(self, task_id=None):
@@ -650,77 +650,78 @@ class GlobalState(object):
                 if "get_arguments_end" in info:
                     get_args_trace = {
                         "cat":
-                        "get_arguments",
+                            "get_arguments",
                         "pid":
-                        "Node " + worker["node_ip_address"],
+                            "Node " + worker["node_ip_address"],
                         "tid":
-                        info["worker_id"],
+                            info["worker_id"],
                         "id":
-                        task_id,
+                            task_id,
                         "ts":
-                        micros_rel(info["get_arguments_start"]),
+                            micros_rel(info["get_arguments_start"]),
                         "ph":
-                        "X",
+                            "X",
                         "name":
-                        info["function_name"] + ":get_arguments",
+                            info["function_name"] + ":get_arguments",
                         "args":
-                        total_info,
+                            total_info,
                         "dur":
-                        micros(info["get_arguments_end"] -
-                               info["get_arguments_start"]),
+                            micros(info["get_arguments_end"] -
+                                   info["get_arguments_start"]),
                         "cname":
-                        "rail_idle"
+                            "rail_idle"
                     }
                     full_trace.append(get_args_trace)
 
                 if "store_outputs_end" in info:
                     outputs_trace = {
                         "cat":
-                        "store_outputs",
+                            "store_outputs",
                         "pid":
-                        "Node " + worker["node_ip_address"],
+                            "Node " + worker["node_ip_address"],
                         "tid":
-                        info["worker_id"],
+                            info["worker_id"],
                         "id":
-                        task_id,
+                            task_id,
                         "ts":
-                        micros_rel(info["store_outputs_start"]),
+                            micros_rel(info["store_outputs_start"]),
                         "ph":
-                        "X",
+                            "X",
                         "name":
-                        info["function_name"] + ":store_outputs",
+                            info["function_name"] + ":store_outputs",
                         "args":
-                        total_info,
+                            total_info,
                         "dur":
-                        micros(info["store_outputs_end"] -
-                               info["store_outputs_start"]),
+                            micros(info["store_outputs_end"] -
+                                   info["store_outputs_start"]),
                         "cname":
-                        "thread_state_runnable"
+                            "thread_state_runnable"
                     }
                     full_trace.append(outputs_trace)
 
                 if "execute_end" in info:
                     execute_trace = {
                         "cat":
-                        "execute",
+                            "execute",
                         "pid":
-                        "Node " + worker["node_ip_address"],
+                            "Node " + worker["node_ip_address"],
                         "tid":
-                        info["worker_id"],
+                            info["worker_id"],
                         "id":
-                        task_id,
+                            task_id,
                         "ts":
-                        micros_rel(info["execute_start"]),
+                            micros_rel(info["execute_start"]),
                         "ph":
-                        "X",
+                            "X",
                         "name":
-                        info["function_name"] + ":execute",
+                            info["function_name"] + ":execute",
                         "args":
-                        total_info,
+                            total_info,
                         "dur":
-                        micros(info["execute_end"] - info["execute_start"]),
+                            micros(info["execute_end"] - info["execute_start"]
+                                   ),
                         "cname":
-                        "rail_animation"
+                            "rail_animation"
                     }
                     full_trace.append(execute_trace)
 
@@ -732,19 +733,20 @@ class GlobalState(object):
                         task_table[task_id]["TaskSpec"]["ParentTaskID"])
                     parent = {
                         "cat":
-                        "submit_task",
+                            "submit_task",
                         "pid":
-                        "Node " + parent_worker["node_ip_address"],
+                            "Node " + parent_worker["node_ip_address"],
                         "tid":
-                        parent_info["worker_id"],
+                            parent_info["worker_id"],
                         "ts":
-                        micros_rel(parent_profile
-                                   and parent_profile["get_arguments_start"]
-                                   or start_time),
+                            micros_rel(
+                                parent_profile
+                                and parent_profile["get_arguments_start"]
+                                or start_time),
                         "ph":
-                        "s",
+                            "s",
                         "name":
-                        "SubmitTask",
+                            "SubmitTask",
                         "args": {},
                         "id": (parent_info["worker_id"] +
                                str(micros(min(parent_times))))
@@ -753,49 +755,50 @@ class GlobalState(object):
 
                     task_trace = {
                         "cat":
-                        "submit_task",
+                            "submit_task",
                         "pid":
-                        "Node " + worker["node_ip_address"],
+                            "Node " + worker["node_ip_address"],
                         "tid":
-                        info["worker_id"],
+                            info["worker_id"],
                         "ts":
-                        micros_rel(info["get_arguments_start"]),
+                            micros_rel(info["get_arguments_start"]),
                         "ph":
-                        "f",
+                            "f",
                         "name":
-                        "SubmitTask",
+                            "SubmitTask",
                         "args": {},
-                        "id":
-                        (info["worker_id"] + str(micros(min(parent_times)))),
+                        "id": (
+                            info["worker_id"] + str(micros(min(parent_times)))
+                        ),
                         "bp":
-                        "e",
+                            "e",
                         "cname":
-                        "olive"
+                            "olive"
                     }
                     full_trace.append(task_trace)
 
                 task = {
                     "cat":
-                    "task",
+                        "task",
                     "pid":
-                    "Node " + worker["node_ip_address"],
+                        "Node " + worker["node_ip_address"],
                     "tid":
-                    info["worker_id"],
+                        info["worker_id"],
                     "id":
-                    task_id,
+                        task_id,
                     "ts":
-                    micros_rel(info["get_arguments_start"]),
+                        micros_rel(info["get_arguments_start"]),
                     "ph":
-                    "X",
+                        "X",
                     "name":
-                    info["function_name"],
+                        info["function_name"],
                     "args":
-                    total_info,
+                        total_info,
                     "dur":
-                    micros(info["store_outputs_end"] -
-                           info["get_arguments_start"]),
+                        micros(info["store_outputs_end"] -
+                               info["get_arguments_start"]),
                     "cname":
-                    "thread_state_runnable"
+                        "thread_state_runnable"
                 }
                 full_trace.append(task)
 
@@ -807,19 +810,20 @@ class GlobalState(object):
                         task_table[task_id]["TaskSpec"]["ParentTaskID"])
                     parent = {
                         "cat":
-                        "submit_task",
+                            "submit_task",
                         "pid":
-                        "Node " + parent_worker["node_ip_address"],
+                            "Node " + parent_worker["node_ip_address"],
                         "tid":
-                        parent_info["worker_id"],
+                            parent_info["worker_id"],
                         "ts":
-                        micros_rel(parent_profile
-                                   and parent_profile["get_arguments_start"]
-                                   or start_time),
+                            micros_rel(
+                                parent_profile
+                                and parent_profile["get_arguments_start"]
+                                or start_time),
                         "ph":
-                        "s",
+                            "s",
                         "name":
-                        "SubmitTask",
+                            "SubmitTask",
                         "args": {},
                         "id": (parent_info["worker_id"] +
                                str(micros(min(parent_times))))
@@ -828,22 +832,23 @@ class GlobalState(object):
 
                     task_trace = {
                         "cat":
-                        "submit_task",
+                            "submit_task",
                         "pid":
-                        "Node " + worker["node_ip_address"],
+                            "Node " + worker["node_ip_address"],
                         "tid":
-                        info["worker_id"],
+                            info["worker_id"],
                         "ts":
-                        micros_rel(info["get_arguments_start"]),
+                            micros_rel(info["get_arguments_start"]),
                         "ph":
-                        "f",
+                            "f",
                         "name":
-                        "SubmitTask",
+                            "SubmitTask",
                         "args": {},
-                        "id":
-                        (info["worker_id"] + str(micros(min(parent_times)))),
+                        "id": (
+                            info["worker_id"] + str(micros(min(parent_times)))
+                        ),
                         "bp":
-                        "e"
+                            "e"
                     }
                     full_trace.append(task_trace)
 
@@ -877,40 +882,49 @@ class GlobalState(object):
                                 # the flow event therefore always gets drawn.
                                 owner = {
                                     "cat":
-                                    "obj_dependency",
+                                        "obj_dependency",
                                     "pid": ("Node " +
                                             owner_worker["node_ip_address"]),
                                     "tid":
-                                    task_info[owner_task]["worker_id"],
+                                        task_info[owner_task]["worker_id"],
                                     "ts":
-                                    micros_rel(task_info[owner_task]
-                                               ["store_outputs_end"]) - 2,
+                                        micros_rel(task_info[owner_task]
+                                                   ["store_outputs_end"]) - 2,
                                     "ph":
-                                    "s",
+                                        "s",
                                     "name":
-                                    "ObjectDependency",
+                                        "ObjectDependency",
                                     "args": {},
                                     "bp":
-                                    "e",
+                                        "e",
                                     "cname":
-                                    "cq_build_attempt_failed",
+                                        "cq_build_attempt_failed",
                                     "id":
-                                    "obj" + str(arg) + str(seen_obj[arg])
+                                        "obj" + str(arg) + str(seen_obj[arg])
                                 }
                                 full_trace.append(owner)
 
                             dependent = {
-                                "cat": "obj_dependency",
-                                "pid": "Node " + worker["node_ip_address"],
-                                "tid": info["worker_id"],
+                                "cat":
+                                    "obj_dependency",
+                                "pid":
+                                    "Node " + worker["node_ip_address"],
+                                "tid":
+                                    info["worker_id"],
                                 "ts":
-                                micros_rel(info["get_arguments_start"]) + 2,
-                                "ph": "f",
-                                "name": "ObjectDependency",
+                                    micros_rel(info["get_arguments_start"]) +
+                                    2,
+                                "ph":
+                                    "f",
+                                "name":
+                                    "ObjectDependency",
                                 "args": {},
-                                "cname": "cq_build_attempt_failed",
-                                "bp": "e",
-                                "id": "obj" + str(arg) + str(seen_obj[arg])
+                                "cname":
+                                    "cq_build_attempt_failed",
+                                "bp":
+                                    "e",
+                                "id":
+                                    "obj" + str(arg) + str(seen_obj[arg])
                             }
                             full_trace.append(dependent)
 
@@ -982,8 +996,8 @@ class GlobalState(object):
             worker_id = binary_to_hex(worker_key[len("Workers:"):])
 
             workers_data[worker_id] = {
-                "local_scheduler_socket":
-                (worker_info[b"local_scheduler_socket"].decode("ascii")),
+                "local_scheduler_socket": (
+                    worker_info[b"local_scheduler_socket"].decode("ascii")),
                 "node_ip_address": (worker_info[b"node_ip_address"]
                                     .decode("ascii")),
                 "plasma_manager_socket": (worker_info[b"plasma_manager_socket"]
@@ -1007,12 +1021,16 @@ class GlobalState(object):
             actor_id = key[len("Actor:"):]
             assert len(actor_id) == 20
             actor_info[binary_to_hex(actor_id)] = {
-                "class_id": binary_to_hex(info[b"class_id"]),
-                "driver_id": binary_to_hex(info[b"driver_id"]),
+                "class_id":
+                    binary_to_hex(info[b"class_id"]),
+                "driver_id":
+                    binary_to_hex(info[b"driver_id"]),
                 "local_scheduler_id":
-                binary_to_hex(info[b"local_scheduler_id"]),
-                "num_gpus": int(info[b"num_gpus"]),
-                "removed": decode(info[b"removed"]) == "True"
+                    binary_to_hex(info[b"local_scheduler_id"]),
+                "num_gpus":
+                    int(info[b"num_gpus"]),
+                "removed":
+                    decode(info[b"removed"]) == "True"
             }
         return actor_info
 
