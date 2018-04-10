@@ -54,7 +54,7 @@ class PartialRollout(object):
 
         Returns:
             terminal (bool): if rollout has terminated."""
-        return self.data["terminal"][-1]
+        return self.data["dones"][-1]
 
 
 CompletedRollout = namedtuple(
