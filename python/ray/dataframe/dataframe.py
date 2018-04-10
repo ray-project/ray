@@ -221,7 +221,7 @@ class DataFrame(object):
         get_local_head = False
 
         # Get first and last 10 columns if there are more than 20 columns
-        if sum(self._col_lengths) >= 20:
+        if len(self._col_metadata) >= 20:
             get_local_head = True
             front = front(x, 10)
             back = back(x, 10)
@@ -233,7 +233,7 @@ class DataFrame(object):
             x = pd.concat([front, col_dots, back], axis=1)
 
             # If less than 60 rows, x is already in the correct format.
-            if sum(self._row_lengths) < 60:
+            if len(self._row_metadata) < 60:
                 return x
 
         head = head(x, 30, get_local_head)
@@ -315,91 +315,6 @@ class DataFrame(object):
         self._col_metadata.index = new_index
 
     columns = property(_get_columns, _set_columns)
-
-    def _get__col_index(self):
-        """Get the _col_index for this DataFrame.
-
-        Returns:
-            The default index.
-        """
-        if self._col_index_cache is None:
-            return None
-
-        if isinstance(self._col_index_cache, ray.local_scheduler.ObjectID):
-            self._col_index_cache = ray.get(self._col_index_cache)
-        return self._col_index_cache
-
-    def _set__col_index(self, new__index):
-        """Set the _col_index for this DataFrame.
-
-        Args:
-            new__index: The new default index to set.
-        """
-        self._col_index_cache = new__index
-
-    _col_index = property(_get__col_index, _set__col_index)
-
-    def _get_row_lengths(self):
-        """Gets the lengths for each partition and caches it if it wasn't.
-
-        Returns:
-            A list of integers representing the length of each partition.
-        """
-        if self._row_length_cache is None:
-            return None
-        if isinstance(self._row_length_cache, ray.local_scheduler.ObjectID):
-            self._row_length_cache = ray.get(self._row_length_cache)
-        elif isinstance(self._row_length_cache, np.ndarray) and \
-                isinstance(self._row_length_cache[0],
-                           ray.local_scheduler.ObjectID):
-            self._row_length_cache = ray.get(self._row_length_cache)
-        return self._row_length_cache
-
-    def _set_row_lengths(self, lengths):
-        """Sets the lengths of each partition for this DataFrame.
-
-        We use this because we can compute it when creating the DataFrame.
-
-        Args:
-            lengths ([ObjectID or Int]): A list or numpy array of lengths
-                for each partition, in order.
-        """
-        if isinstance(lengths, list):
-            lengths = np.array(lengths)
-        self._row_length_cache = lengths
-
-    _row_lengths = property(_get_row_lengths, _set_row_lengths)
-
-    def _get_col_lengths(self):
-        """Gets the lengths for each partition and caches it if it wasn't.
-
-        Returns:
-            A list of integers representing the length of each partition.
-        """
-        if self._col_length_cache is None:
-            return None
-        if isinstance(self._col_length_cache, ray.local_scheduler.ObjectID):
-            self._col_length_cache = ray.get(self._col_length_cache)
-        elif isinstance(self._col_length_cache, np.ndarray) and \
-                isinstance(self._col_length_cache[0],
-                           ray.local_scheduler.ObjectID):
-            self._col_length_cache = ray.get(self._col_length_cache)
-        return self._col_length_cache
-
-    def _set_col_lengths(self, lengths):
-        """Sets the lengths of each partition for this DataFrame.
-
-        We use this because we can compute it when creating the DataFrame.
-
-        Args:
-            lengths ([ObjectID or Int]): A list or numpy array of lengths
-                for each partition, in order.
-        """
-        if isinstance(lengths, list):
-            lengths = np.array(lengths)
-        self._col_length_cache = lengths
-
-    _col_lengths = property(_get_col_lengths, _set_col_lengths)
 
     def _arithmetic_helper(self, remote_func, axis, level=None):
         # TODO: We don't support `level` right now
