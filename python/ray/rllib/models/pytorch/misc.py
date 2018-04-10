@@ -10,19 +10,16 @@ from torch.autograd import Variable
 
 def convert_batch(trajectory, has_features=False):
     """Convert trajectory from numpy to PT variable"""
-    states = Variable(torch.from_numpy(
-        trajectory["observations"]).float())
-    acs = Variable(torch.from_numpy(
-        trajectory["actions"]))
-    advs = Variable(torch.from_numpy(
-        trajectory["advantages"].copy()).float())
+    states = Variable(torch.from_numpy(trajectory["observations"]).float())
+    acs = Variable(torch.from_numpy(trajectory["actions"]))
+    advs = Variable(torch.from_numpy(trajectory["advantages"].copy()).float())
     advs = advs.view(-1, 1)
-    rs = Variable(torch.from_numpy(
-        trajectory["value_targets"]).float())
+    rs = Variable(torch.from_numpy(trajectory["value_targets"]).float())
     rs = rs.view(-1, 1)
     if has_features:
-        features = [Variable(torch.from_numpy(f))
-                    for f in trajectory["features"]]
+        features = [
+            Variable(torch.from_numpy(f)) for f in trajectory["features"]
+        ]
     else:
         features = trajectory["features"]
     return states, acs, advs, rs, features
@@ -37,6 +34,7 @@ def normc_initializer(std=1.0):
         tensor.data.normal_(0, 1)
         tensor.data *= std / torch.sqrt(
             tensor.data.pow(2).sum(1, keepdim=True))
+
     return initializer
 
 

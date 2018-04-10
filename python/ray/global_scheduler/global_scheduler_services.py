@@ -7,9 +7,12 @@ import subprocess
 import time
 
 
-def start_global_scheduler(redis_address, node_ip_address,
-                           use_valgrind=False, use_profiler=False,
-                           stdout_file=None, stderr_file=None):
+def start_global_scheduler(redis_address,
+                           node_ip_address,
+                           use_valgrind=False,
+                           use_profiler=False,
+                           stdout_file=None,
+                           stderr_file=None):
     """Start a global scheduler process.
 
     Args:
@@ -33,21 +36,24 @@ def start_global_scheduler(redis_address, node_ip_address,
     global_scheduler_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
         "../core/src/global_scheduler/global_scheduler")
-    command = [global_scheduler_executable,
-               "-r", redis_address,
-               "-h", node_ip_address]
+    command = [
+        global_scheduler_executable, "-r", redis_address, "-h", node_ip_address
+    ]
     if use_valgrind:
-        pid = subprocess.Popen(["valgrind",
-                                "--track-origins=yes",
-                                "--leak-check=full",
-                                "--show-leak-kinds=all",
-                                "--leak-check-heuristics=stdstring",
-                                "--error-exitcode=1"] + command,
-                               stdout=stdout_file, stderr=stderr_file)
+        pid = subprocess.Popen(
+            [
+                "valgrind", "--track-origins=yes", "--leak-check=full",
+                "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
+                "--error-exitcode=1"
+            ] + command,
+            stdout=stdout_file,
+            stderr=stderr_file)
         time.sleep(1.0)
     elif use_profiler:
-        pid = subprocess.Popen(["valgrind", "--tool=callgrind"] + command,
-                               stdout=stdout_file, stderr=stderr_file)
+        pid = subprocess.Popen(
+            ["valgrind", "--tool=callgrind"] + command,
+            stdout=stdout_file,
+            stderr=stderr_file)
         time.sleep(1.0)
     else:
         pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)

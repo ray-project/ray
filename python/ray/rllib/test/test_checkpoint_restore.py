@@ -20,10 +20,18 @@ def get_mean_action(alg, obs):
 ray.init()
 
 CONFIGS = {
-    "ES": {"episodes_per_batch": 10, "timesteps_per_batch": 100},
+    "ES": {
+        "episodes_per_batch": 10,
+        "timesteps_per_batch": 100
+    },
     "DQN": {},
-    "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000},
-    "A3C": {"use_lstm": False},
+    "PPO": {
+        "num_sgd_iter": 5,
+        "timesteps_per_batch": 1000
+    },
+    "A3C": {
+        "use_lstm": False
+    },
 }
 
 

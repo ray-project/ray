@@ -23,9 +23,8 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 from ray.autoscaler.updater import NodeUpdaterProcess
 
 
-def create_or_update_cluster(
-        config_file, override_min_workers, override_max_workers,
-        no_restart, yes):
+def create_or_update_cluster(config_file, override_min_workers,
+                             override_max_workers, no_restart, yes):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -39,8 +38,8 @@ def create_or_update_cluster(
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
-        raise NotImplementedError(
-            "Unsupported provider {}".format(config["provider"]))
+        raise NotImplementedError("Unsupported provider {}".format(
+            config["provider"]))
 
     bootstrap_config, _ = importer()
     config = bootstrap_config(config)
@@ -129,8 +128,10 @@ def get_or_create_head_node(config, no_restart, yes):
     remote_config_file.write(json.dumps(remote_config))
     remote_config_file.flush()
     config["file_mounts"].update({
-        remote_key_path: config["auth"]["ssh_private_key"],
-        "~/ray_bootstrap_config.yaml": remote_config_file.name
+        remote_key_path:
+        config["auth"]["ssh_private_key"],
+        "~/ray_bootstrap_config.yaml":
+        remote_config_file.name
     })
 
     if no_restart:
@@ -160,30 +161,24 @@ def get_or_create_head_node(config, no_restart, yes):
         print("Error: updating {} failed".format(
             provider.external_ip(head_node)))
         sys.exit(1)
-    print(
-        "Head node up-to-date, IP address is: {}".format(
-            provider.external_ip(head_node)))
+    print("Head node up-to-date, IP address is: {}".format(
+        provider.external_ip(head_node)))
 
     monitor_str = "tail -f /tmp/raylogs/monitor-*"
     for s in init_commands:
-        if ("ray start" in s and "docker exec" in s and
-                "--autoscaling-config" in s):
+        if ("ray start" in s and "docker exec" in s
+                and "--autoscaling-config" in s):
             monitor_str = "docker exec {} /bin/sh -c {}".format(
-                        config["docker"]["container_name"],
-                        quote(monitor_str))
-    print(
-        "To monitor auto-scaling activity, you can run:\n\n"
-        "  ssh -i {} {}@{} {}\n".format(
-            config["auth"]["ssh_private_key"],
-            config["auth"]["ssh_user"],
-            provider.external_ip(head_node),
-            quote(monitor_str)))
-    print(
-        "To login to the cluster, run:\n\n"
-        "  ssh -i {} {}@{}\n".format(
-            config["auth"]["ssh_private_key"],
-            config["auth"]["ssh_user"],
-            provider.external_ip(head_node)))
+                config["docker"]["container_name"], quote(monitor_str))
+    print("To monitor auto-scaling activity, you can run:\n\n"
+          "  ssh -i {} {}@{} {}\n".format(config["auth"]["ssh_private_key"],
+                                          config["auth"]["ssh_user"],
+                                          provider.external_ip(head_node),
+                                          quote(monitor_str)))
+    print("To login to the cluster, run:\n\n"
+          "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
+                                       config["auth"]["ssh_user"],
+                                       provider.external_ip(head_node)))
 
 
 def get_head_node_ip(config_file):

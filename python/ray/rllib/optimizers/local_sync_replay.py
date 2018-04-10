@@ -20,11 +20,16 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    def _init(
-            self, learning_starts=1000, buffer_size=10000,
-            prioritized_replay=True, prioritized_replay_alpha=0.6,
-            prioritized_replay_beta=0.4, prioritized_replay_eps=1e-6,
-            train_batch_size=32, sample_batch_size=4, clip_rewards=True):
+    def _init(self,
+              learning_starts=1000,
+              buffer_size=10000,
+              prioritized_replay=True,
+              prioritized_replay_alpha=0.6,
+              prioritized_replay_beta=0.4,
+              prioritized_replay_eps=1e-6,
+              train_batch_size=32,
+              sample_batch_size=4,
+              clip_rewards=True):
 
         self.replay_starts = learning_starts
         self.prioritized_replay_beta = prioritized_replay_beta
@@ -41,7 +46,8 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
         # Set up replay buffer
         if prioritized_replay:
             self.replay_buffer = PrioritizedReplayBuffer(
-                buffer_size, alpha=prioritized_replay_alpha,
+                buffer_size,
+                alpha=prioritized_replay_alpha,
                 clip_rewards=clip_rewards)
         else:
             self.replay_buffer = ReplayBuffer(buffer_size, clip_rewards)
@@ -63,9 +69,9 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
             else:
                 batch = self.local_evaluator.sample()
             for row in batch.rows():
-                self.replay_buffer.add(
-                    row["obs"], row["actions"], row["rewards"], row["new_obs"],
-                    row["dones"], row["weights"])
+                self.replay_buffer.add(row["obs"], row["actions"],
+                                       row["rewards"], row["new_obs"],
+                                       row["dones"], row["weights"])
 
         if len(self.replay_buffer) >= self.replay_starts:
             self._optimize()
@@ -75,39 +81,44 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
     def _optimize(self):
         with self.replay_timer:
             if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
-                (obses_t, actions, rewards, obses_tp1,
-                    dones, weights, batch_indexes) = self.replay_buffer.sample(
-                        self.train_batch_size,
-                        beta=self.prioritized_replay_beta)
+                (obses_t, actions, rewards, obses_tp1, dones, weights,
+                 batch_indexes) = self.replay_buffer.sample(
+                     self.train_batch_size, beta=self.prioritized_replay_beta)
             else:
                 (obses_t, actions, rewards, obses_tp1,
-                    dones) = self.replay_buffer.sample(
-                        self.train_batch_size)
+                 dones) = self.replay_buffer.sample(self.train_batch_size)
                 weights = np.ones_like(rewards)
-                batch_indexes = - np.ones_like(rewards)
+                batch_indexes = -np.ones_like(rewards)
 
             samples = SampleBatch({
-                "obs": obses_t, "actions": actions, "rewards": rewards,
-                "new_obs": obses_tp1, "dones": dones, "weights": weights,
-                "batch_indexes": batch_indexes})
+                "obs": obses_t,
+                "actions": actions,
+                "rewards": rewards,
+                "new_obs": obses_tp1,
+                "dones": dones,
+                "weights": weights,
+                "batch_indexes": batch_indexes
+            })
 
         with self.grad_timer:
             td_error = self.local_evaluator.compute_apply(samples)["td_error"]
-            new_priorities = (
-                np.abs(td_error) + self.prioritized_replay_eps)
+            new_priorities = (np.abs(td_error) + self.prioritized_replay_eps)
             if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
-                self.replay_buffer.update_priorities(
-                    samples["batch_indexes"], new_priorities)
+                self.replay_buffer.update_priorities(samples["batch_indexes"],
+                                                     new_priorities)
             self.grad_timer.push_units_processed(samples.count)
 
         self.num_steps_trained += samples.count
 
     def stats(self):
-        return dict(PolicyOptimizer.stats(self), **{
-            "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
-            "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
-            "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
-            "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
-            "opt_samples": round(self.grad_timer.mean_units_processed, 3),
-        })
+        return dict(
+            PolicyOptimizer.stats(self), **{
+                "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
+                "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
+                "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
+                "update_time_ms": round(1000 * self.update_weights_timer.mean,
+                                        3),
+                "opt_peak_throughput": round(self.grad_timer.mean_throughput,
+                                             3),
+                "opt_samples": round(self.grad_timer.mean_units_processed, 3),
+            })

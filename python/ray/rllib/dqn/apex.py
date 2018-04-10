@@ -4,25 +4,28 @@ from __future__ import print_function
 
 from ray.rllib.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
 
-APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
-    optimizer_class="ApexOptimizer",
-    optimizer_config=dict(DQN_CONFIG["optimizer_config"], **dict(
-        max_weight_sync_delay=400,
-        num_replay_buffer_shards=4,
-        debug=False,
-    )),
-    n_step=3,
-    num_workers=32,
-    buffer_size=2000000,
-    learning_starts=50000,
-    train_batch_size=512,
-    sample_batch_size=50,
-    max_weight_sync_delay=400,
-    target_network_update_freq=500000,
-    timesteps_per_iteration=25000,
-    per_worker_exploration=True,
-    worker_side_prioritization=True,
-))
+APEX_DEFAULT_CONFIG = dict(DQN_CONFIG,
+                           **dict(
+                               optimizer_class="ApexOptimizer",
+                               optimizer_config=dict(
+                                   DQN_CONFIG["optimizer_config"],
+                                   **dict(
+                                       max_weight_sync_delay=400,
+                                       num_replay_buffer_shards=4,
+                                       debug=False,
+                                   )),
+                               n_step=3,
+                               num_workers=32,
+                               buffer_size=2000000,
+                               learning_starts=50000,
+                               train_batch_size=512,
+                               sample_batch_size=50,
+                               max_weight_sync_delay=400,
+                               target_network_update_freq=500000,
+                               timesteps_per_iteration=25000,
+                               per_worker_exploration=True,
+                               worker_side_prioritization=True,
+                           ))
 
 
 class ApexAgent(DQNAgent):

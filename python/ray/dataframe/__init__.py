@@ -31,9 +31,7 @@ from .dataframe import DataFrame  # noqa: 402
 from .series import Series  # noqa: 402
 from .io import (read_csv, read_parquet)  # noqa: 402
 
-__all__ = [
-    "DataFrame", "Series", "read_csv", "read_parquet"
-]
+__all__ = ["DataFrame", "Series", "read_csv", "read_parquet"]
 
 try:
     if threading.current_thread().name == "MainThread":

@@ -4,7 +4,6 @@ from __future__ import print_function
 
 
 class DataFrameGroupBy(object):
-
     def __init__(self, partitions, columns, index):
         self._partitions = partitions
         self._columns = columns
@@ -22,15 +21,17 @@ class DataFrameGroupBy(object):
         from .dataframe import DataFrame
         from .dataframe import _deploy_func
 
-        assert(callable(func))
-        new_df = [_deploy_func.remote(lambda df: df.apply(func), part)
-                  for part in self._partitions]
+        assert (callable(func))
+        new_df = [
+            _deploy_func.remote(lambda df: df.apply(func), part)
+            for part in self._partitions
+        ]
 
         if index is None:
             index = self._index
 
-        return DataFrame(row_partitions=new_df, columns=self._columns,
-                         index=index)
+        return DataFrame(
+            row_partitions=new_df, columns=self._columns, index=index)
 
     @property
     def ngroups(self):
@@ -189,8 +190,16 @@ class DataFrameGroupBy(object):
     def describe(self, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def boxplot(grouped, subplots=True, column=None, fontsize=None, rot=0,
-                grid=True, ax=None, figsize=None, layout=None, **kwds):
+    def boxplot(grouped,
+                subplots=True,
+                column=None,
+                fontsize=None,
+                rot=0,
+                grid=True,
+                ax=None,
+                figsize=None,
+                layout=None,
+                **kwds):
         raise NotImplementedError("Not Yet implemented.")
 
     def ngroup(self, ascending=True):

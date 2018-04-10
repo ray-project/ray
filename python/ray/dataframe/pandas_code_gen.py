@@ -24,9 +24,8 @@ def code_gen(pd_obj, ray_obj, path):
                 # let's not mess with these
                 continue
             try:
-                outfile.write("\ndef " + func +
-                              str(inspect.signature(getattr(pd_obj, func))) +
-                              ":\n")
+                outfile.write("\ndef " + func + str(
+                    inspect.signature(getattr(pd_obj, func))) + ":\n")
             except TypeError:
                 outfile.write("\n@property")
                 outfile.write("\ndef " + func + "(self):\n")
@@ -86,8 +85,7 @@ def pandas_ray_diff(pd_obj, ray_obj):
     pd_funcs = dir(pd_obj)
     ray_funcs = dir(ray_obj)
 
-    pd_funcs = set(filter(lambda f: f[0] != "_" or f[1] == "_",
-                          pd_funcs))
+    pd_funcs = set(filter(lambda f: f[0] != "_" or f[1] == "_", pd_funcs))
 
     diff = [x for x in pd_funcs if x not in set(ray_funcs)]
     return diff

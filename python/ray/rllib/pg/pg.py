@@ -24,14 +24,15 @@ DEFAULT_CONFIG = {
     # Arguments to pass to the rllib optimizer
     "optimizer": {},
     # Model parameters
-    "model": {"fcnet_hiddens": [128, 128]},
+    "model": {
+        "fcnet_hiddens": [128, 128]
+    },
     # Arguments to pass to the env creator
     "env_config": {},
 }
 
 
 class PGAgent(Agent):
-
     """Simple policy gradient agent.
 
     This is an example agent to show how to implement algorithms in RLlib.
@@ -53,8 +54,10 @@ class PGAgent(Agent):
 
         episode_rewards = []
         episode_lengths = []
-        metric_lists = [a.get_completed_rollout_metrics.remote()
-                        for a in self.optimizer.remote_evaluators]
+        metric_lists = [
+            a.get_completed_rollout_metrics.remote()
+            for a in self.optimizer.remote_evaluators
+        ]
         for metrics in metric_lists:
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)

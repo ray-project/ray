@@ -18,8 +18,8 @@ class SharedTorchPolicy(TorchPolicy):
     is_recurrent = False
 
     def __init__(self, ob_space, ac_space, config, **kwargs):
-        super(SharedTorchPolicy, self).__init__(
-            ob_space, ac_space, config, **kwargs)
+        super(SharedTorchPolicy, self).__init__(ob_space, ac_space, config,
+                                                **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         _, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
@@ -70,9 +70,8 @@ class SharedTorchPolicy(TorchPolicy):
         value_err = 0.5 * (values - rs).pow(2).sum()
 
         self.optimizer.zero_grad()
-        overall_err = (pi_err +
-                       value_err * self.config["vf_loss_coeff"] +
+        overall_err = (pi_err + value_err * self.config["vf_loss_coeff"] +
                        entropy * self.config["entropy_coeff"])
         overall_err.backward()
-        torch.nn.utils.clip_grad_norm(
-            self._model.parameters(), self.config["grad_clip"])
+        torch.nn.utils.clip_grad_norm(self._model.parameters(),
+                                      self.config["grad_clip"])
