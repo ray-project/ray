@@ -270,109 +270,109 @@ def test_from_csv():
 
     teardown_csv_file()
 
-
-def test_from_json():
-    setup_json_file(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_json(TEST_JSON_FILENAME)
-    ray_df = io.read_json(TEST_JSON_FILENAME)
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-    teardown_json_file()
-
-
-def test_from_html():
-    setup_html_file(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_html(TEST_HTML_FILENAME)[0]
-    ray_df = io.read_html(TEST_HTML_FILENAME)
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-    teardown_html_file()
-
-
-def test_from_clipboard():
-    setup_clipboard(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_clipboard()
-    ray_df = io.read_clipboard()
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-
-def test_from_excel():
-    setup_excel_file(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_excel(TEST_EXCEL_FILENAME)
-    ray_df = io.read_excel(TEST_EXCEL_FILENAME)
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-    teardown_excel_file()
-
-
-def test_from_feather():
-    setup_feather_file(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_feather(TEST_FEATHER_FILENAME)
-    ray_df = io.read_feather(TEST_FEATHER_FILENAME)
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-    teardown_feather_file()
-
-
-def test_from_hdf():
-    setup_hdf_file(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_hdf(TEST_HDF_FILENAME, key='test')
-    ray_df = io.read_hdf(TEST_HDF_FILENAME, key='test')
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-    teardown_hdf_file()
-
-
-def test_from_msgpack():
-    setup_msgpack_file(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_msgpack(TEST_MSGPACK_FILENAME)
-    ray_df = io.read_msgpack(TEST_MSGPACK_FILENAME)
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-    teardown_msgpack_file()
-
-
-def test_from_stata():
-    setup_stata_file(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_stata(TEST_STATA_FILENAME)
-    ray_df = io.read_stata(TEST_STATA_FILENAME)
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-    teardown_stata_file()
-
-
-def test_from_pickle():
-    setup_pickle_file(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_pickle(TEST_PICKLE_FILENAME)
-    ray_df = io.read_pickle(TEST_PICKLE_FILENAME)
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-    teardown_pickle_file()
-
-
-def test_from_sql():
-    # (TODO) Implement
-    assert True
-
-
-def test_from_sas():
-    # (TODO) Implement
-    assert True
+#
+# def test_from_json():
+#     setup_json_file(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_json(TEST_JSON_FILENAME)
+#     ray_df = io.read_json(TEST_JSON_FILENAME)
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#     teardown_json_file()
+#
+#
+# def test_from_html():
+#     setup_html_file(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_html(TEST_HTML_FILENAME)[0]
+#     ray_df = io.read_html(TEST_HTML_FILENAME)
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#     teardown_html_file()
+#
+#
+# def test_from_clipboard():
+#     setup_clipboard(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_clipboard()
+#     ray_df = io.read_clipboard()
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#
+# def test_from_excel():
+#     setup_excel_file(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_excel(TEST_EXCEL_FILENAME)
+#     ray_df = io.read_excel(TEST_EXCEL_FILENAME)
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#     teardown_excel_file()
+#
+#
+# def test_from_feather():
+#     setup_feather_file(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_feather(TEST_FEATHER_FILENAME)
+#     ray_df = io.read_feather(TEST_FEATHER_FILENAME)
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#     teardown_feather_file()
+#
+#
+# def test_from_hdf():
+#     setup_hdf_file(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_hdf(TEST_HDF_FILENAME, key='test')
+#     ray_df = io.read_hdf(TEST_HDF_FILENAME, key='test')
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#     teardown_hdf_file()
+#
+#
+# def test_from_msgpack():
+#     setup_msgpack_file(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_msgpack(TEST_MSGPACK_FILENAME)
+#     ray_df = io.read_msgpack(TEST_MSGPACK_FILENAME)
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#     teardown_msgpack_file()
+#
+#
+# def test_from_stata():
+#     setup_stata_file(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_stata(TEST_STATA_FILENAME)
+#     ray_df = io.read_stata(TEST_STATA_FILENAME)
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#     teardown_stata_file()
+#
+#
+# def test_from_pickle():
+#     setup_pickle_file(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_pickle(TEST_PICKLE_FILENAME)
+#     ray_df = io.read_pickle(TEST_PICKLE_FILENAME)
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#     teardown_pickle_file()
+#
+#
+# def test_from_sql():
+#     # (TODO) Implement
+#     assert True
+#
+#
+# def test_from_sas():
+#     # (TODO) Implement
+#     assert True
