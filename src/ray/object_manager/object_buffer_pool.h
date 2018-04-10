@@ -22,9 +22,9 @@ namespace ray {
 /// \class ObjectBufferPool Exposes chunks of object buffers for use by the ObjectManager.
 class ObjectBufferPool {
  public:
-  /// Information needed about each object chunk.
+  /// Information needed to read or write an object chunk.
   /// This is the structure returned whenever an object chunk is
-  /// retrieved.
+  /// accessed via Get and Create.
   struct ChunkInfo {
     ChunkInfo(uint64_t chunk_index,
               uint8_t *data,
@@ -45,6 +45,8 @@ class ObjectBufferPool {
   /// \param store_socket_name The socket name of the store to which plasma clients
   /// connect.
   /// \param chunk_size The chunk size into which objects are to be split.
+  /// \param release_delay The number of release calls before objects are released
+  /// from the store client (FIFO).
   ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size, const int release_delay);
 
   ~ObjectBufferPool();
@@ -73,12 +75,12 @@ class ObjectBufferPool {
   /// \param data_size The sum of the object size and metadata size.
   /// \param metadata_size The size of the metadata.
   /// \param chunk_index The index of the chunk.
-  /// \return A pair consisting of a ChunkInfo struct and status of invoking this method.
+  /// \return A pair consisting of a ChunkInfo and status of invoking this method.
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> GetChunk(const ObjectID &object_id, uint64_t data_size,
                             uint64_t metadata_size, uint64_t chunk_index);
 
-  /// When a chunk is done being used as part of a get, this method is invoked
-  /// to indicate that the buffer associated with a chunk is no longer needed.
+  /// When a chunk is done being used as part of a get, this method releases the chunk.
+  /// If all chunks of an object are released, the object buffer will be released.
   ///
   /// \param object_id The object_id of the buffer to release.
   /// \param chunk_index The index of the chunk.
@@ -86,19 +88,25 @@ class ObjectBufferPool {
   ray::Status ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk_index);
 
   /// Returns a chunk of an empty object at the given chunk_index. The object chunk
-  /// serves as the data that is to be written to by a connection receiving an object
-  /// from a remote node. Only one chunk can be referenced at a time.
+  /// serves as the buffer that is to be written to by a connection receiving an object
+  /// from a remote node. Only one thread is permitted to create the object chunk at
+  /// chunk_index. Multiple threads attempting to create the same object chunk will
+  /// result in one succeeding. The ObjectManager is responsible for handling
+  /// create failures. This method will fail if it's invoked on a chunk_index on which
+  /// SealChunk has already been invoked.
   ///
   /// \param object_id The ObjectID.
   /// \param data_size The sum of the object size and metadata size.
   /// \param metadata_size The size of the metadata.
   /// \param chunk_index The index of the chunk.
-  /// \return A ChunkInfo struct.
+  /// \return A pair consisting of ChunkInfo and status of invoking this method.
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> CreateChunk(const ObjectID &object_id, uint64_t data_size,
                                uint64_t metadata_size, uint64_t chunk_index);
 
   /// Abort the create operation associated with a chunk at chunk_index.
-  /// This should not be called if SealChunk is called.
+  /// This method will fail if it's invoked on a chunk_index on which
+  /// CreateChunk was not first invoked, or a chunk_index on which
+  /// SealChunk has already been invoked.
   ///
   /// \param object_id The ObjectID.
   /// \param chunk_index The index of the chunk.
@@ -106,8 +114,10 @@ class ObjectBufferPool {
   ray::Status AbortCreateChunk(const ObjectID &object_id, uint64_t chunk_index);
 
   /// Seal the object associated with a create operation. This is invoked whenever
-  /// a chunk is successfully written to. This is not called if AbortCreateChunk
-  /// is called.
+  /// a chunk is successfully written to.
+  /// This method will fail if it's invoked on a chunk_index on which
+  /// CreateChunk was not first invoked, or a chunk_index on which
+  /// SealChunk or AbortCreateChunk has already been invoked.
   ///
   /// \param object_id The ObjectID.
   /// \param chunk_index The index of the chunk.
@@ -118,16 +128,13 @@ class ObjectBufferPool {
 
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
-  ///
-  /// \param object_id The ObjectID.
-  /// \return The status of invoking this method.
   ray::Status AbortCreate(const ObjectID &object_id);
 
   /// Abort the get operation associated with an object.
   ray::Status AbortGet(const ObjectID &object_id);
 
-  /// Builds the chunk vector for an object, and store it by object_id in chunk_info_.
-  /// Returns the number of chunks into which object is split.
+  /// Splits an object into ceil(data_size/chunk_size) chunks, which will
+  /// either be read or written to in parallel.
   std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id,
                                      uint8_t *data,
                                      uint64_t data_size);
@@ -142,7 +149,8 @@ class ObjectBufferPool {
     /// an object.
     std::vector<ChunkInfo> chunk_info;
     /// The number of references that currently rely on this buffer.
-    /// We expect this many calls to Release or SealOrAbortBuffer.
+    /// Once this reaches 0, the buffer is released and this object is erased
+    /// from get_buffer_state_.
     uint64_t references = 0;
   };
 
@@ -159,21 +167,22 @@ class ObjectBufferPool {
     CreateBufferState(std::vector<ChunkInfo> chunk_info)
         : chunk_info(chunk_info),
           chunk_state(chunk_info.size(), CreateChunkState::AVAILABLE),
-          num_chunks_remaining(chunk_info.size()) {}
+          num_seals_remaining(chunk_info.size()) {}
     /// A vector maintaining information about the chunks which comprise
     /// an object.
     std::vector<ChunkInfo> chunk_info;
-    /// Reference counts for each chunk.
+    /// The state of each chunk, which is used to enforce strict state
+    /// transitions of each chunk.
     std::vector<CreateChunkState> chunk_state;
-    /// The number of references that currently rely on this buffer.
-    /// We expect this many calls to Release or SealOrAbortBuffer.
-    uint64_t num_chunks_remaining;
+    /// The number of chunks left to seal before the buffer is sealed.
+    uint64_t num_seals_remaining;
   };
 
-  /// Returned when Get fails.
+  /// Returned when GetChunk or CreateChunk fails.
   ChunkInfo errored_chunk_ = {0, nullptr, 0};
 
-  /// Mutex for thread-safe operations.
+  /// Mutex on public methods for thread-safe operations on
+  /// get_buffer_state_, create_buffer_state_, and store_client_.
   std::mutex pool_mutex_;
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t chunk_size_;

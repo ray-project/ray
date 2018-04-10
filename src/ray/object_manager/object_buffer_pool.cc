@@ -136,10 +136,10 @@ ray::Status ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] == CreateChunkState::REFERENCED);
   create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::AVAILABLE;
-  if (create_buffer_state_[object_id].num_chunks_remaining ==
+  if (create_buffer_state_[object_id].num_seals_remaining ==
       create_buffer_state_[object_id].chunk_state.size()){
     // If chunk_state is AVAILABLE at every chunk_index and
-    // num_chunks_remaining == num_chunks, this is back to the initial state
+    // num_seals_remaining == num_chunks, this is back to the initial state
     // right before the first CreateChunk.
     bool abort = true;
     for (auto chunk_state : create_buffer_state_[object_id].chunk_state){
@@ -156,10 +156,10 @@ ray::Status ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_
   std::lock_guard<std::mutex> lock(pool_mutex_);
   RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] == CreateChunkState::REFERENCED);
   create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::SEALED;
-  create_buffer_state_[object_id].num_chunks_remaining--;
+  create_buffer_state_[object_id].num_seals_remaining--;
   RAY_LOG(DEBUG) << "SealChunk" << object_id << " "
-                 << create_buffer_state_[object_id].num_chunks_remaining;
-  if (create_buffer_state_[object_id].num_chunks_remaining == 0) {
+                 << create_buffer_state_[object_id].num_seals_remaining;
+  if (create_buffer_state_[object_id].num_seals_remaining == 0) {
     const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
     ARROW_CHECK_OK(store_client_.Seal(plasma_id));
     ARROW_CHECK_OK(store_client_.Release(plasma_id));

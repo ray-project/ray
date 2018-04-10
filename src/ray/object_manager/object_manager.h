@@ -41,7 +41,7 @@ struct ObjectManagerConfig {
   /// Maximum number of receives allowed.
   int max_receives = 20;
   /// Object chunk size, in bytes
-  uint64_t object_chunk_size = std::pow(10, 5);
+  uint64_t object_chunk_size = std::pow(10, 8);
   // TODO(hme): Implement num retries (to avoid infinite retries).
   std::string store_socket_name;
 };

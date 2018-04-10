@@ -35,6 +35,16 @@ int main(int argc, char *argv[]) {
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
   object_manager_config.store_socket_name = store_socket_name;
+  // Time out in milliseconds to wait before retrying a failed pull.
+  object_manager_config.pull_timeout_ms = 100;
+  // Size of thread pool.
+  object_manager_config.num_threads = 2;
+  // Maximum number of sends allowed.
+  object_manager_config.max_sends = 20;
+  // Maximum number of receives allowed.
+  object_manager_config.max_receives = 20;
+  // Object chunk size, in bytes.
+  object_manager_config.object_chunk_size = static_cast<uint64_t>(std::pow(10, 8));
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();
