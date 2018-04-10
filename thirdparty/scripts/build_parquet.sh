@@ -15,7 +15,7 @@ if [ ! -d $TP_DIR/build/parquet-cpp ]; then
   git clone https://github.com/apache/parquet-cpp.git "$TP_DIR/build/parquet-cpp"
   pushd $TP_DIR/build/parquet-cpp
   git fetch origin master
-  git checkout 76388ea4eb8b23656283116bc656b0c8f5db093b
+  git checkout 4e7ef12dccb250074370376dc31a4963e1010447
 
   if [ "$unamestr" == "Darwin" ]; then
     OPENSSL_ROOT_DIR=$OPENSSL_DIR \

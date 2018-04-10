@@ -137,7 +137,7 @@ TEST plasma_nonblocking_get_tests(void) {
 
   /* Test for object non-existence. */
   ARROW_CHECK_OK(client.Get(oid_array, 1, 0, &obj_buffer));
-  ASSERT(obj_buffer.data_size == -1);
+  ASSERT(obj_buffer.data == nullptr);
 
   /* Test for the object being in local Plasma store. */
   /* First create object. */
