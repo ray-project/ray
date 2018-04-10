@@ -59,9 +59,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   StartIOService();
 }
 
-ObjectManager::~ObjectManager() {
-  StopIOService();
-}
+ObjectManager::~ObjectManager() { StopIOService(); }
 
 void ObjectManager::StartIOService() {
   for (int i = 0; i < config_.num_threads; ++i) {
@@ -77,7 +75,6 @@ void ObjectManager::StopIOService() {
     io_threads_[i].join();
   }
 }
-
 
 void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   ObjectID object_id = ObjectID::from_binary(object_info.object_id);
@@ -315,7 +312,8 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
                                              uint64_t data_size, uint64_t metadata_size,
                                              uint64_t chunk_index,
                                              std::shared_ptr<SenderConnection> conn) {
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status = buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
+  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
+      buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
 
   if (!chunk_status.second.ok()) {
@@ -484,7 +482,8 @@ ray::Status ObjectManager::ExecuteReceiveObject(
   RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
                  << chunk_index;
 
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status = buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
+  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
+      buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
   if (chunk_status.second.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
@@ -508,7 +507,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     buffer.push_back(asio::buffer(mutable_vec, buffer_length));
     boost::system::error_code ec;
     conn->ReadBuffer(buffer, ec);
-    if (ec.value() != 0){
+    if (ec.value() != 0) {
       RAY_LOG(ERROR) << ec.message();
     }
     // TODO(hme): If the object isn't local, create a pull request for this chunk.

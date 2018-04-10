@@ -26,12 +26,8 @@ class ObjectBufferPool {
   /// This is the structure returned whenever an object chunk is
   /// accessed via Get and Create.
   struct ChunkInfo {
-    ChunkInfo(uint64_t chunk_index,
-              uint8_t *data,
-              uint64_t buffer_length)
-        : chunk_index(chunk_index),
-          data(data),
-          buffer_length(buffer_length){};
+    ChunkInfo(uint64_t chunk_index, uint8_t *data, uint64_t buffer_length)
+        : chunk_index(chunk_index), data(data), buffer_length(buffer_length){};
     /// A pointer to the start position of this object chunk.
     uint64_t chunk_index;
     /// A pointer to the start position of this object chunk.
@@ -47,7 +43,8 @@ class ObjectBufferPool {
   /// \param chunk_size The chunk size into which objects are to be split.
   /// \param release_delay The number of release calls before objects are released
   /// from the store client (FIFO).
-  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size, const int release_delay);
+  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size,
+                   const int release_delay);
 
   ~ObjectBufferPool();
 
@@ -77,8 +74,9 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   /// \return A pair consisting of a ChunkInfo and status of invoking this method.
   /// An IOError status is returned if the Get call on the plasma store fails.
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> GetChunk(const ObjectID &object_id, uint64_t data_size,
-                            uint64_t metadata_size, uint64_t chunk_index);
+  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> GetChunk(
+      const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+      uint64_t chunk_index);
 
   /// When a chunk is done being used as part of a get, this method releases the chunk.
   /// If all chunks of an object are released, the object buffer will be released.
@@ -103,8 +101,9 @@ class ObjectBufferPool {
   /// An IOError status is returned if object creation on the store client fails,
   /// or if create is invoked consecutively on the same chunk
   /// (with no intermediate AbortCreateChunk).
-  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> CreateChunk(const ObjectID &object_id, uint64_t data_size,
-                               uint64_t metadata_size, uint64_t chunk_index);
+  std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> CreateChunk(
+      const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
+      uint64_t chunk_index);
 
   /// Abort the create operation associated with a chunk at chunk_index.
   /// This method will fail if it's invoked on a chunk_index on which
@@ -126,7 +125,6 @@ class ObjectBufferPool {
   void SealChunk(const ObjectID &object_id, uint64_t chunk_index);
 
  private:
-
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
   void AbortCreate(const ObjectID &object_id);
@@ -136,16 +134,13 @@ class ObjectBufferPool {
 
   /// Splits an object into ceil(data_size/chunk_size) chunks, which will
   /// either be read or written to in parallel.
-  std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id,
-                                     uint8_t *data,
+  std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id, uint8_t *data,
                                      uint64_t data_size);
 
   /// Holds the state of a get buffer.
   struct GetBufferState {
     GetBufferState() {}
-    GetBufferState(std::vector<ChunkInfo> chunk_info)
-        : chunk_info(chunk_info){
-    }
+    GetBufferState(std::vector<ChunkInfo> chunk_info) : chunk_info(chunk_info) {}
     /// A vector maintaining information about the chunks which comprise
     /// an object.
     std::vector<ChunkInfo> chunk_info;
@@ -156,11 +151,7 @@ class ObjectBufferPool {
   };
 
   /// The state of a chunk associated with a create operation.
-  enum class CreateChunkState : uint {
-    AVAILABLE=0,
-    REFERENCED,
-    SEALED
-  };
+  enum class CreateChunkState : uint { AVAILABLE = 0, REFERENCED, SEALED };
 
   /// Holds the state of a create buffer.
   struct CreateBufferState {
@@ -188,9 +179,11 @@ class ObjectBufferPool {
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t chunk_size_;
   /// The state of a buffer that's currently being used.
-  std::unordered_map<ray::ObjectID, GetBufferState, ray::UniqueIDHasher> get_buffer_state_;
+  std::unordered_map<ray::ObjectID, GetBufferState, ray::UniqueIDHasher>
+      get_buffer_state_;
   /// The state of a buffer that's currently being used.
-  std::unordered_map<ray::ObjectID, CreateBufferState, ray::UniqueIDHasher> create_buffer_state_;
+  std::unordered_map<ray::ObjectID, CreateBufferState, ray::UniqueIDHasher>
+      create_buffer_state_;
 
   /// Plasma client pool.
   plasma::PlasmaClient store_client_;
