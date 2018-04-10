@@ -1401,14 +1401,14 @@ def start_ray_processes(address_info=None,
         raylet_stdout_file, raylet_stderr_file = (
             new_log_files("raylet_{}".format(i),
                           redirect_output=redirect_output))
-        address_info["raylet_socket_name"] = start_raylet(
+        address_info["raylet_socket_names"] = [start_raylet(
             redis_address,
             node_ip_address,
             object_store_addresses[i].name,
             worker_path,
             stdout_file=None,
             stderr_file=None,
-            cleanup=cleanup)
+            cleanup=cleanup)]
 
     if not use_raylet:
         # Start any workers that the local scheduler has not already started.

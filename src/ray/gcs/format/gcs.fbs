@@ -123,6 +123,10 @@ table ClientTableData {
   client_id: string;
   // The IP address of the client's node manager.
   node_manager_address: string;
+  // The IPC socket name of the client's raylet.
+  raylet_socket_name: string;
+  // The IPC socket name of the client's plasma store.
+  object_store_socket_name: string;
   // The port at which the client's node manager is listening for TCP
   // connections from other node managers.
   node_manager_port: int;
