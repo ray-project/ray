@@ -46,7 +46,7 @@ class ObjectBufferPool {
   /// \param store_socket_name The socket name of the store to which plasma clients
   /// connect.
   /// \param chunk_size The chunk size into which objects are to be split.
-  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size);
+  ObjectBufferPool(const std::string &store_socket_name, const uint64_t chunk_size, const int release_delay);
 
   ~ObjectBufferPool();
 
@@ -114,25 +114,13 @@ class ObjectBufferPool {
   std::vector<ChunkInfo> BuildChunks(const ObjectID &object_id, uint8_t *data, uint64_t data_size,
                                      uint64_t metadata_size);
 
-  /// Get an object from the object store pool.
-  std::shared_ptr<plasma::PlasmaClient> GetObjectStore();
-
-  /// Release an object from the object store pool.
-  void ReleaseObjectStore(std::shared_ptr<plasma::PlasmaClient> client);
-
-  /// Adds a client to the client pool and mark it as available.
-  void Add();
-
   /// Holds the state of a get buffer.
   struct GetBufferState {
     GetBufferState() {}
-    GetBufferState(std::shared_ptr<plasma::PlasmaClient> client, std::vector<ChunkInfo> chunk_info)
-        : client(client),
-          chunk_info(chunk_info),
+    GetBufferState(std::vector<ChunkInfo> chunk_info)
+        : chunk_info(chunk_info),
           chunk_references(chunk_info.size(), 0){
     }
-    /// The plasma client used by this buffer.
-    std::shared_ptr<plasma::PlasmaClient> client;
     /// A vector maintaining information about the chunks which comprise
     /// an object.
     std::vector<ChunkInfo> chunk_info;
@@ -146,13 +134,10 @@ class ObjectBufferPool {
   /// Holds the state of a create buffer.
   struct CreateBufferState {
     CreateBufferState() {}
-    CreateBufferState(std::shared_ptr<plasma::PlasmaClient> client, std::vector<ChunkInfo> chunk_info)
-        : client(client),
-          chunk_info(chunk_info),
+    CreateBufferState(std::vector<ChunkInfo> chunk_info)
+        : chunk_info(chunk_info),
           chunk_references(chunk_info.size(), 0),
           num_chunks_remaining(chunk_info.size()) {}
-    /// The plasma client used by this buffer.
-    std::shared_ptr<plasma::PlasmaClient> client;
     /// A vector maintaining information about the chunks which comprise
     /// an object.
     std::vector<ChunkInfo> chunk_info;
@@ -175,10 +160,8 @@ class ObjectBufferPool {
   /// The state of a buffer that's currently being used.
   std::unordered_map<ray::ObjectID, CreateBufferState, ray::UniqueIDHasher> create_buffer_state_;
 
-  /// Available plasma clients.
-  std::vector<std::shared_ptr<plasma::PlasmaClient>> available_clients;
   /// Plasma client pool.
-  std::vector<std::shared_ptr<plasma::PlasmaClient>> clients;
+  plasma::PlasmaClient store_client_;
   /// Socket name of plasma store.
   std::string store_socket_name_;
 };
