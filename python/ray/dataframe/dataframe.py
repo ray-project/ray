@@ -739,6 +739,22 @@ class DataFrame(object):
         elif is_list_like(arg):
             raise NotImplementedError("Not yet")
         elif callable(arg):
+            if _axis == 0:
+                new_cols = _map_partitions(lambda df: df.agg(arg,
+                                                             *args,
+                                                             **kwargs),
+                                           self._col_partitions)
+                print(ray.get(new_cols))
+                return DataFrame(col_partitions=new_cols,
+                                 columns=self.columns)
+            else:
+                new_rows = _map_partitions(lambda df: df._aggregate(arg,
+                                                                    *args,
+                                                                    **kwargs),
+                                           self._row_partitions)
+                return DataFrame(row_partitions=new_rows,
+                                 columns=self.columns)
+
             raise NotImplementedError("Not yet")
         else:
             # TODO Make pandas error
