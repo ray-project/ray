@@ -50,7 +50,8 @@ class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
                  copy=False, col_partitions=None, row_partitions=None,
-                 block_partitions=None, row_metadata=None, col_metadata=None):
+                 block_partitions=None, row_metadata=None, col_metadata=None,
+                 nrows=None, ncols=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -73,6 +74,11 @@ class DataFrame(object):
                 Metadata for the new dataframe's rows
             col_metadata (_IndexMetadata):
                 Metadata for the new dataframe's columns
+            nrows:
+                The number of row partitions to generate
+            ncols:
+                The number of col partitions to generate
+
         """
 
         # Check type of data and use appropriate constructor
@@ -86,11 +92,11 @@ class DataFrame(object):
             # TODO convert _partition_pandas_dataframe to block partitioning.
             row_partitions = \
                 _partition_pandas_dataframe(pd_df,
-                                            num_partitions=get_npartitions())
+                                            num_partitions=nrows)
 
             self._block_partitions = \
                 _create_block_partitions(row_partitions, axis=0,
-                                         length=len(pd_df.columns))
+                                         length=ncols)
 
             # Set in case we were only given a single row/column for below.
             axis = 0
