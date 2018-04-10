@@ -42,6 +42,9 @@ class DataFrameGroupBy(object):
                              num_return_vals=len(self._keys_and_values))
              for part in partitions]).T
 
+        if grouped_partitions.ndim == 1:
+            grouped_partitions = np.expand_dims(grouped_partitions,
+                                                axis=axis)
         from .dataframe import DataFrame
 
         if axis == 0:
