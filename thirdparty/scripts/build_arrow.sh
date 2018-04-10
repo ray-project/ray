@@ -50,7 +50,9 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
     git checkout 46aa99e9843ac0148357bb36a9235cfd48903e73
 
     cd cpp
-    mkdir build
+    if [ ! -d "build" ]; then
+      mkdir build
+    fi
     cd build
 
     ARROW_HOME=$TP_DIR/pkg/arrow/cpp/build/cpp-install
