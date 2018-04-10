@@ -87,9 +87,8 @@ class _IndexMetadataBase(object):
             DataFrame with coordinates of dropped labels
         """
         # TODO(patyang): This produces inconsistent indexes.
-        # marking before I fall asleep
         dropped = self.coords_of(labels)
-        self._coord_df.drop(labels, errors=errors, inplace=True)
+        self._coord_df = self._coord_df.drop(labels, errors=errors)
         return dropped
 
     def rename_index(self, mapper):
@@ -98,7 +97,7 @@ class _IndexMetadataBase(object):
         Args:
             mapper: name to rename the index as
         """
-        self._coord_df.rename_axis(mapper, axis=0, inplace=True)
+        self._coord_df = self._coord_df.rename_axis(mapper, axis=0)
 
     def convert_to_index_sliceable(self, key):
         """Converts and performs error checking on the passed slice

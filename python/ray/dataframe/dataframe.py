@@ -38,7 +38,7 @@ class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
                  copy=False, col_partitions=None, row_partitions=None,
-                 block_partitions=None):
+                 block_partitions=None, row_metadata=None, col_metadata=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -57,6 +57,10 @@ class DataFrame(object):
             row_partitions ([ObjectID]): The list of ObjectIDs that contain the
                 row dataframe partitions.
             block_partitions: A 2D numpy array of block partitions.
+            row_metadata (_IndexMetadata):
+                Metadata for the new dataframe's rows
+            col_metadata (_IndexMetadata):
+                Metadata for the new dataframe's columns
         """
         # Check type of data and use appropriate constructor
         if data is not None or (col_partitions is None and
@@ -86,18 +90,27 @@ class DataFrame(object):
                 "Columns not defined, must define columns for internal " \
                 "DataFrame creations"
 
+            self._row_metadata = self._col_metadata = None
             if block_partitions is not None:
                 # put in numpy array here to make accesses easier since it's 2D
                 self._block_partitions = np.array(block_partitions)
+                if row_metadata is not None:
+                    self._row_metadata = row_metadata.copy()
+                if col_metadata is not None:
+                    self._col_metadata = col_metadata.copy()
                 assert self._block_partitions.ndim == 2, \
                     "Block Partitions must be 2D."
             else:
                 if row_partitions is not None:
                     axis = 0
                     partitions = row_partitions
+                    if row_metadata is not None:
+                        self._row_metadata = row_metadata.copy()
                 elif col_partitions is not None:
                     axis = 1
                     partitions = col_partitions
+                    if col_metadata is not None:
+                        self._col_metadata = col_metadata.copy()
 
                 self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
@@ -111,10 +124,13 @@ class DataFrame(object):
                                                     axis=axis ^ 1)
 
         # Create the row and column index objects for using our partitioning.
-        self._row_metadata = _IndexMetadata(self._block_partitions[:, 0],
-                                            index=index, axis=0)
-        self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
-                                            index=columns, axis=1)
+        # If the objects haven't been inherited, then generate them
+        if not self._row_metadata:
+            self._row_metadata = _IndexMetadata(self._block_partitions[:, 0],
+                                                index=index, axis=0)
+        if not self._col_metadata:
+            self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
+                                                index=columns, axis=1)
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
