@@ -2095,13 +2095,10 @@ class DataFrame(object):
     def rename_axis(self, mapper, axis=0, copy=True, inplace=False):
         axes_is_columns = axis == 1 or axis == "columns"
         renamed = self if inplace else self.copy()
-        # NOTE: Setting index name directly might not work
         if axes_is_columns:
             renamed.columns.name = mapper
         else:
             renamed.index.name = mapper
-            # renamed._row_metadata.rename_axis(mapper, axis=axis, copy=copy,
-            #                                 inplace=True)
         if not inplace:
             return renamed
 
@@ -2118,12 +2115,10 @@ class DataFrame(object):
         """
         axes_is_columns = axis == 1 or axis == "columns"
         renamed = self if inplace else self.copy()
-        # NOTE: Setting index name directly might not work
         if axes_is_columns:
             renamed.columns.set_names(name)
         else:
             renamed.index.set_names(name)
-            # renamed._row_metadata.set_names(name)
 
         if not inplace:
             return renamed
@@ -2782,8 +2777,7 @@ class DataFrame(object):
             pass
 
         # see if we can slice the rows
-        # NOTE(patyang): ?????
-        indexer = convert_to_index_sliceable(self._row_metadata._coord_df, key)
+        indexer = self._row_metadata.convert_to_index_sliceable(key)
         if indexer is not None:
             raise NotImplementedError("To contribute to Pandas on Ray, please"
                                       "visit github.com/ray-project/ray.")

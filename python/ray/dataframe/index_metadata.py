@@ -98,6 +98,14 @@ class _IndexMetadataBase(object):
         """
         self._coord_df.rename_axis(mapper, axis=0, inplace=True)
 
+    def convert_to_index_sliceable(self, key):
+        """Converts and performs error checking on the passed slice
+
+        Args:
+            key: slice to convert and check
+        """
+        return convert_to_index_sliceable(self._coord_df, key)
+
 
 class _IndexMetadata(_IndexMetadataBase):
     """IndexMetadata implementation for index across a partitioned axis. This
