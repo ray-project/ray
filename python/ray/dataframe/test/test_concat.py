@@ -38,6 +38,21 @@ def generate_dfs():
                         'col7': [0, 0, 0, 0]})
     return df, df2
 
+@pytest.fixture
+def generate_none_dfs():
+    df = pd.DataFrame({'col1': [0, 1, 2, 3],
+                       'col2': [4, 5, None, 7],
+                       'col3': [8, 9, 10, 11],
+                       'col4': [12, 13, 14, 15],
+                       'col5': [None, None, None, None]})
+
+    df2 = pd.DataFrame({'col1': [0, 1, 2, 3],
+                        'col2': [4, 5, 6, 7],
+                        'col3': [8, 9, 10, 11],
+                        'col6': [12, 13, 14, 15],
+                        'col7': [0, 0, 0, 0]})
+    return df, df2
+
 
 @pytest.fixture
 def test_df_concat():
@@ -103,5 +118,15 @@ def test_mixed_inner_concat():
 
     mixed_dfs = [from_pandas(df, 2), from_pandas(df2, 2), df3]
 
-    with pytest.raises(NotImplementedError):
-        rdf.concat(mixed_dfs, join="inner")
+    assert(ray_df_equals_pandas(rdf.concat(mixed_dfs, join='inner'),
+                                pd.concat([df, df2, df3], join='inner')))
+
+
+def test_mixed_none_concat():
+    df, df2 = generate_none_dfs()
+    df3 = df.copy()
+
+    mixed_dfs = [from_pandas(df, 2), from_pandas(df2, 2), df3]
+
+    assert(ray_df_equals_pandas(rdf.concat(mixed_dfs),
+                                pd.concat([df, df2, df3])))
