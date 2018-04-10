@@ -729,13 +729,9 @@ class DataFrame(object):
         _level = kwargs.pop('_level', None)
 
         if isinstance(arg, compat.string_types):
-            try:
-                func = getattr(self, arg)
-            except AttributeError:
-                raise ValueError(
-                    "{} is an unknown string function".format(func))
+            return self._string_function(arg, *args, **kwargs)
 
-            return func(*args, **kwargs)
+        # Dictionaries have complex behavior because they can be renamed here.
         elif isinstance(arg, dict):
             raise NotImplementedError(
                 "To contribute to Pandas on Ray, please visit "
@@ -747,6 +743,27 @@ class DataFrame(object):
         else:
             # TODO Make pandas error
             raise ValueError("type {} is not callable")
+
+    def _string_function(self, func, *args, **kwargs):
+        assert isinstance(func, compat.string_types)
+
+        f = getattr(self, func, None)
+
+        if f is not None:
+            if callable(f):
+                return f(*args, **kwargs)
+
+            assert len(args) == 0
+            assert len([kwarg
+                        for kwarg in kwargs
+                        if kwarg not in ['axis', '_level']]) == 0
+            return f
+
+        f = getattr(np, func, None)
+        if f is not None:
+            raise NotImplementedError("Numpy aggregates not yet supported.")
+
+        raise ValueError("{} is an unknown string function".format(func))
 
     def align(self, other, join='outer', axis=None, level=None, copy=True,
               fill_value=None, method=None, limit=None, fill_axis=0,
@@ -790,6 +807,20 @@ class DataFrame(object):
 
     def apply(self, func, axis=0, broadcast=False, raw=False, reduce=None,
               args=(), **kwds):
+        """Apply a function along input axis of DataFrame.
+
+        Args:
+            func:
+            axis:
+            broadcast:
+            raw:
+            reduce:
+            args:
+            kwds:
+
+        Returns:
+            Series or DataFrame, depending on func.
+        """
         axis = pd.DataFrame()._get_axis_number(axis)
 
         if axis == 0 and isinstance(func, (list, dict)):
