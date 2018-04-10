@@ -101,6 +101,7 @@ class TestObjectManagerBase : public ::testing::Test {
     RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
     RAY_CHECK(ec == 0);
+    sleep(1);
     return store_id;
   }
 
