@@ -490,7 +490,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     if (ec.value() == 0) {
       buffer_pool_.SealChunk(object_id, chunk_index);
     } else {
-      buffer_pool_.ReleaseCreateChunk(object_id, chunk_index);
+      buffer_pool_.AbortCreateChunk(object_id, chunk_index);
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {

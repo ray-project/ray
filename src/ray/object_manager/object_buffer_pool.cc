@@ -4,9 +4,9 @@ namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
                                    const uint64_t chunk_size,
-                                   const int release_delay) {
+                                   const int release_delay)
+    :chunk_size_(chunk_size) {
   store_socket_name_ = store_socket_name;
-  chunk_size_ = chunk_size;
   ARROW_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", release_delay));
 }
 
@@ -59,11 +59,10 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
     uint64_t num_chunks = GetNumChunks(data_size);
     get_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
-        std::forward_as_tuple(BuildChunks(object_id, data, data_size, metadata_size)));
+        std::forward_as_tuple(BuildChunks(object_id, data, data_size)));
     RAY_CHECK(get_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
   get_buffer_state_[object_id].references++;
-  get_buffer_state_[object_id].chunk_references[chunk_index]++;
   return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
       get_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
 }
@@ -72,7 +71,8 @@ ray::Status ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_
   std::lock_guard<std::mutex> lock(pool_mutex_);
   GetBufferState &buffer_state = get_buffer_state_[object_id];
   buffer_state.references--;
-  get_buffer_state_[object_id].chunk_references[chunk_index]--;
+  RAY_LOG(DEBUG) << "ReleaseBuffer " << object_id << " "
+                 << buffer_state.references;
   if (buffer_state.references == 0) {
     ARROW_CHECK_OK(store_client_.Release(ObjectID(object_id).to_plasma_id()));
     get_buffer_state_.erase(object_id);
@@ -115,36 +115,47 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Cr
     uint64_t num_chunks = GetNumChunks(data_size);
     create_buffer_state_.emplace(
         std::piecewise_construct, std::forward_as_tuple(object_id),
-        std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size, metadata_size)));
+        std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size)));
     RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
-  if (create_buffer_state_[object_id].chunk_references[chunk_index] != 0){
+  if (create_buffer_state_[object_id].chunk_state[chunk_index] != CreateChunkState::AVAILABLE){
     // There can be only one reference to this chunk at any given time.
     return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> (
         errored_chunk_,
         ray::Status::IOError("Chunk already referenced by another thread.")
     );
   }
-  create_buffer_state_[object_id].chunk_references[chunk_index]++;
+  create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::REFERENCED;
   return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> (
       create_buffer_state_[object_id].chunk_info[chunk_index],
       ray::Status::OK());
 }
 
-ray::Status ObjectBufferPool::ReleaseCreateChunk(const ObjectID &object_id,
+ray::Status ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
                                                  const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  create_buffer_state_[object_id].chunk_references[chunk_index]--;
-  // Make sure ReleaseCreateChunk OR SealChunk is called.
-  RAY_CHECK(create_buffer_state_[object_id].chunk_references[chunk_index] >= 0);
+  RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] == CreateChunkState::REFERENCED);
+  create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::AVAILABLE;
+  if (create_buffer_state_[object_id].num_chunks_remaining ==
+      create_buffer_state_[object_id].chunk_state.size()){
+    // If chunk_state is AVAILABLE at every chunk_index and
+    // num_chunks_remaining == num_chunks, this is back to the initial state
+    // right before the first CreateChunk.
+    bool abort = true;
+    for (auto chunk_state : create_buffer_state_[object_id].chunk_state){
+      abort &= chunk_state == CreateChunkState::AVAILABLE;
+    }
+    if (abort){
+      return AbortCreate(object_id);
+    }
+  }
   return ray::Status::OK();
 }
 
 ray::Status ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk_index) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  create_buffer_state_[object_id].chunk_references[chunk_index]--;
-  // Make sure ReleaseCreateChunk OR SealChunk is called.
-  RAY_CHECK(create_buffer_state_[object_id].chunk_references[chunk_index] >= 0);
+  RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] == CreateChunkState::REFERENCED);
+  create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::SEALED;
   create_buffer_state_[object_id].num_chunks_remaining--;
   RAY_LOG(DEBUG) << "SealChunk" << object_id << " "
                  << create_buffer_state_[object_id].num_chunks_remaining;
@@ -159,15 +170,15 @@ ray::Status ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_
 
 ray::Status ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
   const plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
-  // This is a failed create due to error on receiving data.
   ARROW_CHECK_OK(store_client_.Release(plasma_id));
   ARROW_CHECK_OK(store_client_.Abort(plasma_id));
   create_buffer_state_.erase(object_id);
   return ray::Status::OK();
 }
 
-std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(const ObjectID &object_id, uint8_t *data,
-                                       uint64_t data_size, uint64_t metadata_size) {
+std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(const ObjectID &object_id,
+                                                                       uint8_t *data,
+                                                                       uint64_t data_size) {
   uint64_t space_remaining = data_size;
   std::vector<ChunkInfo> chunks;
   int64_t position = 0;
