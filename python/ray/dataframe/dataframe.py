@@ -10,37 +10,31 @@ from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas.compat import lzip
 import pandas.core.common as com
-from pandas.core.dtypes.common import (
-    is_bool_dtype,
-    is_list_like,
-    is_numeric_dtype,
-    is_timedelta64_dtype)
-from pandas.core.indexing import (
-    check_bool_indexer,
-    convert_to_index_sliceable)
+from pandas.core.dtypes.common import (is_bool_dtype, is_list_like,
+                                       is_numeric_dtype, is_timedelta64_dtype)
+from pandas.core.indexing import (check_bool_indexer,
+                                  convert_to_index_sliceable)
 
 import warnings
 import numpy as np
 import ray
 import itertools
 
-from .utils import (
-    _deploy_func,
-    _map_partitions,
-    _partition_pandas_dataframe,
-    to_pandas,
-    _build_index,
-    _blocks_to_col,
-    _blocks_to_row,
-    _build_columns,
-    _create_block_partitions)
+from .utils import (_deploy_func, _map_partitions, _partition_pandas_dataframe,
+                    to_pandas, _build_index, _blocks_to_col, _blocks_to_row,
+                    _build_columns, _create_block_partitions)
 from . import get_npartitions
 
 
 class DataFrame(object):
-
-    def __init__(self, data=None, index=None, columns=None, dtype=None,
-                 copy=False, col_partitions=None, row_partitions=None,
+    def __init__(self,
+                 data=None,
+                 index=None,
+                 columns=None,
+                 dtype=None,
+                 copy=False,
+                 col_partitions=None,
+                 row_partitions=None,
                  block_partitions=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
@@ -62,12 +56,16 @@ class DataFrame(object):
             block_partitions: A 2D numpy array of block partitions.
         """
         # Check type of data and use appropriate constructor
-        if data is not None or (col_partitions is None and
-                                row_partitions is None and
-                                block_partitions is None):
+        if data is not None or (col_partitions is None
+                                and row_partitions is None
+                                and block_partitions is None):
 
-            pd_df = pd.DataFrame(data=data, index=index, columns=columns,
-                                 dtype=dtype, copy=copy)
+            pd_df = pd.DataFrame(
+                data=data,
+                index=index,
+                columns=columns,
+                dtype=dtype,
+                copy=copy)
 
             # TODO convert _partition_pandas_dataframe to block partitioning.
             row_partitions = \
@@ -110,8 +108,8 @@ class DataFrame(object):
         # problematic for building blocks from the partitions, so we
         # add whatever dimension we're missing from the input.
         if self._block_partitions.ndim != 2:
-            self._block_partitions = np.expand_dims(self._block_partitions,
-                                                    axis=axis ^ 1)
+            self._block_partitions = np.expand_dims(
+                self._block_partitions, axis=axis ^ 1)
 
         # Create the row and column index objects for using our partitioning.
         self._row_lengths, self._row_index = \
@@ -120,8 +118,9 @@ class DataFrame(object):
             _build_columns.remote(self._block_partitions[0, :], columns)
 
     def _get_row_partitions(self):
-        return [_blocks_to_row.remote(*part)
-                for part in self._block_partitions]
+        return [
+            _blocks_to_row.remote(*part) for part in self._block_partitions
+        ]
 
     def _set_row_partitions(self, new_row_partitions):
         self._block_partitions = \
@@ -131,8 +130,10 @@ class DataFrame(object):
     _row_partitions = property(_get_row_partitions, _set_row_partitions)
 
     def _get_col_partitions(self):
-        return [_blocks_to_col.remote(*self._block_partitions[:, i])
-                for i in range(self._block_partitions.shape[1])]
+        return [
+            _blocks_to_col.remote(*self._block_partitions[:, i])
+            for i in range(self._block_partitions.shape[1])
+        ]
 
     def _set_col_partitions(self, new_col_partitions):
         self._block_partitions = \
@@ -151,8 +152,7 @@ class DataFrame(object):
 
         def head(df, n):
             """Compute the head for this without creating a new DataFrame"""
-            new_dfs = _map_partitions(lambda df: df.head(n),
-                                      df)
+            new_dfs = _map_partitions(lambda df: df.head(n), df)
 
             index = self._row_index.head(n).index
             pd_head = pd.concat(ray.get(new_dfs), axis=1, copy=False)
@@ -163,8 +163,7 @@ class DataFrame(object):
         def tail(df, n):
             """Compute the tail for this without creating a new DataFrame"""
 
-            new_dfs = _map_partitions(lambda df: df.tail(n),
-                                      df)
+            new_dfs = _map_partitions(lambda df: df.tail(n), df)
 
             index = self._row_index.tail(n).index
             pd_tail = pd.concat(ray.get(new_dfs), axis=1, copy=False)
@@ -177,8 +176,8 @@ class DataFrame(object):
         tail = tail(x, 30)
 
         # Make the dots in between the head and tail
-        dots = pd.Series(["..."
-                          for _ in range(self._block_partitions.shape[1])])
+        dots = pd.Series(
+            ["..." for _ in range(self._block_partitions.shape[1])])
         dots.index = head.columns
         dots.name = "..."
 
@@ -211,7 +210,7 @@ class DataFrame(object):
         """
         if isinstance(self._row_index, pd.core.indexes.range.RangeIndex) or \
            isinstance(self._row_index, pd.core.indexes.base.Index):
-                self._row_index = new_index
+            self._row_index = new_index
         else:
             self._row_index.index = new_index
 
@@ -354,9 +353,9 @@ class DataFrame(object):
         axis = self._row_index._get_axis_number(axis) if axis is not None \
             else 0
 
-        oid_series = ray.get(_map_partitions(remote_func,
-                             self._col_partitions if axis == 0
-                             else self._row_partitions))
+        oid_series = ray.get(
+            _map_partitions(remote_func, self._col_partitions
+                            if axis == 0 else self._row_partitions))
 
         if axis == 0:
             # We use the index to get the internal index.
@@ -365,12 +364,11 @@ class DataFrame(object):
             for df, index in oid_series:
                 this_partition = \
                     self._col_index[self._col_index['partition'] == index]
-                df.index = this_partition[
-                    this_partition['index_within_partition'].isin(df.index)
-                ].index
+                df.index = this_partition[this_partition[
+                    'index_within_partition'].isin(df.index)].index
 
-            result_series = pd.concat([obj[0] for obj in oid_series],
-                                      axis=0, copy=False)
+            result_series = pd.concat(
+                [obj[0] for obj in oid_series], axis=0, copy=False)
         else:
             result_series = pd.concat(oid_series, axis=0, copy=False)
             result_series.index = self.index
@@ -394,8 +392,8 @@ class DataFrame(object):
         """
         # The number of dimensions is common across all partitions.
         # The first partition will be enough.
-        return ray.get(_deploy_func.remote(lambda df: df.ndim,
-                                           self._row_partitions[0]))
+        return ray.get(
+            _deploy_func.remote(lambda df: df.ndim, self._row_partitions[0]))
 
     @property
     def ftypes(self):
@@ -406,8 +404,8 @@ class DataFrame(object):
         """
         # The ftypes are common across all partitions.
         # The first partition will be enough.
-        result = ray.get(_deploy_func.remote(lambda df: df.ftypes,
-                                             self._row_partitions[0]))
+        result = ray.get(
+            _deploy_func.remote(lambda df: df.ftypes, self._row_partitions[0]))
         result.index = self.columns
         return result
 
@@ -420,8 +418,8 @@ class DataFrame(object):
         """
         # The dtypes are common across all partitions.
         # The first partition will be enough.
-        result = ray.get(_deploy_func.remote(lambda df: df.dtypes,
-                                             self._row_partitions[0]))
+        result = ray.get(
+            _deploy_func.remote(lambda df: df.dtypes, self._row_partitions[0]))
         result.index = self.columns
         return result
 
@@ -433,8 +431,8 @@ class DataFrame(object):
             True if the DataFrame is empty.
             False otherwise.
         """
-        all_empty = ray.get(_map_partitions(
-            lambda df: df.empty, self._row_partitions))
+        all_empty = ray.get(
+            _map_partitions(lambda df: df.empty, self._row_partitions))
         return False not in all_empty
 
     @property
@@ -444,8 +442,9 @@ class DataFrame(object):
         Returns:
             The numpy representation of this DataFrame.
         """
-        return np.concatenate(ray.get(_map_partitions(
-            lambda df: df.values, self._row_partitions)))
+        return np.concatenate(
+            ray.get(
+                _map_partitions(lambda df: df.values, self._row_partitions)))
 
     @property
     def axes(self):
@@ -465,8 +464,11 @@ class DataFrame(object):
         """
         return len(self.index), len(self.columns)
 
-    def _update_inplace(self, row_partitions=None, col_partitions=None,
-                        columns=None, index=None):
+    def _update_inplace(self,
+                        row_partitions=None,
+                        col_partitions=None,
+                        columns=None,
+                        index=None):
         """Updates the current DataFrame inplace.
 
         Behavior should be similar to the constructor, given the corresponding
@@ -514,9 +516,10 @@ class DataFrame(object):
             A new DataFrame containing the new column names.
         """
         new_cols = self.columns.map(lambda x: str(prefix) + str(x))
-        return DataFrame(block_partitions=self._block_partitions,
-                         columns=new_cols,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=self._block_partitions,
+            columns=new_cols,
+            index=self.index)
 
     def add_suffix(self, suffix):
         """Add a suffix to each of the column names.
@@ -525,9 +528,10 @@ class DataFrame(object):
             A new DataFrame containing the new column names.
         """
         new_cols = self.columns.map(lambda x: str(x) + str(suffix))
-        return DataFrame(block_partitions=self._block_partitions,
-                         columns=new_cols,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=self._block_partitions,
+            columns=new_cols,
+            index=self.index)
 
     def applymap(self, func):
         """Apply a function to a DataFrame elementwise.
@@ -536,16 +540,18 @@ class DataFrame(object):
             func (callable): The function to apply.
         """
         if not callable(func):
-            raise ValueError(
-                "\'{0}\' object is not callable".format(type(func)))
+            raise ValueError("\'{0}\' object is not callable".format(
+                type(func)))
 
         new_block_partitions = np.array([
             _map_partitions(lambda df: df.applymap(func), block)
-            for block in self._block_partitions])
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=new_block_partitions,
+            columns=self.columns,
+            index=self.index)
 
     def copy(self, deep=True):
         """Creates a shallow copy of the DataFrame.
@@ -553,12 +559,20 @@ class DataFrame(object):
         Returns:
             A new DataFrame pointing to the same partitions as this one.
         """
-        return DataFrame(block_partitions=self._block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=self._block_partitions,
+            columns=self.columns,
+            index=self.index)
 
-    def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
-                group_keys=True, squeeze=False, **kwargs):
+    def groupby(self,
+                by=None,
+                axis=0,
+                level=None,
+                as_index=True,
+                sort=True,
+                group_keys=True,
+                squeeze=False,
+                **kwargs):
         """Apply a groupby to this DataFrame. See _groupby() remote task.
         Args:
             by: The value to groupby.
@@ -585,9 +599,13 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
+
         def remote_func(df):
-            return df.sum(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only)
+            return df.sum(
+                axis=axis,
+                skipna=skipna,
+                level=level,
+                numeric_only=numeric_only)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -602,13 +620,15 @@ class DataFrame(object):
                 # TODO Give a more accurate error to Pandas
                 raise TypeError("bad operand type for abs():", "str")
 
-        new_block_partitions = np.array([_map_partitions(lambda df: df.abs(),
-                                                         block)
-                                         for block in self._block_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(lambda df: df.abs(), block)
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=new_block_partitions,
+            columns=self.columns,
+            index=self.index)
 
     def isin(self, values):
         """Fill a DataFrame with booleans for cells contained in values.
@@ -622,13 +642,15 @@ class DataFrame(object):
             True: cell is contained in values.
             False: otherwise
         """
-        new_block_partitions = np.array([_map_partitions(
-            lambda df: df.isin(values), block)
-            for block in self._block_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(lambda df: df.isin(values), block)
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=new_block_partitions,
+            columns=self.columns,
+            index=self.index)
 
     def isna(self):
         """Fill a DataFrame with booleans for cells containing NA.
@@ -639,12 +661,15 @@ class DataFrame(object):
             True: cell contains NA.
             False: otherwise.
         """
-        new_block_partitions = np.array([_map_partitions(
-            lambda df: df.isna(), block) for block in self._block_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(lambda df: df.isna(), block)
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=new_block_partitions,
+            columns=self.columns,
+            index=self.index)
 
     def isnull(self):
         """Fill a DataFrame with booleans for cells containing a null value.
@@ -655,13 +680,15 @@ class DataFrame(object):
             True: cell contains null.
             False: otherwise.
         """
-        new_block_partitions = np.array([_map_partitions(
-            lambda df: df.isnull(), block)
-            for block in self._block_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(lambda df: df.isnull(), block)
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=new_block_partitions,
+            columns=self.columns,
+            index=self.index)
 
     def keys(self):
         """Get the info axis for the DataFrame.
@@ -678,12 +705,15 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
-        new_block_partitions = np.array([_map_partitions(
-            lambda df: df.T, block) for block in self._block_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(lambda df: df.T, block)
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions.T,
-                         columns=self.index,
-                         index=self.columns)
+        return DataFrame(
+            block_partitions=new_block_partitions.T,
+            columns=self.index,
+            index=self.columns)
 
     T = property(transpose)
 
@@ -722,8 +752,16 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def align(self, other, join='outer', axis=None, level=None, copy=True,
-              fill_value=None, method=None, limit=None, fill_axis=0,
+    def align(self,
+              other,
+              join='outer',
+              axis=None,
+              level=None,
+              copy=True,
+              fill_value=None,
+              method=None,
+              limit=None,
+              fill_axis=0,
               broadcast_axis=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -737,9 +775,14 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies df.all(axis=1)
                 to the transpose of df.
         """
+
         def remote_func(df):
-            return df.all(axis=axis, bool_only=bool_only, skipna=skipna,
-                          level=level, **kwargs)
+            return df.all(
+                axis=axis,
+                bool_only=bool_only,
+                skipna=skipna,
+                level=level,
+                **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -751,9 +794,14 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies on the column partitions,
                 otherwise operates on row partitions
         """
+
         def remote_func(df):
-            return df.any(axis=axis, bool_only=bool_only, skipna=skipna,
-                          level=level, **kwargs)
+            return df.any(
+                axis=axis,
+                bool_only=bool_only,
+                skipna=skipna,
+                level=level,
+                **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -762,8 +810,14 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def apply(self, func, axis=0, broadcast=False, raw=False, reduce=None,
-              args=(), **kwds):
+    def apply(self,
+              func,
+              axis=0,
+              broadcast=False,
+              raw=False,
+              reduce=None,
+              args=(),
+              **kwds):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -778,7 +832,11 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def asfreq(self, freq, method=None, how=None, normalize=False,
+    def asfreq(self,
+               freq,
+               method=None,
+               how=None,
+               normalize=False,
                fill_value=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -804,7 +862,10 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def between_time(self, start_time, end_time, include_start=True,
+    def between_time(self,
+                     start_time,
+                     end_time,
+                     include_start=True,
                      include_end=True):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -813,11 +874,12 @@ class DataFrame(object):
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
         """Synonym for DataFrame.fillna(method='bfill')
         """
-        new_df = self.fillna(method='bfill',
-                             axis=axis,
-                             limit=limit,
-                             downcast=downcast,
-                             inplace=inplace)
+        new_df = self.fillna(
+            method='bfill',
+            axis=axis,
+            limit=limit,
+            downcast=downcast,
+            inplace=inplace)
         if not inplace:
             return new_df
 
@@ -829,7 +891,7 @@ class DataFrame(object):
         element is not boolean
         """
         shape = self.shape
-        if shape != (1,) and shape != (1, 1):
+        if shape != (1, ) and shape != (1, 1):
             raise ValueError("""The PandasObject does not have exactly
                                 1 element. Return the bool of a single
                                 element PandasObject. The truth value is
@@ -838,14 +900,27 @@ class DataFrame(object):
         else:
             return to_pandas(self).bool()
 
-    def boxplot(self, column=None, by=None, ax=None, fontsize=None, rot=0,
-                grid=True, figsize=None, layout=None, return_type=None,
+    def boxplot(self,
+                column=None,
+                by=None,
+                ax=None,
+                fontsize=None,
+                rot=0,
+                grid=True,
+                figsize=None,
+                layout=None,
+                return_type=None,
                 **kwds):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def clip(self, lower=None, upper=None, axis=None, inplace=False, *args,
+    def clip(self,
+             lower=None,
+             upper=None,
+             axis=None,
+             inplace=False,
+             *args,
              **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -881,8 +956,11 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def convert_objects(self, convert_dates=True, convert_numeric=False,
-                        convert_timedeltas=True, copy=True):
+    def convert_objects(self,
+                        convert_dates=True,
+                        convert_numeric=False,
+                        convert_timedeltas=True,
+                        copy=True):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -909,6 +987,7 @@ class DataFrame(object):
         Returns:
             The count, in a Series (or DataFrame if level is specified).
         """
+
         def remote_func(df):
             return df.count(axis=axis, level=level, numeric_only=numeric_only)
 
@@ -925,14 +1004,16 @@ class DataFrame(object):
 
         if axis == 0:
             new_cols = _map_partitions(func, self._col_partitions)
-            return DataFrame(col_partitions=new_cols,
-                             columns=self.columns,
-                             index=self.index)
+            return DataFrame(
+                col_partitions=new_cols,
+                columns=self.columns,
+                index=self.index)
         else:
             new_rows = _map_partitions(func, self._row_partitions)
-            return DataFrame(row_partitions=new_rows,
-                             columns=self.columns,
-                             index=self.index)
+            return DataFrame(
+                row_partitions=new_rows,
+                columns=self.columns,
+                index=self.index)
 
     def cummax(self, axis=None, skipna=True, *args, **kwargs):
         """Perform a cumulative maximum across the DataFrame.
@@ -944,6 +1025,7 @@ class DataFrame(object):
         Returns:
             The cumulative maximum of the DataFrame.
         """
+
         def remote_func(df):
             return df.cummax(axis=axis, skipna=skipna, *args, **kwargs)
 
@@ -959,6 +1041,7 @@ class DataFrame(object):
         Returns:
             The cumulative minimum of the DataFrame.
         """
+
         def remote_func(df):
             return df.cummin(axis=axis, skipna=skipna, *args, **kwargs)
 
@@ -974,6 +1057,7 @@ class DataFrame(object):
         Returns:
             The cumulative product of the DataFrame.
         """
+
         def remote_func(df):
             return df.cumprod(axis=axis, skipna=skipna, *args, **kwargs)
 
@@ -989,6 +1073,7 @@ class DataFrame(object):
         Returns:
             The cumulative sum of the DataFrame.
         """
+
         def remote_func(df):
             return df.cumsum(axis=axis, skipna=skipna, *args, **kwargs)
 
@@ -1007,13 +1092,12 @@ class DataFrame(object):
 
         Returns: Series/DataFrame of summary statistics
         """
+
         def describe_helper(df):
             """This to ensure nothing goes on with non-numeric columns"""
             try:
                 return df.select_dtypes(exclude='object').describe(
-                    percentiles=percentiles,
-                    include=include,
-                    exclude=exclude)
+                    percentiles=percentiles, include=include, exclude=exclude)
             # This exception is thrown when there are only non-numeric columns
             # in this partition
             except ValueError:
@@ -1027,9 +1111,8 @@ class DataFrame(object):
         for df, index in parts:
             this_partition = \
                 self._col_index[self._col_index['partition'] == index]
-            df.columns = this_partition[
-                this_partition['index_within_partition'].isin(df.columns)
-            ].index
+            df.columns = this_partition[this_partition[
+                'index_within_partition'].isin(df.columns)].index
 
         # Remove index from tuple
         result = pd.concat([obj[0] for obj in parts], axis=1, copy=False)
@@ -1055,8 +1138,14 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def drop(self, labels=None, axis=0, index=None, columns=None, level=None,
-             inplace=False, errors='raise'):
+    def drop(self,
+             labels=None,
+             axis=0,
+             index=None,
+             columns=None,
+             level=None,
+             inplace=False,
+             errors='raise'):
         """Return new object with labels in requested axis removed.
         Args:
             labels: Index or column labels to drop.
@@ -1088,9 +1177,8 @@ class DataFrame(object):
             axis = self._row_index._get_axis_name(axis)
             axes = {axis: labels}
         elif index is not None or columns is not None:
-            axes, _ = self._row_index._construct_axes_from_arguments((index,
-                                                                      columns),
-                                                                     {})
+            axes, _ = self._row_index._construct_axes_from_arguments(
+                (index, columns), {})
         else:
             raise ValueError("Need to specify at least one of 'labels', "
                              "'index' or 'columns'")
@@ -1215,6 +1303,7 @@ class DataFrame(object):
         Returns:
             Boolean: True if equal, otherwise False
         """
+
         # TODO(kunalgosar): Implement Copartition and use to implement equals
         def helper(df, index, other_series):
             return df.iloc[index['index_within_partition']] \
@@ -1232,10 +1321,8 @@ class DataFrame(object):
             other_series = other_df.iloc[idx['index_within_partition']]
             curr_index = self._row_index.iloc[i]
             curr_df = self._row_partitions[int(curr_index['partition'])]
-            results.append(_deploy_func.remote(helper,
-                                               curr_df,
-                                               curr_index,
-                                               other_series))
+            results.append(
+                _deploy_func.remote(helper, curr_df, curr_index, other_series))
 
         for r in results:
             if not ray.get(r):
@@ -1308,8 +1395,16 @@ class DataFrame(object):
         else:
             return DataFrame(columns=columns, row_partitions=new_rows)
 
-    def ewm(self, com=None, span=None, halflife=None, alpha=None,
-            min_periods=0, freq=None, adjust=True, ignore_na=False, axis=0):
+    def ewm(self,
+            com=None,
+            span=None,
+            halflife=None,
+            alpha=None,
+            min_periods=0,
+            freq=None,
+            adjust=True,
+            ignore_na=False,
+            axis=0):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -1322,16 +1417,23 @@ class DataFrame(object):
     def ffill(self, axis=None, inplace=False, limit=None, downcast=None):
         """Synonym for DataFrame.fillna(method='ffill')
         """
-        new_df = self.fillna(method='ffill',
-                             axis=axis,
-                             limit=limit,
-                             downcast=downcast,
-                             inplace=inplace)
+        new_df = self.fillna(
+            method='ffill',
+            axis=axis,
+            limit=limit,
+            downcast=downcast,
+            inplace=inplace)
         if not inplace:
             return new_df
 
-    def fillna(self, value=None, method=None, axis=None, inplace=False,
-               limit=None, downcast=None, **kwargs):
+    def fillna(self,
+               value=None,
+               method=None,
+               axis=None,
+               inplace=False,
+               limit=None,
+               downcast=None,
+               **kwargs):
         """Fill NA/NaN values using the specified method.
 
         Args:
@@ -1380,8 +1482,9 @@ class DataFrame(object):
             raise ValueError('must specify a fill method or value')
         if value is not None and method is not None:
             raise ValueError('cannot specify both a fill method and value')
-        if method is not None and method not in ['backfill', 'bfill', 'pad',
-                                                 'ffill']:
+        if method is not None and method not in [
+                'backfill', 'bfill', 'pad', 'ffill'
+        ]:
             expecting = 'pad (ffill) or backfill (bfill)'
             msg = 'Invalid fill method. Expecting {expecting}. Got {method}'\
                   .format(expecting=expecting, method=method)
@@ -1421,9 +1524,10 @@ class DataFrame(object):
 
             # Not every partition was changed, so we put everything back that
             # was not changed and update those that were.
-            new_parts = [parts[i] if idx_obj.index[i] not in new_vals
-                         else new_vals[idx_obj.index[i]]
-                         for i in range(len(parts))]
+            new_parts = [
+                parts[i] if idx_obj.index[i] not in new_vals else
+                new_vals[idx_obj.index[i]] for i in range(len(parts))
+            ]
         else:
             new_parts = _map_partitions(lambda df: df.fillna(
                 value=value,
@@ -1435,13 +1539,15 @@ class DataFrame(object):
                 **kwargs), parts)
 
         if axis == 0:
-            new_obj._update_inplace(col_partitions=new_parts,
-                                    columns=self.columns,
-                                    index=self.index)
+            new_obj._update_inplace(
+                col_partitions=new_parts,
+                columns=self.columns,
+                index=self.index)
         else:
-            new_obj._update_inplace(row_partitions=new_parts,
-                                    columns=self.columns,
-                                    index=self.index)
+            new_obj._update_inplace(
+                row_partitions=new_parts,
+                columns=self.columns,
+                index=self.index)
         if not inplace:
             return new_obj
 
@@ -1471,8 +1577,14 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     @classmethod
-    def from_csv(self, path, header=0, sep=', ', index_col=0,
-                 parse_dates=True, encoding=None, tupleize_cols=None,
+    def from_csv(self,
+                 path,
+                 header=0,
+                 sep=', ',
+                 index_col=0,
+                 parse_dates=True,
+                 encoding=None,
+                 tupleize_cols=None,
                  infer_datetime_format=False):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -1491,8 +1603,13 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     @classmethod
-    def from_records(self, data, index=None, exclude=None, columns=None,
-                     coerce_float=False, nrows=None):
+    def from_records(self,
+                     data,
+                     index=None,
+                     exclude=None,
+                     columns=None,
+                     coerce_float=False,
+                     nrows=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -1525,8 +1642,9 @@ class DataFrame(object):
         Returns:
             The counts of dtypes in this object.
         """
-        return ray.get(_deploy_func.remote(lambda df: df.get_dtype_counts(),
-                                           self._row_partitions[0]))
+        return ray.get(
+            _deploy_func.remote(lambda df: df.get_dtype_counts(),
+                                self._row_partitions[0]))
 
     def get_ftype_counts(self):
         """Get the counts of ftypes in this object.
@@ -1534,8 +1652,9 @@ class DataFrame(object):
         Returns:
             The counts of ftypes in this object.
         """
-        return ray.get(_deploy_func.remote(lambda df: df.get_ftype_counts(),
-                                           self._row_partitions[0]))
+        return ray.get(
+            _deploy_func.remote(lambda df: df.get_ftype_counts(),
+                                self._row_partitions[0]))
 
     def get_value(self, index, col, takeable=False):
         raise NotImplementedError(
@@ -1566,18 +1685,29 @@ class DataFrame(object):
         if n >= sum(sizes):
             return self.copy()
 
-        new_dfs = _map_partitions(lambda df: df.head(n),
-                                  self._col_partitions)
+        new_dfs = _map_partitions(lambda df: df.head(n), self._col_partitions)
 
         index = self._row_index.head(n).index
 
-        return DataFrame(col_partitions=new_dfs,
-                         columns=self.columns,
-                         index=index)
+        return DataFrame(
+            col_partitions=new_dfs, columns=self.columns, index=index)
 
-    def hist(self, data, column=None, by=None, grid=True, xlabelsize=None,
-             xrot=None, ylabelsize=None, yrot=None, ax=None, sharex=False,
-             sharey=False, figsize=None, layout=None, bins=10, **kwds):
+    def hist(self,
+             data,
+             column=None,
+             by=None,
+             grid=True,
+             xlabelsize=None,
+             xrot=None,
+             ylabelsize=None,
+             yrot=None,
+             ax=None,
+             sharex=False,
+             sharey=False,
+             figsize=None,
+             layout=None,
+             bins=10,
+             **kwds):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -1631,7 +1761,11 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def info(self, verbose=None, buf=None, max_cols=None, memory_usage=None,
+    def info(self,
+             verbose=None,
+             buf=None,
+             max_cols=None,
+             memory_usage=None,
              null_counts=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -1650,8 +1784,7 @@ class DataFrame(object):
             value = np.full(len(self.index), value)
 
         if len(value) != len(self.index):
-            raise ValueError(
-                "Length of values does not match length of index")
+            raise ValueError("Length of values does not match length of index")
         if not allow_duplicates and column in self.columns:
             raise ValueError(
                 "cannot insert {0}, already exists".format(column))
@@ -1678,16 +1811,22 @@ class DataFrame(object):
 
         new_obj = _deploy_func.remote(insert_col_part,
                                       self._col_partitions[col_part_idx])
-        new_cols = [self._col_partitions[i]
-                    if i != col_part_idx
-                    else new_obj
-                    for i in range(len(self._col_partitions))]
+        new_cols = [
+            self._col_partitions[i] if i != col_part_idx else new_obj
+            for i in range(len(self._col_partitions))
+        ]
         new_col_names = self._col_index.index.insert(loc, column)
 
         self._update_inplace(col_partitions=new_cols, columns=new_col_names)
 
-    def interpolate(self, method='linear', axis=0, limit=None, inplace=False,
-                    limit_direction='forward', downcast=None, **kwargs):
+    def interpolate(self,
+                    method='linear',
+                    axis=0,
+                    limit=None,
+                    inplace=False,
+                    limit_direction='forward',
+                    downcast=None,
+                    **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -1703,15 +1842,17 @@ class DataFrame(object):
         Returns:
             A generator that iterates over the rows of the frame.
         """
+
         def update_iterrow(series, i):
             """Helper function to correct the columns + name of the Series."""
             series.index = self.columns
             series.name = list(self.index)[i]
             return series
 
-        iters = ray.get([_deploy_func.remote(
-            lambda df: list(df.iterrows()), part)
-            for part in self._row_partitions])
+        iters = ray.get([
+            _deploy_func.remote(lambda df: list(df.iterrows()), part)
+            for part in self._row_partitions
+        ])
         iters = itertools.chain.from_iterable(iters)
         series = map(lambda s: update_iterrow(s[1][1], s[0]), enumerate(iters))
 
@@ -1728,9 +1869,10 @@ class DataFrame(object):
         Returns:
             A generator that iterates over the columns of the frame.
         """
-        iters = ray.get([_deploy_func.remote(
-            lambda df: list(df.items()), part)
-            for part in self._row_partitions])
+        iters = ray.get([
+            _deploy_func.remote(lambda df: list(df.items()), part)
+            for part in self._row_partitions
+        ])
 
         def concat_iters(iterables):
             for partitions in enumerate(zip(*iterables)):
@@ -1770,8 +1912,9 @@ class DataFrame(object):
         """
         iters = ray.get([
             _deploy_func.remote(
-                lambda df: list(df.itertuples(index=index, name=name)),
-                part) for part in self._row_partitions])
+                lambda df: list(df.itertuples(index=index, name=name)), part)
+            for part in self._row_partitions
+        ])
         iters = itertools.chain.from_iterable(iters)
 
         def _replace_index(row_tuple, idx):
@@ -1780,26 +1923,39 @@ class DataFrame(object):
             try:
                 row_tuple = row_tuple._replace(Index=idx)
             except AttributeError:  # Tuple not namedtuple
-                row_tuple = (idx,) + row_tuple[1:]
+                row_tuple = (idx, ) + row_tuple[1:]
             return row_tuple
 
         if index:
             iters = itertools.starmap(_replace_index, zip(iters, self.index))
         return iters
 
-    def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
+    def join(self,
+             other,
+             on=None,
+             how='left',
+             lsuffix='',
+             rsuffix='',
              sort=False):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def kurt(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def kurt(self,
+             axis=None,
+             skipna=None,
+             level=None,
+             numeric_only=None,
              **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def kurtosis(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def kurtosis(self,
+                 axis=None,
+                 skipna=None,
+                 level=None,
+                 numeric_only=None,
                  **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -1840,13 +1996,24 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def mask(self, cond, other=np.nan, inplace=False, axis=None, level=None,
-             errors='raise', try_cast=False, raise_on_error=None):
+    def mask(self,
+             cond,
+             other=np.nan,
+             inplace=False,
+             axis=None,
+             level=None,
+             errors='raise',
+             try_cast=False,
+             raise_on_error=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def max(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def max(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            numeric_only=None,
             **kwargs):
         """Perform max across the DataFrame.
 
@@ -1857,13 +2024,22 @@ class DataFrame(object):
         Returns:
             The max of the DataFrame.
         """
+
         def remote_func(df):
-            return df.max(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, **kwargs)
+            return df.max(
+                axis=axis,
+                skipna=skipna,
+                level=level,
+                numeric_only=numeric_only,
+                **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
-    def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def mean(self,
+             axis=None,
+             skipna=None,
+             level=None,
+             numeric_only=None,
              **kwargs):
         """Computes mean across the DataFrame.
 
@@ -1874,13 +2050,22 @@ class DataFrame(object):
         Returns:
             The mean of the DataFrame. (Pandas series)
         """
+
         def remote_func(df):
-            return df.mean(axis=axis, skipna=skipna, level=level,
-                           numeric_only=numeric_only, **kwargs)
+            return df.mean(
+                axis=axis,
+                skipna=skipna,
+                level=level,
+                numeric_only=numeric_only,
+                **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
-    def median(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def median(self,
+               axis=None,
+               skipna=None,
+               level=None,
+               numeric_only=None,
                **kwargs):
         """Computes median across the DataFrame.
 
@@ -1891,14 +2076,23 @@ class DataFrame(object):
         Returns:
             The median of the DataFrame. (Pandas series)
         """
+
         def remote_func(df):
-            return df.median(axis=axis, skipna=skipna, level=level,
-                             numeric_only=numeric_only, **kwargs)
+            return df.median(
+                axis=axis,
+                skipna=skipna,
+                level=level,
+                numeric_only=numeric_only,
+                **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
-    def melt(self, id_vars=None, value_vars=None, var_name=None,
-             value_name='value', col_level=None):
+    def melt(self,
+             id_vars=None,
+             value_vars=None,
+             var_name=None,
+             value_name='value',
+             col_level=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -1908,15 +2102,28 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def merge(self, right, how='inner', on=None, left_on=None, right_on=None,
-              left_index=False, right_index=False, sort=False,
-              suffixes=('_x', '_y'), copy=True, indicator=False,
+    def merge(self,
+              right,
+              how='inner',
+              on=None,
+              left_on=None,
+              right_on=None,
+              left_index=False,
+              right_index=False,
+              sort=False,
+              suffixes=('_x', '_y'),
+              copy=True,
+              indicator=False,
               validate=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def min(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def min(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            numeric_only=None,
             **kwargs):
         """Perform min across the DataFrame.
 
@@ -1927,9 +2134,14 @@ class DataFrame(object):
         Returns:
             The min of the DataFrame.
         """
+
         def remote_func(df):
-            return df.min(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, **kwargs)
+            return df.min(
+                axis=axis,
+                skipna=skipna,
+                level=level,
+                numeric_only=numeric_only,
+                **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -1973,12 +2185,15 @@ class DataFrame(object):
             Boolean DataFrame where value is False if corresponding
             value is NaN, True otherwise
         """
-        new_block_partitions = np.array([_map_partitions(
-            lambda df: df.notna(), block) for block in self._block_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(lambda df: df.notna(), block)
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=new_block_partitions,
+            columns=self.columns,
+            index=self.index)
 
     def notnull(self):
         """Perform notnull across the DataFrame.
@@ -1990,13 +2205,15 @@ class DataFrame(object):
             Boolean DataFrame where value is False if corresponding
             value is NaN, True otherwise
         """
-        new_block_partitions = np.array([_map_partitions(
-            lambda df: df.notnull(), block)
-            for block in self._block_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(lambda df: df.notnull(), block)
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=new_block_partitions,
+            columns=self.columns,
+            index=self.index)
 
     def nsmallest(self, n, columns, keep='first'):
         raise NotImplementedError(
@@ -2008,7 +2225,11 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def pct_change(self, periods=1, fill_method='pad', limit=None, freq=None,
+    def pct_change(self,
+                   periods=1,
+                   fill_method='pad',
+                   limit=None,
+                   freq=None,
                    **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -2024,20 +2245,50 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def pivot_table(self, values=None, index=None, columns=None,
-                    aggfunc='mean', fill_value=None, margins=False,
-                    dropna=True, margins_name='All'):
+    def pivot_table(self,
+                    values=None,
+                    index=None,
+                    columns=None,
+                    aggfunc='mean',
+                    fill_value=None,
+                    margins=False,
+                    dropna=True,
+                    margins_name='All'):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def plot(self, x=None, y=None, kind='line', ax=None, subplots=False,
-             sharex=None, sharey=False, layout=None, figsize=None,
-             use_index=True, title=None, grid=None, legend=True, style=None,
-             logx=False, logy=False, loglog=False, xticks=None, yticks=None,
-             xlim=None, ylim=None, rot=None, fontsize=None, colormap=None,
-             table=False, yerr=None, xerr=None, secondary_y=False,
-             sort_columns=False, **kwds):
+    def plot(self,
+             x=None,
+             y=None,
+             kind='line',
+             ax=None,
+             subplots=False,
+             sharex=None,
+             sharey=False,
+             layout=None,
+             figsize=None,
+             use_index=True,
+             title=None,
+             grid=None,
+             legend=True,
+             style=None,
+             logx=False,
+             logy=False,
+             loglog=False,
+             xticks=None,
+             yticks=None,
+             xlim=None,
+             ylim=None,
+             rot=None,
+             fontsize=None,
+             colormap=None,
+             table=False,
+             yerr=None,
+             xerr=None,
+             secondary_y=False,
+             sort_columns=False,
+             **kwds):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -2061,19 +2312,32 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
-             min_count=0, **kwargs):
+    def prod(self,
+             axis=None,
+             skipna=None,
+             level=None,
+             numeric_only=None,
+             min_count=0,
+             **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def product(self, axis=None, skipna=None, level=None, numeric_only=None,
-                min_count=0, **kwargs):
+    def product(self,
+                axis=None,
+                skipna=None,
+                level=None,
+                numeric_only=None,
+                min_count=0,
+                **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def quantile(self, q=0.5, axis=0, numeric_only=True,
+    def quantile(self,
+                 q=0.5,
+                 axis=0,
+                 numeric_only=True,
                  interpolation='linear'):
         """Return values at the given quantile over requested axis,
             a la numpy.percentile.
@@ -2098,8 +2362,11 @@ class DataFrame(object):
 
         def quantile_helper(df, q, axis, numeric_only, interpolation):
             try:
-                return df.quantile(q=q, axis=axis, numeric_only=numeric_only,
-                                   interpolation=interpolation)
+                return df.quantile(
+                    q=q,
+                    axis=axis,
+                    numeric_only=numeric_only,
+                    interpolation=interpolation)
             except ValueError:
                 return pd.Series()
 
@@ -2108,10 +2375,14 @@ class DataFrame(object):
             # TODO Revisit for performance
             quantiles = []
             for q_i in q:
+
                 def remote_func(df):
-                    return quantile_helper(df, q=q_i, axis=axis,
-                                           numeric_only=numeric_only,
-                                           interpolation=interpolation)
+                    return quantile_helper(
+                        df,
+                        q=q_i,
+                        axis=axis,
+                        numeric_only=numeric_only,
+                        interpolation=interpolation)
 
                 result = self._arithmetic_helper(remote_func, axis)
                 result.name = q_i
@@ -2119,10 +2390,14 @@ class DataFrame(object):
 
             return pd.concat(quantiles, axis=1).T
         else:
+
             def remote_func(df):
-                return quantile_helper(df, q=q, axis=axis,
-                                       numeric_only=numeric_only,
-                                       interpolation=interpolation)
+                return quantile_helper(
+                    df,
+                    q=q,
+                    axis=axis,
+                    numeric_only=numeric_only,
+                    interpolation=interpolation)
 
             result = self._arithmetic_helper(remote_func, axis)
             result.name = q
@@ -2146,8 +2421,7 @@ class DataFrame(object):
             df.columns = pd.RangeIndex(0, len(df.columns))
             return df
 
-        new_rows = _map_partitions(query_helper,
-                                   self._row_partitions)
+        new_rows = _map_partitions(query_helper, self._row_partitions)
 
         if inplace:
             self._update_inplace(row_partitions=new_rows)
@@ -2159,8 +2433,13 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def rank(self, axis=0, method='average', numeric_only=None,
-             na_option='keep', ascending=True, pct=False):
+    def rank(self,
+             axis=0,
+             method='average',
+             numeric_only=None,
+             na_option='keep',
+             ascending=True,
+             pct=False):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -2170,27 +2449,51 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def reindex(self, labels=None, index=None, columns=None, axis=None,
-                method=None, copy=True, level=None, fill_value=np.nan,
-                limit=None, tolerance=None):
+    def reindex(self,
+                labels=None,
+                index=None,
+                columns=None,
+                axis=None,
+                method=None,
+                copy=True,
+                level=None,
+                fill_value=np.nan,
+                limit=None,
+                tolerance=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def reindex_axis(self, labels, axis=0, method=None, level=None, copy=True,
-                     limit=None, fill_value=np.nan):
+    def reindex_axis(self,
+                     labels,
+                     axis=0,
+                     method=None,
+                     level=None,
+                     copy=True,
+                     limit=None,
+                     fill_value=np.nan):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def reindex_like(self, other, method=None, copy=True, limit=None,
+    def reindex_like(self,
+                     other,
+                     method=None,
+                     copy=True,
+                     limit=None,
                      tolerance=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def rename(self, mapper=None, index=None, columns=None, axis=None,
-               copy=True, inplace=False, level=None):
+    def rename(self,
+               mapper=None,
+               index=None,
+               columns=None,
+               axis=None,
+               copy=True,
+               inplace=False,
+               level=None):
         """Alters axes labels.
 
         Args:
@@ -2210,8 +2513,10 @@ class DataFrame(object):
         # kwargs. It doesn't ignore None values passed in, so we have to filter
         # them ourselves.
         args = locals()
-        kwargs = {k: v for k, v in args.items()
-                  if v is not None and k != "self"}
+        kwargs = {
+            k: v
+            for k, v in args.items() if v is not None and k != "self"
+        }
         # inplace should always be true because this is just a copy, and we
         # will use the results after.
         kwargs['inplace'] = True
@@ -2236,8 +2541,8 @@ class DataFrame(object):
         if axes_is_columns:
             renamed.columns.name = mapper
         else:
-            renamed._row_index.rename_axis(mapper, axis=axis, copy=copy,
-                                           inplace=True)
+            renamed._row_index.rename_axis(
+                mapper, axis=axis, copy=copy, inplace=True)
         if not inplace:
             return renamed
 
@@ -2267,20 +2572,41 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def replace(self, to_replace=None, value=None, inplace=False, limit=None,
-                regex=False, method='pad', axis=None):
+    def replace(self,
+                to_replace=None,
+                value=None,
+                inplace=False,
+                limit=None,
+                regex=False,
+                method='pad',
+                axis=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def resample(self, rule, how=None, axis=0, fill_method=None, closed=None,
-                 label=None, convention='start', kind=None, loffset=None,
-                 limit=None, base=0, on=None, level=None):
+    def resample(self,
+                 rule,
+                 how=None,
+                 axis=0,
+                 fill_method=None,
+                 closed=None,
+                 label=None,
+                 convention='start',
+                 kind=None,
+                 loffset=None,
+                 limit=None,
+                 base=0,
+                 on=None,
+                 level=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def reset_index(self, level=None, drop=False, inplace=False, col_level=0,
+    def reset_index(self,
+                    level=None,
+                    drop=False,
+                    inplace=False,
+                    col_level=0,
                     col_fill=''):
         """Reset this index to default and create column from current index.
 
@@ -2347,8 +2673,10 @@ class DataFrame(object):
 
         if not drop:
             if isinstance(self.index, pd.MultiIndex):
-                names = [n if n is not None else ('level_%d' % i)
-                         for (i, n) in enumerate(self.index.names)]
+                names = [
+                    n if n is not None else ('level_%d' % i)
+                    for (i, n) in enumerate(self.index.names)
+                ]
                 to_insert = lzip(self.index.levels, self.index.labels)
             else:
                 default = 'index'
@@ -2357,9 +2685,9 @@ class DataFrame(object):
                     default = 'level_{}'.format(i)
                     i += 1
 
-                names = ([default] if self.index.name is None
-                         else [self.index.name])
-                to_insert = ((self.index, None),)
+                names = ([default]
+                         if self.index.name is None else [self.index.name])
+                to_insert = ((self.index, None), )
 
             multi_col = isinstance(self.columns, pd.MultiIndex)
             for i, (lev, lab) in reversed(list(enumerate(to_insert))):
@@ -2367,8 +2695,8 @@ class DataFrame(object):
                     continue
                 name = names[i]
                 if multi_col:
-                    col_name = (list(name) if isinstance(name, tuple)
-                                else [name])
+                    col_name = (list(name)
+                                if isinstance(name, tuple) else [name])
                     if col_fill is None:
                         if len(col_name) not in (1, self.columns.nlevels):
                             raise ValueError("col_fill=None is incompatible "
@@ -2405,20 +2733,30 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def rolling(self, window, min_periods=None, freq=None, center=False,
-                win_type=None, on=None, axis=0, closed=None):
+    def rolling(self,
+                window,
+                min_periods=None,
+                freq=None,
+                center=False,
+                win_type=None,
+                on=None,
+                axis=0,
+                closed=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
     def round(self, decimals=0, *args, **kwargs):
-        new_block_partitions = np.array([_map_partitions(
-            lambda df: df.round(decimals=decimals, *args, **kwargs), block)
-            for block in self._block_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(
+                lambda df: df.round(decimals=decimals, *args, **kwargs), block)
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=new_block_partitions,
+            columns=self.columns,
+            index=self.index)
 
     def rpow(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
@@ -2435,8 +2773,13 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def sample(self, n=None, frac=None, replace=False, weights=None,
-               random_state=None, axis=None):
+    def sample(self,
+               n=None,
+               frac=None,
+               replace=False,
+               weights=None,
+               random_state=None,
+               axis=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -2451,8 +2794,13 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def sem(self, axis=None, skipna=None, level=None, ddof=1,
-            numeric_only=None, **kwargs):
+    def sem(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            ddof=1,
+            numeric_only=None,
+            **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -2474,7 +2822,8 @@ class DataFrame(object):
                 '"axis" as named parameter. The old form, with "axis" as '
                 'first parameter and \"labels\" as second, is still supported '
                 'but will be deprecated in a future version of pandas.',
-                FutureWarning, stacklevel=2)
+                FutureWarning,
+                stacklevel=2)
             labels, axis = axis, labels
 
         if inplace is None:
@@ -2482,7 +2831,8 @@ class DataFrame(object):
                 'set_axis currently defaults to operating inplace.\nThis '
                 'will change in a future version of pandas, use '
                 'inplace=True to avoid this warning.',
-                FutureWarning, stacklevel=2)
+                FutureWarning,
+                stacklevel=2)
             inplace = True
         if inplace:
             setattr(self, self._row_index._get_axis_name(axis), labels)
@@ -2491,7 +2841,11 @@ class DataFrame(object):
             obj.set_axis(labels, axis=axis, inplace=True)
             return obj
 
-    def set_index(self, keys, drop=True, append=False, inplace=False,
+    def set_index(self,
+                  keys,
+                  drop=True,
+                  append=False,
+                  inplace=False,
                   verify_integrity=False):
         """Set the DataFrame index using one or more existing columns.
 
@@ -2579,7 +2933,11 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def skew(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def skew(self,
+             axis=None,
+             skipna=None,
+             level=None,
+             numeric_only=None,
              **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -2590,20 +2948,35 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def sort_index(self, axis=0, level=None, ascending=True, inplace=False,
-                   kind='quicksort', na_position='last', sort_remaining=True,
+    def sort_index(self,
+                   axis=0,
+                   level=None,
+                   ascending=True,
+                   inplace=False,
+                   kind='quicksort',
+                   na_position='last',
+                   sort_remaining=True,
                    by=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def sort_values(self, by, axis=0, ascending=True, inplace=False,
-                    kind='quicksort', na_position='last'):
+    def sort_values(self,
+                    by,
+                    axis=0,
+                    ascending=True,
+                    inplace=False,
+                    kind='quicksort',
+                    na_position='last'):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def sortlevel(self, level=0, axis=0, ascending=True, inplace=False,
+    def sortlevel(self,
+                  level=0,
+                  axis=0,
+                  ascending=True,
+                  inplace=False,
                   sort_remaining=True):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -2619,8 +2992,13 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def std(self, axis=None, skipna=None, level=None, ddof=1,
-            numeric_only=None, **kwargs):
+    def std(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            ddof=1,
+            numeric_only=None,
+            **kwargs):
         """Computes standard deviation across the DataFrame.
 
         Args:
@@ -2631,9 +3009,15 @@ class DataFrame(object):
         Returns:
             The std of the DataFrame (Pandas Series)
         """
+
         def remote_func(df):
-            return df.std(axis=axis, skipna=skipna, level=level, ddof=ddof,
-                          numeric_only=numeric_only, **kwargs)
+            return df.std(
+                axis=axis,
+                skipna=skipna,
+                level=level,
+                ddof=ddof,
+                numeric_only=numeric_only,
+                **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -2671,13 +3055,11 @@ class DataFrame(object):
         if n >= sum(sizes):
             return self
 
-        new_dfs = _map_partitions(lambda df: df.tail(n),
-                                  self._col_partitions)
+        new_dfs = _map_partitions(lambda df: df.tail(n), self._col_partitions)
 
         index = self._row_index.tail(n).index
-        return DataFrame(col_partitions=new_dfs,
-                         columns=self.columns,
-                         index=index)
+        return DataFrame(
+            col_partitions=new_dfs, columns=self.columns, index=index)
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
         raise NotImplementedError(
@@ -2689,12 +3071,27 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_csv(self, path_or_buf=None, sep=', ', na_rep='', float_format=None,
-               columns=None, header=True, index=True, index_label=None,
-               mode='w', encoding=None, compression=None, quoting=None,
-               quotechar='"', line_terminator='\n', chunksize=None,
-               tupleize_cols=None, date_format=None, doublequote=True,
-               escapechar=None, decimal='.'):
+    def to_csv(self,
+               path_or_buf=None,
+               sep=', ',
+               na_rep='',
+               float_format=None,
+               columns=None,
+               header=True,
+               index=True,
+               index_label=None,
+               mode='w',
+               encoding=None,
+               compression=None,
+               quoting=None,
+               quotechar='"',
+               line_terminator='\n',
+               chunksize=None,
+               tupleize_cols=None,
+               date_format=None,
+               doublequote=True,
+               escapechar=None,
+               decimal='.'):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -2709,10 +3106,22 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_excel(self, excel_writer, sheet_name='Sheet1', na_rep='',
-                 float_format=None, columns=None, header=True, index=True,
-                 index_label=None, startrow=0, startcol=0, engine=None,
-                 merge_cells=True, encoding=None, inf_rep='inf', verbose=True,
+    def to_excel(self,
+                 excel_writer,
+                 sheet_name='Sheet1',
+                 na_rep='',
+                 float_format=None,
+                 columns=None,
+                 header=True,
+                 index=True,
+                 index_label=None,
+                 startrow=0,
+                 startcol=0,
+                 engine=None,
+                 merge_cells=True,
+                 encoding=None,
+                 inf_rep='inf',
+                 verbose=True,
                  freeze_panes=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -2723,8 +3132,13 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_gbq(self, destination_table, project_id, chunksize=10000,
-               verbose=True, reauth=False, if_exists='fail',
+    def to_gbq(self,
+               destination_table,
+               project_id,
+               chunksize=10000,
+               verbose=True,
+               reauth=False,
+               if_exists='fail',
                private_key=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -2735,29 +3149,65 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_html(self, buf=None, columns=None, col_space=None, header=True,
-                index=True, na_rep='np.NaN', formatters=None,
-                float_format=None, sparsify=None, index_names=True,
-                justify=None, bold_rows=True, classes=None, escape=True,
-                max_rows=None, max_cols=None, show_dimensions=False,
-                notebook=False, decimal='.', border=None):
+    def to_html(self,
+                buf=None,
+                columns=None,
+                col_space=None,
+                header=True,
+                index=True,
+                na_rep='np.NaN',
+                formatters=None,
+                float_format=None,
+                sparsify=None,
+                index_names=True,
+                justify=None,
+                bold_rows=True,
+                classes=None,
+                escape=True,
+                max_rows=None,
+                max_cols=None,
+                show_dimensions=False,
+                notebook=False,
+                decimal='.',
+                border=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_json(self, path_or_buf=None, orient=None, date_format=None,
-                double_precision=10, force_ascii=True, date_unit='ms',
-                default_handler=None, lines=False, compression=None):
+    def to_json(self,
+                path_or_buf=None,
+                orient=None,
+                date_format=None,
+                double_precision=10,
+                force_ascii=True,
+                date_unit='ms',
+                default_handler=None,
+                lines=False,
+                compression=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_latex(self, buf=None, columns=None, col_space=None, header=True,
-                 index=True, na_rep='np.NaN', formatters=None,
-                 float_format=None, sparsify=None, index_names=True,
-                 bold_rows=False, column_format=None, longtable=None,
-                 escape=None, encoding=None, decimal='.', multicolumn=None,
-                 multicolumn_format=None, multirow=None):
+    def to_latex(self,
+                 buf=None,
+                 columns=None,
+                 col_space=None,
+                 header=True,
+                 index=True,
+                 na_rep='np.NaN',
+                 formatters=None,
+                 float_format=None,
+                 sparsify=None,
+                 index_names=True,
+                 bold_rows=False,
+                 column_format=None,
+                 longtable=None,
+                 escape=None,
+                 encoding=None,
+                 decimal='.',
+                 multicolumn=None,
+                 multicolumn_format=None,
+                 multirow=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -2772,8 +3222,7 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_parquet(self, fname, engine='auto', compression='snappy',
-                   **kwargs):
+    def to_parquet(self, fname, engine='auto', compression='snappy', **kwargs):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -2798,23 +3247,48 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_sql(self, name, con, flavor=None, schema=None, if_exists='fail',
-               index=True, index_label=None, chunksize=None, dtype=None):
+    def to_sql(self,
+               name,
+               con,
+               flavor=None,
+               schema=None,
+               if_exists='fail',
+               index=True,
+               index_label=None,
+               chunksize=None,
+               dtype=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_stata(self, fname, convert_dates=None, write_index=True,
-                 encoding='latin-1', byteorder=None, time_stamp=None,
-                 data_label=None, variable_labels=None):
+    def to_stata(self,
+                 fname,
+                 convert_dates=None,
+                 write_index=True,
+                 encoding='latin-1',
+                 byteorder=None,
+                 time_stamp=None,
+                 data_label=None,
+                 variable_labels=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_string(self, buf=None, columns=None, col_space=None, header=True,
-                  index=True, na_rep='np.NaN', formatters=None,
-                  float_format=None, sparsify=None, index_names=True,
-                  justify=None, line_width=None, max_rows=None, max_cols=None,
+    def to_string(self,
+                  buf=None,
+                  columns=None,
+                  col_space=None,
+                  header=True,
+                  index=True,
+                  na_rep='np.NaN',
+                  formatters=None,
+                  float_format=None,
+                  sparsify=None,
+                  index_names=True,
+                  justify=None,
+                  line_width=None,
+                  max_rows=None,
+                  max_cols=None,
                   show_dimensions=False):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
@@ -2866,14 +3340,23 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def update(self, other, join='left', overwrite=True, filter_func=None,
+    def update(self,
+               other,
+               join='left',
+               overwrite=True,
+               filter_func=None,
                raise_conflict=False):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def var(self, axis=None, skipna=None, level=None, ddof=1,
-            numeric_only=None, **kwargs):
+    def var(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            ddof=1,
+            numeric_only=None,
+            **kwargs):
         """Computes variance across the DataFrame.
 
         Args:
@@ -2884,14 +3367,27 @@ class DataFrame(object):
         Returns:
             The variance of the DataFrame.
         """
+
         def remote_func(df):
-            return df.var(axis=axis, skipna=skipna, level=level, ddof=ddof,
-                          numeric_only=numeric_only, **kwargs)
+            return df.var(
+                axis=axis,
+                skipna=skipna,
+                level=level,
+                ddof=ddof,
+                numeric_only=numeric_only,
+                **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
-    def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
-              errors='raise', try_cast=False, raise_on_error=None):
+    def where(self,
+              cond,
+              other=np.nan,
+              inplace=False,
+              axis=None,
+              level=None,
+              errors='raise',
+              try_cast=False,
+              raise_on_error=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -2951,11 +3447,14 @@ class DataFrame(object):
         if com.is_bool_indexer(key):
             if isinstance(key, pd.Series) and \
                     not key.index.equals(self.index):
-                warnings.warn("Boolean Series key will be reindexed to match "
-                              "DataFrame index.", UserWarning, stacklevel=3)
+                warnings.warn(
+                    "Boolean Series key will be reindexed to match "
+                    "DataFrame index.",
+                    UserWarning,
+                    stacklevel=3)
             elif len(key) != len(self.index):
                 raise ValueError('Item wrong length {} instead of {}.'.format(
-                                 len(key), len(self.index)))
+                    len(key), len(self.index)))
             key = check_bool_indexer(self.index, key)
 
             new_parts = _map_partitions(lambda df: df[key],
@@ -2963,24 +3462,25 @@ class DataFrame(object):
             columns = self.columns
             index = self.index[key]
 
-            return DataFrame(col_partitions=new_parts,
-                             columns=columns,
-                             index=index)
+            return DataFrame(
+                col_partitions=new_parts, columns=columns, index=index)
         else:
             columns = self.columns[key]
 
-            indices_for_rows = [self.columns.index(new_col)
-                                for new_col in columns]
+            indices_for_rows = [
+                self.columns.index(new_col) for new_col in columns
+            ]
 
-            new_parts = [_deploy_func.remote(
-                lambda df: df.__getitem__(indices_for_rows),
-                part) for part in self._row_partitions]
+            new_parts = [
+                _deploy_func.remote(
+                    lambda df: df.__getitem__(indices_for_rows), part)
+                for part in self._row_partitions
+            ]
 
             index = self.index
 
-            return DataFrame(row_partitions=new_parts,
-                             columns=columns,
-                             index=index)
+            return DataFrame(
+                row_partitions=new_parts, columns=columns, index=index)
 
     def _getitem_indiv_col(self, key, part):
         loc = self._col_index.loc[key]
@@ -2988,9 +3488,8 @@ class DataFrame(object):
             index = loc[loc['partition'] == part]
         else:
             index = loc[loc['partition'] == part]['index_within_partition']
-        return _deploy_func.remote(
-            lambda df: df.__getitem__(index),
-            self._col_partitions[part])
+        return _deploy_func.remote(lambda df: df.__getitem__(index),
+                                   self._col_partitions[part])
 
     def __setitem__(self, key, value):
         raise NotImplementedError(
@@ -3091,6 +3590,7 @@ class DataFrame(object):
         Args:
             key: key to delete
         """
+
         # Create helper method for deleting column(s) in row partition.
         def del_helper(df, to_delete):
             cols = df.columns[to_delete]  # either int or an array of ints
@@ -3106,8 +3606,8 @@ class DataFrame(object):
             return df
 
         to_delete = self.columns.get_loc(key)
-        self._row_partitions = _map_partitions(
-            del_helper, self._row_partitions, to_delete)
+        self._row_partitions = _map_partitions(del_helper,
+                                               self._row_partitions, to_delete)
 
         # This structure is used to get the correct index inside the partition.
         del_df = self._col_index.loc[key]
@@ -3139,14 +3639,16 @@ class DataFrame(object):
             try:
                 self._col_index.loc[partition_mask,
                                     'index_within_partition'] = [
-                    p for p in range(sum(partition_mask))]
+                                        p for p in range(sum(partition_mask))
+                                    ]
             except ValueError:
                 # Copy the arrow sealed dataframe so we can mutate it.
                 # We only do this the first time we try to mutate the sealed.
                 self._col_index = self._col_index.copy()
                 self._col_index.loc[partition_mask,
                                     'index_within_partition'] = [
-                    p for p in range(sum(partition_mask))]
+                                        p for p in range(sum(partition_mask))
+                                    ]
 
     def __finalize__(self, other, method=None, **kwargs):
         raise NotImplementedError(
@@ -3275,19 +3777,20 @@ class DataFrame(object):
             A modified DataFrame where every element is the negation of before
         """
         for t in self.dtypes:
-            if not (is_bool_dtype(t)
-                    or is_numeric_dtype(t)
+            if not (is_bool_dtype(t) or is_numeric_dtype(t)
                     or is_timedelta64_dtype(t)):
                 raise TypeError("Unary negative expects numeric dtype, not {}"
                                 .format(t))
 
-        new_block_partitions = np.array([_map_partitions(
-            lambda df: df.__neg__(), block)
-            for block in self._block_partitions])
+        new_block_partitions = np.array([
+            _map_partitions(lambda df: df.__neg__(), block)
+            for block in self._block_partitions
+        ])
 
-        return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+        return DataFrame(
+            block_partitions=new_block_partitions,
+            columns=self.columns,
+            index=self.index)
 
     def __floordiv__(self, other):
         raise NotImplementedError(

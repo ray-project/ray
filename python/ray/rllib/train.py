@@ -12,7 +12,6 @@ import ray
 from ray.tune.config_parser import make_parser, resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
-
 EXAMPLE_USAGE = """
 Training example:
     ./train.py --run DQN --env CartPole-v0
@@ -23,7 +22,6 @@ Grid search example:
 Note that -f overrides all other trial-specific command-line options.
 """
 
-
 parser = make_parser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
     description="Train a reinforcement learning agent.",
@@ -31,24 +29,34 @@ parser = make_parser(
 
 # See also the base parser definition in ray/tune/config_parser.py
 parser.add_argument(
-    "--redis-address", default=None, type=str,
+    "--redis-address",
+    default=None,
+    type=str,
     help="The Redis address of the cluster.")
 parser.add_argument(
-    "--num-cpus", default=None, type=int,
+    "--num-cpus",
+    default=None,
+    type=int,
     help="Number of CPUs to allocate to Ray.")
 parser.add_argument(
-    "--num-gpus", default=None, type=int,
+    "--num-gpus",
+    default=None,
+    type=int,
     help="Number of GPUs to allocate to Ray.")
 parser.add_argument(
-    "--experiment-name", default="default", type=str,
+    "--experiment-name",
+    default="default",
+    type=str,
     help="Name of the subdirectory under `local_dir` to put results in.")
 parser.add_argument(
     "--env", default=None, type=str, help="The gym environment to use.")
 parser.add_argument(
-    "-f", "--config-file", default=None, type=str,
+    "-f",
+    "--config-file",
+    default=None,
+    type=str,
     help="If specified, use config options from this file. Note that this "
     "overrides any trial-specific options set via flags above.")
-
 
 if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
@@ -79,5 +87,6 @@ if __name__ == "__main__":
 
     ray.init(
         redis_address=args.redis_address,
-        num_cpus=args.num_cpus, num_gpus=args.num_gpus)
+        num_cpus=args.num_cpus,
+        num_gpus=args.num_gpus)
     run_experiments(experiments, scheduler=_make_scheduler(args))

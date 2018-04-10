@@ -26,23 +26,30 @@ class A3CEvaluator(PolicyEvaluator):
             rollouts.
         logdir: Directory for logging.
     """
-    def __init__(
-            self, registry, env_creator, config, logdir, start_sampler=True):
+
+    def __init__(self,
+                 registry,
+                 env_creator,
+                 config,
+                 logdir,
+                 start_sampler=True):
         env = ModelCatalog.get_preprocessor_as_wrapper(
             registry, env_creator(config["env_config"]), config["model"])
         self.env = env
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = policy_cls(
-            registry, env.observation_space.shape, env.action_space, config)
+        self.policy = policy_cls(registry, env.observation_space.shape,
+                                 env.action_space, config)
         self.config = config
 
         # Technically not needed when not remote
-        self.obs_filter = get_filter(
-            config["observation_filter"], env.observation_space.shape)
+        self.obs_filter = get_filter(config["observation_filter"],
+                                     env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
-        self.filters = {"obs_filter": self.obs_filter,
-                        "rew_filter": self.rew_filter}
+        self.filters = {
+            "obs_filter": self.obs_filter,
+            "rew_filter": self.rew_filter
+        }
         self.sampler = AsyncSampler(env, self.policy, self.obs_filter,
                                     config["batch_size"])
         if start_sampler and self.sampler.async:
@@ -52,8 +59,11 @@ class A3CEvaluator(PolicyEvaluator):
     def sample(self):
         rollout = self.sampler.get_data()
         samples = process_rollout(
-            rollout, self.rew_filter, gamma=self.config["gamma"],
-            lambda_=self.config["lambda"], use_gae=True)
+            rollout,
+            self.rew_filter,
+            gamma=self.config["gamma"],
+            lambda_=self.config["lambda"],
+            use_gae=True)
         return samples
 
     def get_completed_rollout_metrics(self):
@@ -79,9 +89,7 @@ class A3CEvaluator(PolicyEvaluator):
     def save(self):
         filters = self.get_filters(flush_after=True)
         weights = self.get_weights()
-        return pickle.dumps({
-            "filters": filters,
-            "weights": weights})
+        return pickle.dumps({"filters": filters, "weights": weights})
 
     def restore(self, objs):
         objs = pickle.loads(objs)

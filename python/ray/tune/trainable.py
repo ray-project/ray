@@ -114,8 +114,8 @@ class Trainable(object):
             time_this_iter = time.time() - start
 
         if result.timesteps_this_iter is None:
-            raise TuneError(
-                "Must specify timesteps_this_iter in result", result)
+            raise TuneError("Must specify timesteps_this_iter in result",
+                            result)
 
         self._time_total += time_this_iter
         self._timesteps_total += result.timesteps_this_iter
@@ -159,10 +159,10 @@ class Trainable(object):
         """
 
         checkpoint_path = self._save(checkpoint_dir or self.logdir)
-        pickle.dump(
-            [self._experiment_id, self._iteration, self._timesteps_total,
-             self._time_total],
-            open(checkpoint_path + ".tune_metadata", "wb"))
+        pickle.dump([
+            self._experiment_id, self._iteration, self._timesteps_total,
+            self._time_total
+        ], open(checkpoint_path + ".tune_metadata", "wb"))
         return checkpoint_path
 
     def save_to_object(self):

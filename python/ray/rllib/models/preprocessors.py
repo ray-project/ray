@@ -6,7 +6,7 @@ import numpy as np
 import gym
 
 ATARI_OBS_SHAPE = (210, 160, 3)
-ATARI_RAM_OBS_SHAPE = (128,)
+ATARI_RAM_OBS_SHAPE = (128, )
 
 
 class Preprocessor(object):
@@ -70,7 +70,7 @@ class AtariPixelPreprocessor(Preprocessor):
 
 class AtariRamPreprocessor(Preprocessor):
     def _init(self):
-        self.shape = (128,)
+        self.shape = (128, )
 
     def transform(self, observation):
         return (observation - 128) / 128
@@ -78,7 +78,7 @@ class AtariRamPreprocessor(Preprocessor):
 
 class OneHotPreprocessor(Preprocessor):
     def _init(self):
-        self.shape = (self._obs_space.n,)
+        self.shape = (self._obs_space.n, )
 
     def transform(self, observation):
         arr = np.zeros(self._obs_space.n)
@@ -111,13 +111,14 @@ class TupleFlatteningPreprocessor(Preprocessor):
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
             size += np.product(preprocessor.shape)
-        self.shape = (size,)
+        self.shape = (size, )
 
     def transform(self, observation):
         assert len(observation) == len(self.preprocessors), observation
         return np.concatenate([
             np.reshape(p.transform(o), [np.product(p.shape)])
-            for (o, p) in zip(observation, self.preprocessors)])
+            for (o, p) in zip(observation, self.preprocessors)
+        ])
 
 
 def get_preprocessor(space):

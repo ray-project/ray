@@ -5,6 +5,7 @@ from __future__ import print_function
 
 class Policy(object):
     """The policy base class."""
+
     def __init__(self, ob_space, action_space, name="local", summarize=True):
         pass
 

@@ -11,10 +11,9 @@ try:
     import lz4.frame
     LZ4_ENABLED = True
 except ImportError:
-    print(
-        "WARNING: lz4 not available, disabling sample compression. "
-        "This will significantly impact RLlib performance. "
-        "To install lz4, run `pip install lz4`.")
+    print("WARNING: lz4 not available, disabling sample compression. "
+          "This will significantly impact RLlib performance. "
+          "To install lz4, run `pip install lz4`.")
     LZ4_ENABLED = False
 
 

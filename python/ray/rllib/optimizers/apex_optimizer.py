@@ -34,10 +34,10 @@ class ReplayActor(object):
     Ray actors are single-threaded, so for scalability multiple replay actors
     may be created to increase parallelism."""
 
-    def __init__(
-            self, num_shards, learning_starts, buffer_size, train_batch_size,
-            prioritized_replay_alpha, prioritized_replay_beta,
-            prioritized_replay_eps, clip_rewards):
+    def __init__(self, num_shards, learning_starts, buffer_size,
+                 train_batch_size, prioritized_replay_alpha,
+                 prioritized_replay_beta, prioritized_replay_eps,
+                 clip_rewards):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.train_batch_size = train_batch_size
@@ -45,7 +45,8 @@ class ReplayActor(object):
         self.prioritized_replay_eps = prioritized_replay_eps
 
         self.replay_buffer = PrioritizedReplayBuffer(
-            self.buffer_size, alpha=prioritized_replay_alpha,
+            self.buffer_size,
+            alpha=prioritized_replay_alpha,
             clip_rewards=clip_rewards)
 
         # Metrics
@@ -59,40 +60,43 @@ class ReplayActor(object):
     def add_batch(self, batch):
         with self.add_batch_timer:
             for row in batch.rows():
-                self.replay_buffer.add(
-                    row["obs"], row["actions"], row["rewards"], row["new_obs"],
-                    row["dones"], row["weights"])
+                self.replay_buffer.add(row["obs"], row["actions"],
+                                       row["rewards"], row["new_obs"],
+                                       row["dones"], row["weights"])
 
     def replay(self):
         with self.replay_timer:
             if len(self.replay_buffer) < self.replay_starts:
                 return None
 
-            (obses_t, actions, rewards, obses_tp1,
-                dones, weights, batch_indexes) = self.replay_buffer.sample(
-                    self.train_batch_size,
-                    beta=self.prioritized_replay_beta)
+            (obses_t, actions, rewards, obses_tp1, dones, weights,
+             batch_indexes) = self.replay_buffer.sample(
+                 self.train_batch_size, beta=self.prioritized_replay_beta)
 
             batch = SampleBatch({
-                "obs": obses_t, "actions": actions, "rewards": rewards,
-                "new_obs": obses_tp1, "dones": dones, "weights": weights,
-                "batch_indexes": batch_indexes})
+                "obs": obses_t,
+                "actions": actions,
+                "rewards": rewards,
+                "new_obs": obses_tp1,
+                "dones": dones,
+                "weights": weights,
+                "batch_indexes": batch_indexes
+            })
             return batch
 
     def update_priorities(self, batch_indexes, td_errors):
         with self.update_priorities_timer:
-            new_priorities = (
-                np.abs(td_errors) + self.prioritized_replay_eps)
+            new_priorities = (np.abs(td_errors) + self.prioritized_replay_eps)
             self.replay_buffer.update_priorities(batch_indexes, new_priorities)
 
     def stats(self):
         stat = {
-            "add_batch_time_ms": round(
-                1000 * self.add_batch_timer.mean, 3),
-            "replay_time_ms": round(
-                1000 * self.replay_timer.mean, 3),
-            "update_priorities_time_ms": round(
-                1000 * self.update_priorities_timer.mean, 3),
+            "add_batch_time_ms":
+                round(1000 * self.add_batch_timer.mean, 3),
+            "replay_time_ms":
+                round(1000 * self.replay_timer.mean, 3),
+            "update_priorities_time_ms":
+                round(1000 * self.update_priorities_timer.mean, 3),
         }
         stat.update(self.replay_buffer.stats())
         return stat
@@ -144,13 +148,19 @@ class ApexOptimizer(PolicyOptimizer):
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    def _init(
-            self, learning_starts=1000, buffer_size=10000,
-            prioritized_replay=True, prioritized_replay_alpha=0.6,
-            prioritized_replay_beta=0.4, prioritized_replay_eps=1e-6,
-            train_batch_size=512, sample_batch_size=50,
-            num_replay_buffer_shards=1, max_weight_sync_delay=400,
-            clip_rewards=True, debug=False):
+    def _init(self,
+              learning_starts=1000,
+              buffer_size=10000,
+              prioritized_replay=True,
+              prioritized_replay_alpha=0.6,
+              prioritized_replay_beta=0.4,
+              prioritized_replay_eps=1e-6,
+              train_batch_size=512,
+              sample_batch_size=50,
+              num_replay_buffer_shards=1,
+              max_weight_sync_delay=400,
+              clip_rewards=True,
+              debug=False):
 
         self.debug = debug
         self.replay_starts = learning_starts
@@ -175,9 +185,13 @@ class ApexOptimizer(PolicyOptimizer):
         assert len(self.remote_evaluators) > 0
 
         # Stats
-        self.timers = {k: TimerStat() for k in [
-            "put_weights", "get_samples", "enqueue", "sample_processing",
-            "replay_processing", "update_priorities", "train", "sample"]}
+        self.timers = {
+            k: TimerStat()
+            for k in [
+                "put_weights", "get_samples", "enqueue", "sample_processing",
+                "replay_processing", "update_priorities", "train", "sample"
+            ]
+        }
         self.num_weight_syncs = 0
         self.learning_started = False
 
@@ -222,8 +236,8 @@ class ApexOptimizer(PolicyOptimizer):
                 sample_timesteps += self.sample_batch_size
 
                 # Send the data to the replay buffer
-                random.choice(self.replay_actors).add_batch.remote(
-                    sample_batch)
+                random.choice(
+                    self.replay_actors).add_batch.remote(sample_batch)
 
                 # Update weights if needed
                 self.steps_since_update[ev] += self.sample_batch_size
@@ -269,10 +283,12 @@ class ApexOptimizer(PolicyOptimizer):
         timing["learner_dequeue_time_ms"] = round(
             1000 * self.learner.queue_timer.mean, 3)
         stats = {
-            "sample_throughput": round(
-                self.timers["sample"].mean_throughput, 3),
-            "train_throughput": round(self.timers["train"].mean_throughput, 3),
-            "num_weight_syncs": self.num_weight_syncs,
+            "sample_throughput":
+                round(self.timers["sample"].mean_throughput, 3),
+            "train_throughput":
+                round(self.timers["train"].mean_throughput, 3),
+            "num_weight_syncs":
+                self.num_weight_syncs,
         }
         debug_stats = {
             "replay_shard_0": replay_stats,

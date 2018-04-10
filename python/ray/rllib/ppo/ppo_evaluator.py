@@ -50,8 +50,8 @@ class PPOEvaluator(PolicyEvaluator):
         self.sess = tf.Session(config=config_proto)
         if config["tf_debug_inf_or_nan"] and not is_remote:
             self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
-            self.sess.add_tensor_filter(
-                "has_inf_or_nan", tf_debug.has_inf_or_nan)
+            self.sess.add_tensor_filter("has_inf_or_nan",
+                                        tf_debug.has_inf_or_nan)
 
         # Defines the training inputs:
         # The coefficient of the KL penalty.
@@ -60,11 +60,11 @@ class PPOEvaluator(PolicyEvaluator):
 
         # The input observations.
         self.observations = tf.placeholder(
-            tf.float32, shape=(None,) + self.env.observation_space.shape)
+            tf.float32, shape=(None, ) + self.env.observation_space.shape)
         # Targets of the value function.
-        self.value_targets = tf.placeholder(tf.float32, shape=(None,))
+        self.value_targets = tf.placeholder(tf.float32, shape=(None, ))
         # Advantage values in the policy gradient estimator.
-        self.advantages = tf.placeholder(tf.float32, shape=(None,))
+        self.advantages = tf.placeholder(tf.float32, shape=(None, ))
 
         action_space = self.env.action_space
         self.actions = ModelCatalog.get_action_placeholder(action_space)
@@ -74,7 +74,7 @@ class PPOEvaluator(PolicyEvaluator):
         self.prev_logits = tf.placeholder(
             tf.float32, shape=(None, self.logit_dim))
         # Value function predictions before the policy update.
-        self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
+        self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None, ))
 
         if is_remote:
             self.batch_size = config["rollout_batchsize"]
@@ -87,74 +87,73 @@ class PPOEvaluator(PolicyEvaluator):
 
         def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
             return ProximalPolicyLoss(
-                self.env.observation_space, self.env.action_space,
-                obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
-                self.kl_coeff, self.distribution_class, self.config,
-                self.sess, self.registry)
+                self.env.observation_space, self.env.action_space, obs,
+                vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
+                self.kl_coeff, self.distribution_class, self.config, self.sess,
+                self.registry)
 
         self.par_opt = LocalSyncParallelOptimizer(
-            tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
-            self.devices,
-            [self.observations, self.value_targets, self.advantages,
-             self.actions, self.prev_logits, self.prev_vf_preds],
-            self.per_device_batch_size,
-            build_loss,
-            self.logdir)
+            tf.train.AdamOptimizer(self.config["sgd_stepsize"]), self.devices,
+            [
+                self.observations, self.value_targets, self.advantages,
+                self.actions, self.prev_logits, self.prev_vf_preds
+            ], self.per_device_batch_size, build_loss, self.logdir)
 
         # Metric ops
         with tf.name_scope("test_outputs"):
             policies = self.par_opt.get_device_losses()
             self.mean_loss = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.loss for policy in policies]), 0)
+                tf.stack(values=[policy.loss for policy in policies]), 0)
             self.mean_policy_loss = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.mean_policy_loss for policy in policies]), 0)
+                tf.stack(
+                    values=[policy.mean_policy_loss for policy in policies]),
+                0)
             self.mean_vf_loss = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.mean_vf_loss for policy in policies]), 0)
+                tf.stack(values=[policy.mean_vf_loss for policy in policies]),
+                0)
             self.mean_kl = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.mean_kl for policy in policies]), 0)
+                tf.stack(values=[policy.mean_kl for policy in policies]), 0)
             self.mean_entropy = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.mean_entropy for policy in policies]), 0)
+                tf.stack(values=[policy.mean_entropy for policy in policies]),
+                0)
 
         # References to the model weights
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
-        self.obs_filter = get_filter(
-            config["observation_filter"], self.env.observation_space.shape)
+        self.obs_filter = get_filter(config["observation_filter"],
+                                     self.env.observation_space.shape)
         self.rew_filter = MeanStdFilter((), clip=5.0)
-        self.filters = {"obs_filter": self.obs_filter,
-                        "rew_filter": self.rew_filter}
-        self.sampler = SyncSampler(
-            self.env, self.common_policy, self.obs_filter,
-            self.config["horizon"], self.config["horizon"])
+        self.filters = {
+            "obs_filter": self.obs_filter,
+            "rew_filter": self.rew_filter
+        }
+        self.sampler = SyncSampler(self.env, self.common_policy,
+                                   self.obs_filter, self.config["horizon"],
+                                   self.config["horizon"])
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
         use_gae = self.config["use_gae"]
         dummy = np.zeros_like(trajectories["advantages"])
         return self.par_opt.load_data(
-            self.sess,
-            [trajectories["observations"],
-             trajectories["value_targets"] if use_gae else dummy,
-             trajectories["advantages"],
-             trajectories["actions"],
-             trajectories["logprobs"],
-             trajectories["vf_preds"] if use_gae else dummy],
+            self.sess, [
+                trajectories["observations"], trajectories["value_targets"]
+                if use_gae else dummy, trajectories["advantages"],
+                trajectories["actions"], trajectories["logprobs"],
+                trajectories["vf_preds"] if use_gae else dummy
+            ],
             full_trace=full_trace)
 
-    def run_sgd_minibatch(
-            self, batch_index, kl_coeff, full_trace, file_writer):
+    def run_sgd_minibatch(self, batch_index, kl_coeff, full_trace,
+                          file_writer):
         return self.par_opt.optimize(
             self.sess,
             batch_index,
             extra_ops=[
                 self.mean_loss, self.mean_policy_loss, self.mean_vf_loss,
-                self.mean_kl, self.mean_entropy],
+                self.mean_kl, self.mean_entropy
+            ],
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
 
@@ -191,8 +190,11 @@ class PPOEvaluator(PolicyEvaluator):
         while num_steps_so_far < self.config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
             samples = process_rollout(
-                rollout, self.rew_filter, self.config["gamma"],
-                self.config["lambda"], use_gae=self.config["use_gae"])
+                rollout,
+                self.rew_filter,
+                self.config["gamma"],
+                self.config["lambda"],
+                use_gae=self.config["use_gae"])
             num_steps_so_far += samples.count
             all_samples.append(samples)
         return SampleBatch.concat_samples(all_samples)

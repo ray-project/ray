@@ -34,11 +34,13 @@ class Model(object):
         if options.get("free_log_std", False):
             assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
-        self.outputs, self.last_layer = self._init(
-            inputs, num_outputs, options)
+        self.outputs, self.last_layer = self._init(inputs, num_outputs,
+                                                   options)
         if options.get("free_log_std", False):
-            log_std = tf.get_variable(name="log_std", shape=[num_outputs],
-                                      initializer=tf.zeros_initializer)
+            log_std = tf.get_variable(
+                name="log_std",
+                shape=[num_outputs],
+                initializer=tf.zeros_initializer)
             self.outputs = tf.concat(
                 [self.outputs, 0.0 * self.outputs + log_std], 1)
 

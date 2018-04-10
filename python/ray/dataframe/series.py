@@ -12,7 +12,6 @@ def na_op():
 
 
 class Series(object):
-
     def __init__(self, series_oids):
         """Constructor for a Series object.
 
@@ -53,8 +52,13 @@ class Series(object):
     def __bytes__(self):
         raise NotImplementedError("Not Yet implemented.")
 
-    def __class__(self, data=None, index=None, dtype=None, name=None,
-                  copy=False, fastpath=False):
+    def __class__(self,
+                  data=None,
+                  index=None,
+                  dtype=None,
+                  name=None,
+                  copy=False,
+                  fastpath=False):
         raise NotImplementedError("Not Yet implemented.")
 
     def __contains__(self, key):
@@ -208,8 +212,16 @@ class Series(object):
     def aggregate(self, func, axis=0, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def align(self, other, join='outer', axis=None, level=None, copy=True,
-              fill_value=None, method=None, limit=None, fill_axis=0,
+    def align(self,
+              other,
+              join='outer',
+              axis=None,
+              level=None,
+              copy=True,
+              fill_value=None,
+              method=None,
+              limit=None,
+              fill_axis=0,
               broadcast_axis=None):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -242,7 +254,11 @@ class Series(object):
     def as_matrix(self, columns=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def asfreq(self, freq, method=None, how=None, normalize=False,
+    def asfreq(self,
+               freq,
+               method=None,
+               how=None,
+               normalize=False,
                fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -264,7 +280,10 @@ class Series(object):
     def between(self, left, right, inclusive=True):
         raise NotImplementedError("Not Yet implemented.")
 
-    def between_time(self, start_time, end_time, include_start=True,
+    def between_time(self,
+                     start_time,
+                     end_time,
+                     include_start=True,
                      include_end=True):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -298,8 +317,11 @@ class Series(object):
     def consolidate(self, inplace=False):
         raise NotImplementedError("Not Yet implemented.")
 
-    def convert_objects(self, convert_dates=True, convert_numeric=False,
-                        convert_timedeltas=True, copy=True):
+    def convert_objects(self,
+                        convert_dates=True,
+                        convert_numeric=False,
+                        convert_timedeltas=True,
+                        copy=True):
         raise NotImplementedError("Not Yet implemented.")
 
     def copy(self, deep=True):
@@ -359,8 +381,16 @@ class Series(object):
     def equals(self, other):
         raise NotImplementedError("Not Yet implemented.")
 
-    def ewm(self, com=None, span=None, halflife=None, alpha=None,
-            min_periods=0, freq=None, adjust=True, ignore_na=False, axis=0):
+    def ewm(self,
+            com=None,
+            span=None,
+            halflife=None,
+            alpha=None,
+            min_periods=0,
+            freq=None,
+            adjust=True,
+            ignore_na=False,
+            axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
     def expanding(self, min_periods=1, freq=None, center=False, axis=0):
@@ -372,8 +402,14 @@ class Series(object):
     def ffill(self, axis=None, inplace=False, limit=None, downcast=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def fillna(self, value=None, method=None, axis=None, inplace=False,
-               limit=None, downcast=None, **kwargs):
+    def fillna(self,
+               value=None,
+               method=None,
+               axis=None,
+               inplace=False,
+               limit=None,
+               downcast=None,
+               **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def filter(self, items=None, like=None, regex=None, axis=None):
@@ -388,12 +424,23 @@ class Series(object):
     def floordiv(self, other, level=None, fill_value=None, axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
-    def from_array(self, arr, index=None, name=None, dtype=None, copy=False,
+    def from_array(self,
+                   arr,
+                   index=None,
+                   name=None,
+                   dtype=None,
+                   copy=False,
                    fastpath=False):
         raise NotImplementedError("Not Yet implemented.")
 
-    def from_csv(self, path, sep=',', parse_dates=True, header=None,
-                 index_col=0, encoding=None, infer_datetime_format=False):
+    def from_csv(self,
+                 path,
+                 sep=',',
+                 parse_dates=True,
+                 header=None,
+                 index_col=0,
+                 encoding=None,
+                 infer_datetime_format=False):
         raise NotImplementedError("Not Yet implemented.")
 
     def ge(self, other, level=None, fill_value=None, axis=0):
@@ -414,8 +461,15 @@ class Series(object):
     def get_values(self):
         raise NotImplementedError("Not Yet implemented.")
 
-    def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
-                group_keys=True, squeeze=False, **kwargs):
+    def groupby(self,
+                by=None,
+                axis=0,
+                level=None,
+                as_index=True,
+                sort=True,
+                group_keys=True,
+                squeeze=False,
+                **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def gt(self, other, level=None, fill_value=None, axis=0):
@@ -424,8 +478,17 @@ class Series(object):
     def head(self, n=5):
         raise NotImplementedError("Not Yet implemented.")
 
-    def hist(self, by=None, ax=None, grid=True, xlabelsize=None, xrot=None,
-             ylabelsize=None, yrot=None, figsize=None, bins=10, **kwds):
+    def hist(self,
+             by=None,
+             ax=None,
+             grid=True,
+             xlabelsize=None,
+             xrot=None,
+             ylabelsize=None,
+             yrot=None,
+             figsize=None,
+             bins=10,
+             **kwds):
         raise NotImplementedError("Not Yet implemented.")
 
     def iat(self, axis=None):
@@ -440,8 +503,14 @@ class Series(object):
     def iloc(self, axis=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def interpolate(self, method='linear', axis=0, limit=None, inplace=False,
-                    limit_direction='forward', downcast=None, **kwargs):
+    def interpolate(self,
+                    method='linear',
+                    axis=0,
+                    limit=None,
+                    inplace=False,
+                    limit_direction='forward',
+                    downcast=None,
+                    **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def isin(self, values):
@@ -465,11 +534,19 @@ class Series(object):
     def keys(self):
         raise NotImplementedError("Not Yet implemented.")
 
-    def kurt(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def kurt(self,
+             axis=None,
+             skipna=None,
+             level=None,
+             numeric_only=None,
              **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def kurtosis(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def kurtosis(self,
+                 axis=None,
+                 skipna=None,
+                 level=None,
+                 numeric_only=None,
                  **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -494,26 +571,48 @@ class Series(object):
     def map(self, arg, na_action=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def mask(self, cond, other=np.nan, inplace=False, axis=None, level=None,
-             try_cast=False, raise_on_error=True):
+    def mask(self,
+             cond,
+             other=np.nan,
+             inplace=False,
+             axis=None,
+             level=None,
+             try_cast=False,
+             raise_on_error=True):
         raise NotImplementedError("Not Yet implemented.")
 
-    def max(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def max(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            numeric_only=None,
             **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def mean(self,
+             axis=None,
+             skipna=None,
+             level=None,
+             numeric_only=None,
              **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def median(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def median(self,
+               axis=None,
+               skipna=None,
+               level=None,
+               numeric_only=None,
                **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def memory_usage(self, index=True, deep=False):
         raise NotImplementedError("Not Yet implemented.")
 
-    def min(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def min(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            numeric_only=None,
             **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -547,18 +646,42 @@ class Series(object):
     def nunique(self, dropna=True):
         raise NotImplementedError("Not Yet implemented.")
 
-    def pct_change(self, periods=1, fill_method='pad', limit=None, freq=None,
+    def pct_change(self,
+                   periods=1,
+                   fill_method='pad',
+                   limit=None,
+                   freq=None,
                    **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def pipe(self, func, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def plot(self, kind='line', ax=None, figsize=None, use_index=True,
-             title=None, grid=None, legend=False, style=None, logx=False,
-             logy=False, loglog=False, xticks=None, yticks=None, xlim=None,
-             ylim=None, rot=None, fontsize=None, colormap=None, table=False,
-             yerr=None, xerr=None, label=None, secondary_y=False, **kwds):
+    def plot(self,
+             kind='line',
+             ax=None,
+             figsize=None,
+             use_index=True,
+             title=None,
+             grid=None,
+             legend=False,
+             style=None,
+             logx=False,
+             logy=False,
+             loglog=False,
+             xticks=None,
+             yticks=None,
+             xlim=None,
+             ylim=None,
+             rot=None,
+             fontsize=None,
+             colormap=None,
+             table=False,
+             yerr=None,
+             xerr=None,
+             label=None,
+             secondary_y=False,
+             **kwds):
         raise NotImplementedError("Not Yet implemented.")
 
     def pop(self, item):
@@ -567,15 +690,27 @@ class Series(object):
     def pow(self, other, level=None, fill_value=None, axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
-    def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def prod(self,
+             axis=None,
+             skipna=None,
+             level=None,
+             numeric_only=None,
              **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def product(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def product(self,
+                axis=None,
+                skipna=None,
+                level=None,
+                numeric_only=None,
                 **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def ptp(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def ptp(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            numeric_only=None,
             **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -588,8 +723,13 @@ class Series(object):
     def radd(self, other, level=None, fill_value=None, axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
-    def rank(self, axis=0, method='average', numeric_only=None,
-             na_option='keep', ascending=True, pct=False):
+    def rank(self,
+             axis=0,
+             method='average',
+             numeric_only=None,
+             na_option='keep',
+             ascending=True,
+             pct=False):
         raise NotImplementedError("Not Yet implemented.")
 
     def ravel(self, order='C'):
@@ -604,7 +744,11 @@ class Series(object):
     def reindex_axis(self, labels, axis=0, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def reindex_like(self, other, method=None, copy=True, limit=None,
+    def reindex_like(self,
+                     other,
+                     method=None,
+                     copy=True,
+                     limit=None,
                      tolerance=None):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -620,13 +764,30 @@ class Series(object):
     def repeat(self, repeats, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def replace(self, to_replace=None, value=None, inplace=False, limit=None,
-                regex=False, method='pad', axis=None):
+    def replace(self,
+                to_replace=None,
+                value=None,
+                inplace=False,
+                limit=None,
+                regex=False,
+                method='pad',
+                axis=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def resample(self, rule, how=None, axis=0, fill_method=None, closed=None,
-                 label=None, convention='start', kind=None, loffset=None,
-                 limit=None, base=0, on=None, level=None):
+    def resample(self,
+                 rule,
+                 how=None,
+                 axis=0,
+                 fill_method=None,
+                 closed=None,
+                 label=None,
+                 convention='start',
+                 kind=None,
+                 loffset=None,
+                 limit=None,
+                 base=0,
+                 on=None,
+                 level=None):
         raise NotImplementedError("Not Yet implemented.")
 
     def reset_index(self, level=None, drop=False, name=None, inplace=False):
@@ -644,8 +805,15 @@ class Series(object):
     def rmul(self, other, level=None, fill_value=None, axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
-    def rolling(self, window, min_periods=None, freq=None, center=False,
-                win_type=None, on=None, axis=0, closed=None):
+    def rolling(self,
+                window,
+                min_periods=None,
+                freq=None,
+                center=False,
+                win_type=None,
+                on=None,
+                axis=0,
+                closed=None):
         raise NotImplementedError("Not Yet implemented.")
 
     def round(self, decimals=0, *args, **kwargs):
@@ -660,8 +828,13 @@ class Series(object):
     def rtruediv(self, other, level=None, fill_value=None, axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
-    def sample(self, n=None, frac=None, replace=False, weights=None,
-               random_state=None, axis=None):
+    def sample(self,
+               n=None,
+               frac=None,
+               replace=False,
+               weights=None,
+               random_state=None,
+               axis=None):
         raise NotImplementedError("Not Yet implemented.")
 
     def searchsorted(self, value, side='left', sorter=None):
@@ -670,8 +843,13 @@ class Series(object):
     def select(self, crit, axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
-    def sem(self, axis=None, skipna=None, level=None, ddof=1,
-            numeric_only=None, **kwargs):
+    def sem(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            ddof=1,
+            numeric_only=None,
+            **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def set_axis(self, axis, labels):
@@ -683,19 +861,33 @@ class Series(object):
     def shift(self, periods=1, freq=None, axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
-    def skew(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def skew(self,
+             axis=None,
+             skipna=None,
+             level=None,
+             numeric_only=None,
              **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def slice_shift(self, periods=1, axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
-    def sort_index(self, axis=0, level=None, ascending=True, inplace=False,
-                   kind='quicksort', na_position='last', sort_remaining=True):
+    def sort_index(self,
+                   axis=0,
+                   level=None,
+                   ascending=True,
+                   inplace=False,
+                   kind='quicksort',
+                   na_position='last',
+                   sort_remaining=True):
         raise NotImplementedError("Not Yet implemented.")
 
-    def sort_values(self, axis=0, ascending=True, inplace=False,
-                    kind='quicksort', na_position='last'):
+    def sort_values(self,
+                    axis=0,
+                    ascending=True,
+                    inplace=False,
+                    kind='quicksort',
+                    na_position='last'):
         raise NotImplementedError("Not Yet implemented.")
 
     def sortlevel(self, level=0, ascending=True, sort_remaining=True):
@@ -704,8 +896,13 @@ class Series(object):
     def squeeze(self, axis=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def std(self, axis=None, skipna=None, level=None, ddof=1,
-            numeric_only=None, **kwargs):
+    def std(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            ddof=1,
+            numeric_only=None,
+            **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def sub(self, other, level=None, fill_value=None, axis=0):
@@ -714,7 +911,11 @@ class Series(object):
     def subtract(self, other, level=None, fill_value=None, axis=0):
         raise NotImplementedError("Not Yet implemented.")
 
-    def sum(self, axis=None, skipna=None, level=None, numeric_only=None,
+    def sum(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            numeric_only=None,
             **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -733,9 +934,18 @@ class Series(object):
     def to_clipboard(self, excel=None, sep=None, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def to_csv(self, path=None, index=True, sep=',', na_rep='',
-               float_format=None, header=False, index_label=None, mode='w',
-               encoding=None, date_format=None, decimal='.'):
+    def to_csv(self,
+               path=None,
+               index=True,
+               sep=',',
+               na_rep='',
+               float_format=None,
+               header=False,
+               index_label=None,
+               mode='w',
+               encoding=None,
+               date_format=None,
+               decimal='.'):
         raise NotImplementedError("Not Yet implemented.")
 
     def to_dense(self):
@@ -744,10 +954,21 @@ class Series(object):
     def to_dict(self):
         raise NotImplementedError("Not Yet implemented.")
 
-    def to_excel(self, excel_writer, sheet_name='Sheet1', na_rep='',
-                 float_format=None, columns=None, header=True, index=True,
-                 index_label=None, startrow=0, startcol=0, engine=None,
-                 merge_cells=True, encoding=None, inf_rep='inf',
+    def to_excel(self,
+                 excel_writer,
+                 sheet_name='Sheet1',
+                 na_rep='',
+                 float_format=None,
+                 columns=None,
+                 header=True,
+                 index=True,
+                 index_label=None,
+                 startrow=0,
+                 startcol=0,
+                 engine=None,
+                 merge_cells=True,
+                 encoding=None,
+                 inf_rep='inf',
                  verbose=True):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -757,17 +978,37 @@ class Series(object):
     def to_hdf(self, path_or_buf, key, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def to_json(self, path_or_buf=None, orient=None, date_format=None,
-                double_precision=10, force_ascii=True, date_unit='ms',
-                default_handler=None, lines=False):
+    def to_json(self,
+                path_or_buf=None,
+                orient=None,
+                date_format=None,
+                double_precision=10,
+                force_ascii=True,
+                date_unit='ms',
+                default_handler=None,
+                lines=False):
         raise NotImplementedError("Not Yet implemented.")
 
-    def to_latex(self, buf=None, columns=None, col_space=None, header=True,
-                 index=True, na_rep='NaN', formatters=None, float_format=None,
-                 sparsify=None, index_names=True, bold_rows=False,
-                 column_format=None, longtable=None, escape=None,
-                 encoding=None, decimal='.', multicolumn=None,
-                 multicolumn_format=None, multirow=None):
+    def to_latex(self,
+                 buf=None,
+                 columns=None,
+                 col_space=None,
+                 header=True,
+                 index=True,
+                 na_rep='NaN',
+                 formatters=None,
+                 float_format=None,
+                 sparsify=None,
+                 index_names=True,
+                 bold_rows=False,
+                 column_format=None,
+                 longtable=None,
+                 escape=None,
+                 encoding=None,
+                 decimal='.',
+                 multicolumn=None,
+                 multicolumn_format=None,
+                 multirow=None):
         raise NotImplementedError("Not Yet implemented.")
 
     def to_msgpack(self, path_or_buf=None, encoding='utf-8', **kwargs):
@@ -782,13 +1023,28 @@ class Series(object):
     def to_sparse(self, kind='block', fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def to_sql(self, name, con, flavor=None, schema=None, if_exists='fail',
-               index=True, index_label=None, chunksize=None, dtype=None):
+    def to_sql(self,
+               name,
+               con,
+               flavor=None,
+               schema=None,
+               if_exists='fail',
+               index=True,
+               index_label=None,
+               chunksize=None,
+               dtype=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def to_string(self, buf=None, na_rep='NaN', float_format=None,
-                  header=True, index=True, length=False, dtype=False,
-                  name=False, max_rows=None):
+    def to_string(self,
+                  buf=None,
+                  na_rep='NaN',
+                  float_format=None,
+                  header=True,
+                  index=True,
+                  length=False,
+                  dtype=False,
+                  name=False,
+                  max_rows=None):
         raise NotImplementedError("Not Yet implemented.")
 
     def to_timestamp(self, freq=None, how='start', copy=True):
@@ -834,19 +1090,34 @@ class Series(object):
     def valid(self, inplace=False, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def value_counts(self, normalize=False, sort=True, ascending=False,
-                     bins=None, dropna=True):
+    def value_counts(self,
+                     normalize=False,
+                     sort=True,
+                     ascending=False,
+                     bins=None,
+                     dropna=True):
         raise NotImplementedError("Not Yet implemented.")
 
-    def var(self, axis=None, skipna=None, level=None, ddof=1,
-            numeric_only=None, **kwargs):
+    def var(self,
+            axis=None,
+            skipna=None,
+            level=None,
+            ddof=1,
+            numeric_only=None,
+            **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def view(self, dtype=None):
         raise NotImplementedError("Not Yet implemented.")
 
-    def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
-              try_cast=False, raise_on_error=True):
+    def where(self,
+              cond,
+              other=np.nan,
+              inplace=False,
+              axis=None,
+              level=None,
+              try_cast=False,
+              raise_on_error=True):
         raise NotImplementedError("Not Yet implemented.")
 
     def xs(key, axis=0, level=None, drop_level=True):
