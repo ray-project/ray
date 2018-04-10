@@ -62,6 +62,8 @@ class DataFrame(object):
             col_metadata (_IndexMetadata):
                 Metadata for the new dataframe's columns
         """
+        self._row_metadata = self._col_metadata = None
+
         # Check type of data and use appropriate constructor
         if data is not None or (col_partitions is None and
                                 row_partitions is None and
@@ -90,7 +92,6 @@ class DataFrame(object):
                 "Columns not defined, must define columns for internal " \
                 "DataFrame creations"
 
-            self._row_metadata = self._col_metadata = None
             if block_partitions is not None:
                 # put in numpy array here to make accesses easier since it's 2D
                 self._block_partitions = np.array(block_partitions)
