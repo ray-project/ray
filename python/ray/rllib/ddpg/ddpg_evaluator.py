@@ -44,9 +44,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 
 
 class DDPGEvaluator(PolicyEvaluator):
-    """The base DDPG Evaluator.
-
-    TODO(rliaw): Support observation/reward filters?"""
+    """The base DDPG Evaluator."""
 
     def __init__(self, registry, env_creator, config, logdir, worker_index):
         env = env_creator(config["env_config"])
@@ -87,17 +85,10 @@ class DDPGEvaluator(PolicyEvaluator):
         self.global_timestep = 0
         self.local_timestep = 0
 
-        # Note that this encompasses both the P&Q and target network
+        # Note that this encompasses both the policy and Q-value networks and
+        # their corresponding target networks
         self.variables = ray.experimental.TensorFlowVariables(
             tf.group(self.ddpg_graph.q_tp0, self.ddpg_graph.q_tp1), self.sess)
-        #for k, v in self.variables.variables.items():
-        #    print(v.name)
-        #raw_input()
-        #print(len(self.variables.variables.items()))
-        #self.variables.variables = {k: v for k, v in self.variables.variables.items() if \
-        #    v.name != "tower/a_func/ornstein_uhlenbeck:0"}
-        #print(len(self.variables.variables.items()))
-        #raw_input()
 
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]

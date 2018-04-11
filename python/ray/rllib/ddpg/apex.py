@@ -26,7 +26,7 @@ APEX_DDPG_DEFAULT_CONFIG = dict(DDPG_CONFIG, **dict(
 
 
 class ApexDDPGAgent(DDPGAgent):
-    """DQN variant that uses the Ape-X distributed policy optimizer.
+    """DDPG variant that uses the Ape-X distributed policy optimizer.
 
     By default, this is configured for a large single node (32 cores). For
     running in a large cluster, increase the `num_workers` config var.

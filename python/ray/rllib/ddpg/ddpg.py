@@ -22,10 +22,6 @@ OPTIMIZER_SHARED_CONFIGS = [
 
 DEFAULT_CONFIG = dict(
     # === Model ===
-    # Whether to use dueling ddpg
-    #dueling=True,
-    # Whether to use double ddpg
-    #double_q=True,
     # Hidden layer sizes of the policy networks
     actor_hiddens=[64, 64],
     # Hidden layer sizes of the policy networks

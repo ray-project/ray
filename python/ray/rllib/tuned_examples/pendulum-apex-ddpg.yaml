@@ -1,5 +1,5 @@
 # This can be expected to reach -160 reward within 15 mins when using 1 GPU and 16 CPUs 
-pong-apex:
+pendulum-apex-ddpg-1:
     env: Pendulum-v0
     run: APEX_DDPG
     trial_resources:
