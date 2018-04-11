@@ -87,6 +87,8 @@ class DataFrame(object):
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
 
+            nrows = get_npartitions() if nrows is None else nrows
+
             # TODO convert _partition_pandas_dataframe to block partitioning.
             row_partitions = \
                 _partition_pandas_dataframe(pd_df,
