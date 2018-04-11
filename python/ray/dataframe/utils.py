@@ -72,8 +72,9 @@ def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None):
         row_partitions.append(top)
         temp_df = temp_df[row_chunksize:]
     else:
-        temp_df.reset_index(drop=True, inplace=True)
-        temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
+        if len(df) > row_chunksize:
+            temp_df.reset_index(drop=True, inplace=True)
+            temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
         row_partitions.append(ray.put(temp_df))
 
     return row_partitions
@@ -160,8 +161,9 @@ def _map_partitions(func, partitions, *argslists):
 def _build_columns(df_col, columns):
     """Build columns and compute lengths for each partition."""
     # Columns and width
-    widths = ray.get([_deploy_func.remote(lambda df: len(df.columns), d)
-                      for d in df_col])
+    widths = np.array(ray.get([_deploy_func.remote(lambda df: len(df.columns),
+                                                   d)
+                      for d in df_col]))
     dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(widths))
                     for p_sub_idx in range(widths[p_idx])]
 
@@ -175,8 +177,8 @@ def _build_columns(df_col, columns):
 def _build_index(df_row, index):
     """Build index and compute lengths for each partition."""
     # Rows and length
-    lengths = ray.get([_deploy_func.remote(_get_lengths, d)
-                       for d in df_row])
+    lengths = np.array(ray.get([_deploy_func.remote(_get_lengths, d)
+                       for d in df_row]))
 
     dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(lengths))
                     for p_sub_idx in range(lengths[p_idx])]
