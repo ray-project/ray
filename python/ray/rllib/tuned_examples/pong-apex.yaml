@@ -11,6 +11,6 @@ pong-apex:
             eval: 4 + spec.config.num_workers
     config:
         target_network_update_freq: 50000
-        num_workers: 32
+        num_workers: 16
         lr: .0001
         gamma: 0.99

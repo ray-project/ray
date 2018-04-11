@@ -225,6 +225,9 @@ def get_agent_class(alg):
     if alg == "DDPG":
         from ray.rllib import ddpg
         return ddpg.DDPGAgent
+    elif alg == "APEX_DDPG":
+        from ray.rllib import ddpg
+        return ddpg.ApexDDPGAgent
     elif alg == "PPO":
         from ray.rllib import ppo
         return ppo.PPOAgent
