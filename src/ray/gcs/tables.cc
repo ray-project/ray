@@ -276,41 +276,40 @@ Status ClientTable::Connect(const ClientTableDataT &local_client) {
   RAY_CHECK(local_client.client_id == local_client_.client_id);
   local_client_ = local_client;
 
+  // Construct the data to add to the client table.
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   data->is_insertion = true;
-  // Callback for a notification from the client table.
-  auto notification_callback = [this](
-      AsyncGcsClient *client, const UniqueID &log_key,
-      const std::vector<ClientTableDataT> &notifications) {
-    RAY_CHECK(log_key == client_log_key_);
-    for (auto &notification : notifications) {
-      HandleNotification(client, notification);
-    }
-  };
   // Callback to handle our own successful connection once we've added
   // ourselves.
   auto add_callback = [this](AsyncGcsClient *client, const UniqueID &log_key,
                              std::shared_ptr<ClientTableDataT> data) {
     RAY_CHECK(log_key == client_log_key_);
     HandleConnected(client, data);
+
+    // Callback for a notification from the client table.
+    auto notification_callback = [this](
+        AsyncGcsClient *client, const UniqueID &log_key,
+        const std::vector<ClientTableDataT> &notifications) {
+      RAY_CHECK(log_key == client_log_key_);
+      for (auto &notification : notifications) {
+        HandleNotification(client, notification);
+      }
+    };
+    // Callback to request notifications from the client table once we've
+    // successfully subscribed.
+    auto subscription_callback = [this](AsyncGcsClient *c) {
+      RAY_CHECK_OK(RequestNotifications(JobID::nil(), client_log_key_, client_id_));
+    };
+    // Subscribe to the client table.
+    RAY_CHECK_OK(Subscribe(JobID::nil(), client_id_, notification_callback,
+                           subscription_callback));
   };
-  // Callback to add ourselves once we've successfully subscribed.
-  auto subscription_callback = [this, data, add_callback](AsyncGcsClient *c) {
-    // Mark ourselves as deleted if we called Disconnect() since the last
-    // Connect() call.
-    if (disconnected_) {
-      data->is_insertion = false;
-    }
-    RAY_CHECK_OK(RequestNotifications(JobID::nil(), client_log_key_, client_id_));
-    RAY_CHECK_OK(Append(JobID::nil(), client_log_key_, data, add_callback));
-  };
-  return Subscribe(JobID::nil(), client_id_, notification_callback,
-                   subscription_callback);
+  return Append(JobID::nil(), client_log_key_, data, add_callback);
 }
 
 Status ClientTable::Disconnect() {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
-  data->is_insertion = true;
+  data->is_insertion = false;
   auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
                              std::shared_ptr<ClientTableDataT> data) {
     HandleConnected(client, data);
@@ -320,6 +319,13 @@ Status ClientTable::Disconnect() {
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
   return Status::OK();
+}
+
+ray::Status ClientTable::MarkDisconnected(const ClientID &dead_client_id) {
+  auto data = std::make_shared<ClientTableDataT>();
+  data->client_id = dead_client_id.binary();
+  data->is_insertion = false;
+  return Append(JobID::nil(), client_log_key_, data, nullptr);
 }
 
 const ClientTableDataT &ClientTable::GetClient(const ClientID &client_id) {
@@ -338,6 +344,7 @@ template class Log<ObjectID, ObjectTableData>;
 template class Log<TaskID, ray::protocol::Task>;
 template class Table<TaskID, ray::protocol::Task>;
 template class Table<TaskID, TaskTableData>;
+template class Log<ActorID, ActorTableData>;
 template class Log<TaskID, TaskReconstructionData>;
 template class Table<ClientID, HeartbeatTableData>;
 template class Log<UniqueID, ClientTableData>;

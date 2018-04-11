@@ -77,7 +77,10 @@ CREDIS_MEMBER_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/credis/build/src/libmember.so")
 
-# Location of the raylet executable.
+# Location of the raylet executables.
+RAYLET_MONITOR_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/ray/raylet/raylet_monitor")
 RAYLET_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/raylet/raylet")
@@ -1112,9 +1115,33 @@ def start_monitor(redis_address, node_ip_address, stdout_file=None,
         command.append("--autoscaling-config=" + str(autoscaling_config))
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
-        all_processes[PROCESS_TYPE_WORKER].append(p)
+        all_processes[PROCESS_TYPE_MONITOR].append(p)
     record_log_files_in_redis(redis_address, node_ip_address,
                               [stdout_file, stderr_file])
+
+
+def start_raylet_monitor(redis_address, stdout_file=None,
+                         stderr_file=None, cleanup=True):
+    """Run a process to monitor the other processes.
+
+    Args:
+        redis_address (str): The address that the Redis server is listening on.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        cleanup (bool): True if using Ray in local mode. If cleanup is true,
+            then this process will be killed by services.cleanup() when the
+            Python process that imported services exits. This is True by
+            default.
+    """
+    gcs_ip_address, gcs_port = redis_address.split(":")
+    command = [RAYLET_MONITOR_EXECUTABLE,
+               gcs_ip_address,
+               gcs_port]
+    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    if cleanup:
+        all_processes[PROCESS_TYPE_MONITOR].append(p)
 
 
 def start_ray_processes(address_info=None,
@@ -1253,6 +1280,11 @@ def start_ray_processes(address_info=None,
                       stderr_file=monitor_stderr_file,
                       cleanup=cleanup,
                       autoscaling_config=autoscaling_config)
+        if use_raylet:
+            start_raylet_monitor(redis_address,
+                                 stdout_file=monitor_stdout_file,
+                                 stderr_file=monitor_stderr_file,
+                                 cleanup=cleanup)
 
     if redis_shards == []:
         # Get redis shards from primary redis instance.
@@ -1369,14 +1401,14 @@ def start_ray_processes(address_info=None,
         raylet_stdout_file, raylet_stderr_file = (
             new_log_files("raylet_{}".format(i),
                           redirect_output=redirect_output))
-        address_info["raylet_socket_name"] = start_raylet(
+        address_info["raylet_socket_names"] = [start_raylet(
             redis_address,
             node_ip_address,
             object_store_addresses[i].name,
             worker_path,
             stdout_file=None,
             stderr_file=None,
-            cleanup=cleanup)
+            cleanup=cleanup)]
 
     if not use_raylet:
         # Start any workers that the local scheduler has not already started.

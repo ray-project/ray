@@ -802,6 +802,8 @@ def actor_handle_from_class(Class, class_id, actor_creation_resources,
                                             actor_creation_resources,
                                             actor_method_cpus,
                                             ray.worker.global_worker)
+            # Increment the actor counter to account for the creation task.
+            actor_counter += 1
 
             # Instantiate the actor handle.
             actor_object = cls.__new__(cls)

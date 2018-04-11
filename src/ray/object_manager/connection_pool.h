@@ -46,11 +46,8 @@ class ConnectionPool {
 
   /// Remove a receiver connection.
   ///
-  /// \param type The type of connection.
-  /// \param client_id The ClientID of the remote object manager.
   /// \param conn The actual connection.
-  void RemoveReceiver(ConnectionType type, const ClientID &client_id,
-                      std::shared_ptr<TcpClientConnection> &conn);
+  void RemoveReceiver(std::shared_ptr<TcpClientConnection> conn);
 
   /// Register a receiver connection.
   ///
@@ -89,9 +86,7 @@ class ConnectionPool {
   ray::Status RemoveSender(ConnectionType type, std::shared_ptr<SenderConnection> conn);
 
   /// This object cannot be copied for thread-safety.
-  ConnectionPool &operator=(const ConnectionPool &o) {
-    throw std::runtime_error("Can't copy ConnectionPool.");
-  }
+  RAY_DISALLOW_COPY_AND_ASSIGN(ConnectionPool);
 
  private:
   /// A container type that maps ClientID to a connection type.

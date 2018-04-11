@@ -294,14 +294,22 @@ class FunctionTable : public Table<ObjectID, FunctionTableData> {
 using ClassTable = Table<ClassID, ClassTableData>;
 
 // TODO(swang): Set the pubsub channel for the actor table.
-using ActorTable = Table<ActorID, ActorTableData>;
+class ActorTable : public Log<ActorID, ActorTableData> {
+ public:
+  ActorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : Log(context, client) {
+    pubsub_channel_ = TablePubsub_ACTOR;
+    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+  }
+};
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
  public:
   TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
                         AsyncGcsClient *client)
       : Log(context, client) {
-    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+    pubsub_channel_ = TablePubsub_ACTOR;
+    prefix_ = TablePrefix_ACTOR;
   }
 };
 
@@ -451,6 +459,13 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   ///
   /// \return Status
   ray::Status Disconnect();
+
+  /// Mark a different client as disconnected. The client ID should never be
+  /// reused for a new client.
+  ///
+  /// \param dead_client_id The ID of the client to mark as dead.
+  /// \return Status
+  ray::Status MarkDisconnected(const ClientID &dead_client_id);
 
   /// Register a callback to call when a new client is added.
   ///

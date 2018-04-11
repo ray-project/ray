@@ -49,12 +49,20 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
     return NULL;
   }
-  PyTask *task = (PyTask *) py_task;
-  TaskExecutionSpec execution_spec =
-      TaskExecutionSpec(*task->execution_dependencies, task->spec, task->size);
-  local_scheduler_submit(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      execution_spec);
+  LocalSchedulerConnection *connection =
+      reinterpret_cast<PyLocalSchedulerClient *>(self)
+          ->local_scheduler_connection;
+  PyTask *task = reinterpret_cast<PyTask *>(py_task);
+
+  if (!use_raylet(task)) {
+    TaskExecutionSpec execution_spec = TaskExecutionSpec(
+        *task->execution_dependencies, task->spec, task->size);
+    local_scheduler_submit(connection, execution_spec);
+  } else {
+    local_scheduler_submit_raylet(connection, *task->execution_dependencies,
+                                  *task->task_spec);
+  }
+
   Py_RETURN_NONE;
 }
 
@@ -111,14 +119,22 @@ static PyObject *PyLocalSchedulerClient_compute_put_id(PyObject *self,
                                                        PyObject *args) {
   int put_index;
   TaskID task_id;
-  if (!PyArg_ParseTuple(args, "O&i", &PyObjectToUniqueID, &task_id,
-                        &put_index)) {
+  PyObject *use_raylet;
+  if (!PyArg_ParseTuple(args, "O&iO", &PyObjectToUniqueID, &task_id, &put_index,
+                        &use_raylet)) {
     return NULL;
   }
-  ObjectID put_id = task_compute_put_id(task_id, put_index);
-  local_scheduler_put_object(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, task_id,
-      put_id);
+  ObjectID put_id;
+  if (!PyObject_IsTrue(use_raylet)) {
+    put_id = task_compute_put_id(task_id, put_index);
+    local_scheduler_put_object(
+        ((PyLocalSchedulerClient *) self)->local_scheduler_connection, task_id,
+        put_id);
+  } else {
+    // TODO(rkn): Raise an exception if the put index is not a valid value
+    // instead of crashing in ComputePutId.
+    put_id = ray::ComputePutId(task_id, put_index);
+  }
   return PyObjectID_make(put_id);
 }
 

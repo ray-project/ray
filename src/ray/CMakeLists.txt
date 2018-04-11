@@ -44,6 +44,7 @@ set(RAY_SRCS
   object_manager/object_directory.cc
   object_manager/transfer_queue.cc
   object_manager/object_manager.cc
+  raylet/monitor.cc
   raylet/mock_gcs_client.cc
   raylet/task.cc
   raylet/task_execution_spec.cc
@@ -51,7 +52,7 @@ set(RAY_SRCS
   raylet/worker.cc
   raylet/worker_pool.cc
   raylet/scheduling_resources.cc
-  raylet/actor.cc
+  raylet/actor_registration.cc
   raylet/scheduling_queue.cc
   raylet/scheduling_policy.cc
   raylet/task_dependency_manager.cc

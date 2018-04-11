@@ -10,6 +10,7 @@ AsyncGcsClient::AsyncGcsClient(const ClientID &client_id) {
   context_.reset(new RedisContext());
   client_table_.reset(new ClientTable(context_, this, client_id));
   object_table_.reset(new ObjectTable(context_, this));
+  actor_table_.reset(new ActorTable(context_, this));
   task_table_.reset(new TaskTable(context_, this));
   raylet_task_table_.reset(new raylet::TaskTable(context_, this));
   task_reconstruction_log_.reset(new TaskReconstructionLog(context_, this));
@@ -47,6 +48,8 @@ ObjectTable &AsyncGcsClient::object_table() { return *object_table_; }
 TaskTable &AsyncGcsClient::task_table() { return *task_table_; }
 
 raylet::TaskTable &AsyncGcsClient::raylet_task_table() { return *raylet_task_table_; }
+
+ActorTable &AsyncGcsClient::actor_table() { return *actor_table_; }
 
 TaskReconstructionLog &AsyncGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;

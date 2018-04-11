@@ -13,7 +13,7 @@ if pd_major == 0 and pd_minor < 22:
     raise Exception("In order to use Pandas on Ray, please upgrade your Pandas"
                     " version to >= 0.22.")
 
-DEFAULT_NPARTITIONS = 4
+DEFAULT_NPARTITIONS = 8
 
 
 def set_npartition_default(n):
@@ -30,9 +30,10 @@ def get_npartitions():
 from .dataframe import DataFrame  # noqa: 402
 from .series import Series  # noqa: 402
 from .io import (read_csv, read_parquet)  # noqa: 402
+from .concat import concat # noqa: 402
 
 __all__ = [
-    "DataFrame", "Series", "read_csv", "read_parquet"
+    "DataFrame", "Series", "read_csv", "read_parquet", "concat"
 ]
 
 try:
