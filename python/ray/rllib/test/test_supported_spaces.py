@@ -133,6 +133,7 @@ class ModelSupportedSpaces(unittest.TestCase):
             "PG",
             {"num_workers": 1, "optimizer": {}},
             stats)
+        check_support("DDPG", {"timesteps_per_iteration": 1}, stats)
         num_unexpected_errors = 0
         num_unexpected_success = 0
         for (alg, a_name, o_name), stat in sorted(stats.items()):
