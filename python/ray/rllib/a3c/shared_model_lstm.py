@@ -57,7 +57,7 @@ class SharedModelLSTM(TFPolicy):
         """
         features = samples["features"][0]
         feed_dict = {
-            self.x: samples["observations"],
+            self.x: samples["obs"],
             self.ac: samples["actions"],
             self.adv: samples["advantages"],
             self.r: samples["value_targets"],

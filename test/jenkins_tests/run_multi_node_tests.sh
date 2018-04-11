@@ -182,6 +182,20 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --config '{"batch_size": 500, "num_workers": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env Pendulum-v0 \
+    --run DDPG \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 1}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env MountainCarContinuous-v0 \
+    --run DDPG \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 1}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     sh /ray/test/jenkins_tests/multi_node_tests/test_rllib_eval.sh
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
