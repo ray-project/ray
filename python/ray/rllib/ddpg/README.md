@@ -1,1 +1,1 @@
-Code in this package is adapted from https://github.com/openai/baselines/tree/master/baselines/deepq.
+Code in this package follows the style of dqn.
