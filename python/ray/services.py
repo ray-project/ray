@@ -580,7 +580,7 @@ def start_redis_instance(node_ip_address="127.0.0.1",
 
     load_module_args = []
     for module in modules:
-        load_module_args += ["--loadmodule", m]
+        load_module_args += ["--loadmodule", module]
     command = [executable, "--port",
                str(port), "--loglevel", "warning"] + load_module_args
 
