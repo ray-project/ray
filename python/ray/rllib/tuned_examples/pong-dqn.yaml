@@ -21,9 +21,9 @@ pong-deterministic-dqn:
         model:
           grayscale: True
           zero_mean: False
-          dim: 42
-          conv_filters: [
-              [16, [4, 4], 2],
-              [32, [4, 4], 2],
-              [512, [11, 11], 1],
-          ]
+#          dim: 42
+#          conv_filters: [
+#              [16, [4, 4], 2],
+#              [32, [4, 4], 2],
+#              [512, [11, 11], 1],
+#          ]
