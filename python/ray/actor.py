@@ -304,9 +304,11 @@ def fetch_and_register_actor(actor_class_key, resources, worker):
         # TODO(pcm): Why is the below line necessary?
         unpickled_class.__module__ = module
         worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
-        pred = lambda x: (inspect.isfunction(x) or
-                          inspect.ismethod(x) or
-                          is_cython(x))
+
+        def pred(x):
+            return (inspect.isfunction(x) or inspect.ismethod(x)
+                    or is_cython(x))
+
         actor_methods = inspect.getmembers(unpickled_class, predicate=pred)
         for actor_method_name, actor_method in actor_methods:
             function_id = compute_actor_method_function_id(
@@ -769,10 +771,12 @@ def actor_handle_from_class(Class, class_id, actor_creation_resources,
             actor_cursor = None
             # The number of actor method invocations that we've called so far.
             actor_counter = 0
+
             # Get the actor methods of the given class.
-            pred = lambda x: (inspect.isfunction(x) or
-                              inspect.ismethod(x) or
-                              is_cython(x))
+            def pred(x):
+                return (inspect.isfunction(x) or inspect.ismethod(x)
+                        or is_cython(x))
+
             actor_methods = inspect.getmembers(Class, predicate=pred)
             # Extract the signatures of each of the methods. This will be used
             # to catch some errors if the methods are called with inappropriate

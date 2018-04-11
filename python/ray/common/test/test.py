@@ -34,10 +34,12 @@ BASE_SIMPLE_OBJECTS = [
 ]
 
 if sys.version_info < (3, 0):
-    BASE_SIMPLE_OBJECTS += [long(0),  # noqa: E501,F821
-                            long(1),  # noqa: E501,F821
-                            long(100000),  # noqa: E501,F821
-                            long(1 << 100)]  # noqa: E501,F821
+    BASE_SIMPLE_OBJECTS += [
+        long(0),  # noqa: E501,F821
+        long(1),  # noqa: E501,F821
+        long(100000),  # noqa: E501,F821
+        long(1 << 100)  # noqa: E501,F821
+    ]
 
 LIST_SIMPLE_OBJECTS = [[obj] for obj in BASE_SIMPLE_OBJECTS]
 TUPLE_SIMPLE_OBJECTS = [(obj, ) for obj in BASE_SIMPLE_OBJECTS]

@@ -10,7 +10,7 @@ pushd $ROOT_DIR/../test
 popd
 
 pushd $ROOT_DIR/../python
-  find . -name '*.py' -type f -not -path './ray/dataframe/*' -not -path './ray/rllib/*' -not -path './ray/cloudpickle/' -exec yapf --style=pep8 -i -r {} \;
+  find . -name '*.py' -type f -not -path './ray/dataframe/*' -not -path './ray/rllib/*' -not -path './ray/cloudpickle/*' -exec yapf --style=pep8 -i -r {} \;
 popd
 
 CHANGED_FILES=(`git diff --name-only`)
