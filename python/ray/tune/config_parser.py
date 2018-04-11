@@ -73,9 +73,9 @@ def make_parser(**kwargs):
     parser.add_argument(
         "--resources",
         help="Deprecated, use --trial-resources.",
-        type=
-        lambda v: _tune_error("The `resources` argument is no longer supported. "
-                              "Use `trial_resources` or --trial-resources instead.")
+        type=lambda v: _tune_error("The `resources` argument is no longer "
+                                   "supported. Use `trial_resources` or "
+                                   "--trial-resources instead.")
     )
     parser.add_argument(
         "--trial-resources",

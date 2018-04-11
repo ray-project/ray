@@ -13,7 +13,7 @@ pushd $ROOT_DIR/../python
   find . -name '*.py' -type f -not -path './ray/dataframe/*' -not -path './ray/rllib/*' -not -path './ray/cloudpickle/' -exec yapf --style=pep8 -i -r {} \;
 popd
 
-CHANGED_FILES=(`git diff --name-only ${PYTHON_FILES[@]}`)
+CHANGED_FILES=(`git diff --name-only`)
 if [ "$CHANGED_FILES" ]; then
   echo 'Reformatted staged files. Please review and stage the changes.'
   echo
