@@ -1648,11 +1648,12 @@ def test_infer_objects():
         ray_df.infer_objects()
 
 
-def test_info():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.info()
+@pytest.fixture
+def test_info(ray_df):
+    info_string = ray_df.info()
+    assert '<class \'ray.dataframe.dataframe.DataFrame\'>\n' in info_string
+    info_string = ray_df.info(memory_usage=True)
+    assert 'memory_usage: ' in info_string
 
 
 @pytest.fixture
@@ -1815,11 +1816,12 @@ def test_melt():
         ray_df.melt()
 
 
-def test_memory_usage():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.memory_usage()
+@pytest.fixture
+def test_memory_usage(ray_df):
+    assert type(ray_df.memory_usage()) is pd.core.series.Series
+    assert ray_df.memory_usage(index=True).at['Index'] is not None
+    assert ray_df.memory_usage(deep=True).sum() >= \
+        ray_df.memory_usage(deep=False).sum()
 
 
 def test_merge():
