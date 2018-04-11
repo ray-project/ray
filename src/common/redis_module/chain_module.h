@@ -9,6 +9,10 @@
 // only.  The implementation is supposed to be linked in from credis.  In
 // principle, we can expose a header from credis and simple include that header.
 // This is left as future work.
+//
+// Concrete definitions from credis (from an example commit):
+// https://github.com/ray-project/credis/blob/7eae7f2e58d16dfa1a95b5dfab02549f54b94e5d/src/member.cc#L41
+// https://github.com/ray-project/credis/blob/7eae7f2e58d16dfa1a95b5dfab02549f54b94e5d/src/master.cc#L36
 
 // Typical usage to make an existing redismodule command chain-compatible:
 //
@@ -23,7 +27,14 @@ class RedisChainModule {
   // A function that runs on every node in the chain.  Type:
   //   (context, argv, argc, (can be nullptr) mutated_key_str) -> int
   //
-  // If the fourth arg is passed, NodeFunc must fill in the key being mutated.
+  // (Advanced) The optional fourth arg can be used in the following way:
+  //
+  //     RedisModuleString* redis_key_str = nullptr;
+  //     node_func(ctx, argv, argc, &redis_key_str);
+  //     // "redis_key_str" now points to the RedisModuleString whose contents
+  //     // is mutated by "node_func".
+  //
+  // If the fourth arg is passed, NodeFunc *must* fill in the key being mutated.
   // It is okay for this NodeFunc to call "RM_FreeString(mutated_key_str)" after
   // assigning the fourth arg, since that call presumably only decrements a ref
   // count.
@@ -40,11 +51,11 @@ class RedisChainModule {
   // Runs "node_func" on every node in the chain; after the tail node has run it
   // too, finalizes the mutation by running "tail_func".
   // TODO(zongheng): currently only supports 1-node chain.
-  int Mutate(RedisModuleCtx *ctx,
-             RedisModuleString **argv,
-             int argc,
-             NodeFunc node_func,
-             TailFunc tail_func);
+  int ChainReplicate(RedisModuleCtx *ctx,
+                     RedisModuleString **argv,
+                     int argc,
+                     NodeFunc node_func,
+                     TailFunc tail_func);
 };
 
 #endif  // RAY_CHAIN_MODULE_H_

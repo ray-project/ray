@@ -28,8 +28,8 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
     pushd "$TP_DIR/pkg/credis"
       # git checkout 6be4a739ab5e795c98402b27c2e254f86e3524ea
 
-      # 4/5/2018 credis/integrate branch.  With updated redis hacks.
-      git checkout 7eae7f2e58d16dfa1a95b5dfab02549f54b94e5d
+      # 4/10/2018 credis/integrate branch.  With updated redis hacks.
+      git checkout cbe8ade35d2278b1d94684fa5d00010cb015ef82
 
       # If the above commit points to different submodules' commits than
       # origin's head, this updates the submodules.

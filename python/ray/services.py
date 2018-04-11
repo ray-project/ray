@@ -1,7 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
 import binascii
-import itertools
 import json
 import os
 import random
@@ -402,7 +401,7 @@ def start_redis(node_ip_address,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True,
-                no_credis=True):
+                use_credis=False):
     """Start the Redis global state store.
 
     Args:
@@ -426,7 +425,7 @@ def start_redis(node_ip_address,
             then all Redis processes started by this method will be killed by
             services.cleanup() when the Python process that imported services
             exits.
-        no_credis (bool): defaults to True.  If False, additionally load the
+        use_credis (bool): defaults to False.  If True, additionally load the
             chain-replicated libraries into the redis servers.
 
     Returns:
@@ -442,7 +441,7 @@ def start_redis(node_ip_address,
         raise Exception("The number of Redis shard ports does not match the "
                         "number of Redis shards.")
 
-    if no_credis:
+    if not use_credis:
         assigned_port, _ = start_redis_instance(
             node_ip_address=node_ip_address,
             port=port,
@@ -451,8 +450,6 @@ def start_redis(node_ip_address,
             stderr_file=redis_stderr_file,
             cleanup=cleanup)
     else:
-        # It is import to load the credis module BEFORE the ray module, as the
-        # latter contains an extern declaration that the former supplies.
         assigned_port, _ = start_redis_instance(
             node_ip_address=node_ip_address,
             port=port,
@@ -461,6 +458,9 @@ def start_redis(node_ip_address,
             stderr_file=redis_stderr_file,
             cleanup=cleanup,
             executable=CREDIS_EXECUTABLE,
+            # It is important to load the credis module BEFORE the ray module,
+            # as the latter contains an extern declaration that the former
+            # supplies.
             modules=[CREDIS_MASTER_MODULE, REDIS_MODULE])
     if port is not None:
         assert assigned_port == port
@@ -486,7 +486,7 @@ def start_redis(node_ip_address,
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = new_log_files(
             "redis-{}".format(i), redirect_output)
-        if no_credis:
+        if not use_credis:
             redis_shard_port, _ = start_redis_instance(
                 node_ip_address=node_ip_address,
                 port=redis_shard_ports[i],
@@ -495,8 +495,6 @@ def start_redis(node_ip_address,
                 stderr_file=redis_stderr_file,
                 cleanup=cleanup)
         else:
-            # It is import to load the credis module BEFORE the ray module, as the
-            # latter contains an extern declaration that the former supplies.
             assert num_redis_shards == 1, \
                 "For now, RAY_USE_NEW_GCS supports 1 shard, and credis supports" \
                 " 1-node chain for that shard only."
@@ -508,6 +506,9 @@ def start_redis(node_ip_address,
                 stderr_file=redis_stderr_file,
                 cleanup=cleanup,
                 executable=CREDIS_EXECUTABLE,
+                # It is important to load the credis module BEFORE the ray
+                # module, as the latter contains an extern declaration that the
+                # former supplies.
                 modules=[CREDIS_MEMBER_MODULE, REDIS_MODULE])
 
         if redis_shard_ports[i] is not None:
@@ -517,7 +518,7 @@ def start_redis(node_ip_address,
         # Store redis shard information in the primary redis shard.
         primary_redis_client.rpush("RedisShards", shard_address)
 
-    if not no_credis:
+    if use_credis:
         # Configure the chain state.
         primary_redis_client.execute_command("MASTER.ADD", node_ip_address,
                                              redis_shard_port)
@@ -577,11 +578,11 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     else:
         port = new_port()
 
-    # Flatten to ["--loadmodule", "path/m1", ...].
-    loadmodule = list(
-        itertools.chain.from_iterable([["--loadmodule", m] for m in modules]))
+    load_module_args = []
+    for module in modules:
+        load_module_args += ["--loadmodule", m]
     command = [executable, "--port",
-               str(port), "--loglevel", "warning"] + loadmodule
+               str(port), "--loglevel", "warning"] + load_module_args
 
     while counter < num_retries:
         if counter > 0:
@@ -1298,7 +1299,7 @@ def start_ray_processes(address_info=None,
     redis_address = address_info.get("redis_address")
     redis_shards = address_info.get("redis_shards", [])
     if redis_address is None:
-        no_credis = ("RAY_USE_NEW_GCS" not in os.environ)
+        use_credis = ("RAY_USE_NEW_GCS" in os.environ)
         redis_address, redis_shards = start_redis(
             node_ip_address,
             port=redis_port,
@@ -1308,7 +1309,7 @@ def start_ray_processes(address_info=None,
             redirect_output=True,
             redirect_worker_output=redirect_worker_output,
             cleanup=cleanup,
-            no_credis=no_credis)
+            use_credis=use_credis)
         address_info["redis_address"] = redis_address
         time.sleep(0.1)
 
