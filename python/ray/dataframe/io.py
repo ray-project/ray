@@ -312,7 +312,7 @@ def read_csv(filepath,
     offsets = _compute_offset(filepath, get_npartitions())
 
     first_line = _get_firstline(filepath)
-    columns = _infer_column(first_line)
+    columns = _infer_column(first_line, kwargs)
 
     df_obj_ids = []
     for start, end in offsets:

@@ -223,7 +223,7 @@ def teardown_pickle_file():
 
 
 @pytest.fixture
-def setup_sql_file(row_size, conn, force=False):
+def setup_sql_file(conn, force=False):
     if os.path.exists(TEST_SQL_FILENAME) and not force:
         pass
     else:
@@ -373,10 +373,10 @@ def test_from_pickle():
 
 def test_from_sql():
     conn = sqlite3.connect(TEST_SQL_FILENAME)
-    setup_sql_file(SMALL_ROW_SIZE, conn)
+    setup_sql_file(conn)
 
-    pd_df = pd.read_sql("select * from test", conn).drop('index', axis=1)
-    ray_df = io.read_sql("select * from test", conn).drop('index', axis=1)
+    pd_df = pd.read_sql("select * from test", conn)
+    ray_df = io.read_sql("select * from test", conn)
 
     assert ray_df_equals_pandas(ray_df, pd_df)
 
