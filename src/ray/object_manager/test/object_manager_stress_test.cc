@@ -96,13 +96,23 @@ class TestObjectManagerBase : public ::testing::Test {
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
     store_id = store_id + id;
-    std::string plasma_command = store_executable + " -m 4000000000 -s " + store_id +
-                                 " 1> /dev/null 2> /dev/null &";
+    std::string store_pid = store_id + ".pid";
+    std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
+                                 " 1> /dev/null 2> /dev/null &" +
+                                 " echo $! > " + store_pid;
+
     RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
     RAY_CHECK(ec == 0);
     sleep(1);
     return store_id;
+  }
+
+  void StopStore(std::string store_id){
+    std::string store_pid = store_id + ".pid";
+    std::string kill_1 = "kill -9 `cat " + store_pid + "`";
+    int s = system(kill_1.c_str());
+    ASSERT_TRUE(!s);
   }
 
   void SetUp() {
@@ -112,32 +122,34 @@ class TestObjectManagerBase : public ::testing::Test {
     object_manager_service_2.reset(new boost::asio::io_service());
 
     // start store
-    std::string store_sock_1 = StartStore("1");
-    std::string store_sock_2 = StartStore("2");
+    store_id_1 = StartStore(UniqueID::from_random().hex());
+    store_id_2 = StartStore(UniqueID::from_random().hex());
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
-    om_config_1.store_socket_name = store_sock_1;
+    om_config_1.store_socket_name = store_id_1;
     om_config_1.num_threads = 4;
     om_config_1.max_sends = 20;
     om_config_1.max_receives = 20;
+    om_config_1.object_chunk_size = static_cast<uint64_t>(std::pow(10, 4));
     server1.reset(new MockServer(main_service, std::move(object_manager_service_1),
                                  om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
-    om_config_2.store_socket_name = store_sock_2;
+    om_config_2.store_socket_name = store_id_2;
     om_config_2.num_threads = 4;
     om_config_2.max_sends = 20;
     om_config_2.max_receives = 20;
+    om_config_2.object_chunk_size = static_cast<uint64_t>(std::pow(10, 4));
     server2.reset(new MockServer(main_service, std::move(object_manager_service_2),
                                  om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
-    ARROW_CHECK_OK(client2.Connect(store_sock_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client1.Connect(store_id_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client2.Connect(store_id_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
   }
 
   void TearDown() {
@@ -148,8 +160,8 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    int s = system("killall plasma_store &");
-    ASSERT_TRUE(!s);
+    StopStore(store_id_1);
+    StopStore(store_id_2);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -182,6 +194,10 @@ class TestObjectManagerBase : public ::testing::Test {
   plasma::PlasmaClient client2;
   std::vector<ObjectID> v1;
   std::vector<ObjectID> v2;
+
+  std::string store_id_1;
+  std::string store_id_2;
+
 };
 
 class StressTestObjectManager : public TestObjectManagerBase {
@@ -260,7 +276,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     async_loop_index += 1;
     if ((uint)async_loop_index < async_loop_patterns.size()) {
       TransferPattern pattern = async_loop_patterns[async_loop_index];
-      TransferTestExecute(100, 3 * std::pow(10, 5) - 1, pattern);
+      TransferTestExecute(100, 3 * std::pow(10, 4) - 1, pattern);
     } else {
       main_service.stop();
     }

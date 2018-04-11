@@ -87,13 +87,22 @@ class TestObjectManager : public ::testing::Test {
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
     store_id = store_id + id;
+    std::string store_pid = store_id + ".pid";
     std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
-                                 " 1> /dev/null 2> /dev/null &";
+        " 1> /dev/null 2> /dev/null &" +
+        " echo $! > " + store_pid;
+
     RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
     RAY_CHECK(ec == 0);
     sleep(1);
     return store_id;
+  }
+
+  void StopStore(std::string store_id){
+    std::string store_pid = store_id + ".pid";
+    std::string kill_1 = "kill -9 `cat " + store_pid + "`";
+    ASSERT_TRUE(!system(kill_1.c_str()));
   }
 
   void SetUp() {
@@ -103,26 +112,26 @@ class TestObjectManager : public ::testing::Test {
     object_manager_service_2.reset(new boost::asio::io_service());
 
     // start store
-    std::string store_sock_1 = StartStore("1");
-    std::string store_sock_2 = StartStore("2");
+    store_id_1 = StartStore(UniqueID::from_random().hex());
+    store_id_2 = StartStore(UniqueID::from_random().hex());
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
-    om_config_1.store_socket_name = store_sock_1;
+    om_config_1.store_socket_name = store_id_1;
     server1.reset(new MockServer(main_service, std::move(object_manager_service_1),
                                  om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
-    om_config_2.store_socket_name = store_sock_2;
+    om_config_2.store_socket_name = store_id_2;
     server2.reset(new MockServer(main_service, std::move(object_manager_service_2),
                                  om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
-    ARROW_CHECK_OK(client2.Connect(store_sock_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client1.Connect(store_id_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client2.Connect(store_id_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
   }
 
   void TearDown() {
@@ -133,8 +142,8 @@ class TestObjectManager : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    int s = system("killall plasma_store &");
-    ASSERT_TRUE(!s);
+    StopStore(store_id_1);
+    StopStore(store_id_2);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -167,6 +176,9 @@ class TestObjectManager : public ::testing::Test {
   plasma::PlasmaClient client2;
   std::vector<ObjectID> v1;
   std::vector<ObjectID> v2;
+
+  std::string store_id_1;
+  std::string store_id_2;
 };
 
 class TestObjectManagerCommands : public TestObjectManager {

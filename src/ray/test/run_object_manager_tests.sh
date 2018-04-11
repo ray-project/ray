@@ -29,12 +29,11 @@ echo "$REDIS_DIR/redis-server --loglevel warning --loadmodule $REDIS_MODULE --po
 echo "$REDIS_DIR/redis-cli -p 6379 shutdown"
 
 # Allow cleanup commands to fail.
-killall plasma_store || true
-$REDIS_DIR/redis-cli -p 6379 shutdown || true
+# killall plasma_store || true
+# $REDIS_DIR/redis-cli -p 6379 shutdown || true
 sleep 1s
 $REDIS_DIR/redis-server --loglevel warning --loadmodule $REDIS_MODULE --port 6379 &
 sleep 1s
-
 # Run tests.
 $CORE_DIR/src/ray/object_manager/object_manager_stress_test $STORE_EXEC
 sleep 1s
