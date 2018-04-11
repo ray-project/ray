@@ -98,8 +98,8 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id = store_id + id;
     std::string store_pid = store_id + ".pid";
     std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
-                                 " 1> /dev/null 2> /dev/null &" +
-                                 " echo $! > " + store_pid;
+                                 " 1> /dev/null 2> /dev/null &" + " echo $! > " +
+                                 store_pid;
 
     RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
@@ -108,7 +108,7 @@ class TestObjectManagerBase : public ::testing::Test {
     return store_id;
   }
 
-  void StopStore(std::string store_id){
+  void StopStore(std::string store_id) {
     std::string store_pid = store_id + ".pid";
     std::string kill_1 = "kill -9 `cat " + store_pid + "`";
     int s = system(kill_1.c_str());
@@ -197,7 +197,6 @@ class TestObjectManagerBase : public ::testing::Test {
 
   std::string store_id_1;
   std::string store_id_2;
-
 };
 
 class StressTestObjectManager : public TestObjectManagerBase {
