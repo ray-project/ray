@@ -6,12 +6,10 @@ import pickle
 import os
 
 import numpy as np
-import tensorflow as tf
 
 import ray
 from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator
 from ray.rllib import optimizers
-from ray.rllib.utils.actors import split_colocated
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
@@ -36,16 +34,22 @@ DEFAULT_CONFIG = dict(
     exploration_noise=0.2,
 
     action_noise=True,
+    # Which observation filter to apply to the observation
+    observation_filter="NoFilter",
+    # Which reward filter to apply to the reward
+    reward_filter="NoFilter",
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     buffer_size=50000,
 
     # === Optimization ===
-    #
+    # soft update
     tau=0.001,
-    # Learning rate for adam optimizer
-    lr=5e-4,
+    # Actor learning rate
+    actor_lr=0.0001,
+    # Critic learning rate
+    critic_lr=0.001,
     # How many steps of the model to sample before learning starts.
     learning_starts=1000,
     # Update the replay buffer with this many samples at once. Note that
@@ -79,13 +83,7 @@ DEFAULT_CONFIG = dict(
     # Optimizer class to use.
     optimizer_class="LocalSyncOptimizer",
     # Config to pass to the optimizer.
-    optimizer_config=dict(),
-    # Whether to use a distribution of epsilons across workers for exploration.
-    per_worker_exploration=False,
-    # Whether to compute priorities on workers.
-    worker_side_prioritization=False,
-    # Whether to force evaluator actors to be placed on remote machines.
-    force_evaluators_remote=False)
+    optimizer_config=dict())
 
 
 class DDPGAgent(Agent):
@@ -106,15 +104,10 @@ class DDPGAgent(Agent):
                 i)
             for i in range(self.config["num_workers"])]
 
-        if self.config["force_evaluators_remote"]:
-            _, self.remote_evaluators = split_colocated(
-                self.remote_evaluators)
-
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.config["optimizer_config"], self.local_evaluator,
             self.remote_evaluators)
 
-        self.saver = tf.train.Saver(max_to_keep=None)
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
@@ -164,12 +157,12 @@ class DDPGAgent(Agent):
 
         return result
 
-    def _populate_replay_buffer(self):
-        if self.remote_evaluators:
-            for e in self.remote_evaluators:
-                e.sample.remote(no_replay=True)
-        else:
-            self.local_evaluator.sample(no_replay=True)
+    # def _populate_replay_buffer(self):
+    #     if self.remote_evaluators:
+    #         for e in self.remote_evaluators:
+    #             e.sample.remote(no_replay=True)
+    #     else:
+    #         self.local_evaluator.sample(no_replay=True)
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
@@ -177,29 +170,22 @@ class DDPGAgent(Agent):
             ev.__ray_terminate__.remote(ev._ray_actor_id.id())
 
     def _save(self, checkpoint_dir):
-        checkpoint_path = self.saver.save(
-            self.local_evaluator.sess,
-            os.path.join(checkpoint_dir, "checkpoint"),
-            global_step=self.iteration)
-        extra_data = [
-            self.local_evaluator.save(),
-            ray.get([e.save.remote() for e in self.remote_evaluators]),
-            self.global_timestep,
-            self.num_target_updates,
-            self.last_target_update_ts]
+        checkpoint_path = os.path.join(
+            checkpoint_dir, "checkpoint-{}".format(self.iteration))
+        agent_state = ray.get(
+            [a.save.remote() for a in self.remote_evaluators])
+        extra_data = {
+            "remote_state": agent_state,
+            "local_state": self.local_evaluator.save()}
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.saver.restore(self.local_evaluator.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.local_evaluator.restore(extra_data[0])
-        ray.get([
-            e.restore.remote(d) for (d, e)
-            in zip(extra_data[1], self.remote_evaluators)])
-        self.optimizer.restore(extra_data[2])
-        self.num_target_updates = extra_data[3]
-        self.last_target_update_ts = extra_data[4]
+        ray.get(
+            [a.restore.remote(o) for a, o in zip(
+                self.remote_evaluators, extra_data["remote_state"])])
+        self.local_evaluator.restore(extra_data["local_state"])
 
     def compute_action(self, observation):
         return self.local_evaluator.ddpg_graph.act(

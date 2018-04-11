@@ -4,28 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 from ray.rllib.models.catalog import ModelCatalog
-import tensorflow.contrib.layers as layers
-from ray.rllib.ddpg.ou_noise import AdaptiveParamNoiseSpec
-
-
-def _huber_loss(x, delta=1.0):
-    """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
-    return tf.where(
-        tf.abs(x) < delta,
-        tf.square(x) * 0.5,
-        delta * (tf.abs(x) - 0.5 * delta))
-
-
-def _minimize_and_clip(optimizer, objective, var_list, clip_val=10):
-    """Minimized `objective` using `optimizer` w.r.t. variables in
-    `var_list` while ensure the norm of the gradients for each
-    variable is clipped to `clip_val`
-    """
-    gradients = optimizer.compute_gradients(objective, var_list=var_list)
-    for i, (grad, var) in enumerate(gradients):
-        if grad is not None:
-            gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
-    return gradients
+import tensorflow.contrib.slim as slim
 
 
 def _scope_vars(scope, trainable_only=False):
@@ -59,7 +38,8 @@ class DDPGGraph(object):
         ac_space = env.action_space
         # num_actions = env.action_space.shape[0]
         # num_states = env.observation_space.shape[0]
-        optimizer = tf.train.AdamOptimizer(learning_rate=config["lr"])
+        actor_optimizer = tf.train.AdamOptimizer(learning_rate=config["actor_lr"])
+        critic_optimizer = tf.train.AdamOptimizer(learning_rate=config["critic_lr"])
         self.config = config
         # Action inputs
         self.eps = tf.placeholder(tf.float32, (), name="eps")
@@ -72,10 +52,12 @@ class DDPGGraph(object):
         self.done_mask = tf.placeholder(tf.float32, [None], name="done")
         self.importance_weights = tf.placeholder(
             tf.float32, [None], name="weight")
-        self.param_noise_stddev = tf.placeholder(tf.float32, shape=(), name='param_noise_stddev')
+        self.param_noise_stddev = tf.placeholder(
+            tf.float32, shape=(), name='param_noise_stddev')
 
         with tf.variable_scope("evaluate_func_a")as scope:
-            self.a_t = self._build_actor_network(registry, self.obs_t, ac_space, config)
+            self.a_t = self._build_actor_network(
+                registry, self.obs_t, ac_space, config)
             self.a_var_list = _scope_vars(scope.name)
 
         # critical network evaluation
@@ -86,20 +68,23 @@ class DDPGGraph(object):
 
         with tf.variable_scope("target_func_a") as scope:
             # target actor network evalution
-            self.a_tp1 = self._build_actor_network(registry, self.obs_tp1, ac_space, config)
+            self.a_tp1 = self._build_actor_network(
+                registry, self.obs_tp1, ac_space, config)
             self.at_var_list = _scope_vars(scope.name)
 
         with tf.variable_scope("target_func_c") as scope:
             # target critical network evalution
             self.q_tp1 = self._build_q_network(
-                registry, self.obs_tp1, state_space, ac_space, self.a_tp1, config)
+                registry, self.obs_tp1,
+                state_space, ac_space, self.a_tp1, config)
             self.ct_var_list = _scope_vars(scope.name)
 
         y_i = self.rew_t + config["gamma"] * self.q_tp1
 
         # compute the  error
 
-        self.td_error = tf.losses.mean_squared_error(labels=y_i, predictions=self.q_t)
+        self.td_error = tf.losses.mean_squared_error(
+            labels=y_i, predictions=self.q_t)
         self.action_lost = - tf.reduce_mean(self.q_t)
 
         self.loss_inputs = [
@@ -114,14 +99,19 @@ class DDPGGraph(object):
         # self.c_grads = tf.gradients(self.td_error, self.c_var_list)
         # self.c_grads_and_vars = list(zip(self.c_grads, self.c_var_list))
 
-        self.c_grads = optimizer.minimize(self.td_error, var_list=self.c_var_list)
+        self.c_grads = critic_optimizer.minimize(
+            self.td_error, var_list=self.c_var_list)
 
-        self.train_expr = optimizer.apply_gradients(self.a_grads_and_vars)
+        self.train_expr = actor_optimizer.apply_gradients(self.a_grads_and_vars)
 
         update_target_expr = []
-        for ta, ea, tc, ec in zip(self.at_var_list, self.a_var_list, self.ct_var_list, self.c_var_list):
-            update_target_expr.append(ta.assign(config["tau"] * ea + (1-config["tau"]) * ta))
-            update_target_expr.append(tc.assign(config["tau"] * ec + (1 - config["tau"]) * tc))
+        for ta, ea, tc, ec in zip(
+                self.at_var_list, self.a_var_list,
+                self.ct_var_list, self.c_var_list):
+            update_target_expr.append(
+                ta.assign(config["tau"] * ea + (1-config["tau"]) * ta))
+            update_target_expr.append(
+                tc.assign(config["tau"] * ec + (1 - config["tau"]) * tc))
         self.update_target_expr = tf.group(*update_target_expr)
 
     def update_target(self, sess):
@@ -130,7 +120,9 @@ class DDPGGraph(object):
 
     def copy_target(self, sess):
         copy_target_expr = []
-        for ta, ea, tc, ec in zip(self.at_var_list, self.a_var_list, self.ct_var_list, self.c_var_list):
+        for ta, ea, tc, ec in zip(self.at_var_list,
+                                  self.a_var_list,
+                                  self.ct_var_list, self.c_var_list):
             copy_target_expr.append(ta.assign(ea))
             copy_target_expr.append(tc.assign(ec))
         copy_target = tf.group(*copy_target_expr)
@@ -166,12 +158,13 @@ class DDPGGraph(object):
 
         sess.run(self.train_expr, feed_dict=feed_dict)
 
-    def _build_q_network(self, registry, inputs, state_space, ac_space, act_t, config):
+    def _build_q_network(
+            self, registry, inputs, state_space, ac_space, act_t, config):
         x = inputs
-        x = tf.layers.dense(x, 64)
+        x = slim.fully_connected(x, 64)
         x = tf.nn.relu(x)
         x = tf.concat([x, act_t], axis=-1)
-        x = tf.layers.dense(x, 64)
+        x = slim.fully_connected(x, 64)
         x = tf.nn.relu(x)
         frontend = ModelCatalog.get_model(registry, x, 1, config["model"])
         x = frontend.outputs

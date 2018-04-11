@@ -4,20 +4,18 @@ from __future__ import print_function
 
 import numpy as np
 import ray
+import pickle
 import tensorflow as tf
 from gym.spaces import Discrete
+from ray.rllib.utils.filter import get_filter
 from ray.rllib.ddpg import models
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.ddpg.ou_noise import OUNoise
+from ray.rllib.utils.noise import OUNoise
 
 
 class DDPGEvaluator(PolicyEvaluator):
-
-    """The base DDPG Evaluator that does not include the replay buffer.
-
-    TODO(rliaw): Support observation/reward filters?"""
 
     def __init__(self, registry, env_creator, config, worker_index):
         env = ModelCatalog.get_preprocessor_as_wrapper(
@@ -41,16 +39,24 @@ class DDPGEvaluator(PolicyEvaluator):
         self.local_timestep = 0
         nb_actions = env.action_space.shape[-1]
         stddev = config["exploration_noise"]
-        self.exploration_noise = OUNoise(mu=np.zeros(nb_actions), sigma=float(stddev) * np.ones(nb_actions))
+        self.exploration_noise = OUNoise(
+            mu=np.zeros(nb_actions), sigma=float(stddev) * np.ones(nb_actions))
         self.action_range = (-1., 1.)
 
         # Note that this encompasses both the Q and target network
-        self.variables = ray.experimental.TensorFlowVariables(
-            tf.group(self.ddpg_graph.td_error, self.ddpg_graph.action_lost), self.sess)
+        self.variables = ray.experimental.TensorFlowVariables(tf.group(
+            self.ddpg_graph.td_error, self.ddpg_graph.action_lost), self.sess)
         self.max_action = env.action_space.high
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]
         self.saved_mean_reward = None
+
+        # Technically not needed when not remote
+        self.obs_filter = get_filter(
+            config["observation_filter"], env.observation_space.shape)
+        self.rew_filter = get_filter(config["reward_filter"], ())
+        self.filters = {"obs_filter": self.obs_filter,
+                        "rew_filter": self.rew_filter}
 
         self.obs = self.env.reset()
 
@@ -134,18 +140,39 @@ class DDPGEvaluator(PolicyEvaluator):
         }
 
     def save(self):
-        return [
-            self.episode_rewards,
-            self.episode_lengths,
-            self.saved_mean_reward,
-            self.obs,
-            self.global_timestep,
-            self.local_timestep]
+        filters = self.get_filters(flush_after=True)
+        weights = self.get_weights()
+        return pickle.dumps({
+            "filters": filters,
+            "weights": weights})
 
-    def restore(self, data):
-        self.episode_rewards = data[1]
-        self.episode_lengths = data[2]
-        self.saved_mean_reward = data[3]
-        self.obs = data[4]
-        self.global_timestep = data[5]
-        self.local_timestep = data[6]
+    def restore(self, objs):
+        objs = pickle.loads(objs)
+        self.sync_filters(objs["filters"])
+        self.set_weights(objs["weights"])
+
+    def sync_filters(self, new_filters):
+            """Changes self's filter to given and rebases any accumulated delta.
+
+            Args:
+             new_filters (dict): Filters with new state to update local copy.
+            """
+            assert all(k in new_filters for k in self.filters)
+            for k in self.filters:
+                self.filters[k].sync(new_filters[k])
+
+    def get_filters(self, flush_after=False):
+            """Returns a snapshot of filters.
+
+            Args:
+                flush_after (bool): Clears the filter buffer state.
+
+            Returns:
+                return_filters (dict): Dict for serializable filters
+            """
+            return_filters = {}
+            for k, f in self.filters.items():
+                return_filters[k] = f.as_serializable()
+                if flush_after:
+                    f.clear_buffer()
+            return return_filters
