@@ -669,8 +669,42 @@ class DataFrame(object):
             True: cell contains NA.
             False: otherwise.
         """
+        old_l = self._block_partitions.flatten().tolist()
+        ray.wait(old_l, len(old_l))
+        import time
+        s = original = time.time()
+
         new_block_partitions = np.array([_map_partitions(
             lambda df: df.isna(), block) for block in self._block_partitions])
+
+        l = new_block_partitions.flatten().tolist()
+        for i in range(0, len(l), 8):
+            ray.wait(l, i+8)
+            e = time.time()
+            print("_map_partitions, {}-th partition: {}".format(i+8, e - s))
+            s = e
+        print("_map_partitions, end: {}".format(e - original))
+
+        def timer_test(df):
+            import time as tim
+            s = tim.perf_counter()
+            df.isna()
+            e = tim.perf_counter()
+            return e - s
+
+        s = original = time.time()
+
+        timer_partitions = np.array([_map_partitions(
+            timer_test, block) for block in self._block_partitions])
+
+        l = timer_partitions.flatten().tolist()
+        for i in range(0, len(l), 8):
+            ray.wait(l, i+8)
+            e = time.time()
+            print("_map_partitions-op, {}-th partition: {}".format(i+8, e - s))
+            s = e
+        print("_map_partitions-op, end: {}".format(e - original))
+        print("remote_op sum: {}".format(sum(ray.get(l))))
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
