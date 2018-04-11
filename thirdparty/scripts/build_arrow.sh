@@ -44,10 +44,10 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
 
     pushd $TP_DIR/build/arrow
     git fetch origin master
-    # The PR for this commit is https://github.com/apache/arrow/pull/1581. We
-    # include the link here to make it easier to find the right commit because
-    # Arrow often rewrites git history and invalidates certain commits.
-    git checkout 46aa99e9843ac0148357bb36a9235cfd48903e73
+    # Arrow often rewrites git history and invalidates certain commits, so if
+    # we are checking out a non-release commit below, a link to the relevant PR
+    # should be included here.
+    git checkout apache-arrow-0.9.0
 
     cd cpp
     if [ ! -d "build" ]; then
@@ -93,11 +93,13 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
     # find plasma.
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     PYARROW_WITH_PLASMA=1 \
+    PYARROW_WITH_STATIC_BOOST=1 \
     PYARROW_BUNDLE_ARROW_CPP=1 \
     $PYTHON_EXECUTABLE setup.py build
 
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     PYARROW_WITH_PLASMA=1 \
+    PYARROW_WITH_STATIC_BOOST=1 \
     PYARROW_BUNDLE_ARROW_CPP=1 \
     PARQUET_HOME=$TP_DIR/pkg/arrow/cpp/build/cpp-install \
     PYARROW_WITH_PARQUET=1 \
