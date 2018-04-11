@@ -201,7 +201,8 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
 ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   if (local_objects_.count(object_id) == 0) {
     // TODO(hme): Do not retry indefinitely...
-    main_service_->post([this, object_id, client_id]() { RAY_CHECK_OK(Push(object_id, client_id)); });
+    main_service_->post(
+        [this, object_id, client_id]() { RAY_CHECK_OK(Push(object_id, client_id)); });
     return ray::Status::OK();
   }
 
