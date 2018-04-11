@@ -12,8 +12,8 @@ def easy_objective(config, reporter):
     time.sleep(0.2)
     reporter(
         timesteps_total=1,
-        episode_reward_mean=-((config["height"]-14) ** 2
-                              + abs(config["width"]-3)))
+        episode_reward_mean=-(
+            (config["height"] - 14)**2 + abs(config["width"] - 3)))
     time.sleep(0.2)
 
 
@@ -34,12 +34,18 @@ if __name__ == '__main__':
         'height': hp.uniform('height', -100, 100),
     }
 
-    config = {"my_exp": {
+    config = {
+        "my_exp": {
             "run": "exp",
             "repeat": 5 if args.smoke_test else 1000,
-            "stop": {"training_iteration": 1},
+            "stop": {
+                "training_iteration": 1
+            },
             "config": {
-                "space": space}}}
+                "space": space
+            }
+        }
+    }
     hpo_sched = HyperOptScheduler()
 
     run_experiments(config, verbose=False, scheduler=hpo_sched)

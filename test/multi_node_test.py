@@ -25,19 +25,17 @@ def run_string_as_driver(driver_script):
     with tempfile.NamedTemporaryFile() as f:
         f.write(driver_script.encode("ascii"))
         f.flush()
-        out = subprocess.check_output([sys.executable,
-                                       f.name]).decode("ascii")
+        out = subprocess.check_output([sys.executable, f.name]).decode("ascii")
     return out
 
 
 class MultiNodeTest(unittest.TestCase):
-
     def setUp(self):
         out = run_and_get_output(["ray", "start", "--head"])
         # Get the redis address from the output.
         redis_substring_prefix = "redis_address=\""
-        redis_address_location = (out.find(redis_substring_prefix) +
-                                  len(redis_substring_prefix))
+        redis_address_location = (
+            out.find(redis_substring_prefix) + len(redis_substring_prefix))
         redis_address = out[redis_address_location:]
         self.redis_address = redis_address.split("\"")[0]
 
@@ -196,7 +194,6 @@ print("success")
 
 
 class StartRayScriptTest(unittest.TestCase):
-
     def testCallingStartRayHead(self):
         # Test that we can call start-ray.sh with various command line
         # parameters. TODO(rkn): This test only tests the --head code path. We
@@ -207,69 +204,65 @@ class StartRayScriptTest(unittest.TestCase):
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with a number of workers specified.
-        run_and_get_output(["ray", "start", "--head", "--num-workers",
-                            "20"])
+        run_and_get_output(["ray", "start", "--head", "--num-workers", "20"])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with a redis port specified.
-        run_and_get_output(["ray", "start", "--head",
-                            "--redis-port", "6379"])
+        run_and_get_output(["ray", "start", "--head", "--redis-port", "6379"])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with redis shard ports specified.
-        run_and_get_output(["ray", "start", "--head",
-                            "--redis-shard-ports", "6380,6381,6382"])
+        run_and_get_output([
+            "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382"
+        ])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with a node IP address specified.
-        run_and_get_output(["ray", "start", "--head",
-                            "--node-ip-address", "127.0.0.1"])
+        run_and_get_output(
+            ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with an object manager port specified.
-        run_and_get_output(["ray", "start", "--head",
-                            "--object-manager-port", "12345"])
+        run_and_get_output(
+            ["ray", "start", "--head", "--object-manager-port", "12345"])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with the number of CPUs specified.
-        run_and_get_output(["ray", "start", "--head",
-                            "--num-cpus", "100"])
+        run_and_get_output(["ray", "start", "--head", "--num-cpus", "100"])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with the number of GPUs specified.
-        run_and_get_output(["ray", "start", "--head",
-                            "--num-gpus", "100"])
+        run_and_get_output(["ray", "start", "--head", "--num-gpus", "100"])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with the max redis clients specified.
-        run_and_get_output(["ray", "start", "--head",
-                            "--redis-max-clients", "100"])
+        run_and_get_output(
+            ["ray", "start", "--head", "--redis-max-clients", "100"])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with all arguments specified.
-        run_and_get_output(["ray", "start", "--head",
-                            "--num-workers", "20",
-                            "--redis-port", "6379",
-                            "--redis-shard-ports", "6380,6381,6382",
-                            "--object-manager-port", "12345",
-                            "--num-cpus", "100",
-                            "--num-gpus", "0",
-                            "--redis-max-clients", "100",
-                            "--resources", "{\"Custom\": 1}"])
+        run_and_get_output([
+            "ray", "start", "--head", "--num-workers", "20", "--redis-port",
+            "6379", "--redis-shard-ports", "6380,6381,6382",
+            "--object-manager-port", "12345", "--num-cpus", "100",
+            "--num-gpus", "0", "--redis-max-clients", "100", "--resources",
+            "{\"Custom\": 1}"
+        ])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with invalid arguments.
         with self.assertRaises(Exception):
-            run_and_get_output(["ray", "start", "--head",
-                                "--redis-address", "127.0.0.1:6379"])
+            run_and_get_output([
+                "ray", "start", "--head", "--redis-address", "127.0.0.1:6379"
+            ])
         subprocess.Popen(["ray", "stop"]).wait()
 
     def testUsingHostnames(self):
         # Start the Ray processes on this machine.
-        run_and_get_output(
-            ["ray", "start", "--head",
-                             "--node-ip-address=localhost",
-                             "--redis-port=6379"])
+        run_and_get_output([
+            "ray", "start", "--head", "--node-ip-address=localhost",
+            "--redis-port=6379"
+        ])
 
         ray.init(node_ip_address="localhost", redis_address="localhost:6379")
 
