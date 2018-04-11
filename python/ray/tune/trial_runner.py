@@ -113,7 +113,7 @@ class TrialRunner(object):
                             "up. {}").format(
                                 trial.resources.summary_string(),
                                 self._avail_resources.summary_string(),
-                                trial.trainable_cls.resource_help(
+                                trial._get_trainable_cls().resource_help(
                                     trial.config)))
                 elif trial.status == Trial.PAUSED:
                     raise TuneError(
