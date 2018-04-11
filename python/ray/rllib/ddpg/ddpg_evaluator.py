@@ -32,6 +32,8 @@ class DDPGEvaluator(PolicyEvaluator):
         rollout = self.sampler.get_data()
         rollout.data["weights"] = np.ones_like(rollout.data["rewards"])
 
+        # since each sample is one step, no discounting needs to be applied;
+        # this does not involve config["gamma"]
         samples = process_rollout(
                     rollout, NoFilter(),
                     gamma=1.0, use_gae=False)
