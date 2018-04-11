@@ -145,7 +145,7 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
                               prefix_, pubsub_channel_, callback_index,
                               std::move(callback));
   } else {
-    RAY_CHECK(command_type == CommandType::kChain);
+    RAY_CHECK(command_type_ == CommandType::kChain);
     return context_->RunAsync("RAY.CHAIN.TABLE_ADD", id, fbb.GetBufferPointer(),
                               fbb.GetSize(), prefix_, pubsub_channel_,
                               std::move(callback));

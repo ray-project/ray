@@ -19,15 +19,18 @@ class RedisContext;
 
 class RAY_EXPORT AsyncGcsClient {
  public:
-  /// Start a GCS client with the given client ID. To read from the GCS tables,
-  /// Connect and then Attach must be called. To read and write from the GCS
-  /// tables requires a further call to Connect to the client table.
+  /// Start a GCS client with the given client ID and command type (regular or
+  /// chain-replicated). To read from the GCS tables, Connect() and then
+  /// Attach() must be called. To read and write from the GCS tables requires a
+  /// further call to Connect() to the client table.
   ///
   /// \param client_id The ID to assign to the client.
+  /// \param command_type GCS command type.  If CommandType::kChain, chain-replicated
+  /// versions of the tables might be used, if available.
+  AsyncGcsClient(const ClientID &client_id, CommandType command_type);
   AsyncGcsClient(const ClientID &client_id);
-  /// Start a GCS client with a random client ID.
+  AsyncGcsClient(CommandType command_type);
   AsyncGcsClient();
-  ~AsyncGcsClient();
 
   /// Connect to the GCS.
   ///
@@ -79,6 +82,8 @@ class RAY_EXPORT AsyncGcsClient {
   std::shared_ptr<RedisContext> context_;
   std::unique_ptr<RedisAsioClient> asio_async_client_;
   std::unique_ptr<RedisAsioClient> asio_subscribe_client_;
+
+  CommandType command_type_;
 };
 
 class SyncGcsClient {

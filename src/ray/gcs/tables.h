@@ -27,7 +27,8 @@ class RedisContext;
 
 class AsyncGcsClient;
 
-/// If kChain, chain-replicated versions of commands will be used, when available.
+/// Specifies whether commands issued to a table should be regular or chain-replicated
+/// (when available).
 enum class CommandType { kRegular, kChain };
 
 /// \class PubsubInterface
@@ -189,6 +190,9 @@ class Log : virtual public PubsubInterface<ID> {
   /// when we receive notifications. This is >= 0 iff we have subscribed to the
   /// table, otherwise -1.
   int64_t subscribe_callback_index_;
+
+  /// Commands to a GCS table can either be regular (default) or chain-replicated.
+  CommandType command_type_ = CommandType::kRegular;
 };
 
 template <typename ID, typename Data>
@@ -242,10 +246,6 @@ class Table : private Log<ID, Data>,
   Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
              const WriteCallback &done);
 
-  /// A general version of Add() that supports different CommandType's.
-  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
-             const WriteCallback &done, CommandType command_type);
-
   /// Lookup an entry asynchronously.
   ///
   /// \param job_id The ID of the job (= driver).
@@ -266,6 +266,7 @@ class Table : private Log<ID, Data>,
   using Log<ID, Data>::client_;
   using Log<ID, Data>::pubsub_channel_;
   using Log<ID, Data>::prefix_;
+  using Log<ID, Data>::command_type_;
 };
 
 class ObjectTable : public Log<ObjectID, ObjectTableData> {
@@ -327,6 +328,12 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
     pubsub_channel_ = TablePubsub_RAYLET_TASK;
     prefix_ = TablePrefix_RAYLET_TASK;
   }
+
+  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
+            gcs::CommandType command_type)
+      : TaskTable(context, client) {
+    command_type_ = command_type;
+  };
 };
 
 }  // namespace raylet
@@ -338,7 +345,12 @@ class TaskTable : public Table<TaskID, TaskTableData> {
     pubsub_channel_ = TablePubsub_TASK;
     prefix_ = TablePrefix_TASK;
   };
-  ~TaskTable(){};
+
+  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
+            gcs::CommandType command_type)
+      : TaskTable(context, client) {
+    command_type_ = command_type;
+  }
 
   using TestAndUpdateCallback =
       std::function<void(AsyncGcsClient *client, const TaskID &id,
