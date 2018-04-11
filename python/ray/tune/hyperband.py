@@ -220,8 +220,8 @@ class HyperBandScheduler(FIFOScheduler):
             for bracket in sorted(
                     hyperband, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
-                    if (trial.status == Trial.PENDING
-                            and trial_runner.has_resources(trial.resources)):
+                    if (trial.status == Trial.PENDING and
+                            trial_runner.has_resources(trial.resources)):
                         return trial
         return None
 
