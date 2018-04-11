@@ -56,7 +56,6 @@ def new_port():
 
 
 class TestGlobalScheduler(unittest.TestCase):
-
     def setUp(self):
         # Start one Redis server and N pairs of (plasma, local_scheduler)
         self.node_ip_address = "127.0.0.1"
@@ -164,17 +163,19 @@ class TestGlobalScheduler(unittest.TestCase):
         return db_client_id
 
     def test_task_default_resources(self):
-        task1 = local_scheduler.Task(random_driver_id(), random_function_id(),
-                                     [random_object_id()], 0, random_task_id(),
-                                     0)
+        task1 = local_scheduler.Task(
+            random_driver_id(), random_function_id(), [random_object_id()], 0,
+            random_task_id(), 0)
         self.assertEqual(task1.required_resources(), {"CPU": 1})
-        task2 = local_scheduler.Task(random_driver_id(), random_function_id(),
-                                     [random_object_id()], 0, random_task_id(),
-                                     0, local_scheduler.ObjectID(NIL_ACTOR_ID),
-                                     local_scheduler.ObjectID(NIL_OBJECT_ID),
-                                     local_scheduler.ObjectID(NIL_ACTOR_ID),
-                                     local_scheduler.ObjectID(NIL_ACTOR_ID),
-                                     0, 0, [], {"CPU": 1, "GPU": 2})
+        task2 = local_scheduler.Task(
+            random_driver_id(), random_function_id(), [random_object_id()], 0,
+            random_task_id(), 0, local_scheduler.ObjectID(NIL_ACTOR_ID),
+            local_scheduler.ObjectID(NIL_OBJECT_ID),
+            local_scheduler.ObjectID(NIL_ACTOR_ID),
+            local_scheduler.ObjectID(NIL_ACTOR_ID), 0, 0, [], {
+                "CPU": 1,
+                "GPU": 2
+            })
         self.assertEqual(task2.required_resources(), {"CPU": 1, "GPU": 2})
 
     def test_redis_only_single_task(self):
@@ -189,7 +190,7 @@ class TestGlobalScheduler(unittest.TestCase):
             len(self.state.client_table()[self.node_ip_address]),
             2 * NUM_CLUSTER_NODES + 1)
         db_client_id = self.get_plasma_manager_id()
-        assert(db_client_id is not None)
+        assert (db_client_id is not None)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
@@ -227,9 +228,10 @@ class TestGlobalScheduler(unittest.TestCase):
             if len(task_entries) == 1:
                 task_id, task = task_entries.popitem()
                 task_status = task["State"]
-                self.assertTrue(task_status in [state.TASK_STATUS_WAITING,
-                                                state.TASK_STATUS_SCHEDULED,
-                                                state.TASK_STATUS_QUEUED])
+                self.assertTrue(task_status in [
+                    state.TASK_STATUS_WAITING, state.TASK_STATUS_SCHEDULED,
+                    state.TASK_STATUS_QUEUED
+                ])
                 if task_status == state.TASK_STATUS_QUEUED:
                     break
                 else:
@@ -258,17 +260,14 @@ class TestGlobalScheduler(unittest.TestCase):
             data_size = np.random.randint(1 << 12)
             metadata_size = np.random.randint(1 << 9)
             plasma_client = self.plasma_clients[0]
-            object_dep, memory_buffer, metadata = create_object(plasma_client,
-                                                                data_size,
-                                                                metadata_size,
-                                                                seal=True)
+            object_dep, memory_buffer, metadata = create_object(
+                plasma_client, data_size, metadata_size, seal=True)
             if timesync:
                 # Give 10ms for object info handler to fire (long enough to
                 # yield CPU).
                 time.sleep(0.010)
             task = local_scheduler.Task(
-                random_driver_id(),
-                random_function_id(),
+                random_driver_id(), random_function_id(),
                 [local_scheduler.ObjectID(object_dep.binary())],
                 num_return_vals[0], random_task_id(), 0)
             self.local_scheduler_clients[0].submit(task)
@@ -281,12 +280,18 @@ class TestGlobalScheduler(unittest.TestCase):
             self.assertLessEqual(len(task_entries), num_tasks)
             # First, check if all tasks made it to Redis.
             if len(task_entries) == num_tasks:
-                task_statuses = [task_entry["State"] for task_entry in
-                                 task_entries.values()]
-                self.assertTrue(all([status in [state.TASK_STATUS_WAITING,
-                                                state.TASK_STATUS_SCHEDULED,
-                                                state.TASK_STATUS_QUEUED]
-                                     for status in task_statuses]))
+                task_statuses = [
+                    task_entry["State"]
+                    for task_entry in task_entries.values()
+                ]
+                self.assertTrue(
+                    all([
+                        status in [
+                            state.TASK_STATUS_WAITING,
+                            state.TASK_STATUS_SCHEDULED,
+                            state.TASK_STATUS_QUEUED
+                        ] for status in task_statuses
+                    ]))
                 num_tasks_done = task_statuses.count(state.TASK_STATUS_QUEUED)
                 num_tasks_scheduled = task_statuses.count(
                     state.TASK_STATUS_SCHEDULED)
@@ -294,12 +299,13 @@ class TestGlobalScheduler(unittest.TestCase):
                     state.TASK_STATUS_WAITING)
                 print("tasks in Redis = {}, tasks waiting = {}, "
                       "tasks scheduled = {}, "
-                      "tasks queued = {}, retries left = {}"
-                      .format(len(task_entries), num_tasks_waiting,
-                              num_tasks_scheduled, num_tasks_done,
-                              num_retries))
-                if all([status == state.TASK_STATUS_QUEUED for status in
-                        task_statuses]):
+                      "tasks queued = {}, retries left = {}".format(
+                          len(task_entries), num_tasks_waiting,
+                          num_tasks_scheduled, num_tasks_done, num_retries))
+                if all([
+                        status == state.TASK_STATUS_QUEUED
+                        for status in task_statuses
+                ]):
                     # We're done, so pass.
                     break
             num_retries -= 1

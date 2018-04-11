@@ -38,10 +38,12 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
         - pip install -q -r requirements-doc.txt
+        - pip install yapf
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting.
         - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/
+        - .travis/yapf.sh
 
     - os: linux
       dist: trusty

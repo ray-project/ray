@@ -6,10 +6,8 @@ import os
 import time
 
 import ray
-from ray.test.test_utils import (_wait_for_nodes_to_join,
-                                 _broadcast_event,
-                                 _wait_for_event,
-                                 wait_for_pid_to_exit)
+from ray.test.test_utils import (_wait_for_nodes_to_join, _broadcast_event,
+                                 _wait_for_event, wait_for_pid_to_exit)
 
 # This test should be run with 5 nodes, which have 0, 1, 2, 3, and 4 GPUs for a
 # total of 10 GPUs. It should be run with 7 drivers. Drivers 2 through 6 must
@@ -28,9 +26,10 @@ def remote_function_event_name(driver_index, task_index):
 
 @ray.remote
 def long_running_task(driver_index, task_index, redis_address):
-    _broadcast_event(remote_function_event_name(driver_index, task_index),
-                     redis_address,
-                     data=(ray.services.get_node_ip_address(), os.getpid()))
+    _broadcast_event(
+        remote_function_event_name(driver_index, task_index),
+        redis_address,
+        data=(ray.services.get_node_ip_address(), os.getpid()))
     # Loop forever.
     while True:
         time.sleep(100)
@@ -42,10 +41,10 @@ num_long_running_tasks_per_driver = 2
 @ray.remote
 class Actor0(object):
     def __init__(self, driver_index, actor_index, redis_address):
-        _broadcast_event(actor_event_name(driver_index, actor_index),
-                         redis_address,
-                         data=(ray.services.get_node_ip_address(),
-                               os.getpid()))
+        _broadcast_event(
+            actor_event_name(driver_index, actor_index),
+            redis_address,
+            data=(ray.services.get_node_ip_address(), os.getpid()))
         assert len(ray.get_gpu_ids()) == 0
 
     def check_ids(self):
@@ -60,10 +59,10 @@ class Actor0(object):
 @ray.remote(num_gpus=1)
 class Actor1(object):
     def __init__(self, driver_index, actor_index, redis_address):
-        _broadcast_event(actor_event_name(driver_index, actor_index),
-                         redis_address,
-                         data=(ray.services.get_node_ip_address(),
-                               os.getpid()))
+        _broadcast_event(
+            actor_event_name(driver_index, actor_index),
+            redis_address,
+            data=(ray.services.get_node_ip_address(), os.getpid()))
         assert len(ray.get_gpu_ids()) == 1
 
     def check_ids(self):
@@ -78,10 +77,10 @@ class Actor1(object):
 @ray.remote(num_gpus=2)
 class Actor2(object):
     def __init__(self, driver_index, actor_index, redis_address):
-        _broadcast_event(actor_event_name(driver_index, actor_index),
-                         redis_address,
-                         data=(ray.services.get_node_ip_address(),
-                               os.getpid()))
+        _broadcast_event(
+            actor_event_name(driver_index, actor_index),
+            redis_address,
+            data=(ray.services.get_node_ip_address(), os.getpid()))
         assert len(ray.get_gpu_ids()) == 2
 
     def check_ids(self):
@@ -110,11 +109,13 @@ def driver_0(redis_address, driver_index):
         long_running_task.remote(driver_index, i, redis_address)
 
     # Create some actors that require one GPU.
-    actors_one_gpu = [Actor1.remote(driver_index, i, redis_address)
-                      for i in range(5)]
+    actors_one_gpu = [
+        Actor1.remote(driver_index, i, redis_address) for i in range(5)
+    ]
     # Create some actors that don't require any GPUs.
-    actors_no_gpus = [Actor0.remote(driver_index, 5 + i, redis_address)
-                      for i in range(5)]
+    actors_no_gpus = [
+        Actor0.remote(driver_index, 5 + i, redis_address) for i in range(5)
+    ]
 
     for _ in range(1000):
         ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
@@ -145,14 +146,17 @@ def driver_1(redis_address, driver_index):
         long_running_task.remote(driver_index, i, redis_address)
 
     # Create an actor that requires two GPUs.
-    actors_two_gpus = [Actor2.remote(driver_index, i, redis_address)
-                       for i in range(1)]
+    actors_two_gpus = [
+        Actor2.remote(driver_index, i, redis_address) for i in range(1)
+    ]
     # Create some actors that require one GPU.
-    actors_one_gpu = [Actor1.remote(driver_index, 1 + i, redis_address)
-                      for i in range(3)]
+    actors_one_gpu = [
+        Actor1.remote(driver_index, 1 + i, redis_address) for i in range(3)
+    ]
     # Create some actors that don't require any GPUs.
-    actors_no_gpus = [Actor0.remote(driver_index, 1 + 3 + i, redis_address)
-                      for i in range(5)]
+    actors_no_gpus = [
+        Actor0.remote(driver_index, 1 + 3 + i, redis_address) for i in range(5)
+    ]
 
     for _ in range(1000):
         ray.get([actor.check_ids.remote() for actor in actors_two_gpus])
@@ -179,8 +183,9 @@ def cleanup_driver(redis_address, driver_index):
         # We go ahead and create some actors that don't require any GPUs. We
         # don't need to wait for the other drivers to finish. We call methods
         # on these actors later to make sure they haven't been killed.
-        actors_no_gpus = [Actor0.remote(driver_index, i, redis_address)
-                          for i in range(10)]
+        actors_no_gpus = [
+            Actor0.remote(driver_index, i, redis_address) for i in range(10)
+        ]
 
     _wait_for_event("DRIVER_0_DONE", redis_address)
     _wait_for_event("DRIVER_1_DONE", redis_address)
@@ -206,13 +211,13 @@ def cleanup_driver(redis_address, driver_index):
         # Create some actors that require two GPUs.
         actors_two_gpus = []
         for i in range(3):
-            actors_two_gpus.append(try_to_create_actor(Actor2, driver_index,
-                                                       10 + i))
+            actors_two_gpus.append(
+                try_to_create_actor(Actor2, driver_index, 10 + i))
         # Create some actors that require one GPU.
         actors_one_gpu = []
         for i in range(4):
-            actors_one_gpu.append(try_to_create_actor(Actor1, driver_index,
-                                                      10 + 3 + i))
+            actors_one_gpu.append(
+                try_to_create_actor(Actor1, driver_index, 10 + 3 + i))
 
     removed_workers = 0
 
@@ -233,14 +238,14 @@ def cleanup_driver(redis_address, driver_index):
     # Make sure that the PIDs for the actors from driver 0 and driver 1 have
     # been killed.
     for i in range(10):
-        node_ip_address, pid = _wait_for_event(actor_event_name(0, i),
-                                               redis_address)
+        node_ip_address, pid = _wait_for_event(
+            actor_event_name(0, i), redis_address)
         if node_ip_address == ray.services.get_node_ip_address():
             wait_for_pid_to_exit(pid)
             removed_workers += 1
     for i in range(9):
-        node_ip_address, pid = _wait_for_event(actor_event_name(1, i),
-                                               redis_address)
+        node_ip_address, pid = _wait_for_event(
+            actor_event_name(1, i), redis_address)
         if node_ip_address == ray.services.get_node_ip_address():
             wait_for_pid_to_exit(pid)
             removed_workers += 1

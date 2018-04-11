@@ -13,8 +13,9 @@ class DistArray(object):
     def __init__(self, shape, objectids=None):
         self.shape = shape
         self.ndim = len(shape)
-        self.num_blocks = [int(np.ceil(1.0 * a / BLOCK_SIZE))
-                           for a in self.shape]
+        self.num_blocks = [
+            int(np.ceil(1.0 * a / BLOCK_SIZE)) for a in self.shape
+        ]
         if objectids is not None:
             self.objectids = objectids
         else:
@@ -56,7 +57,7 @@ class DistArray(object):
 
     def assemble(self):
         """Assemble an array from a distributed array of object IDs."""
-        first_block = ray.get(self.objectids[(0,) * self.ndim])
+        first_block = ray.get(self.objectids[(0, ) * self.ndim])
         dtype = first_block.dtype
         result = np.zeros(self.shape, dtype=dtype)
         for index in np.ndindex(*self.num_blocks):
@@ -85,8 +86,8 @@ def numpy_to_dist(a):
     for index in np.ndindex(*result.num_blocks):
         lower = DistArray.compute_block_lower(index, a.shape)
         upper = DistArray.compute_block_upper(index, a.shape)
-        result.objectids[index] = ray.put(a[[slice(l, u) for (l, u)
-                                            in zip(lower, upper)]])
+        result.objectids[index] = ray.put(
+            a[[slice(l, u) for (l, u) in zip(lower, upper)]])
     return result
 
 
@@ -126,12 +127,11 @@ def eye(dim1, dim2=-1, dtype_name="float"):
     for (i, j) in np.ndindex(*result.num_blocks):
         block_shape = DistArray.compute_block_shape([i, j], shape)
         if i == j:
-            result.objectids[i, j] = ra.eye.remote(block_shape[0],
-                                                   block_shape[1],
-                                                   dtype_name=dtype_name)
+            result.objectids[i, j] = ra.eye.remote(
+                block_shape[0], block_shape[1], dtype_name=dtype_name)
         else:
-            result.objectids[i, j] = ra.zeros.remote(block_shape,
-                                                     dtype_name=dtype_name)
+            result.objectids[i, j] = ra.zeros.remote(
+                block_shape, dtype_name=dtype_name)
     return result
 
 
@@ -190,8 +190,8 @@ def dot(a, b):
                         "b.ndim = {}.".format(b.ndim))
     if a.shape[1] != b.shape[0]:
         raise Exception("dot expects a.shape[1] to equal b.shape[0], but "
-                        "a.shape = {} and b.shape = {}.".format(a.shape,
-                                                                b.shape))
+                        "a.shape = {} and b.shape = {}.".format(
+                            a.shape, b.shape))
     shape = [a.shape[0], b.shape[1]]
     result = DistArray(shape)
     for (i, j) in np.ndindex(*result.num_blocks):
@@ -227,8 +227,8 @@ def subblocks(a, *ranges):
                             "the {}th range is {}.".format(i, ranges[i]))
         if ranges[i][0] < 0:
             raise Exception("Values in the ranges passed to sub_blocks must "
-                            "be at least 0, but the {}th range is {}."
-                            .format(i, ranges[i]))
+                            "be at least 0, but the {}th range is {}.".format(
+                                i, ranges[i]))
         if ranges[i][-1] >= a.num_blocks[i]:
             raise Exception("Values in the ranges passed to sub_blocks must "
                             "be less than the relevant number of blocks, but "
@@ -240,8 +240,8 @@ def subblocks(a, *ranges):
              for i in range(a.ndim)]
     result = DistArray(shape)
     for index in np.ndindex(*result.num_blocks):
-        result.objectids[index] = a.objectids[tuple([ranges[i][index[i]]
-                                              for i in range(a.ndim)])]
+        result.objectids[index] = a.objectids[tuple(
+            [ranges[i][index[i]] for i in range(a.ndim)])]
     return result
 
 
@@ -249,8 +249,8 @@ def subblocks(a, *ranges):
 def transpose(a):
     if a.ndim != 2:
         raise Exception("transpose expects its argument to be 2-dimensional, "
-                        "but a.ndim = {}, a.shape = {}.".format(a.ndim,
-                                                                a.shape))
+                        "but a.ndim = {}, a.shape = {}.".format(
+                            a.ndim, a.shape))
     result = DistArray([a.shape[1], a.shape[0]])
     for i in range(result.num_blocks[0]):
         for j in range(result.num_blocks[1]):
@@ -263,8 +263,8 @@ def transpose(a):
 def add(x1, x2):
     if x1.shape != x2.shape:
         raise Exception("add expects arguments `x1` and `x2` to have the same "
-                        "shape, but x1.shape = {}, and x2.shape = {}."
-                        .format(x1.shape, x2.shape))
+                        "shape, but x1.shape = {}, and x2.shape = {}.".format(
+                            x1.shape, x2.shape))
     result = DistArray(x1.shape)
     for index in np.ndindex(*result.num_blocks):
         result.objectids[index] = ra.add.remote(x1.objectids[index],
