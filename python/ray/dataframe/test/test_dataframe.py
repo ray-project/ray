@@ -1648,11 +1648,12 @@ def test_infer_objects():
         ray_df.infer_objects()
 
 
-def test_info():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.info()
+@pytest.fixture
+def test_info(ray_df):
+    info_string = ray_df.info()
+    assert '<class \'ray.dataframe.dataframe.DataFrame\'>\n' in info_string
+    info_string = ray_df.info(memory_usage=True)
+    assert 'memory_usage: ' in info_string
 
 
 @pytest.fixture
@@ -1815,11 +1816,12 @@ def test_melt():
         ray_df.melt()
 
 
-def test_memory_usage():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.memory_usage()
+@pytest.fixture
+def test_memory_usage(ray_df):
+    assert type(ray_df.memory_usage()) is pd.core.series.Series
+    assert ray_df.memory_usage(index=True).at['Index'] is not None
+    assert ray_df.memory_usage(deep=True).sum() >= \
+        ray_df.memory_usage(deep=False).sum()
 
 
 def test_merge():
@@ -2761,6 +2763,23 @@ def test___getitem__(ray_df, pd_df):
 
     pd_col = pd_df['col1']
     assert pd_col.equals(ray_col)
+
+
+def test___getattr__():
+    df = create_test_dataframe()
+
+    col = df.__getattr__("col1")
+    assert isinstance(col, pd.Series)
+
+    col = getattr(df, "col1")
+    assert isinstance(col, pd.Series)
+
+    col = df.col1
+    assert isinstance(col, pd.Series)
+
+    # Check that lookup in column doesn't override other attributes
+    df2 = df.rename(index=str, columns={"col5": "columns"})
+    assert isinstance(df2.columns, pd.Index)
 
 
 def test___setitem__():
