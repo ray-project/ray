@@ -8,8 +8,6 @@ from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
-# TO DO: make the optimizer pluggable
-#from ray.rllib.ddpg.ddpg_replay_evaluator import DDPGReplayEvaluator
 
 class LocalSyncOptimizer(PolicyOptimizer):
     """A simple synchronous RL optimizer.
