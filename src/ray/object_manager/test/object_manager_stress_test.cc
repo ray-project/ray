@@ -130,9 +130,9 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
     om_config_1.num_threads = 4;
-    om_config_1.max_sends = 20;
-    om_config_1.max_receives = 20;
-    om_config_1.object_chunk_size = static_cast<uint64_t>(std::pow(10, 4));
+    om_config_1.max_sends = 2;
+    om_config_1.max_receives = 2;
+    om_config_1.object_chunk_size = static_cast<uint64_t>(std::pow(10, 9));
     server1.reset(new MockServer(main_service, std::move(object_manager_service_1),
                                  om_config_1, gcs_client_1));
 
@@ -141,9 +141,9 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
     om_config_2.num_threads = 4;
-    om_config_2.max_sends = 20;
-    om_config_2.max_receives = 20;
-    om_config_2.object_chunk_size = static_cast<uint64_t>(std::pow(10, 4));
+    om_config_2.max_sends = 2;
+    om_config_2.max_receives = 2;
+    om_config_2.object_chunk_size = static_cast<uint64_t>(std::pow(10, 9));
     server2.reset(new MockServer(main_service, std::move(object_manager_service_2),
                                  om_config_2, gcs_client_2));
 
