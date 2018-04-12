@@ -48,6 +48,7 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
     git checkout 46aa99e9843ac0148357bb36a9235cfd48903e73
+    git cherry-pick af2047e5e2cccd0dec6e567e387fc85e600fb284
 
     cd cpp
     if [ ! -d "build" ]; then
