@@ -740,13 +740,21 @@ class DataFrame(object):
             raise NotImplementedError("Not yet")
         elif callable(arg):
             if _axis == 0:
-                new_cols = _map_partitions(lambda df: df.agg(arg,
-                                                             *args,
-                                                             **kwargs),
+                def remote_agg_helper(df, arg, *args, **kwargs):
+                    new_df = df.agg(arg, *args, **kwargs)
+                    if isinstance(new_df, pd.Series):
+                        new_df = pd.DataFrame(new_df).T
+
+                    return new_df
+
+                new_cols = _map_partitions(lambda df: remote_agg_helper(df,
+                                                                        arg,
+                                                                        *args,
+                                                                        **kwargs),
                                            self._col_partitions)
                 print(ray.get(new_cols))
-                return DataFrame(col_partitions=new_cols,
-                                 columns=self.columns)
+                new_df = DataFrame(col_partitions=new_cols,
+                                   columns=self.columns)
             else:
                 new_rows = _map_partitions(lambda df: df._aggregate(arg,
                                                                     *args,
