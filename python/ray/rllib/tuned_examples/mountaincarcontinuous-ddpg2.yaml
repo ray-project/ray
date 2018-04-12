@@ -1,7 +1,7 @@
 # can expect improvement to 90 reward in ~20-30k timesteps
-mountaincarcontinuous-ddpg:
+mountaincarcontinuous-ddpg-2:
     env: MountainCarContinuous-v0
-    run: DDPG
+    run: DDPG2
     trial_resources:
         cpu: 6
     stop:

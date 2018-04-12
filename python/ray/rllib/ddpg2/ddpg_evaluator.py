@@ -8,39 +8,12 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.ddpg import models
-from ray.rllib.ddpg.common.wrappers import wrap_ddpg
-from ray.rllib.ddpg.common.schedules import ConstantSchedule, LinearSchedule
+from ray.rllib.models import ModelCatalog
+from ray.rllib.ddpg2 import models
+from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.compression import pack
-
-
-def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
-    """Rewrites the given trajectory fragments to encode n-step rewards.
-
-    reward[i] = (
-        reward[i] * gamma**0 +
-        reward[i+1] * gamma**1 +
-        ... +
-        reward[i+n_step-1] * gamma**(n_step-1))
-
-    The ith new_obs is also adjusted to point to the (i+n_step-1)'th new obs.
-
-    If the episode finishes, the reward will be truncated. After this rewrite,
-    all the arrays will be shortened by (n_step - 1).
-    """
-    for i in range(len(rewards) - n_step + 1):
-        if dones[i]:
-            continue  # episode end
-        for j in range(1, n_step):
-            new_obs[i] = new_obs[i + j]
-            rewards[i] += gamma ** j * rewards[i + j]
-            if dones[i + j]:
-                break  # episode end
-    # truncate ends of the trajectory
-    new_len = len(obs) - n_step + 1
-    for arr in [obs, actions, rewards, new_obs, dones]:
-        del arr[new_len:]
+from ray.rllib.dqn.dqn_evaluator import adjust_nstep
 
 
 class DDPGEvaluator(PolicyEvaluator):
@@ -48,8 +21,7 @@ class DDPGEvaluator(PolicyEvaluator):
 
     def __init__(self, registry, env_creator, config, logdir, worker_index):
         env = env_creator(config["env_config"])
-        env = wrap_ddpg(registry, env, config["model"], config["random_starts"])
-        self.env = env
+        self.env = ModelCatalog.get_preprocessor_as_wrapper(registry, env, config["model"])
         self.config = config
 
         # when env.action_space is of Box type, e.g., Pendulum-v0

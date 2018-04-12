@@ -10,7 +10,7 @@ import tensorflow as tf
 
 import ray
 from ray.rllib import optimizers
-from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator
+from ray.rllib.ddpg2.ddpg_evaluator import DDPGEvaluator
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
@@ -95,7 +95,6 @@ DEFAULT_CONFIG = dict(
     # Smooth the current average reward over this many previous episodes.
     smoothing_num_episodes=100,
     
-    
 
     # === Tensorflow ===
     # Arguments to pass to tensorflow
@@ -127,7 +126,7 @@ DEFAULT_CONFIG = dict(
     worker_side_prioritization=False)
 
 
-class DDPGAgent(Agent):
+class DDPG2Agent(Agent):
     _agent_name = "DDPG"
     _allow_unknown_subkeys = [
         "model", "optimizer", "tf_session_args", "env_config"]

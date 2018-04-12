@@ -1,6 +1,6 @@
-pendulum-ddpg:
+pendulum-ddpg-2:
     env: Pendulum-v0
-    run: DDPG
+    run: DDPG2
     trial_resources:
         cpu: 2
     stop:
