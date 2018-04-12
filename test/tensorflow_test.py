@@ -23,7 +23,6 @@ def make_linear_network(w_name=None, b_name=None):
 
 
 class LossActor(object):
-
     def __init__(self, use_loss=True):
         # Uses a separate graph for each network.
         with tf.Graph().as_default():
@@ -32,10 +31,8 @@ class LossActor(object):
             loss, init, _, _ = make_linear_network()
             sess = tf.Session()
             # Additional code for setting and getting the weights.
-            weights = ray.experimental.TensorFlowVariables(loss if use_loss
-                                                           else None,
-                                                           sess,
-                                                           input_variables=var)
+            weights = ray.experimental.TensorFlowVariables(
+                loss if use_loss else None, sess, input_variables=var)
         # Return all of the data needed to use the network.
         self.values = [weights, init, sess]
         sess.run(init)
@@ -49,7 +46,6 @@ class LossActor(object):
 
 
 class NetActor(object):
-
     def __init__(self):
         # Uses a separate graph for each network.
         with tf.Graph().as_default():
@@ -71,7 +67,6 @@ class NetActor(object):
 
 
 class TrainActor(object):
-
     def __init__(self):
         # Almost the same as above, but now returns the placeholders and
         # gradient.
@@ -82,16 +77,17 @@ class TrainActor(object):
             optimizer = tf.train.GradientDescentOptimizer(0.9)
             grads = optimizer.compute_gradients(loss)
             train = optimizer.apply_gradients(grads)
-        self.values = [loss, variables, init, sess, grads, train,
-                       [x_data, y_data]]
+        self.values = [
+            loss, variables, init, sess, grads, train, [x_data, y_data]
+        ]
         sess.run(init)
 
     def training_step(self, weights):
         _, variables, _, sess, grads, _, placeholders = self.values
         variables.set_weights(weights)
-        return sess.run([grad[0] for grad in grads],
-                        feed_dict=dict(zip(placeholders,
-                                           [[1] * 100, [2] * 100])))
+        return sess.run(
+            [grad[0] for grad in grads],
+            feed_dict=dict(zip(placeholders, [[1] * 100, [2] * 100])))
 
     def get_weights(self):
         return self.values[1].get_weights()
@@ -216,8 +212,8 @@ class TensorFlowTest(unittest.TestCase):
         net2 = ray.remote(NetActor).remote()
         weights2 = ray.get(net2.get_weights.remote())
 
-        new_weights2 = ray.get(net2.set_and_get_weights.remote(
-            net2.get_weights.remote()))
+        new_weights2 = ray.get(
+            net2.set_and_get_weights.remote(net2.get_weights.remote()))
         self.assertEqual(weights2, new_weights2)
 
     def testVariablesControlDependencies(self):
@@ -247,22 +243,26 @@ class TensorFlowTest(unittest.TestCase):
         net_values = TrainActor().values
         loss, variables, _, sess, grads, train, placeholders = net_values
 
-        before_acc = sess.run(loss, feed_dict=dict(zip(placeholders,
-                                                       [[2] * 100,
-                                                        [4] * 100])))
+        before_acc = sess.run(
+            loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100])))
 
         for _ in range(3):
-            gradients_list = ray.get(
-                [net.training_step.remote(variables.get_weights())
-                 for _ in range(2)])
-            mean_grads = [sum([gradients[i] for gradients in gradients_list]) /
-                          len(gradients_list) for i
-                          in range(len(gradients_list[0]))]
-            feed_dict = {grad[0]: mean_grad for (grad, mean_grad)
-                         in zip(grads, mean_grads)}
+            gradients_list = ray.get([
+                net.training_step.remote(variables.get_weights())
+                for _ in range(2)
+            ])
+            mean_grads = [
+                sum([gradients[i]
+                     for gradients in gradients_list]) / len(gradients_list)
+                for i in range(len(gradients_list[0]))
+            ]
+            feed_dict = {
+                grad[0]: mean_grad
+                for (grad, mean_grad) in zip(grads, mean_grads)
+            }
             sess.run(train, feed_dict=feed_dict)
-        after_acc = sess.run(loss, feed_dict=dict(zip(placeholders,
-                                                      [[2] * 100, [4] * 100])))
+        after_acc = sess.run(
+            loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100])))
         self.assertTrue(before_acc < after_acc)
 
 

@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """A deep MNIST classifier using convolutional layers.
 See extensive documentation at
 https://www.tensorflow.org/get_started/mnist/pros
@@ -39,7 +38,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
 import numpy as np
 
-activation_fn = None    # e.g. tf.nn.relu
+activation_fn = None  # e.g. tf.nn.relu
 
 
 def setupCNN(x):
@@ -85,7 +84,7 @@ def setupCNN(x):
         W_fc1 = weight_variable([7 * 7 * 64, 1024])
         b_fc1 = bias_variable([1024])
 
-        h_pool2_flat = tf.reshape(h_pool2, [-1, 7*7*64])
+        h_pool2_flat = tf.reshape(h_pool2, [-1, 7 * 7 * 64])
         h_fc1 = activation_fn(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
     # Dropout - controls the complexity of the model, prevents co-adaptation of
@@ -182,14 +181,18 @@ class TrainMNIST(Trainable):
             self.sess.run(
                 self.train_step,
                 feed_dict={
-                    self.x: batch[0], self.y_: batch[1], self.keep_prob: 0.5
+                    self.x: batch[0],
+                    self.y_: batch[1],
+                    self.keep_prob: 0.5
                 })
 
         batch = self.mnist.train.next_batch(50)
         train_accuracy = self.sess.run(
             self.accuracy,
             feed_dict={
-                self.x: batch[0], self.y_: batch[1], self.keep_prob: 1.0
+                self.x: batch[0],
+                self.y_: batch[1],
+                self.keep_prob: 1.0
             })
 
         self.iterations += 1
@@ -215,11 +218,11 @@ if __name__ == '__main__':
     mnist_spec = {
         'run': 'my_class',
         'stop': {
-          'mean_accuracy': 0.99,
-          'time_total_s': 600,
+            'mean_accuracy': 0.99,
+            'time_total_s': 600,
         },
         'config': {
-            'learning_rate': lambda spec:  10 ** np.random.uniform(-5, -3),
+            'learning_rate': lambda spec: 10**np.random.uniform(-5, -3),
             'activation': grid_search(['relu', 'elu', 'tanh']),
         },
         "repeat": 10,
@@ -231,8 +234,6 @@ if __name__ == '__main__':
 
     ray.init()
     hyperband = HyperBandScheduler(
-        time_attr="timesteps_total", reward_attr="mean_accuracy",
-        max_t=100)
+        time_attr="timesteps_total", reward_attr="mean_accuracy", max_t=100)
 
-    run_experiments(
-        {'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)
+    run_experiments({'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)

@@ -10,14 +10,15 @@ import time
 
 
 class TaskTests(unittest.TestCase):
-
     def testSubmittingTasks(self):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
                 num_workers = num_local_schedulers * num_workers_per_scheduler
-                ray.worker._init(start_ray_local=True, num_workers=num_workers,
-                                 num_local_schedulers=num_local_schedulers,
-                                 num_cpus=100)
+                ray.worker._init(
+                    start_ray_local=True,
+                    num_workers=num_workers,
+                    num_local_schedulers=num_local_schedulers,
+                    num_cpus=100)
 
                 @ray.remote
                 def f(x):
@@ -42,9 +43,11 @@ class TaskTests(unittest.TestCase):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
                 num_workers = num_local_schedulers * num_workers_per_scheduler
-                ray.worker._init(start_ray_local=True, num_workers=num_workers,
-                                 num_local_schedulers=num_local_schedulers,
-                                 num_cpus=100)
+                ray.worker._init(
+                    start_ray_local=True,
+                    num_workers=num_workers,
+                    num_local_schedulers=num_local_schedulers,
+                    num_cpus=100)
 
                 @ray.remote
                 def f(x):
@@ -89,7 +92,7 @@ class TaskTests(unittest.TestCase):
         ray.init(num_workers=1)
 
         for n in range(8):
-            x = np.zeros(10 ** n)
+            x = np.zeros(10**n)
 
             for _ in range(100):
                 ray.put(x)
@@ -108,7 +111,7 @@ class TaskTests(unittest.TestCase):
         def f():
             return 1
 
-        n = 10 ** 4  # TODO(pcm): replace by 10 ** 5 once this is faster.
+        n = 10**4  # TODO(pcm): replace by 10 ** 5 once this is faster.
         lst = ray.get([f.remote() for _ in range(n)])
         self.assertEqual(lst, n * [1])
 
@@ -119,9 +122,11 @@ class TaskTests(unittest.TestCase):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
                 num_workers = num_local_schedulers * num_workers_per_scheduler
-                ray.worker._init(start_ray_local=True, num_workers=num_workers,
-                                 num_local_schedulers=num_local_schedulers,
-                                 num_cpus=100)
+                ray.worker._init(
+                    start_ray_local=True,
+                    num_workers=num_workers,
+                    num_local_schedulers=num_local_schedulers,
+                    num_cpus=100)
 
                 @ray.remote
                 def f(x):
@@ -138,8 +143,10 @@ class TaskTests(unittest.TestCase):
                     time.sleep(x)
 
                 for i in range(1, 5):
-                    x_ids = [g.remote(np.random.uniform(0, i))
-                             for _ in range(2 * num_workers)]
+                    x_ids = [
+                        g.remote(np.random.uniform(0, i))
+                        for _ in range(2 * num_workers)
+                    ]
                     ray.wait(x_ids, num_returns=len(x_ids))
 
                 self.assertTrue(ray.services.all_processes_alive())
@@ -159,34 +166,40 @@ class ReconstructionTests(unittest.TestCase):
         time.sleep(0.1)
 
         # Start the Plasma store instances with a total of 1GB memory.
-        self.plasma_store_memory = 10 ** 9
+        self.plasma_store_memory = 10**9
         plasma_addresses = []
-        objstore_memory = (self.plasma_store_memory //
-                           self.num_local_schedulers)
+        objstore_memory = (
+            self.plasma_store_memory // self.num_local_schedulers)
         for i in range(self.num_local_schedulers):
             store_stdout_file, store_stderr_file = ray.services.new_log_files(
                 "plasma_store_{}".format(i), True)
             manager_stdout_file, manager_stderr_file = (
-                ray.services.new_log_files("plasma_manager_{}"
-                                           .format(i), True))
-            plasma_addresses.append(ray.services.start_objstore(
-                node_ip_address, redis_address,
-                objstore_memory=objstore_memory,
-                store_stdout_file=store_stdout_file,
-                store_stderr_file=store_stderr_file,
-                manager_stdout_file=manager_stdout_file,
-                manager_stderr_file=manager_stderr_file))
+                ray.services.new_log_files("plasma_manager_{}".format(i),
+                                           True))
+            plasma_addresses.append(
+                ray.services.start_objstore(
+                    node_ip_address,
+                    redis_address,
+                    objstore_memory=objstore_memory,
+                    store_stdout_file=store_stdout_file,
+                    store_stderr_file=store_stderr_file,
+                    manager_stdout_file=manager_stdout_file,
+                    manager_stderr_file=manager_stderr_file))
 
         # Start the rest of the services in the Ray cluster.
-        address_info = {"redis_address": redis_address,
-                        "redis_shards": redis_shards,
-                        "object_store_addresses": plasma_addresses}
-        ray.worker._init(address_info=address_info, start_ray_local=True,
-                         num_workers=1,
-                         num_local_schedulers=self.num_local_schedulers,
-                         num_cpus=[1] * self.num_local_schedulers,
-                         redirect_output=True,
-                         driver_mode=ray.SILENT_MODE)
+        address_info = {
+            "redis_address": redis_address,
+            "redis_shards": redis_shards,
+            "object_store_addresses": plasma_addresses
+        }
+        ray.worker._init(
+            address_info=address_info,
+            start_ray_local=True,
+            num_workers=1,
+            num_local_schedulers=self.num_local_schedulers,
+            num_cpus=[1] * self.num_local_schedulers,
+            redirect_output=True,
+            driver_mode=ray.SILENT_MODE)
 
     def tearDown(self):
         self.assertTrue(ray.services.all_processes_alive())
@@ -197,8 +210,8 @@ class ReconstructionTests(unittest.TestCase):
         state._initialize_global_state(self.redis_ip_address, self.redis_port)
         if os.environ.get('RAY_USE_NEW_GCS', False):
             tasks = state.task_table()
-            local_scheduler_ids = set(task["LocalSchedulerID"] for task in
-                                      tasks.values())
+            local_scheduler_ids = set(
+                task["LocalSchedulerID"] for task in tasks.values())
 
         # Make sure that all nodes in the cluster were used by checking that
         # the set of local scheduler IDs that had a task scheduled or submitted
@@ -208,8 +221,8 @@ class ReconstructionTests(unittest.TestCase):
         # with the driver task, since it is not scheduled by a particular local
         # scheduler.
         if os.environ.get('RAY_USE_NEW_GCS', False):
-            self.assertEqual(len(local_scheduler_ids),
-                             self.num_local_schedulers + 1)
+            self.assertEqual(
+                len(local_scheduler_ids), self.num_local_schedulers + 1)
 
         # Clean up the Ray cluster.
         ray.worker.cleanup()
@@ -254,8 +267,7 @@ class ReconstructionTests(unittest.TestCase):
             del values
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
-        "Failing with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Failing with new GCS API.")
     def testRecursive(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -308,8 +320,7 @@ class ReconstructionTests(unittest.TestCase):
             del values
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
-        "Failing with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Failing with new GCS API.")
     def testMultipleRecursive(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -375,8 +386,7 @@ class ReconstructionTests(unittest.TestCase):
         return errors
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
-        "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
     def testNondeterministicTask(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -432,14 +442,14 @@ class ReconstructionTests(unittest.TestCase):
                 # reexecuted.
                 min_errors = 1
             return len(errors) >= min_errors
+
         errors = self.wait_for_errors(error_check)
         # Make sure all the errors have the correct type.
-        self.assertTrue(all(error[b"type"] == b"object_hash_mismatch"
-                            for error in errors))
+        self.assertTrue(
+            all(error[b"type"] == b"object_hash_mismatch" for error in errors))
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False),
-        "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
     def testDriverPutErrors(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -479,9 +489,10 @@ class ReconstructionTests(unittest.TestCase):
 
         def error_check(errors):
             return len(errors) > 1
+
         errors = self.wait_for_errors(error_check)
-        self.assertTrue(all(error[b"type"] == b"put_reconstruction"
-                            for error in errors))
+        self.assertTrue(
+            all(error[b"type"] == b"put_reconstruction" for error in errors))
 
 
 class ReconstructionTestsMultinode(ReconstructionTests):
@@ -489,6 +500,7 @@ class ReconstructionTestsMultinode(ReconstructionTests):
     # Run the same tests as the single-node suite, but with 4 local schedulers,
     # one worker each.
     num_local_schedulers = 4
+
 
 # NOTE(swang): This test tries to launch 1000 workers and breaks.
 # class WorkerPoolTests(unittest.TestCase):
@@ -511,7 +523,6 @@ class ReconstructionTestsMultinode(ReconstructionTests):
 #     ray.init(num_workers=1)
 #     ray.get([g.remote(i) for i in range(1000)])
 #     ray.worker.cleanup()
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

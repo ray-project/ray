@@ -13,7 +13,6 @@ from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
-
 # Map from (logdir, remote_dir) -> syncer
 _syncers = {}
 
@@ -69,9 +68,8 @@ class _LogSyncer(object):
     def sync_now(self, force=False):
         self.last_sync_time = time.time()
         if not self.worker_ip:
-            print(
-                "Worker ip unknown, skipping log sync for {}".format(
-                    self.local_dir))
+            print("Worker ip unknown, skipping log sync for {}".format(
+                self.local_dir))
             return
 
         if self.worker_ip == self.local_ip:
@@ -80,23 +78,21 @@ class _LogSyncer(object):
             ssh_key = get_ssh_key()
             ssh_user = get_ssh_user()
             if ssh_key is None or ssh_user is None:
-                print(
-                    "Error: log sync requires cluster to be setup with "
-                    "`ray create_or_update`.")
+                print("Error: log sync requires cluster to be setup with "
+                      "`ray create_or_update`.")
                 return
             if not distutils.spawn.find_executable("rsync"):
                 print("Error: log sync requires rsync to be installed.")
                 return
-            worker_to_local_sync_cmd = (
-                ("""rsync -avz -e "ssh -i '{}' -o ConnectTimeout=120s """
-                 """-o StrictHostKeyChecking=no" '{}@{}:{}/' '{}/'""").format(
+            worker_to_local_sync_cmd = ((
+                """rsync -avz -e "ssh -i '{}' -o ConnectTimeout=120s """
+                """-o StrictHostKeyChecking=no" '{}@{}:{}/' '{}/'""").format(
                     ssh_key, ssh_user, self.worker_ip,
                     pipes.quote(self.local_dir), pipes.quote(self.local_dir)))
 
         if self.remote_dir:
-            local_to_remote_sync_cmd = (
-                "aws s3 sync '{}' '{}'".format(
-                    pipes.quote(self.local_dir), pipes.quote(self.remote_dir)))
+            local_to_remote_sync_cmd = ("aws s3 sync '{}' '{}'".format(
+                pipes.quote(self.local_dir), pipes.quote(self.remote_dir)))
         else:
             local_to_remote_sync_cmd = None
 

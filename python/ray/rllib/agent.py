@@ -243,6 +243,9 @@ def get_agent_class(alg):
     elif alg == "PG":
         from ray.rllib import pg
         return pg.PGAgent
+    elif alg == "DDPG":
+        from ray.rllib import ddpg
+        return ddpg.DDPGAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner
@@ -252,9 +255,9 @@ def get_agent_class(alg):
         return _SigmoidFakeData
     elif alg == "__parameter_tuning":
         return _ParameterTuningAgent
-    elif alg == "DDPG":
-        from ray.rllib import ddpg
-        return ddpg.DDPGAgent
+    elif alg == "DDPG_baselines":
+        from ray.rllib import ddpg_baselines
+        return ddpg_baselines.DDPGAgent
     else:
         raise Exception(
             ("Unknown algorithm {}.").format(alg))

@@ -69,14 +69,14 @@ def flush_task_and_object_metadata_unsafe():
         for key in redis_client.scan_iter(match=OBJECT_INFO_PREFIX + b"*"):
             num_object_keys_deleted += redis_client.delete(key)
         print("Deleted {} object info keys from Redis.".format(
-                  num_object_keys_deleted))
+            num_object_keys_deleted))
 
         # Flush the object locations.
         num_object_location_keys_deleted = 0
         for key in redis_client.scan_iter(match=OBJECT_LOCATION_PREFIX + b"*"):
             num_object_location_keys_deleted += redis_client.delete(key)
         print("Deleted {} object location keys from Redis.".format(
-                  num_object_location_keys_deleted))
+            num_object_location_keys_deleted))
 
     # Loop over the shards and flush all of them.
     for redis_client in ray.worker.global_state.redis_clients:
