@@ -710,7 +710,7 @@ class DataFrame(object):
 
         if axis == 0:
             try:
-                result = self._aggregate(func, axis=0, *args, **kwargs)
+                result = self._aggregate(func, axis=axis, *args, **kwargs)
             except TypeError:
                 pass
 
@@ -739,34 +739,10 @@ class DataFrame(object):
         elif is_list_like(arg):
             raise NotImplementedError("Not yet")
         elif callable(arg):
-            if _axis == 0:
-                def remote_agg_helper(df, arg, *args, **kwargs):
-                    new_df = df.agg(arg, *args, **kwargs)
-                    if isinstance(new_df, pd.Series):
-                        new_df = pd.DataFrame(new_df).T
-
-                    return new_df
-
-                new_cols = _map_partitions(lambda df: remote_agg_helper(df,
-                                                                        arg,
-                                                                        *args,
-                                                                        **kwargs),
-                                           self._col_partitions)
-                print(ray.get(new_cols))
-                new_df = DataFrame(col_partitions=new_cols,
-                                   columns=self.columns)
-            else:
-                new_rows = _map_partitions(lambda df: df._aggregate(arg,
-                                                                    *args,
-                                                                    **kwargs),
-                                           self._row_partitions)
-                return DataFrame(row_partitions=new_rows,
-                                 columns=self.columns)
-
-            raise NotImplementedError("Not yet")
+            self._callable_function(arg, _axis, *args, **kwargs)
         else:
             # TODO Make pandas error
-            raise ValueError("type {} is not callable")
+            raise ValueError("type {} is not callable".format(type(arg)))
 
     def _string_function(self, func, *args, **kwargs):
         assert isinstance(func, compat.string_types)
@@ -788,6 +764,72 @@ class DataFrame(object):
             raise NotImplementedError("Numpy aggregates not yet supported.")
 
         raise ValueError("{} is an unknown string function".format(func))
+
+    def _callable_function(self, func, axis, *args, **kwargs):
+        if axis == 0:
+            partitions = self._col_partitions
+        else:
+            partitions = self._row_partitions
+
+        temp_index = None
+        temp_columns = None
+        if axis == 1:
+            kwargs['axis'] = axis
+            temp_columns = self.columns
+        else:
+            temp_index = self.index
+
+        def remote_agg_helper(df, arg, *args, **kwargs):
+            if temp_index is not None:
+                df.index = temp_index
+            else:
+                df.columns = temp_columns
+
+            new_df = df.agg(arg, *args, **kwargs)
+            is_series = False
+
+            if isinstance(new_df, pd.Series):
+                is_series = True
+                index = None
+            else:
+                index = new_df.index \
+                    if not isinstance(new_df.index, pd.RangeIndex) \
+                    else None
+                new_df.reset_index(drop=True, inplace=True)
+
+            return is_series, new_df, index
+
+        remote_result = \
+            [_deploy_func._submit(args=(lambda df: remote_agg_helper(df,
+                                                                     func,
+                                                                     *args,
+                                                                     **kwargs),
+                                        part), num_return_vals=3)
+             for part in partitions]
+
+        # This magic unzips the list comprehension returned from remote
+        is_series, new_parts, index = [list(t) for t in zip(*remote_result)]
+
+        # This part is because agg can allow returning a Series or a
+        # DataFrame, and we have to determine which here. Shouldn't add
+        # too much to latency in either case because the booleans can
+        # be returned immediately
+        if all(ray.get(is_series)):
+            new_series = pd.concat(ray.get(new_parts))
+            new_series.index = self.columns if axis == 0 else self.index
+            return new_series
+        elif axis == 0:
+            new_index = ray.get(index[0])
+            return DataFrame(col_partitions=new_parts,
+                             columns=self.columns,
+                             index=self.index if new_index is None
+                             else new_index)
+        else:
+            new_index = ray.get(index[0])
+            return DataFrame(row_partitions=new_parts,
+                             columns=self.columns,
+                             index=self.index if new_index is None
+                             else new_index)
 
     def align(self, other, join='outer', axis=None, level=None, copy=True,
               fill_value=None, method=None, limit=None, fill_axis=0,
@@ -854,6 +896,8 @@ class DataFrame(object):
             if axis == 1:
                 kwds['axis'] = axis
             return getattr(self, func)(*args, **kwds)
+        elif callable(func):
+            return self._callable_function(func, axis=axis, *args, **kwds)
         else:
             raise NotImplementedError(
                 "To contribute to Pandas on Ray, please visit "

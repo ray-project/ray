@@ -270,7 +270,24 @@ class DataFrameGroupBy(object):
         return self._iter.__iter__()
 
     def agg(self, arg, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        def agg_help(df):
+            if isinstance(df, pd.Series):
+                return pd.DataFrame(df).T
+            else:
+                return df
+        x = [v.agg(arg, axis=self._axis, *args, **kwargs) for k, v in self._iter]
+
+        new_parts = _map_partitions(lambda df: agg_help(df), x)
+
+        from .dataframe import DataFrame
+        if self._axis == 0:
+            return DataFrame(row_partitions=new_parts,
+                             columns=self._columns,
+                             index=[k for k, v in self._iter])
+        else:
+            return DataFrame(col_partitions=new_parts,
+                             columns=[k for k, v in self._iter],
+                             index=self._index)
 
     @property
     def cov(self):
