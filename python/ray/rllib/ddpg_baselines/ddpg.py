@@ -30,9 +30,9 @@ DEFAULT_CONFIG = dict(
     schedule_max_timesteps=100000,
     # Number of env steps to optimize for before returning
     timesteps_per_iteration=1000,
-
+    # OUnoise : sigma=float(exploration_noise) * np.ones(nb_actions)
     exploration_noise=0.2,
-
+    # Whether to adapt noise (maybe add param_noise in the future)
     action_noise=True,
     # Which observation filter to apply to the observation
     observation_filter="NoFilter",
@@ -61,7 +61,6 @@ DEFAULT_CONFIG = dict(
     train_batch_size=32,
     # Smooth the current average reward over this many previous episodes.
     smoothing_num_episodes=100,
-
 
     # === Tensorflow ===
     # Arguments to pass to tensorflow
@@ -156,13 +155,6 @@ class DDPGAgent(Agent):
             info={})
 
         return result
-
-    # def _populate_replay_buffer(self):
-    #     if self.remote_evaluators:
-    #         for e in self.remote_evaluators:
-    #             e.sample.remote(no_replay=True)
-    #     else:
-    #         self.local_evaluator.sample(no_replay=True)
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
