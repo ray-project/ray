@@ -1,6 +1,6 @@
 pendulum-ddpg:
     env: MountainCarContinuous-v0
-    run: DDPG
+    run: DDPG_baselines
     stop:
         episode_reward_mean: -20
         time_total_s: 600
