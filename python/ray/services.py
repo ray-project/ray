@@ -800,11 +800,19 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         print("=" * 70 + "\n")
         return webui_url
 
-def tweak_resources(resources):
-    """Take user-provided resource dictionary on input, sanity check it, mutate
-       some default expected resource types"""
+
+def check_and_update_resources(resources):
+    """Sanity check a resource dictionary and add sensible defaults.
+
+    Args:
+        resources: A dictionary mapping resource names to resource quantities.
+
+    Returns:
+        A new resource dictionary.
+    """
     if resources is None:
         resources = {}
+    resources = resources.copy()
     if "CPU" not in resources:
         # By default, use the number of hardware execution threads for the
         # number of cores.
@@ -819,7 +827,7 @@ def tweak_resources(resources):
             and resources["GPU"] > len(gpu_ids)):
         raise Exception("Attempting to start local scheduler with {} GPUs, "
                         "but CUDA_VISIBLE_DEVICES contains {}.".format(
-            resources["GPU"], gpu_ids))
+                            resources["GPU"], gpu_ids))
 
     if "GPU" not in resources:
         # Try to automatically detect the number of GPUs.
@@ -828,7 +836,13 @@ def tweak_resources(resources):
         if gpu_ids is not None:
             resources["GPU"] = min(resources["GPU"], len(gpu_ids))
 
+    # Check types.
+    for _, resource_quantity in resources.items():
+        assert (isinstance(resource_quantity, int)
+                or isinstance(resource_quantity, float))
+
     return resources
+
 
 def start_local_scheduler(redis_address,
                           node_ip_address,
@@ -868,7 +882,7 @@ def start_local_scheduler(redis_address,
     Return:
         The name of the local scheduler socket.
     """
-    resources = tweak_resources(resources)
+    resources = check_and_update_resources(resources)
 
     print("Starting local scheduler with the following resources: {}."
           .format(resources))
@@ -920,18 +934,14 @@ def start_raylet(redis_address,
     Returns:
         The raylet socket name.
     """
-    static_resources = tweak_resources(resources)
-    if static_resources is not None:
-        resource_argument = ""
-        for resource_name, resource_quantity in static_resources.items():
-            assert (isinstance(resource_quantity, int)
-                    or isinstance(resource_quantity, float))
-            resource_argument = ",".join([
-            resource_name + "," + str(resource_quantity)
-            for resource_name, resource_quantity in static_resources.items()
-            ])
-    else:
-        resource_argument = "CPU,{}".format(psutil.cpu_count())
+    static_resources = check_and_update_resources(resources)
+
+    # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
+    resource_argument = ",".join([
+        "{},{}".format(resource_name, resource_value)
+        for resource_name, resource_value in zip(static_resources.keys(),
+                                                 static_resources.values())
+    ])
 
     gcs_ip_address, gcs_port = redis_address.split(":")
     raylet_name = "/tmp/raylet{}".format(random_name())
