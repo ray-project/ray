@@ -27,6 +27,17 @@ bool ResourceSet::operator==(const ResourceSet &rhs) const {
   return (this->IsSubset(rhs) && rhs.IsSubset(*this));
 }
 
+bool ResourceSet::IsEmpty() const {
+  // Check whether the capacity of each resource type is zero. Exit early if not.
+  if (resource_capacity_.empty()) return true;
+  for (const auto &resource_pair: resource_capacity_) {
+    if (resource_pair.second > 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool ResourceSet::IsSubset(const ResourceSet &other) const {
   // Check to make sure all keys of this are in other.
   for (const auto &resource_pair : resource_capacity_) {
