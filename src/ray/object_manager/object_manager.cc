@@ -300,7 +300,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
   plasma::ObjectID plasma_id = object_id.to_plasma_id();
   std::shared_ptr<plasma::PlasmaClient> store_client = store_pool_.GetObjectStore();
   ARROW_CHECK_OK(store_client->Get(&plasma_id, 1, 0, &object_buffer));
-  if (object_buffer.data_size == -1) {
+  if (object_buffer.data == nullptr) {
     RAY_LOG(ERROR) << "Failed to get object";
     // If the object wasn't locally available, exit immediately. If the object
     // later appears locally, the requesting plasma manager should request the
@@ -311,12 +311,12 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
         "Unable to transfer object to requesting plasma manager, object not local.");
   }
   RAY_CHECK(object_buffer.metadata->data() ==
-            object_buffer.data->data() + object_buffer.data_size);
+            object_buffer.data->data() + object_buffer.data->size());
 
   TransferQueue::SendContext context;
   context.client_id = conn->GetClientID();
   context.object_id = object_id;
-  context.object_size = static_cast<uint64_t>(object_buffer.data_size);
+  context.object_size = static_cast<uint64_t>(object_buffer.data->size());
   context.data = const_cast<uint8_t *>(object_buffer.data->data());
   UniqueID context_id = transfer_queue_.AddContext(context);
 
