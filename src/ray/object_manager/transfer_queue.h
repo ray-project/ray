@@ -93,8 +93,8 @@ class TransferQueue {
   RAY_DISALLOW_COPY_AND_ASSIGN(TransferQueue);
 
  private:
-  std::mutex send_mutex;
-  std::mutex receive_mutex;
+  std::mutex send_mutex_;
+  std::mutex receive_mutex_;
   std::deque<SendRequest> send_queue_;
   std::deque<ReceiveRequest> receive_queue_;
 };

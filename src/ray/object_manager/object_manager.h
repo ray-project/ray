@@ -195,6 +195,24 @@ class ObjectManager {
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
 
+  /// Mutex for unordered_map of FlatBufferBuilder. This is needed for multi-threaded
+  /// access to instances of FlatBufferBuilder.
+  std::mutex flat_buffer_mutex_;
+
+  /// This is needed for asynchronous sending of messages.
+  std::unordered_map<ObjectID, flatbuffers::FlatBufferBuilder, UniqueIDHasher>
+      flatbuffer_context_;
+
+  /// Thread-safe access to new or existing persistent FlatBufferBuilder.
+  ///
+  /// \param fbb_id A UniqueID.
+  /// \return A new or existing FlatBufferBuilder.
+  flatbuffers::FlatBufferBuilder &GetFlatBufferBuilder(const UniqueID &fbb_id);
+  /// Thread-safe release of persistent FlatBufferBuilder.
+  ///
+  /// \param fbb_id The UniqueID of the FlatBufferBuilder to release.
+  void ReleaseFlatBufferBuilder(const UniqueID &fbb_id);
+
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
   void IOServiceLoop();

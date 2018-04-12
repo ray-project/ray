@@ -39,6 +39,24 @@ void ServerConnection<T>::ReadBuffer(
 }
 
 template <class T>
+void ServerConnection<T>::AsyncWriteBuffer(
+    const std::vector<boost::asio::const_buffer> &buffer,
+    std::function<void(const boost::system::error_code &error)> handler) {
+  boost::asio::async_write(
+      socket_, buffer, boost::bind(&ServerConnection<T>::AsyncCallHandler, this, handler,
+                                   boost::asio::placeholders::error));
+}
+
+template <class T>
+void ServerConnection<T>::AsyncReadBuffer(
+    const std::vector<boost::asio::mutable_buffer> &buffer,
+    std::function<void(const boost::system::error_code &error)> handler) {
+  boost::asio::async_read(
+      socket_, buffer, boost::bind(&ServerConnection<T>::AsyncCallHandler, this, handler,
+                                   boost::asio::placeholders::error));
+}
+
+template <class T>
 ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
                                               const uint8_t *message) {
   std::vector<boost::asio::const_buffer> message_buffers;
@@ -56,6 +74,29 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   } else {
     return ray::Status::OK();
   }
+}
+
+template <class T>
+ray::Status ServerConnection<T>::AsyncWriteMessage(
+    int64_t type, int64_t length, const uint8_t *message,
+    std::function<void(const boost::system::error_code &error)> handler) {
+  std::vector<boost::asio::const_buffer> message_buffers;
+  auto write_version = RayConfig::instance().ray_protocol_version();
+  message_buffers.push_back(boost::asio::buffer(&write_version, sizeof(write_version)));
+  message_buffers.push_back(boost::asio::buffer(&type, sizeof(type)));
+  message_buffers.push_back(boost::asio::buffer(&length, sizeof(length)));
+  message_buffers.push_back(boost::asio::buffer(message, length));
+  boost::asio::async_write(socket_, message_buffers,
+                           boost::bind(&ServerConnection<T>::AsyncCallHandler, this,
+                                       handler, boost::asio::placeholders::error));
+  return ray::Status::OK();
+};
+
+template <class T>
+void ServerConnection<T>::AsyncCallHandler(
+    std::function<void(const boost::system::error_code &error)> handler,
+    const boost::system::error_code &error) {
+  handler(error);
 }
 
 template <class T>

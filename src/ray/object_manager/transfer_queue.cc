@@ -5,7 +5,7 @@ namespace ray {
 void TransferQueue::QueueSend(const ClientID &client_id, const ObjectID &object_id,
                               uint64_t data_size, uint64_t metadata_size,
                               uint64_t chunk_index, const RemoteConnectionInfo &info) {
-  std::unique_lock<std::mutex> guard(send_mutex);
+  std::unique_lock<std::mutex> guard(send_mutex_);
   SendRequest req = {client_id, object_id, data_size, metadata_size, chunk_index, info};
   // TODO(hme): Use a set to speed this up.
   if (std::find(send_queue_.begin(), send_queue_.end(), req) != send_queue_.end()) {
@@ -19,7 +19,7 @@ void TransferQueue::QueueReceive(const ClientID &client_id, const ObjectID &obje
                                  uint64_t data_size, uint64_t metadata_size,
                                  uint64_t chunk_index,
                                  std::shared_ptr<TcpClientConnection> conn) {
-  std::unique_lock<std::mutex> guard(receive_mutex);
+  std::unique_lock<std::mutex> guard(receive_mutex_);
   ReceiveRequest req = {client_id,     object_id,   data_size,
                         metadata_size, chunk_index, conn};
   if (std::find(receive_queue_.begin(), receive_queue_.end(), req) !=
@@ -31,7 +31,7 @@ void TransferQueue::QueueReceive(const ClientID &client_id, const ObjectID &obje
 }
 
 bool TransferQueue::DequeueSendIfPresent(TransferQueue::SendRequest *send_ptr) {
-  std::unique_lock<std::mutex> guard(send_mutex);
+  std::unique_lock<std::mutex> guard(send_mutex_);
   if (send_queue_.empty()) {
     return false;
   }
@@ -41,7 +41,7 @@ bool TransferQueue::DequeueSendIfPresent(TransferQueue::SendRequest *send_ptr) {
 }
 
 bool TransferQueue::DequeueReceiveIfPresent(TransferQueue::ReceiveRequest *receive_ptr) {
-  std::unique_lock<std::mutex> guard(receive_mutex);
+  std::unique_lock<std::mutex> guard(receive_mutex_);
   if (receive_queue_.empty()) {
     return false;
   }
