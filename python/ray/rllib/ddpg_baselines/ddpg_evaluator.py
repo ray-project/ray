@@ -8,7 +8,7 @@ import pickle
 import tensorflow as tf
 from gym.spaces import Discrete
 from ray.rllib.utils.filter import get_filter
-from ray.rllib.ddpg import models
+from ray.rllib.ddpg_baselines import models
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.error import UnsupportedSpaceException

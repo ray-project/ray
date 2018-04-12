@@ -8,7 +8,7 @@ import os
 import numpy as np
 
 import ray
-from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator
+from ray.rllib.ddpg_baselines.ddpg_evaluator import DDPGEvaluator
 from ray.rllib import optimizers
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
