@@ -15,13 +15,7 @@ if [ ! -d $TP_DIR/build/parquet-cpp ]; then
   git clone https://github.com/apache/parquet-cpp.git "$TP_DIR/build/parquet-cpp"
   pushd $TP_DIR/build/parquet-cpp
   git fetch origin master
-  git checkout 4e7ef12dccb250074370376dc31a4963e1010447
-
-  # The below cherry-pick is to fix a segfault when linking boost statically in
-  # parquet. See https://issues.apache.org/jira/browse/ARROW-2247.
-  git remote add majetideepak https://github.com/majetideepak/parquet-cpp
-  git fetch majetideepak
-  git cherry-pick --no-commit b23d3b33de25ece8544f206e2d2c9c1d41aaddc2
+  git checkout 0875e43010af485e1c0b506d77d7e0edc80c66cc
 
   if [ "$unamestr" == "Darwin" ]; then
     OPENSSL_ROOT_DIR=$OPENSSL_DIR \
