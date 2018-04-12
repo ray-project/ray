@@ -1551,7 +1551,8 @@ def start_ray_node(node_ip_address,
         redirect_output=redirect_output,
         resources=resources,
         plasma_directory=plasma_directory,
-        huge_pages=huge_pages)
+        huge_pages=huge_pages,
+        use_raylet=use_raylet)
 
 
 def start_ray_head(address_info=None,
