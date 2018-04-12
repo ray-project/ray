@@ -16,9 +16,14 @@ WorkerPool::WorkerPool(int num_workers, const std::vector<std::string> &worker_c
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
   for (int i = 0; i < num_workers; i++) {
-    StartWorker();
+    // Force-start num_workers workers.
+    StartWorker(true);
   }
 }
+
+/// A constructor that initializes an empty worker pool with zero workers.
+WorkerPool::WorkerPool(const std::vector<std::string> &worker_command)
+    : worker_command_(worker_command) {}
 
 WorkerPool::~WorkerPool() {
   // Kill all registered workers. NOTE(swang): This assumes that the registered
@@ -28,15 +33,39 @@ WorkerPool::~WorkerPool() {
     kill(worker->Pid(), SIGKILL);
     waitpid(worker->Pid(), NULL, 0);
   }
+  // Kill all the workers that have been started but not registered.
+  for (const auto &pid : started_worker_pids_) {
+    RAY_CHECK(pid > 0);
+    kill(pid, SIGKILL);
+    waitpid(pid, NULL, 0);
+  }
+
+  pool_.clear();
+  actor_pool_.clear();
+  registered_workers_.clear();
+  started_worker_pids_.clear();
 }
 
-void WorkerPool::StartWorker() {
+uint32_t WorkerPool::Size() const {
+  return static_cast<uint32_t>(actor_pool_.size() + pool_.size());
+}
+
+void WorkerPool::StartWorker(bool force_start) {
   RAY_CHECK(!worker_command_.empty()) << "No worker command provided";
+  if (!started_worker_pids_.empty() && !force_start) {
+    // Workers have been started, but not registered. Force start disabled -- returning.
+    RAY_LOG(DEBUG) << started_worker_pids_.size() << " workers pending registration";
+    return;
+  }
+  // Either there are no workers pending registration or the worker start is being forced.
+  RAY_LOG(DEBUG) << "starting worker, actor pool " << actor_pool_.size() << " task pool "
+                 << pool_.size();
 
   // Launch the process to create the worker.
   pid_t pid = fork();
   if (pid != 0) {
     RAY_LOG(DEBUG) << "Started worker with pid " << pid;
+    started_worker_pids_.insert(pid);
     return;
   }
 
@@ -60,6 +89,8 @@ void WorkerPool::StartWorker() {
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   RAY_LOG(DEBUG) << "Registering worker with pid " << worker->Pid();
   registered_workers_.push_back(worker);
+  RAY_CHECK(started_worker_pids_.count(worker->Pid()) > 0);
+  started_worker_pids_.erase(worker->Pid());
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
@@ -117,6 +148,15 @@ bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool,
 bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
   RAY_CHECK(removeWorker(registered_workers_, worker));
   return removeWorker(pool_, worker);
+}
+
+// Protected WorkerPool methods.
+void WorkerPool::AddStartedWorker(pid_t pid) {
+  started_worker_pids_.insert(pid);
+}
+
+uint32_t WorkerPool::NumStartedWorkers() const {
+  return started_worker_pids_.size();
 }
 
 }  // namespace raylet
