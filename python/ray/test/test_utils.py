@@ -48,8 +48,8 @@ def _wait_for_nodes_to_join(num_nodes, timeout=20):
         if num_ready_nodes > num_nodes:
             # Too many nodes have joined. Something must be wrong.
             raise Exception("{} nodes have joined the cluster, but we were "
-                            "expecting {} nodes.".format(num_ready_nodes,
-                                                         num_nodes))
+                            "expecting {} nodes.".format(
+                                num_ready_nodes, num_nodes))
         time.sleep(0.1)
 
     # If we get here then we timed out.

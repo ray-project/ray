@@ -18,24 +18,27 @@ Raylet::Raylet(boost::asio::io_service &main_service,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
-    : acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
+    : gcs_client_(gcs_client),
+      object_manager_(main_service, std::move(object_manager_service),
+                      object_manager_config, gcs_client),
+      node_manager_(main_service, node_manager_config, object_manager_, gcs_client_),
+      socket_name_(socket_name),
+      acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service),
       object_manager_acceptor_(
           main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
       object_manager_socket_(main_service),
       node_manager_acceptor_(
           main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
-      node_manager_socket_(main_service),
-      gcs_client_(gcs_client),
-      object_manager_(main_service, std::move(object_manager_service),
-                      object_manager_config, gcs_client),
-      node_manager_(main_service, node_manager_config, object_manager_, gcs_client_) {
+      node_manager_socket_(main_service) {
   // Start listening for clients.
   DoAccept();
   DoAcceptObjectManager();
   DoAcceptNodeManager();
 
-  RAY_CHECK_OK(RegisterGcs(node_ip_address, redis_address, redis_port, main_service,
+  RAY_CHECK_OK(RegisterGcs(node_ip_address, socket_name_,
+                           object_manager_config.store_socket_name,
+                           redis_address, redis_port, main_service,
                            node_manager_config));
 
   RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
@@ -43,7 +46,6 @@ Raylet::Raylet(boost::asio::io_service &main_service,
 
 Raylet::~Raylet() {
   RAY_CHECK_OK(gcs_client_->client_table().Disconnect());
-  RAY_CHECK_OK(object_manager_.Terminate());
 }
 
 ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {
@@ -53,6 +55,8 @@ ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {
 }
 
 ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
+                                const std::string &raylet_socket_name,
+                                const std::string &object_store_socket_name,
                                 const std::string &redis_address, int redis_port,
                                 boost::asio::io_service &io_service,
                                 const NodeManagerConfig &node_manager_config) {
@@ -61,6 +65,8 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
 
   ClientTableDataT client_info = gcs_client_->client_table().GetLocalClient();
   client_info.node_manager_address = node_ip_address;
+  client_info.raylet_socket_name = raylet_socket_name;
+  client_info.object_store_socket_name = object_store_socket_name;
   client_info.object_manager_port = object_manager_acceptor_.local_endpoint().port();
   client_info.node_manager_port = node_manager_acceptor_.local_endpoint().port();
   // Add resource information.
@@ -73,7 +79,7 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
                  << " port " << client_info.node_manager_port;
   RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
 
-  node_manager_.RegisterGcs();
+  RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
 
   return Status::OK();
 }

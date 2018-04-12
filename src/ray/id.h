@@ -73,14 +73,14 @@ const TaskID FinishTaskId(const TaskID &task_id);
 /// \param task_id The task ID of the task that created the object.
 /// \param put_index What number return value this object is in the task.
 /// \return The computed object ID.
-const ObjectID ComputeReturnId(TaskID task_id, int64_t return_index);
+const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index);
 
 /// Compute the object ID of an object put by the task.
 ///
 /// \param task_id The task ID of the task that created the object.
 /// \param put_index What number put this object was created by in the task.
 /// \return The computed object ID.
-const ObjectID ComputePutId(TaskID task_id, int64_t put_index);
+const ObjectID ComputePutId(const TaskID &task_id, int64_t put_index);
 
 /// Compute the task ID of the task that created the object.
 ///

@@ -49,14 +49,11 @@
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
 
+// NOTE(swang): The order of prefixes here must match the TablePrefix enum
+// defined in src/ray/gcs/format/gcs.fbs.
 static const char *table_prefixes[] = {
-    NULL,
-    "TASK:",
-    "TASK:",
-    "CLIENT:",
-    "OBJECT:",
-    "FUNCTION:",
-    "TASK_RECONSTRUCTION:",
+    NULL,         "TASK:",  "TASK:",     "CLIENT:",
+    "OBJECT:",    "ACTOR:", "FUNCTION:", "TASK_RECONSTRUCTION:",
     "HEARTBEAT:",
 };
 

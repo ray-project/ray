@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 """Example of using PBT with RLlib.
 
 Note that this requires a cluster with at least 8 GPUs in order for all trials
@@ -30,7 +29,8 @@ if __name__ == "__main__":
         return config
 
     pbt = PopulationBasedTraining(
-        time_attr="time_total_s", reward_attr="episode_reward_mean",
+        time_attr="time_total_s",
+        reward_attr="episode_reward_mean",
         perturbation_interval=120,
         resample_probability=0.25,
         # Specifies the mutations of these hyperparams
@@ -45,26 +45,40 @@ if __name__ == "__main__":
         custom_explore_fn=explore)
 
     ray.init()
-    run_experiments({
-        "pbt_humanoid_test": {
-            "run": "PPO",
-            "env": "Humanoid-v1",
-            "repeat": 8,
-            "trial_resources": {"cpu": 4, "gpu": 1},
-            "config": {
-                "kl_coeff": 1.0,
-                "num_workers": 8,
-                "devices": ["/gpu:0"],
-                "model": {"free_log_std": True},
-                # These params are tuned from a fixed starting value.
-                "lambda": 0.95,
-                "clip_param": 0.2,
-                "sgd_stepsize": 1e-4,
-                # These params start off randomly drawn from a set.
-                "num_sgd_iter": lambda spec: random.choice([10, 20, 30]),
-                "sgd_batchsize": lambda spec: random.choice([128, 512, 2048]),
-                "timesteps_per_batch":
+    run_experiments(
+        {
+            "pbt_humanoid_test": {
+                "run": "PPO",
+                "env": "Humanoid-v1",
+                "repeat": 8,
+                "trial_resources": {
+                    "cpu": 4,
+                    "gpu": 1
+                },
+                "config": {
+                    "kl_coeff":
+                    1.0,
+                    "num_workers":
+                    8,
+                    "devices": ["/gpu:0"],
+                    "model": {
+                        "free_log_std": True
+                    },
+                    # These params are tuned from a fixed starting value.
+                    "lambda":
+                    0.95,
+                    "clip_param":
+                    0.2,
+                    "sgd_stepsize":
+                    1e-4,
+                    # These params start off randomly drawn from a set.
+                    "num_sgd_iter":
+                    lambda spec: random.choice([10, 20, 30]),
+                    "sgd_batchsize":
+                    lambda spec: random.choice([128, 512, 2048]),
+                    "timesteps_per_batch":
                     lambda spec: random.choice([10000, 20000, 40000])
+                },
             },
         },
-    }, scheduler=pbt)
+        scheduler=pbt)

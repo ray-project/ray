@@ -34,7 +34,6 @@ class MockServer {
 
   ~MockServer() {
     RAY_CHECK_OK(gcs_client_->client_table().Disconnect());
-    RAY_CHECK_OK(object_manager_.Terminate());
   }
 
  private:
@@ -94,9 +93,7 @@ class TestObjectManager : public ::testing::Test {
                                  " 1> /dev/null 2> /dev/null &";
     RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
-    if (ec != 0) {
-      throw std::runtime_error("failed to start plasma store.");
-    };
+    RAY_CHECK(ec == 0);
     return store_id;
   }
 
@@ -204,11 +201,12 @@ class TestObjectManagerCommands : public TestObjectManager {
 
   void TestNotifications() {
     ray::Status status = ray::Status::OK();
-    status =
-        server1->object_manager_.SubscribeObjAdded([this](const ObjectID &object_id) {
-          object_added_handler_1(object_id);
+    status = server1->object_manager_.SubscribeObjAdded(
+        [this](const ObjectInfoT &object_info) {
+          object_added_handler_1(ObjectID::from_binary(object_info.object_id));
           if (v1.size() == num_expected_objects) {
-            NotificationTestComplete(created_object_id, object_id);
+            NotificationTestComplete(created_object_id,
+                                     ObjectID::from_binary(object_info.object_id));
           }
         });
     RAY_CHECK_OK(status);

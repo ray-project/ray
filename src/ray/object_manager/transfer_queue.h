@@ -55,6 +55,8 @@ class TransferQueue {
     }
   };
 
+  TransferQueue() = default;
+
   /// Queues a send.
   ///
   /// \param client_id The ClientID to which the object needs to be sent.
@@ -103,9 +105,7 @@ class TransferQueue {
   ray::Status RemoveContext(const UniqueID &id);
 
   /// This object cannot be copied for thread-safety.
-  TransferQueue &operator=(const TransferQueue &o) {
-    throw std::runtime_error("Can't copy TransferQueue.");
-  }
+  RAY_DISALLOW_COPY_AND_ASSIGN(TransferQueue);
 
  private:
   // TODO(hme): make this a shared mutex.

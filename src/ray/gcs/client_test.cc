@@ -236,9 +236,8 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(job_id, task_id, data_log[1],
                                                           nullptr, failure_callback, 1));
 
-  auto lookup_callback = [task_id, managers](
-      gcs::AsyncGcsClient *client, const UniqueID &id,
-      const std::vector<TaskReconstructionDataT> &data) {
+  auto lookup_callback = [managers](gcs::AsyncGcsClient *client, const UniqueID &id,
+                                    const std::vector<TaskReconstructionDataT> &data) {
     std::vector<std::string> appended_managers;
     for (const auto &entry : data) {
       appended_managers.push_back(entry.node_manager_id);
@@ -838,14 +837,45 @@ void TestClientTableDisconnect(const JobID &job_id,
   client->client_table().RegisterClientAddedCallback(
       [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, true);
+        // Disconnect from the client table. We should receive a notification
+        // for the removal of our own entry.
+        RAY_CHECK_OK(client->client_table().Disconnect());
       });
   client->client_table().RegisterClientRemovedCallback(
       [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
         ClientTableNotification(client, id, data, false);
         test->Stop();
       });
-  // Connect and disconnect to client table. We should receive notifications
-  // for the addition and removal of our own entry.
+  // Connect to the client table. We should receive notification for the
+  // addition of our own entry.
+  ClientTableDataT local_client_info = client->client_table().GetLocalClient();
+  local_client_info.node_manager_address = "127.0.0.1";
+  local_client_info.node_manager_port = 0;
+  local_client_info.object_manager_port = 0;
+  RAY_CHECK_OK(client->client_table().Connect(local_client_info));
+  test->Start();
+}
+
+TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
+  test = this;
+  TestClientTableDisconnect(job_id_, client_);
+}
+
+void TestClientTableImmediateDisconnect(const JobID &job_id,
+                                        std::shared_ptr<gcs::AsyncGcsClient> client) {
+  // Register callbacks for when a client gets added and removed. The latter
+  // event will stop the event loop.
+  client->client_table().RegisterClientAddedCallback(
+      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+        ClientTableNotification(client, id, data, true);
+      });
+  client->client_table().RegisterClientRemovedCallback(
+      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+        ClientTableNotification(client, id, data, false);
+        test->Stop();
+      });
+  // Connect to then immediately disconnect from the client table. We should
+  // receive notifications for the addition and removal of our own entry.
   ClientTableDataT local_client_info = client->client_table().GetLocalClient();
   local_client_info.node_manager_address = "127.0.0.1";
   local_client_info.node_manager_port = 0;
@@ -855,9 +885,35 @@ void TestClientTableDisconnect(const JobID &job_id,
   test->Start();
 }
 
-TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
+TEST_F(TestGcsWithAsio, TestClientTableImmediateDisconnect) {
   test = this;
-  TestClientTableDisconnect(job_id_, client_);
+  TestClientTableImmediateDisconnect(job_id_, client_);
+}
+
+void TestClientTableMarkDisconnected(const JobID &job_id,
+                                     std::shared_ptr<gcs::AsyncGcsClient> client) {
+  ClientTableDataT local_client_info = client->client_table().GetLocalClient();
+  local_client_info.node_manager_address = "127.0.0.1";
+  local_client_info.node_manager_port = 0;
+  local_client_info.object_manager_port = 0;
+  // Connect to the client table to start receiving notifications.
+  RAY_CHECK_OK(client->client_table().Connect(local_client_info));
+  // Mark a different client as dead.
+  ClientID dead_client_id = ClientID::from_random();
+  RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_client_id));
+  // Make sure we only get a notification for the removal of the client we
+  // marked as dead.
+  client->client_table().RegisterClientRemovedCallback([dead_client_id](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ASSERT_EQ(ClientID::from_binary(data.client_id), dead_client_id);
+    test->Stop();
+  });
+  test->Start();
+}
+
+TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
+  test = this;
+  TestClientTableMarkDisconnected(job_id_, client_);
 }
 
 }  // namespace
