@@ -127,7 +127,7 @@ DEFAULT_CONFIG = dict(
 
 
 class DDPG2Agent(Agent):
-    _agent_name = "DDPG"
+    _agent_name = "DDPG2"
     _allow_unknown_subkeys = [
         "model", "optimizer", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG

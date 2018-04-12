@@ -8,12 +8,12 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.models import ModelCatalog
 from ray.rllib.ddpg2 import models
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.compression import pack
 from ray.rllib.dqn.dqn_evaluator import adjust_nstep
+from ray.rllib.dqn.common.wrappers import wrap_dqn
 
 
 class DDPGEvaluator(PolicyEvaluator):
@@ -21,7 +21,8 @@ class DDPGEvaluator(PolicyEvaluator):
 
     def __init__(self, registry, env_creator, config, logdir, worker_index):
         env = env_creator(config["env_config"])
-        self.env = ModelCatalog.get_preprocessor_as_wrapper(registry, env, config["model"])
+        env = wrap_dqn(registry, env, config["model"], config["random_starts"])
+        self.env = env
         self.config = config
 
         # when env.action_space is of Box type, e.g., Pendulum-v0
