@@ -5,12 +5,6 @@
 // Don't use the deprecated Numpy functions.
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
-// I see a compilation error "error: unused function '_import_array'" without
-// the lines below.
-#ifndef NUMPY_IMPORT_ARRAY
-#define NO_IMPORT_ARRAY
-#endif
-
 #include <numpy/arrayobject.h>
 
 #include "common.h"
@@ -33,6 +27,11 @@ PyObject *pickle_module = NULL;
 PyObject *pickle_loads = NULL;
 PyObject *pickle_dumps = NULL;
 PyObject *pickle_protocol = NULL;
+
+int init_numpy_module(void) {
+  import_array();
+  return 0;
+}
 
 void init_pickle_module(void) {
 #if PY_MAJOR_VERSION >= 3
@@ -855,26 +854,12 @@ bool is_simple_value(PyObject *value, int *num_elements_contained) {
       return false;
     }
     int dtype = PyArray_TYPE(array);
-    switch (dtype) {
-      case NPY_UINT8:
-      case NPY_INT8:
-      case NPY_UINT16:
-      case NPY_INT16:
-      case NPY_UINT32:
-      case NPY_INT32:
-      case NPY_UINT64:
-      case NPY_INT64:
-      case NPY_HALF:
-      case NPY_FLOAT:
-      case NPY_DOUBLE: {
-        *num_elements_contained += PyArray_NBYTES(array);
-        return (*num_elements_contained <
-                RayConfig::instance().num_elements_limit());
-      } break;
-      default: {
-        return false;
-      }
+    if (dtype == NPY_OBJECT) {
+      return false;
     }
+    *num_elements_contained += PyArray_NBYTES(array);
+    return (*num_elements_contained <
+            RayConfig::instance().num_elements_limit());
   }
   return false;
 }
