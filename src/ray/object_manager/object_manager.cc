@@ -219,6 +219,7 @@ ray::Status ObjectManager::DequeueTransfers() {
   // Dequeue receives.
   while (true) {
     if (std::atomic_fetch_add(&num_transfers_receive_, 1) < max_receives_) {
+      RAY_CHECK(num_transfers_receive_ <= max_receives_);
       RAY_CHECK(num_transfers_send_ + num_transfers_receive_ <= num_threads_);
       TransferQueue::ReceiveRequest req;
       bool exists = transfer_queue_.DequeueReceiveIfPresent(&req);
@@ -241,6 +242,7 @@ ray::Status ObjectManager::DequeueTransfers() {
   // Dequeue sends.
   while (true) {
     if (std::atomic_fetch_add(&num_transfers_send_, 1) < max_sends_) {
+      RAY_CHECK(num_transfers_send_ <= max_sends_);
       RAY_CHECK(num_transfers_send_ + num_transfers_receive_ <= num_threads_);
       TransferQueue::SendRequest req;
       bool exists = transfer_queue_.DequeueSendIfPresent(&req);
