@@ -167,8 +167,8 @@ def _generate_variants(spec):
             for path, value in grid_vars:
                 resolved_vars[path] = _get_value(spec, path)
             for k, v in resolved.items():
-                if (k in resolved_vars and v != resolved_vars[k] and
-                        _is_resolved(resolved_vars[k])):
+                if (k in resolved_vars and v != resolved_vars[k]
+                        and _is_resolved(resolved_vars[k])):
                     raise ValueError(
                         "The variable `{}` could not be unambiguously "
                         "resolved to a single value. Consider simplifying "

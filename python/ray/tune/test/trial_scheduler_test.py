@@ -25,6 +25,12 @@ def result(t, rew):
 
 
 class EarlyStoppingSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def basicSetup(self, rule):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
@@ -185,6 +191,12 @@ class _MockTrialRunner():
 
 
 class HyperbandSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def schedulerSetup(self, num_trials):
         """Setup a scheduler and Runner with max Iter = 9
 
@@ -539,6 +551,12 @@ class _MockTrial(Trial):
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def basicSetup(self, resample_prob=0.0, explore=None):
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -752,6 +770,12 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
 
 class AsyncHyperBandSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def basicSetup(self, scheduler):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
@@ -852,5 +876,4 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    ray.init()
     unittest.main(verbosity=2)

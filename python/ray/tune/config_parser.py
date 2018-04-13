@@ -73,7 +73,9 @@ def make_parser(**kwargs):
         help="Algorithm-specific configuration (e.g. env, hyperparams), "
         "specified in JSON.")
     parser.add_argument(
-        "--trial-resources", default=None, type=json_to_resources,
+        "--trial-resources",
+        default=None,
+        type=json_to_resources,
         help="Override the machine resources to allocate per trial, e.g. "
         "'{\"cpu\": 64, \"gpu\": 8}'. Note that GPUs will not be assigned "
         "unless you specify them here. For RLlib, you probably want to "

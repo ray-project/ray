@@ -113,8 +113,8 @@ class Trial(object):
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
         self.resources = (
-            resources or
-            self._get_trainable_cls().default_resource_request(self.config))
+            resources
+            or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
