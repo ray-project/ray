@@ -40,7 +40,7 @@ def teardown_parquet_file():
 
 
 @pytest.fixture
-def setup_csv_file(row_size, force=False):
+def setup_csv_file(row_size, force=False, delimiter=','):
     if os.path.exists(TEST_CSV_FILENAME) and not force:
         pass
     else:
@@ -48,7 +48,7 @@ def setup_csv_file(row_size, force=False):
             'col1': np.arange(row_size),
             'col2': np.arange(row_size)
         })
-        df.to_csv(TEST_CSV_FILENAME)
+        df.to_csv(TEST_CSV_FILENAME, sep=delimiter)
 
 
 @pytest.fixture
@@ -81,6 +81,16 @@ def test_from_parquet_large():
 
 def test_from_csv():
     setup_csv_file(SMALL_ROW_SIZE)
+
+    pd_df = pd.read_csv(TEST_CSV_FILENAME)
+    ray_df = io.read_csv(TEST_CSV_FILENAME)
+
+    assert ray_df_equals_pandas(ray_df, pd_df)
+
+    teardown_csv_file()
+
+def test_from_csv_delimiter():
+    setup_csv_file(SMALL_ROW_SIZE, delimiter='|')
 
     pd_df = pd.read_csv(TEST_CSV_FILENAME)
     ray_df = io.read_csv(TEST_CSV_FILENAME)
