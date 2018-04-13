@@ -30,6 +30,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 
     def tearDown(self):
         ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
 
     def basicSetup(self, rule):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
@@ -196,6 +197,7 @@ class HyperbandSuite(unittest.TestCase):
 
     def tearDown(self):
         ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
 
     def schedulerSetup(self, num_trials):
         """Setup a scheduler and Runner with max Iter = 9
@@ -556,6 +558,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
     def tearDown(self):
         ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
 
     def basicSetup(self, resample_prob=0.0, explore=None):
         pbt = PopulationBasedTraining(
@@ -775,6 +778,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
     def tearDown(self):
         ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
 
     def basicSetup(self, scheduler):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
