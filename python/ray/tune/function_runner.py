@@ -104,12 +104,12 @@ class FunctionRunner(Trainable):
         raise NotImplementedError
 
     def _train(self):
-        _serve_get_pin_requests()
         time.sleep(
             self.config.get("script_min_iter_time_s",
                             self._default_config["script_min_iter_time_s"]))
         result = self._status_reporter._get_and_clear_status()
         while result is None:
+            _serve_get_pin_requests()
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
         if result.timesteps_total is None:
