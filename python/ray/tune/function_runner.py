@@ -9,6 +9,7 @@ import traceback
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
 from ray.tune.result import TrainingResult
+from ray.tune.util import _serve_get_pin_requests
 
 
 class StatusReporter(object):
@@ -103,6 +104,7 @@ class FunctionRunner(Trainable):
         raise NotImplementedError
 
     def _train(self):
+        _serve_get_pin_requests()
         time.sleep(
             self.config.get("script_min_iter_time_s",
                             self._default_config["script_min_iter_time_s"]))
