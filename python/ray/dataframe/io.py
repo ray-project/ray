@@ -191,7 +191,6 @@ def read_csv(filepath,
               We only support local files for now.
         kwargs: Keyword arguments in pandas::from_csv
     """
-<<<<<<< 6ac315f39746c76e98babd515f6869d225934129
 
     warnings.warn("Defaulting to Pandas implementation",
                   PendingDeprecationWarning)
@@ -253,79 +252,6 @@ def read_csv(filepath,
     ray_frame = from_pandas(port_frame, get_npartitions())
 
     return ray_frame
-=======
-    kwargs = dict(
-        sep=sep,
-        delimiter=delimiter,
-        header=header,
-        names=names,
-        index_col=index_col,
-        usecols=usecols,
-        squeeze=squeeze,
-        prefix=prefix,
-        mangle_dupe_cols=mangle_dupe_cols,
-        dtype=dtype,
-        engine=engine,
-        converters=converters,
-        true_values=true_values,
-        false_values=false_values,
-        skipinitialspace=skipinitialspace,
-        skiprows=skiprows,
-        nrows=nrows,
-        na_values=na_values,
-        keep_default_na=keep_default_na,
-        na_filter=na_filter,
-        verbose=verbose,
-        skip_blank_lines=skip_blank_lines,
-        parse_dates=parse_dates,
-        infer_datetime_format=infer_datetime_format,
-        keep_date_col=keep_date_col,
-        date_parser=date_parser,
-        dayfirst=dayfirst,
-        iterator=iterator,
-        chunksize=chunksize,
-        compression=compression,
-        thousands=thousands,
-        decimal=decimal,
-        lineterminator=lineterminator,
-        quotechar=quotechar,
-        quoting=quoting,
-        escapechar=escapechar,
-        comment=comment,
-        encoding=encoding,
-        dialect=dialect,
-        tupleize_cols=tupleize_cols,
-        error_bad_lines=error_bad_lines,
-        warn_bad_lines=warn_bad_lines,
-        skipfooter=skipfooter,
-        skip_footer=skip_footer,
-        doublequote=doublequote,
-        delim_whitespace=delim_whitespace,
-        as_recarray=as_recarray,
-        compact_ints=compact_ints,
-        use_unsigned=use_unsigned,
-        low_memory=low_memory,
-        buffer_lines=buffer_lines,
-        memory_map=memory_map,
-        float_precision=float_precision)
-
-    offsets = _compute_offset(filepath, get_npartitions())
-
-    first_line = _get_firstline(filepath)
-    columns = _infer_column(first_line, kwargs)
-
-    df_obj_ids = []
-    for start, end in offsets:
-        if start != 0:
-            df = _read_csv_with_offset.remote(
-                filepath, start, end, header=first_line, kwargs=kwargs)
-        else:
-            df = _read_csv_with_offset.remote(
-                filepath, start, end, kwargs=kwargs)
-        df_obj_ids.append(df)
-
-    return DataFrame(df_obj_ids, columns)
->>>>>>> resolving errors
 
 
 def read_json(path_or_buf=None,

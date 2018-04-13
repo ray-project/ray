@@ -373,7 +373,7 @@ def test_from_pickle():
 
 def test_from_sql():
     conn = sqlite3.connect(TEST_SQL_FILENAME)
-    setup_sql_file(conn)
+    setup_sql_file(conn, True)
 
     pd_df = pd.read_sql("select * from test", conn)
     ray_df = io.read_sql("select * from test", conn)
