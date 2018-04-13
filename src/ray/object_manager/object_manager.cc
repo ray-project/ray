@@ -316,7 +316,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
     store_pool_.ReleaseObjectStore(store_client);
-    TransferCompleted(TransferQueue::TransferType::SEND);
+    RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::SEND));
     return ray::Status::IOError(
         "Unable to transfer object to requesting plasma manager, object not local.");
   }
