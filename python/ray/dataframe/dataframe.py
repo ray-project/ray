@@ -1278,15 +1278,17 @@ class DataFrame(object):
         def eval_helper(df):
             df.columns = columns
             result = df.eval(expr, inplace=False, **kwargs)
+            # If result is a series, expr was not an assignment expression.
             if not isinstance(result, pd.Series):
                 result.columns = pd.RangeIndex(0, len(result.columns))
             return result
 
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_rows = _map_partitions(eval_helper, self._row_partitions)
+
         first_row = ray.get(new_rows[0])
         if isinstance(first_row, pd.Series):
-            new_series = pd.concat(ray.get(new_rows), axis=0)
+            new_series = pd.concat([first_row] + ray.get(new_rows[1:]), axis=0)
             new_series.index = self.index
             return new_series
 
