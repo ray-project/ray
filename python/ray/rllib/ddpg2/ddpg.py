@@ -47,7 +47,7 @@ DEFAULT_CONFIG = dict(
     exploration_fraction=0.1,
     # Final value of random action probability
     exploration_final_eps=0.02,
-    # UO-noise scale
+    # OU-noise scale
     noise_scale=0.1,
     # theta
     exploration_theta=0.15,
@@ -79,6 +79,11 @@ DEFAULT_CONFIG = dict(
     # Learning rate for adam optimizer
     actor_lr=1e-4,
     critic_lr=1e-3,
+    # If True, use huber loss instead of squared loss for critic network
+    # Conventionally, no need to clip gradients if using a huber loss
+    use_huber=False,
+    # Threshold of a huber loss
+    huber_threshold=1.0,
     # Weights for L2 regularization
     l2_reg=1e-6,
     # If not None, clip gradients during optimization at this value

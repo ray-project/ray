@@ -7,6 +7,7 @@ pendulum-ddpg-2:
         episode_reward_mean: -160
         time_total_s: 900
     config:
+        use_huber: True
         random_starts: False
         clip_rewards: False
         exploration_fraction: 0.4

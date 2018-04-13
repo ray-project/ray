@@ -15,9 +15,10 @@ def _build_p_network(registry, inputs, dim_actions, config):
     map an observation (i.e., state) to an action where
     each entry takes value from (0, 1) due to the sigmoid function
     """
-    hiddens = config["actor_hiddens"]
+    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
 
-    action_out = inputs
+    hiddens = config["actor_hiddens"]
+    action_out = frontend.last_layer
     for hidden in hiddens:
         action_out = layers.fully_connected(
             action_out, num_outputs=hidden, activation_fn=tf.nn.relu)
@@ -49,10 +50,11 @@ def _build_action_network(
 
 
 def _build_q_network(registry, inputs, action_inputs, config):
+    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
+
     hiddens = config["critic_hiddens"]
 
-    #with tf.variable_scope("action_value"):
-    q_out = tf.concat([inputs, action_inputs], axis=1)
+    q_out = tf.concat([frontend.last_layer, action_inputs], axis=1)
     for hidden in hiddens:
         q_out = layers.fully_connected(
             q_out, num_outputs=hidden, activation_fn=tf.nn.relu)
@@ -158,9 +160,9 @@ class ModelAndLoss(object):
             self.q_tp1 = _build_q_network(registry, obs_tp1, output_actions_estimated, config)
             self.target_q_func_vars = _scope_vars(scope.name)
 
-        q_t_selected = tf.squeeze(self.q_t)
+        q_t_selected = tf.squeeze(self.q_t, axis=len(self.q_t.shape)-1)
 
-        q_tp1_best = tf.squeeze(input=self.q_tp1)
+        q_tp1_best = tf.squeeze(input=self.q_tp1, axis=len(self.q_tp1.shape)-1)
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
@@ -168,7 +170,10 @@ class ModelAndLoss(object):
 
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
-        errors = _huber_loss(self.td_error)
+        if config.get("use_huber"):
+            errors = _huber_loss(self.td_error, config.get("huber_threshold"))
+        else:
+            errors = 0.5 * tf.square(self.td_error)
 
         weighted_error = tf.reduce_mean(importance_weights * errors)
 

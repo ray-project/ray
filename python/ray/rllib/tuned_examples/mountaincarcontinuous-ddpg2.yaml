@@ -18,5 +18,5 @@ mountaincarcontinuous-ddpg-2:
         random_starts: False
         clip_rewards: False
         learning_starts: 1000
-        model:
-            fcnet_hiddens: []
+        #model:
+        #    fcnet_hiddens: []
