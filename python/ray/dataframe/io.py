@@ -12,7 +12,7 @@ from pyarrow.parquet import ParquetFile
 import pandas as pd
 
 from .dataframe import ray, DataFrame
-from . import get_npartitions
+from . import (get_npartitions, get_nrowpartitions)
 from .utils import from_pandas
 
 
@@ -247,7 +247,7 @@ def read_csv(filepath,
         memory_map=memory_map,
         float_precision=float_precision)
 
-    offsets = _compute_offset(filepath, get_npartitions())
+    offsets = _compute_offset(filepath, get_nrowpartitions())
 
     first_line = _get_firstline(filepath)
     columns = _infer_column(first_line, kwargs=kwargs)

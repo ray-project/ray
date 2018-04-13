@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import ray
 
-from . import get_npartitions
+from . import (get_npartitions, get_nrowpartitions, get_ncolpartitions)
 
 
 def _get_lengths(df):
@@ -187,10 +187,11 @@ def _build_coord_df(lengths, index):
 
 def _create_block_partitions(partitions, axis=0, length=None):
 
-    if length is not None and length != 0 and get_npartitions() > length:
+    if length is not None and length != 0: # and get_npartitions() > length:
         npartitions = length
     else:
-        npartitions = get_npartitions()
+        npartitions = get_ncolpartitions() if axis == 0 else get_nrowpartitions()
+        # npartitions = get_npartitions()
 
     x = [create_blocks._submit(args=(partition, npartitions, axis),
                                num_return_vals=npartitions)
