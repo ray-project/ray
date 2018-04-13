@@ -30,7 +30,7 @@ class DataFrameGroupBy(object):
 
         self._keys_and_values = [(k, v) for k, v in index_grouped]
 
-        grouped_partitions = np.array(
+        self._grouped_partitions = np.array(
             [groupby._submit(args=(part,
                                    by,
                                    axis,
@@ -42,23 +42,26 @@ class DataFrameGroupBy(object):
                              num_return_vals=len(self._keys_and_values))
              for part in partitions]).T
 
-        if grouped_partitions.ndim == 1:
-            grouped_partitions = np.expand_dims(grouped_partitions,
-                                                axis=axis)
+        if self._grouped_partitions.ndim == 1:
+            self._grouped_partitions = \
+                np.expand_dims(self._grouped_partitions, axis=axis)
+
+    @property
+    def _iter(self):
         from .dataframe import DataFrame
 
-        if axis == 0:
-            self._iter = [((self._keys_and_values[i][0],
-                           DataFrame(col_partitions=grouped_partitions[i].tolist(),
-                                     columns=df.columns,
-                                     index=self._keys_and_values[i][1].index)))
-                          for i in range(len(grouped_partitions))]
+        if self._axis == 0:
+            return [(yield((self._keys_and_values[i][0],
+                            DataFrame(col_partitions=self._grouped_partitions[i].tolist(),
+                                      columns=df.columns,
+                                      index=self._keys_and_values[i][1].index))))
+                          for i in range(len(self._grouped_partitions))]
         else:
-            self._iter = [((self._keys_and_values[i][0],
-                           DataFrame(row_partitions=grouped_partitions[i].tolist(),
-                                     columns=self._keys_and_values[i][1].index,
-                                     index=self._index)))
-                          for i in range(len(grouped_partitions))]
+            return [(yield((self._keys_and_values[i][0],
+                            DataFrame(row_partitions=self._grouped_partitions[i].tolist(),
+                                      columns=self._keys_and_values[i][1].index,
+                                      index=self._index))))
+                          for i in range(len(self._grouped_partitions))]
 
     def _map_partitions(self, func):
         """Apply a function on each partition.
@@ -75,7 +78,7 @@ class DataFrameGroupBy(object):
                               for k, obj in self._iter])
 
         return DataFrame(block_partitions=new_parts,
-                         columns=self.columns)
+                         columns=self._columns)
 
     @property
     def ngroups(self):
