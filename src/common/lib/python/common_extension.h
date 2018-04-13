@@ -43,7 +43,11 @@ extern PyObject *pickle_module;
 extern PyObject *pickle_dumps;
 extern PyObject *pickle_loads;
 
-int init_numpy_module(void);
+#if PY_MAJOR_VERSION >= 3
+void *init_numpy_module(void);
+#else
+void init_numpy_module(void);
+#endif
 
 void init_pickle_module(void);
 
