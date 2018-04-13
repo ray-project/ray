@@ -41,9 +41,7 @@ class MockServer {
     DoAcceptObjectManager();
   }
 
-  ~MockServer() {
-    RAY_CHECK_OK(gcs_client_->client_table().Disconnect());
-  }
+  ~MockServer() { RAY_CHECK_OK(gcs_client_->client_table().Disconnect()); }
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
