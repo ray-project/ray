@@ -9,7 +9,7 @@ from numpy.random import randn, rand, randint
 import numpy as np
 
 from pandas.core.dtypes.common import is_bool, is_list_like, is_scalar
-import pandas as pd
+import ray.dataframe as pd
 from pandas.core import common as com
 from pandas.errors import PerformanceWarning
 from pandas import DataFrame, Series, Panel, date_range
@@ -1874,14 +1874,16 @@ def test_negate_lt_eq_le(engine, parser):
     expected = df[~(df.cat > 0)]
 
     result = df.query('~(cat > 0)', engine=engine, parser=parser)
-    tm.assert_frame_equal(result, expected)
+    assert result == expected
+    # tm.assert_frame_equal(result, expected)
 
     if parser == 'python':
         with pytest.raises(NotImplementedError):
             df.query('not (cat > 0)', engine=engine, parser=parser)
     else:
         result = df.query('not (cat > 0)', engine=engine, parser=parser)
-        tm.assert_frame_equal(result, expected)
+        assert result == expected
+        # tm.assert_frame_equal(result, expected)
 
 
 class TestValidate(object):
