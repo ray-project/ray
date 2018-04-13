@@ -317,6 +317,8 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
     // transfer again.
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
+    store_pool_.ReleaseObjectStore(store_client);
+    TransferCompleted(TransferQueue::TransferType::SEND);
     return ray::Status::IOError(
         "Unable to transfer object to requesting plasma manager, object not local.");
   }
@@ -342,8 +344,12 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
   if (!status.ok()) {
     // push failed.
     // TODO(hme): Trash sender.
+    ARROW_CHECK_OK(store_client->Release(object_id.to_plasma_id()));
+    store_pool_.ReleaseObjectStore(store_client);
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
+    RAY_CHECK_OK(transfer_queue_.RemoveContext(context_id));
+    RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::SEND));
     return status;
   }
 
