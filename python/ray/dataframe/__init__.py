@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from pandas import eval # noqa: 402
 
 import pandas as pd
+from pandas import eval
 import threading
 
 pd_version = pd.__version__
