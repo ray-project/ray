@@ -35,11 +35,11 @@ struct ObjectManagerConfig {
   /// that failed due to client id lookup.
   int pull_timeout_ms = 100;
   /// Size of thread pool.
-  int num_threads = 2;
+  int num_threads = 4;
   /// Maximum number of sends allowed.
-  int max_sends = 20;
+  int max_sends = 2;
   /// Maximum number of receives allowed.
-  int max_receives = 20;
+  int max_receives = 2;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size = std::pow(10, 8);
   // TODO(hme): Implement num retries (to avoid infinite retries).
