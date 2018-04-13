@@ -9,8 +9,7 @@ from numpy.random import randn, rand, randint
 import numpy as np
 
 from pandas.core.dtypes.common import is_bool, is_list_like, is_scalar
-import ray.dataframe as pd
-import pandas
+import pandas as pd
 from pandas.core import common as com
 from pandas.errors import PerformanceWarning
 from pandas import DataFrame, Series, Panel, date_range
@@ -220,9 +219,9 @@ class TestEvalNumexprPandas(object):
                                                     cmp2 in skip_these))
         if scalar_with_in_notin:
             with pytest.raises(TypeError):
-                pandas.eval(ex, engine=self.engine, parser=self.parser)
+                pd.eval(ex, engine=self.engine, parser=self.parser)
             with pytest.raises(TypeError):
-                pandas.eval(ex, engine=self.engine, parser=self.parser,
+                pd.eval(ex, engine=self.engine, parser=self.parser,
                         local_dict={'lhs': lhs, 'rhs': rhs})
         else:
             lhs_new = _eval_single_bin(lhs, cmp1, rhs, self.engine)
@@ -235,7 +234,7 @@ class TestEvalNumexprPandas(object):
                 # hand side bool ops are fixed.
                 #
                 # try:
-                #     pytest.raises(Exception, pandas.eval, ex,
+                #     pytest.raises(Exception, pd.eval, ex,
                 #                   local_dict={'lhs': lhs, 'rhs': rhs},
                 #                   engine=self.engine, parser=self.parser)
                 # except AssertionError:
@@ -246,7 +245,7 @@ class TestEvalNumexprPandas(object):
             else:
                 expected = _eval_single_bin(
                     lhs_new, binop, rhs_new, self.engine)
-                result = pandas.eval(ex, engine=self.engine, parser=self.parser)
+                result = pd.eval(ex, engine=self.engine, parser=self.parser)
                 self.check_equal(result, expected)
 
     def check_chained_cmp_op(self, lhs, cmp1, mid, cmp2, rhs):
@@ -264,7 +263,7 @@ class TestEvalNumexprPandas(object):
             expected = _eval_single_bin(lhs_new, '&', rhs_new, self.engine)
 
             for ex in (ex1, ex2, ex3):
-                result = pandas.eval(ex, engine=self.engine,
+                result = pd.eval(ex, engine=self.engine,
                                  parser=self.parser)
 
                 tm.assert_almost_equal(result, expected)
@@ -272,22 +271,22 @@ class TestEvalNumexprPandas(object):
     def check_simple_cmp_op(self, lhs, cmp1, rhs):
         ex = 'lhs {0} rhs'.format(cmp1)
         if cmp1 in ('in', 'not in') and not is_list_like(rhs):
-            pytest.raises(TypeError, pandas.eval, ex, engine=self.engine,
+            pytest.raises(TypeError, pd.eval, ex, engine=self.engine,
                           parser=self.parser, local_dict={'lhs': lhs,
                                                           'rhs': rhs})
         else:
             expected = _eval_single_bin(lhs, cmp1, rhs, self.engine)
-            result = pandas.eval(ex, engine=self.engine, parser=self.parser)
+            result = pd.eval(ex, engine=self.engine, parser=self.parser)
             self.check_equal(result, expected)
 
     def check_binary_arith_op(self, lhs, arith1, rhs):
         ex = 'lhs {0} rhs'.format(arith1)
-        result = pandas.eval(ex, engine=self.engine, parser=self.parser)
+        result = pd.eval(ex, engine=self.engine, parser=self.parser)
         expected = _eval_single_bin(lhs, arith1, rhs, self.engine)
 
         tm.assert_almost_equal(result, expected)
         ex = 'lhs {0} rhs {0} rhs'.format(arith1)
-        result = pandas.eval(ex, engine=self.engine, parser=self.parser)
+        result = pd.eval(ex, engine=self.engine, parser=self.parser)
         nlhs = _eval_single_bin(lhs, arith1, rhs,
                                 self.engine)
         self.check_alignment(result, nlhs, rhs, arith1)
@@ -309,7 +308,7 @@ class TestEvalNumexprPandas(object):
 
     def check_modulus(self, lhs, arith1, rhs):
         ex = 'lhs {0} rhs'.format(arith1)
-        result = pandas.eval(ex, engine=self.engine, parser=self.parser)
+        result = pd.eval(ex, engine=self.engine, parser=self.parser)
         expected = lhs % rhs
 
         tm.assert_almost_equal(result, expected)
@@ -323,11 +322,11 @@ class TestEvalNumexprPandas(object):
         ex = 'lhs {0} rhs'.format(arith1)
 
         if self.engine == 'python':
-            res = pandas.eval(ex, engine=self.engine, parser=self.parser)
+            res = pd.eval(ex, engine=self.engine, parser=self.parser)
             expected = lhs // rhs
             self.check_equal(res, expected)
         else:
-            pytest.raises(TypeError, pandas.eval, ex,
+            pytest.raises(TypeError, pd.eval, ex,
                           local_dict={'lhs': lhs, 'rhs': rhs},
                           engine=self.engine, parser=self.parser)
 
@@ -348,7 +347,7 @@ class TestEvalNumexprPandas(object):
     def check_pow(self, lhs, arith1, rhs):
         ex = 'lhs {0} rhs'.format(arith1)
         expected = self.get_expected_pow_result(lhs, rhs)
-        result = pandas.eval(ex, engine=self.engine, parser=self.parser)
+        result = pd.eval(ex, engine=self.engine, parser=self.parser)
 
         if (is_scalar(lhs) and is_scalar(rhs) and
                 _is_py3_complex_incompat(result, expected)):
@@ -358,7 +357,7 @@ class TestEvalNumexprPandas(object):
             tm.assert_almost_equal(result, expected)
 
             ex = '(lhs {0} rhs) {0} rhs'.format(arith1)
-            result = pandas.eval(ex, engine=self.engine, parser=self.parser)
+            result = pd.eval(ex, engine=self.engine, parser=self.parser)
             expected = self.get_expected_pow_result(
                 self.get_expected_pow_result(lhs, rhs), rhs)
             tm.assert_almost_equal(result, expected)
@@ -371,11 +370,11 @@ class TestEvalNumexprPandas(object):
             except AttributeError:
                 elb = np.array([bool(el)])
             expected = ~elb
-            result = pandas.eval('~elb', engine=self.engine, parser=self.parser)
+            result = pd.eval('~elb', engine=self.engine, parser=self.parser)
             tm.assert_almost_equal(expected, result)
 
             for engine in self.current_engines:
-                tm.assert_almost_equal(result, pandas.eval('~elb', engine=engine,
+                tm.assert_almost_equal(result, pd.eval('~elb', engine=engine,
                                                        parser=self.parser))
 
     def check_compound_invert_op(self, lhs, cmp1, rhs):
@@ -383,7 +382,7 @@ class TestEvalNumexprPandas(object):
         ex = '~(lhs {0} rhs)'.format(cmp1)
 
         if is_scalar(rhs) and cmp1 in skip_these:
-            pytest.raises(TypeError, pandas.eval, ex, engine=self.engine,
+            pytest.raises(TypeError, pd.eval, ex, engine=self.engine,
                           parser=self.parser, local_dict={'lhs': lhs,
                                                           'rhs': rhs})
         else:
@@ -395,12 +394,12 @@ class TestEvalNumexprPandas(object):
                 expected = not expected
             else:
                 expected = ~expected
-            result = pandas.eval(ex, engine=self.engine, parser=self.parser)
+            result = pd.eval(ex, engine=self.engine, parser=self.parser)
             tm.assert_almost_equal(expected, result)
 
             # make sure the other engines work the same as this one
             for engine in self.current_engines:
-                ev = pandas.eval(ex, engine=self.engine, parser=self.parser)
+                ev = pd.eval(ex, engine=self.engine, parser=self.parser)
                 tm.assert_almost_equal(ev, result)
 
     def ex(self, op, var_name='lhs'):
@@ -415,35 +414,35 @@ class TestEvalNumexprPandas(object):
         lhs = DataFrame(randn(5, 2))
         if self.engine == 'numexpr':
             with pytest.raises(NotImplementedError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
         else:
             with pytest.raises(TypeError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
 
         # int raises on numexpr
         lhs = DataFrame(randint(5, size=(5, 2)))
         if self.engine == 'numexpr':
             with pytest.raises(NotImplementedError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
         else:
             expect = ~lhs
-            result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+            result = pd.eval(expr, engine=self.engine, parser=self.parser)
             assert_frame_equal(expect, result)
 
         # bool always works
         lhs = DataFrame(rand(5, 2) > 0.5)
         expect = ~lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_frame_equal(expect, result)
 
         # object raises
         lhs = DataFrame({'b': ['a', 1, 2.0], 'c': rand(3) > 0.5})
         if self.engine == 'numexpr':
             with pytest.raises(ValueError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
         else:
             with pytest.raises(TypeError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
 
     def test_series_invert(self):
         # ~ ####
@@ -454,25 +453,25 @@ class TestEvalNumexprPandas(object):
         lhs = Series(randn(5))
         if self.engine == 'numexpr':
             with pytest.raises(NotImplementedError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
         else:
             with pytest.raises(TypeError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
 
         # int raises on numexpr
         lhs = Series(randint(5, size=5))
         if self.engine == 'numexpr':
             with pytest.raises(NotImplementedError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
         else:
             expect = ~lhs
-            result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+            result = pd.eval(expr, engine=self.engine, parser=self.parser)
             assert_series_equal(expect, result)
 
         # bool
         lhs = Series(rand(5) > 0.5)
         expect = ~lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_series_equal(expect, result)
 
         # float
@@ -483,10 +482,10 @@ class TestEvalNumexprPandas(object):
         lhs = Series(['a', 1, 2.0])
         if self.engine == 'numexpr':
             with pytest.raises(ValueError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
         else:
             with pytest.raises(TypeError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
 
     def test_frame_negate(self):
         expr = self.ex('-')
@@ -494,23 +493,23 @@ class TestEvalNumexprPandas(object):
         # float
         lhs = DataFrame(randn(5, 2))
         expect = -lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_frame_equal(expect, result)
 
         # int
         lhs = DataFrame(randint(5, size=(5, 2)))
         expect = -lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_frame_equal(expect, result)
 
         # bool doesn't work with numexpr but works elsewhere
         lhs = DataFrame(rand(5, 2) > 0.5)
         if self.engine == 'numexpr':
             with pytest.raises(NotImplementedError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
         else:
             expect = -lhs
-            result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+            result = pd.eval(expr, engine=self.engine, parser=self.parser)
             assert_frame_equal(expect, result)
 
     def test_series_negate(self):
@@ -519,23 +518,23 @@ class TestEvalNumexprPandas(object):
         # float
         lhs = Series(randn(5))
         expect = -lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_series_equal(expect, result)
 
         # int
         lhs = Series(randint(5, size=5))
         expect = -lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_series_equal(expect, result)
 
         # bool doesn't work with numexpr but works elsewhere
         lhs = Series(rand(5) > 0.5)
         if self.engine == 'numexpr':
             with pytest.raises(NotImplementedError):
-                result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+                result = pd.eval(expr, engine=self.engine, parser=self.parser)
         else:
             expect = -lhs
-            result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+            result = pd.eval(expr, engine=self.engine, parser=self.parser)
             assert_series_equal(expect, result)
 
     def test_frame_pos(self):
@@ -544,19 +543,19 @@ class TestEvalNumexprPandas(object):
         # float
         lhs = DataFrame(randn(5, 2))
         expect = lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_frame_equal(expect, result)
 
         # int
         lhs = DataFrame(randint(5, size=(5, 2)))
         expect = lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_frame_equal(expect, result)
 
         # bool doesn't work with numexpr but works elsewhere
         lhs = DataFrame(rand(5, 2) > 0.5)
         expect = lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_frame_equal(expect, result)
 
     def test_series_pos(self):
@@ -565,52 +564,52 @@ class TestEvalNumexprPandas(object):
         # float
         lhs = Series(randn(5))
         expect = lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_series_equal(expect, result)
 
         # int
         lhs = Series(randint(5, size=5))
         expect = lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_series_equal(expect, result)
 
         # bool doesn't work with numexpr but works elsewhere
         lhs = Series(rand(5) > 0.5)
         expect = lhs
-        result = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        result = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert_series_equal(expect, result)
 
     def test_scalar_unary(self):
         with pytest.raises(TypeError):
-            pandas.eval('~1.0', engine=self.engine, parser=self.parser)
+            pd.eval('~1.0', engine=self.engine, parser=self.parser)
 
-        assert pandas.eval('-1.0', parser=self.parser,
+        assert pd.eval('-1.0', parser=self.parser,
                        engine=self.engine) == -1.0
-        assert pandas.eval('+1.0', parser=self.parser,
+        assert pd.eval('+1.0', parser=self.parser,
                        engine=self.engine) == +1.0
-        assert pandas.eval('~1', parser=self.parser,
+        assert pd.eval('~1', parser=self.parser,
                        engine=self.engine) == ~1
-        assert pandas.eval('-1', parser=self.parser,
+        assert pd.eval('-1', parser=self.parser,
                        engine=self.engine) == -1
-        assert pandas.eval('+1', parser=self.parser,
+        assert pd.eval('+1', parser=self.parser,
                        engine=self.engine) == +1
-        assert pandas.eval('~True', parser=self.parser,
+        assert pd.eval('~True', parser=self.parser,
                        engine=self.engine) == ~True
-        assert pandas.eval('~False', parser=self.parser,
+        assert pd.eval('~False', parser=self.parser,
                        engine=self.engine) == ~False
-        assert pandas.eval('-True', parser=self.parser,
+        assert pd.eval('-True', parser=self.parser,
                        engine=self.engine) == -True
-        assert pandas.eval('-False', parser=self.parser,
+        assert pd.eval('-False', parser=self.parser,
                        engine=self.engine) == -False
-        assert pandas.eval('+True', parser=self.parser,
+        assert pd.eval('+True', parser=self.parser,
                        engine=self.engine) == +True
-        assert pandas.eval('+False', parser=self.parser,
+        assert pd.eval('+False', parser=self.parser,
                        engine=self.engine) == +False
 
     def test_unary_in_array(self):
         # GH 11235
         assert_numpy_array_equal(
-            pandas.eval('[-True, True, ~True, +True,'
+            pd.eval('[-True, True, ~True, +True,'
                     '-False, False, ~False, +False,'
                     '-37, 37, ~37, +37]'),
             np.array([-True, True, ~True, +True,
@@ -627,38 +626,38 @@ class TestEvalNumexprPandas(object):
         x, a, b, df = np.random.randn(3), 1, 2, DataFrame(randn(3, 2))  # noqa
         for ex in exprs:
             with pytest.raises(NotImplementedError):
-                pandas.eval(ex, engine=self.engine, parser=self.parser)
+                pd.eval(ex, engine=self.engine, parser=self.parser)
 
     def test_identical(self):
         # see gh-10546
         x = 1
-        result = pandas.eval('x', engine=self.engine, parser=self.parser)
+        result = pd.eval('x', engine=self.engine, parser=self.parser)
         assert result == 1
         assert is_scalar(result)
 
         x = 1.5
-        result = pandas.eval('x', engine=self.engine, parser=self.parser)
+        result = pd.eval('x', engine=self.engine, parser=self.parser)
         assert result == 1.5
         assert is_scalar(result)
 
         x = False
-        result = pandas.eval('x', engine=self.engine, parser=self.parser)
+        result = pd.eval('x', engine=self.engine, parser=self.parser)
         assert not result
         assert is_bool(result)
         assert is_scalar(result)
 
         x = np.array([1])
-        result = pandas.eval('x', engine=self.engine, parser=self.parser)
+        result = pd.eval('x', engine=self.engine, parser=self.parser)
         tm.assert_numpy_array_equal(result, np.array([1]))
         assert result.shape == (1, )
 
         x = np.array([1.5])
-        result = pandas.eval('x', engine=self.engine, parser=self.parser)
+        result = pd.eval('x', engine=self.engine, parser=self.parser)
         tm.assert_numpy_array_equal(result, np.array([1.5]))
         assert result.shape == (1, )
 
         x = np.array([False])  # noqa
-        result = pandas.eval('x', engine=self.engine, parser=self.parser)
+        result = pd.eval('x', engine=self.engine, parser=self.parser)
         tm.assert_numpy_array_equal(result, np.array([False]))
         assert result.shape == (1, )
 
@@ -666,13 +665,13 @@ class TestEvalNumexprPandas(object):
         # GH 11149
         exp = """1 + 2 * \
         5 - 1 + 2 """
-        result = pandas.eval(exp, engine=self.engine, parser=self.parser)
+        result = pd.eval(exp, engine=self.engine, parser=self.parser)
         assert result == 12
 
     def test_float_truncation(self):
         # GH 14241
         exp = '1000000000.006'
-        result = pandas.eval(exp, engine=self.engine, parser=self.parser)
+        result = pd.eval(exp, engine=self.engine, parser=self.parser)
         expected = np.float64(exp)
         assert result == expected
 
@@ -730,7 +729,7 @@ class TestEvalNumexprPython(TestEvalNumexprPandas):
     def check_chained_cmp_op(self, lhs, cmp1, mid, cmp2, rhs):
         ex1 = 'lhs {0} mid {1} rhs'.format(cmp1, cmp2)
         with pytest.raises(NotImplementedError):
-            pandas.eval(ex1, engine=self.engine, parser=self.parser)
+            pd.eval(ex1, engine=self.engine, parser=self.parser)
 
 
 class TestEvalPythonPython(TestEvalNumexprPython):
@@ -743,7 +742,7 @@ class TestEvalPythonPython(TestEvalNumexprPython):
 
     def check_modulus(self, lhs, arith1, rhs):
         ex = 'lhs {0} rhs'.format(arith1)
-        result = pandas.eval(ex, engine=self.engine, parser=self.parser)
+        result = pd.eval(ex, engine=self.engine, parser=self.parser)
 
         expected = lhs % rhs
         tm.assert_almost_equal(result, expected)
@@ -791,13 +790,13 @@ class TestTypeCasting(object):
     def test_binop_typecasting(self, engine, parser, op, dt):
         df = mkdf(5, 3, data_gen_f=f, dtype=dt)
         s = 'df {} 3'.format(op)
-        res = pandas.eval(s, engine=engine, parser=parser)
+        res = pd.eval(s, engine=engine, parser=parser)
         assert df.values.dtype == dt
         assert res.values.dtype == dt
         assert_frame_equal(res, eval(s))
 
         s = '3 {} df'.format(op)
-        res = pandas.eval(s, engine=engine, parser=parser)
+        res = pd.eval(s, engine=engine, parser=parser)
         assert df.values.dtype == dt
         assert res.values.dtype == dt
         assert_frame_equal(res, eval(s))
@@ -824,7 +823,7 @@ class TestAlignment(object):
     def test_align_nested_unary_op(self, engine, parser):
         s = 'df * ~2'
         df = mkdf(5, 3, data_gen_f=f)
-        res = pandas.eval(s, engine=engine, parser=parser)
+        res = pd.eval(s, engine=engine, parser=parser)
         assert_frame_equal(res, df * ~2)
 
     def test_basic_frame_alignment(self, engine, parser):
@@ -840,9 +839,9 @@ class TestAlignment(object):
                 # only warns if not monotonic and not sortable
                 if should_warn(df.index, df2.index):
                     with tm.assert_produces_warning(RuntimeWarning):
-                        res = pandas.eval('df + df2', engine=engine, parser=parser)
+                        res = pd.eval('df + df2', engine=engine, parser=parser)
                 else:
-                    res = pandas.eval('df + df2', engine=engine, parser=parser)
+                    res = pd.eval('df + df2', engine=engine, parser=parser)
                 assert_frame_equal(res, df + df2)
 
     def test_frame_comparison(self, engine, parser):
@@ -850,12 +849,12 @@ class TestAlignment(object):
         for r_idx_type, c_idx_type in args:
             df = mkdf(10, 10, data_gen_f=f, r_idx_type=r_idx_type,
                       c_idx_type=c_idx_type)
-            res = pandas.eval('df < 2', engine=engine, parser=parser)
+            res = pd.eval('df < 2', engine=engine, parser=parser)
             assert_frame_equal(res, df < 2)
 
             df3 = DataFrame(randn(*df.shape), index=df.index,
                             columns=df.columns)
-            res = pandas.eval('df < df3', engine=engine, parser=parser)
+            res = pd.eval('df < df3', engine=engine, parser=parser)
             assert_frame_equal(res, df < df3)
 
     @pytest.mark.slow
@@ -872,10 +871,10 @@ class TestAlignment(object):
                 df3 = mkdf(5, 2, data_gen_f=f, r_idx_type=r2, c_idx_type=c2)
                 if should_warn(df.index, df2.index, df3.index):
                     with tm.assert_produces_warning(RuntimeWarning):
-                        res = pandas.eval('df + df2 + df3', engine=engine,
+                        res = pd.eval('df + df2 + df3', engine=engine,
                                       parser=parser)
                 else:
-                    res = pandas.eval('df + df2 + df3',
+                    res = pd.eval('df + df2 + df3',
                                   engine=engine, parser=parser)
                 assert_frame_equal(res, df + df2 + df3)
 
@@ -888,9 +887,9 @@ class TestAlignment(object):
 
             if should_warn(df.index, s.index):
                 with tm.assert_produces_warning(RuntimeWarning):
-                    res = pandas.eval('df + s', engine=engine, parser=parser)
+                    res = pd.eval('df + s', engine=engine, parser=parser)
             else:
-                res = pandas.eval('df + s', engine=engine, parser=parser)
+                res = pd.eval('df + s', engine=engine, parser=parser)
 
             if r_idx_type == 'dt' or c_idx_type == 'dt':
                 expected = df.add(s) if engine == 'numexpr' else df + s
@@ -913,9 +912,9 @@ class TestAlignment(object):
             s = Series(np.random.randn(5), index[:5])
             if should_warn(s.index, df.index):
                 with tm.assert_produces_warning(RuntimeWarning):
-                    res = pandas.eval('s + df', engine=engine, parser=parser)
+                    res = pd.eval('s + df', engine=engine, parser=parser)
             else:
-                res = pandas.eval('s + df', engine=engine, parser=parser)
+                res = pd.eval('s + df', engine=engine, parser=parser)
 
             if r_idx_type == 'dt' or c_idx_type == 'dt':
                 expected = df.add(s) if engine == 'numexpr' else s + df
@@ -951,12 +950,12 @@ class TestAlignment(object):
                 rhs = 'df {0} s'.format(op)
                 if should_warn(df.index, s.index):
                     with tm.assert_produces_warning(RuntimeWarning):
-                        a = pandas.eval(lhs, engine=engine, parser=parser)
+                        a = pd.eval(lhs, engine=engine, parser=parser)
                     with tm.assert_produces_warning(RuntimeWarning):
-                        b = pandas.eval(rhs, engine=engine, parser=parser)
+                        b = pd.eval(rhs, engine=engine, parser=parser)
                 else:
-                    a = pandas.eval(lhs, engine=engine, parser=parser)
-                    b = pandas.eval(rhs, engine=engine, parser=parser)
+                    a = pd.eval(lhs, engine=engine, parser=parser)
+                    b = pd.eval(rhs, engine=engine, parser=parser)
 
                 if r_idx_type != 'dt' and c_idx_type != 'dt':
                     if engine == 'numexpr':
@@ -1000,10 +999,10 @@ class TestAlignment(object):
 
                 if should_warn(df2.index, s.index, df.index):
                     with tm.assert_produces_warning(RuntimeWarning):
-                        res = pandas.eval('df2 + s + df', engine=engine,
+                        res = pd.eval('df2 + s + df', engine=engine,
                                       parser=parser)
                 else:
-                    res = pandas.eval('df2 + s + df', engine=engine, parser=parser)
+                    res = pd.eval('df2 + s + df', engine=engine, parser=parser)
                 assert res.shape == expected.shape
                 assert_frame_equal(res, expected)
 
@@ -1016,16 +1015,16 @@ class TestAlignment(object):
             seen = False
 
         with assert_produces_warning(seen):
-            pandas.eval('df + s', engine=engine, parser=parser)
+            pd.eval('df + s', engine=engine, parser=parser)
 
         s = Series(randn(1000))
         with assert_produces_warning(False):
-            pandas.eval('df + s', engine=engine, parser=parser)
+            pd.eval('df + s', engine=engine, parser=parser)
 
         df = DataFrame(randn(10, 10000))
         s = Series(randn(10000))
         with assert_produces_warning(False):
-            pandas.eval('df + s', engine=engine, parser=parser)
+            pd.eval('df + s', engine=engine, parser=parser)
 
         df = DataFrame(randn(10, 10))
         s = Series(randn(10000))
@@ -1038,7 +1037,7 @@ class TestAlignment(object):
             wrn = False
 
         with assert_produces_warning(wrn) as w:
-            pandas.eval('df + s', engine=engine, parser=parser)
+            pd.eval('df + s', engine=engine, parser=parser)
 
             if not is_python_engine:
                 assert len(w) == 1
@@ -1070,7 +1069,7 @@ class TestOperationsNumExprPandas(object):
         kwargs['engine'] = self.engine
         kwargs['parser'] = self.parser
         kwargs['level'] = kwargs.pop('level', 0) + 1
-        return pandas.eval(*args, **kwargs)
+        return pd.eval(*args, **kwargs)
 
     def test_simple_arith_ops(self):
         ops = self.arith_ops
@@ -1081,7 +1080,7 @@ class TestOperationsNumExprPandas(object):
             ex3 = '1 {0} (x + 1)'.format(op)
 
             if op in ('in', 'not in'):
-                pytest.raises(TypeError, pandas.eval, ex,
+                pytest.raises(TypeError, pd.eval, ex,
                               engine=self.engine, parser=self.parser)
             else:
                 expec = _eval_single_bin(1, op, 1, self.engine)
@@ -1446,60 +1445,60 @@ class TestOperationsNumExprPandas(object):
 
     def test_simple_in_ops(self):
         if self.parser != 'python':
-            res = pandas.eval('1 in [1, 2]', engine=self.engine,
+            res = pd.eval('1 in [1, 2]', engine=self.engine,
                           parser=self.parser)
             assert res
 
-            res = pandas.eval('2 in (1, 2)', engine=self.engine,
+            res = pd.eval('2 in (1, 2)', engine=self.engine,
                           parser=self.parser)
             assert res
 
-            res = pandas.eval('3 in (1, 2)', engine=self.engine,
+            res = pd.eval('3 in (1, 2)', engine=self.engine,
                           parser=self.parser)
             assert not res
 
-            res = pandas.eval('3 not in (1, 2)', engine=self.engine,
+            res = pd.eval('3 not in (1, 2)', engine=self.engine,
                           parser=self.parser)
             assert res
 
-            res = pandas.eval('[3] not in (1, 2)', engine=self.engine,
+            res = pd.eval('[3] not in (1, 2)', engine=self.engine,
                           parser=self.parser)
             assert res
 
-            res = pandas.eval('[3] in ([3], 2)', engine=self.engine,
+            res = pd.eval('[3] in ([3], 2)', engine=self.engine,
                           parser=self.parser)
             assert res
 
-            res = pandas.eval('[[3]] in [[[3]], 2]', engine=self.engine,
+            res = pd.eval('[[3]] in [[[3]], 2]', engine=self.engine,
                           parser=self.parser)
             assert res
 
-            res = pandas.eval('(3,) in [(3,), 2]', engine=self.engine,
+            res = pd.eval('(3,) in [(3,), 2]', engine=self.engine,
                           parser=self.parser)
             assert res
 
-            res = pandas.eval('(3,) not in [(3,), 2]', engine=self.engine,
+            res = pd.eval('(3,) not in [(3,), 2]', engine=self.engine,
                           parser=self.parser)
             assert not res
 
-            res = pandas.eval('[(3,)] in [[(3,)], 2]', engine=self.engine,
+            res = pd.eval('[(3,)] in [[(3,)], 2]', engine=self.engine,
                           parser=self.parser)
             assert res
         else:
             with pytest.raises(NotImplementedError):
-                pandas.eval('1 in [1, 2]', engine=self.engine, parser=self.parser)
+                pd.eval('1 in [1, 2]', engine=self.engine, parser=self.parser)
             with pytest.raises(NotImplementedError):
-                pandas.eval('2 in (1, 2)', engine=self.engine, parser=self.parser)
+                pd.eval('2 in (1, 2)', engine=self.engine, parser=self.parser)
             with pytest.raises(NotImplementedError):
-                pandas.eval('3 in (1, 2)', engine=self.engine, parser=self.parser)
+                pd.eval('3 in (1, 2)', engine=self.engine, parser=self.parser)
             with pytest.raises(NotImplementedError):
-                pandas.eval('3 not in (1, 2)', engine=self.engine,
+                pd.eval('3 not in (1, 2)', engine=self.engine,
                         parser=self.parser)
             with pytest.raises(NotImplementedError):
-                pandas.eval('[(3,)] in (1, 2, [(3,)])', engine=self.engine,
+                pd.eval('[(3,)] in (1, 2, [(3,)])', engine=self.engine,
                         parser=self.parser)
             with pytest.raises(NotImplementedError):
-                pandas.eval('[3] not in (1, 2, [[3]])', engine=self.engine,
+                pd.eval('[3] not in (1, 2, [[3]])', engine=self.engine,
                         parser=self.parser)
 
 
@@ -1519,24 +1518,24 @@ class TestOperationsNumExprPython(TestOperationsNumExprPandas):
         a = 1  # noqa
         expr = ' * '.join('a' * 33)
         expected = 1
-        res = pandas.eval(expr, engine=self.engine, parser=self.parser)
+        res = pd.eval(expr, engine=self.engine, parser=self.parser)
         assert res == expected
 
     def test_fails_and(self):
         df = DataFrame(np.random.randn(5, 3))
-        pytest.raises(NotImplementedError, pandas.eval, 'df > 2 and df > 3',
+        pytest.raises(NotImplementedError, pd.eval, 'df > 2 and df > 3',
                       local_dict={'df': df}, parser=self.parser,
                       engine=self.engine)
 
     def test_fails_or(self):
         df = DataFrame(np.random.randn(5, 3))
-        pytest.raises(NotImplementedError, pandas.eval, 'df > 2 or df > 3',
+        pytest.raises(NotImplementedError, pd.eval, 'df > 2 or df > 3',
                       local_dict={'df': df}, parser=self.parser,
                       engine=self.engine)
 
     def test_fails_not(self):
         df = DataFrame(np.random.randn(5, 3))
-        pytest.raises(NotImplementedError, pandas.eval, 'not df > 2',
+        pytest.raises(NotImplementedError, pd.eval, 'not df > 2',
                       local_dict={'df': df}, parser=self.parser,
                       engine=self.engine)
 
@@ -1544,13 +1543,13 @@ class TestOperationsNumExprPython(TestOperationsNumExprPandas):
         df = DataFrame(np.random.randn(5, 3))  # noqa
         ex = '(df + 2)[df > 1] > 0 & (df > 0)'
         with pytest.raises(NotImplementedError):
-            pandas.eval(ex, parser=self.parser, engine=self.engine)
+            pd.eval(ex, parser=self.parser, engine=self.engine)
 
     def test_fails_pipe(self):
         df = DataFrame(np.random.randn(5, 3))  # noqa
         ex = '(df + 2)[df > 1] > 0 | (df > 0)'
         with pytest.raises(NotImplementedError):
-            pandas.eval(ex, parser=self.parser, engine=self.engine)
+            pd.eval(ex, parser=self.parser, engine=self.engine)
 
     def test_bool_ops_with_constants(self):
         for op, lhs, rhs in product(expr._bool_ops_syms, ('True', 'False'),
@@ -1570,9 +1569,9 @@ class TestOperationsNumExprPython(TestOperationsNumExprPandas):
             ex = 'lhs {0} rhs'.format(op)
             if op in ('and', 'or'):
                 with pytest.raises(NotImplementedError):
-                    pandas.eval(ex, engine=self.engine, parser=self.parser)
+                    pd.eval(ex, engine=self.engine, parser=self.parser)
             else:
-                res = pandas.eval(ex, engine=self.engine, parser=self.parser)
+                res = pd.eval(ex, engine=self.engine, parser=self.parser)
                 exp = eval(ex)
                 assert res == exp
 
@@ -1616,7 +1615,7 @@ class TestMathPythonPython(object):
         kwargs['engine'] = self.engine
         kwargs['parser'] = self.parser
         kwargs['level'] = kwargs.pop('level', 0) + 1
-        return pandas.eval(*args, **kwargs)
+        return pd.eval(*args, **kwargs)
 
     def test_unary_functions(self):
         df = DataFrame({'a': np.random.randn(10)})
@@ -1738,13 +1737,13 @@ class TestScope(object):
 
     def test_global_scope(self, engine, parser):
         e = '_var_s * 2'
-        tm.assert_numpy_array_equal(_var_s * 2, pandas.eval(e, engine=engine,
+        tm.assert_numpy_array_equal(_var_s * 2, pd.eval(e, engine=engine,
                                                         parser=parser))
 
     def test_no_new_locals(self, engine, parser):
         x = 1  # noqa
         lcls = locals().copy()
-        pandas.eval('x + 1', local_dict=lcls, engine=engine, parser=parser)
+        pd.eval('x + 1', local_dict=lcls, engine=engine, parser=parser)
         lcls2 = locals().copy()
         lcls2.pop('lcls')
         assert lcls == lcls2
@@ -1752,7 +1751,7 @@ class TestScope(object):
     def test_no_new_globals(self, engine, parser):
         x = 1  # noqa
         gbls = globals().copy()
-        pandas.eval('x + 1', engine=engine, parser=parser)
+        pd.eval('x + 1', engine=engine, parser=parser)
         gbls2 = globals().copy()
         assert gbls == gbls2
 
@@ -1760,14 +1759,14 @@ class TestScope(object):
 @td.skip_if_no_ne
 def test_invalid_engine():
     tm.assert_raises_regex(KeyError, 'Invalid engine \'asdf\' passed',
-                           pandas.eval, 'x + y', local_dict={'x': 1, 'y': 2},
+                           pd.eval, 'x + y', local_dict={'x': 1, 'y': 2},
                            engine='asdf')
 
 
 @td.skip_if_no_ne
 def test_invalid_parser():
     tm.assert_raises_regex(KeyError, 'Invalid parser \'asdf\' passed',
-                           pandas.eval, 'x + y', local_dict={'x': 1, 'y': 2},
+                           pd.eval, 'x + y', local_dict={'x': 1, 'y': 2},
                            parser='asdf')
 
 
@@ -1790,13 +1789,13 @@ def test_disallowed_nodes(engine, parser):
 def test_syntax_error_exprs(engine, parser):
     e = 's +'
     with pytest.raises(SyntaxError):
-        pandas.eval(e, engine=engine, parser=parser)
+        pd.eval(e, engine=engine, parser=parser)
 
 
 def test_name_error_exprs(engine, parser):
     e = 's + t'
     with pytest.raises(NameError):
-        pandas.eval(e, engine=engine, parser=parser)
+        pd.eval(e, engine=engine, parser=parser)
 
 
 def test_invalid_local_variable_reference(engine, parser):
@@ -1807,11 +1806,11 @@ def test_invalid_local_variable_reference(engine, parser):
         if parser != 'pandas':
             with tm.assert_raises_regex(SyntaxError,
                                         "The '@' prefix is only"):
-                pandas.eval(_expr, engine=engine, parser=parser)
+                pd.eval(_expr, engine=engine, parser=parser)
         else:
             with tm.assert_raises_regex(SyntaxError,
                                         "The '@' prefix is not"):
-                pandas.eval(_expr, engine=engine, parser=parser)
+                pd.eval(_expr, engine=engine, parser=parser)
 
 
 def test_numexpr_builtin_raises(engine, parser):
@@ -1819,16 +1818,16 @@ def test_numexpr_builtin_raises(engine, parser):
     if engine == 'numexpr':
         with tm.assert_raises_regex(NumExprClobberingError,
                                     'Variables in expression .+'):
-            pandas.eval('sin + dotted_line', engine=engine, parser=parser)
+            pd.eval('sin + dotted_line', engine=engine, parser=parser)
     else:
-        res = pandas.eval('sin + dotted_line', engine=engine, parser=parser)
+        res = pd.eval('sin + dotted_line', engine=engine, parser=parser)
         assert res == sin + dotted_line
 
 
 def test_bad_resolver_raises(engine, parser):
     cannot_resolve = 42, 3.0
     with tm.assert_raises_regex(TypeError, 'Resolver of type .+'):
-        pandas.eval('1 + 2', resolvers=cannot_resolve, engine=engine,
+        pd.eval('1 + 2', resolvers=cannot_resolve, engine=engine,
                 parser=parser)
 
 
@@ -1836,13 +1835,13 @@ def test_empty_string_raises(engine, parser):
     # GH 13139
     with tm.assert_raises_regex(ValueError,
                                 'expr cannot be an empty string'):
-        pandas.eval('', engine=engine, parser=parser)
+        pd.eval('', engine=engine, parser=parser)
 
 
 def test_more_than_one_expression_raises(engine, parser):
     with tm.assert_raises_regex(SyntaxError,
                                 'only a single expression is allowed'):
-        pandas.eval('1 + 1; 2 + 2', engine=engine, parser=parser)
+        pd.eval('1 + 1; 2 + 2', engine=engine, parser=parser)
 
 
 @pytest.mark.parametrize('cmp', ('and', 'or'))
@@ -1860,13 +1859,13 @@ def test_bool_ops_fails_on_scalars(lhs, cmp, rhs, engine, parser):
     ex3 = '(lhs {0} mid) & (mid {1} rhs)'.format(cmp, cmp)
     for ex in (ex1, ex2, ex3):
         with pytest.raises(NotImplementedError):
-            pandas.eval(ex, engine=engine, parser=parser)
+            pd.eval(ex, engine=engine, parser=parser)
 
 
 def test_inf(engine, parser):
     s = 'inf + 1'
     expected = np.inf
-    result = pandas.eval(s, engine=engine, parser=parser)
+    result = pd.eval(s, engine=engine, parser=parser)
     assert result == expected
 
 
@@ -1875,17 +1874,14 @@ def test_negate_lt_eq_le(engine, parser):
     expected = df[~(df.cat > 0)]
 
     result = df.query('~(cat > 0)', engine=engine, parser=parser)
-    assert result == expected
-    # tm.assert_frame_equal(result, expected)
+    tm.assert_frame_equal(result, expected)
 
     if parser == 'python':
         with pytest.raises(NotImplementedError):
             df.query('not (cat > 0)', engine=engine, parser=parser)
     else:
-        if parser != 'python':
-            result = df.query('not (cat > 0)', engine=engine, parser=parser)
-            assert result == expected
-            # tm.assert_frame_equal(result, expected)
+        result = df.query('not (cat > 0)', engine=engine, parser=parser)
+        tm.assert_frame_equal(result, expected)
 
 
 class TestValidate(object):
@@ -1895,5 +1891,4 @@ class TestValidate(object):
 
         for value in invalid_values:
             with pytest.raises(ValueError):
-                pandas.eval("2+2", inplace=value)
-
+                pd.eval("2+2", inplace=value)
