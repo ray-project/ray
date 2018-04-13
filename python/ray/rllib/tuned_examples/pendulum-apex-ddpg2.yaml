@@ -1,4 +1,4 @@
-# This can be expected to reach -160 reward within 15 mins when using 1 GPU and 16 CPUs
+# This can be expected to reach -160 reward within 3.5m timesteps / 400 seconds on a K40 GPU
 pendulum-apex-ddpg-2:
     env: Pendulum-v0
     run: APEX_DDPG2

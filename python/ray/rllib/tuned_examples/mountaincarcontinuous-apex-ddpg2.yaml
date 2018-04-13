@@ -1,4 +1,4 @@
-# This can be expected to reach 90 reward within 15 mins when using 1 GPU and 16 CPUs
+# This can be expected to reach 90 reward within 3m timesteps / 300 seconds on a K40 GPU
 mountaincarcontinuous-apex-ddpg-2:
     env: MountainCarContinuous-v0
     run: APEX_DDPG2

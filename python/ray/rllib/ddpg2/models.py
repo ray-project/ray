@@ -8,15 +8,13 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 from ray.rllib.models import ModelCatalog
-from ray.rllib.optimizers.multi_gpu_impl import TOWER_SCOPE_NAME
-
-
-def _build_s_network(registry, inputs, config):
-    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
-    return frontend.last_layer
 
 
 def _build_p_network(registry, inputs, dim_actions, config):
+    """
+    map an observation (i.e., state) to an action where
+    each entry takes value from (0, 1) due to the sigmoid function
+    """
     hiddens = config["actor_hiddens"]
 
     action_out = inputs
@@ -50,11 +48,11 @@ def _build_action_network(
         lambda: deterministic_actions)
 
 
-def _build_q_network(registry, state_inputs, action_inputs, config):
+def _build_q_network(registry, inputs, action_inputs, config):
     hiddens = config["critic_hiddens"]
 
     #with tf.variable_scope("action_value"):
-    q_out = tf.concat([state_inputs, action_inputs], axis=1)
+    q_out = tf.concat([inputs, action_inputs], axis=1)
     for hidden in hiddens:
         q_out = layers.fully_connected(
             q_out, num_outputs=hidden, activation_fn=tf.nn.relu)
@@ -118,23 +116,13 @@ class ModelAndLoss(object):
     def __init__(
             self, registry, dim_actions, low_action, high_action, config,
             obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
-        # state outputs
-        with tf.variable_scope("s_func", reuse=True):
-            s_values = _build_s_network(
-                registry, obs_t, config)
-
-        with tf.variable_scope("target_s_func") as scope:
-            target_s_values = _build_s_network(
-                registry, obs_tp1, config)
-            self.target_s_func_vars = _scope_vars(scope.name)
-
         # p network evaluation
         with tf.variable_scope("p_func", reuse=True) as scope:
-            self.p_t = _build_p_network(registry, s_values, dim_actions, config)
+            self.p_t = _build_p_network(registry, obs_t, dim_actions, config)
 
         # target p network evaluation
         with tf.variable_scope("target_p_func") as scope:
-            self.p_tp1 = _build_p_network(registry, target_s_values, dim_actions, config)
+            self.p_tp1 = _build_p_network(registry, obs_tp1, dim_actions, config)
             self.target_p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -161,13 +149,13 @@ class ModelAndLoss(object):
 
         # q network evaluation
         with tf.variable_scope("q_func", reuse=True) as scope:
-            self.q_t = _build_q_network(registry, s_values, act_t, config)
+            self.q_t = _build_q_network(registry, obs_t, act_t, config)
         with tf.variable_scope("q_func", reuse=True) as scope:
-            self.q_tp0 = _build_q_network(registry, s_values, output_actions, config)
+            self.q_tp0 = _build_q_network(registry, obs_t, output_actions, config)
 
         # target q network evalution
         with tf.variable_scope("target_q_func") as scope:
-            self.q_tp1 = _build_q_network(registry, target_s_values, output_actions_estimated, config)
+            self.q_tp1 = _build_q_network(registry, obs_tp1, output_actions_estimated, config)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         q_t_selected = tf.squeeze(self.q_t)
@@ -205,22 +193,15 @@ class DDPGGraph(object):
         self.cur_observations = tf.placeholder(
             tf.float32, shape=(None,) + env.observation_space.shape)
 
-        # State outputs
-        s_scope_name = TOWER_SCOPE_NAME + "/s_func"
-        with tf.variable_scope(s_scope_name) as scope:
-            s_values = _build_s_network(
-                registry, self.cur_observations, config)
-            s_func_vars = _scope_vars(scope.name)
-
         # Actor: P (policy) network
-        p_scope_name = TOWER_SCOPE_NAME + "/p_func"
+        p_scope_name = "p_func"
         with tf.variable_scope(p_scope_name) as scope:
             p_values = _build_p_network(
-                registry, s_values, dim_actions, config)
+                registry, self.cur_observations, dim_actions, config)
             p_func_vars = _scope_vars(scope.name)
 
         # Action outputs
-        a_scope_name = TOWER_SCOPE_NAME + "/a_func"
+        a_scope_name = "a_func"
         with tf.variable_scope(a_scope_name):
             self.output_actions = _build_action_network(
                 p_values,
@@ -236,9 +217,9 @@ class DDPGGraph(object):
             self.reset_noise_op = tf.assign(exploration_sample, dim_actions*[.0])
 
         # Critic: Q network
-        q_scope_name = TOWER_SCOPE_NAME + "/q_func"
+        q_scope_name = "q_func"
         with tf.variable_scope(q_scope_name) as scope:
-            q_values = _build_q_network(registry, s_values, self.output_actions, config)
+            q_values = _build_q_network(registry, self.cur_observations, self.output_actions, config)
             q_func_vars = _scope_vars(scope.name)
 
         # Replay inputs
@@ -268,17 +249,14 @@ class DDPGGraph(object):
             ("weights", self.importance_weights),
         ]
 
-        with tf.variable_scope(TOWER_SCOPE_NAME):
-            loss_obj = build_loss(
-                self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
-                self.done_mask, self.importance_weights)
+        loss_obj = build_loss(
+            self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
+            self.done_mask, self.importance_weights)
 
         self.build_loss = build_loss
 
-        #self.critic_loss = loss_obj.loss
         actor_loss = loss_obj.actor_loss
         weighted_error = loss_obj.loss
-        target_s_func_vars = loss_obj.target_s_func_vars
         target_p_func_vars = loss_obj.target_p_func_vars
         target_q_func_vars = loss_obj.target_q_func_vars
         self.p_t = loss_obj.p_t
@@ -288,31 +266,30 @@ class DDPGGraph(object):
         self.td_error = loss_obj.td_error
 
         if config["l2_reg"] is not None:
-            for var in s_func_vars + p_func_vars:
+            for var in p_func_vars:
                 if not "bias" in var.name:
                     actor_loss += config["l2_reg"] * 0.5 * tf.nn.l2_loss(var)
-            for var in s_func_vars + q_func_vars:
+            for var in q_func_vars:
                 if not "bias" in var.name:
                     weighted_error += config["l2_reg"] * 0.5 * tf.nn.l2_loss(var)
 
         # compute optimization op (potentially with gradient clipping)
         if config["grad_norm_clipping"] is not None:
             self.actor_grads_and_vars = _minimize_and_clip(
-                actor_optimizer, actor_loss, var_list = s_func_vars + p_func_vars,
+                actor_optimizer, actor_loss, var_list = p_func_vars,
                 clip_val=config["grad_norm_clipping"])
             self.critic_grads_and_vars = _minimize_and_clip(
-                critic_optimizer, weighted_error, var_list = s_func_vars + q_func_vars,
+                critic_optimizer, weighted_error, var_list = q_func_vars,
                 clip_val=config["grad_norm_clipping"])
         else:
             self.actor_grads_and_vars = actor_optimizer.compute_gradients(
-                actor_loss, var_list = s_func_vars + p_func_vars)
+                actor_loss, var_list = p_func_vars)
             self.critic_grads_and_vars = critic_optimizer.compute_gradients(
-                weighted_error, var_list = s_func_vars + q_func_vars)
+                weighted_error, var_list = q_func_vars)
         self.actor_grads_and_vars = [
             (g, v) for (g, v) in self.actor_grads_and_vars if g is not None]
         self.critic_grads_and_vars = [
             (g, v) for (g, v) in self.critic_grads_and_vars if g is not None]
-        # have overlapping vars (i.e., s_func_vars)
         self.grads_and_vars = self.actor_grads_and_vars + self.critic_grads_and_vars
         self.grads = [g for (g, v) in self.grads_and_vars]
         self.actor_train_expr = actor_optimizer.apply_gradients(self.actor_grads_and_vars)
@@ -323,10 +300,6 @@ class DDPGGraph(object):
         self.tau_value = config.get("tau")
         self.tau = tf.placeholder(tf.float32, (), name="tau")
         update_target_expr = []
-        for var, var_target in zip(
-            sorted(s_func_vars, key=lambda v: v.name),
-                sorted(target_s_func_vars, key=lambda v: v.name)):
-            update_target_expr.append(var_target.assign(self.tau*var+(1.0-self.tau)*var_target))
         for var, var_target in zip(
             sorted(q_func_vars, key=lambda v: v.name),
                 sorted(target_q_func_vars, key=lambda v: v.name)):
@@ -383,11 +356,8 @@ class DDPGGraph(object):
 
     def apply_gradients(self, sess, grads):
         assert len(grads) == len(self.grads_and_vars)
-        len_actor_part = len(self.actor_grads_and_vars)
-        feed_dict = {ph: g for (g, ph) in zip(grads[len_actor_part:], self.grads[len_actor_part:])}
-        sess.run(self.critic_train_expr, feed_dict=feed_dict)
-        feed_dict = {ph: g for (g, ph) in zip(grads[:len_actor_part], self.grads[:len_actor_part])}
-        sess.run(self.actor_train_expr, feed_dict=feed_dict)
+        feed_dict = {ph: g for (g, ph) in zip(grads, self.grads)}
+        sess.run([self.critic_train_expr, self.actor_train_expr], feed_dict=feed_dict)
 
     def compute_apply(
             self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,

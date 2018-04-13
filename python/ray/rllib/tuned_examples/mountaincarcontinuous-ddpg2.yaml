@@ -1,4 +1,4 @@
-# can expect improvement to 90 reward in ~20-30k timesteps
+# can expect improvement to 90 reward in ~12-24k timesteps
 mountaincarcontinuous-ddpg-2:
     env: MountainCarContinuous-v0
     run: DDPG2
