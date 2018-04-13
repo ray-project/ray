@@ -189,11 +189,9 @@ class DataFrameGroupBy(object):
     def last(self, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    @property
     def mad(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.mad())
 
-    @property
     def rank(self):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -205,10 +203,10 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def max(self, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.max())
 
     def var(self, ddof=1, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.var())
 
     def get_group(self, name, obj=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -216,9 +214,8 @@ class DataFrameGroupBy(object):
     def __len__(self):
         raise NotImplementedError("Not Yet implemented.")
 
-    @property
     def all(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.all())
 
     def size(self):
         return self._apply_function(lambda df: df.size)
@@ -241,13 +238,13 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def nunique(self, dropna=True):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.nunique())
 
     def resample(self, rule, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def median(self, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.median().astype(int))
 
     def head(self, n=5):
         raise NotImplementedError("Not Yet implemented.")
@@ -278,23 +275,20 @@ class DataFrameGroupBy(object):
                              columns=[k for k, v in self._iter],
                              index=self._index)
 
-    @property
     def cov(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.cov())
 
     def transform(self, func, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    @property
     def corr(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.corr())
 
-    @property
     def fillna(self):
         raise NotImplementedError("Not Yet implemented.")
 
     def count(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._apply_function(lambda df: df.count())
 
     def pipe(self, func, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
