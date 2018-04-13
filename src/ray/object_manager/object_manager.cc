@@ -339,18 +339,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
   ray::Status status =
       conn->WriteMessage(object_manager_protocol::MessageType_PushRequest, fbb.GetSize(),
                          fbb.GetBufferPointer());
-  if (!status.ok()) {
-    // push failed.
-    // TODO(hme): Trash sender.
-    ARROW_CHECK_OK(store_client->Release(object_id.to_plasma_id()));
-    store_pool_.ReleaseObjectStore(store_client);
-    RAY_CHECK_OK(
-        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
-    RAY_CHECK_OK(transfer_queue_.RemoveContext(context_id));
-    RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::SEND));
-    return status;
-  }
-
+  RAY_CHECK_OK(status);
   // TODO(hme): Make this async.
   return SendObjectData(conn, context_id, store_client);
 }
