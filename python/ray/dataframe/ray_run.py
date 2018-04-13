@@ -8,8 +8,8 @@ parser.add_argument('data', help='datafile to load in')
 parser.add_argument('test_op', help='operation to evaluate')
 parser.add_argument('--ray', dest='is_ray', action='store_true',
                     help='test performance with ray')
-parser.add_argument('--nrows', dest='nrows', action='store')
-parser.add_argument('--ncols', dest='ncols', action='store')
+parser.add_argument('--nrows', dest='nrows', action='store', default=8)
+parser.add_argument('--ncols', dest='ncols', action='store', default=8)
 
 args = parser.parse_args()
 
@@ -26,8 +26,12 @@ if args.is_ray:
     import ray.dataframe as pd
     import ray
     sys.stdout = sys.__stdout__
+    pd.set_nrowpartitions(int(args.nrows))
+    pd.set_ncolpartitions(int(args.ncols))
+    frame = "ray"
 else:
     import pandas as pd
+    frame = "pandas"
 
 df = pd.read_csv(datafile)
 waitall(df)

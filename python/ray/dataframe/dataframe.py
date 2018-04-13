@@ -38,7 +38,7 @@ from .utils import (
     _inherit_docstrings,
     _reindex_helper,
     _co_op_helper)
-from . import get_npartitions
+from . import (get_npartitions, get_nrowpartitions, get_ncolpartitions)
 from .index_metadata import _IndexMetadata
 
 
@@ -87,7 +87,7 @@ class DataFrame(object):
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
 
-            nrows = get_npartitions() if nrows is None else nrows
+            nrows = get_nrowpartitions() if nrows is None else nrows
 
             # TODO convert _partition_pandas_dataframe to block partitioning.
             row_partitions = \
@@ -669,42 +669,42 @@ class DataFrame(object):
             True: cell contains NA.
             False: otherwise.
         """
-        old_l = self._block_partitions.flatten().tolist()
-        ray.wait(old_l, len(old_l))
-        import time
-        s = original = time.time()
+        # old_l = self._block_partitions.flatten().tolist()
+        # ray.wait(old_l, len(old_l))
+        # import time
+        # s = original = time.time()
 
         new_block_partitions = np.array([_map_partitions(
             lambda df: df.isna(), block) for block in self._block_partitions])
 
-        l = new_block_partitions.flatten().tolist()
-        for i in range(0, len(l), 8):
-            ray.wait(l, i+8)
-            e = time.time()
-            print("_map_partitions, {}-th partition: {}".format(i+8, e - s))
-            s = e
-        print("_map_partitions, end: {}".format(e - original))
+        # l = new_block_partitions.flatten().tolist()
+        # for i in range(0, len(l), 8):
+        #     ray.wait(l, i+8)
+        #     e = time.time()
+        #     print("_map_partitions, {}-th partition: {}".format(i+8, e - s))
+        #     s = e
+        # print("_map_partitions, end: {}".format(e - original))
 
-        def timer_test(df):
-            import time as tim
-            s = tim.perf_counter()
-            df.isna()
-            e = tim.perf_counter()
-            return e - s
+        # def timer_test(df):
+        #     import time as tim
+        #     s = tim.perf_counter()
+        #     df.isna()
+        #     e = tim.perf_counter()
+        #     return e - s
 
-        s = original = time.time()
+        # s = original = time.time()
 
-        timer_partitions = np.array([_map_partitions(
-            timer_test, block) for block in self._block_partitions])
+        # timer_partitions = np.array([_map_partitions(
+        #     timer_test, block) for block in self._block_partitions])
 
-        l = timer_partitions.flatten().tolist()
-        for i in range(0, len(l), 8):
-            ray.wait(l, i+8)
-            e = time.time()
-            print("_map_partitions-op, {}-th partition: {}".format(i+8, e - s))
-            s = e
-        print("_map_partitions-op, end: {}".format(e - original))
-        print("remote_op sum: {}".format(sum(ray.get(l))))
+        # l = timer_partitions.flatten().tolist()
+        # for i in range(0, len(l), 8):
+        #     ray.wait(l, i+8)
+        #     e = time.time()
+        #     print("_map_partitions-op, {}-th partition: {}".format(i+8, e - s))
+        #     s = e
+        # print("_map_partitions-op, end: {}".format(e - original))
+        # print("remote_op sum: {}".format(sum(ray.get(l))))
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
