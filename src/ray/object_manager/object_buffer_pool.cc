@@ -25,7 +25,7 @@ ObjectBufferPool::~ObjectBufferPool() {
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) {
-  return  (data_size + chunk_size_ - 1) / chunk_size_;
+  return (data_size + chunk_size_ - 1) / chunk_size_;
 }
 
 uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_size) {
