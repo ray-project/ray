@@ -496,8 +496,8 @@ def start_redis(node_ip_address,
                 cleanup=cleanup)
         else:
             assert num_redis_shards == 1, \
-                "For now, RAY_USE_NEW_GCS supports 1 shard, and credis supports" \
-                " 1-node chain for that shard only."
+                "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "\
+                "supports 1-node chain for that shard only."
             redis_shard_port, _ = start_redis_instance(
                 node_ip_address=node_ip_address,
                 port=redis_shard_ports[i],
