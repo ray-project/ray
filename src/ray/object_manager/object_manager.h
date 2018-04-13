@@ -193,6 +193,8 @@ class ObjectManager {
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
 
+  std::mutex seal_lock_;
+
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
   void IOServiceLoop();

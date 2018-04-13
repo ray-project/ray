@@ -489,6 +489,10 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     buffer.push_back(asio::buffer(mutable_data, object_size));
     conn->ReadBuffer(buffer, ec);
     if (!ec.value()) {
+      std::lock_guard<std::mutex> lock_guard(seal_lock_);
+      // TODO(hme): This lock is a workaround for the fact that the plasma client's
+      // Seal method accesses a static variable that other plasma clients also access.
+      // We should fix the Seal method in Arrow and remove this lock.
       ARROW_CHECK_OK(store_client->Seal(plasma_id));
       ARROW_CHECK_OK(store_client->Release(plasma_id));
     } else {
