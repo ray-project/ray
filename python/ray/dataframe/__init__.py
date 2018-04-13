@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from pandas import eval # noqa: 402
+
 import pandas as pd
 import threading
 
@@ -31,7 +33,6 @@ from .dataframe import DataFrame  # noqa: 402
 from .series import Series  # noqa: 402
 from .io import (read_csv, read_parquet)  # noqa: 402
 from .concat import concat # noqa: 402
-from pandas import eval # noqa: 402
 
 __all__ = [
     "DataFrame", "Series", "read_csv", "read_parquet", "concat"

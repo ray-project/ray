@@ -349,7 +349,7 @@ class DataFrame(object):
             result_series.index = self.index
         return result_series
 
-    def _eval_query_arg_checker(self, expr, **kwargs):
+    def _validate_eval_query(self, expr, **kwargs):
         """Helper function to check the arguments to eval() and query()
 
         Args:
@@ -1271,7 +1271,7 @@ class DataFrame(object):
         Returns:
             ndarray, numeric scalar, DataFrame, Series
         """
-        self._eval_query_arg_checker(expr, **kwargs)
+        self._validate_eval_query(expr, **kwargs)
 
         columns = self.columns
 
@@ -1286,13 +1286,14 @@ class DataFrame(object):
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_rows = _map_partitions(eval_helper, self._row_partitions)
 
-        first_row = ray.get(new_rows[0])
-        if isinstance(first_row, pd.Series):
-            new_series = pd.concat([first_row] + ray.get(new_rows[1:]), axis=0)
+        result_type = ray.get(_deploy_func.remote(lambda df: type(df),
+                                                  new_rows[0]))
+        if result_type is pd.Series:
+            new_series = pd.concat(ray.get(new_rows), axis=0)
             new_series.index = self.index
             return new_series
 
-        columns_copy = self._col_metadata._coord_df.T.copy()
+        columns_copy = self._col_metadata._coord_df.copy().T
         columns_copy.eval(expr, inplace=True, **kwargs)
         columns = columns_copy.columns
 
@@ -2188,7 +2189,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame if inplace=False
         """
-        self._eval_query_arg_checker(expr, **kwargs)
+        self._validate_eval_query(expr, **kwargs)
 
         columns = self.columns
 
