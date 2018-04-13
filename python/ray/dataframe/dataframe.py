@@ -32,11 +32,13 @@ from .utils import (
     to_pandas,
     _blocks_to_col,
     _blocks_to_row,
-    _create_block_partitions)
+    _create_block_partitions,
+    _inherit_docstrings)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
 
+@_inherit_docstrings(pd.DataFrame)
 class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,

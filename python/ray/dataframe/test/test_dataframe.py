@@ -3014,3 +3014,14 @@ def test_iloc(ray_df, pd_df):
     assert ray_df.iloc[1:, 0].equals(pd_df.iloc[1:, 0])
     assert ray_df.iloc[1:2, 0].equals(pd_df.iloc[1:2, 0])
     assert ray_df.iloc[1:2, 0:2].equals(pd_df.iloc[1:2, 0:2])
+
+
+def test__doc__():
+    assert rdf.DataFrame.__doc__ != pd.DataFrame.__doc__
+    assert rdf.DataFrame.__init__ != pd.DataFrame.__init__
+    for attr, obj in rdf.DataFrame.__dict__.items():
+        if (callable(obj) or isinstance(obj, property)) \
+                and attr != "__init__":
+            pd_obj = getattr(pd.DataFrame, attr, None)
+            if callable(pd_obj) or isinstance(pd_obj, property):
+                assert obj.__doc__ == pd_obj.__doc__

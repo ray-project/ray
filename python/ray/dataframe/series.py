@@ -3,6 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import pandas as pd
+
+from .utils import _inherit_docstrings
 
 
 def na_op():
@@ -11,6 +14,7 @@ def na_op():
     raise NotImplementedError("Not Yet implemented.")
 
 
+@_inherit_docstrings(pd.Series)
 class Series(object):
 
     def __init__(self, series_oids):
