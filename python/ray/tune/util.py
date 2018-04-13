@@ -40,8 +40,7 @@ def get_pinned_object(pinned_id):
 
     return _from_pinnable(
         ray.get(
-            ObjectID(base64.b64decode(
-                pinned_id[len(PINNED_OBJECT_PREFIX):]))))
+            ObjectID(base64.b64decode(pinned_id[len(PINNED_OBJECT_PREFIX):]))))
 
 
 def _serve_get_pin_requests():
