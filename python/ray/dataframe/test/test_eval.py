@@ -1878,14 +1878,14 @@ def test_negate_lt_eq_le(engine, parser):
     assert result == expected
     # tm.assert_frame_equal(result, expected)
 
-    # if parser == 'python':
-    #     with pytest.raises(NotImplementedError):
-    #         df.query('not (cat > 0)', engine=engine, parser=parser)
-    # else:
-    if parser != 'python':
-        result = df.query('not (cat > 0)', engine=engine, parser=parser)
-        assert result == expected
-        # tm.assert_frame_equal(result, expected)
+    if parser == 'python':
+        with pytest.raises(NotImplementedError):
+            df.query('not (cat > 0)', engine=engine, parser=parser)
+    else:
+        if parser != 'python':
+            result = df.query('not (cat > 0)', engine=engine, parser=parser)
+            assert result == expected
+            # tm.assert_frame_equal(result, expected)
 
 
 class TestValidate(object):

@@ -349,6 +349,15 @@ class DataFrame(object):
             result_series.index = self.index
         return result_series
 
+    def _eval_query_arg_checker(self, expr, **kwargs):
+        if isinstance(expr, str) and '@' in expr:
+            raise NotImplementedError("Local variables not yet supported in "
+                                      "eval.")
+
+        if isinstance(expr, str) and 'not' in expr:
+            if 'parser' in kwargs and kwargs['parser'] == 'python':
+                raise NotImplementedError("'Not' nodes are not implemented.")
+
     @property
     def size(self):
         """Get the number of elements in the DataFrame.
@@ -1253,9 +1262,8 @@ class DataFrame(object):
         Returns:
             ndarray, numeric scalar, DataFrame, Series
         """
-        if '@' in expr:
-            raise NotImplementedError("Local variables not yet supported in "
-                                      "eval.")
+        self._eval_query_arg_checker(expr, **kwargs)
+
         columns = self.columns
 
         def eval_helper(df):
@@ -2169,9 +2177,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame if inplace=False
         """
-        if '@' in expr:
-            raise NotImplementedError("Local variables not yet supported in "
-                                      "query.")
+        self._eval_query_arg_checker(expr, **kwargs)
+
         columns = self.columns
 
         def query_helper(df):
