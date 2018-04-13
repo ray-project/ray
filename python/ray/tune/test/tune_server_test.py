@@ -30,16 +30,15 @@ class TuneServerSuite(unittest.TestCase):
     def basicSetup(self):
         ray.init(num_cpus=4, num_gpus=1)
         port = get_valid_port()
-        self.runner = TrialRunner(
-            launch_web_server=True, server_port=port)
+        self.runner = TrialRunner(launch_web_server=True, server_port=port)
         runner = self.runner
         kwargs = {
-            "stopping_criterion": {"training_iteration": 3},
+            "stopping_criterion": {
+                "training_iteration": 3
+            },
             "resources": Resources(cpu=1, gpu=1),
         }
-        trials = [
-            Trial("__fake", **kwargs),
-            Trial("__fake", **kwargs)]
+        trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
         client = TuneClient("localhost:{}".format(port))
@@ -61,7 +60,9 @@ class TuneServerSuite(unittest.TestCase):
             runner.step()
         spec = {
             "run": "__fake",
-            "stop": {"training_iteration": 3},
+            "stop": {
+                "training_iteration": 3
+            },
             "trial_resources": dict(cpu=1, gpu=1),
         }
         client.add_trial("test", spec)

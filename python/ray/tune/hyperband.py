@@ -66,9 +66,10 @@ class HyperBandScheduler(FIFOScheduler):
             mentioned in the original HyperBand paper.
     """
 
-    def __init__(
-            self, time_attr='training_iteration',
-            reward_attr='episode_reward_mean', max_t=81):
+    def __init__(self,
+                 time_attr='training_iteration',
+                 reward_attr='episode_reward_mean',
+                 max_t=81):
         assert max_t > 0, "Max (time_attr) not valid!"
         FIFOScheduler.__init__(self)
         self._eta = 3
@@ -78,13 +79,12 @@ class HyperBandScheduler(FIFOScheduler):
         self._get_n0 = lambda s: int(
             np.ceil(self._s_max_1/(s+1) * self._eta**s))
         # bracket initial iterations
-        self._get_r0 = lambda s: int((max_t*self._eta**(-s)))
+        self._get_r0 = lambda s: int((max_t * self._eta**(-s)))
         self._hyperbands = [[]]  # list of hyperband iterations
         self._trial_info = {}  # Stores Trial -> Bracket, Band Iteration
 
         # Tracks state for new trial add
-        self._state = {"bracket": None,
-                       "band_idx": 0}
+        self._state = {"bracket": None, "band_idx": 0}
         self._num_stopped = 0
         self._reward_attr = reward_attr
         self._time_attr = time_attr
@@ -116,9 +116,9 @@ class HyperBandScheduler(FIFOScheduler):
                     cur_bracket = None
                 else:
                     retry = False
-                    cur_bracket = Bracket(
-                        self._time_attr, self._get_n0(s), self._get_r0(s),
-                        self._max_t_attr, self._eta, s)
+                    cur_bracket = Bracket(self._time_attr, self._get_n0(s),
+                                          self._get_r0(s), self._max_t_attr,
+                                          self._eta, s)
                 cur_band.append(cur_bracket)
                 self._state["bracket"] = cur_bracket
 
@@ -217,11 +217,11 @@ class HyperBandScheduler(FIFOScheduler):
         """
 
         for hyperband in self._hyperbands:
-            for bracket in sorted(hyperband,
-                                  key=lambda b: b.completion_percentage()):
+            for bracket in sorted(
+                    hyperband, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
-                    if (trial.status == Trial.PENDING and
-                            trial_runner.has_resources(trial.resources)):
+                    if (trial.status == Trial.PENDING
+                            and trial_runner.has_resources(trial.resources)):
                         return trial
         return None
 
@@ -258,6 +258,7 @@ class Bracket():
 
     Also keeps track of progress to ensure good scheduling.
     """
+
     def __init__(self, time_attr, max_trials, init_t_attr, max_t_attr, eta, s):
         self._live_trials = {}  # maps trial -> current result
         self._all_trials = []
@@ -287,8 +288,9 @@ class Bracket():
         """Checks if all iterations have completed.
 
         TODO(rliaw): also check that `t.iterations == self._r`"""
-        return all(self._get_result_time(result) >= self._cumul_r
-                   for result in self._live_trials.values())
+        return all(
+            self._get_result_time(result) >= self._cumul_r
+            for result in self._live_trials.values())
 
     def finished(self):
         return self._halves == 0 and self.cur_iter_done()
@@ -379,7 +381,7 @@ class Bracket():
     def _calculate_total_work(self, n, r, s):
         work = 0
         cumulative_r = r
-        for i in range(s+1):
+        for i in range(s + 1):
             work += int(n) * int(r)
             n /= self._eta
             n = int(np.ceil(n))
@@ -389,11 +391,11 @@ class Bracket():
 
     def __repr__(self):
         status = ", ".join([
-            "Max Size (n)={}".format(self._n),
-            "Milestone (r)={}".format(self._cumul_r),
-            "completed={:.1%}".format(self.completion_percentage())
-            ])
+            "Max Size (n)={}".format(self._n), "Milestone (r)={}".format(
+                self._cumul_r), "completed={:.1%}".format(
+                    self.completion_percentage())
+        ])
         counts = collections.Counter([t.status for t in self._all_trials])
-        trial_statuses = ", ".join(sorted(
-            ["{}: {}".format(k, v) for k, v in counts.items()]))
+        trial_statuses = ", ".join(
+            sorted(["{}: {}".format(k, v) for k, v in counts.items()]))
         return "Bracket({}): {{{}}} ".format(status, trial_statuses)

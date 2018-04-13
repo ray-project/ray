@@ -72,8 +72,9 @@ def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None):
         row_partitions.append(top)
         temp_df = temp_df[row_chunksize:]
     else:
-        temp_df.reset_index(drop=True, inplace=True)
-        temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
+        if len(df) > row_chunksize:
+            temp_df.reset_index(drop=True, inplace=True)
+            temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
         row_partitions.append(ray.put(temp_df))
 
     return row_partitions
@@ -160,8 +161,9 @@ def _map_partitions(func, partitions, *argslists):
 def _build_columns(df_col, columns):
     """Build columns and compute lengths for each partition."""
     # Columns and width
-    widths = ray.get([_deploy_func.remote(lambda df: len(df.columns), d)
-                      for d in df_col])
+    widths = np.array(ray.get([_deploy_func.remote(lambda df: len(df.columns),
+                                                   d)
+                      for d in df_col]))
     dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(widths))
                     for p_sub_idx in range(widths[p_idx])]
 
@@ -175,8 +177,8 @@ def _build_columns(df_col, columns):
 def _build_index(df_row, index):
     """Build index and compute lengths for each partition."""
     # Rows and length
-    lengths = ray.get([_deploy_func.remote(_get_lengths, d)
-                       for d in df_row])
+    lengths = np.array(ray.get([_deploy_func.remote(_get_lengths, d)
+                       for d in df_row]))
 
     dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(lengths))
                     for p_sub_idx in range(lengths[p_idx])]
@@ -240,3 +242,43 @@ def _blocks_to_row(*partition):
     # columns), this change is needed to ensure correctness.
     row_part.columns = pd.RangeIndex(0, len(row_part.columns))
     return row_part
+
+
+def _inherit_docstrings(parent):
+    """Creates a decorator which overwrites a decorated class' __doc__
+    attribute with parent's __doc__ attribute. Also overwrites __doc__ of
+    methods and properties defined in the class with the __doc__ of matching
+    methods in parent.
+
+    Args:
+        parent (object): Class from which the decorated class inherits __doc__.
+
+    Note:
+        Currently does not override class' __doc__ or __init__'s __doc__.
+
+    Todo:
+        Override the class' __doc__ and __init__'s __doc__  once DataFrame's
+            __init__ method matches pandas.DataFrame's __init__ method.
+
+    Returns:
+        function: decorator which replaces the decorated class' documentation
+            parent's documentation.
+    """
+    def decorator(cls):
+        # cls.__doc__ = parent.__doc__
+        for attr, obj in cls.__dict__.items():
+            if attr == "__init__":
+                continue
+            parent_obj = getattr(parent, attr, None)
+            if not callable(parent_obj) and \
+                    not isinstance(parent_obj, property):
+                continue
+            if callable(obj):
+                obj.__doc__ = parent_obj.__doc__
+            elif isinstance(obj, property) and obj.fget is not None:
+                p = property(obj.fget, obj.fset, obj.fdel, parent_obj.__doc__)
+                setattr(cls, attr, p)
+
+        return cls
+
+    return decorator

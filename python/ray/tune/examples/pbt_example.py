@@ -42,8 +42,11 @@ class MyTrainableClass(Trainable):
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         with open(path, "w") as f:
-            f.write(json.dumps(
-                {"timestep": self.timestep, "value": self.current_value}))
+            f.write(
+                json.dumps({
+                    "timestep": self.timestep,
+                    "value": self.current_value
+                }))
         return path
 
     def _restore(self, checkpoint_path):
@@ -63,7 +66,8 @@ if __name__ == "__main__":
     ray.init()
 
     pbt = PopulationBasedTraining(
-        time_attr="training_iteration", reward_attr="episode_reward_mean",
+        time_attr="training_iteration",
+        reward_attr="episode_reward_mean",
         perturbation_interval=10,
         hyperparam_mutations={
             # Allow for scaling-based perturbations, with a uniform backing
@@ -74,15 +78,23 @@ if __name__ == "__main__":
         })
 
     # Try to find the best factor 1 and factor 2
-    run_experiments({
-        "pbt_test": {
-            "run": "my_class",
-            "stop": {"training_iteration": 2 if args.smoke_test else 99999},
-            "repeat": 10,
-            "trial_resources": {"cpu": 1, "gpu": 0},
-            "config": {
-                "factor_1": 4.0,
-                "factor_2": 1.0,
-            },
-        }
-    }, scheduler=pbt, verbose=False)
+    run_experiments(
+        {
+            "pbt_test": {
+                "run": "my_class",
+                "stop": {
+                    "training_iteration": 2 if args.smoke_test else 99999
+                },
+                "repeat": 10,
+                "trial_resources": {
+                    "cpu": 1,
+                    "gpu": 0
+                },
+                "config": {
+                    "factor_1": 4.0,
+                    "factor_2": 1.0,
+                },
+            }
+        },
+        scheduler=pbt,
+        verbose=False)

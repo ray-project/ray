@@ -20,7 +20,9 @@ if __name__ == "__main__":
     run_experiments({
         "test": {
             "run": "my_class",
-            "stop": {"training_iteration": 1}
+            "stop": {
+                "training_iteration": 1
+            }
         }
     })
     assert 'ray.rllib' not in sys.modules, "RLlib should not be imported"

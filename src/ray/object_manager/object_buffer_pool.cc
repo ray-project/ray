@@ -42,15 +42,15 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
     plasma::ObjectBuffer object_buffer;
     plasma::ObjectID plasma_id = ObjectID(object_id).to_plasma_id();
     ARROW_CHECK_OK(store_client_.Get(&plasma_id, 1, 0, &object_buffer));
-    if (object_buffer.data_size == -1) {
+    if (object_buffer.data == nullptr) {
       RAY_LOG(ERROR) << "Failed to get object";
       return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
           errored_chunk_,
           ray::Status::IOError("Unable to obtain object chunk, object not local."));
     }
     RAY_CHECK(object_buffer.metadata->data() ==
-              object_buffer.data->data() + object_buffer.data_size);
-    RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data_size +
+              object_buffer.data->data() + object_buffer.data->size());
+    RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data->size() +
                                                  object_buffer.metadata_size));
     auto *data = const_cast<uint8_t *>(object_buffer.data->data());
     uint64_t num_chunks = GetNumChunks(data_size);

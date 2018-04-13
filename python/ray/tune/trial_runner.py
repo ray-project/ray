@@ -13,7 +13,6 @@ from ray.tune.web_server import TuneServer
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
-
 MAX_DEBUG_TRIALS = 20
 
 
@@ -39,8 +38,11 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    def __init__(self, scheduler=None, launch_web_server=False,
-                 server_port=TuneServer.DEFAULT_PORT, verbose=True):
+    def __init__(self,
+                 scheduler=None,
+                 launch_web_server=False,
+                 server_port=TuneServer.DEFAULT_PORT,
+                 verbose=True):
         """Initializes a new TrialRunner.
 
         Args:
@@ -73,9 +75,8 @@ class TrialRunner(object):
         """Returns whether all trials have finished running."""
 
         if self._total_time > self._global_time_limit:
-            print(
-                "Exceeded global time limit {} / {}".format(
-                    self._total_time, self._global_time_limit))
+            print("Exceeded global time limit {} / {}".format(
+                self._total_time, self._global_time_limit))
             return True
 
         for t in self._trials:
@@ -98,12 +99,12 @@ class TrialRunner(object):
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
                     if not self.has_resources(trial.resources):
-                        raise TuneError((
-                            "Insufficient cluster resources to launch trial: "
-                            "trial requested {} but the cluster only has {} "
-                            "available.").format(
-                                trial.resources.summary_string(),
-                                self._avail_resources.summary_string()))
+                        raise TuneError(
+                            ("Insufficient cluster resources to launch trial: "
+                             "trial requested {} but the cluster only has {} "
+                             "available.").format(
+                                 trial.resources.summary_string(),
+                                 self._avail_resources.summary_string()))
                 elif trial.status == Trial.PAUSED:
                     raise TuneError(
                         "There are paused trials, but no more pending "
@@ -165,24 +166,20 @@ class TrialRunner(object):
         for state, trials in sorted(states.items()):
             limit = limit_per_state[state]
             messages.append("{} trials:".format(state))
-            for t in sorted(
-                    trials, key=lambda t: t.experiment_tag)[:limit]:
+            for t in sorted(trials, key=lambda t: t.experiment_tag)[:limit]:
                 messages.append(" - {}:\t{}".format(t, t.progress_string()))
             if len(trials) > limit:
-                messages.append("  ... {} more not shown".format(
-                    len(trials) - limit))
+                messages.append(
+                    "  ... {} more not shown".format(len(trials) - limit))
         return "\n".join(messages) + "\n"
 
     def _debug_messages(self):
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
         if self._resources_initialized:
-            messages.append(
-                "Resources used: {}/{} CPUs, {}/{} GPUs".format(
-                    self._committed_resources.cpu,
-                    self._avail_resources.cpu,
-                    self._committed_resources.gpu,
-                    self._avail_resources.gpu))
+            messages.append("Resources used: {}/{} CPUs, {}/{} GPUs".format(
+                self._committed_resources.cpu, self._avail_resources.cpu,
+                self._committed_resources.gpu, self._avail_resources.gpu))
         return messages
 
     def has_resources(self, resources):
@@ -190,9 +187,8 @@ class TrialRunner(object):
 
         cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
         gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
-        return (
-            resources.cpu_total() <= cpu_avail and
-            resources.gpu_total() <= gpu_avail)
+        return (resources.cpu_total() <= cpu_avail
+                and resources.gpu_total() <= gpu_avail)
 
     def _get_next_trial(self):
         self._update_avail_resources()
@@ -307,8 +303,9 @@ class TrialRunner(object):
             self._scheduler_alg.on_trial_remove(self, trial)
         elif trial.status is Trial.RUNNING:
             # NOTE: There should only be one...
-            result_id = [rid for rid, t in self._running.items()
-                         if t is trial][0]
+            result_id = [
+                rid for rid, t in self._running.items() if t is trial
+            ][0]
             self._running.pop(result_id)
             try:
                 result = ray.get(result_id)
@@ -339,9 +336,8 @@ class TrialRunner(object):
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()
         local_schedulers = [
-            entry for client in clients.values() for entry in client
-            if (entry['ClientType'] == 'local_scheduler' and not
-                entry['Deleted'])
+            entry for client in clients.values() for entry in client if
+            (entry['ClientType'] == 'local_scheduler' and not entry['Deleted'])
         ]
         num_cpus = sum(ls['CPU'] for ls in local_schedulers)
         num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)

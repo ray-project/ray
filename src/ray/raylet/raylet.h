@@ -48,6 +48,8 @@ class Raylet {
  private:
   /// Register GCS client.
   ray::Status RegisterGcs(const std::string &node_ip_address,
+                          const std::string &raylet_socket_name,
+                          const std::string &object_store_socket_name,
                           const std::string &redis_address, int redis_port,
                           boost::asio::io_service &io_service, const NodeManagerConfig &);
 
@@ -71,6 +73,8 @@ class Raylet {
   ObjectManager object_manager_;
   /// Manages client requests for task submission and execution.
   NodeManager node_manager_;
+  /// The name of the socket this raylet listens on.
+  std::string socket_name_;
 
   /// An acceptor for new clients.
   boost::asio::local::stream_protocol::acceptor acceptor_;

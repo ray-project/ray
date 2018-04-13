@@ -38,7 +38,7 @@ class SharedModel(TFPolicy):
     def compute_gradients(self, samples):
         info = {}
         feed_dict = {
-            self.x: samples["observations"],
+            self.x: samples["obs"],
             self.ac: samples["actions"],
             self.adv: samples["advantages"],
             self.r: samples["value_targets"],
