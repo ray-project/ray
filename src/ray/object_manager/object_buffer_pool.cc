@@ -3,7 +3,7 @@
 namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
-                                   const uint64_t chunk_size, const int release_delay)
+                                   uint64_t chunk_size, int release_delay)
     : chunk_size_(chunk_size) {
   store_socket_name_ = store_socket_name;
   ARROW_CHECK_OK(store_client_.Connect(store_socket_name_.c_str(), "", release_delay));
@@ -25,7 +25,7 @@ ObjectBufferPool::~ObjectBufferPool() {
 }
 
 uint64_t ObjectBufferPool::GetNumChunks(uint64_t data_size) {
-  return static_cast<uint64_t>(ceil(static_cast<double>(data_size) / chunk_size_));
+  return  (data_size + chunk_size_ - 1) / chunk_size_;
 }
 
 uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_size) {
