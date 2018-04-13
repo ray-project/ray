@@ -35,9 +35,9 @@ struct ObjectManagerConfig {
   /// that failed due to client id lookup.
   uint pull_timeout_ms = 100;
   /// Maximum number of sends allowed.
-  uint max_sends = 2;
+  int max_sends = 2;
   /// Maximum number of receives allowed.
-  uint max_receives = 2;
+  int max_receives = 2;
   // TODO(hme): Implement num retries (to avoid infinite retries).
   std::string store_socket_name;
 };
@@ -187,11 +187,6 @@ class ObjectManager {
   /// Variables to track number of concurrent sends and receives.
   std::atomic<int> num_transfers_send_;
   std::atomic<int> num_transfers_receive_;
-
-  /// Maximum number of sends allowed.
-  const int max_sends_;
-  /// Maximum number of receives allowed.
-  const int max_receives_;
 
   /// Size of thread pool. This is the sum of
   /// config_.max_sends and config_.max_receives

@@ -257,7 +257,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     async_loop_index += 1;
     if ((uint)async_loop_index < async_loop_patterns.size()) {
       TransferPattern pattern = async_loop_patterns[async_loop_index];
-      TransferTestExecute(1000, 100, pattern);
+      TransferTestExecute(10000, 100, pattern);
     } else {
       main_service.stop();
     }
