@@ -61,32 +61,6 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
     return conn_->ReadBuffer(buffer, ec);
   }
 
-  ray::Status AsyncWriteMessage(
-      int64_t type, uint64_t length, const uint8_t *message,
-      std::function<void(const boost::system::error_code &error)> handler) {
-    return conn_->AsyncWriteMessage(type, length, message, handler);
-  }
-
-  /// Write a buffer to this connection.
-  ///
-  /// \param buffer The buffer.
-  /// \param handler Handler to invoke when write is completed.
-  void AsyncWriteBuffer(
-      const std::vector<boost::asio::const_buffer> &buffer,
-      std::function<void(const boost::system::error_code &error)> handler) {
-    conn_->AsyncWriteBuffer(buffer, handler);
-  }
-
-  /// Read a buffer from this connection.
-  ///
-  /// \param buffer The buffer.
-  /// \param handler Handler to invoke when read is completed.
-  void AsyncReadBuffer(
-      const std::vector<boost::asio::mutable_buffer> &buffer,
-      std::function<void(const boost::system::error_code &error)> handler) {
-    conn_->AsyncReadBuffer(buffer, handler);
-  }
-
   /// \return The ClientID of this connection.
   const ClientID &GetClientID() { return client_id_; }
 

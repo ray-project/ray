@@ -53,36 +53,9 @@ class ServerConnection {
   void ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer,
                   boost::system::error_code &ec);
 
-  ray::Status AsyncWriteMessage(
-      int64_t type, int64_t length, const uint8_t *message,
-      std::function<void(const boost::system::error_code &error)> handler);
-
-  /// Write a buffer to this connection asynchronously.
-  ///
-  /// \param buffer The buffer.
-  /// \param handler Handler to invoke when write is completed.
-  void AsyncWriteBuffer(
-      const std::vector<boost::asio::const_buffer> &buffer,
-      std::function<void(const boost::system::error_code &error)> handler);
-
-  /// Read a buffer from this connection asynchronously.
-  ///
-  /// \param buffer The buffer.
-  /// \param handler Handler to invoke when read is completed.
-  void AsyncReadBuffer(
-      const std::vector<boost::asio::mutable_buffer> &buffer,
-      std::function<void(const boost::system::error_code &error)> handler);
-
  protected:
   /// The socket connection to the server.
   boost::asio::basic_stream_socket<T> socket_;
-
- private:
-  /// Handler for async read/write methods. This just calls the passed in handler.
-  /// \param error The error code from writing the message.
-  void AsyncCallHandler(
-      std::function<void(const boost::system::error_code &error)> handler,
-      const boost::system::error_code &error);
 };
 
 template <typename T>

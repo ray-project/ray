@@ -180,27 +180,22 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           SchedulePull(object_id, config_.pull_timeout_ms);
         });
   } else {
-    object_manager_service_->dispatch(
-        [this, object_id, conn]() { RAY_CHECK_OK(PullSendRequest(object_id, conn)); });
+    RAY_CHECK_OK(PullSendRequest(object_id, conn));
   }
   return status;
 }
 
 ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
                                            std::shared_ptr<SenderConnection> conn) {
-  UniqueID fbb_id = UniqueID::from_random();
-  flatbuffers::FlatBufferBuilder &fbb = GetFlatBufferBuilder(fbb_id);
+  flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  return conn->AsyncWriteMessage(
-      object_manager_protocol::MessageType_PullRequest, fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, conn, fbb_id](const boost::system::error_code &ec) {
-        RAY_CHECK(ec.value() == 0);
-        ReleaseFlatBufferBuilder(fbb_id);
-        RAY_CHECK_OK(connection_pool_.ReleaseSender(
-            ConnectionPool::ConnectionType::MESSAGE, conn));
-      });
+  RAY_CHECK_OK(conn->WriteMessage(object_manager_protocol::MessageType_PullRequest,
+                                  fbb.GetSize(), fbb.GetBufferPointer()));
+  RAY_CHECK_OK(
+      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+  return ray::Status::OK();
 }
 
 ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
@@ -328,55 +323,50 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
     return chunk_status.second;
   }
   // Create buffer.
-  UniqueID fbb_id = UniqueID::from_random();
-  flatbuffers::FlatBufferBuilder &fbb = GetFlatBufferBuilder(fbb_id);
+  flatbuffers::FlatBufferBuilder fbb;
+  // TODO(hme): use to_flatbuf
   auto message = object_manager_protocol::CreatePushRequestMessage(
       fbb, fbb.CreateString(object_id.binary()), chunk_index, data_size, metadata_size);
   fbb.Finish(message);
-  return conn->AsyncWriteMessage(
-      object_manager_protocol::MessageType_PushRequest, fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, object_id, chunk_index, chunk_info, conn,
-                               fbb_id](const boost::system::error_code &ec) {
-        ReleaseFlatBufferBuilder(fbb_id);
-        if (ec.value() != 0) {
-          RAY_LOG(ERROR) << ec.message();
-          // Push failed. Deal with partial objects on the
-          // receiving
-          // end.
-          buffer_pool_.ReleaseGetChunk(object_id, chunk_index);
-          // TODO(hme): Try to invoke disconnect on sender
-          // connection,
-          // then remove it.
-          RAY_CHECK_OK(connection_pool_.ReleaseSender(
-              ConnectionPool::ConnectionType::TRANSFER, conn));
-        } else {
-          RAY_CHECK_OK(SendObjectData(object_id, chunk_info, conn));
-        }
-      });
+  ray::Status status =
+      conn->WriteMessage(object_manager_protocol::MessageType_PushRequest, fbb.GetSize(),
+                         fbb.GetBufferPointer());
+  if (!status.ok()) {
+    // Push failed. Deal with partial objects on the receiving end.
+    buffer_pool_.ReleaseGetChunk(object_id, chunk_index);
+    // TODO(hme): Try to invoke disconnect on sender connection, then remove it.
+    RAY_CHECK_OK(
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
+    return status;
+  }
+
+  return SendObjectData(object_id, chunk_info, conn);
 }
 
 ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
                                           const ObjectBufferPool::ChunkInfo &chunk_info,
                                           std::shared_ptr<SenderConnection> conn) {
-  // boost::system::error_code ec;
-  std::vector<asio::const_buffer> send_buffer;
-  send_buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
-  conn->AsyncWriteBuffer(send_buffer, [this, object_id, chunk_info,
-                                       conn](const boost::system::error_code &ec) {
-    if (ec.value() != 0) {
-      // Push failed. Deal with partial objects on the receiving end.
-      // TODO(hme): Try to invoke disconnect on sender connection, then remove it.
-      RAY_LOG(ERROR) << ec.message();
-    }
-    // Do this regardless of whether it failed or succeeded.
-    buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
-    RAY_CHECK_OK(
-        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
-    RAY_LOG(DEBUG) << "SendCompleted " << client_id_ << " " << object_id << " "
-                   << num_transfers_send_ << "/" << config_.max_sends;
-    RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::SEND));
-  });
-  return ray::Status::OK();
+  // TransferQueue::SendContext context = transfer_queue_.GetContext(context_id);
+  boost::system::error_code ec;
+  std::vector<asio::const_buffer> buffer;
+  buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
+  conn->WriteBuffer(buffer, ec);
+
+  ray::Status status = ray::Status::OK();
+  if (ec.value() != 0) {
+    // Push failed. Deal with partial objects on the receiving end.
+    // TODO(hme): Try to invoke disconnect on sender connection, then remove it.
+    status = ray::Status::IOError(ec.message());
+  }
+
+  // Do this regardless of whether it failed or succeeded.
+  buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
+  RAY_CHECK_OK(
+      connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
+  RAY_LOG(DEBUG) << "SendCompleted " << client_id_ << " " << object_id << " "
+                 << num_transfers_send_ << "/" << config_.max_sends;
+  RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::SEND));
+  return status;
 }
 
 ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
@@ -498,19 +488,16 @@ ray::Status ObjectManager::ExecuteReceiveObject(
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
   if (chunk_status.second.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
-    std::vector<boost::asio::mutable_buffer> receive_buffer;
-    receive_buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
-    conn->AsyncReadBuffer(receive_buffer, [this, object_id, chunk_index,
-                                           conn](const boost::system::error_code &ec) {
-      if (ec.value() == 0) {
-        buffer_pool_.SealChunk(object_id, chunk_index);
-      } else {
-        buffer_pool_.AbortCreateChunk(object_id, chunk_index);
-        // TODO(hme): This chunk failed, so create a pull request for this chunk.
-      }
-      conn->ProcessMessages();
-      RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::RECEIVE));
-    });
+    std::vector<boost::asio::mutable_buffer> buffer;
+    buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
+    boost::system::error_code ec;
+    conn->ReadBuffer(buffer, ec);
+    if (ec.value() == 0) {
+      buffer_pool_.SealChunk(object_id, chunk_index);
+    } else {
+      buffer_pool_.AbortCreateChunk(object_id, chunk_index);
+      // TODO(hme): This chunk failed, so create a pull request for this chunk.
+    }
   } else {
     RAY_LOG(ERROR) << "Buffer Create Failed: " << chunk_status.second.message();
     // Read object into empty buffer.
@@ -519,27 +506,18 @@ ray::Status ObjectManager::ExecuteReceiveObject(
     mutable_vec.resize(buffer_length);
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(mutable_vec, buffer_length));
-    conn->AsyncReadBuffer(buffer, [this, conn](const boost::system::error_code &ec) {
-      if (ec.value() != 0) {
-        RAY_LOG(ERROR) << ec.message();
-      }
-      // TODO(hme): If the object isn't local, create a pull request for this chunk.
-      conn->ProcessMessages();
-      RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::RECEIVE));
-    });
+    boost::system::error_code ec;
+    conn->ReadBuffer(buffer, ec);
+    if (ec.value() != 0) {
+      RAY_LOG(ERROR) << ec.message();
+    }
+    // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
+  conn->ProcessMessages();
+  RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
+                 << num_transfers_receive_ << "/" << config_.max_receives;
+  RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::RECEIVE));
   return Status::OK();
 }
-
-flatbuffers::FlatBufferBuilder &ObjectManager::GetFlatBufferBuilder(
-    const UniqueID &fbb_id) {
-  std::unique_lock<std::mutex> guard(flat_buffer_mutex_);
-  return flatbuffer_context_[fbb_id];
-};
-
-void ObjectManager::ReleaseFlatBufferBuilder(const UniqueID &fbb_id) {
-  std::unique_lock<std::mutex> guard(flat_buffer_mutex_);
-  flatbuffer_context_.erase(fbb_id);
-};
 
 }  // namespace ray
