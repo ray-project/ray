@@ -350,6 +350,15 @@ class DataFrame(object):
         return result_series
 
     def _eval_query_arg_checker(self, expr, **kwargs):
+        """Helper function to check the arguments to eval() and query()
+
+        Args:
+            expr: The expression to evaluate. This string cannot contain any
+                Python statements, only Python expressions.
+        """
+        if isinstance(expr, str) and expr is '':
+            raise ValueError("expr cannot be an empty string")
+
         if isinstance(expr, str) and '@' in expr:
             raise NotImplementedError("Local variables not yet supported in "
                                       "eval.")
