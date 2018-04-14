@@ -54,7 +54,7 @@ class DataFrameGroupBy(object):
                      DataFrame(col_partitions=part,
                                columns=self._columns,
                                index=self._keys_and_values[i][1].index,
-                               row_metadata=self._row_metadata.loc[
+                               row_metadata=self._row_metadata[
                                    self._keys_and_values[i][1].index],
                                col_metadata=self._col_metadata))
                     for i, part in enumerate(self._grouped_partitions))
