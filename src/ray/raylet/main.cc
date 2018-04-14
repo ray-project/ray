@@ -49,8 +49,6 @@ int main(int argc, char *argv[]) {
   object_manager_config.store_socket_name = store_socket_name;
   // Time out in milliseconds to wait before retrying a failed pull.
   object_manager_config.pull_timeout_ms = 100;
-  // Size of thread pool.
-  object_manager_config.num_threads = 4;
   // Maximum number of sends allowed.
   object_manager_config.max_sends = 2;
   // Maximum number of receives allowed.

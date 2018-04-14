@@ -129,10 +129,9 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
-    om_config_1.num_threads = 4;
     om_config_1.max_sends = 2;
     om_config_1.max_receives = 2;
-    om_config_1.object_chunk_size = static_cast<uint64_t>(std::pow(10, 9));
+    om_config_1.object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
     server1.reset(new MockServer(main_service, std::move(object_manager_service_1),
                                  om_config_1, gcs_client_1));
 
@@ -140,10 +139,9 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
-    om_config_2.num_threads = 4;
     om_config_2.max_sends = 2;
     om_config_2.max_receives = 2;
-    om_config_2.object_chunk_size = static_cast<uint64_t>(std::pow(10, 9));
+    om_config_2.object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
     server2.reset(new MockServer(main_service, std::move(object_manager_service_2),
                                  om_config_2, gcs_client_2));
 
@@ -275,7 +273,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     async_loop_index += 1;
     if ((uint)async_loop_index < async_loop_patterns.size()) {
       TransferPattern pattern = async_loop_patterns[async_loop_index];
-      TransferTestExecute(100, 3 * std::pow(10, 4) - 1, pattern);
+      TransferTestExecute(100, 3 * std::pow(10, 3) - 1, pattern);
     } else {
       main_service.stop();
     }

@@ -23,7 +23,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_(),
       transfer_queue_(),
       num_transfers_send_(0),
-      num_transfers_receive_(0) {
+      num_transfers_receive_(0),
+      num_threads_(config_.max_sends + config_.max_receives) {
+  RAY_CHECK(config_.max_sends > 0);
+  RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
   config_ = config;
   store_notification_.SubscribeObjAdded(
@@ -48,7 +51,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_(),
       transfer_queue_(),
       num_transfers_send_(0),
-      num_transfers_receive_(0) {
+      num_transfers_receive_(0),
+      num_threads_(config_.max_sends + config_.max_receives) {
+  RAY_CHECK(config_.max_sends > 0);
+  RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   config_ = config;
@@ -62,7 +68,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
 ObjectManager::~ObjectManager() { StopIOService(); }
 
 void ObjectManager::StartIOService() {
-  for (int i = 0; i < config_.num_threads; ++i) {
+  for (int i = 0; i < num_threads_; ++i) {
     io_threads_.emplace_back(std::thread(&ObjectManager::IOServiceLoop, this));
   }
 }
@@ -71,7 +77,7 @@ void ObjectManager::IOServiceLoop() { object_manager_service_->run(); }
 
 void ObjectManager::StopIOService() {
   object_manager_service_->stop();
-  for (int i = 0; i < config_.num_threads; ++i) {
+  for (int i = 0; i < num_threads_; ++i) {
     io_threads_[i].join();
   }
 }
@@ -235,7 +241,8 @@ ray::Status ObjectManager::DequeueTransfers() {
   ray::Status status = ray::Status::OK();
   // Dequeue sends.
   while (true) {
-    if (std::atomic_fetch_add(&num_transfers_send_, 1) <= config_.max_sends) {
+    int num_transfers_send = std::atomic_fetch_add(&num_transfers_send_, 1);
+    if (num_transfers_send < config_.max_sends) {
       TransferQueue::SendRequest req;
       bool exists = transfer_queue_.DequeueSendIfPresent(&req);
       if (exists) {
@@ -257,7 +264,8 @@ ray::Status ObjectManager::DequeueTransfers() {
   }
   // Dequeue receives.
   while (true) {
-    if (std::atomic_fetch_add(&num_transfers_receive_, 1) <= config_.max_receives) {
+    int num_transfers_receive = std::atomic_fetch_add(&num_transfers_receive_, 1);
+    if (num_transfers_receive < config_.max_receives) {
       TransferQueue::ReceiveRequest req;
       bool exists = transfer_queue_.DequeueReceiveIfPresent(&req);
       if (exists) {
@@ -320,6 +328,9 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
   if (!chunk_status.second.ok()) {
     // This is the first thread to invoke GetChunk => Get failed on the
     // plasma client.
+    // No reference is acquired for this chunk, so no need to release the chunk.
+    // TODO(hme): Retry send here? If so, store RemoteConnectionInfo in SenderConnection.
+    RAY_CHECK_OK(TransferCompleted(TransferQueue::TransferType::SEND));
     return chunk_status.second;
   }
   // Create buffer.
@@ -331,15 +342,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
   ray::Status status =
       conn->WriteMessage(object_manager_protocol::MessageType_PushRequest, fbb.GetSize(),
                          fbb.GetBufferPointer());
-  if (!status.ok()) {
-    // Push failed. Deal with partial objects on the receiving end.
-    buffer_pool_.ReleaseGetChunk(object_id, chunk_index);
-    // TODO(hme): Try to invoke disconnect on sender connection, then remove it.
-    RAY_CHECK_OK(
-        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
-    return status;
-  }
-
+  RAY_CHECK_OK(status);
   return SendObjectData(object_id, chunk_info, conn);
 }
 

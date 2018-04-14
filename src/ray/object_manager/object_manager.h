@@ -33,9 +33,7 @@ namespace ray {
 struct ObjectManagerConfig {
   /// The time in milliseconds to wait before retrying a pull
   /// that failed due to client id lookup.
-  int pull_timeout_ms = 100;
-  /// Size of thread pool.
-  int num_threads = 4;
+  uint pull_timeout_ms = 100;
   /// Maximum number of sends allowed.
   int max_sends = 2;
   /// Maximum number of receives allowed.
@@ -191,6 +189,10 @@ class ObjectManager {
   /// Variables to track number of concurrent sends and receives.
   std::atomic<int> num_transfers_send_;
   std::atomic<int> num_transfers_receive_;
+
+  /// Size of thread pool. This is the sum of
+  /// config_.max_sends and config_.max_receives
+  const int num_threads_;
 
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
