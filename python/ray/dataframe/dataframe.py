@@ -3019,9 +3019,14 @@ class DataFrame(object):
 
     def replace(self, to_replace=None, value=None, inplace=False, limit=None,
                 regex=False, method='pad', axis=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        pd.DataFrame(index=self.index, columns=self.columns).replace(
+            to_replace=to_replace, value=value, inplace=inplace, limit=limit,
+            regex=regex, method=method, axis=axis
+        )
+
+        return self._replace(to_replace=to_replace, value=value,
+                             inplace=inplace, method=method, limit=limit,
+                             regex=regex)
 
     def resample(self, rule, how=None, axis=0, fill_method=None, closed=None,
                  label=None, convention='start', kind=None, loffset=None,
