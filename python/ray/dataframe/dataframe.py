@@ -552,9 +552,10 @@ class DataFrame(object):
         elif isinstance(by, compat.string_types):
             by = self.__getitem__(by).values.tolist()
         elif is_list_like(by):
-            mismatch = len(by) != len(self)
+            mismatch = len(by) != len(self) if axis == 0 \
+                else len(by) != len(self.columns)
 
-            if all([obj in self for obj in by]):
+            if all([obj in self for obj in by]) and mismatch:
                 raise NotImplementedError(
                     "Groupby with lists of columns not yet supported.")
             elif mismatch:

@@ -32,7 +32,7 @@ class DataFrameGroupBy(object):
             index_grouped = pd.Series(self._columns).groupby(by=by, sort=sort)
 
         self._keys_and_values = [(k, v) for k, v in index_grouped]
-
+        print(self._keys_and_values)
         self._grouped_partitions = \
             zip(*(groupby._submit(args=(part,
                                         by,
@@ -62,7 +62,10 @@ class DataFrameGroupBy(object):
             return ((self._keys_and_values[i][0],
                      DataFrame(row_partitions=part,
                                columns=self._keys_and_values[i][1].index,
-                               index=self._index))
+                               index=self._index,
+                               row_metadata=self._row_metadata,
+                               col_metadata=self._col_metadata[
+                                   self._keys_and_values[i][1].index]))
                     for i, part in enumerate(self._grouped_partitions))
 
     def _map_partitions(self, func):
