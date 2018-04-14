@@ -21,6 +21,9 @@ class DataFrameGroupBy(object):
         self._index = df.index
         self._axis = axis
 
+        self._row_metadata = df._row_metadata
+        self._col_metadata = df._col_metadata
+
         if axis == 0:
             partitions = df._col_partitions
             index_grouped = pd.Series(self._index).groupby(by=by, sort=sort)
@@ -50,7 +53,10 @@ class DataFrameGroupBy(object):
             return ((self._keys_and_values[i][0],
                      DataFrame(col_partitions=part,
                                columns=self._columns,
-                               index=self._keys_and_values[i][1].index))
+                               index=self._keys_and_values[i][1].index,
+                               row_metadata=self._row_metadata.loc[
+                                   self._keys_and_values[i][1].index],
+                               col_metadata=self._col_metadata))
                     for i, part in enumerate(self._grouped_partitions))
         else:
             return ((self._keys_and_values[i][0],
