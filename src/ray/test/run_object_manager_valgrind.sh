@@ -24,6 +24,7 @@ CORE_DIR="$RAY_ROOT/python/ray/core"
 REDIS_DIR="$CORE_DIR/src/common/thirdparty/redis/src"
 REDIS_MODULE="$CORE_DIR/src/common/redis_module/libray_redis_module.so"
 STORE_EXEC="$CORE_DIR/src/plasma/plasma_store"
+VALGRIND_CMD="valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1"
 
 echo "$STORE_EXEC"
 echo "$REDIS_DIR/redis-server --loglevel warning --loadmodule $REDIS_MODULE --port 6379"
@@ -37,9 +38,9 @@ $REDIS_DIR/redis-server --loglevel warning --loadmodule $REDIS_MODULE --port 637
 sleep 1s
 
 # Run tests.
-$CORE_DIR/src/ray/object_manager/object_manager_stress_test $STORE_EXEC
+$VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC
 sleep 1s
-$CORE_DIR/src/ray/object_manager/object_manager_test $STORE_EXEC
+$VALGRIND_CMD $CORE_DIR/src/ray/object_manager/object_manager_stress_test $STORE_EXEC
 $REDIS_DIR/redis-cli -p 6379 shutdown
 sleep 1s
 
