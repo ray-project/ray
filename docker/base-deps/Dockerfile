@@ -25,6 +25,7 @@ RUN apt-get update \
         libgcc \
     && /opt/conda/bin/conda clean -y --all \
     && /opt/conda/bin/pip install \
-        flatbuffers
+        flatbuffers \
+        cython==0.27.3
 
 ENV PATH "/opt/conda/bin:$PATH"
