@@ -18,7 +18,7 @@ from ray.tune.result import TrainingResult
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts"]
+    "train_batch_size", "learning_starts", "clip_rewards"]
 
 DEFAULT_CONFIG = dict(
     # === Model ===

@@ -5,6 +5,7 @@
 #include "ray/raylet/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/client_connection.h"
+#include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
@@ -53,26 +54,34 @@ class NodeManager {
   void ProcessNodeManagerMessage(std::shared_ptr<TcpClientConnection> node_manager_client,
                                  int64_t message_type, const uint8_t *message);
 
-  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                   const ClientTableDataT &data);
+  ray::Status RegisterGcs();
 
   void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
                       const HeartbeatTableDataT &data);
 
  private:
+  // Handler for the addition of a new GCS client.
+  void ClientAdded(const ClientTableDataT &data);
+  // Handler for the creation of an actor, possibly on a remote node.
+  void HandleActorCreation(const ActorID &actor_id,
+                           const std::vector<ActorTableDataT> &data);
+  // Queue a task for local execution.
+  void QueueTask(const Task &task);
   /// Submit a task to this node.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage);
-  /// Assign a task.
-  void AssignTask(const Task &task);
-  /// Finish a task.
-  void FinishTask(const TaskID &task_id);
+  /// Assign a task. The task is assumed to not be queued in local_queues_.
+  void AssignTask(Task &task);
+  /// Handle a worker finishing its assigned task.
+  void FinishAssignedTask(std::shared_ptr<Worker> worker);
   /// Schedule tasks.
   void ScheduleTasks();
   /// Handle a task whose local dependencies were missing and are now available.
   void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
-  ray::Status ForwardTask(Task &task, const ClientID &node_id);
+  /// Forward a task to another node to execute. The task is assumed to not be
+  /// queued in local_queues_.
+  ray::Status ForwardTask(const Task &task, const ClientID &node_id);
   /// Send heartbeats to the GCS.
   void Heartbeat();
 
@@ -101,6 +110,7 @@ class NodeManager {
   std::unordered_map<ClientID, TcpServerConnection, UniqueIDHasher>
       remote_server_connections_;
   ObjectManager &object_manager_;
+  std::unordered_map<ActorID, ActorRegistration, UniqueIDHasher> actor_registry_;
 };
 
 }  // namespace raylet

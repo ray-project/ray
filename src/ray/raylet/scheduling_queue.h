@@ -6,7 +6,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/raylet/actor.h"
 #include "ray/raylet/task.h"
 
 namespace ray {
@@ -28,6 +27,13 @@ class SchedulingQueue {
 
   /// SchedulingQueue destructor.
   virtual ~SchedulingQueue() {}
+
+  /// Get the queue of tasks that are destined for actors that have not yet
+  /// been created.
+  ///
+  /// \return A const reference to the queue of tasks that are destined for
+  /// actors that have not yet been created.
+  const std::list<Task> &GetUncreatedActorMethods() const;
 
   /// Get the queue of tasks in the waiting state.
   ///
@@ -66,6 +72,11 @@ class SchedulingQueue {
   /// \return A vector of the tasks that were removed.
   std::vector<Task> RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher> tasks);
 
+  /// Queue tasks that are destined for actors that have not yet been created.
+  ///
+  /// \param tasks The tasks to queue.
+  void QueueUncreatedActorMethods(const std::vector<Task> &tasks);
+
   /// Queue tasks in the waiting state.
   ///
   /// \param tasks The tasks to queue.
@@ -86,13 +97,9 @@ class SchedulingQueue {
   /// \param tasks The tasks to queue.
   void QueueRunningTasks(const std::vector<Task> &tasks);
 
-  /// Register an actor.
-  ///
-  /// \param actor_id The ID of the actor to register.
-  /// \param actor_information Information about the actor.
-  bool RegisterActor(ActorID actor_id, const ActorInformation &actor_information);
-
  private:
+  /// Tasks that are destined for actors that have not yet been created.
+  std::list<Task> uncreated_actor_methods_;
   /// Tasks that are waiting for an object dependency to appear locally.
   std::list<Task> waiting_tasks_;
   /// Tasks whose object dependencies are locally available, but that are
@@ -102,8 +109,6 @@ class SchedulingQueue {
   std::list<Task> scheduled_tasks_;
   /// Tasks that are running on a worker.
   std::list<Task> running_tasks_;
-  /// The registry of known actors.
-  std::unordered_map<ActorID, ActorInformation, UniqueIDHasher> actor_registry_;
 };
 
 }  // namespace raylet

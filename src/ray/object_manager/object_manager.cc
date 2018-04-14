@@ -24,7 +24,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   main_service_ = &main_service;
   config_ = config;
   store_notification_.SubscribeObjAdded(
-      [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
+      [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
@@ -47,10 +47,17 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   main_service_ = &main_service;
   config_ = config;
   store_notification_.SubscribeObjAdded(
-      [this](const ObjectID &oid) { NotifyDirectoryObjectAdd(oid); });
+      [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
       [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
   StartIOService();
+}
+
+ObjectManager::~ObjectManager() {
+  object_manager_service_->stop();
+  for (int i = 0; i < config_.num_threads; ++i) {
+    io_threads_[i].join();
+  }
 }
 
 void ObjectManager::StartIOService() {
@@ -61,16 +68,11 @@ void ObjectManager::StartIOService() {
 
 void ObjectManager::IOServiceLoop() { object_manager_service_->run(); }
 
-void ObjectManager::StopIOService() {
-  object_manager_service_->stop();
-  for (int i = 0; i < config_.num_threads; ++i) {
-    io_threads_[i].join();
-  }
-}
-
-void ObjectManager::NotifyDirectoryObjectAdd(const ObjectID &object_id) {
-  local_objects_.insert(object_id);
-  ray::Status status = object_directory_->ReportObjectAdded(object_id, client_id_);
+void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
+  ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+  local_objects_[object_id] = object_info;
+  ray::Status status =
+      object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -78,17 +80,8 @@ void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   ray::Status status = object_directory_->ReportObjectRemoved(object_id, client_id_);
 }
 
-ray::Status ObjectManager::Terminate() {
-  StopIOService();
-  ray::Status status_code = object_directory_->Terminate();
-  // TODO: evaluate store client termination status.
-  store_notification_.Terminate();
-  store_pool_.Terminate();
-  return status_code;
-}
-
 ray::Status ObjectManager::SubscribeObjAdded(
-    std::function<void(const ObjectID &)> callback) {
+    std::function<void(const ObjectInfoT &)> callback) {
   store_notification_.SubscribeObjAdded(callback);
   return ray::Status::OK();
 }
@@ -307,7 +300,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
   plasma::ObjectID plasma_id = object_id.to_plasma_id();
   std::shared_ptr<plasma::PlasmaClient> store_client = store_pool_.GetObjectStore();
   ARROW_CHECK_OK(store_client->Get(&plasma_id, 1, 0, &object_buffer));
-  if (object_buffer.data_size == -1) {
+  if (object_buffer.data == nullptr) {
     RAY_LOG(ERROR) << "Failed to get object";
     // If the object wasn't locally available, exit immediately. If the object
     // later appears locally, the requesting plasma manager should request the
@@ -318,12 +311,12 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id_const,
         "Unable to transfer object to requesting plasma manager, object not local.");
   }
   RAY_CHECK(object_buffer.metadata->data() ==
-            object_buffer.data->data() + object_buffer.data_size);
+            object_buffer.data->data() + object_buffer.data->size());
 
   TransferQueue::SendContext context;
   context.client_id = conn->GetClientID();
   context.object_id = object_id;
-  context.object_size = static_cast<uint64_t>(object_buffer.data_size);
+  context.object_size = static_cast<uint64_t>(object_buffer.data->size());
   context.data = const_cast<uint8_t *>(object_buffer.data->data());
   UniqueID context_id = transfer_queue_.AddContext(context);
 
@@ -425,7 +418,8 @@ void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> co
     ConnectClient(conn, message);
     break;
   }
-  case object_manager_protocol::MessageType_DisconnectClient: {
+  case protocol::MessageType_DisconnectClient: {
+    // TODO(hme): Disconnect without depending on the node manager protocol.
     DisconnectClient(conn, message);
     break;
   }
@@ -453,17 +447,7 @@ void ObjectManager::ConnectClient(std::shared_ptr<TcpClientConnection> &conn,
 
 void ObjectManager::DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                                      const uint8_t *message) {
-  auto info =
-      flatbuffers::GetRoot<object_manager_protocol::DisconnectClientMessage>(message);
-  ClientID client_id = ObjectID::from_binary(info->client_id()->str());
-  bool is_transfer = info->is_transfer();
-  if (is_transfer) {
-    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::TRANSFER, client_id,
-                                    conn);
-  } else {
-    connection_pool_.RemoveReceiver(ConnectionPool::ConnectionType::MESSAGE, client_id,
-                                    conn);
-  }
+  connection_pool_.RemoveReceiver(conn);
 }
 
 void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,

@@ -84,7 +84,8 @@ class AWSNodeProvider(NodeProvider):
         tag_pairs = []
         for k, v in tags.items():
             tag_pairs.append({
-                "Key": k, "Value": v,
+                "Key": k,
+                "Value": v,
             })
         node.create_tags(Tags=tag_pairs)
 
@@ -95,20 +96,20 @@ class AWSNodeProvider(NodeProvider):
             "Value": self.cluster_name,
         }]
         for k, v in tags.items():
-            tag_pairs.append(
-                {
-                    "Key": k,
-                    "Value": v,
-                })
+            tag_pairs.append({
+                "Key": k,
+                "Value": v,
+            })
         conf.update({
-            "MinCount": 1,
-            "MaxCount": count,
-            "TagSpecifications": conf.get("TagSpecifications", []) + [
-                {
-                    "ResourceType": "instance",
-                    "Tags": tag_pairs,
-                }
-            ]
+            "MinCount":
+            1,
+            "MaxCount":
+            count,
+            "TagSpecifications":
+            conf.get("TagSpecifications", []) + [{
+                "ResourceType": "instance",
+                "Tags": tag_pairs,
+            }]
         })
         self.ec2.create_instances(**conf)
 

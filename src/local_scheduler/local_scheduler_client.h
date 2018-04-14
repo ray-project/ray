@@ -3,6 +3,7 @@
 
 #include "common/task.h"
 #include "local_scheduler_shared.h"
+#include "ray/raylet/task_spec.h"
 
 struct LocalSchedulerConnection {
   /** File descriptor of the Unix domain socket that connects to local
@@ -44,6 +45,17 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
  */
 void local_scheduler_submit(LocalSchedulerConnection *conn,
                             TaskExecutionSpec &execution_spec);
+
+/// Submit a task using the raylet code path.
+///
+/// \param The connection information.
+/// \param The execution dependencies.
+/// \param The task specification.
+/// \return Void.
+void local_scheduler_submit_raylet(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &execution_dependencies,
+    ray::raylet::TaskSpecification task_spec);
 
 /**
  * Notify the local scheduler that this client is disconnecting gracefully. This
