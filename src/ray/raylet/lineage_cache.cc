@@ -242,7 +242,8 @@ Status LineageCache::Flush() {
         // next call to Flush().
         auto inserted = subscribed_tasks_.insert(parent_id);
         if (inserted.second) {
-          task_pubsub_.RequestNotifications(JobID::nil(), parent_id, client_id_);
+          RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID::nil(), parent_id,
+                                                         client_id_));
         }
         all_arguments_committed = false;
         break;
@@ -307,7 +308,7 @@ void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
   // Stop listening for notifications about this task.
   auto it = subscribed_tasks_.find(task_id);
   if (it != subscribed_tasks_.end()) {
-    task_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_);
+    RAY_CHECK_OK(task_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
     subscribed_tasks_.erase(it);
   }
 }

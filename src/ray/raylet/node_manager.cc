@@ -76,9 +76,9 @@ ray::Status NodeManager::RegisterGcs() {
                                               const ray::protocol::TaskT &task_data) {
     lineage_cache_.HandleEntryCommitted(task_id);
   };
-  gcs_client_->raylet_task_table().Subscribe(
+  RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
       JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
-      task_committed_callback, nullptr);
+      task_committed_callback, nullptr));
 
   // Register a callback for actor creation notifications.
   auto actor_creation_callback = [this](
