@@ -36,9 +36,9 @@ template <typename ID>
 class PubsubInterface {
  public:
   virtual Status RequestNotifications(const JobID &job_id, const ID &id,
-                                      const ClientID &client_id);
+                                      const ClientID &client_id) = 0;
   virtual Status CancelNotifications(const JobID &job_id, const ID &id,
-                                     const ClientID &client_id);
+                                     const ClientID &client_id) = 0;
   virtual ~PubsubInterface(){};
 };
 
