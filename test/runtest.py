@@ -2057,7 +2057,7 @@ class GlobalStateAPI(unittest.TestCase):
         ray.init(redirect_output=True)
 
         @ray.remote
-        def f():
+        def f(*xs):
             return 1
 
         @ray.remote
@@ -2068,7 +2068,16 @@ class GlobalStateAPI(unittest.TestCase):
             def method(self):
                 pass
 
-        ray.get([f.remote() for _ in range(10)])
+        # We use a number of test objects because objects that are not JSON
+        # serializable caused problems in the past.
+        test_objects = [
+            0, 0.5, "hi", b"hi",
+            ray.put(0),
+            np.zeros(3), [0], (0, ), {
+                0: 0
+            }, True, False, None
+        ]
+        ray.get([f.remote(obj) for obj in test_objects])
         actors = [Foo.remote() for _ in range(5)]
         ray.get([actor.method.remote() for actor in actors])
         ray.get([actor.method.remote() for actor in actors])
