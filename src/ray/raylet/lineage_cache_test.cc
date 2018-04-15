@@ -331,8 +331,8 @@ TEST_F(LineageCacheTest, TestForwardTask) {
 
   // Simulate executing the task on a remote node and adding it to the GCS.
   auto task_data = std::make_shared<protocol::TaskT>();
-  RAY_CHECK_OK(mock_gcs_.RemoteAdd(forwarded_task.GetTaskSpecification().TaskId(),
-                                   task_data));
+  RAY_CHECK_OK(
+      mock_gcs_.RemoteAdd(forwarded_task.GetTaskSpecification().TaskId(), task_data));
   // Check that the remote task is flushed.
   num_tasks_flushed++;
   CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
