@@ -86,6 +86,22 @@ class RayConfig {
     return actor_creation_num_spillbacks_warning_;
   }
 
+  uint object_manager_pull_timeout_ms() const {
+    return object_manager_pull_timeout_ms_;
+  }
+
+  int object_manager_max_sends() const {
+    return object_manager_max_sends_;
+  }
+
+  int object_manager_max_receives() const {
+    return object_manager_max_receives_;
+  }
+
+  uint64_t object_manager_default_chunk_size() const {
+    return object_manager_default_chunk_size_;
+  }
+
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
@@ -113,7 +129,14 @@ class RayConfig {
         plasma_default_release_delay_(64),
         L3_cache_size_bytes_(100000000),
         max_tasks_to_spillback_(10),
-        actor_creation_num_spillbacks_warning_(100) {}
+        actor_creation_num_spillbacks_warning_(100),
+        // TODO: Setting this to large values results in latency, which needs to
+        // be addressed. This timeout is often on the critical path to object
+        // transfers.
+        object_manager_pull_timeout_ms_(20),
+        object_manager_max_sends_(2),
+        object_manager_max_receives_(2),
+        object_manager_default_chunk_size_(100000000) {}
 
   ~RayConfig() {}
 
@@ -196,6 +219,21 @@ class RayConfig {
   /// corresponding driver. Since spillback currently occurs on a 100ms timer,
   /// a value of 100 corresponds to a warning every 10 seconds.
   int64_t actor_creation_num_spillbacks_warning_;
+
+  /// Time out, in milliseconds, to wait before retrying a failed pull in the
+  /// ObjectManager.
+  uint object_manager_pull_timeout_ms_;
+
+  /// Maximum number of concurrent sends allowed by the object manager.
+  int object_manager_max_sends_;
+
+  /// Maximum number of concurrent receives allowed by the object manager.
+  int object_manager_max_receives_;
+
+  /// Default chunk size for multi-chunk transfers to use in the object manager.
+  /// In the object manager, no single thread is permitted to transfer more
+  /// data than what is specified by the chunk size.
+  uint64_t object_manager_default_chunk_size_;
 };
 
 #endif  // RAY_CONFIG_H
