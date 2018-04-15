@@ -775,7 +775,8 @@ class TestEvalPythonPandas(TestEvalPythonPython):
                                                    rhs)
 
 
-f = lambda *args, **kwargs: np.random.randn()
+def f(*args, **kwargs):
+    np.random.randn()
 
 
 # -------------------------------------
