@@ -98,7 +98,8 @@ You can find the code for Ray Tune `here on GitHub <https://github.com/ray-proje
 Trial Schedulers
 ~~~~~~~~~~~~~~~~
 
-By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler`` class. However, you can also specify a custom scheduling algorithm that can early stop trials, perturb parameters, or incorporate suggestions from an external service. Currently implemented trial schedulers include `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, Model-Based Optimization (HyperOpt), and `HyperBand <hyperband.html>`__.
+By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler`` class. However, you can also specify a custom scheduling algorithm that can early stop trials, perturb parameters, or incorporate suggestions from an external service. Currently implemented trial schedulers include
+`Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, `Model Based Optimization (HyperOpt) <#hyperopt-integration>`__, and `HyperBand <hyperband.html>`__.
 
 .. code-block:: python
 
@@ -136,7 +137,7 @@ Features
 
 Ray Tune has the following features:
 
--  Scalable implementations of search algorithms such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, Model-Based Optimization (HyperOpt), and `HyperBand <hyperband.html>`__.
+-  Scalable implementations of search algorithms such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, `Model Based Optimization (HyperOpt) <#hyperopt-integration>`__, and `HyperBand <hyperband.html>`__.
 
 -  `Flexible trial variant generation <tune-config.html>`__, including grid search, random search, and conditional parameter distributions.
 
