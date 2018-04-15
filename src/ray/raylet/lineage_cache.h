@@ -206,6 +206,10 @@ class LineageCache {
   gcs::TableInterface<TaskID, protocol::Task> &task_storage_;
   /// The set of tasks that are in UNCOMMITTED_READY state. This is a cache of
   /// the tasks that may be flushable.
+  // TODO(swang): As an optimization, we may also want to further distinguish
+  // which tasks are flushable, to avoid iterating over tasks that are in
+  // UNCOMMITTED_READY, but that have dependencies that have not been committed
+  // yet.
   std::unordered_set<TaskID, UniqueIDHasher> uncommitted_ready_tasks_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
