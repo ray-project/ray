@@ -28,16 +28,10 @@ PyObject *pickle_loads = NULL;
 PyObject *pickle_dumps = NULL;
 PyObject *pickle_protocol = NULL;
 
-#if PY_MAJOR_VERSION >= 3
-void *init_numpy_module(void) {
-  import_array();
-  return NULL;
+int init_numpy_module(void) {
+  import_array1(-1);
+  return 0;
 }
-#else
-void init_numpy_module(void) {
-  import_array();
-}
-#endif
 
 void init_pickle_module(void) {
 #if PY_MAJOR_VERSION >= 3
