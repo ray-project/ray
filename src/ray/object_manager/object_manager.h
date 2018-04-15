@@ -22,9 +22,9 @@
 
 #include "ray/object_manager/connection_pool.h"
 #include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager_client_connection.h"
-#include "ray/object_manager/object_store_client_pool.h"
 #include "ray/object_manager/object_store_notification_manager.h"
 #include "ray/object_manager/transfer_queue.h"
 
@@ -38,6 +38,8 @@ struct ObjectManagerConfig {
   int max_sends = 2;
   /// Maximum number of receives allowed.
   int max_receives = 2;
+  /// Object chunk size, in bytes
+  uint64_t object_chunk_size = std::pow(10, 8);
   // TODO(hme): Implement num retries (to avoid infinite retries).
   std::string store_socket_name;
 };
@@ -153,7 +155,7 @@ class ObjectManager {
   ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
   ObjectStoreNotificationManager store_notification_;
-  ObjectStoreClientPool store_pool_;
+  ObjectBufferPool buffer_pool_;
 
   /// An io service for creating connections to other object managers.
   /// This runs on a thread pool.
@@ -252,19 +254,22 @@ class ObjectManager {
 
   /// Begin executing a send.
   /// Executes on object_manager_service_ thread pool.
-  ray::Status ExecuteSendObject(const ObjectID &object_id, const ClientID &client_id,
+  ray::Status ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
+                                uint64_t data_size, uint64_t metadata_size,
+                                uint64_t chunk_index,
                                 const RemoteConnectionInfo &connection_info);
   /// This method synchronously sends the object id and object size
   /// to the remote object manager.
   /// Executes on object_manager_service_ thread pool.
-  ray::Status SendObjectHeaders(const ObjectID &object_id,
-                                std::shared_ptr<SenderConnection> client);
+  ray::Status SendObjectHeaders(const ObjectID &object_id, uint64_t data_size,
+                                uint64_t metadata_size, uint64_t chunk_index,
+                                std::shared_ptr<SenderConnection> conn);
 
   /// This method initiates the actual object transfer.
   /// Executes on object_manager_service_ thread pool.
-  ray::Status SendObjectData(std::shared_ptr<SenderConnection> conn,
-                             const UniqueID &context_id,
-                             std::shared_ptr<plasma::PlasmaClient> store_client);
+  ray::Status SendObjectData(const ObjectID &object_id,
+                             const ObjectBufferPool::ChunkInfo &chunk_info,
+                             std::shared_ptr<SenderConnection> conn);
 
   /// Invoked when a remote object manager pushes an object to this object manager.
   /// This will queue the receive.
@@ -272,7 +277,8 @@ class ObjectManager {
                           const uint8_t *message);
   /// Execute a receive that was in the queue.
   ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
-                                   uint64_t object_size,
+                                   uint64_t data_size, uint64_t metadata_size,
+                                   uint64_t chunk_index,
                                    std::shared_ptr<TcpClientConnection> conn);
 
   /// Handles receiving a pull request message.
