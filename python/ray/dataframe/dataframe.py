@@ -712,7 +712,8 @@ class DataFrame(object):
         if axis == 0:
             try:
                 result = self._aggregate(func, axis=axis, *args, **kwargs)
-            except TypeError:
+            except TypeError as e:
+                print("Error:", e)
                 pass
 
         if result is None:
@@ -738,7 +739,14 @@ class DataFrame(object):
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
         elif is_list_like(arg):
-            raise NotImplementedError("Not yet")
+            from .concat import concat
+            x = [self._aggregate(func, *args, **kwargs)
+                           for func in arg]
+            new_dfs = [x[i] if not isinstance(x[i], pd.Series)
+                              else pd.DataFrame(x[i], columns=[arg[i]]).T for i in range(len(x))]
+
+            return new_dfs
+            # raise NotImplementedError("Not yet")
         elif callable(arg):
             self._callable_function(arg, _axis, *args, **kwargs)
         else:
