@@ -132,7 +132,26 @@ def _deploy_func(func, dataframe, *args):
         return func(dataframe, *args)
 
 
-def _map_partitions(func, partitions, *argslists):
+@ray.remote
+def _deploy_func_ignore_errors(func, dataframe, *args):
+    """Deploys a function for the _map_partitions call, while ignoring errors.
+    Args:
+        dataframe (pandas.DataFrame): The pandas DataFrame for this partition.
+    Returns:
+        A futures object representing the return value of the function
+        provided.
+    """
+    try:
+        if len(args) == 0:
+            return func(dataframe)
+        else:
+            return func(dataframe, *args)
+    except:
+        print("ERRORED!!!")
+        return dataframe
+
+
+def _map_partitions(func, partitions=None, *argslists, **kwargs):
     """Apply a function across the specified axis
 
     Args:
@@ -142,19 +161,48 @@ def _map_partitions(func, partitions, *argslists):
     Returns:
         A new Dataframe containing the result of the function
     """
-    if partitions is None:
-        return None
+    block_partitions = kwargs.get('block_partitions', None)
+    ignore_errors = kwargs.get('ignore_errors', False)
+    assert partitions is not None and block_partitions is None or\
+           partitions is None and block_partitions is not None,\
+           "Should pass in either partitions or block_partitions, but not both"
+    new_partitions = None
+    if block_partitions is None:
+        if partitions is None:
+            return new_partitions
+    else:
+        partitions = _block_partitions_to_list(block_partitions)
+
+    if len(partitions) == 0:
+        return partitions
 
     assert(callable(func))
+
+    deploy_func = _deploy_func
+    if ignore_errors:
+        deploy_func = _deploy_func_ignore_errors
+
     if len(argslists) == 0:
-        return [_deploy_func.remote(func, part) for part in partitions]
+        new_partitions = [
+            deploy_func.remote(func, part)
+            for part in partitions
+        ]
     elif len(argslists) == 1:
-        return [_deploy_func.remote(func, part, argslists[0])
-                for part in partitions]
+        new_partitions = [
+            deploy_func.remote(func, part, argslists[0])
+            for part in partitions
+        ]
     else:
         assert(all([len(args) == len(partitions) for args in argslists]))
-        return [_deploy_func.remote(func, part, *args)
-                for part, args in zip(partitions, *argslists)]
+        new_partitions = [
+            deploy_func.remote(func, part, *args)
+            for part, args in zip(partitions, *argslists)
+        ]
+    if block_partitions is None:
+        return new_partitions
+    else:
+        return _block_list_to_partitions(new_partitions,
+                                         len(block_partitions[0]))
 
 
 @ray.remote
@@ -183,6 +231,19 @@ def _build_coord_df(lengths, index):
 
     col_names = ("partition", "index_within_partition")
     return pd.DataFrame(coords, index=index, columns=col_names)
+
+
+def _block_partitions_to_list(partitions):
+    block_list = []
+    for part in partitions:
+        block_list.extend(part)
+    return block_list
+
+
+def _block_list_to_partitions(block_list, npartitions):
+    n = len(block_list) // npartitions
+    return [[block_list[i * npartitions + j] for j in range(npartitions)]
+            for i in range(n)]
 
 
 def _create_block_partitions(partitions, axis=0, length=None):

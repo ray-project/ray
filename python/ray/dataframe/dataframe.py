@@ -62,7 +62,7 @@ class DataFrame(object):
             index (pandas.Index or list): The row index for this dataframe.
             columns (pandas.Index): The column names for this dataframe, in
                 pandas Index object.
-            dtype: Data type to force. Only a single dtype is allowed.
+            dtype: Data type to force. Only a single dtfype is allowed.
                 If None, infer
             copy (boolean): Copy data from inputs.
                 Only affects DataFrame / 2d ndarray input
@@ -3016,6 +3016,25 @@ class DataFrame(object):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
+
+    def _replace(self, to_replace=None, value=None, inplace=False, limit=None,
+                 regex=False, method='pad', axis=None):
+        new_block_partitions = _map_partitions(
+            lambda df: df.replace(to_replace=to_replace, value=value,
+                                  limit=limit, regex=regex, method='pad',
+                                  axis=None),
+            block_partitions=self._block_partitions,
+            ignore_errors=True
+        )
+
+        if inplace:
+            self._update_inplace(
+                block_partitions=new_block_partitions,
+                columns=self.columns, index=self.index)
+        else:
+            return DataFrame(
+                block_partitions=new_block_partitions,
+                columns=self.columns, index=self.index)
 
     def replace(self, to_replace=None, value=None, inplace=False, limit=None,
                 regex=False, method='pad', axis=None):
