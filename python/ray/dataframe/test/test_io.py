@@ -89,6 +89,7 @@ def test_from_csv():
 
     teardown_csv_file()
 
+
 def test_from_csv_delimiter():
     setup_csv_file(SMALL_ROW_SIZE, delimiter='|')
 
