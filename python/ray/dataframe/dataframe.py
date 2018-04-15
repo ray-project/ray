@@ -3017,8 +3017,13 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def _replace(self, to_replace=None, value=None, inplace=False, limit=None,
-                 regex=False, method='pad', axis=None):
+    def replace(self, to_replace=None, value=None, inplace=False, limit=None,
+                regex=False, method='pad', axis=None):
+        pd.DataFrame(index=self.index, columns=self.columns).replace(
+            to_replace=to_replace, value=value, inplace=inplace, limit=limit,
+            regex=regex, method=method, axis=axis
+        )
+
         new_block_partitions = _map_partitions(
             lambda df: df.replace(to_replace=to_replace, value=value,
                                   limit=limit, regex=regex, method='pad',
@@ -3035,17 +3040,6 @@ class DataFrame(object):
             return DataFrame(
                 block_partitions=new_block_partitions,
                 columns=self.columns, index=self.index)
-
-    def replace(self, to_replace=None, value=None, inplace=False, limit=None,
-                regex=False, method='pad', axis=None):
-        pd.DataFrame(index=self.index, columns=self.columns).replace(
-            to_replace=to_replace, value=value, inplace=inplace, limit=limit,
-            regex=regex, method=method, axis=axis
-        )
-
-        return self._replace(to_replace=to_replace, value=value,
-                             inplace=inplace, method=method, limit=limit,
-                             regex=regex)
 
     def resample(self, rule, how=None, axis=0, fill_method=None, closed=None,
                  label=None, convention='start', kind=None, loffset=None,
