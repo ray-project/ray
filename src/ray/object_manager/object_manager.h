@@ -198,7 +198,7 @@ class ObjectManager {
   std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
 
   /// Lock for concurrent writes to in_transit_receives_.
-  std::mutex in_transit_receives_lock;
+  std::mutex in_transit_receives_lock_;
 
   // TODO(hme): Also suppress Push for objects already in transit.
   /// Objects that are currently being received.
@@ -207,20 +207,21 @@ class ObjectManager {
   /// Record an object receive as soon as one of its chunks begins
   /// being received.
   void AddObjectInTransit(const ObjectID &object_id){
-    std::lock_guard<std::mutex> guard(in_transit_receives_lock);
+    std::lock_guard<std::mutex> guard(in_transit_receives_lock_);
     in_transit_receives_.insert(object_id);
   }
 
   /// Remove an object receive as soon as the object store dispatches
   /// an added event.
   void RemoveObjectInTransit(const ObjectID &object_id){
-    std::lock_guard<std::mutex> guard(in_transit_receives_lock);
+    std::lock_guard<std::mutex> guard(in_transit_receives_lock_);
     in_transit_receives_.erase(object_id);
   }
 
   /// Returns true if an object receive is currently in transit.
   /// This is checked by the Pull method.
   bool ObjectInTransitOrLocal(const ObjectID &object_id){
+    std::lock_guard<std::mutex> guard(in_transit_receives_lock_);
     return in_transit_receives_.count(object_id) > 0 ||
            local_objects_.count(object_id) > 0;
   }
