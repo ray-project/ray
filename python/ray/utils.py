@@ -169,19 +169,3 @@ def set_cuda_visible_devices(gpu_ids):
         gpu_ids: This is a list of integers representing GPU IDs.
     """
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
-
-
-def make_json_serializable(arg):
-    """Return a JSON-serializable version of the argument.
-
-    Args:
-        arg: A Python object.
-
-    Returns:
-        A JSON-serializable version of the argument.
-    """
-    try:
-        json.dumps(arg)
-        return arg
-    except Exception as e:
-        return repr(arg)

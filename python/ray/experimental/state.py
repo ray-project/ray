@@ -12,7 +12,7 @@ import time
 
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
-                       hex_to_binary, make_json_serializable)
+                       hex_to_binary)
 
 # Import flatbuffer bindings.
 from ray.core.generated.TaskReply import TaskReply
@@ -595,7 +595,7 @@ class GlobalState(object):
                 # slider should be correct to begin with, though.
                 task_table[task_id] = self.task_table(task_id)
                 task_table[task_id]["TaskSpec"]["Args"] = [
-                    make_json_serializable(arg)
+                    repr(arg)
                     for arg in task_table[task_id]["TaskSpec"]["Args"]
                 ]
             except Exception as e:
