@@ -594,6 +594,10 @@ class GlobalState(object):
                 # TODO (hme): do something to correct slider here,
                 # slider should be correct to begin with, though.
                 task_table[task_id] = self.task_table(task_id)
+                task_table[task_id]["TaskSpec"]["Args"] = [
+                    repr(arg)
+                    for arg in task_table[task_id]["TaskSpec"]["Args"]
+                ]
             except Exception as e:
                 print("Could not find task {}".format(task_id))
 
