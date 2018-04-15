@@ -129,7 +129,7 @@ class RayConfig {
         max_tasks_to_spillback_(10),
         actor_creation_num_spillbacks_warning_(100),
         // TODO: Setting this to large values results in latency, which needs to
-        // be addressed. This timeout is often on the critical path to object
+        // be addressed. This timeout is often on the critical path for object
         // transfers.
         object_manager_pull_timeout_ms_(20),
         object_manager_max_sends_(2),
@@ -218,7 +218,7 @@ class RayConfig {
   /// a value of 100 corresponds to a warning every 10 seconds.
   int64_t actor_creation_num_spillbacks_warning_;
 
-  /// Time out, in milliseconds, to wait before retrying a failed pull in the
+  /// Timeout, in milliseconds, to wait before retrying a failed pull in the
   /// ObjectManager.
   int object_manager_pull_timeout_ms_;
 
