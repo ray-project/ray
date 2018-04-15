@@ -306,7 +306,13 @@ void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
   }
   // Mark this task as COMMITTED. Any tasks that were dependent on it and are
   // ready to be written may now be flushed to the GCS.
-  RAY_CHECK(entry->SetStatus(GcsStatus_COMMITTED));
+  bool committed = entry->SetStatus(GcsStatus_COMMITTED);
+  if (!committed) {
+    // If we failed to mark the task as committed, check that it's because it
+    // was committed before. This means that we already received a notification
+    // about the commit.
+    RAY_CHECK(entry->GetStatus() == GcsStatus_COMMITTED);
+  }
   RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
 
   // Stop listening for notifications about this task.
