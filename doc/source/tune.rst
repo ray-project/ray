@@ -252,3 +252,9 @@ Then, on the client side, you can use the following class. The server address de
 
 
 For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.
+
+
+Examples
+--------
+
+You can find a list of examples `using Ray Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__.
