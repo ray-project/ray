@@ -204,6 +204,9 @@ class LineageCache {
 
   /// The durable storage system for task information.
   gcs::TableInterface<TaskID, protocol::Task> &task_storage_;
+  /// The set of tasks that are in UNCOMMITTED_READY state. This is a cache of
+  /// the tasks that may be flushable.
+  std::unordered_set<TaskID, UniqueIDHasher> uncommitted_ready_tasks_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;
