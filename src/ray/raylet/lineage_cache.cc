@@ -244,8 +244,8 @@ Status LineageCache::Flush() {
         // next call to Flush().
         auto inserted = subscribed_tasks_.insert(parent_id);
         if (inserted.second) {
-          RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID::nil(), parent_id,
-                                                         client_id_));
+          RAY_CHECK_OK(
+              task_pubsub_.RequestNotifications(JobID::nil(), parent_id, client_id_));
         }
         all_arguments_committed = false;
         break;
