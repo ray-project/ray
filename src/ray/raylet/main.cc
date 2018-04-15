@@ -1,8 +1,8 @@
 #include <iostream>
 
+#include "common/state/ray_config.h"
 #include "ray/raylet/raylet.h"
 #include "ray/status.h"
-#include "common/state/ray_config.h"
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
@@ -48,10 +48,13 @@ int main(int argc, char *argv[]) {
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
   object_manager_config.store_socket_name = store_socket_name;
-  object_manager_config.pull_timeout_ms = RayConfig::instance().object_manager_pull_timeout_ms();
+  object_manager_config.pull_timeout_ms =
+      RayConfig::instance().object_manager_pull_timeout_ms();
   object_manager_config.max_sends = RayConfig::instance().object_manager_max_sends();
-  object_manager_config.max_receives = RayConfig::instance().object_manager_max_receives();
-  object_manager_config.object_chunk_size = RayConfig::instance().object_manager_default_chunk_size();
+  object_manager_config.max_receives =
+      RayConfig::instance().object_manager_max_receives();
+  object_manager_config.object_chunk_size =
+      RayConfig::instance().object_manager_default_chunk_size();
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();

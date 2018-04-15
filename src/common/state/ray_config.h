@@ -90,9 +90,7 @@ class RayConfig {
     return object_manager_pull_timeout_ms_;
   }
 
-  int object_manager_max_sends() const {
-    return object_manager_max_sends_;
-  }
+  int object_manager_max_sends() const { return object_manager_max_sends_; }
 
   int object_manager_max_receives() const {
     return object_manager_max_receives_;
@@ -222,7 +220,7 @@ class RayConfig {
 
   /// Time out, in milliseconds, to wait before retrying a failed pull in the
   /// ObjectManager.
-  uint object_manager_pull_timeout_ms_;
+  int object_manager_pull_timeout_ms_;
 
   /// Maximum number of concurrent sends allowed by the object manager.
   int object_manager_max_sends_;
