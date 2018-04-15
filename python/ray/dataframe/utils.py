@@ -146,8 +146,7 @@ def _deploy_func_ignore_errors(func, dataframe, *args):
             return func(dataframe)
         else:
             return func(dataframe, *args)
-    except:
-        print("ERRORED!!!")
+    except Exception:
         return dataframe
 
 
@@ -164,8 +163,8 @@ def _map_partitions(func, partitions=None, *argslists, **kwargs):
     block_partitions = kwargs.get('block_partitions', None)
     ignore_errors = kwargs.get('ignore_errors', False)
     assert partitions is not None and block_partitions is None or\
-           partitions is None and block_partitions is not None,\
-           "Should pass in either partitions or block_partitions, but not both"
+        partitions is None and block_partitions is not None,\
+        "Should pass in either partitions or block_partitions, but not both"
     new_partitions = None
     if block_partitions is None:
         if partitions is None:
