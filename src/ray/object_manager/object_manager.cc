@@ -87,6 +87,9 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
+  // Only mark an object as no longer in transit when we receive notification
+  // from the object store.
+  RemoveObjectInTransit(object_id);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -107,6 +110,10 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
+  if (ObjectInTransitOrLocal(object_id)) {
+    // Do nothing if the object is already being received.
+    return ray::Status::OK();
+  }
   main_service_->dispatch(
       [this, object_id]() { RAY_CHECK_OK(PullGetLocations(object_id)); });
   return Status::OK();
@@ -137,7 +144,6 @@ void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client
                                         const ray::ObjectID &object_id) {
   RAY_CHECK(!client_ids.empty());
   ClientID client_id = client_ids.front();
-  pull_requests_.erase(object_id);
   ray::Status status_code = Pull(object_id, client_id);
 }
 
@@ -146,6 +152,10 @@ void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
+  if (ObjectInTransitOrLocal(object_id)) {
+    // Do nothing if the object is already being received.
+    return ray::Status::OK();
+  }
   main_service_->dispatch([this, object_id, client_id]() {
     RAY_CHECK_OK(PullEstablishConnection(object_id, client_id));
   });
@@ -154,8 +164,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &clien
 
 ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                                    const ClientID &client_id) {
-  // Check if object is already local, and client_id is not itself.
-  if (local_objects_.count(object_id) != 0 || client_id == client_id_) {
+  // Check if object is in transit or already local, and client_id is not itself.
+  if (ObjectInTransitOrLocal(object_id) || client_id == client_id_) {
     return ray::Status::OK();
   }
 
@@ -193,6 +203,14 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
 
 ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
                                            std::shared_ptr<SenderConnection> conn) {
+  if (ObjectInTransitOrLocal(object_id)) {
+    // Do nothing if the object is already being received.
+    // We check here too just in case the object ends up in transit
+    // in the time between this method call and the Pull method call.
+    RAY_CHECK_OK(
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+    return ray::Status::OK();
+  }
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
@@ -476,6 +494,11 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn
                                chunk_index, conn);
   RAY_LOG(DEBUG) << "ReceivePushRequest " << conn->GetClientID() << " " << object_id
                  << " " << chunk_index;
+  if (!ObjectInTransitOrLocal(object_id)) {
+    // Record that the object is in progress.
+    AddObjectInTransit(object_id);
+  }
+
   RAY_CHECK_OK(DequeueTransfers());
 }
 
