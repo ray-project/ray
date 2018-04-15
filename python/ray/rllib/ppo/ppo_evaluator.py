@@ -139,7 +139,7 @@ class PPOEvaluator(PolicyEvaluator):
         dummy = np.zeros_like(trajectories["advantages"])
         return self.par_opt.load_data(
             self.sess,
-            [trajectories["observations"],
+            [trajectories["obs"],
              trajectories["value_targets"] if use_gae else dummy,
              trajectories["advantages"],
              trajectories["actions"],

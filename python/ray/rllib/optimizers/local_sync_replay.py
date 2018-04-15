@@ -85,17 +85,17 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
                         self.train_batch_size)
                 weights = np.ones_like(rewards)
                 batch_indexes = - np.ones_like(rewards)
-
             samples = SampleBatch({
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones, "weights": weights,
                 "batch_indexes": batch_indexes})
 
         with self.grad_timer:
-            td_error = self.local_evaluator.compute_apply(samples)["td_error"]
-            new_priorities = (
-                np.abs(td_error) + self.prioritized_replay_eps)
+            info = self.local_evaluator.compute_apply(samples)
             if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
+                td_error = info["td_error"]
+                new_priorities = (
+                    np.abs(td_error) + self.prioritized_replay_eps)
                 self.replay_buffer.update_priorities(
                     samples["batch_indexes"], new_priorities)
             self.grad_timer.push_units_processed(samples.count)

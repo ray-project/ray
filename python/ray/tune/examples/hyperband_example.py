@@ -59,7 +59,8 @@ if __name__ == "__main__":
     # Hyperband early stopping, configured with `episode_reward_mean` as the
     # objective and `timesteps_total` as the time unit.
     hyperband = HyperBandScheduler(
-        time_attr="timesteps_total", reward_attr="episode_reward_mean",
+        time_attr="timesteps_total",
+        reward_attr="episode_reward_mean",
         max_t=100)
 
     exp = Experiment(

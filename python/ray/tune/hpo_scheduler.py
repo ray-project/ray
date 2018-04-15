@@ -102,9 +102,8 @@ class HyperOptScheduler(FIFOScheduler):
             self._hpopt_trials.refresh()
 
             # Get new suggestion from
-            new_trials = self.algo(
-                new_ids, self.domain, self._hpopt_trials,
-                self.rstate.randint(2 ** 31 - 1))
+            new_trials = self.algo(new_ids, self.domain, self._hpopt_trials,
+                                   self.rstate.randint(2**31 - 1))
             self._hpopt_trials.insert_trial_docs(new_trials)
             self._hpopt_trials.refresh()
             new_trial = new_trials[0]
@@ -112,8 +111,11 @@ class HyperOptScheduler(FIFOScheduler):
             suggested_config = hpo.base.spec_from_misc(new_trial["misc"])
             new_cfg.update(suggested_config)
 
-            kv_str = "_".join(["{}={}".format(k, str(v)[:5])
-                               for k, v in sorted(suggested_config.items())])
+            kv_str = "_".join([
+                "{}={}".format(k,
+                               str(v)[:5])
+                for k, v in sorted(suggested_config.items())
+            ])
             experiment_tag = "{}_{}".format(new_trial_id, kv_str)
 
             # Keep this consistent with tune.variant_generator
@@ -166,8 +168,7 @@ class HyperOptScheduler(FIFOScheduler):
         del self._tune_to_hp[trial]
 
     def _to_hyperopt_result(self, result):
-        return {"loss": -getattr(result, self._reward_attr),
-                "status": "ok"}
+        return {"loss": -getattr(result, self._reward_attr), "status": "ok"}
 
     def _get_hyperopt_trial(self, tid):
         return [t for t in self._hpopt_trials.trials if t["tid"] == tid][0]
@@ -183,8 +184,9 @@ class HyperOptScheduler(FIFOScheduler):
         experiments and trials left to run. If self._max_concurrent is None,
         scheduler will add new trial if there is none that are pending.
         """
-        pending = [t for t in trial_runner.get_trials()
-                   if t.status == Trial.PENDING]
+        pending = [
+            t for t in trial_runner.get_trials() if t.status == Trial.PENDING
+        ]
         if self._num_trials_left <= 0:
             return
         if self._max_concurrent is None:
