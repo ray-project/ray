@@ -42,7 +42,7 @@ matrix:
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting.
-        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/,python/ray/dataframe/test/
+        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/
         - .travis/yapf.sh
 
     - os: linux
