@@ -256,9 +256,8 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
       buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
 
-  // If status is not okay, and this is the first chunk to be gotten for this object,
-  // then return immediately, because this means plasma_client.Get
-  // failed.
+  // If status is not okay, then return immediately because
+  // plasma_client.Get failed.
   // No reference is acquired for this chunk, so no need to release the chunk.
   RAY_RETURN_NOT_OK(chunk_status.second);
 
