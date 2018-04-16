@@ -92,7 +92,7 @@ class DataFrame(object):
             axis = 0
             columns = pd_df.columns
             index = pd_df.index
-            self._row_metadata = self._col_metadata = None
+
         else:
             # created this invariant to make sure we never have to go into the
             # partitions to get the columns
@@ -103,27 +103,29 @@ class DataFrame(object):
             if block_partitions is not None:
                 # put in numpy array here to make accesses easier since it's 2D
                 self._block_partitions = np.array(block_partitions)
-                if row_metadata is not None:
-                    self._row_metadata = row_metadata.copy()
-                if col_metadata is not None:
-                    self._col_metadata = col_metadata.copy()
+
                 assert self._block_partitions.ndim == 2, \
                     "Block Partitions must be 2D."
             else:
                 if row_partitions is not None:
                     axis = 0
                     partitions = row_partitions
-                    if row_metadata is not None:
-                        self._row_metadata = row_metadata.copy()
+                    # if row_metadata is not None:
+                    #     self._row_metadata = row_metadata.copy()
                 elif col_partitions is not None:
                     axis = 1
                     partitions = col_partitions
-                    if col_metadata is not None:
-                        self._col_metadata = col_metadata.copy()
+                    # if col_metadata is not None:
+                    #     self._col_metadata = col_metadata.copy()
 
                 self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
                                              length=len(columns))
+
+        if row_metadata is not None:
+            self._row_metadata = row_metadata.copy()
+        if col_metadata is not None:
+            self._col_metadata = col_metadata.copy()
 
         # Sometimes we only get a single column or row, which is
         # problematic for building blocks from the partitions, so we
@@ -134,10 +136,10 @@ class DataFrame(object):
 
         # Create the row and column index objects for using our partitioning.
         # If the objects haven't been inherited, then generate them
-        if not self._row_metadata:
+        if self._row_metadata is None:
             self._row_metadata = _IndexMetadata(self._block_partitions[:, 0],
                                                 index=index, axis=0)
-        if not self._col_metadata:
+        if self._col_metadata is None:
             self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
                                                 index=columns, axis=1)
 
@@ -633,7 +635,9 @@ class DataFrame(object):
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
-                         index=self.index)
+                         index=self.index,
+                         row_metadata=self._row_metadata,
+                         col_metadata=self._col_metadata)
 
     def isnull(self):
         """Fill a DataFrame with booleans for cells containing a null value.

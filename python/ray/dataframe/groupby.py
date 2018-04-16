@@ -25,23 +25,25 @@ class DataFrameGroupBy(object):
         self._col_metadata = df._col_metadata
 
         if axis == 0:
-            partitions = df._col_partitions
+            # partitions = df._col_partitions
+            partitions = [column for column in df._block_partitions.T]
             index_grouped = pd.Series(self._index).groupby(by=by, sort=sort)
         else:
-            partitions = df._row_partitions
+            # partitions = df._row_partitions
+            partitions = [row for row in df._block_partitions]
             index_grouped = pd.Series(self._columns).groupby(by=by, sort=sort)
 
         self._keys_and_values = [(k, v) for k, v in index_grouped]
 
         self._grouped_partitions = \
-            zip(*(groupby._submit(args=(part,
-                                        by,
+            zip(*(groupby._submit(args=(by,
                                         axis,
                                         level,
                                         as_index,
                                         sort,
                                         group_keys,
-                                        squeeze),
+                                        squeeze,
+                                        *part),
                                   num_return_vals=len(self._keys_and_values))
                   for part in partitions))
 
@@ -346,8 +348,9 @@ class DataFrameGroupBy(object):
 
 
 @ray.remote
-def groupby(df, by=None, axis=0, level=None, as_index=True, sort=True,
-            group_keys=True, squeeze=False):
+def groupby(by, axis, level, as_index, sort, group_keys, squeeze, *df):
+
+    df = pd.concat(df, axis=axis)
 
     return [v for k, v in df.groupby(by=by,
                                      axis=axis,
