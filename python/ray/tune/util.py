@@ -45,7 +45,7 @@ def get_pinned_object(pinned_id):
 
 def _serve_get_pin_requests():
     """This is hack to avoid ray.get() on the function runner thread.
-    
+
     The issue is that we run trainable functions on a separate thread,
     which cannot access Ray API methods. So instead, that thread puts the
     fetch in a queue that is periodically checked from the main thread.
