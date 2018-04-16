@@ -325,15 +325,15 @@ def test_from_feather():
     teardown_feather_file()
 
 
-def test_from_hdf():
-    setup_hdf_file(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_hdf(TEST_HDF_FILENAME, key='test')
-    ray_df = io.read_hdf(TEST_HDF_FILENAME, key='test')
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
-
-    teardown_hdf_file()
+# def test_from_hdf():
+#     setup_hdf_file(SMALL_ROW_SIZE)
+#
+#     pd_df = pd.read_hdf(TEST_HDF_FILENAME, key='test')
+#     ray_df = io.read_hdf(TEST_HDF_FILENAME, key='test')
+#
+#     assert ray_df_equals_pandas(ray_df, pd_df)
+#
+#     teardown_hdf_file()
 
 
 def test_from_msgpack():
