@@ -47,9 +47,6 @@ class TestObjectManagerBase : public ::testing::Test {
   };
 
   void SetUp() {
-    object_manager_service_1.reset(new boost::asio::io_service());
-    object_manager_service_2.reset(new boost::asio::io_service());
-
     // start store
     std::string store_sock_1 = StartStore("1");
     std::string store_sock_2 = StartStore("2");
@@ -59,18 +56,16 @@ class TestObjectManagerBase : public ::testing::Test {
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     server1.reset(new ray::raylet::Raylet(
-        main_service, std::move(object_manager_service_1), "raylet_1", "0.0.0.0",
-        "127.0.0.1", 6379, GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1,
-        gcs_client_1));
+        main_service, "raylet_1", "0.0.0.0", "127.0.0.1", 6379,
+        GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     server2.reset(new ray::raylet::Raylet(
-        main_service, std::move(object_manager_service_2), "raylet_2", "0.0.0.0",
-        "127.0.0.1", 6379, GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2,
-        gcs_client_2));
+        main_service, "raylet_2", "0.0.0.0", "127.0.0.1", 6379,
+        GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -110,8 +105,6 @@ class TestObjectManagerBase : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::unique_ptr<boost::asio::io_service> object_manager_service_1;
-  std::unique_ptr<boost::asio::io_service> object_manager_service_2;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
   std::unique_ptr<ray::raylet::Raylet> server1;

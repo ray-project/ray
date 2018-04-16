@@ -63,10 +63,8 @@ int main(int argc, char *argv[]) {
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
-  std::unique_ptr<boost::asio::io_service> object_manager_service;
 
-  object_manager_service.reset(new boost::asio::io_service());
-  ray::raylet::Raylet server(main_service, std::move(object_manager_service),
+  ray::raylet::Raylet server(main_service,
                              raylet_socket_name, node_ip_address, redis_address,
                              redis_port, node_manager_config, object_manager_config,
                              gcs_client);
