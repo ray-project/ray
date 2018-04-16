@@ -12,3 +12,7 @@ redis
 sphinx
 sphinx_rtd_theme
 pandas
+feather-format
+lxml
+openpyxl
+xlrd
