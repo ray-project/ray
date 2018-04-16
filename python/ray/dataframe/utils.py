@@ -247,7 +247,6 @@ def _blocks_to_row(*partition):
     row_part.columns = pd.RangeIndex(0, len(row_part.columns))
     return row_part
 
-
 def _inherit_docstrings(parent):
     """Creates a decorator which overwrites a decorated class' __doc__
     attribute with parent's __doc__ attribute. Also overwrites __doc__ of
@@ -339,3 +338,45 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
 
     new_rows = func(left, right)
     return create_blocks_helper(new_rows, left_df_len, 0)
+
+### EXPERIMENTAL ###
+
+@ray.remote
+def _deploy_func_row(func, *partition):
+    row_part = pd.concat(partition, axis=1, copy=False)\
+        .reset_index(drop=True)
+    # Because our block partitions contain different indices (for the
+    # columns), this change is needed to ensure correctness.
+    row_part.columns = pd.RangeIndex(0, len(row_part.columns))
+    return func(row_part)
+
+@ray.remote
+def _deploy_func_col(func, *partition):
+    col_part = pd.concat(partition, axis=0, copy=False)\
+        .reset_index(drop=True)
+
+    return func(col_part)
+
+def _map_partitions_coalesce(func, block_partitions, axis):
+    """Apply a function across the specified axis
+
+    Args:
+        func (callable): The function to apply
+        axis (0 or 1): The axis to coalesce across before performing the function
+        partitions ([ObjectID]): The list of partitions to map func on.
+
+    Returns:
+        A new Dataframe containing the result of the function
+    """
+    if block_partitions is None:
+        return None
+
+    assert(callable(func))
+
+    if axis == 0:
+        # get col partitions, reduce, perform
+        return [_deploy_func_col.remote(func, *block_partitions[:, i])
+                for i in range(block_partitions.shape[1])]
+    else:
+        # get row partitions, reduce, perform
+        return [_deploy_func_row.remote(func, *part) for part in block_partitions]
