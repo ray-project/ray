@@ -3311,6 +3311,7 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __array__(self, dtype=None):
+        # TODO: This is very inefficient and needs fix
         return np.array(to_pandas(self))
 
     def __array_wrap__(self, result, context=None):
