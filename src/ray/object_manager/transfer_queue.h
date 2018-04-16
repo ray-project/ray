@@ -26,21 +26,17 @@ class TransferQueue {
  public:
   enum TransferType { SEND = 1, RECEIVE };
 
-  /// Context maintained during an object send.
-  struct SendContext {
-    ClientID client_id;
-    ObjectID object_id;
-    uint64_t object_size;
-    uint8_t *data;
-  };
-
   /// The structure used in the send queue.
   struct SendRequest {
     ClientID client_id;
     ObjectID object_id;
+    uint64_t data_size;
+    uint64_t metadata_size;
+    uint64_t chunk_index;
     RemoteConnectionInfo connection_info;
     bool operator==(const SendRequest &rhs) const {
-      return client_id == rhs.client_id && object_id == rhs.object_id;
+      return client_id == rhs.client_id && object_id == rhs.object_id &&
+             chunk_index == rhs.chunk_index;
     }
   };
 
@@ -48,10 +44,14 @@ class TransferQueue {
   struct ReceiveRequest {
     ClientID client_id;
     ObjectID object_id;
-    uint64_t object_size;
+    uint64_t data_size;
+    uint64_t metadata_size;
+    uint64_t chunk_index;
     std::shared_ptr<TcpClientConnection> conn;
     bool operator==(const ReceiveRequest &rhs) const {
-      return client_id == rhs.client_id && object_id == rhs.object_id;
+      return client_id == rhs.client_id && object_id == rhs.object_id &&
+             chunk_index == rhs.chunk_index;
+      ;
     }
   };
 
@@ -61,11 +61,13 @@ class TransferQueue {
   ///
   /// \param client_id The ClientID to which the object needs to be sent.
   /// \param object_id The ObjectID of the object to be sent.
-  void QueueSend(const ClientID &client_id, const ObjectID &object_id,
+  void QueueSend(const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
+                 uint64_t metadata_size, uint64_t chunk_index,
                  const RemoteConnectionInfo &info);
 
   /// If send_queue_ is not empty, removes a SendRequest from send_queue_ and assigns
   /// it to send_ptr. The queue is FIFO.
+  ///
   /// \param send_ptr A pointer to an empty SendRequest.
   /// \return A bool indicating whether the queue was empty at the time this method
   /// was invoked.
@@ -76,51 +78,27 @@ class TransferQueue {
   /// \param client_id The ClientID from which the object is being received.
   /// \param object_id The ObjectID of the object to be received.
   void QueueReceive(const ClientID &client_id, const ObjectID &object_id,
-                    uint64_t object_size, std::shared_ptr<TcpClientConnection> conn);
+                    uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
+                    std::shared_ptr<TcpClientConnection> conn);
 
   /// If receive_queue_ is not empty, removes a ReceiveRequest from receive_queue_ and
-  /// assigns
-  /// it to receive_ptr. The queue is FIFO.
+  /// assigns it to receive_ptr. The queue is FIFO.
+  ///
   /// \param receive_ptr A pointer to an empty ReceiveRequest.
   /// \return A bool indicating whether the queue was empty at the time this method
   /// was invoked.
   bool DequeueReceiveIfPresent(TransferQueue::ReceiveRequest *receive_ptr);
 
-  /// Maintain ownership over SendContext for sends in transit.
-  ///
-  /// \param context The context to maintain.
-  /// \return A unique identifier identifying the context that was added.
-  UniqueID AddContext(SendContext &context);
-
-  /// Gets the SendContext associated with the given id.
-  ///
-  /// \param id The unique identifier of the context.
-  /// \return The context.
-  SendContext &GetContext(const UniqueID &id);
-
-  /// Removes the context associated with the given id.
-  ///
-  /// \param id The unique identifier of the context.
-  /// \return The status of invoking this method.
-  ray::Status RemoveContext(const UniqueID &id);
-
   /// This object cannot be copied for thread-safety.
   RAY_DISALLOW_COPY_AND_ASSIGN(TransferQueue);
 
  private:
-  // TODO(hme): make this a shared mutex.
-  typedef std::mutex Lock;
-  typedef std::unique_lock<Lock> WriteLock;
-  // TODO(hme): make this a shared lock.
-  typedef std::unique_lock<Lock> ReadLock;
-  Lock send_mutex;
-  Lock receive_mutex;
-  Lock context_mutex;
-
+  std::mutex send_mutex_;
+  std::mutex receive_mutex_;
   std::deque<SendRequest> send_queue_;
   std::deque<ReceiveRequest> receive_queue_;
-  std::unordered_map<ray::UniqueID, SendContext, ray::UniqueIDHasher> send_context_set_;
 };
+
 }  // namespace ray
 
 #endif  // RAY_OBJECT_MANAGER_TRANSFER_QUEUE_H

@@ -1382,6 +1382,9 @@ def start_ray_processes(address_info=None,
     if "local_scheduler_socket_names" not in address_info:
         address_info["local_scheduler_socket_names"] = []
     local_scheduler_socket_names = address_info["local_scheduler_socket_names"]
+    if "raylet_socket_names" not in address_info:
+        address_info["raylet_socket_names"] = []
+    raylet_socket_names = address_info["raylet_socket_names"]
 
     # Get the ports to use for the object managers if any are provided.
     object_manager_ports = (address_info["object_manager_ports"] if
@@ -1413,8 +1416,8 @@ def start_ray_processes(address_info=None,
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
 
-    # Start any local schedulers that do not yet exist.
     if not use_raylet:
+        # Start any local schedulers that do not yet exist.
         for i in range(
                 len(local_scheduler_socket_names), num_local_schedulers):
             # Connect the local scheduler to the object store at the same
@@ -1457,21 +1460,20 @@ def start_ray_processes(address_info=None,
         assert len(local_scheduler_socket_names) == num_local_schedulers
 
     else:
-        # Start the raylet. TODO(rkn): Modify this to allow starting
-        # multiple raylets on the same machine.
-        raylet_stdout_file, raylet_stderr_file = (new_log_files(
-            "raylet_{}".format(i), redirect_output=redirect_output))
-        address_info["raylet_socket_names"] = [
-            start_raylet(
-                redis_address,
-                node_ip_address,
-                object_store_addresses[i].name,
-                worker_path,
-                resources=resources[i],
-                stdout_file=None,
-                stderr_file=None,
-                cleanup=cleanup)
-        ]
+        # Start any raylets that do not exist yet.
+        for i in range(len(raylet_socket_names), num_local_schedulers):
+            raylet_stdout_file, raylet_stderr_file = new_log_files(
+                "raylet_{}".format(i), redirect_output=redirect_output)
+            address_info["raylet_socket_names"].append(
+                start_raylet(
+                    redis_address,
+                    node_ip_address,
+                    object_store_addresses[i].name,
+                    worker_path,
+                    resources=resources[i],
+                    stdout_file=raylet_stdout_file,
+                    stderr_file=raylet_stderr_file,
+                    cleanup=cleanup))
 
     if not use_raylet:
         # Start any workers that the local scheduler has not already started.
