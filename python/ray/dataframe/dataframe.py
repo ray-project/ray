@@ -744,6 +744,7 @@ class DataFrame(object):
                 "github.com/ray-project/ray.")
         elif is_list_like(arg):
             from .concat import concat
+
             x = [self._aggregate(func, *args, **kwargs)
                            for func in arg]
             new_dfs = [x[i] if not isinstance(x[i], pd.Series)

@@ -36,7 +36,7 @@ class DataFrameGroupBy(object):
         self._keys_and_values = [(k, v) for k, v in index_grouped]
 
         self._grouped_partitions = \
-            zip(*(groupby._submit(args=(by,
+            list(zip(*(groupby._submit(args=(by,
                                         axis,
                                         level,
                                         as_index,
@@ -45,30 +45,30 @@ class DataFrameGroupBy(object):
                                         squeeze,
                                         *part),
                                   num_return_vals=len(self._keys_and_values))
-                  for part in partitions))
+                  for part in partitions)))
 
     @property
     def _iter(self):
         from .dataframe import DataFrame
 
         if self._axis == 0:
-            return ((self._keys_and_values[i][0],
+            return [(self._keys_and_values[i][0],
                      DataFrame(col_partitions=part,
                                columns=self._columns,
                                index=self._keys_and_values[i][1].index,
                                row_metadata=self._row_metadata[
                                    self._keys_and_values[i][1].index],
                                col_metadata=self._col_metadata))
-                    for i, part in enumerate(self._grouped_partitions))
+                    for i, part in enumerate(self._grouped_partitions)]
         else:
-            return ((self._keys_and_values[i][0],
+            return [(self._keys_and_values[i][0],
                      DataFrame(row_partitions=part,
                                columns=self._keys_and_values[i][1].index,
                                index=self._index,
                                row_metadata=self._row_metadata,
                                col_metadata=self._col_metadata[
                                    self._keys_and_values[i][1].index]))
-                    for i, part in enumerate(self._grouped_partitions))
+                    for i, part in enumerate(self._grouped_partitions)]
 
     def _map_partitions(self, func):
         """Apply a function on each partition.
