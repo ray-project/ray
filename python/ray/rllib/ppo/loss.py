@@ -47,6 +47,7 @@ class ProximalPolicyLoss(object):
         self.kl = self.prev_dist.kl(self.curr_dist)
         self.entropy = self.curr_dist.entropy()
 
+        # handle everything uniform as if it were the multiagent case
         if not isinstance(curr_logp, list):
             self.kl = [self.kl]
             curr_logp = [curr_logp]
