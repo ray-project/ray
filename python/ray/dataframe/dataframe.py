@@ -738,6 +738,7 @@ class DataFrame(object):
 
         # Dictionaries have complex behavior because they can be renamed here.
         elif isinstance(arg, dict):
+
             raise NotImplementedError(
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
@@ -785,19 +786,17 @@ class DataFrame(object):
         else:
             partitions = self._row_partitions
 
-        temp_index = None
-        temp_columns = None
         if axis == 1:
             kwargs['axis'] = axis
-            temp_columns = self.columns
+            kwargs['temp_columns'] = self.columns
         else:
-            temp_index = self.index
+            kwargs['temp_index'] = self.index
 
         def remote_agg_helper(df, arg, *args, **kwargs):
-            if temp_index is not None:
-                df.index = temp_index
+            if 'temp_index' in kwargs:
+                df.index = kwargs['temp_index']
             else:
-                df.columns = temp_columns
+                df.columns = kwargs['temp_columns']
 
             new_df = df.agg(arg, *args, **kwargs)
             is_series = False
@@ -811,6 +810,7 @@ class DataFrame(object):
                     if not isinstance(new_df.index, pd.RangeIndex) \
                     else None
                 columns = new_df.columns
+                new_df.columns = pd.RangeIndex(0, len(new_df.columns))
                 new_df.reset_index(drop=True, inplace=True)
 
             return is_series, new_df, index, columns
@@ -831,10 +831,15 @@ class DataFrame(object):
         # DataFrame, and we have to determine which here. Shouldn't add
         # too much to latency in either case because the booleans can
         # be returned immediately
-        if all(ray.get(is_series)):
+        is_series = ray.get(is_series)
+        if all(is_series):
             new_series = pd.concat(ray.get(new_parts))
             new_series.index = self.columns if axis == 0 else self.index
             return new_series
+        # this happens when some of the partitions return Series and others
+        # return DataFrames
+        elif any(is_series):
+            raise ValueError("no results.")
         elif axis == 0:
             new_index = ray.get(index[0])
             columns = ray.get(columns)
