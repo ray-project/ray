@@ -56,9 +56,6 @@ class NodeManager {
 
   ray::Status RegisterGcs();
 
-  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
-                      const HeartbeatTableDataT &data);
-
  private:
   // Handler for the addition of a new GCS client.
   void ClientAdded(const ClientTableDataT &data);
@@ -84,8 +81,17 @@ class NodeManager {
   ray::Status ForwardTask(const Task &task, const ClientID &node_id);
   /// Send heartbeats to the GCS.
   void Heartbeat();
+  /// Handler for a notification about a new client from the GCS.
+  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
+                   const ClientTableDataT &data);
+  /// Handler for a heartbeat notification from the GCS.
+  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
+                      const HeartbeatTableDataT &data);
 
   boost::asio::io_service &io_service_;
+  ObjectManager &object_manager_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   boost::asio::deadline_timer heartbeat_timer_;
   uint64_t heartbeat_period_ms_;
   /// The resources local to this node.
@@ -104,12 +110,9 @@ class NodeManager {
   TaskDependencyManager task_dependency_manager_;
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
-  /// A client connection to the GCS.
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
   std::vector<ClientID> remote_clients_;
   std::unordered_map<ClientID, TcpServerConnection, UniqueIDHasher>
       remote_server_connections_;
-  ObjectManager &object_manager_;
   std::unordered_map<ActorID, ActorRegistration, UniqueIDHasher> actor_registry_;
 };
 

@@ -32,13 +32,13 @@ namespace ray {
 struct ObjectManagerConfig {
   /// The time in milliseconds to wait before retrying a pull
   /// that failed due to client id lookup.
-  uint pull_timeout_ms = 100;
+  uint pull_timeout_ms;
   /// Maximum number of sends allowed.
-  int max_sends = 2;
+  int max_sends;
   /// Maximum number of receives allowed.
-  int max_receives = 2;
+  int max_receives;
   /// Object chunk size, in bytes
-  uint64_t object_chunk_size = std::pow(10, 8);
+  uint64_t object_chunk_size;
   // TODO(hme): Implement num retries (to avoid infinite retries).
   std::string store_socket_name;
 };
@@ -147,7 +147,7 @@ class ObjectManager {
 
  private:
   ClientID client_id_;
-  ObjectManagerConfig config_;
+  const ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
   ObjectStoreNotificationManager store_notification_;
   ObjectBufferPool buffer_pool_;
