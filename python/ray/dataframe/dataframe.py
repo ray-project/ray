@@ -3050,7 +3050,10 @@ class DataFrame(object):
 
     def transform(self, func, *args, **kwargs):
         kwargs["is_transform"] = True
-        return self.agg(func, *args, **kwargs)
+        result = self.agg(func, *args, **kwargs)
+        result.columns = self.columns
+        result.index = self.index
+        return result
 
     def truediv(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
