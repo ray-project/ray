@@ -38,6 +38,25 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.assertEqual(ray.get(f.remote()), "hello")
 
+    def testFetchPinned(self):
+        X = pin_in_object_store("hello")
+
+        def train(config, reporter):
+            get_pinned_object(X)
+            reporter(timesteps_total=100, done=True)
+
+        register_trainable("f1", train)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result.timesteps_total, 100)
+
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
         self.assertRaises(TypeError, lambda: register_env("foo", 2))
