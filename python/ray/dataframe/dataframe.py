@@ -822,10 +822,10 @@ class DataFrame(object):
             return is_series, new_df, index, columns
 
         remote_result = \
-            [_deploy_func._submit(args=(lambda df: remote_agg_helper(df,
-                                                                     func,
-                                                                     *args,
-                                                                     **kwargs),
+            [_deploy_func._submit(args=(lambda df: remote_helper(df,
+                                                                 func,
+                                                                 *args,
+                                                                 **kwargs),
                                         part), num_return_vals=4)
              for part in partitions]
 
