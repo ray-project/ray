@@ -745,12 +745,13 @@ class DataFrame(object):
             from .concat import concat
 
             x = [self._aggregate(func, *args, **kwargs)
-                           for func in arg]
-            new_dfs = [x[i] if not isinstance(x[i], pd.Series)
-                              else pd.DataFrame(x[i], columns=[arg[i]]).T for i in range(len(x))]
+                 for func in arg]
 
-            return new_dfs
-            # raise NotImplementedError("Not yet")
+            new_dfs = [x[i] if not isinstance(x[i], pd.Series)
+                       else pd.DataFrame(x[i], columns=[arg[i]]).T
+                       for i in range(len(x))]
+
+            return concat(new_dfs)
         elif callable(arg):
             self._callable_function(arg, _axis, *args, **kwargs)
         else:
