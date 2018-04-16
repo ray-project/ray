@@ -86,7 +86,7 @@ class RayConfig {
     return actor_creation_num_spillbacks_warning_;
   }
 
-  uint object_manager_pull_timeout_ms() const {
+  int object_manager_pull_timeout_ms() const {
     return object_manager_pull_timeout_ms_;
   }
 
