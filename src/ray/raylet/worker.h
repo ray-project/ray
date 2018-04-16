@@ -8,6 +8,8 @@
 
 namespace ray {
 
+namespace raylet {
+
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an
 /// actor. Ray units of work execute in the context of a Worker.
@@ -21,6 +23,8 @@ class Worker {
   pid_t Pid() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
+  void AssignActorId(const ActorID &actor_id);
+  const ActorID &GetActorId() const;
   /// Return the worker's connection.
   const std::shared_ptr<LocalClientConnection> Connection() const;
 
@@ -29,8 +33,13 @@ class Worker {
   pid_t pid_;
   /// Connection state of a worker.
   std::shared_ptr<LocalClientConnection> connection_;
+  /// The worker's currently assigned task.
   TaskID assigned_task_id_;
+  /// The worker's actor ID. If this is nil, then the worker is not an actor.
+  ActorID actor_id_;
 };
+
+}  // namespace raylet
 
 }  // namespace ray
 

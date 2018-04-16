@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.tune.trial import Trial
+from ray.tune.variant_generator import generate_trials
 
 
 class TrialScheduler(object):
@@ -47,11 +48,28 @@ class TrialScheduler(object):
 
         raise NotImplementedError
 
-    def choose_trial_to_run(self, trial_runner, trials):
+    def add_experiment(self, experiment, trial_runner):
+        """Adds an experiment to the scheduler.
+
+        The scheduler is responsible for adding the trials of the experiment
+        to the runner, which can be done immediately (if there are a finite
+        set of trials), or over time (if there is an infinite stream of trials
+        or if the scheduler is iterative in nature).
+        """
+        generator = generate_trials(experiment.spec, experiment.name)
+        while True:
+            try:
+                trial_runner.add_trial(next(generator))
+            except StopIteration:
+                break
+
+    def choose_trial_to_run(self, trial_runner):
         """Called to choose a new trial to run.
 
         This should return one of the trials in trial_runner that is in
-        the PENDING or PAUSED state."""
+        the PENDING or PAUSED state. This function must be idempotent.
+
+        If no trial is ready, return None."""
 
         raise NotImplementedError
 
@@ -81,12 +99,12 @@ class FIFOScheduler(TrialScheduler):
 
     def choose_trial_to_run(self, trial_runner):
         for trial in trial_runner.get_trials():
-            if (trial.status == Trial.PENDING and
-                    trial_runner.has_resources(trial.resources)):
+            if (trial.status == Trial.PENDING
+                    and trial_runner.has_resources(trial.resources)):
                 return trial
         for trial in trial_runner.get_trials():
-            if (trial.status == Trial.PAUSED and
-                    trial_runner.has_resources(trial.resources)):
+            if (trial.status == Trial.PAUSED
+                    and trial_runner.has_resources(trial.resources)):
                 return trial
         return None
 

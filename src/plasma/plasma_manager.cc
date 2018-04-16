@@ -487,13 +487,8 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
                            "plasma_manager", manager_addr, db_connect_args);
     db_attach(state->db, state->loop, false);
 
-    ClientTableDataT client_info;
-    client_info.client_id = get_db_client_id(state->db).binary();
-    client_info.node_manager_address = std::string(manager_addr);
-    client_info.local_scheduler_port = 0;
-    client_info.object_manager_port = manager_port;
     RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
-                                           redis_primary_port, client_info));
+                                           redis_primary_port));
     RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(state->loop));
   } else {
     state->db = NULL;
@@ -807,7 +802,7 @@ void process_transfer_request(event_loop *loop,
   /* We pass in 0 to indicate that the command should return immediately. */
   ARROW_CHECK_OK(
       conn->manager_state->plasma_conn->Get(&object_id, 1, 0, &object_buffer));
-  if (object_buffer.data_size == -1) {
+  if (object_buffer.data == nullptr) {
     /* If the object wasn't locally available, exit immediately. If the object
      * later appears locally, the requesting plasma manager should request the
      * transfer again. */
@@ -828,15 +823,15 @@ void process_transfer_request(event_loop *loop,
   }
 
   RAY_CHECK(object_buffer.metadata->data() ==
-            object_buffer.data->data() + object_buffer.data_size);
+            object_buffer.data->data() + object_buffer.data->size());
   PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = obj_id;
   /* We treat buf->data as a pointer to the concatenated data and metadata, so
    * we don't actually use buf->metadata. */
   buf->data = const_cast<uint8_t *>(object_buffer.data->data());
-  buf->data_size = object_buffer.data_size;
-  buf->metadata_size = object_buffer.metadata_size;
+  buf->data_size = object_buffer.data->size();
+  buf->metadata_size = object_buffer.metadata->size();
 
   manager_conn->transfer_queue.push_back(buf);
   manager_conn->pending_object_transfers[object_id] = buf;

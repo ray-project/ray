@@ -70,7 +70,7 @@ DEFAULT_CONFIG = {
     # Number of actors used to collect the rollouts
     "num_workers": 5,
     # Resource requirements for remote actors
-    "worker_resources": {"num_cpus": 1},
+    "worker_resources": {"num_cpus": None},
     # Dump TensorFlow timeline after this many SGD minibatches
     "full_trace_nth_sgd_batch": -1,
     # Whether to profile data loading
@@ -237,7 +237,7 @@ class PPOAgent(Agent):
             "shuffle_time": shuffle_time,
             "load_time": load_time,
             "sgd_time": sgd_time,
-            "sample_throughput": len(samples["observations"]) / sgd_time
+            "sample_throughput": len(samples["obs"]) / sgd_time
         }
 
         FilterManager.synchronize(

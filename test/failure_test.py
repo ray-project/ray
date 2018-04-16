@@ -108,6 +108,7 @@ def temporary_helper_function():
         def f(worker):
             if ray.worker.global_worker.mode == ray.WORKER_MODE:
                 raise Exception("Function to run failed.")
+
         ray.worker.global_worker.run_function_on_all_workers(f)
         wait_for_errors(b"function_to_run", 2)
         # Check that the error message is in the task info.
@@ -348,12 +349,14 @@ class PutErrorTest(unittest.TestCase):
         ray.worker.cleanup()
 
     def testPutError1(self):
-        store_size = 10 ** 6
-        ray.worker._init(start_ray_local=True, driver_mode=ray.SILENT_MODE,
-                         object_store_memory=store_size)
+        store_size = 10**6
+        ray.worker._init(
+            start_ray_local=True,
+            driver_mode=ray.SILENT_MODE,
+            object_store_memory=store_size)
 
         num_objects = 3
-        object_size = 4 * 10 ** 5
+        object_size = 4 * 10**5
 
         # Define a task with a single dependency, a numpy array, that returns
         # another array.
@@ -369,8 +372,9 @@ class PutErrorTest(unittest.TestCase):
             # on the one before it. The result of the first task should get
             # evicted.
             args = []
-            arg = single_dependency.remote(0, np.zeros(object_size,
-                                                       dtype=np.uint8))
+            arg = single_dependency.remote(0,
+                                           np.zeros(
+                                               object_size, dtype=np.uint8))
             for i in range(num_objects):
                 arg = single_dependency.remote(i, arg)
                 args.append(arg)
@@ -393,12 +397,14 @@ class PutErrorTest(unittest.TestCase):
 
     def testPutError2(self):
         # This is the same as the previous test, but it calls ray.put directly.
-        store_size = 10 ** 6
-        ray.worker._init(start_ray_local=True, driver_mode=ray.SILENT_MODE,
-                         object_store_memory=store_size)
+        store_size = 10**6
+        ray.worker._init(
+            start_ray_local=True,
+            driver_mode=ray.SILENT_MODE,
+            object_store_memory=store_size)
 
         num_objects = 3
-        object_size = 4 * 10 ** 5
+        object_size = 4 * 10**5
 
         # Define a task with a single dependency, a numpy array, that returns
         # another array.

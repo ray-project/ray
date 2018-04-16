@@ -11,7 +11,6 @@ from ray.tune.trial import Trial
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.variant_generator import _format_vars
 
-
 # Parameters are transferred from the top PBT_QUANTILE fraction of trials to
 # the bottom PBT_QUANTILE fraction.
 PBT_QUANTILE = 0.25
@@ -27,9 +26,8 @@ class PBTTrialState(object):
         self.last_perturbation_time = 0
 
     def __repr__(self):
-        return str((
-            self.last_score, self.last_checkpoint,
-            self.last_perturbation_time))
+        return str((self.last_score, self.last_checkpoint,
+                    self.last_perturbation_time))
 
 
 def explore(config, mutations, resample_probability, custom_explore_fn):
@@ -51,12 +49,13 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
                     config[key] not in distribution:
                 new_config[key] = random.choice(distribution)
             elif random.random() > 0.5:
-                new_config[key] = distribution[
-                    max(0, distribution.index(config[key]) - 1)]
+                new_config[key] = distribution[max(
+                    0,
+                    distribution.index(config[key]) - 1)]
             else:
-                new_config[key] = distribution[
-                    min(len(distribution) - 1,
-                        distribution.index(config[key]) + 1)]
+                new_config[key] = distribution[min(
+                    len(distribution) - 1,
+                    distribution.index(config[key]) + 1)]
         else:
             if random.random() < resample_probability:
                 new_config[key] = distribution()
@@ -70,8 +69,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
         new_config = custom_explore_fn(new_config)
         assert new_config is not None, \
             "Custom explore fn failed to return new config"
-    print(
-        "[explore] perturbed config from {} -> {}".format(config, new_config))
+    print("[explore] perturbed config from {} -> {}".format(
+        config, new_config))
     return new_config
 
 
@@ -148,10 +147,13 @@ class PopulationBasedTraining(FIFOScheduler):
         >>> run_experiments({...}, scheduler=pbt)
     """
 
-    def __init__(
-            self, time_attr="time_total_s", reward_attr="episode_reward_mean",
-            perturbation_interval=60.0, hyperparam_mutations={},
-            resample_probability=0.25, custom_explore_fn=None):
+    def __init__(self,
+                 time_attr="time_total_s",
+                 reward_attr="episode_reward_mean",
+                 perturbation_interval=60.0,
+                 hyperparam_mutations={},
+                 resample_probability=0.25,
+                 custom_explore_fn=None):
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
                 "You must specify at least one of `hyperparam_mutations` or "
@@ -209,14 +211,13 @@ class PopulationBasedTraining(FIFOScheduler):
         if not new_state.last_checkpoint:
             print("[pbt] warn: no checkpoint for trial, skip exploit", trial)
             return
-        new_config = explore(
-            trial_to_clone.config, self._hyperparam_mutations,
-            self._resample_probability, self._custom_explore_fn)
-        print(
-            "[exploit] transferring weights from trial "
-            "{} (score {}) -> {} (score {})".format(
-                trial_to_clone, new_state.last_score, trial,
-                trial_state.last_score))
+        new_config = explore(trial_to_clone.config, self._hyperparam_mutations,
+                             self._resample_probability,
+                             self._custom_explore_fn)
+        print("[exploit] transferring weights from trial "
+              "{} (score {}) -> {} (score {})".format(
+                  trial_to_clone, new_state.last_score, trial,
+                  trial_state.last_score))
         # TODO(ekl) restarting the trial is expensive. We should implement a
         # lighter way reset() method that can alter the trial config.
         trial.stop(stop_logger=False)
@@ -242,9 +243,8 @@ class PopulationBasedTraining(FIFOScheduler):
         if len(trials) <= 1:
             return [], []
         else:
-            return (
-                trials[:int(math.ceil(len(trials)*PBT_QUANTILE))],
-                trials[int(math.floor(-len(trials)*PBT_QUANTILE)):])
+            return (trials[:int(math.ceil(len(trials) * PBT_QUANTILE))],
+                    trials[int(math.floor(-len(trials) * PBT_QUANTILE)):])
 
     def choose_trial_to_run(self, trial_runner):
         """Ensures all trials get fair share of time (as defined by time_attr).

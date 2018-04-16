@@ -20,8 +20,9 @@ class RemoteArrayTest(unittest.TestCase):
         ray.worker.cleanup()
 
     def testMethods(self):
-        for module in [ra.core, ra.random, ra.linalg, da.core, da.random,
-                       da.linalg]:
+        for module in [
+                ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg
+        ]:
             reload(module)
         ray.init()
 
@@ -56,8 +57,9 @@ class DistributedArrayTest(unittest.TestCase):
         ray.worker.cleanup()
 
     def testAssemble(self):
-        for module in [ra.core, ra.random, ra.linalg, da.core, da.random,
-                       da.linalg]:
+        for module in [
+                ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg
+        ]:
             reload(module)
         ray.init()
 
@@ -66,15 +68,18 @@ class DistributedArrayTest(unittest.TestCase):
         x = da.DistArray([2 * da.BLOCK_SIZE, da.BLOCK_SIZE],
                          np.array([[a], [b]]))
         assert_equal(x.assemble(),
-                     np.vstack([np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]),
-                                np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])]))
+                     np.vstack([
+                         np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]),
+                         np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])
+                     ]))
 
     def testMethods(self):
-        for module in [ra.core, ra.random, ra.linalg, da.core, da.random,
-                       da.linalg]:
+        for module in [
+                ra.core, ra.random, ra.linalg, da.core, da.random, da.linalg
+        ]:
             reload(module)
-        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
-                         num_cpus=[10, 10])
+        ray.worker._init(
+            start_ray_local=True, num_local_schedulers=2, num_cpus=[10, 10])
 
         x = da.zeros.remote([9, 25, 51], "float")
         assert_equal(ray.get(da.assemble.remote(x)), np.zeros([9, 25, 51]))
@@ -84,21 +89,23 @@ class DistributedArrayTest(unittest.TestCase):
 
         x = da.random.normal.remote([11, 25, 49])
         y = da.copy.remote(x)
-        assert_equal(ray.get(da.assemble.remote(x)),
-                     ray.get(da.assemble.remote(y)))
+        assert_equal(
+            ray.get(da.assemble.remote(x)), ray.get(da.assemble.remote(y)))
 
         x = da.eye.remote(25, dtype_name="float")
         assert_equal(ray.get(da.assemble.remote(x)), np.eye(25))
 
         x = da.random.normal.remote([25, 49])
         y = da.triu.remote(x)
-        assert_equal(ray.get(da.assemble.remote(y)),
-                     np.triu(ray.get(da.assemble.remote(x))))
+        assert_equal(
+            ray.get(da.assemble.remote(y)),
+            np.triu(ray.get(da.assemble.remote(x))))
 
         x = da.random.normal.remote([25, 49])
         y = da.tril.remote(x)
-        assert_equal(ray.get(da.assemble.remote(y)),
-                     np.tril(ray.get(da.assemble.remote(x))))
+        assert_equal(
+            ray.get(da.assemble.remote(y)),
+            np.tril(ray.get(da.assemble.remote(x))))
 
         x = da.random.normal.remote([25, 49])
         y = da.random.normal.remote([49, 18])
@@ -113,31 +120,31 @@ class DistributedArrayTest(unittest.TestCase):
         x = da.random.normal.remote([23, 42])
         y = da.random.normal.remote([23, 42])
         z = da.add.remote(x, y)
-        assert_almost_equal(ray.get(da.assemble.remote(z)),
-                            ray.get(da.assemble.remote(x)) +
-                            ray.get(da.assemble.remote(y)))
+        assert_almost_equal(
+            ray.get(da.assemble.remote(z)),
+            ray.get(da.assemble.remote(x)) + ray.get(da.assemble.remote(y)))
 
         # test subtract
         x = da.random.normal.remote([33, 40])
         y = da.random.normal.remote([33, 40])
         z = da.subtract.remote(x, y)
-        assert_almost_equal(ray.get(da.assemble.remote(z)),
-                            ray.get(da.assemble.remote(x)) -
-                            ray.get(da.assemble.remote(y)))
+        assert_almost_equal(
+            ray.get(da.assemble.remote(z)),
+            ray.get(da.assemble.remote(x)) - ray.get(da.assemble.remote(y)))
 
         # test transpose
         x = da.random.normal.remote([234, 432])
         y = da.transpose.remote(x)
-        assert_equal(ray.get(da.assemble.remote(x)).T,
-                     ray.get(da.assemble.remote(y)))
+        assert_equal(
+            ray.get(da.assemble.remote(x)).T, ray.get(da.assemble.remote(y)))
 
         # test numpy_to_dist
         x = da.random.normal.remote([23, 45])
         y = da.assemble.remote(x)
         z = da.numpy_to_dist.remote(y)
         w = da.assemble.remote(z)
-        assert_equal(ray.get(da.assemble.remote(x)),
-                     ray.get(da.assemble.remote(z)))
+        assert_equal(
+            ray.get(da.assemble.remote(x)), ray.get(da.assemble.remote(z)))
         assert_equal(ray.get(y), ray.get(w))
 
         # test da.tsqr
@@ -157,8 +164,8 @@ class DistributedArrayTest(unittest.TestCase):
 
         # test da.linalg.modified_lu
         def test_modified_lu(d1, d2):
-            print("testing dist_modified_lu with d1 = " + str(d1) +
-                  ", d2 = " + str(d2))
+            print("testing dist_modified_lu with d1 = " + str(d1) + ", d2 = " +
+                  str(d2))
             assert d1 >= d2
             m = ra.random.normal.remote([d1, d2])
             q, r = ra.linalg.qr.remote(m)
@@ -178,8 +185,8 @@ class DistributedArrayTest(unittest.TestCase):
             # Check that l is lower triangular.
             assert_equal(np.tril(l_val), l_val)
 
-        for d1, d2 in [(100, 100), (99, 98), (7, 5), (7, 7), (20, 7),
-                       (20, 10)]:
+        for d1, d2 in [(100, 100), (99, 98), (7, 5), (7, 7), (20, 7), (20,
+                                                                       10)]:
             test_modified_lu(d1, d2)
 
         # test dist_tsqr_hr

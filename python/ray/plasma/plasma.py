@@ -8,13 +8,13 @@ import subprocess
 import sys
 import time
 
+__all__ = [
+    "start_plasma_store", "start_plasma_manager", "DEFAULT_PLASMA_STORE_MEMORY"
+]
 
-__all__ = ["start_plasma_store", "start_plasma_manager",
-           "DEFAULT_PLASMA_STORE_MEMORY"]
+PLASMA_WAIT_TIMEOUT = 2**30
 
-PLASMA_WAIT_TIMEOUT = 2 ** 30
-
-DEFAULT_PLASMA_STORE_MEMORY = 10 ** 9
+DEFAULT_PLASMA_STORE_MEMORY = 10**9
 
 
 def random_name():
@@ -22,9 +22,12 @@ def random_name():
 
 
 def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
-                       use_valgrind=False, use_profiler=False,
-                       stdout_file=None, stderr_file=None,
-                       plasma_directory=None, huge_pages=False):
+                       use_valgrind=False,
+                       use_profiler=False,
+                       stdout_file=None,
+                       stderr_file=None,
+                       plasma_directory=None,
+                       huge_pages=False):
     """Start a plasma store process.
 
     Args:
@@ -48,8 +51,8 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
-    if huge_pages and not (sys.platform == "linux" or
-                           sys.platform == "linux2"):
+    if huge_pages and not (sys.platform == "linux"
+                           or sys.platform == "linux2"):
         raise Exception("The huge_pages argument is only supported on "
                         "Linux.")
 
@@ -57,29 +60,33 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
         raise Exception("If huge_pages is True, then the "
                         "plasma_directory argument must be provided.")
 
-    plasma_store_executable = os.path.join(os.path.abspath(
-        os.path.dirname(__file__)),
+    plasma_store_executable = os.path.join(
+        os.path.abspath(os.path.dirname(__file__)),
         "../core/src/plasma/plasma_store")
     plasma_store_name = "/tmp/plasma_store{}".format(random_name())
-    command = [plasma_store_executable,
-               "-s", plasma_store_name,
-               "-m", str(plasma_store_memory)]
+    command = [
+        plasma_store_executable, "-s", plasma_store_name, "-m",
+        str(plasma_store_memory)
+    ]
     if plasma_directory is not None:
         command += ["-d", plasma_directory]
     if huge_pages:
         command += ["-h"]
     if use_valgrind:
-        pid = subprocess.Popen(["valgrind",
-                                "--track-origins=yes",
-                                "--leak-check=full",
-                                "--show-leak-kinds=all",
-                                "--leak-check-heuristics=stdstring",
-                                "--error-exitcode=1"] + command,
-                               stdout=stdout_file, stderr=stderr_file)
+        pid = subprocess.Popen(
+            [
+                "valgrind", "--track-origins=yes", "--leak-check=full",
+                "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
+                "--error-exitcode=1"
+            ] + command,
+            stdout=stdout_file,
+            stderr=stderr_file)
         time.sleep(1.0)
     elif use_profiler:
-        pid = subprocess.Popen(["valgrind", "--tool=callgrind"] + command,
-                               stdout=stdout_file, stderr=stderr_file)
+        pid = subprocess.Popen(
+            ["valgrind", "--tool=callgrind"] + command,
+            stdout=stdout_file,
+            stderr=stderr_file)
         time.sleep(1.0)
     else:
         pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
@@ -91,10 +98,14 @@ def new_port():
     return random.randint(10000, 65535)
 
 
-def start_plasma_manager(store_name, redis_address,
-                         node_ip_address="127.0.0.1", plasma_manager_port=None,
-                         num_retries=20, use_valgrind=False,
-                         run_profiler=False, stdout_file=None,
+def start_plasma_manager(store_name,
+                         redis_address,
+                         node_ip_address="127.0.0.1",
+                         plasma_manager_port=None,
+                         num_retries=20,
+                         use_valgrind=False,
+                         run_profiler=False,
+                         stdout_file=None,
                          stderr_file=None):
     """Start a plasma manager and return the ports it listens on.
 
@@ -133,27 +144,35 @@ def start_plasma_manager(store_name, redis_address,
     while counter < num_retries:
         if counter > 0:
             print("Plasma manager failed to start, retrying now.")
-        command = [plasma_manager_executable,
-                   "-s", store_name,
-                   "-m", plasma_manager_name,
-                   "-h", node_ip_address,
-                   "-p", str(plasma_manager_port),
-                   "-r", redis_address,
-                   ]
+        command = [
+            plasma_manager_executable,
+            "-s",
+            store_name,
+            "-m",
+            plasma_manager_name,
+            "-h",
+            node_ip_address,
+            "-p",
+            str(plasma_manager_port),
+            "-r",
+            redis_address,
+        ]
         if use_valgrind:
-            process = subprocess.Popen(["valgrind",
-                                        "--track-origins=yes",
-                                        "--leak-check=full",
-                                        "--show-leak-kinds=all",
-                                        "--error-exitcode=1"] + command,
-                                       stdout=stdout_file, stderr=stderr_file)
+            process = subprocess.Popen(
+                [
+                    "valgrind", "--track-origins=yes", "--leak-check=full",
+                    "--show-leak-kinds=all", "--error-exitcode=1"
+                ] + command,
+                stdout=stdout_file,
+                stderr=stderr_file)
         elif run_profiler:
-            process = subprocess.Popen((["valgrind", "--tool=callgrind"] +
-                                        command),
-                                       stdout=stdout_file, stderr=stderr_file)
+            process = subprocess.Popen(
+                (["valgrind", "--tool=callgrind"] + command),
+                stdout=stdout_file,
+                stderr=stderr_file)
         else:
-            process = subprocess.Popen(command, stdout=stdout_file,
-                                       stderr=stderr_file)
+            process = subprocess.Popen(
+                command, stdout=stdout_file, stderr=stderr_file)
         # This sleep is critical. If the plasma_manager fails to start because
         # the port is already in use, then we need it to fail within 0.1
         # seconds.
