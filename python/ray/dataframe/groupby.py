@@ -289,7 +289,16 @@ class DataFrameGroupBy(object):
         return self._apply_function(lambda df: df.cov())
 
     def transform(self, func, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        new_parts = [v.transform(func, *args, **kwargs) for k, v in self._iter]
+        from .dataframe import DataFrame
+        if self._axis == 0:
+            return DataFrame(row_partitions=new_parts,
+                             columns=self._columns,
+                             index=[k for k, v in self._iter])
+        else:
+            return DataFrame(col_partitions=new_parts,
+                             columns=[k for k, v in self._iter],
+                             index=self._index)
 
     def corr(self):
         return self._apply_function(lambda df: df.corr())

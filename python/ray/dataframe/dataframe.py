@@ -792,13 +792,14 @@ class DataFrame(object):
         else:
             kwargs['temp_index'] = self.index
 
-        def remote_agg_helper(df, arg, *args, **kwargs):
+        def remote_helper(df, arg, *args, **kwargs):
             if 'temp_index' in kwargs:
                 df.index = kwargs['temp_index']
             else:
                 df.columns = kwargs['temp_columns']
-
+            is_transform = kwargs.pop('is_transform', False)
             new_df = df.agg(arg, *args, **kwargs)
+
             is_series = False
 
             if isinstance(new_df, pd.Series):
@@ -812,6 +813,11 @@ class DataFrame(object):
                 columns = new_df.columns
                 new_df.columns = pd.RangeIndex(0, len(new_df.columns))
                 new_df.reset_index(drop=True, inplace=True)
+
+            if is_transform:
+                if is_scalar(new_df) or len(new_df) != len(df):
+                    raise ValueError("transforms cannot produce "
+                                 "aggregated results")
 
             return is_series, new_df, index, columns
 
@@ -3043,9 +3049,8 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def transform(self, func, *args, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        kwargs["is_transform"] = True
+        return self.agg(func, *args, **kwargs)
 
     def truediv(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError(
