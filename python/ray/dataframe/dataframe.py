@@ -3307,9 +3307,7 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __array__(self, dtype=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return np.array(to_pandas(self))
 
     def __array_wrap__(self, result, context=None):
         raise NotImplementedError(
