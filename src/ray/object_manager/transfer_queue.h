@@ -61,6 +61,12 @@ class TransferQueue {
   ///
   /// \param client_id The ClientID to which the object needs to be sent.
   /// \param object_id The ObjectID of the object to be sent.
+  /// \param data_size The actual object size + the metadata size.
+  /// \param metadata_size The size of the object's metadata.
+  /// \param chunk_index The chunk index, which corresponds to the chunk of object_id that
+  /// is queued for transfer.
+  /// \param info Connection information to the remote node, which is required if a new
+  /// connection needs to be established.
   void QueueSend(const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
                  uint64_t metadata_size, uint64_t chunk_index,
                  const RemoteConnectionInfo &info);
@@ -77,6 +83,11 @@ class TransferQueue {
   ///
   /// \param client_id The ClientID from which the object is being received.
   /// \param object_id The ObjectID of the object to be received.
+  /// \param data_size The actual object size + the metadata size.
+  /// \param metadata_size The size of the object's metadata.
+  /// \param chunk_index The chunk index, which corresponds to the chunk of object_id that
+  /// is queued for transfer.
+  /// \param conn Connection to the remote object manager that's sending data.
   void QueueReceive(const ClientID &client_id, const ObjectID &object_id,
                     uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
                     std::shared_ptr<TcpClientConnection> conn);
@@ -93,7 +104,9 @@ class TransferQueue {
   RAY_DISALLOW_COPY_AND_ASSIGN(TransferQueue);
 
  private:
+  /// Locks access to send_queue_.
   std::mutex send_mutex_;
+  /// Locks access to receive_queue_.
   std::mutex receive_mutex_;
   std::deque<SendRequest> send_queue_;
   std::deque<ReceiveRequest> receive_queue_;

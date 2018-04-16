@@ -12,12 +12,13 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     // TODO(hme): Eliminate knowledge of GCS.
     : client_id_(gcs_client->client_table().GetLocalClientId()),
+      config_(config),
       object_directory_(new ObjectDirectory(gcs_client)),
-      store_notification_(main_service, config.store_socket_name),
-      // release_delay of 2 * config.max_sends is to ensure the pool does not release
+      store_notification_(main_service, config_.store_socket_name),
+      // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
-      buffer_pool_(config.store_socket_name, config.object_chunk_size,
-                   /*release_delay=*/2 * config.max_sends),
+      buffer_pool_(config_.store_socket_name, config_.object_chunk_size,
+                   /*release_delay=*/2 * config_.max_sends),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
       connection_pool_(),
@@ -28,7 +29,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
-  config_ = config;
   store_notification_.SubscribeObjAdded(
       [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
@@ -40,12 +40,13 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                              std::unique_ptr<asio::io_service> object_manager_service,
                              const ObjectManagerConfig &config,
                              std::unique_ptr<ObjectDirectoryInterface> od)
-    : object_directory_(std::move(od)),
-      store_notification_(main_service, config.store_socket_name),
-      // release_delay of 2 * config.max_sends is to ensure the pool does not release
+    : config_(config),
+      object_directory_(std::move(od)),
+      store_notification_(main_service, config_.store_socket_name),
+      // release_delay of 2 * config_.max_sends is to ensure the pool does not release
       // an object prematurely whenever we reach the maximum number of sends.
-      buffer_pool_(config.store_socket_name, config.object_chunk_size,
-                   /*release_delay=*/2 * config.max_sends),
+      buffer_pool_(config_.store_socket_name, config_.object_chunk_size,
+                   /*release_delay=*/2 * config_.max_sends),
       object_manager_service_(std::move(object_manager_service)),
       work_(*object_manager_service_),
       connection_pool_(),
@@ -57,7 +58,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
   RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
-  config_ = config;
   store_notification_.SubscribeObjAdded(
       [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
   store_notification_.SubscribeObjDeleted(
