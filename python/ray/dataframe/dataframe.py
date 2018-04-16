@@ -720,6 +720,7 @@ class DataFrame(object):
                 pass
 
         if result is None:
+            del kwargs['is_transform']
             return self.apply(func, axis=axis, args=args, **kwargs)
 
         return result
@@ -794,9 +795,9 @@ class DataFrame(object):
 
         def remote_helper(df, arg, *args, **kwargs):
             if 'temp_index' in kwargs:
-                df.index = kwargs['temp_index']
+                df.index = kwargs.pop('temp_index', None)
             else:
-                df.columns = kwargs['temp_columns']
+                df.columns = kwargs.pop('temp_columns', None)
             is_transform = kwargs.pop('is_transform', False)
             new_df = df.agg(arg, *args, **kwargs)
 
@@ -3051,8 +3052,11 @@ class DataFrame(object):
     def transform(self, func, *args, **kwargs):
         kwargs["is_transform"] = True
         result = self.agg(func, *args, **kwargs)
-        result.columns = self.columns
-        result.index = self.index
+        try:
+            result.columns = self.columns
+            result.index = self.index
+        except ValueError:
+            raise ValueError("transforms cannot produce aggregated results")
         return result
 
     def truediv(self, other, axis='columns', level=None, fill_value=None):
