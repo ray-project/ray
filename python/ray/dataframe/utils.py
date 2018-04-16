@@ -91,14 +91,12 @@ def from_pandas(df, num_partitions=None, chunksize=None):
         A new Ray DataFrame object.
     """
     from .dataframe import DataFrame
-    df_op = df.copy(deep=True)
 
-    row_partitions = \
-        _partition_pandas_dataframe(df_op, num_partitions, chunksize)
+    row_partitions = _partition_pandas_dataframe(df, num_partitions, chunksize)
 
     return DataFrame(row_partitions=row_partitions,
-                     columns=df_op.columns,
-                     index=df_op.index)
+                     columns=df.columns,
+                     index=df.index)
 
 
 def to_pandas(df):
