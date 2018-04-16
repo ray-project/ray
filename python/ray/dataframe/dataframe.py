@@ -716,8 +716,7 @@ class DataFrame(object):
         if axis == 0:
             try:
                 result = self._aggregate(func, axis=axis, *args, **kwargs)
-            except TypeError as e:
-                print("Error:", e)
+            except TypeError:
                 pass
 
         if result is None:
@@ -805,24 +804,27 @@ class DataFrame(object):
             if isinstance(new_df, pd.Series):
                 is_series = True
                 index = None
+                columns = None
             else:
                 index = new_df.index \
                     if not isinstance(new_df.index, pd.RangeIndex) \
                     else None
+                columns = new_df.columns
                 new_df.reset_index(drop=True, inplace=True)
 
-            return is_series, new_df, index
+            return is_series, new_df, index, columns
 
         remote_result = \
             [_deploy_func._submit(args=(lambda df: remote_agg_helper(df,
                                                                      func,
                                                                      *args,
                                                                      **kwargs),
-                                        part), num_return_vals=3)
+                                        part), num_return_vals=4)
              for part in partitions]
 
         # This magic unzips the list comprehension returned from remote
-        is_series, new_parts, index = [list(t) for t in zip(*remote_result)]
+        is_series, new_parts, index, columns = \
+            [list(t) for t in zip(*remote_result)]
 
         # This part is because agg can allow returning a Series or a
         # DataFrame, and we have to determine which here. Shouldn't add
@@ -834,14 +836,19 @@ class DataFrame(object):
             return new_series
         elif axis == 0:
             new_index = ray.get(index[0])
+            columns = ray.get(columns)
+            columns = columns[0].append(columns[1:])
+
             return DataFrame(col_partitions=new_parts,
-                             columns=self.columns,
+                             columns=columns,
                              index=self.index if new_index is None
                              else new_index)
         else:
             new_index = ray.get(index[0])
+            columns = ray.get(columns)
+            columns = columns[0].append(columns[1:])
             return DataFrame(row_partitions=new_parts,
-                             columns=self.columns,
+                             columns=columns,
                              index=self.index if new_index is None
                              else new_index)
 
@@ -903,19 +910,20 @@ class DataFrame(object):
         """
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        if axis == 0 and isinstance(func, (list, dict)):
-            return self.aggregate(func, axis=axis, *args, **kwds)
+        # if axis == 0 and isinstance(func, (list, dict)):
+        #     return self.aggregate(func, axis=axis, *args, **kwds)
 
         if isinstance(func, compat.string_types):
             if axis == 1:
                 kwds['axis'] = axis
             return getattr(self, func)(*args, **kwds)
-        elif callable(func):
+        else:# callable(func):
             return self._callable_function(func, axis=axis, *args, **kwds)
-        else:
-            raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
+        # else:
+        #
+        #     raise NotImplementedError(
+        #         "To contribute to Pandas on Ray, please visit "
+        #         "github.com/ray-project/ray.")
 
     def as_blocks(self, copy=True):
         raise NotImplementedError(
