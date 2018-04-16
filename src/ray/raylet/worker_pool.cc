@@ -30,13 +30,25 @@ WorkerPool::~WorkerPool() {
   }
 }
 
-void WorkerPool::StartWorker() {
+uint32_t WorkerPool::Size() const {
+  return static_cast<uint32_t>(actor_pool_.size() + pool_.size());
+}
+
+void WorkerPool::StartWorker(bool force_start) {
   RAY_CHECK(!worker_command_.empty()) << "No worker command provided";
+  if (!started_worker_pids.empty() && !force_start) {
+    // Workers have been started, but not registered. Force start disabled -- returning.
+    RAY_LOG(DEBUG) << started_worker_pids.size() << " workers pending registration";
+    return;
+  }
+  // Either there are no workers pending registration or the worker start is being forced.
+  RAY_LOG(INFO) << "starting worker, actor pool " << actor_pool_.size() << " task pool " << pool_.size();
 
   // Launch the process to create the worker.
   pid_t pid = fork();
   if (pid != 0) {
     RAY_LOG(DEBUG) << "Started worker with pid " << pid;
+    started_worker_pids.insert(pid);
     return;
   }
 
@@ -60,6 +72,8 @@ void WorkerPool::StartWorker() {
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   RAY_LOG(DEBUG) << "Registering worker with pid " << worker->Pid();
   registered_workers_.push_back(worker);
+  RAY_CHECK(started_worker_pids.count(worker->Pid()) > 0);
+  started_worker_pids.erase(worker->Pid());
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(

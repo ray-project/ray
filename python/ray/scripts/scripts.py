@@ -306,7 +306,7 @@ def stop():
     subprocess.call(
         [
             "killall global_scheduler plasma_store plasma_manager "
-            "local_scheduler raylet"
+            "local_scheduler raylet raylet_monitor"
         ],
         shell=True)
 

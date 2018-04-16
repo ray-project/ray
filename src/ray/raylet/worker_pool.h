@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <list>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "ray/common/client_connection.h"
 #include "ray/raylet/worker.h"
@@ -35,7 +36,7 @@ class WorkerPool {
   /// registered with an external server, the process should create and
   /// register a new Worker, then add itself to the pool. Failure to start
   /// the worker process is a fatal error.
-  void StartWorker();
+  void StartWorker(bool force_start = false);
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
@@ -70,6 +71,8 @@ class WorkerPool {
   /// such worker exists.
   std::shared_ptr<Worker> PopWorker(const ActorID &actor_id);
 
+  uint32_t Size() const;
+
  private:
   std::vector<std::string> worker_command_;
   /// The pool of idle workers.
@@ -80,6 +83,7 @@ class WorkerPool {
   /// idle and executing.
   // TODO(swang): Make this a map to make GetRegisteredWorker faster.
   std::list<std::shared_ptr<Worker>> registered_workers_;
+  std::unordered_set<pid_t> started_worker_pids;
 };
 
 }  // namespace raylet
