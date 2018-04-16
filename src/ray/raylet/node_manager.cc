@@ -597,7 +597,8 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
 }
 
 ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) {
-  auto task_id = task.GetTaskSpecification().TaskId();
+  const auto &spec = task.GetTaskSpecification();
+  auto task_id = spec.TaskId();
 
   // Get and serialize the task's uncommitted lineage.
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
@@ -630,6 +631,25 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
+
+    // Preemptively push any local arguments to the receiving node. For now, we
+    // only do this with actor tasks, since actor tasks must be executed by a
+    // specific process and therefore have affinity to the receiving node.
+    if (spec.IsActorTask()) {
+      // Iterate through the object's arguments. NOTE(swang): We do not include
+      // the execution dependencies here since those cannot be transferred
+      // between nodes.
+      for (int i = 0; i < spec.NumArgs(); ++i) {
+        int count = spec.ArgIdCount(i);
+        for (int j = 0; j < count; j++) {
+          ObjectID argument_id = spec.ArgId(i, j);
+          // If the argument is local, then push it to the receiving node.
+          if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
+            RAY_CHECK_OK(object_manager_.Push(argument_id, node_id));
+          }
+        }
+      }
+    }
   } else {
     // TODO(atumanov): caller must handle ForwardTask failure to ensure tasks are not
     // lost.
