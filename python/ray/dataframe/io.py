@@ -191,7 +191,7 @@ def read_csv(filepath,
               We only support local files for now.
         kwargs: Keyword arguments in pandas::from_csv
     """
-
+<<<<<<< 3c817ad908a3bdfa209c3aa09a8835036941b7f0
     kwargs = dict(
         sep=sep,
         delimiter=delimiter,
@@ -250,7 +250,7 @@ def read_csv(filepath,
     offsets = _compute_offset(filepath, get_npartitions())
 
     first_line = _get_firstline(filepath)
-    columns = _infer_column(first_line, kwargs)
+    columns = _infer_column(first_line, kwargs=kwargs)
 
     df_obj_ids = []
     for start, end in offsets:
