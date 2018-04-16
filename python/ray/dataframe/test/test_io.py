@@ -10,8 +10,6 @@ import ray.dataframe.io as io
 import os
 import sqlite3
 
-from ray.dataframe.utils import to_pandas
-
 TEST_PARQUET_FILENAME = 'test.parquet'
 TEST_CSV_FILENAME = 'test.csv'
 TEST_JSON_FILENAME = 'test.json'

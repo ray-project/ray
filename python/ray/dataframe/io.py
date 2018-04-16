@@ -191,7 +191,7 @@ def read_csv(filepath,
               We only support local files for now.
         kwargs: Keyword arguments in pandas::from_csv
     """
-<<<<<<< 3c817ad908a3bdfa209c3aa09a8835036941b7f0
+
     kwargs = dict(
         sep=sep,
         delimiter=delimiter,
