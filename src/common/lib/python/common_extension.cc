@@ -2,6 +2,11 @@
 #include "bytesobject.h"
 #include "node.h"
 
+// Don't use the deprecated Numpy functions.
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+
+#include <numpy/arrayobject.h>
+
 #include "common.h"
 #include "common_extension.h"
 #include "common_protocol.h"
@@ -22,6 +27,11 @@ PyObject *pickle_module = NULL;
 PyObject *pickle_loads = NULL;
 PyObject *pickle_dumps = NULL;
 PyObject *pickle_protocol = NULL;
+
+int init_numpy_module(void) {
+  import_array1(-1);
+  return 0;
+}
 
 void init_pickle_module(void) {
 #if PY_MAJOR_VERSION >= 3
@@ -783,16 +793,17 @@ PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size) {
  *        objects recursively contained within this object will be added to the
  *        value at this address. This is used to make sure that we do not
  *        serialize objects that are too large.
- * @return 0 if the object cannot be serialized in the task and 1 if it can.
+ * @return False if the object cannot be serialized in the task and true if it
+ *         can.
  */
-int is_simple_value(PyObject *value, int *num_elements_contained) {
+bool is_simple_value(PyObject *value, int *num_elements_contained) {
   *num_elements_contained += 1;
   if (*num_elements_contained >= RayConfig::instance().num_elements_limit()) {
-    return 0;
+    return false;
   }
   if (PyInt_Check(value) || PyLong_Check(value) || value == Py_False ||
       value == Py_True || PyFloat_Check(value) || value == Py_None) {
-    return 1;
+    return true;
   }
   if (PyBytes_CheckExact(value)) {
     *num_elements_contained += PyBytes_Size(value);
@@ -808,7 +819,7 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
       PyList_Size(value) < RayConfig::instance().size_limit()) {
     for (Py_ssize_t i = 0; i < PyList_Size(value); ++i) {
       if (!is_simple_value(PyList_GetItem(value, i), num_elements_contained)) {
-        return 0;
+        return false;
       }
     }
     return (*num_elements_contained <
@@ -821,7 +832,7 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
     while (PyDict_Next(value, &pos, &key, &val)) {
       if (!is_simple_value(key, num_elements_contained) ||
           !is_simple_value(val, num_elements_contained)) {
-        return 0;
+        return false;
       }
     }
     return (*num_elements_contained <
@@ -831,13 +842,22 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
       PyTuple_Size(value) < RayConfig::instance().size_limit()) {
     for (Py_ssize_t i = 0; i < PyTuple_Size(value); ++i) {
       if (!is_simple_value(PyTuple_GetItem(value, i), num_elements_contained)) {
-        return 0;
+        return false;
       }
     }
     return (*num_elements_contained <
             RayConfig::instance().num_elements_limit());
   }
-  return 0;
+  if (PyArray_CheckExact(value)) {
+    PyArrayObject *array = reinterpret_cast<PyArrayObject *>(value);
+    if (PyArray_TYPE(array) == NPY_OBJECT) {
+      return false;
+    }
+    *num_elements_contained += PyArray_NBYTES(array);
+    return (*num_elements_contained <
+            RayConfig::instance().num_elements_limit());
+  }
+  return false;
 }
 
 PyObject *check_simple_value(PyObject *self, PyObject *args) {

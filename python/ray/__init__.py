@@ -12,8 +12,8 @@ if "pyarrow" in sys.modules:
 
 # Add the directory containing pyarrow to the Python path so that we find the
 # pyarrow version packaged with ray and not a pre-existing pyarrow.
-pyarrow_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
-                            "pyarrow_files")
+pyarrow_path = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "pyarrow_files")
 sys.path.insert(0, pyarrow_path)
 
 # See https://github.com/ray-project/ray/issues/131.
@@ -27,29 +27,29 @@ If you are using Anaconda, try fixing this problem by running:
 try:
     import pyarrow  # noqa: F401
 except ImportError as e:
-    if ((hasattr(e, "msg") and isinstance(e.msg, str) and
-            ("libstdc++" in e.msg or "CXX" in e.msg))):
+    if ((hasattr(e, "msg") and isinstance(e.msg, str)
+         and ("libstdc++" in e.msg or "CXX" in e.msg))):
         # This code path should be taken with Python 3.
         e.msg += helpful_message
-    elif (hasattr(e, "message") and isinstance(e.message, str) and
-          ("libstdc++" in e.message or "CXX" in e.message)):
+    elif (hasattr(e, "message") and isinstance(e.message, str)
+          and ("libstdc++" in e.message or "CXX" in e.message)):
         # This code path should be taken with Python 2.
-        condition = (hasattr(e, "args") and isinstance(e.args, tuple) and
-                     len(e.args) == 1 and isinstance(e.args[0], str))
+        condition = (hasattr(e, "args") and isinstance(e.args, tuple)
+                     and len(e.args) == 1 and isinstance(e.args[0], str))
         if condition:
-            e.args = (e.args[0] + helpful_message,)
+            e.args = (e.args[0] + helpful_message, )
         else:
             if not hasattr(e, "args"):
                 e.args = ()
             elif not isinstance(e.args, tuple):
-                e.args = (e.args,)
-            e.args += (helpful_message,)
+                e.args = (e.args, )
+            e.args += (helpful_message, )
     raise
 
 from ray.local_scheduler import _config  # noqa: E402
-from ray.worker import (error_info, init, connect, disconnect,
-                        get, put, wait, remote, log_event, log_span,
-                        flush_log, get_gpu_ids, get_webui_url,
+from ray.worker import (error_info, init, connect, disconnect, get, put, wait,
+                        remote, log_event, log_span, flush_log, get_gpu_ids,
+                        get_webui_url,
                         register_custom_serializer)  # noqa: E402
 from ray.worker import (SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
                         SILENT_MODE)  # noqa: E402
@@ -63,11 +63,13 @@ from ray.actor import method  # noqa: E402
 # Fix this.
 __version__ = "0.4.0"
 
-__all__ = ["error_info", "init", "connect", "disconnect", "get", "put", "wait",
-           "remote", "log_event", "log_span", "flush_log", "actor", "method",
-           "get_gpu_ids", "get_webui_url", "register_custom_serializer",
-           "SCRIPT_MODE", "WORKER_MODE", "PYTHON_MODE", "SILENT_MODE",
-           "global_state", "_config", "__version__"]
+__all__ = [
+    "error_info", "init", "connect", "disconnect", "get", "put", "wait",
+    "remote", "log_event", "log_span", "flush_log", "actor", "method",
+    "get_gpu_ids", "get_webui_url", "register_custom_serializer",
+    "SCRIPT_MODE", "WORKER_MODE", "PYTHON_MODE", "SILENT_MODE", "global_state",
+    "_config", "__version__"
+]
 
 import ctypes  # noqa: E402
 # Windows only

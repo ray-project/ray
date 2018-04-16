@@ -57,12 +57,11 @@ def test_put_api(ray_start):
 
     # Test putting object IDs.
     x_id = ray.put(0)
-    for obj in [[x_id], (x_id,), {x_id: x_id}]:
+    for obj in [[x_id], (x_id, ), {x_id: x_id}]:
         assert ray.get(ray.put(obj)) == obj
 
 
 def test_actor_api(ray_start):
-
     @ray.remote
     class Foo(object):
         def __init__(self, val):

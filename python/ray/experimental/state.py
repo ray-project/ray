@@ -59,6 +59,7 @@ class GlobalState(object):
     Attributes:
         redis_client: The redis client used to query the redis server.
     """
+
     def __init__(self):
         """Create a GlobalState object."""
         # The redis server storing metadata, such as function table, client
@@ -82,7 +83,9 @@ class GlobalState(object):
             raise Exception("The ray.global_state API cannot be used before "
                             "ray.init has been called.")
 
-    def _initialize_global_state(self, redis_ip_address, redis_port,
+    def _initialize_global_state(self,
+                                 redis_ip_address,
+                                 redis_port,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
 
@@ -97,8 +100,8 @@ class GlobalState(object):
             timeout: The maximum amount of time (in seconds) that we should
                 wait for the keys in Redis to be populated.
         """
-        self.redis_client = redis.StrictRedis(host=redis_ip_address,
-                                              port=redis_port)
+        self.redis_client = redis.StrictRedis(
+            host=redis_ip_address, port=redis_port)
 
         start_time = time.time()
 
@@ -118,8 +121,8 @@ class GlobalState(object):
                                 "{}.".format(num_redis_shards))
 
             # Attempt to get all of the Redis shards.
-            ip_address_ports = self.redis_client.lrange("RedisShards", start=0,
-                                                        end=-1)
+            ip_address_ports = self.redis_client.lrange(
+                "RedisShards", start=0, end=-1)
             if len(ip_address_ports) != num_redis_shards:
                 print("Waiting longer for RedisShards to be populated.")
                 time.sleep(1)
@@ -132,15 +135,15 @@ class GlobalState(object):
         if time.time() - start_time >= timeout:
             raise Exception("Timed out while attempting to initialize the "
                             "global state. num_redis_shards = {}, "
-                            "ip_address_ports = {}"
-                            .format(num_redis_shards, ip_address_ports))
+                            "ip_address_ports = {}".format(
+                                num_redis_shards, ip_address_ports))
 
         # Get the rest of the information.
         self.redis_clients = []
         for ip_address_port in ip_address_ports:
             shard_address, shard_port = ip_address_port.split(b":")
-            self.redis_clients.append(redis.StrictRedis(host=shard_address,
-                                                        port=shard_port))
+            self.redis_clients.append(
+                redis.StrictRedis(host=shard_address, port=shard_port))
 
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.
@@ -152,8 +155,8 @@ class GlobalState(object):
         Returns:
             The value returned by the Redis command.
         """
-        client = self.redis_clients[key.redis_shard_hash() %
-                                    len(self.redis_clients)]
+        client = self.redis_clients[key.redis_shard_hash() % len(
+            self.redis_clients)]
         return client.execute_command(*args)
 
     def _keys(self, pattern):
@@ -189,8 +192,9 @@ class GlobalState(object):
                                                  "RAY.OBJECT_TABLE_LOOKUP",
                                                  object_id.id())
         if object_locations is not None:
-            manager_ids = [binary_to_hex(manager_id)
-                           for manager_id in object_locations]
+            manager_ids = [
+                binary_to_hex(manager_id) for manager_id in object_locations
+            ]
         else:
             manager_ids = None
 
@@ -199,11 +203,13 @@ class GlobalState(object):
         result_table_message = ResultTableReply.GetRootAsResultTableReply(
             result_table_response, 0)
 
-        result = {"ManagerIDs": manager_ids,
-                  "TaskID": binary_to_hex(result_table_message.TaskId()),
-                  "IsPut": bool(result_table_message.IsPut()),
-                  "DataSize": result_table_message.DataSize(),
-                  "Hash": binary_to_hex(result_table_message.Hash())}
+        result = {
+            "ManagerIDs": manager_ids,
+            "TaskID": binary_to_hex(result_table_message.TaskId()),
+            "IsPut": bool(result_table_message.IsPut()),
+            "DataSize": result_table_message.DataSize(),
+            "Hash": binary_to_hex(result_table_message.Hash())
+        }
 
         return result
 
@@ -227,9 +233,10 @@ class GlobalState(object):
             object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
             object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
             object_ids_binary = set(
-                [key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys] +
-                [key[len(OBJECT_LOCATION_PREFIX):]
-                 for key in object_location_keys])
+                [key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys] + [
+                    key[len(OBJECT_LOCATION_PREFIX):]
+                    for key in object_location_keys
+                ])
             results = {}
             for object_id_binary in object_ids_binary:
                 results[binary_to_object_id(object_id_binary)] = (
@@ -254,26 +261,37 @@ class GlobalState(object):
         if task_table_response is None:
             raise Exception("There is no entry for task ID {} in the task "
                             "table.".format(binary_to_hex(task_id.id())))
-        task_table_message = TaskReply.GetRootAsTaskReply(task_table_response,
-                                                          0)
+        task_table_message = TaskReply.GetRootAsTaskReply(
+            task_table_response, 0)
         task_spec = task_table_message.TaskSpec()
         task_spec = ray.local_scheduler.task_from_string(task_spec)
 
         task_spec_info = {
-            "DriverID": binary_to_hex(task_spec.driver_id().id()),
-            "TaskID": binary_to_hex(task_spec.task_id().id()),
-            "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
-            "ParentCounter": task_spec.parent_counter(),
-            "ActorID": binary_to_hex(task_spec.actor_id().id()),
+            "DriverID":
+            binary_to_hex(task_spec.driver_id().id()),
+            "TaskID":
+            binary_to_hex(task_spec.task_id().id()),
+            "ParentTaskID":
+            binary_to_hex(task_spec.parent_task_id().id()),
+            "ParentCounter":
+            task_spec.parent_counter(),
+            "ActorID":
+            binary_to_hex(task_spec.actor_id().id()),
             "ActorCreationID":
-                binary_to_hex(task_spec.actor_creation_id().id()),
+            binary_to_hex(task_spec.actor_creation_id().id()),
             "ActorCreationDummyObjectID":
-                binary_to_hex(task_spec.actor_creation_dummy_object_id().id()),
-            "ActorCounter": task_spec.actor_counter(),
-            "FunctionID": binary_to_hex(task_spec.function_id().id()),
-            "Args": task_spec.arguments(),
-            "ReturnObjectIDs": task_spec.returns(),
-            "RequiredResources": task_spec.required_resources()}
+            binary_to_hex(task_spec.actor_creation_dummy_object_id().id()),
+            "ActorCounter":
+            task_spec.actor_counter(),
+            "FunctionID":
+            binary_to_hex(task_spec.function_id().id()),
+            "Args":
+            task_spec.arguments(),
+            "ReturnObjectIDs":
+            task_spec.returns(),
+            "RequiredResources":
+            task_spec.required_resources()
+        }
 
         execution_dependencies_message = (
             TaskExecutionDependencies.GetRootAsTaskExecutionDependencies(
@@ -282,21 +300,27 @@ class GlobalState(object):
             ray.local_scheduler.ObjectID(
                 execution_dependencies_message.ExecutionDependencies(i))
             for i in range(
-                execution_dependencies_message.ExecutionDependenciesLength())]
+                execution_dependencies_message.ExecutionDependenciesLength())
+        ]
 
         # TODO(rkn): The return fields ExecutionDependenciesString and
         # ExecutionDependencies are redundant, so we should remove
         # ExecutionDependencies. However, it is currently used in monitor.py.
 
-        return {"State": task_table_message.State(),
-                "LocalSchedulerID": binary_to_hex(
-                    task_table_message.LocalSchedulerId()),
-                "ExecutionDependenciesString":
-                    task_table_message.ExecutionDependencies(),
-                "ExecutionDependencies": execution_dependencies,
-                "SpillbackCount":
-                    task_table_message.SpillbackCount(),
-                "TaskSpec": task_spec_info}
+        return {
+            "State":
+            task_table_message.State(),
+            "LocalSchedulerID":
+            binary_to_hex(task_table_message.LocalSchedulerId()),
+            "ExecutionDependenciesString":
+            task_table_message.ExecutionDependencies(),
+            "ExecutionDependencies":
+            execution_dependencies,
+            "SpillbackCount":
+            task_table_message.SpillbackCount(),
+            "TaskSpec":
+            task_spec_info
+        }
 
     def task_table(self, task_id=None):
         """Fetch and parse the task table information for one or more task IDs.
@@ -337,7 +361,8 @@ class GlobalState(object):
             function_info_parsed = {
                 "DriverID": binary_to_hex(info[b"driver_id"]),
                 "Module": decode(info[b"module"]),
-                "Name": decode(info[b"name"])}
+                "Name": decode(info[b"name"])
+            }
             results[binary_to_hex(info[b"function_id"])] = function_info_parsed
         return results
 
@@ -469,21 +494,17 @@ class GlobalState(object):
             if start is None and end is None:
                 if fwd:
                     event_list = self.redis_client.zrange(
-                        event_log_set,
-                        **params)
+                        event_log_set, **params)
                 else:
                     event_list = self.redis_client.zrevrange(
-                        event_log_set,
-                        **params)
+                        event_log_set, **params)
             else:
                 if fwd:
                     event_list = self.redis_client.zrangebyscore(
-                        event_log_set,
-                        **params)
+                        event_log_set, **params)
                 else:
                     event_list = self.redis_client.zrevrangebyscore(
-                        event_log_set,
-                        **params)
+                        event_log_set, **params)
 
             for (event, score) in event_list:
                 event_dict = json.loads(event.decode())
@@ -503,11 +524,11 @@ class GlobalState(object):
                         task_info[task_id]["get_task_start"] = event[0]
                     if event[1] == "ray:get_task" and event[2] == 2:
                         task_info[task_id]["get_task_end"] = event[0]
-                    if (event[1] == "ray:import_remote_function" and
-                            event[2] == 1):
+                    if (event[1] == "ray:import_remote_function"
+                            and event[2] == 1):
                         task_info[task_id]["import_remote_start"] = event[0]
-                    if (event[1] == "ray:import_remote_function" and
-                            event[2] == 2):
+                    if (event[1] == "ray:import_remote_function"
+                            and event[2] == 2):
                         task_info[task_id]["import_remote_end"] = event[0]
                     if event[1] == "ray:acquire_lock" and event[2] == 1:
                         task_info[task_id]["acquire_lock_start"] = event[0]
@@ -547,7 +568,6 @@ class GlobalState(object):
                             breakdowns=True,
                             task_dep=True,
                             obj_dep=True):
-
         """Dump task profiling information to a file.
 
         This information can be viewed as a timeline of profiling information
@@ -574,6 +594,10 @@ class GlobalState(object):
                 # TODO (hme): do something to correct slider here,
                 # slider should be correct to begin with, though.
                 task_table[task_id] = self.task_table(task_id)
+                task_table[task_id]["TaskSpec"]["Args"] = [
+                    repr(arg)
+                    for arg in task_table[task_id]["TaskSpec"]["Args"]
+                ]
             except Exception as e:
                 print("Could not find task {}".format(task_id))
 
@@ -604,72 +628,103 @@ class GlobalState(object):
             # modify it in place since we will use the original values later.
             total_info = copy.copy(task_table[task_id]["TaskSpec"])
             total_info["Args"] = [
-                oid.hex() if isinstance(oid, ray.local_scheduler.ObjectID)
-                else oid for oid in task_t_info["TaskSpec"]["Args"]]
+                oid.hex()
+                if isinstance(oid, ray.local_scheduler.ObjectID) else oid
+                for oid in task_t_info["TaskSpec"]["Args"]
+            ]
             total_info["ReturnObjectIDs"] = [
-                oid.hex() for oid
-                in task_t_info["TaskSpec"]["ReturnObjectIDs"]]
+                oid.hex() for oid in task_t_info["TaskSpec"]["ReturnObjectIDs"]
+            ]
             total_info["LocalSchedulerID"] = task_t_info["LocalSchedulerID"]
-            total_info["get_arguments"] = (info["get_arguments_end"] -
-                                           info["get_arguments_start"])
-            total_info["execute"] = (info["execute_end"] -
-                                     info["execute_start"])
-            total_info["store_outputs"] = (info["store_outputs_end"] -
-                                           info["store_outputs_start"])
+            total_info["get_arguments"] = (
+                info["get_arguments_end"] - info["get_arguments_start"])
+            total_info["execute"] = (
+                info["execute_end"] - info["execute_start"])
+            total_info["store_outputs"] = (
+                info["store_outputs_end"] - info["store_outputs_start"])
             total_info["function_name"] = info["function_name"]
             total_info["worker_id"] = info["worker_id"]
 
             parent_info = task_info.get(
-                            task_table[task_id]["TaskSpec"]["ParentTaskID"])
+                task_table[task_id]["TaskSpec"]["ParentTaskID"])
             worker = workers[info["worker_id"]]
             # The catapult trace format documentation can be found here:
             # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview  # noqa: E501
             if breakdowns:
                 if "get_arguments_end" in info:
                     get_args_trace = {
-                        "cat": "get_arguments",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "id": task_id,
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":get_arguments",
-                        "args": total_info,
-                        "dur": micros(info["get_arguments_end"] -
-                                      info["get_arguments_start"]),
-                        "cname": "rail_idle"
+                        "cat":
+                        "get_arguments",
+                        "pid":
+                        "Node " + worker["node_ip_address"],
+                        "tid":
+                        info["worker_id"],
+                        "id":
+                        task_id,
+                        "ts":
+                        micros_rel(info["get_arguments_start"]),
+                        "ph":
+                        "X",
+                        "name":
+                        info["function_name"] + ":get_arguments",
+                        "args":
+                        total_info,
+                        "dur":
+                        micros(info["get_arguments_end"] -
+                               info["get_arguments_start"]),
+                        "cname":
+                        "rail_idle"
                     }
                     full_trace.append(get_args_trace)
 
                 if "store_outputs_end" in info:
                     outputs_trace = {
-                        "cat": "store_outputs",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "id": task_id,
-                        "ts": micros_rel(info["store_outputs_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":store_outputs",
-                        "args": total_info,
-                        "dur": micros(info["store_outputs_end"] -
-                                      info["store_outputs_start"]),
-                        "cname": "thread_state_runnable"
+                        "cat":
+                        "store_outputs",
+                        "pid":
+                        "Node " + worker["node_ip_address"],
+                        "tid":
+                        info["worker_id"],
+                        "id":
+                        task_id,
+                        "ts":
+                        micros_rel(info["store_outputs_start"]),
+                        "ph":
+                        "X",
+                        "name":
+                        info["function_name"] + ":store_outputs",
+                        "args":
+                        total_info,
+                        "dur":
+                        micros(info["store_outputs_end"] -
+                               info["store_outputs_start"]),
+                        "cname":
+                        "thread_state_runnable"
                     }
                     full_trace.append(outputs_trace)
 
                 if "execute_end" in info:
                     execute_trace = {
-                        "cat": "execute",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "id": task_id,
-                        "ts": micros_rel(info["execute_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":execute",
-                        "args": total_info,
-                        "dur": micros(info["execute_end"] -
-                                      info["execute_start"]),
-                        "cname": "rail_animation"
+                        "cat":
+                        "execute",
+                        "pid":
+                        "Node " + worker["node_ip_address"],
+                        "tid":
+                        info["worker_id"],
+                        "id":
+                        task_id,
+                        "ts":
+                        micros_rel(info["execute_start"]),
+                        "ph":
+                        "X",
+                        "name":
+                        info["function_name"] + ":execute",
+                        "args":
+                        total_info,
+                        "dur":
+                        micros(info["execute_end"] - info["execute_start"]),
+                        "cname":
+                        "rail_animation"
                     }
                     full_trace.append(execute_trace)
 
@@ -680,15 +735,20 @@ class GlobalState(object):
                     parent_profile = task_info.get(
                         task_table[task_id]["TaskSpec"]["ParentTaskID"])
                     parent = {
-                        "cat": "submit_task",
-                        "pid": "Node " + parent_worker["node_ip_address"],
-                        "tid": parent_info["worker_id"],
-                        "ts": micros_rel(
-                            parent_profile and
-                            parent_profile["get_arguments_start"] or
-                            start_time),
-                        "ph": "s",
-                        "name": "SubmitTask",
+                        "cat":
+                        "submit_task",
+                        "pid":
+                        "Node " + parent_worker["node_ip_address"],
+                        "tid":
+                        parent_info["worker_id"],
+                        "ts":
+                        micros_rel(parent_profile
+                                   and parent_profile["get_arguments_start"]
+                                   or start_time),
+                        "ph":
+                        "s",
+                        "name":
+                        "SubmitTask",
                         "args": {},
                         "id": (parent_info["worker_id"] +
                                str(micros(min(parent_times))))
@@ -696,32 +756,50 @@ class GlobalState(object):
                     full_trace.append(parent)
 
                     task_trace = {
-                        "cat": "submit_task",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "f",
-                        "name": "SubmitTask",
+                        "cat":
+                        "submit_task",
+                        "pid":
+                        "Node " + worker["node_ip_address"],
+                        "tid":
+                        info["worker_id"],
+                        "ts":
+                        micros_rel(info["get_arguments_start"]),
+                        "ph":
+                        "f",
+                        "name":
+                        "SubmitTask",
                         "args": {},
-                        "id": (info["worker_id"] +
-                               str(micros(min(parent_times)))),
-                        "bp": "e",
-                        "cname": "olive"
+                        "id":
+                        (info["worker_id"] + str(micros(min(parent_times)))),
+                        "bp":
+                        "e",
+                        "cname":
+                        "olive"
                     }
                     full_trace.append(task_trace)
 
                 task = {
-                    "cat": "task",
-                    "pid": "Node " + worker["node_ip_address"],
-                    "tid": info["worker_id"],
-                    "id": task_id,
-                    "ts": micros_rel(info["get_arguments_start"]),
-                    "ph": "X",
-                    "name": info["function_name"],
-                    "args": total_info,
-                    "dur": micros(info["store_outputs_end"] -
-                                  info["get_arguments_start"]),
-                    "cname": "thread_state_runnable"
+                    "cat":
+                    "task",
+                    "pid":
+                    "Node " + worker["node_ip_address"],
+                    "tid":
+                    info["worker_id"],
+                    "id":
+                    task_id,
+                    "ts":
+                    micros_rel(info["get_arguments_start"]),
+                    "ph":
+                    "X",
+                    "name":
+                    info["function_name"],
+                    "args":
+                    total_info,
+                    "dur":
+                    micros(info["store_outputs_end"] -
+                           info["get_arguments_start"]),
+                    "cname":
+                    "thread_state_runnable"
                 }
                 full_trace.append(task)
 
@@ -732,15 +810,20 @@ class GlobalState(object):
                     parent_profile = task_info.get(
                         task_table[task_id]["TaskSpec"]["ParentTaskID"])
                     parent = {
-                        "cat": "submit_task",
-                        "pid": "Node " + parent_worker["node_ip_address"],
-                        "tid": parent_info["worker_id"],
-                        "ts": micros_rel(
-                            parent_profile and
-                            parent_profile["get_arguments_start"] or
-                            start_time),
-                        "ph": "s",
-                        "name": "SubmitTask",
+                        "cat":
+                        "submit_task",
+                        "pid":
+                        "Node " + parent_worker["node_ip_address"],
+                        "tid":
+                        parent_info["worker_id"],
+                        "ts":
+                        micros_rel(parent_profile
+                                   and parent_profile["get_arguments_start"]
+                                   or start_time),
+                        "ph":
+                        "s",
+                        "name":
+                        "SubmitTask",
                         "args": {},
                         "id": (parent_info["worker_id"] +
                                str(micros(min(parent_times))))
@@ -748,16 +831,23 @@ class GlobalState(object):
                     full_trace.append(parent)
 
                     task_trace = {
-                        "cat": "submit_task",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "f",
-                        "name": "SubmitTask",
+                        "cat":
+                        "submit_task",
+                        "pid":
+                        "Node " + worker["node_ip_address"],
+                        "tid":
+                        info["worker_id"],
+                        "ts":
+                        micros_rel(info["get_arguments_start"]),
+                        "ph":
+                        "f",
+                        "name":
+                        "SubmitTask",
                         "args": {},
-                        "id": (info["worker_id"] +
-                               str(micros(min(parent_times)))),
-                        "bp": "e"
+                        "id":
+                        (info["worker_id"] + str(micros(min(parent_times)))),
+                        "bp":
+                        "e"
                     }
                     full_trace.append(task_trace)
 
@@ -775,8 +865,8 @@ class GlobalState(object):
                             seen_obj[arg] += 1
                             owner_task = self._object_table(arg)["TaskID"]
                             if owner_task in task_info:
-                                owner_worker = (workers[
-                                    task_info[owner_task]["worker_id"]])
+                                owner_worker = (workers[task_info[owner_task][
+                                    "worker_id"]])
                                 # Adding/subtracting 2 to the time associated
                                 # with the beginning/ending of the flow event
                                 # is necessary to make the flow events show up
@@ -790,27 +880,35 @@ class GlobalState(object):
                                 # duration event that it's associated with, and
                                 # the flow event therefore always gets drawn.
                                 owner = {
-                                    "cat": "obj_dependency",
+                                    "cat":
+                                    "obj_dependency",
                                     "pid": ("Node " +
                                             owner_worker["node_ip_address"]),
-                                    "tid": task_info[owner_task]["worker_id"],
-                                    "ts": micros_rel(task_info[
-                                        owner_task]["store_outputs_end"]) - 2,
-                                    "ph": "s",
-                                    "name": "ObjectDependency",
+                                    "tid":
+                                    task_info[owner_task]["worker_id"],
+                                    "ts":
+                                    micros_rel(task_info[owner_task]
+                                               ["store_outputs_end"]) - 2,
+                                    "ph":
+                                    "s",
+                                    "name":
+                                    "ObjectDependency",
                                     "args": {},
-                                    "bp": "e",
-                                    "cname": "cq_build_attempt_failed",
-                                    "id": "obj" + str(arg) + str(seen_obj[arg])
+                                    "bp":
+                                    "e",
+                                    "cname":
+                                    "cq_build_attempt_failed",
+                                    "id":
+                                    "obj" + str(arg) + str(seen_obj[arg])
                                 }
                                 full_trace.append(owner)
 
                             dependent = {
                                 "cat": "obj_dependency",
-                                "pid":  "Node " + worker["node_ip_address"],
+                                "pid": "Node " + worker["node_ip_address"],
                                 "tid": info["worker_id"],
-                                "ts": micros_rel(
-                                    info["get_arguments_start"]) + 2,
+                                "ts":
+                                micros_rel(info["get_arguments_start"]) + 2,
                                 "ph": "f",
                                 "name": "ObjectDependency",
                                 "args": {},
@@ -852,14 +950,10 @@ class GlobalState(object):
         """
 
         keys = [
-            "acquire_lock_start",
-            "acquire_lock_end",
-            "get_arguments_start",
-            "get_arguments_end",
-            "execute_start",
-            "execute_end",
-            "store_outputs_start",
-            "store_outputs_end"]
+            "acquire_lock_start", "acquire_lock_end", "get_arguments_start",
+            "get_arguments_end", "execute_start", "execute_end",
+            "store_outputs_start", "store_outputs_end"
+        ]
 
         latest_timestamp = 0
         for key in keys:
@@ -877,8 +971,8 @@ class GlobalState(object):
         local_schedulers = []
         for ip_address, client_list in clients.items():
             for client in client_list:
-                if (client["ClientType"] == "local_scheduler" and
-                        not client["Deleted"]):
+                if (client["ClientType"] == "local_scheduler"
+                        and not client["Deleted"]):
                     local_schedulers.append(client)
         return local_schedulers
 
@@ -893,8 +987,7 @@ class GlobalState(object):
 
             workers_data[worker_id] = {
                 "local_scheduler_socket":
-                    (worker_info[b"local_scheduler_socket"]
-                     .decode("ascii")),
+                (worker_info[b"local_scheduler_socket"].decode("ascii")),
                 "node_ip_address": (worker_info[b"node_ip_address"]
                                     .decode("ascii")),
                 "plasma_manager_socket": (worker_info[b"plasma_manager_socket"]
@@ -921,9 +1014,10 @@ class GlobalState(object):
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
                 "local_scheduler_id":
-                    binary_to_hex(info[b"local_scheduler_id"]),
+                binary_to_hex(info[b"local_scheduler_id"]),
                 "num_gpus": int(info[b"num_gpus"]),
-                "removed": decode(info[b"removed"]) == "True"}
+                "removed": decode(info[b"removed"]) == "True"
+            }
         return actor_info
 
     def _job_length(self):
@@ -932,21 +1026,16 @@ class GlobalState(object):
         overall_largest = 0
         num_tasks = 0
         for event_log_set in event_log_sets:
-            fwd_range = self.redis_client.zrange(event_log_set,
-                                                 start=0,
-                                                 end=0,
-                                                 withscores=True)
+            fwd_range = self.redis_client.zrange(
+                event_log_set, start=0, end=0, withscores=True)
             overall_smallest = min(overall_smallest, fwd_range[0][1])
 
-            rev_range = self.redis_client.zrevrange(event_log_set,
-                                                    start=0,
-                                                    end=0,
-                                                    withscores=True)
+            rev_range = self.redis_client.zrevrange(
+                event_log_set, start=0, end=0, withscores=True)
             overall_largest = max(overall_largest, rev_range[0][1])
 
-            num_tasks += self.redis_client.zcount(event_log_set,
-                                                  min=0,
-                                                  max=time.time())
+            num_tasks += self.redis_client.zcount(
+                event_log_set, min=0, max=time.time())
         if num_tasks is 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
@@ -966,8 +1055,10 @@ class GlobalState(object):
 
         for local_scheduler in local_schedulers:
             for key, value in local_scheduler.items():
-                if key not in ["ClientType", "Deleted", "DBClientID",
-                               "AuxAddress", "LocalSchedulerSocketName"]:
+                if key not in [
+                        "ClientType", "Deleted", "DBClientID", "AuxAddress",
+                        "LocalSchedulerSocketName"
+                ]:
                     resources[key] += value
 
         return dict(resources)

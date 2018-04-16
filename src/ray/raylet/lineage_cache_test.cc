@@ -13,9 +13,15 @@ namespace ray {
 
 namespace raylet {
 
-class MockGcs : virtual public gcs::TableInterface<TaskID, protocol::Task> {
+class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
+                public gcs::PubsubInterface<TaskID> {
  public:
-  MockGcs(){};
+  MockGcs() {}
+
+  void Subscribe(const gcs::raylet::TaskTable::WriteCallback &notification_callback) {
+    notification_callback_ = notification_callback;
+  }
+
   Status Add(const JobID &job_id, const TaskID &task_id,
              std::shared_ptr<protocol::TaskT> task_data,
              const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
@@ -23,29 +29,71 @@ class MockGcs : virtual public gcs::TableInterface<TaskID, protocol::Task> {
     callbacks_.push_back(
         std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>(done, task_id));
     return ray::Status::OK();
-  };
+  }
+
+  Status RemoteAdd(const TaskID &task_id, std::shared_ptr<protocol::TaskT> task_data) {
+    task_table_[task_id] = task_data;
+    // Send a notification after the add if the lineage cache requested
+    // notifications for this key.
+    bool send_notification = (subscribed_tasks_.count(task_id) == 1);
+    auto callback = [this, send_notification](ray::gcs::AsyncGcsClient *client,
+                                              const TaskID &task_id,
+                                              std::shared_ptr<protocol::TaskT> data) {
+      if (send_notification) {
+        notification_callback_(client, task_id, data);
+      }
+    };
+    return Add(JobID::nil(), task_id, task_data, callback);
+  }
+
+  Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
+                              const ClientID &client_id) {
+    subscribed_tasks_.insert(task_id);
+    if (task_table_.count(task_id) == 1) {
+      callbacks_.push_back({notification_callback_, task_id});
+    }
+    return ray::Status::OK();
+  }
+
+  Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
+                             const ClientID &client_id) {
+    subscribed_tasks_.erase(task_id);
+    return ray::Status::OK();
+  }
 
   void Flush() {
     for (const auto &callback : callbacks_) {
       callback.first(NULL, callback.second, task_table_[callback.second]);
     }
     callbacks_.clear();
-  };
+  }
 
   const std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
       &TaskTable() const {
     return task_table_;
   }
 
+  const std::unordered_set<TaskID, UniqueIDHasher> &SubscribedTasks() const {
+    return subscribed_tasks_;
+  }
+
  private:
   std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
       task_table_;
   std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
+  gcs::raylet::TaskTable::WriteCallback notification_callback_;
+  std::unordered_set<TaskID, UniqueIDHasher> subscribed_tasks_;
 };
 
 class LineageCacheTest : public ::testing::Test {
  public:
-  LineageCacheTest() : mock_gcs_(), lineage_cache_(mock_gcs_) {}
+  LineageCacheTest()
+      : mock_gcs_(), lineage_cache_(ClientID::from_random(), mock_gcs_, mock_gcs_) {
+    mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                               std::shared_ptr<ray::protocol::TaskT> data) {
+      lineage_cache_.HandleEntryCommitted(task_id);
+    });
+  }
 
  protected:
   MockGcs mock_gcs_;
@@ -234,30 +282,68 @@ TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
   CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
 }
 
-TEST_F(LineageCacheTest, TestRemoveWaitingTask) {
+TEST_F(LineageCacheTest, TestForwardTaskRoundTrip) {
   // Insert a chain of dependent tasks.
   std::vector<Task> tasks;
   auto return_values1 =
       InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
 
-  auto task_to_remove = tasks[1];
-  auto task_id_to_remove = task_to_remove.GetTaskSpecification().TaskId();
+  // Simulate removing the task and forwarding it to another node.
+  auto forwarded_task = tasks[1];
+  auto task_id_to_remove = forwarded_task.GetTaskSpecification().TaskId();
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id_to_remove);
+  lineage_cache_.RemoveWaitingTask(task_id_to_remove);
+
+  // Simulate receiving the task again.
   flatbuffers::FlatBufferBuilder fbb;
   auto uncommitted_lineage_message =
       uncommitted_lineage.ToFlatbuffer(fbb, task_id_to_remove);
   fbb.Finish(uncommitted_lineage_message);
   uncommitted_lineage = Lineage(
       *flatbuffers::GetRoot<protocol::ForwardTaskRequest>(fbb.GetBufferPointer()));
+  lineage_cache_.AddWaitingTask(forwarded_task, uncommitted_lineage);
+}
 
-  const Task &task = uncommitted_lineage.GetEntry(task_id_to_remove)->TaskData();
-  RAY_LOG(INFO) << "removing task " << task.GetTaskSpecification().TaskId()
-                << "with numforwards="
-                << task.GetTaskExecutionSpecReadonly().NumForwards();
-  ASSERT_EQ(task.GetTaskExecutionSpecReadonly().NumForwards(), 1);
+TEST_F(LineageCacheTest, TestForwardTask) {
+  // Insert a chain of dependent tasks.
+  size_t num_tasks_flushed = 0;
+  std::vector<Task> tasks;
+  auto return_values1 =
+      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
 
+  // Simulate removing the task and forwarding it to another node.
+  auto it = tasks.begin() + 1;
+  auto forwarded_task = *it;
+  tasks.erase(it);
+  auto task_id_to_remove = forwarded_task.GetTaskSpecification().TaskId();
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id_to_remove);
   lineage_cache_.RemoveWaitingTask(task_id_to_remove);
-  lineage_cache_.AddWaitingTask(task_to_remove, uncommitted_lineage);
+
+  // Simulate executing the remaining tasks.
+  for (const auto &task : tasks) {
+    lineage_cache_.AddReadyTask(task);
+  }
+  // Check that the first task, which has no dependencies can be flushed. The
+  // last task cannot be flushed since one of its dependencies has not been
+  // added by the remote node yet.
+  num_tasks_flushed++;
+  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+
+  // Simulate executing the task on a remote node and adding it to the GCS.
+  auto task_data = std::make_shared<protocol::TaskT>();
+  RAY_CHECK_OK(
+      mock_gcs_.RemoteAdd(forwarded_task.GetTaskSpecification().TaskId(), task_data));
+  // Check that the remote task is flushed.
+  num_tasks_flushed++;
+  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  ASSERT_EQ(mock_gcs_.SubscribedTasks().size(), 1);
+
+  // Check that once we receive the callback for the remote task, we can now
+  // flush the last task.
+  mock_gcs_.Flush();
+  num_tasks_flushed++;
+  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  ASSERT_EQ(mock_gcs_.SubscribedTasks().size(), 0);
 }
 
 }  // namespace raylet

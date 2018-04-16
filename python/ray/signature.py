@@ -7,11 +7,10 @@ import funcsigs
 
 from ray.utils import is_cython
 
-FunctionSignature = namedtuple("FunctionSignature", ["arg_names",
-                                                     "arg_defaults",
-                                                     "arg_is_positionals",
-                                                     "keyword_names",
-                                                     "function_name"])
+FunctionSignature = namedtuple("FunctionSignature", [
+    "arg_names", "arg_defaults", "arg_is_positionals", "keyword_names",
+    "function_name"
+])
 """This class is used to represent a function signature.
 
 Attributes:
@@ -49,13 +48,16 @@ def get_signature_params(func):
     # The first condition for Cython functions, the latter for Cython instance
     # methods
     if is_cython(func):
-        attrs = ["__code__", "__annotations__",
-                 "__defaults__", "__kwdefaults__"]
+        attrs = [
+            "__code__", "__annotations__", "__defaults__", "__kwdefaults__"
+        ]
 
         if all([hasattr(func, attr) for attr in attrs]):
             original_func = func
 
-            def func(): return
+            def func():
+                return
+
             for attr in attrs:
                 setattr(func, attr, getattr(original_func, attr))
         else:
@@ -130,8 +132,8 @@ def extract_signature(func, ignore_first=False):
     if ignore_first:
         if len(sig_params) == 0:
             raise Exception("Methods must take a 'self' argument, but the "
-                            "method '{}' does not have one."
-                            .format(func.__name__))
+                            "method '{}' does not have one.".format(
+                                func.__name__))
         sig_params = sig_params[1:]
 
     # Extract the names of the keyword arguments.
@@ -183,8 +185,8 @@ def extend_args(function_signature, args, kwargs):
     for keyword_name in kwargs:
         if keyword_name not in keyword_names:
             raise Exception("The name '{}' is not a valid keyword argument "
-                            "for the function '{}'."
-                            .format(keyword_name, function_name))
+                            "for the function '{}'.".format(
+                                keyword_name, function_name))
 
     # Fill in the remaining arguments.
     zipped_info = list(zip(arg_names, arg_defaults,
@@ -201,12 +203,12 @@ def extend_args(function_signature, args, kwargs):
                 # can be omitted.
                 if not is_positional:
                     raise Exception("No value was provided for the argument "
-                                    "'{}' for the function '{}'."
-                                    .format(keyword_name, function_name))
+                                    "'{}' for the function '{}'.".format(
+                                        keyword_name, function_name))
 
-    too_many_arguments = (len(args) > len(arg_names) and
-                          (len(arg_is_positionals) == 0 or
-                           not arg_is_positionals[-1]))
+    too_many_arguments = (len(args) > len(arg_names)
+                          and (len(arg_is_positionals) == 0
+                               or not arg_is_positionals[-1]))
     if too_many_arguments:
         raise Exception("Too many arguments were passed to the function '{}'"
                         .format(function_name))

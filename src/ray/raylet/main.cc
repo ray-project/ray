@@ -1,11 +1,12 @@
 #include <iostream>
 
+#include "common/state/ray_config.h"
 #include "ray/raylet/raylet.h"
 #include "ray/status.h"
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
-  RAY_CHECK(argc == 7);
+  RAY_CHECK(argc == 8);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -13,13 +14,25 @@ int main(int argc, char *argv[]) {
   const std::string redis_address = std::string(argv[4]);
   int redis_port = std::stoi(argv[5]);
   const std::string worker_command = std::string(argv[6]);
+  const std::string static_resource_list = std::string(argv[7]);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   std::unordered_map<std::string, double> static_resource_conf;
-  static_resource_conf = {{"CPU", 1}, {"GPU", 1}};
+  // Parse the resource list.
+  std::istringstream resource_string(static_resource_list);
+  std::string resource_name;
+  std::string resource_quantity;
+
+  while (std::getline(resource_string, resource_name, ',')) {
+    RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
+    // TODO(rkn): The line below could throw an exception. What should we do about this?
+    static_resource_conf[resource_name] = std::stod(resource_quantity);
+  }
   node_manager_config.resource_config =
       ray::raylet::ResourceSet(std::move(static_resource_conf));
+  RAY_LOG(INFO) << "Starting raylet with static resource configuration: "
+                << node_manager_config.resource_config.ToString();
   node_manager_config.num_initial_workers = 0;
   // Use a default worker that can execute empty tasks with dependencies.
 
@@ -35,6 +48,13 @@ int main(int argc, char *argv[]) {
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
   object_manager_config.store_socket_name = store_socket_name;
+  object_manager_config.pull_timeout_ms =
+      RayConfig::instance().object_manager_pull_timeout_ms();
+  object_manager_config.max_sends = RayConfig::instance().object_manager_max_sends();
+  object_manager_config.max_receives =
+      RayConfig::instance().object_manager_max_receives();
+  object_manager_config.object_chunk_size =
+      RayConfig::instance().object_manager_default_chunk_size();
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();

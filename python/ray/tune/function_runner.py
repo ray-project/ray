@@ -91,8 +91,8 @@ class FunctionRunner(Trainable):
         for k in self._default_config:
             if k in scrubbed_config:
                 del scrubbed_config[k]
-        self._runner = _RunnerThread(
-            entrypoint, scrubbed_config, self._status_reporter)
+        self._runner = _RunnerThread(entrypoint, scrubbed_config,
+                                     self._status_reporter)
         self._start_time = time.time()
         self._last_reported_timestep = 0
         self._runner.start()
@@ -104,9 +104,8 @@ class FunctionRunner(Trainable):
 
     def _train(self):
         time.sleep(
-            self.config.get(
-                "script_min_iter_time_s",
-                self._default_config["script_min_iter_time_s"]))
+            self.config.get("script_min_iter_time_s",
+                            self._default_config["script_min_iter_time_s"]))
         result = self._status_reporter._get_and_clear_status()
         while result is None:
             time.sleep(1)

@@ -1,9 +1,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 """Ray constants used in the Python code."""
-
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
