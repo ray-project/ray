@@ -19,7 +19,8 @@ def pin_in_object_store(obj):
 
     It will be available as long as the pinning process is alive. The pinned
     object can be retrieved by calling get_pinned_object on the identifier
-    returned by this call."""
+    returned by this call.
+    """
 
     obj_id = ray.put(_to_pinnable(obj))
     _pinned_objects.append(ray.get(obj_id))
