@@ -19,9 +19,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_(),
-      num_transfers_send_(0),
-      num_transfers_receive_(0) {
+      connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   main_service_ = &main_service;
@@ -44,9 +42,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
                    /*release_delay=*/2 * config.max_sends),
       send_work_(send_service_),
       receive_work_(receive_service_),
-      connection_pool_(),
-      num_transfers_send_(0),
-      num_transfers_receive_(0) {
+      connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
   // TODO(hme) Client ID is never set with this constructor.
@@ -110,8 +106,7 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
-  RAY_CHECK_OK(PullGetLocations(object_id));
-  return Status::OK();
+  return PullGetLocations(object_id);
 }
 
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
@@ -146,8 +141,7 @@ void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
-  RAY_CHECK_OK(PullEstablishConnection(object_id, client_id));
-  return Status::OK();
+  return PullEstablishConnection(object_id, client_id);
 };
 
 ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
@@ -231,11 +225,10 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
       [](const Status &status) {
         // Push is best effort, so do nothing here.
       });
-  RAY_CHECK_OK(status);
-  return ray::Status::OK();
+  return status;
 }
 
-ray::Status ObjectManager::ExecuteSendObject(
+void ObjectManager::ExecuteSendObject(
     const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index,
     const RemoteConnectionInfo &connection_info) {
@@ -252,7 +245,7 @@ ray::Status ObjectManager::ExecuteSendObject(
                                     conn);
   }
   status = SendObjectHeaders(object_id, data_size, metadata_size, chunk_index, conn);
-  return Status::OK();
+  RAY_CHECK_OK(status);
 }
 
 ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
@@ -263,13 +256,12 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
       buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
 
-  if (!chunk_status.second.ok()) {
-    // This is the first thread to invoke GetChunk => Get failed on the
-    // plasma client.
-    // No reference is acquired for this chunk, so no need to release the chunk.
-    // TODO(hme): Retry send here? If so, store RemoteConnectionInfo in SenderConnection.
-    return chunk_status.second;
-  }
+  // If status is not okay, and this is the first chunk to be gotten for this object,
+  // then return immediately, because this means plasma_client.Get
+  // failed.
+  // No reference is acquired for this chunk, so no need to release the chunk.
+  RAY_RETURN_NOT_OK(chunk_status.second);
+
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(hme): use to_flatbuf
@@ -303,7 +295,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
   RAY_LOG(DEBUG) << "SendCompleted " << client_id_ << " " << object_id << " "
-                 << num_transfers_send_ << "/" << config_.max_sends;
+                 << config_.max_sends;
   return status;
 }
 
@@ -413,7 +405,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn
   });
 }
 
-ray::Status ObjectManager::ExecuteReceiveObject(
+void ObjectManager::ExecuteReceiveObject(
     const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
     uint64_t metadata_size, uint64_t chunk_index,
     std::shared_ptr<TcpClientConnection> conn) {
@@ -452,8 +444,7 @@ ray::Status ObjectManager::ExecuteReceiveObject(
   }
   conn->ProcessMessages();
   RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
-                 << num_transfers_receive_ << "/" << config_.max_receives;
-  return Status::OK();
+                 << "/" << config_.max_receives;
 }
 
 }  // namespace ray

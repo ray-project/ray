@@ -183,10 +183,6 @@ class ObjectManager {
                      UniqueIDHasher>
       pull_requests_;
 
-  /// Variables to track number of concurrent sends and receives.
-  std::atomic<int> num_transfers_send_;
-  std::atomic<int> num_transfers_receive_;
-
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
 
@@ -238,10 +234,10 @@ class ObjectManager {
 
   /// Begin executing a send.
   /// Executes on send_service_ thread pool.
-  ray::Status ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
-                                uint64_t data_size, uint64_t metadata_size,
-                                uint64_t chunk_index,
-                                const RemoteConnectionInfo &connection_info);
+  void ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
+                         uint64_t data_size, uint64_t metadata_size,
+                         uint64_t chunk_index,
+                         const RemoteConnectionInfo &connection_info);
   /// This method synchronously sends the object id and object size
   /// to the remote object manager.
   /// Executes on send_service_ thread pool.
@@ -260,10 +256,10 @@ class ObjectManager {
   void ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn,
                           const uint8_t *message);
   /// Execute a receive on the receive_service_ thread pool.
-  ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
-                                   uint64_t data_size, uint64_t metadata_size,
-                                   uint64_t chunk_index,
-                                   std::shared_ptr<TcpClientConnection> conn);
+  void ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
+                            uint64_t data_size, uint64_t metadata_size,
+                            uint64_t chunk_index,
+                            std::shared_ptr<TcpClientConnection> conn);
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,
