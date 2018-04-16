@@ -235,8 +235,7 @@ class ObjectManager {
   /// Begin executing a send.
   /// Executes on send_service_ thread pool.
   void ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
-                         uint64_t data_size, uint64_t metadata_size,
-                         uint64_t chunk_index,
+                         uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
                          const RemoteConnectionInfo &connection_info);
   /// This method synchronously sends the object id and object size
   /// to the remote object manager.

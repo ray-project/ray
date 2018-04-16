@@ -228,10 +228,10 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
   return status;
 }
 
-void ObjectManager::ExecuteSendObject(
-    const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
-    uint64_t metadata_size, uint64_t chunk_index,
-    const RemoteConnectionInfo &connection_info) {
+void ObjectManager::ExecuteSendObject(const ClientID &client_id,
+                                      const ObjectID &object_id, uint64_t data_size,
+                                      uint64_t metadata_size, uint64_t chunk_index,
+                                      const RemoteConnectionInfo &connection_info) {
   RAY_LOG(DEBUG) << "ExecuteSendObject " << client_id << " " << object_id << " "
                  << chunk_index;
   ray::Status status;
@@ -404,10 +404,10 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn
   });
 }
 
-void ObjectManager::ExecuteReceiveObject(
-    const ClientID &client_id, const ObjectID &object_id, uint64_t data_size,
-    uint64_t metadata_size, uint64_t chunk_index,
-    std::shared_ptr<TcpClientConnection> conn) {
+void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
+                                         const ObjectID &object_id, uint64_t data_size,
+                                         uint64_t metadata_size, uint64_t chunk_index,
+                                         std::shared_ptr<TcpClientConnection> conn) {
   RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
                  << chunk_index;
 
