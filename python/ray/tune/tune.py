@@ -37,7 +37,8 @@ def run_experiments(experiments,
                     scheduler=None,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
-                    verbose=True):
+                    verbose=True,
+                    queue_trials=False):
     """Tunes experiments.
 
     Args:
@@ -49,6 +50,10 @@ def run_experiments(experiments,
             using the Client API.
         server_port (int): Port number for launching TuneServer.
         verbose (bool): How much output should be printed for each trial.
+        queue_trials (bool): Whether to queue trials when the cluster does
+            not currently have enough resources to launch one. This should
+            be set to True when running on an autoscaling cluster to enable
+            automatic scale-up.
     """
 
     if scheduler is None:
@@ -58,7 +63,8 @@ def run_experiments(experiments,
         scheduler,
         launch_web_server=with_server,
         server_port=server_port,
-        verbose=verbose)
+        verbose=verbose,
+        queue_trials=queue_trials)
     exp_list = experiments
     if isinstance(experiments, Experiment):
         exp_list = [experiments]

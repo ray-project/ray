@@ -17,6 +17,7 @@ import ray
 from ray.tune import TuneError
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.trial import Resources
 
 
 class Trainable(object):
@@ -89,6 +90,22 @@ class Trainable(object):
         self._setup()
         self._initialize_ok = True
         self._local_ip = ray.services.get_node_ip_address()
+
+    @classmethod
+    def default_resource_request(cls, config):
+        """Returns the resource requirement for the given configuration.
+
+        This can be overriden by sub-classes to set the correct trial resource
+        allocation, so the user does not need to.
+        """
+
+        return Resources(cpu=1, gpu=0)
+
+    @classmethod
+    def resource_help(cls, config):
+        """Returns a help string for configuring this trainable's resources."""
+
+        return ""
 
     def train(self):
         """Runs one logical iteration of training.

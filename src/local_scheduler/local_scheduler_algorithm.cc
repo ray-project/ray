@@ -876,10 +876,12 @@ void spillback_tasks_handler(LocalSchedulerState *state) {
                       << TaskSpec_actor_creation_id(spec) << " is taking a "
                       << "while to be created. It is possible that the "
                       << "cluster does not have enough resources to place this "
-                      << "actor. Try reducing the number of actors created or "
+                      << "actor (this may be normal while an autoscaling "
+                      << "is scaling up). Consider reducing the number of "
+                      << "actors created, or "
                       << "increasing the number of slots available by using "
                       << "the --num-cpus, --num-gpus, and --resources flags. "
-                      << " The actor creation task is requesting ";
+                      << "The actor creation task is requesting ";
         for (auto const &resource_pair :
              TaskSpec_get_required_resources(spec)) {
           error_message << resource_pair.second << " " << resource_pair.first

@@ -11,6 +11,8 @@ from ray.tune.trial import Resources
 
 
 def json_to_resources(data):
+    if data is None or data == "null":
+        return None
     if type(data) is str:
         data = json.loads(data)
     for k in data:
@@ -29,7 +31,7 @@ def json_to_resources(data):
 
 def resources_to_json(resources):
     if resources is None:
-        resources = Resources(cpu=1, gpu=0)
+        return None
     return {
         "cpu": resources.cpu,
         "gpu": resources.gpu,
@@ -71,18 +73,13 @@ def make_parser(**kwargs):
         help="Algorithm-specific configuration (e.g. env, hyperparams), "
         "specified in JSON.")
     parser.add_argument(
-        "--resources",
-        help="Deprecated, use --trial-resources.",
-        type=lambda v: _tune_error("The `resources` argument is no longer "
-                                   "supported. Use `trial_resources` or "
-                                   "--trial-resources instead."))
-    parser.add_argument(
         "--trial-resources",
-        default='{"cpu": 1}',
+        default=None,
         type=json_to_resources,
-        help="Machine resources to allocate per trial, e.g. "
+        help="Override the machine resources to allocate per trial, e.g. "
         "'{\"cpu\": 64, \"gpu\": 8}'. Note that GPUs will not be assigned "
-        "unless you specify them here.")
+        "unless you specify them here. For RLlib, you probably want to "
+        "leave this alone and use RLlib configs to control parallelism.")
     parser.add_argument(
         "--repeat",
         default=1,
@@ -115,7 +112,7 @@ def make_parser(**kwargs):
         "--scheduler",
         default="FIFO",
         type=str,
-        help="FIFO (default), MedianStopping, AsyncHyperBand,"
+        help="FIFO (default), MedianStopping, AsyncHyperBand, "
         "HyperBand, or HyperOpt.")
     parser.add_argument(
         "--scheduler-config",
