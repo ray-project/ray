@@ -28,7 +28,6 @@ WorkerPool::WorkerPool(const std::vector<std::string> &worker_command)
 WorkerPool::~WorkerPool() {
   // Kill all registered workers. NOTE(swang): This assumes that the registered
   // workers were started by the pool.
-  // TODO(atumanov): remove killed workers from the pool.
   for (const auto &worker : registered_workers_) {
     RAY_CHECK(worker->Pid() > 0);
     kill(worker->Pid(), SIGKILL);
