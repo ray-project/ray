@@ -9,11 +9,11 @@ namespace ray {
 namespace raylet {
 
 class WorkerPoolMock : public WorkerPool {
-public:
+ public:
   WorkerPoolMock(const std::vector<std::string> &worker_command)
       : WorkerPool(worker_command) {}
 
-  void StartWorker(pid_t pid, bool force_start = false)  {
+  void StartWorker(pid_t pid, bool force_start = false) {
     AddStartedWorker(pid);
     if (NumStartedWorkers() > 0 && !force_start) {
       // Workers have been started, but not registered. Force start disabled -- returning.
