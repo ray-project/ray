@@ -20,7 +20,7 @@ TEST_HDF_FILENAME = 'test.hdf'
 TEST_MSGPACK_FILENAME = 'test.msg'
 TEST_STATA_FILENAME = 'test.dta'
 TEST_PICKLE_FILENAME = 'test.pkl'
-TEST_SAS_FILENAME = 'data/test1.sas7bdat'
+TEST_SAS_FILENAME = os.getcwd() + '/data/test1.sas7bdat'
 TEST_SQL_FILENAME = 'test.db'
 SMALL_ROW_SIZE = 2000
 LARGE_ROW_SIZE = 7e6
@@ -292,15 +292,6 @@ def test_from_html():
     assert ray_df_equals_pandas(ray_df, pd_df)
 
     teardown_html_file()
-
-
-def test_from_clipboard():
-    setup_clipboard(SMALL_ROW_SIZE)
-
-    pd_df = pd.read_clipboard()
-    ray_df = io.read_clipboard()
-
-    assert ray_df_equals_pandas(ray_df, pd_df)
 
 
 def test_from_excel():
