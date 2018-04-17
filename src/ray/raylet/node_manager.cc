@@ -273,10 +273,6 @@ void NodeManager::DispatchTasks() {
   for (const auto &task : scheduled_tasks) {
     const auto &local_resources =
         cluster_resource_map_[my_client_id].GetAvailableResources();
-    if (local_resources.IsEmpty()) {
-      // Early return if there are no resources available.
-      return;
-    }
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
     if (!task_resources.IsSubset(local_resources)) {
       // Not enough local resources for this task right now, skip this task.
