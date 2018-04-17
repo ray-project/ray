@@ -342,6 +342,52 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
 ### EXPERIMENTAL ###
 
 @ray.remote
+def explode_block(df, factors):
+    row_factor, col_factor = factors
+
+    # In the case that the size is not a multiple of the number of partitions,
+    # we need to add one to each partition to avoid losing data off the end
+    block_len_row = df.shape[0] // row_factor \
+        if df.shape[0] % row_factor == 0 \
+        else df.shape[0] // row_factor + 1
+
+    block_len_col = df.shape[1] // col_factor \
+        if df.shape[1] % col_factor == 0 \
+        else df.shape[1] // col_factor + 1
+
+    blocks = [df.iloc[i * block_len_row: (i + 1) * block_len_row,
+                      j * block_len_col: (j + 1) * block_len_col]
+              for i in range(row_factor) for j in range(col_factor)]
+
+    for block in blocks:
+        block.columns = pd.RangeIndex(0, len(block.columns))
+    return blocks
+
+def _explode_block_partitions(block_partitions, factors):
+    if factors == (1, 1):
+        return block_partitions
+
+    row_factor, col_factor = factors
+    nreturns = row_factor * col_factor
+
+    nblocks_row, nblocks_col = block_partitions.shape
+
+    explode_lists = [[explode_block._submit(args=(block, factors),
+                                num_return_vals=nreturns)
+                      for block in row]
+                     for row in block_partitions]
+    reshaped_lists = [[np.array(explode_list).reshape(row_factor, col_factor)
+                       for explode_list in row]
+                      for row in explode_lists]
+    joined = np.concatenate([np.concatenate(row, axis=1)
+                             for row in reshaped_lists],
+                            axis=0)
+
+    assert joined.shape == (row_factor * nblocks_row, col_factor * nblocks_col)
+
+    return joined
+
+@ray.remote
 def _deploy_func_row(func, *partition):
     row_part = pd.concat(partition, axis=1, copy=False)\
         .reset_index(drop=True)

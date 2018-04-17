@@ -31,6 +31,7 @@ from .utils import (
     _deploy_func,
     _map_partitions,
     _map_partitions_coalesce,
+    _explode_block_partitions,
     _partition_pandas_dataframe,
     to_pandas,
     _blocks_to_col,
@@ -88,7 +89,8 @@ class DataFrame(object):
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
 
-            nrows = get_nrowpartitions() if nrows is None else nrows
+            if nrows is None:
+                nrows = get_nrowpartitions()
 
             # TODO convert _partition_pandas_dataframe to block partitioning.
             row_partitions = \
@@ -344,7 +346,9 @@ class DataFrame(object):
             else 0
 
         ### EXPERIMENTAL ###
-        oid_series = ray.get(_map_partitions_coalesce(remote_func, self._block_partitions, axis))
+        new_blocks = _explode_block_partitions(self._block_partitions, (1, 8))
+        self._col_metadata.explode(8)
+        oid_series = ray.get(_map_partitions_coalesce(remote_func, new_blocks, axis))
 
         # oid_series = ray.get(_map_partitions(remote_func,
         #                      self._col_partitions if axis == 0
@@ -680,6 +684,9 @@ class DataFrame(object):
 
         new_block_partitions = np.array([_map_partitions(
             lambda df: df.isna(), block) for block in self._block_partitions])
+
+        # new_col_partitions = np.array([_map_partitions(
+        #     lambda df: df.isna(), block) for block in self._block_partitions])
 
         # l = new_block_partitions.flatten().tolist()
         # for i in range(0, len(l), 8):

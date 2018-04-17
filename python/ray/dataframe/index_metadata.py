@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import ray
+import itertools
 
 from .utils import (
     _build_index,
@@ -270,6 +271,30 @@ class _IndexMetadata(_IndexMetadataBase):
             self._coord_df.index_within_partition > index_within_partition
         self._coord_df.loc[partition_mask & index_within_partition_mask,
                            'index_within_partition'] -= 1
+
+    def explode(self, factor):
+        if factor == 1:
+            return
+
+        nparts = len(self._lengths)
+
+        def explode_length(length):
+            # In the case that the size is not a multiple of the number of partitions,
+            # we need to add one to each partition to avoid losing data off the end
+            if length % factor == 0:
+                new_lengths = [length // factor for _ in range(factor)]
+            else:
+                new_lengths = [length // factor + 1 for _ in range(factor - 1)]
+                new_lengths.append(length - sum(new_lengths))
+            return new_lengths
+
+        self._lengths = list(itertools.chain.from_iterable([explode_length(length)
+                                                            for length in self._lengths]))
+
+        dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(self._lengths))
+                        for p_sub_idx in range(self._lengths[p_idx])]
+        col_names = ("partition", "index_within_partition")
+        self._coord_df = pd.DataFrame(dest_indices, index=self.index, columns=col_names)
 
     def copy(self):
         return _IndexMetadata(coord_df_oid=self._coord_df,
