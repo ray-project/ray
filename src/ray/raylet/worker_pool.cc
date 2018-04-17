@@ -34,6 +34,17 @@ WorkerPool::~WorkerPool() {
     kill(worker->Pid(), SIGKILL);
     waitpid(worker->Pid(), NULL, 0);
   }
+  // Kill all the workers that have been started but not registered.
+  for (const auto &pid : started_worker_pids_) {
+    RAY_CHECK(pid > 0);
+    kill(pid, SIGKILL);
+    waitpid(pid, NULL, 0);
+  }
+
+  pool_.clear();
+  actor_pool_.clear();
+  registered_workers_.clear();
+  started_worker_pids_.clear();
 }
 
 uint32_t WorkerPool::Size() const {
