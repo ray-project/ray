@@ -1061,6 +1061,8 @@ class DataFrame(object):
             return getattr(self, func)(*args, **kwds)
         else:
             if isinstance(func, dict):
+                warnings.warn("Currently not supporting functions that return "
+                              "a DataFrame.", FutureWarning, stacklevel=2)
                 result = []
                 for key in func:
                     part, ind = self._col_metadata[key]
@@ -1068,7 +1070,13 @@ class DataFrame(object):
                     if isinstance(func[key], compat.string_types):
                         if axis == 1:
                             kwds['axis'] = axis
+                        # find the corresponding pd.Series function
                         f = getattr(pd.core.series.Series, func[key])
+                    elif isinstance(func[key], list):
+                        # not yet supporting lists of functions in the dict
+                        raise NotImplementedError(
+                            "To contribute to Pandas on Ray, please visit "
+                            "github.com/ray-project/ray.")
                     else:
                         f = func[key]
 
@@ -1085,8 +1093,8 @@ class DataFrame(object):
                 raise NotImplementedError(
                     "To contribute to Pandas on Ray, please visit "
                     "github.com/ray-project/ray.")
-            else:
-                return self._callable_function(f, axis=axis, *args, **kwds)
+            elif callable(func):
+                return self._callable_function(func, axis=axis, *args, **kwds)
 
     def as_blocks(self, copy=True):
         raise NotImplementedError(
