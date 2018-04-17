@@ -726,9 +726,6 @@ class DataFrame(object):
         return result
 
     def _aggregate(self, arg, *args, **kwargs):
-        is_aggregator = lambda x: isinstance(x, (list, tuple, dict))
-        is_nested_renamer = False
-
         _axis = kwargs.pop('_axis', None)
         if _axis is None:
             _axis = getattr(self, 'axis', 0)
@@ -739,7 +736,6 @@ class DataFrame(object):
 
         # Dictionaries have complex behavior because they can be renamed here.
         elif isinstance(arg, dict):
-
             raise NotImplementedError(
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
