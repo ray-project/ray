@@ -163,10 +163,6 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
   if (client_id == client_id_) {
     return ray::Status::Invalid("Cannot pull object from self.");
   }
-  // Check if object is in transit or already local.
-  if (ObjectInTransitOrLocal(object_id)) {
-    return ray::Status::Invalid("Object in transit or local.");
-  }
 
   // Acquire a message connection and send pull request.
   ray::Status status;
