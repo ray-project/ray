@@ -326,7 +326,7 @@ def test_from_feather():
     teardown_feather_file()
 
 
-@pytest.mark.skip(reason="Memory overflow")
+@pytest.mark.skip(reason="Memory overflow on Travis")
 def test_from_hdf():
     setup_hdf_file(SMALL_ROW_SIZE)
 
@@ -383,6 +383,7 @@ def test_from_sql():
     teardown_sql_file()
 
 
+@pytest.mark.skip(reason="No SAS write methods in Pandas")
 def test_from_sas():
     pd_df = pd.read_sas(TEST_SAS_FILENAME)
     ray_df = io.read_sas(TEST_SAS_FILENAME)

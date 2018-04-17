@@ -132,6 +132,10 @@ setup(
         # The six module is required by pyarrow.
         "six >= 1.0.0",
         "flatbuffers"
+        "feather-format"
+        "lxml"
+        "openpyxl"
+        "xlrd"
     ],
     setup_requires=["cython >= 0.23"],
     extras_require=extras,
