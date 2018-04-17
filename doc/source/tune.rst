@@ -75,6 +75,20 @@ In order to report incremental progress, ``train_func`` periodically calls the `
 Learn more `about specifying experiments <tune-config.html>`__ .
 
 
+Features
+--------
+
+Ray Tune has the following features:
+
+-  Scalable implementations of search algorithms such as `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, Model-Based Optimization (HyperOpt), and `HyperBand <hyperband.html>`__.
+
+-  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
+
+-  Flexible trial variant generation, including grid search, random search, and conditional parameter distributions.
+
+-  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed.
+
+
 Concepts
 --------
 
