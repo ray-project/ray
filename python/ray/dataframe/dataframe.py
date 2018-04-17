@@ -1059,7 +1059,7 @@ class DataFrame(object):
             if axis == 1:
                 kwds['axis'] = axis
             return getattr(self, func)(*args, **kwds)
-        else:# callable(func):
+        else:
             if isinstance(func, dict):
                 result = []
                 for key in func:
@@ -1076,13 +1076,15 @@ class DataFrame(object):
                         x = df.iloc[:, ind]
                         return f(x)
 
-                    result.append(_deploy_func.remote(helper,
-                        self._col_partitions[part]))
+                    result.append(_deploy_func.remote(
+                            helper, self._col_partitions[part]))
 
                 return pd.Series(ray.get(result), index=func.keys())
 
             elif isinstance(func, list):
-                pass
+                raise NotImplementedError(
+                    "To contribute to Pandas on Ray, please visit "
+                    "github.com/ray-project/ray.")
             else:
                 return self._callable_function(f, axis=axis, *args, **kwds)
 
