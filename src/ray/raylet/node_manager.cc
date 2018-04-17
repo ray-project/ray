@@ -268,15 +268,15 @@ void NodeManager::DispatchTasks() {
   if (scheduled_tasks.empty()) {
     return;
   }
-  // Early return if there are no resources available.
   const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
-  const auto &local_resources =
-      cluster_resource_map_[my_client_id].GetAvailableResources();
-  if (local_resources.IsEmpty()) {
-    return;
-  }
 
   for (const auto &task : scheduled_tasks) {
+    const auto &local_resources =
+        cluster_resource_map_[my_client_id].GetAvailableResources();
+    if (local_resources.IsEmpty()) {
+      // Early return if there are no resources available.
+      return;
+    }
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
     if (!task_resources.IsSubset(local_resources)) {
       // Not enough local resources for this task right now, skip this task.
@@ -284,9 +284,9 @@ void NodeManager::DispatchTasks() {
     }
     // We have enough resources for this task. Assign task.
     // TODO(atumanov): perform the task state/queue transition inside AssignTask.
-    auto scheduled_tasks =
+    auto dispatched_task =
         local_queues_.RemoveTasks({task.GetTaskSpecification().TaskId()});
-    AssignTask(scheduled_tasks.front());
+    AssignTask(dispatched_task.front());
   }
 }
 
@@ -405,7 +405,6 @@ void NodeManager::ScheduleTasks() {
   // Extract decision for this local scheduler.
   std::unordered_set<TaskID, UniqueIDHasher> local_task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
-  // TODO(atumanov): move the assigned tasks to scheduled and call DispatchTasks().
   for (const auto &task_schedule : policy_decision) {
     TaskID task_id = task_schedule.first;
     ClientID client_id = task_schedule.second;
