@@ -1059,12 +1059,24 @@ class DataFrame(object):
             if axis == 1:
                 kwds['axis'] = axis
             return getattr(self, func)(*args, **kwds)
-        elif callable(func):
-            return self._callable_function(func, axis=axis, *args, **kwds)
-        else:
-            raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
+        else:# callable(func):
+            if isinstance(func, dict):
+                result = []
+                for key in func:
+                    part, ind = self._col_metadata[key]
+                    def helper(df):
+                        x = df.iloc[:, ind]
+                        return func[key](x)
+
+                    result.append(_deploy_func.remote(helper,
+                        self._col_partitions[part]))
+
+                return pd.Series(ray.get(result), index=func.keys())
+
+            elif isinstance(func, list):
+                pass
+            else:
+                return self._callable_function(f, axis=axis, *args, **kwds)
 
     def as_blocks(self, copy=True):
         raise NotImplementedError(
