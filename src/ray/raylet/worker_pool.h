@@ -36,6 +36,9 @@ class WorkerPool {
   /// registered with an external server, the process should create and
   /// register a new Worker, then add itself to the pool. Failure to start
   /// the worker process is a fatal error.
+  ///
+  /// \param force_start Controls whether to force starting a worker regardless of any
+  /// workers that have already been started but not yet registered.
   void StartWorker(bool force_start = false);
 
   /// Register a new worker. The Worker should be added by the caller to the
@@ -71,6 +74,10 @@ class WorkerPool {
   /// such worker exists.
   std::shared_ptr<Worker> PopWorker(const ActorID &actor_id);
 
+  /// Return the current size of the worker pool. Counts only the workers that registered
+  /// and requested a task.
+  ///
+  /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size() const;
 
  private:
