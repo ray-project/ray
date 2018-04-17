@@ -190,7 +190,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
           Status pull_send_status = PullSendRequest(object_id, async_conn);
-          if (!pull_send_status.ok()){
+          if (!pull_send_status.ok()) {
             RAY_LOG(INFO) << pull_send_status.message();
           }
         },
