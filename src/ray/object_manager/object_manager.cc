@@ -110,8 +110,9 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   if (ObjectInTransitOrLocal(object_id)) {
+    // Currently, there's no guarantee that the transfer will happen.
     // Do nothing if the object is already being received.
-    return ray::Status::OK();
+    return ray::Status::Invalid("Object in transit or local.");
   }
   return PullGetLocations(object_id);
 }
@@ -149,17 +150,22 @@ void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
   if (ObjectInTransitOrLocal(object_id)) {
+    // Currently, there's no guarantee that the transfer will happen.
     // Do nothing if the object is already being received.
-    return ray::Status::OK();
+    return ray::Status::Invalid("Object in transit or local.");
   }
   return PullEstablishConnection(object_id, client_id);
 };
 
 ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                                    const ClientID &client_id) {
-  // Check if object is in transit or already local, and client_id is not itself.
-  if (ObjectInTransitOrLocal(object_id) || client_id == client_id_) {
-    return ray::Status::OK();
+  // Check client_id is not itself.
+  if (client_id == client_id_) {
+    return ray::Status::Invalid("Cannot pull object from self.");
+  }
+  // Check if object is in transit or already local.
+  if (ObjectInTransitOrLocal(object_id)) {
+    return ray::Status::Invalid("Object in transit or local.");
   }
 
   // Acquire a message connection and send pull request.
@@ -183,13 +189,16 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
               ConnectionPool::ConnectionType::MESSAGE, connection_info);
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
-          RAY_CHECK_OK(PullSendRequest(object_id, async_conn));
+          Status pull_send_status = PullSendRequest(object_id, async_conn);
+          if (!pull_send_status.ok()){
+            RAY_LOG(INFO) << pull_send_status.message();
+          }
         },
         [this, object_id](const Status &status) {
           SchedulePull(object_id, config_.pull_timeout_ms);
         });
   } else {
-    RAY_CHECK_OK(PullSendRequest(object_id, conn));
+    status = PullSendRequest(object_id, conn);
   }
   return status;
 }
@@ -202,7 +211,7 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
     // in the time between this method call and the Pull method call.
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
-    return ray::Status::OK();
+    return Status::Invalid("Object in transit or local.");
   }
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
