@@ -294,6 +294,16 @@ def test_from_html():
     teardown_html_file()
 
 
+@pytest.mark.skip(reason="No clipboard on Travis")
+def test_from_clipboard():
+    setup_clipboard(SMALL_ROW_SIZE)
+
+    pd_df = pd.read_clipboard()
+    ray_df = io.read_clipboard()
+
+    assert ray_df_equals_pandas(ray_df, pd_df)
+
+
 def test_from_excel():
     setup_excel_file(SMALL_ROW_SIZE)
 
@@ -316,15 +326,16 @@ def test_from_feather():
     teardown_feather_file()
 
 
-# def test_from_hdf():
-#     setup_hdf_file(SMALL_ROW_SIZE)
-#
-#     pd_df = pd.read_hdf(TEST_HDF_FILENAME, key='test')
-#     ray_df = io.read_hdf(TEST_HDF_FILENAME, key='test')
-#
-#     assert ray_df_equals_pandas(ray_df, pd_df)
-#
-#     teardown_hdf_file()
+@pytest.mark.skip(reason="Memory overflow")
+def test_from_hdf():
+    setup_hdf_file(SMALL_ROW_SIZE)
+
+    pd_df = pd.read_hdf(TEST_HDF_FILENAME, key='test')
+    ray_df = io.read_hdf(TEST_HDF_FILENAME, key='test')
+
+    assert ray_df_equals_pandas(ray_df, pd_df)
+
+    teardown_hdf_file()
 
 
 def test_from_msgpack():
