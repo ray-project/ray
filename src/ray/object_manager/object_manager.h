@@ -26,20 +26,19 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/object_manager_client_connection.h"
 #include "ray/object_manager/object_store_notification_manager.h"
-#include "ray/object_manager/transfer_queue.h"
 
 namespace ray {
 
 struct ObjectManagerConfig {
   /// The time in milliseconds to wait before retrying a pull
   /// that failed due to client id lookup.
-  uint pull_timeout_ms = 100;
+  uint pull_timeout_ms;
   /// Maximum number of sends allowed.
-  int max_sends = 2;
+  int max_sends;
   /// Maximum number of receives allowed.
-  int max_receives = 2;
+  int max_receives;
   /// Object chunk size, in bytes
-  uint64_t object_chunk_size = std::pow(10, 8);
+  uint64_t object_chunk_size;
   // TODO(hme): Implement num retries (to avoid infinite retries).
   std::string store_socket_name;
 };
@@ -50,11 +49,9 @@ class ObjectManager {
   /// Implicitly instantiates Ray implementation of ObjectDirectory.
   ///
   /// \param main_service The main asio io_service.
-  /// \param object_manager_service The asio io_service tied to the object manager.
   /// \param config ObjectManager configuration.
   /// \param gcs_client A client connection to the Ray GCS.
   explicit ObjectManager(boost::asio::io_service &main_service,
-                         std::unique_ptr<boost::asio::io_service> object_manager_service,
                          const ObjectManagerConfig &config,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
@@ -63,11 +60,9 @@ class ObjectManager {
   /// the given ObjectDirectory instance.
   ///
   /// \param main_service The main asio io_service.
-  /// \param object_manager_service The asio io_service tied to the object manager.
   /// \param config ObjectManager configuration.
   /// \param od An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
-                         std::unique_ptr<boost::asio::io_service> object_manager_service,
                          const ObjectManagerConfig &config,
                          std::unique_ptr<ObjectDirectoryInterface> od);
 
@@ -152,25 +147,33 @@ class ObjectManager {
 
  private:
   ClientID client_id_;
-  ObjectManagerConfig config_;
+  const ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;
   ObjectStoreNotificationManager store_notification_;
   ObjectBufferPool buffer_pool_;
 
-  /// An io service for creating connections to other object managers.
-  /// This runs on a thread pool.
-  std::unique_ptr<boost::asio::io_service> object_manager_service_;
+  /// This runs on a thread pool dedicated to sending objects.
+  boost::asio::io_service send_service_;
+  /// This runs on a thread pool dedicated to receiving objects.
+  boost::asio::io_service receive_service_;
+
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
   boost::asio::io_service *main_service_;
 
-  /// Used to create "work" for an io service, so when it's run, it doesn't exit.
-  boost::asio::io_service::work work_;
+  /// Used to create "work" for send_service_.
+  /// Without this, if send_service_ has no more sends to process, it will stop.
+  boost::asio::io_service::work send_work_;
+  /// Used to create "work" for receive_service_.
+  /// Without this, if receive_service_ has no more receives to process, it will stop.
+  boost::asio::io_service::work receive_work_;
 
-  /// Thread pool for executing asynchronous handlers.
-  /// These run the object_manager_service_, which handle
-  /// all incoming and outgoing object transfers.
-  std::vector<std::thread> io_threads_;
+  /// Runs the send service, which handle
+  /// all outgoing object transfers.
+  std::vector<std::thread> send_threads_;
+  /// Runs the receive service, which handle
+  /// all incoming object transfers.
+  std::vector<std::thread> receive_threads_;
 
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;
@@ -179,20 +182,6 @@ class ObjectManager {
   std::unordered_map<ObjectID, std::shared_ptr<boost::asio::deadline_timer>,
                      UniqueIDHasher>
       pull_requests_;
-
-  /// Allows control of concurrent object transfers. This is a global queue,
-  /// allowing for concurrent transfers with many object managers as well as
-  /// concurrent transfers, including both sends and receives, with a single
-  /// remote object manager.
-  TransferQueue transfer_queue_;
-
-  /// Variables to track number of concurrent sends and receives.
-  std::atomic<int> num_transfers_send_;
-  std::atomic<int> num_transfers_receive_;
-
-  /// Size of thread pool. This is the sum of
-  /// config_.max_sends and config_.max_receives
-  const int num_threads_;
 
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
@@ -206,21 +195,21 @@ class ObjectManager {
 
   /// Record an object receive as soon as one of its chunks begins
   /// being received.
-  void AddObjectInTransit(const ObjectID &object_id){
+  void AddObjectInTransit(const ObjectID &object_id) {
     std::lock_guard<std::mutex> guard(in_transit_receives_lock_);
     in_transit_receives_.insert(object_id);
   }
 
   /// Remove an object receive as soon as the object store dispatches
   /// an added event.
-  void RemoveObjectInTransit(const ObjectID &object_id){
+  void RemoveObjectInTransit(const ObjectID &object_id) {
     std::lock_guard<std::mutex> guard(in_transit_receives_lock_);
     in_transit_receives_.erase(object_id);
   }
 
   /// Returns true if an object receive is currently in transit.
   /// This is checked by the Pull method.
-  bool ObjectInTransitOrLocal(const ObjectID &object_id){
+  bool ObjectInTransitOrLocal(const ObjectID &object_id) {
     std::lock_guard<std::mutex> guard(in_transit_receives_lock_);
     return in_transit_receives_.count(object_id) > 0 ||
            local_objects_.count(object_id) > 0;
@@ -228,7 +217,8 @@ class ObjectManager {
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
-  void IOServiceLoop();
+  void RunSendService();
+  void RunReceiveService();
   void StopIOService();
 
   /// Register object add with directory.
@@ -268,47 +258,36 @@ class ObjectManager {
   ray::Status PullSendRequest(const ObjectID &object_id,
                               std::shared_ptr<SenderConnection> conn);
 
-  /// Starts as many queued sends and receives as possible without exceeding
-  /// config_.max_sends and config_.max_receives, respectively.
-  /// Executes on object_manager_service_ thread pool.
-  ray::Status DequeueTransfers();
-
   std::shared_ptr<SenderConnection> CreateSenderConnection(
       ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
 
-  /// Invoked when a transfer is completed. Invokes DequeueTransfers after
-  /// updating variables that track concurrent transfers.
-  /// Executes on object_manager_service_ thread pool.
-  ray::Status TransferCompleted(TransferQueue::TransferType type);
-
   /// Begin executing a send.
-  /// Executes on object_manager_service_ thread pool.
-  ray::Status ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
-                                uint64_t data_size, uint64_t metadata_size,
-                                uint64_t chunk_index,
-                                const RemoteConnectionInfo &connection_info);
+  /// Executes on send_service_ thread pool.
+  void ExecuteSendObject(const ClientID &client_id, const ObjectID &object_id,
+                         uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
+                         const RemoteConnectionInfo &connection_info);
   /// This method synchronously sends the object id and object size
   /// to the remote object manager.
-  /// Executes on object_manager_service_ thread pool.
+  /// Executes on send_service_ thread pool.
   ray::Status SendObjectHeaders(const ObjectID &object_id, uint64_t data_size,
                                 uint64_t metadata_size, uint64_t chunk_index,
                                 std::shared_ptr<SenderConnection> conn);
 
   /// This method initiates the actual object transfer.
-  /// Executes on object_manager_service_ thread pool.
+  /// Executes on send_service_ thread pool.
   ray::Status SendObjectData(const ObjectID &object_id,
                              const ObjectBufferPool::ChunkInfo &chunk_info,
                              std::shared_ptr<SenderConnection> conn);
 
   /// Invoked when a remote object manager pushes an object to this object manager.
-  /// This will queue the receive.
+  /// This will invoke the object receive on the receive_service_ thread pool.
   void ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn,
                           const uint8_t *message);
-  /// Execute a receive that was in the queue.
-  ray::Status ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
-                                   uint64_t data_size, uint64_t metadata_size,
-                                   uint64_t chunk_index,
-                                   std::shared_ptr<TcpClientConnection> conn);
+  /// Execute a receive on the receive_service_ thread pool.
+  void ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
+                            uint64_t data_size, uint64_t metadata_size,
+                            uint64_t chunk_index,
+                            std::shared_ptr<TcpClientConnection> conn);
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,

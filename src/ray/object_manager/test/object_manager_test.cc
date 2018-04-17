@@ -18,15 +18,13 @@ std::string store_executable;
 class MockServer {
  public:
   MockServer(boost::asio::io_service &main_service,
-             std::unique_ptr<boost::asio::io_service> object_manager_service,
              const ObjectManagerConfig &object_manager_config,
              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
       : object_manager_acceptor_(
             main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
-        object_manager_(main_service, std::move(object_manager_service),
-                        object_manager_config, gcs_client) {
+        object_manager_(main_service, object_manager_config, gcs_client) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
@@ -108,26 +106,34 @@ class TestObjectManager : public ::testing::Test {
   void SetUp() {
     flushall_redis();
 
-    object_manager_service_1.reset(new boost::asio::io_service());
-    object_manager_service_2.reset(new boost::asio::io_service());
-
     // start store
     store_id_1 = StartStore(UniqueID::from_random().hex());
     store_id_2 = StartStore(UniqueID::from_random().hex());
+
+    uint pull_timeout_ms = 1;
+    int max_sends = 2;
+    int max_receives = 2;
+    uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_id_1;
-    server1.reset(new MockServer(main_service, std::move(object_manager_service_1),
-                                 om_config_1, gcs_client_1));
+    om_config_1.pull_timeout_ms = pull_timeout_ms;
+    om_config_1.max_sends = max_sends;
+    om_config_1.max_receives = max_receives;
+    om_config_1.object_chunk_size = object_chunk_size;
+    server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_id_2;
-    server2.reset(new MockServer(main_service, std::move(object_manager_service_2),
-                                 om_config_2, gcs_client_2));
+    om_config_2.pull_timeout_ms = pull_timeout_ms;
+    om_config_2.max_sends = max_sends;
+    om_config_2.max_receives = max_receives;
+    om_config_2.object_chunk_size = object_chunk_size;
+    server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
     ARROW_CHECK_OK(client1.Connect(store_id_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
@@ -165,8 +171,6 @@ class TestObjectManager : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::unique_ptr<boost::asio::io_service> object_manager_service_1;
-  std::unique_ptr<boost::asio::io_service> object_manager_service_2;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
   std::unique_ptr<MockServer> server1;
