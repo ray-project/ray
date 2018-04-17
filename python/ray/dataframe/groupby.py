@@ -232,7 +232,7 @@ class DataFrameGroupBy(object):
 
     def sum(self, **kwargs):
         return self._apply_agg_function(lambda df:
-                                    df.sum(axis=self._axis, **kwargs))
+                                        df.sum(axis=self._axis, **kwargs))
 
     def __unicode__(self):
         raise NotImplementedError("Not Yet implemented.")

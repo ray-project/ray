@@ -723,7 +723,7 @@ class DataFrame(object):
         _axis = kwargs.pop('_axis', None)
         if _axis is None:
             _axis = getattr(self, 'axis', 0)
-        _level = kwargs.pop('_level', None)
+        kwargs.pop('_level', None)
 
         if isinstance(arg, compat.string_types):
             return self._string_function(arg, *args, **kwargs)
@@ -808,7 +808,7 @@ class DataFrame(object):
             if is_transform:
                 if is_scalar(new_df) or len(new_df) != len(df):
                     raise ValueError("transforms cannot produce "
-                                 "aggregated results")
+                                     "aggregated results")
 
             return is_series, new_df, index, columns
 

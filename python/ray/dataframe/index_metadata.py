@@ -275,6 +275,7 @@ class _IndexMetadata(_IndexMetadataBase):
         return _IndexMetadata(coord_df_oid=self._coord_df,
                               lengths_oid=self._lengths)
 
+
 class _WrappingIndexMetadata(_IndexMetadata):
     """IndexMetadata implementation for index across a non-partitioned axis.
     This implementation assumes the underlying index lies across one partition.
