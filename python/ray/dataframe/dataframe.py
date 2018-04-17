@@ -92,7 +92,6 @@ class DataFrame(object):
             axis = 0
             columns = pd_df.columns
             index = pd_df.index
-
         else:
             # created this invariant to make sure we never have to go into the
             # partitions to get the columns
@@ -103,20 +102,15 @@ class DataFrame(object):
             if block_partitions is not None:
                 # put in numpy array here to make accesses easier since it's 2D
                 self._block_partitions = np.array(block_partitions)
-
                 assert self._block_partitions.ndim == 2, \
                     "Block Partitions must be 2D."
             else:
                 if row_partitions is not None:
                     axis = 0
                     partitions = row_partitions
-                    # if row_metadata is not None:
-                    #     self._row_metadata = row_metadata.copy()
                 elif col_partitions is not None:
                     axis = 1
                     partitions = col_partitions
-                    # if col_metadata is not None:
-                    #     self._col_metadata = col_metadata.copy()
 
                 self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
@@ -906,33 +900,27 @@ class DataFrame(object):
         """Apply a function along input axis of DataFrame.
 
         Args:
-            func:
-            axis:
-            broadcast:
-            raw:
-            reduce:
-            args:
-            kwds:
+            func: The function to apply
+            axis: The axis over which to apply the func.
+            broadcast: Whether or not to broadcast.
+            raw: Whether or not to convert to a Series.
+            reduce: Whether or not to try to apply reduction procedures.
 
         Returns:
             Series or DataFrame, depending on func.
         """
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        # if axis == 0 and isinstance(func, (list, dict)):
-        #     return self.aggregate(func, axis=axis, *args, **kwds)
-
         if isinstance(func, compat.string_types):
             if axis == 1:
                 kwds['axis'] = axis
             return getattr(self, func)(*args, **kwds)
-        else:# callable(func):
+        elif callable(func):
             return self._callable_function(func, axis=axis, *args, **kwds)
-        # else:
-        #
-        #     raise NotImplementedError(
-        #         "To contribute to Pandas on Ray, please visit "
-        #         "github.com/ray-project/ray.")
+        else:
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
 
     def as_blocks(self, copy=True):
         raise NotImplementedError(
