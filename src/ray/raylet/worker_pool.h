@@ -27,10 +27,17 @@ class WorkerPool {
   /// pool.
   ///
   /// \param num_workers The number of workers to start.
+  /// \param worker_command The command used to start the worker process.
   WorkerPool(int num_workers, const std::vector<std::string> &worker_command);
 
+  /// Create a pool with zero workers.
+  ///
+  /// \param num_workers The number of workers to start.
+  /// \param worker_command The command used to start the worker process.
+  WorkerPool(const std::vector<std::string> &worker_command);
+
   /// Destructor responsible for freeing a set of workers owned by this class.
-  ~WorkerPool();
+  virtual ~WorkerPool();
 
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
@@ -80,6 +87,17 @@ class WorkerPool {
   /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size() const;
 
+protected:
+  /// Add started worker PID to the internal list of started workers (for testing).
+  ///
+  /// \param pid A process identifier for the worker being started.
+  void AddStartedWorker(pid_t pid);
+
+  /// Return a number of workers currently started but not registered.
+  ///
+  /// \return The number of worker PIDs stored for started workers.
+  uint32_t NumStartedWorkers() const;
+
  private:
   std::vector<std::string> worker_command_;
   /// The pool of idle workers.
@@ -90,7 +108,7 @@ class WorkerPool {
   /// idle and executing.
   // TODO(swang): Make this a map to make GetRegisteredWorker faster.
   std::list<std::shared_ptr<Worker>> registered_workers_;
-  std::unordered_set<pid_t> started_worker_pids;
+  std::unordered_set<pid_t> started_worker_pids_;
 };
 
 }  // namespace raylet
