@@ -204,7 +204,7 @@ class ObjectManager {
 
   /// Returns true if an object receive is currently in transit.
   /// This is checked by the Pull method.
-  bool ObjectInTransitOrLocal(const ObjectID &object_id) {
+  bool ObjectInTransitOrLocal(const ObjectID &object_id) const {
     return in_transit_receives_.count(object_id) > 0 ||
            local_objects_.count(object_id) > 0;
   }
