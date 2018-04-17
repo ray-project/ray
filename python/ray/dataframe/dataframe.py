@@ -1064,9 +1064,17 @@ class DataFrame(object):
                 result = []
                 for key in func:
                     part, ind = self._col_metadata[key]
+
+                    if isinstance(func[key], compat.string_types):
+                        if axis == 1:
+                            kwds['axis'] = axis
+                        f = getattr(pd.core.series.Series, func[key])
+                    else:
+                        f = func[key]
+
                     def helper(df):
                         x = df.iloc[:, ind]
-                        return func[key](x)
+                        return f(x)
 
                     result.append(_deploy_func.remote(helper,
                         self._col_partitions[part]))
