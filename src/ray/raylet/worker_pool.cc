@@ -42,7 +42,8 @@ void WorkerPool::StartWorker(bool force_start) {
     return;
   }
   // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(DEBUG) << "starting worker, actor pool " << actor_pool_.size() << " task pool " << pool_.size();
+  RAY_LOG(DEBUG) << "starting worker, actor pool " << actor_pool_.size() << " task pool "
+                 << pool_.size();
 
   // Launch the process to create the worker.
   pid_t pid = fork();

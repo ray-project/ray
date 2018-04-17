@@ -30,7 +30,7 @@ bool ResourceSet::operator==(const ResourceSet &rhs) const {
 bool ResourceSet::IsEmpty() const {
   // Check whether the capacity of each resource type is zero. Exit early if not.
   if (resource_capacity_.empty()) return true;
-  for (const auto &resource_pair: resource_capacity_) {
+  for (const auto &resource_pair : resource_capacity_) {
     if (resource_pair.second > 0) {
       return false;
     }
