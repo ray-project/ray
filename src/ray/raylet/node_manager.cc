@@ -261,6 +261,31 @@ void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client
   client->ProcessMessages();
 }
 
+void NodeManager::DispatchTasks() {
+  // Work with a copy of scheduled tasks.
+  auto scheduled_tasks = local_queues_.GetScheduledTasks();
+  // Return if there are no tasks to schedule.
+  if (scheduled_tasks.empty()) {
+    return;
+  }
+  const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
+
+  for (const auto &task : scheduled_tasks) {
+    const auto &local_resources =
+        cluster_resource_map_[my_client_id].GetAvailableResources();
+    const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
+    if (!task_resources.IsSubset(local_resources)) {
+      // Not enough local resources for this task right now, skip this task.
+      continue;
+    }
+    // We have enough resources for this task. Assign task.
+    // TODO(atumanov): perform the task state/queue transition inside AssignTask.
+    auto dispatched_task =
+        local_queues_.RemoveTasks({task.GetTaskSpecification().TaskId()});
+    AssignTask(dispatched_task.front());
+  }
+}
+
 void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> client,
                                        int64_t message_type,
                                        const uint8_t *message_data) {
@@ -285,21 +310,9 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     }
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(worker);
-    // Check if there is a scheduled task that can now be assigned to the newly
-    // idle worker.
-    auto scheduled_tasks = local_queues_.GetScheduledTasks();
-    if (!scheduled_tasks.empty()) {
-      // Find a scheduled task that whose actor ID matches that of the newly
-      // idle worker.
-      auto worker_actor_id = worker->GetActorId();
-      for (const auto &task : scheduled_tasks) {
-        if (task.GetTaskSpecification().ActorId() == worker_actor_id) {
-          auto scheduled_tasks =
-              local_queues_.RemoveTasks({task.GetTaskSpecification().TaskId()});
-          AssignTask(scheduled_tasks.front());
-        }
-      }
-    }
+    // Call task dispatch to assign work to the new worker.
+    DispatchTasks();
+
   } break;
   case protocol::MessageType_DisconnectClient: {
     // Remove the dead worker from the pool and stop listening for messages.
@@ -374,6 +387,7 @@ void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
 }
 
 void NodeManager::ScheduleTasks() {
+  // This method performs the transition of tasks from PENDING to SCHEDULED.
   auto policy_decision = scheduling_policy_.Schedule(
       cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(),
       remote_clients_);
@@ -386,7 +400,7 @@ void NodeManager::ScheduleTasks() {
 
   // Extract decision for this local scheduler.
   std::unordered_set<TaskID, UniqueIDHasher> local_task_ids;
-  // Iterate over (taskid, clientid) pairs, extract tasks to run on the local client.
+  // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
   for (const auto &task_schedule : policy_decision) {
     TaskID task_id = task_schedule.first;
     ClientID client_id = task_schedule.second;
@@ -402,11 +416,10 @@ void NodeManager::ScheduleTasks() {
     }
   }
 
-  // Assign the tasks to workers.
+  // Transition locally scheduled tasks to SCHEDULED and dispatch scheduled tasks.
   std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
-  for (auto &task : tasks) {
-    AssignTask(task);
-  }
+  local_queues_.QueueScheduledTasks(tasks);
+  DispatchTasks();
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage) {
@@ -481,11 +494,6 @@ void NodeManager::AssignTask(Task &task) {
     }
   }
 
-  // Resource accounting: acquire resources for the scheduled task.
-  const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
-  RAY_CHECK(
-      this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
-
   // Try to get an idle worker that can execute this task.
   std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec.ActorId());
   if (worker == nullptr) {
@@ -509,6 +517,11 @@ void NodeManager::AssignTask(Task &task) {
   auto status = worker->Connection()->WriteMessage(protocol::MessageType_ExecuteTask,
                                                    fbb.GetSize(), fbb.GetBufferPointer());
   if (status.ok()) {
+    // Resource accounting: acquire resources for the assigned task.
+    const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
+    RAY_CHECK(
+        this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
+
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
     // If the task was an actor task, then record this execution to guarantee
