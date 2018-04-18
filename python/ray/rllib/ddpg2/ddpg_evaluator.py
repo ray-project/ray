@@ -41,15 +41,15 @@ class DDPGEvaluator(PolicyEvaluator):
         if config["per_worker_exploration"]:
             assert config["num_workers"] > 1, "This requires multiple workers"
             self.exploration = ConstantSchedule(
-                config["noise_scale"] * 0.4 ** (
-                    1 + worker_index / float(config["num_workers"] - 1) * 7))
+                config["noise_scale"] * 0.4**
+                (1 + worker_index / float(config["num_workers"] - 1) * 7))
         else:
             self.exploration = LinearSchedule(
-                schedule_timesteps=int(
-                    config["exploration_fraction"] *
-                    config["schedule_max_timesteps"]),
+                schedule_timesteps=int(config["exploration_fraction"] *
+                                       config["schedule_max_timesteps"]),
                 initial_p=config["noise_scale"] * 1.0,
-                final_p=config["noise_scale"] * config["exploration_final_eps"])
+                final_p=config["noise_scale"] *
+                config["exploration_final_eps"])
 
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())
@@ -90,22 +90,24 @@ class DDPGEvaluator(PolicyEvaluator):
         if self.config["n_step"] > 1:
             # Adjust for steps lost from truncation
             self.local_timestep -= (self.config["n_step"] - 1)
-            adjust_nstep(
-                self.config["n_step"], self.config["gamma"],
-                obs, actions, rewards, new_obs, dones)
+            adjust_nstep(self.config["n_step"], self.config["gamma"], obs,
+                         actions, rewards, new_obs, dones)
 
         batch = SampleBatch({
-            "obs": [pack(np.array(o)) for o in obs], "actions": actions,
+            "obs": [pack(np.array(o)) for o in obs],
+            "actions": actions,
             "rewards": rewards,
-            "new_obs": [pack(np.array(o)) for o in new_obs], "dones": dones,
-            "weights": np.ones_like(rewards)})
+            "new_obs": [pack(np.array(o)) for o in new_obs],
+            "dones": dones,
+            "weights": np.ones_like(rewards)
+        })
         assert (batch.count == self.config["sample_batch_size"])
 
         # Prioritize on the worker side
         if self.config["worker_side_prioritization"]:
             td_errors = self.ddpg_graph.compute_td_error(
-                self.sess, obs, batch["actions"], batch["rewards"],
-                new_obs, batch["dones"], batch["weights"])
+                self.sess, obs, batch["actions"], batch["rewards"], new_obs,
+                batch["dones"], batch["weights"])
             new_priorities = (
                 np.abs(td_errors) + self.config["prioritized_replay_eps"])
             batch.data["weights"] = new_priorities
@@ -136,7 +138,8 @@ class DDPGEvaluator(PolicyEvaluator):
     def _step(self, global_timestep):
         """Takes a single step, and returns the result of the step."""
         action = self.ddpg_graph.act(
-            self.sess, np.array(self.obs)[None],
+            self.sess,
+            np.array(self.obs)[None],
             self.exploration.value(global_timestep))[0]
         new_obs, rew, done, _ = self.env.step(action)
         ret = (self.obs, action, rew, new_obs, float(done))
@@ -168,13 +171,10 @@ class DDPGEvaluator(PolicyEvaluator):
 
     def save(self):
         return [
-            self.exploration,
-            self.episode_rewards,
-            self.episode_lengths,
-            self.saved_mean_reward,
-            self.obs,
-            self.global_timestep,
-            self.local_timestep]
+            self.exploration, self.episode_rewards, self.episode_lengths,
+            self.saved_mean_reward, self.obs, self.global_timestep,
+            self.local_timestep
+        ]
 
     def restore(self, data):
         self.exploration = data[0]
