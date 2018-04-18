@@ -2,7 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import pandas.core.groupby
 
+from .utils import _inherit_docstrings
+
+
+@_inherit_docstrings(pandas.core.groupby.DataFrameGroupBy)
 class DataFrameGroupBy(object):
 
     def __init__(self, partitions, columns, index):

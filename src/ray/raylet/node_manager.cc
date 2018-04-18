@@ -42,6 +42,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : io_service_(io_service),
+      object_manager_(object_manager),
+      gcs_client_(gcs_client),
       heartbeat_timer_(io_service),
       heartbeat_period_ms_(config.heartbeat_period_ms),
       local_resources_(config.resource_config),
@@ -53,11 +55,10 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           object_manager,
           // reconstruction_policy_,
           [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
-      lineage_cache_(gcs_client->raylet_task_table()),
-      gcs_client_(gcs_client),
+      lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
+                     gcs_client->raylet_task_table(), gcs_client->raylet_task_table()),
       remote_clients_(),
       remote_server_connections_(),
-      object_manager_(object_manager),
       actor_registry_() {
   RAY_CHECK(heartbeat_period_ms_ > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -67,6 +68,18 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 }
 
 ray::Status NodeManager::RegisterGcs() {
+  // Subscribe to task entry commits in the GCS. These notifications are
+  // forwarded to the lineage cache, which requests notifications about tasks
+  // that were executed remotely.
+  const auto task_committed_callback = [this](gcs::AsyncGcsClient *client,
+                                              const TaskID &task_id,
+                                              const ray::protocol::TaskT &task_data) {
+    lineage_cache_.HandleEntryCommitted(task_id);
+  };
+  RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
+      JobID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      task_committed_callback, nullptr));
+
   // Register a callback for actor creation notifications.
   auto actor_creation_callback = [this](
       gcs::AsyncGcsClient *client, const ActorID &actor_id,
@@ -141,7 +154,7 @@ void NodeManager::Heartbeat() {
 
 void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   ClientID client_id = ClientID::from_binary(client_data.client_id);
-  RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id.hex();
+  RAY_LOG(DEBUG) << "[ClientAdded] received callback from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Save this NodeManager's resource information in the cluster resource map.
@@ -152,12 +165,12 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
   // TODO(atumanov): make remote client lookup O(1)
   if (std::find(remote_clients_.begin(), remote_clients_.end(), client_id) ==
       remote_clients_.end()) {
-    RAY_LOG(DEBUG) << "a new client: " << client_id.hex();
+    RAY_LOG(DEBUG) << "a new client: " << client_id;
     remote_clients_.push_back(client_id);
   } else {
     // NodeManager connection to this client was already established.
     RAY_LOG(DEBUG) << "received a new client connection that already exists: "
-                   << client_id.hex();
+                   << client_id;
     return;
   }
 
@@ -180,8 +193,7 @@ void NodeManager::ClientAdded(const ClientTableDataT &client_data) {
 
 void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &client_id,
                                  const HeartbeatTableDataT &heartbeat_data) {
-  RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id "
-                 << client_id.hex();
+  RAY_LOG(DEBUG) << "[HeartbeatAdded]: received heartbeat from client id " << client_id;
   if (client_id == gcs_client_->client_table().GetLocalClientId()) {
     // Skip heartbeats from self.
     return;
@@ -191,7 +203,7 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   if (this->cluster_resource_map_.count(client_id) == 0) {
     // Haven't received the client registration for this client yet, skip this heartbeat.
     RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
-                  << client_id.hex();
+                  << client_id;
     return;
   }
   SchedulingResources &resources = this->cluster_resource_map_[client_id];
@@ -317,7 +329,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     // TODO(hme): handle multiple object ids.
     auto message = flatbuffers::GetRoot<protocol::ReconstructObject>(message_data);
     ObjectID object_id = from_flatbuf(*message->object_id());
-    RAY_LOG(DEBUG) << "reconstructing object " << object_id.hex();
+    RAY_LOG(DEBUG) << "reconstructing object " << object_id;
     RAY_CHECK_OK(object_manager_.Pull(object_id));
   } break;
 
@@ -369,7 +381,7 @@ void NodeManager::ScheduleTasks() {
   for (const auto &pair : policy_decision) {
     TaskID task_id = pair.first;
     ClientID client_id = pair.second;
-    RAY_LOG(DEBUG) << task_id.hex() << " --> " << client_id.hex();
+    RAY_LOG(DEBUG) << task_id << " --> " << client_id;
   }
 
   // Extract decision for this local scheduler.
@@ -598,8 +610,7 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   auto request = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
   fbb.Finish(request);
 
-  RAY_LOG(DEBUG) << "Forwarding task " << task_id.hex() << " to " << node_id.hex()
-                 << " spillback="
+  RAY_LOG(DEBUG) << "Forwarding task " << task_id << " to " << node_id << " spillback="
                  << lineage_cache_entry_task.GetTaskExecutionSpec().NumForwards();
 
   auto client_info = gcs_client_->client_table().GetClient(node_id);
@@ -607,8 +618,7 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   // Lookup remote server connection for this node_id and use it to send the request.
   if (remote_server_connections_.count(node_id) == 0) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
-    RAY_LOG(INFO) << "No NodeManager connection found for GCS client id "
-                  << node_id.hex();
+    RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id;
     return ray::Status::IOError("NodeManager connection not found");
   }
 
@@ -623,8 +633,8 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   } else {
     // TODO(atumanov): caller must handle ForwardTask failure to ensure tasks are not
     // lost.
-    RAY_LOG(FATAL) << "[NodeManager][ForwardTask] failed to forward task "
-                   << task_id.hex() << " to node " << node_id.hex();
+    RAY_LOG(FATAL) << "[NodeManager][ForwardTask] failed to forward task " << task_id
+                   << " to node " << node_id;
   }
   return status;
 }

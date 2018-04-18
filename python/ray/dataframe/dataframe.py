@@ -32,11 +32,13 @@ from .utils import (
     to_pandas,
     _blocks_to_col,
     _blocks_to_row,
-    _create_block_partitions)
+    _create_block_partitions,
+    _inherit_docstrings)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
 
+@_inherit_docstrings(pd.DataFrame)
 class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
@@ -2943,9 +2945,7 @@ class DataFrame(object):
         # see if we can slice the rows
         indexer = self._row_metadata.convert_to_index_sliceable(key)
         if indexer is not None:
-            raise NotImplementedError("To contribute to Pandas on Ray, please"
-                                      "visit github.com/ray-project/ray.")
-            # return self._getitem_slice(indexer)
+            return self._getitem_slice(indexer)
 
         if isinstance(key, (pd.Series, np.ndarray, pd.Index, list)):
             return self._getitem_array(key)
@@ -3012,6 +3012,15 @@ class DataFrame(object):
         return _deploy_func.remote(
             lambda df: df.__getitem__(index),
             self._col_partitions[part])
+
+    def _getitem_slice(self, key):
+        new_cols = _map_partitions(lambda df: df[key],
+                                   self._col_partitions)
+
+        index = self.index[key]
+        return DataFrame(col_partitions=new_cols,
+                         index=index,
+                         columns=self.columns)
 
     def __getattr__(self, key):
         """After regular attribute access, looks up the name in the columns

@@ -7,8 +7,8 @@ import json
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.commands import (
-    create_or_update_cluster, teardown_cluster, get_head_node_ip)
+from ray.autoscaler.commands import (create_or_update_cluster,
+                                     teardown_cluster, get_head_node_ip)
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -41,58 +41,116 @@ def cli():
 
 
 @click.command()
-@click.option("--node-ip-address", required=False, type=str,
-              help="the IP address of this node")
-@click.option("--redis-address", required=False, type=str,
-              help="the address to use for connecting to Redis")
-@click.option("--redis-port", required=False, type=str,
-              help="the port to use for starting Redis")
-@click.option("--num-redis-shards", required=False, type=int,
-              help=("the number of additional Redis shards to use in "
-                    "addition to the primary Redis shard"))
-@click.option("--redis-max-clients", required=False, type=int,
-              help=("If provided, attempt to configure Redis with this "
-                    "maximum number of clients."))
-@click.option("--redis-shard-ports", required=False, type=str,
-              help="the port to use for the Redis shards other than the "
-                   "primary Redis shard")
-@click.option("--object-manager-port", required=False, type=int,
-              help="the port to use for starting the object manager")
-@click.option("--object-store-memory", required=False, type=int,
-              help="the maximum amount of memory (in bytes) to allow the "
-                   "object store to use")
-@click.option("--num-workers", required=False, type=int,
-              help=("The initial number of workers to start on this node, "
-                    "note that the local scheduler may start additional "
-                    "workers. If you wish to control the total number of "
-                    "concurent tasks, then use --resources instead and "
-                    "specify the CPU field."))
-@click.option("--num-cpus", required=False, type=int,
-              help="the number of CPUs on this node")
-@click.option("--num-gpus", required=False, type=int,
-              help="the number of GPUs on this node")
-@click.option("--resources", required=False, default="{}", type=str,
-              help="a JSON serialized dictionary mapping resource name to "
-                   "resource quantity")
-@click.option("--head", is_flag=True, default=False,
-              help="provide this argument for the head node")
-@click.option("--no-ui", is_flag=True, default=False,
-              help="provide this argument if the UI should not be started")
-@click.option("--block", is_flag=True, default=False,
-              help="provide this argument to block forever in this command")
-@click.option("--plasma-directory", required=False, type=str,
-              help="object store directory for memory mapped files")
-@click.option("--huge-pages", is_flag=True, default=False,
-              help="enable support for huge pages in the object store")
-@click.option("--autoscaling-config", required=False, type=str,
-              help="the file that contains the autoscaling config")
-@click.option("--use-raylet", is_flag=True, default=False,
-              help="use the raylet code path, this is not supported yet")
+@click.option(
+    "--node-ip-address",
+    required=False,
+    type=str,
+    help="the IP address of this node")
+@click.option(
+    "--redis-address",
+    required=False,
+    type=str,
+    help="the address to use for connecting to Redis")
+@click.option(
+    "--redis-port",
+    required=False,
+    type=str,
+    help="the port to use for starting Redis")
+@click.option(
+    "--num-redis-shards",
+    required=False,
+    type=int,
+    help=("the number of additional Redis shards to use in "
+          "addition to the primary Redis shard"))
+@click.option(
+    "--redis-max-clients",
+    required=False,
+    type=int,
+    help=("If provided, attempt to configure Redis with this "
+          "maximum number of clients."))
+@click.option(
+    "--redis-shard-ports",
+    required=False,
+    type=str,
+    help="the port to use for the Redis shards other than the "
+    "primary Redis shard")
+@click.option(
+    "--object-manager-port",
+    required=False,
+    type=int,
+    help="the port to use for starting the object manager")
+@click.option(
+    "--object-store-memory",
+    required=False,
+    type=int,
+    help="the maximum amount of memory (in bytes) to allow the "
+    "object store to use")
+@click.option(
+    "--num-workers",
+    required=False,
+    type=int,
+    help=("The initial number of workers to start on this node, "
+          "note that the local scheduler may start additional "
+          "workers. If you wish to control the total number of "
+          "concurent tasks, then use --resources instead and "
+          "specify the CPU field."))
+@click.option(
+    "--num-cpus",
+    required=False,
+    type=int,
+    help="the number of CPUs on this node")
+@click.option(
+    "--num-gpus",
+    required=False,
+    type=int,
+    help="the number of GPUs on this node")
+@click.option(
+    "--resources",
+    required=False,
+    default="{}",
+    type=str,
+    help="a JSON serialized dictionary mapping resource name to "
+    "resource quantity")
+@click.option(
+    "--head",
+    is_flag=True,
+    default=False,
+    help="provide this argument for the head node")
+@click.option(
+    "--no-ui",
+    is_flag=True,
+    default=False,
+    help="provide this argument if the UI should not be started")
+@click.option(
+    "--block",
+    is_flag=True,
+    default=False,
+    help="provide this argument to block forever in this command")
+@click.option(
+    "--plasma-directory",
+    required=False,
+    type=str,
+    help="object store directory for memory mapped files")
+@click.option(
+    "--huge-pages",
+    is_flag=True,
+    default=False,
+    help="enable support for huge pages in the object store")
+@click.option(
+    "--autoscaling-config",
+    required=False,
+    type=str,
+    help="the file that contains the autoscaling config")
+@click.option(
+    "--use-raylet",
+    is_flag=True,
+    default=False,
+    help="use the raylet code path, this is not supported yet")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
-          head, no_ui, block, plasma_directory, huge_pages,
-          autoscaling_config, use_raylet):
+          head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
+          use_raylet):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -245,33 +303,54 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @click.command()
 def stop():
-    subprocess.call(["killall global_scheduler plasma_store plasma_manager "
-                     "local_scheduler raylet"], shell=True)
+    subprocess.call(
+        [
+            "killall global_scheduler plasma_store plasma_manager "
+            "local_scheduler raylet"
+        ],
+        shell=True)
 
     # Find the PID of the monitor process and kill it.
-    subprocess.call(["kill $(ps aux | grep monitor.py | grep -v grep | "
-                     "awk '{ print $2 }') 2> /dev/null"], shell=True)
+    subprocess.call(
+        [
+            "kill $(ps aux | grep monitor.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
 
     # Find the PID of the Redis process and kill it.
-    subprocess.call(["kill $(ps aux | grep redis-server | grep -v grep | "
-                     "awk '{ print $2 }') 2> /dev/null"], shell=True)
+    subprocess.call(
+        [
+            "kill $(ps aux | grep redis-server | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
 
     # Find the PIDs of the worker processes and kill them.
-    subprocess.call(["kill -9 $(ps aux | grep default_worker.py | "
-                     "grep -v grep | awk '{ print $2 }') 2> /dev/null"],
-                    shell=True)
+    subprocess.call(
+        [
+            "kill -9 $(ps aux | grep default_worker.py | "
+            "grep -v grep | awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
 
     # Find the PID of the Ray log monitor process and kill it.
-    subprocess.call(["kill $(ps aux | grep log_monitor.py | grep -v grep | "
-                     "awk '{ print $2 }') 2> /dev/null"], shell=True)
+    subprocess.call(
+        [
+            "kill $(ps aux | grep log_monitor.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
 
     # Find the PID of the jupyter process and kill it.
     try:
         from notebook.notebookapp import list_running_servers
-        pids = [str(server["pid"]) for server in list_running_servers()
-                if "/tmp/raylogs" in server["notebook_dir"]]
-        subprocess.call(["kill {} 2> /dev/null".format(
-            " ".join(pids))], shell=True)
+        pids = [
+            str(server["pid"]) for server in list_running_servers()
+            if "/tmp/raylogs" in server["notebook_dir"]
+        ]
+        subprocess.call(
+            ["kill {} 2> /dev/null".format(" ".join(pids))], shell=True)
     except ImportError:
         pass
 
@@ -279,29 +358,41 @@ def stop():
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
-    "--no-restart", is_flag=True, default=False, help=(
-        "Whether to skip restarting Ray services during the update. "
-        "This avoids interrupting running jobs."))
+    "--no-restart",
+    is_flag=True,
+    default=False,
+    help=("Whether to skip restarting Ray services during the update. "
+          "This avoids interrupting running jobs."))
 @click.option(
-    "--min-workers", required=False, type=int, help=(
-        "Override the configured min worker node count for the cluster."))
+    "--min-workers",
+    required=False,
+    type=int,
+    help=("Override the configured min worker node count for the cluster."))
 @click.option(
-    "--max-workers", required=False, type=int, help=(
-        "Override the configured max worker node count for the cluster."))
+    "--max-workers",
+    required=False,
+    type=int,
+    help=("Override the configured max worker node count for the cluster."))
 @click.option(
-    "--yes", "-y", is_flag=True, default=False, help=(
-        "Don't ask for confirmation."))
-def create_or_update(
-        cluster_config_file, min_workers, max_workers, no_restart, yes):
-    create_or_update_cluster(
-        cluster_config_file, min_workers, max_workers, no_restart, yes)
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help=("Don't ask for confirmation."))
+def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
+                     yes):
+    create_or_update_cluster(cluster_config_file, min_workers, max_workers,
+                             no_restart, yes)
 
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
-    "--yes", "-y", is_flag=True, default=False, help=(
-        "Don't ask for confirmation."))
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help=("Don't ask for confirmation."))
 def teardown(cluster_config_file, yes):
     teardown_cluster(cluster_config_file, yes)
 

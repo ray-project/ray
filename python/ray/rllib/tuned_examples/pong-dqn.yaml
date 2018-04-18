@@ -2,9 +2,6 @@
 pong-deterministic-dqn:
     env: PongDeterministic-v4
     run: DQN
-    trial_resources:
-        cpu: 1
-        gpu: 1
     stop:
         episode_reward_mean: 20
         time_total_s: 7200

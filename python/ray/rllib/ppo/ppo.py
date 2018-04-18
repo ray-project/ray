@@ -223,7 +223,7 @@ class PPOAgent(Agent):
             "shuffle_time": shuffle_time,
             "load_time": load_time,
             "sgd_time": sgd_time,
-            "sample_throughput": len(samples["observations"]) / sgd_time
+            "sample_throughput": len(samples["obs"]) / sgd_time
         }
 
         FilterManager.synchronize(

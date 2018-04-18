@@ -19,6 +19,7 @@ if(APPLE)
 endif(APPLE)
 
 include_directories("${PYTHON_INCLUDE_DIRS}")
+include_directories("${NUMPY_INCLUDE_DIR}")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wall")
 

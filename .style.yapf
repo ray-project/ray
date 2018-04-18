@@ -42,7 +42,7 @@ blank_line_before_nested_class_or_def=False
 #        'key1': 'value1',
 #        'key2': 'value2',
 #    })
-coalesce_brackets=False
+coalesce_brackets=True
 
 # The column limit.
 column_limit=79
@@ -90,7 +90,7 @@ i18n_function_call=
 #       'key2': value1 +
 #               value2,
 #   }
-indent_dictionary_value=False
+indent_dictionary_value=True
 
 # The number of columns to use for indentation.
 indent_width=4
@@ -187,4 +187,3 @@ split_penalty_logical_operator=300
 
 # Use the Tab character for indentation.
 use_tabs=False
-
