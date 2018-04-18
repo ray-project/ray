@@ -390,10 +390,10 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       const std::unordered_map<std::string, double> cpu_resources = {
           {kCPU_ResourceLabel, required_cpus}};
       // Acquire the CPU resources.
-      bool not_oversubscribed =
-          cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+      bool oversubscribed =
+          !cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
               ResourceSet(cpu_resources));
-      if (!not_oversubscribed) {
+      if (oversubscribed) {
         const SchedulingResources &local_resources =
             cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()];
         RAY_LOG(WARNING) << "Resources oversubscribed: "

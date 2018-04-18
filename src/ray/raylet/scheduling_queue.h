@@ -68,7 +68,8 @@ class SchedulingQueue {
   /// Get the tasks in the blocked state.
   ///
   /// \return A const reference to the queue of tasks that have been dispatched
-  /// to a worker but are blocked on a missing data dependency.
+  /// to a worker but are blocked on a data dependency discovered to be missing
+  /// at runtime.
   const std::list<Task> &GetBlockedTasks() const;
 
   /// Remove tasks from the task queue.
@@ -83,7 +84,8 @@ class SchedulingQueue {
   /// \param tasks The tasks to queue.
   void QueueUncreatedActorMethods(const std::vector<Task> &tasks);
 
-  /// Queue tasks in the waiting state.
+  /// Queue tasks in the waiting state. These are tasks that cannot yet be
+  /// scheduled since they are blocked on a missing data dependency.
   ///
   /// \param tasks The tasks to queue.
   void QueueWaitingTasks(const std::vector<Task> &tasks);
@@ -104,7 +106,8 @@ class SchedulingQueue {
   void QueueRunningTasks(const std::vector<Task> &tasks);
 
   /// Queue tasks in the blocked state. These are tasks that have been
-  /// dispatched to a worker but are blocked on a missing data dependency.
+  /// dispatched to a worker but are blocked on a data dependency that was
+  /// discovered to be missing at runtime.
   ///
   /// \param tasks The tasks to queue.
   void QueueBlockedTasks(const std::vector<Task> &tasks);
@@ -122,7 +125,7 @@ class SchedulingQueue {
   /// Tasks that are running on a worker.
   std::list<Task> running_tasks_;
   /// Tasks that were dispatched to a worker but are blocked on a data
-  /// dependency.
+  /// dependency that was missing at runtime.
   std::list<Task> blocked_tasks_;
 };
 
