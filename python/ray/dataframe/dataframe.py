@@ -714,7 +714,7 @@ class DataFrame(object):
                 pass
 
         if result is None:
-            del kwargs['is_transform']
+            kwargs.pop('is_transform', None)
             return self.apply(func, axis=axis, args=args, **kwargs)
 
         return result
@@ -911,6 +911,14 @@ class DataFrame(object):
         """
         axis = pd.DataFrame()._get_axis_number(axis)
 
+        if is_list_like(func) and not all([isinstance(obj, str)
+                                           for obj in func]):
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+
+        if axis == 0 and is_list_like(func):
+            return self.aggregate(func, axis, *args, **kwds)
         if isinstance(func, compat.string_types):
             if axis == 1:
                 kwds['axis'] = axis
