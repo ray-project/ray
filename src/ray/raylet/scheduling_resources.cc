@@ -85,7 +85,7 @@ bool ResourceSet::SubtractResources(const ResourceSet &other) {
       oversubscribed = true;
     }
   }
-  return not oversubscribed;
+  return !oversubscribed;
 }
 
 bool ResourceSet::AddResources(const ResourceSet &other) {
