@@ -389,7 +389,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
       double required_cpus = 0;
-      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, required_cpus));
+      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
       const std::unordered_map<std::string, double> cpu_resources = {
           {kCPU_ResourceLabel, required_cpus}};
       // Acquire the CPU resources.
