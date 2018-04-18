@@ -1,0 +1,29 @@
+multi-pendulum-shared:
+    env: DoubleMultiAgentPendulumEnv-v0
+    run: PPO
+    stop:
+        episode_reward_mean: -200
+        time_total_s: 1800
+    trial_resources:
+        cpu: 1
+        extra_cpu: 6
+    config:
+        num_workers: 6
+        model:
+            fcnet_hiddens: [32, 32]
+            custom_options:
+                multiagent_obs_shapes: [4, 4]
+                multiagent_act_shapes: [1, 1]
+                multiagent_shared_model: true
+                multiagent_fcnet_hiddens: [[16, 16], [16, 16]]
+        observation_filter: NoFilter
+        num_sgd_iter: 10
+        sgd_stepsize: .0003
+        sgd_batchsize: 640
+        timesteps_per_batch: 32000
+        num_workers: 6
+        gamma: .95
+        lambda: .99
+        env_config:
+            env_name: DoubleMultiAgentPendulumEnv
+            horizon: 200
