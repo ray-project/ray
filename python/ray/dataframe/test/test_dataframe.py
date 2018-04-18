@@ -327,7 +327,6 @@ def test_int_dataframe():
         test_transform(ray_df, pandas_df)
 
 
-
 def test_float_dataframe():
 
     pandas_df = pd.DataFrame({'col1': [0.0, 1.0, 2.0, 3.0],
@@ -376,7 +375,7 @@ def test_float_dataframe():
     test_query(ray_df, pandas_df, query_funcs)
 
     test_mean(ray_df, pandas_df)
-    #TODO Clear floating point error.
+    # TODO Clear floating point error.
     # test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
     test_median(ray_df, pandas_df)
@@ -540,7 +539,7 @@ def test_mixed_dtype_dataframe():
     test_query(ray_df, pandas_df, query_funcs)
 
     test_mean(ray_df, pandas_df)
-    #TODO Clear floating point error.
+    # TODO Clear floating point error.
     # test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
     test_median(ray_df, pandas_df)
@@ -771,7 +770,7 @@ def test_nan_dataframe():
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
 
     # TODO Nans are always not equal to each other, fix it
-    #test___array__(ray_df, pandas_df)
+    # test___array__(ray_df, pandas_df)
 
     apply_agg_functions = ['sum', lambda df: df.sum(), ['sum', 'mean'],
                            ['sum', 'sum']]
