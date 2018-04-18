@@ -957,8 +957,14 @@ def start_raylet(redis_address,
                                 plasma_store_name, raylet_name, redis_address))
 
     command = [
-        RAYLET_EXECUTABLE, raylet_name, plasma_store_name, node_ip_address,
-        gcs_ip_address, gcs_port, str(num_workers), start_worker_command,
+        RAYLET_EXECUTABLE,
+        raylet_name,
+        plasma_store_name,
+        node_ip_address,
+        gcs_ip_address,
+        gcs_port,
+        str(num_workers),
+        start_worker_command,
         resource_argument,
     ]
     pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
