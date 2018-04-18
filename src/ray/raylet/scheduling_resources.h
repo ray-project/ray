@@ -160,7 +160,9 @@ class SchedulingResources {
   /// \brief Acquire the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be acquired.
-  /// \return True if resources were successfully acquired. False otherwise.
+  /// \return True if resources were acquired without oversubscription. If this
+  /// returns false, then the resources were still acquired, but we are now at
+  /// negative resources.
   bool Acquire(const ResourceSet &resources);
 
  private:

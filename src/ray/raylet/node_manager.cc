@@ -344,6 +344,52 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     ObjectID object_id = from_flatbuf(*message->object_id());
     RAY_LOG(DEBUG) << "reconstructing object " << object_id;
     RAY_CHECK_OK(object_manager_.Pull(object_id));
+
+    // If the blocked client is a worker, then release any resources that it
+    // acquired for its assigned task while it is blocked. The resources will
+    // be acquired again once the worker is unblocked.
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker) {
+      // Only release the resources if the worker isn't already blocked.
+      if (!worker->IsBlocked()) {
+        RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+        auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
+        const auto &task = tasks.front();
+        RAY_CHECK(
+            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+                task.GetTaskSpecification().GetRequiredResources()));
+        // Mark the task as blocked.
+        local_queues_.QueueBlockedTasks(tasks);
+        worker->MarkBlocked();
+
+        // Try to dispatch more tasks since the blocked worker released some
+        // resources.
+        DispatchTasks();
+      }
+    }
+  } break;
+  case protocol::MessageType_NotifyUnblocked: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    // Re-acquire the resources for the task that was assigned to the unblocked
+    // worker.
+    if (worker) {
+      RAY_CHECK(worker->IsBlocked());
+      RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+
+      auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
+      const auto &task = tasks.front();
+      bool ok =
+          cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+              task.GetTaskSpecification().GetRequiredResources());
+      if (!ok) {
+        const SchedulingResources &local_resources = cluster_resource_map_[client_id];
+        RAY_LOG(WARNING) << "Resources oversubscribed: "
+                         << local_resources.GetAvailableResources().ToString();
+      }
+      // Mark the task as running again.
+      local_queues_.QueueRunningTasks(tasks);
+      worker->MarkUnblocked();
+    }
   } break;
 
   default:
