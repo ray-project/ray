@@ -97,6 +97,11 @@ class ResourceSet {
   ///         False otherwise.
   bool GetResource(const std::string &resource_name, double *value) const;
 
+  /// Return true if the resource set is empty. False otherwise.
+  ///
+  /// \return True if the resource capacity is zero. False otherwise.
+  bool IsEmpty() const;
+
   // TODO(atumanov): implement const_iterator class for the ResourceSet container.
   const std::unordered_map<std::string, double> &GetResourceMap() const;
 

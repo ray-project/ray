@@ -8,9 +8,26 @@ namespace ray {
 
 namespace raylet {
 
+class WorkerPoolMock : public WorkerPool {
+ public:
+  WorkerPoolMock(const std::vector<std::string> &worker_command)
+      : WorkerPool(worker_command) {}
+
+  void StartWorker(pid_t pid, bool force_start = false) {
+    if (NumStartedWorkers() > 0 && !force_start) {
+      // Workers have been started, but not registered. Force start disabled -- returning.
+      RAY_LOG(DEBUG) << NumStartedWorkers() << " workers pending registration";
+      return;
+    }
+    // Either no workers are pending registration or the worker start is being forced.
+    RAY_LOG(DEBUG) << "starting worker, worker pool size " << Size();
+    AddStartedWorker(pid);
+  }
+};
+
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest() : worker_pool_(0, {}), io_service_() {}
+  WorkerPoolTest() : worker_pool_({}), io_service_() {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid) {
     std::function<void(std::shared_ptr<LocalClientConnection>)> client_handler = [this](
@@ -23,11 +40,12 @@ class WorkerPoolTest : public ::testing::Test {
     boost::asio::local::stream_protocol::socket socket(io_service_);
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket));
+    worker_pool_.StartWorker(pid);
     return std::shared_ptr<Worker>(new Worker(pid, client));
   }
 
  protected:
-  WorkerPool worker_pool_;
+  WorkerPoolMock worker_pool_;
   boost::asio::io_service io_service_;
 
  private:
