@@ -151,13 +151,9 @@ bool WorkerPool::DisconnectWorker(std::shared_ptr<Worker> worker) {
 }
 
 // Protected WorkerPool methods.
-void WorkerPool::AddStartedWorker(pid_t pid) {
-  started_worker_pids_.insert(pid);
-}
+void WorkerPool::AddStartedWorker(pid_t pid) { started_worker_pids_.insert(pid); }
 
-uint32_t WorkerPool::NumStartedWorkers() const {
-  return started_worker_pids_.size();
-}
+uint32_t WorkerPool::NumStartedWorkers() const { return started_worker_pids_.size(); }
 
 }  // namespace raylet
 
