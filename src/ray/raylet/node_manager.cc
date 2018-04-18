@@ -345,9 +345,9 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     RAY_LOG(DEBUG) << "reconstructing object " << object_id;
     RAY_CHECK_OK(object_manager_.Pull(object_id));
 
-    // If the blocked client is a worker, then release any resources that it
-    // acquired for its assigned task while it is blocked. The resources will
-    // be acquired again once the worker is unblocked.
+    // If the blocked client is a worker, then release any CPU resources that
+    // it acquired for its assigned task while it is blocked. The resources
+    // will be acquired again once the worker is unblocked.
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     if (worker) {
       // Only release the resources if the worker isn't already blocked.
@@ -355,9 +355,17 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
         RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
         auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
         const auto &task = tasks.front();
+        // Get the CPU resources required by the running task.
+        const auto required_resources =
+            task.GetTaskSpecification().GetRequiredResources();
+        double required_cpus;
+        RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+        const std::unordered_map<std::string, double> cpu_resources = {
+            {kCPU_ResourceLabel, required_cpus}};
+        // Release the CPU resources.
         RAY_CHECK(
             cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-                task.GetTaskSpecification().GetRequiredResources()));
+                ResourceSet(cpu_resources)));
         // Mark the task as blocked.
         local_queues_.QueueBlockedTasks(tasks);
         worker->MarkBlocked();
@@ -370,19 +378,27 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
   } break;
   case protocol::MessageType_NotifyUnblocked: {
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-    // Re-acquire the resources for the task that was assigned to the unblocked
-    // worker.
+    // Re-acquire the CPU resources for the task that was assigned to the
+    // unblocked worker.
     if (worker) {
       RAY_CHECK(worker->IsBlocked());
       RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
 
       auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
       const auto &task = tasks.front();
-      bool ok =
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus;
+      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, required_cpus));
+      const std::unordered_map<std::string, double> cpu_resources = {
+          {kCPU_ResourceLabel, required_cpus}};
+      // Acquire the CPU resources.
+      bool not_oversubscribed =
           cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
-              task.GetTaskSpecification().GetRequiredResources());
-      if (!ok) {
-        const SchedulingResources &local_resources = cluster_resource_map_[client_id];
+              ResourceSet(cpu_resources));
+      if (!not_oversubscribed) {
+        const SchedulingResources &local_resources =
+            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()];
         RAY_LOG(WARNING) << "Resources oversubscribed: "
                          << local_resources.GetAvailableResources().ToString();
       }

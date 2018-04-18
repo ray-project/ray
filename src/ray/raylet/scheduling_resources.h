@@ -10,6 +10,8 @@ namespace ray {
 
 namespace raylet {
 
+const std::string kCPU_ResourceLabel = "CPU";
+
 /// Resource availability status reports whether the resource requirement is
 /// (1) infeasible, (2) feasible but currently unavailable, or (3) available.
 typedef enum {
