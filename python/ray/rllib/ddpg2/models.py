@@ -22,8 +22,8 @@ def _build_p_network(registry, inputs, dim_actions, config):
     for hidden in hiddens:
         action_out = layers.fully_connected(
             action_out, num_outputs=hidden, activation_fn=tf.nn.relu)
-    # The sigmoid layer bounds values in (0, 1)
-    # the shape of action_scores is [batch_size, dim_actions]
+    # Use sigmoid layer to bound values within (0, 1)
+    # shape of action_scores is [batch_size, dim_actions]
     action_scores = layers.fully_connected(
         action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
 
