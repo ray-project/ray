@@ -112,8 +112,9 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   if (ObjectInTransitOrLocal(object_id)) {
     // Currently, there's no guarantee that the transfer will happen.
     // Do nothing if the object is already being received.
-    RAY_LOG(INFO) << "Object " << object_id
-                  << (local_objects_.count(object_id) == 0 ? "in transit " : "is local ");
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << (local_objects_.count(object_id) == 0 ? "in transit "
+                                                            : "is local ");
     return ray::Status::OK();
   }
   return PullGetLocations(object_id);
@@ -154,8 +155,9 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &clien
   if (ObjectInTransitOrLocal(object_id)) {
     // Currently, there's no guarantee that the transfer will happen.
     // Do nothing if the object is already being received.
-    RAY_LOG(INFO) << "Object " << object_id
-                  << (local_objects_.count(object_id) == 0 ? "in transit " : "is local ");
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << (local_objects_.count(object_id) == 0 ? "in transit "
+                                                            : "is local ");
     return ray::Status::OK();
   }
   return PullEstablishConnection(object_id, client_id);
@@ -211,8 +213,9 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
     // in the time between this method call and the Pull method call.
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
-    RAY_LOG(INFO) << "Object " << object_id
-                  << (local_objects_.count(object_id) == 0 ? "in transit " : "is local ");
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << (local_objects_.count(object_id) == 0 ? "in transit "
+                                                            : "is local ");
     return Status::OK();
   }
   flatbuffers::FlatBufferBuilder fbb;
@@ -234,7 +237,7 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
     return ray::Status::OK();
   }
 
-  if (in_transit_sends_[object_id].count(client_id) > 0){
+  if (in_transit_sends_[object_id].count(client_id) > 0) {
     // Object already being sent to client.
     return ray::Status::OK();
   }
@@ -245,13 +248,14 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
   uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
   uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
   in_transit_sends_[object_id][client_id] = num_chunks;
-  RAY_LOG(INFO) << "in_transit_sends_ add " << object_id;
+  RAY_LOG(DEBUG) << "in_transit_sends_ add " << object_id;
 
   // TODO(hme): Cache this data in ObjectDirectory.
   // Okay for now since the GCS client caches this data.
   Status status = object_directory_->GetInformation(
       client_id,
-      [this, object_id, client_id, data_size, metadata_size, num_chunks](const RemoteConnectionInfo &info) {
+      [this, object_id, client_id, data_size, metadata_size,
+       num_chunks](const RemoteConnectionInfo &info) {
         for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
           send_service_.post([this, client_id, object_id, data_size, metadata_size,
                               chunk_index, info]() {
@@ -298,7 +302,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
   // If status is not okay, then return immediately because
   // plasma_client.Get failed.
   // No reference is acquired for this chunk, so no need to release the chunk.
-  if (!chunk_status.second.ok()){
+  if (!chunk_status.second.ok()) {
     TryRemoveInTransitSend(object_id, conn->GetClientID());
     return ray::Status::OK();
   }
@@ -444,7 +448,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn
   if (!ObjectInTransitOrLocal(object_id)) {
     // Record that the object is in progress.
     AddObjectInTransit(object_id);
-    RAY_LOG(INFO) << "Receive Push " << object_id;
+    RAY_LOG(DEBUG) << "Receive Push " << object_id;
   }
   receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
     ExecuteReceiveObject(conn->GetClientID(), object_id, data_size, metadata_size,
