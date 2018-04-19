@@ -125,6 +125,7 @@ void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
     return;
   }
   time_retries.second += 1;
+  RAY_LOG(ERROR) << object_id << " num_retries=" << time_retries.second;
   time_retries.first->async_wait(
       [this, object_id](const boost::system::error_code &error_code) {
         RAY_CHECK_OK(PullGetLocations(object_id));
@@ -133,6 +134,7 @@ void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
 
 ray::Status ObjectManager::PullGetLocations(const ObjectID &object_id) {
   RAY_LOG(INFO) << "pull_requests_.size()=" << pull_requests_.size();
+
   ray::Status status_code = object_directory_->GetLocations(
       object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
