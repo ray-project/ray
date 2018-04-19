@@ -106,6 +106,7 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
+  RAY_LOG(ERROR) << object_id << " received pull request";
   return PullGetLocations(object_id);
 }
 
@@ -117,8 +118,9 @@ void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
             std::shared_ptr<boost::asio::deadline_timer>(new asio::deadline_timer(
                 *main_service_, boost::posix_time::milliseconds(wait_ms))),
             0)));
+    RAY_LOG(ERROR) << object_id << " creating scheduler";
   }
-  std::pair<std::shared_ptr<boost::asio::deadline_timer>, int> time_retries = pull_requests_.find(object_id)->second;
+  std::pair<std::shared_ptr<boost::asio::deadline_timer>, int> &time_retries = pull_requests_.find(object_id)->second;
   if (time_retries.second >= 3){
     RAY_LOG(ERROR) << "failed to pull " << object_id;
     pull_requests_.erase(object_id);
