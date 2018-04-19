@@ -112,7 +112,9 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   if (ObjectInTransitOrLocal(object_id)) {
     // Currently, there's no guarantee that the transfer will happen.
     // Do nothing if the object is already being received.
-    return ray::Status::Invalid("Object in transit or local.");
+    RAY_LOG(INFO) << "Object "
+                  << (local_objects_.count(object_id) == 0 ? "in transit." : "is local.");
+    return ray::Status::OK();
   }
   return PullGetLocations(object_id);
 }
@@ -152,7 +154,9 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &clien
   if (ObjectInTransitOrLocal(object_id)) {
     // Currently, there's no guarantee that the transfer will happen.
     // Do nothing if the object is already being received.
-    return ray::Status::Invalid("Object in transit or local.");
+    RAY_LOG(INFO) << "Object "
+                  << (local_objects_.count(object_id) == 0 ? "in transit." : "is local.");
+    return ray::Status::OK();
   }
   return PullEstablishConnection(object_id, client_id);
 };
@@ -207,7 +211,9 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
     // in the time between this method call and the Pull method call.
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
-    return Status::Invalid("Object in transit or local.");
+    RAY_LOG(INFO) << "Object "
+                  << (local_objects_.count(object_id) == 0 ? "in transit." : "is local.");
+    return Status::OK();
   }
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
