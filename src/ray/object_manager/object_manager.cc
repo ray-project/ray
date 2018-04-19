@@ -120,6 +120,7 @@ void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
 }
 
 ray::Status ObjectManager::PullGetLocations(const ObjectID &object_id) {
+  RAY_LOG(INFO) << "pull_requests_.size()=" << pull_requests_.size();
   ray::Status status_code = object_directory_->GetLocations(
       object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
