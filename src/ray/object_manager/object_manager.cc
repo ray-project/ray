@@ -112,7 +112,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
   if (pull_requests_.count(object_id) == 0){
     pull_requests_.emplace(std::make_pair(
-        object_id,
+        ObjectID(object_id),
         std::pair<std::shared_ptr<boost::asio::deadline_timer>, int>(
             std::shared_ptr<boost::asio::deadline_timer>(new asio::deadline_timer(
                 *main_service_, boost::posix_time::milliseconds(wait_ms))),
