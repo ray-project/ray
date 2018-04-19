@@ -53,7 +53,9 @@ optional_ray_files += ray_autoscaler_files
 
 extras = {
     "rllib":
-    ["tensorflow", "pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"]
+    ["tensorflow", "pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"],
+    "dataframe":
+    ["feather-format", "lxml", "openpyxl", "xlrd"]
 }
 
 
@@ -131,11 +133,7 @@ setup(
         "redis",
         # The six module is required by pyarrow.
         "six >= 1.0.0",
-        "flatbuffers",
-        "feather-format",
-        "lxml",
-        "openpyxl",
-        "xlrd"
+        "flatbuffers"
     ],
     setup_requires=["cython >= 0.23"],
     extras_require=extras,
