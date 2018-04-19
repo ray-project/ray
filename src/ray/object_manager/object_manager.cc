@@ -121,7 +121,7 @@ void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
     RAY_LOG(ERROR) << object_id << " creating scheduler";
   }
   std::pair<std::shared_ptr<boost::asio::deadline_timer>, int> &time_retries = pull_requests_.find(object_id)->second;
-  if (time_retries.second >= 100){
+  if (time_retries.second >= 1000){
     RAY_LOG(ERROR) << "failed to pull " << object_id;
     pull_requests_.erase(object_id);
     return;
