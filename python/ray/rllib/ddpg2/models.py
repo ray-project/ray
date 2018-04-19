@@ -296,8 +296,8 @@ class DDPGGraph(object):
         self.critic_grads_and_vars = [(g, v)
                                       for (g, v) in self.critic_grads_and_vars
                                       if g is not None]
-        self.grads_and_vars = self.actor_grads_and_vars + \
-                              self.critic_grads_and_vars
+        self.grads_and_vars = (
+            self.actor_grads_and_vars + self.critic_grads_and_vars)
         self.grads = [g for (g, v) in self.grads_and_vars]
         self.actor_train_expr = actor_optimizer.apply_gradients(
             self.actor_grads_and_vars)
