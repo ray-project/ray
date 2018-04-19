@@ -73,19 +73,19 @@ bool ResourceSet::RemoveResource(const std::string &resource_name) {
   throw std::runtime_error("Method not implemented");
 }
 bool ResourceSet::SubtractResources(const ResourceSet &other) {
-  // Return failure if attempting to perform vector subtraction with unknown labels.
-  // TODO(atumanov): make the implementation atomic. Currently, if false is returned
-  // the resource capacity may be partially mutated. To reverse, call AddResources.
+  // Subtract the resources and track whether a resource goes below zero.
+  bool oversubscribed = false;
   for (const auto &resource_pair : other.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
     const double &resource_capacity = resource_pair.second;
-    if (resource_capacity_.count(resource_label) == 0) {
-      return false;
-    } else {
-      resource_capacity_[resource_label] -= resource_capacity;
+    RAY_CHECK(resource_capacity_.count(resource_label) == 1)
+        << "Attempt to acquire unknown resource: " << resource_label;
+    resource_capacity_[resource_label] -= resource_capacity;
+    if (resource_capacity_[resource_label] < 0) {
+      oversubscribed = true;
     }
   }
-  return true;
+  return !oversubscribed;
 }
 
 bool ResourceSet::AddResources(const ResourceSet &other) {
