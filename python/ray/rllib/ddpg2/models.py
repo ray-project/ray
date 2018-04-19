@@ -22,8 +22,8 @@ def _build_p_network(registry, inputs, dim_actions, config):
     for hidden in hiddens:
         action_out = layers.fully_connected(
             action_out, num_outputs=hidden, activation_fn=tf.nn.relu)
-    # The final output layer of the actor was a sigmoid layer, to bound the actions
-    # shape of action_scores is [batch_size, dim_actions]
+    # The sigmoid layer bounds values in (0, 1)
+    # the shape of action_scores is [batch_size, dim_actions]
     action_scores = layers.fully_connected(
         action_out, num_outputs=dim_actions, activation_fn=tf.nn.sigmoid)
 
@@ -37,12 +37,16 @@ def _build_action_network(p_values, low_action, high_action, stochastic, eps,
     # shape is [None, dim_action]
     deterministic_actions = (high_action - low_action) * p_values + low_action
 
-    exploration_sample = tf.get_variable(name="ornstein_uhlenbeck", dtype=tf.float32, \
-                         initializer=low_action.size*[.0], trainable=False)
+    exploration_sample = tf.get_variable(
+        name="ornstein_uhlenbeck", dtype=tf.float32,
+        initializer=low_action.size*[.0], trainable=False
+    )
     normal_sample = tf.random_normal(
         shape=[low_action.size], mean=0.0, stddev=1.0)
-    exploration_value = tf.assign_add(exploration_sample, \
-                         theta * (.0-exploration_sample) + sigma * normal_sample)
+    exploration_value = tf.assign_add(
+        exploration_sample,
+        theta * (.0-exploration_sample) + sigma * normal_sample
+    )
     stochastic_actions = deterministic_actions + eps * (
         high_action - low_action) * exploration_value
 
@@ -141,9 +145,10 @@ class ModelAndLoss(object):
                 config["exploration_sigma"])
 
         # q network evaluation
-        with tf.variable_scope("q_func", reuse=True) as scope:
+        with tf.variable_scope("q_func") as scope:
             self.q_t = _build_q_network(registry, obs_t, act_t, config)
-        with tf.variable_scope("q_func", reuse=True) as scope:
+            self.q_func_vars = _scope_vars(scope.name)
+        with tf.variable_scope("q_func", reuse=True):
             self.q_tp0 = _build_q_network(registry, obs_t, output_actions,
                                           config)
 
@@ -214,13 +219,6 @@ class DDPGGraph(object):
             self.reset_noise_op = tf.assign(exploration_sample,
                                             dim_actions * [.0])
 
-        # Critic: Q network
-        q_scope_name = "q_func"
-        with tf.variable_scope(q_scope_name) as scope:
-            q_values = _build_q_network(registry, self.cur_observations,
-                                        self.output_actions, config)
-            q_func_vars = _scope_vars(scope.name)
-
         # Replay inputs
         self.obs_t = tf.placeholder(
             tf.float32,
@@ -257,6 +255,7 @@ class DDPGGraph(object):
 
         actor_loss = loss_obj.actor_loss
         weighted_error = loss_obj.loss
+        q_func_vars = loss_obj.q_func_vars
         target_p_func_vars = loss_obj.target_p_func_vars
         target_q_func_vars = loss_obj.target_q_func_vars
         self.p_t = loss_obj.p_t
@@ -267,10 +266,10 @@ class DDPGGraph(object):
 
         if config["l2_reg"] is not None:
             for var in p_func_vars:
-                if not "bias" in var.name:
+                if "bias" not in var.name:
                     actor_loss += config["l2_reg"] * 0.5 * tf.nn.l2_loss(var)
             for var in q_func_vars:
-                if not "bias" in var.name:
+                if "bias" not in var.name:
                     weighted_error += config["l2_reg"] * 0.5 * tf.nn.l2_loss(
                         var)
 
@@ -297,7 +296,8 @@ class DDPGGraph(object):
         self.critic_grads_and_vars = [(g, v)
                                       for (g, v) in self.critic_grads_and_vars
                                       if g is not None]
-        self.grads_and_vars = self.actor_grads_and_vars + self.critic_grads_and_vars
+        self.grads_and_vars = self.actor_grads_and_vars + \
+                              self.critic_grads_and_vars
         self.grads = [g for (g, v) in self.grads_and_vars]
         self.actor_train_expr = actor_optimizer.apply_gradients(
             self.actor_grads_and_vars)
