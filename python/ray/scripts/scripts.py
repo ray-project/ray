@@ -146,11 +146,16 @@ def cli():
     is_flag=True,
     default=False,
     help="use the raylet code path, this is not supported yet")
+@click.option(
+    "--num-local-schedulers",
+    required=False,
+    type=int,
+    help="number of local node managers to start")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet):
+          use_raylet, num_local_schedulers):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -222,7 +227,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             autoscaling_config=autoscaling_config,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            num_local_schedulers=num_local_schedulers)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"
@@ -289,7 +295,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             resources=resources,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            num_local_schedulers=num_local_schedulers)
         print(address_info)
         print("\nStarted Ray on this node. If you wish to terminate the "
               "processes that have been started, run\n\n"
