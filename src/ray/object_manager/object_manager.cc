@@ -110,11 +110,23 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 }
 
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
-  pull_requests_[object_id] = std::shared_ptr<boost::asio::deadline_timer>(
-      new asio::deadline_timer(*main_service_, boost::posix_time::milliseconds(wait_ms)));
-  pull_requests_[object_id]->async_wait(
+  if (pull_requests_.count(object_id) == 0){
+    pull_requests_.emplace(std::make_pair(
+        object_id,
+        std::pair<std::shared_ptr<boost::asio::deadline_timer>, int>(
+            std::shared_ptr<boost::asio::deadline_timer>(new asio::deadline_timer(
+                *main_service_, boost::posix_time::milliseconds(wait_ms))),
+            0)));
+  }
+  std::pair<std::shared_ptr<boost::asio::deadline_timer>, int> time_retries = pull_requests_.find(object_id)->second;
+  if (time_retries.second >= 3){
+    RAY_LOG(ERROR) << "failed to pull " << object_id;
+    pull_requests_.erase(object_id);
+    return;
+  }
+  time_retries.second += 1;
+  time_retries.first->async_wait(
       [this, object_id](const boost::system::error_code &error_code) {
-        pull_requests_.erase(object_id);
         RAY_CHECK_OK(PullGetLocations(object_id));
       });
 }
@@ -132,6 +144,7 @@ ray::Status ObjectManager::PullGetLocations(const ObjectID &object_id) {
 
 void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
                                         const ray::ObjectID &object_id) {
+  pull_requests_.erase(object_id);
   RAY_CHECK(!client_ids.empty());
   ClientID client_id = client_ids.front();
   ray::Status status_code = Pull(object_id, client_id);
@@ -194,6 +207,9 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
                                   fbb.GetSize(), fbb.GetBufferPointer()));
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+  if (pull_requests_.count(object_id) != 0){
+    pull_requests_.erase(object_id);
+  }
   return ray::Status::OK();
 }
 
