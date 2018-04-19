@@ -186,9 +186,20 @@ class ObjectManager {
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
 
-  // TODO(hme): Also suppress Push for objects already in transit.
+  /// Objects that are currently being sent.
+  std::unordered_map<ObjectID,
+                     std::unordered_map<ObjectID, uint64_t, UniqueIDHasher>,
+                     UniqueIDHasher> in_transit_sends_;
+
   /// Objects that are currently being received.
   std::unordered_set<ObjectID, UniqueIDHasher> in_transit_receives_;
+
+  void TryRemoveInTransitSend(const ObjectID &object_id, const ClientID &client_id){
+    if(--in_transit_sends_[object_id][client_id] == 0){
+      RAY_LOG(INFO) << "in_transit_sends_ erase " << object_id;
+      in_transit_sends_[object_id].erase(client_id);
+    };
+  }
 
   /// Record an object receive as soon as one of its chunks begins
   /// being received.

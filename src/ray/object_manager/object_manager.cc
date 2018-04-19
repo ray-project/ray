@@ -234,16 +234,24 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
     return ray::Status::OK();
   }
 
+  if (in_transit_sends_[object_id].count(client_id) > 0){
+    // Object already being sent to client.
+    return ray::Status::OK();
+  }
+
+  const ObjectInfoT &object_info = local_objects_[object_id];
+  uint64_t data_size =
+      static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
+  uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
+  uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
+  in_transit_sends_[object_id][client_id] = num_chunks;
+  RAY_LOG(INFO) << "in_transit_sends_ add " << object_id;
+
   // TODO(hme): Cache this data in ObjectDirectory.
   // Okay for now since the GCS client caches this data.
   Status status = object_directory_->GetInformation(
       client_id,
-      [this, object_id, client_id](const RemoteConnectionInfo &info) {
-        ObjectInfoT object_info = local_objects_[object_id];
-        uint64_t data_size =
-            static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
-        uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
-        uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
+      [this, object_id, client_id, data_size, metadata_size, num_chunks](const RemoteConnectionInfo &info) {
         for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
           send_service_.post([this, client_id, object_id, data_size, metadata_size,
                               chunk_index, info]() {
@@ -252,7 +260,8 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
           });
         }
       },
-      [](const Status &status) {
+      [this, object_id, client_id](const Status &status) {
+        in_transit_sends_[object_id].erase(client_id);
         // Push is best effort, so do nothing here.
       });
   return status;
@@ -289,7 +298,10 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
   // If status is not okay, then return immediately because
   // plasma_client.Get failed.
   // No reference is acquired for this chunk, so no need to release the chunk.
-  RAY_RETURN_NOT_OK(chunk_status.second);
+  if (!chunk_status.second.ok()){
+    TryRemoveInTransitSend(object_id, conn->GetClientID());
+    return ray::Status::OK();
+  }
 
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
@@ -320,6 +332,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
   }
 
   // Do this regardless of whether it failed or succeeded.
+  TryRemoveInTransitSend(object_id, conn->GetClientID());
   buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
@@ -432,8 +445,6 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn
     // Record that the object is in progress.
     AddObjectInTransit(object_id);
     RAY_LOG(INFO) << "Receive Push " << object_id;
-  } else {
-    RAY_LOG(INFO) << "Receive Push " << object_id << " in transit";
   }
   receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
     ExecuteReceiveObject(conn->GetClientID(), object_id, data_size, metadata_size,
