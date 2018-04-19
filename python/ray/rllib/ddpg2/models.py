@@ -38,13 +38,15 @@ def _build_action_network(p_values, low_action, high_action, stochastic, eps,
     deterministic_actions = (high_action - low_action) * p_values + low_action
 
     exploration_sample = tf.get_variable(
-        name="ornstein_uhlenbeck", dtype=tf.float32,
-        initializer=low_action.size*[.0], trainable=False)
+        name="ornstein_uhlenbeck",
+        dtype=tf.float32,
+        initializer=low_action.size * [.0],
+        trainable=False)
     normal_sample = tf.random_normal(
         shape=[low_action.size], mean=0.0, stddev=1.0)
     exploration_value = tf.assign_add(
         exploration_sample,
-        theta * (.0-exploration_sample) + sigma * normal_sample)
+        theta * (.0 - exploration_sample) + sigma * normal_sample)
     stochastic_actions = deterministic_actions + eps * (
         high_action - low_action) * exploration_value
 
