@@ -112,8 +112,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   if (ObjectInTransitOrLocal(object_id)) {
     // Currently, there's no guarantee that the transfer will happen.
     // Do nothing if the object is already being received.
-    RAY_LOG(INFO) << "Object "
-                  << (local_objects_.count(object_id) == 0 ? "in transit." : "is local.");
+    RAY_LOG(INFO) << "Object " << object_id
+                  << (local_objects_.count(object_id) == 0 ? "in transit " : "is local ");
     return ray::Status::OK();
   }
   return PullGetLocations(object_id);
@@ -154,8 +154,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &clien
   if (ObjectInTransitOrLocal(object_id)) {
     // Currently, there's no guarantee that the transfer will happen.
     // Do nothing if the object is already being received.
-    RAY_LOG(INFO) << "Object "
-                  << (local_objects_.count(object_id) == 0 ? "in transit." : "is local.");
+    RAY_LOG(INFO) << "Object " << object_id
+                  << (local_objects_.count(object_id) == 0 ? "in transit " : "is local ");
     return ray::Status::OK();
   }
   return PullEstablishConnection(object_id, client_id);
@@ -211,8 +211,8 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
     // in the time between this method call and the Pull method call.
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
-    RAY_LOG(INFO) << "Object "
-                  << (local_objects_.count(object_id) == 0 ? "in transit." : "is local.");
+    RAY_LOG(INFO) << "Object " << object_id
+                  << (local_objects_.count(object_id) == 0 ? "in transit " : "is local ");
     return Status::OK();
   }
   flatbuffers::FlatBufferBuilder fbb;
@@ -431,6 +431,9 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn
   if (!ObjectInTransitOrLocal(object_id)) {
     // Record that the object is in progress.
     AddObjectInTransit(object_id);
+    RAY_LOG(INFO) << "Receive Push " << object_id;
+  } else {
+    RAY_LOG(INFO) << "Receive Push " << object_id << " in transit";
   }
   receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
     ExecuteReceiveObject(conn->GetClientID(), object_id, data_size, metadata_size,
@@ -461,7 +464,8 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
-    RAY_LOG(ERROR) << "Buffer Create Failed: " << chunk_status.second.message();
+    RAY_LOG(ERROR) << "Create Chunk Failed index=" << chunk_index << ": "
+                   << chunk_status.second.message();
     // Read object into empty buffer.
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
     std::vector<uint8_t> mutable_vec;
