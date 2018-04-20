@@ -53,8 +53,7 @@ optional_ray_files += ray_autoscaler_files
 
 extras = {
     "rllib":
-    ["tensorflow", "pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"],
-    "dataframe": ["feather-format", "lxml", "openpyxl", "xlrd"]
+    ["tensorflow", "pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"]
 }
 
 
