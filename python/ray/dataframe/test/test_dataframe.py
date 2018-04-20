@@ -2551,7 +2551,1174 @@ def test_reorder_levels():
 
 
 def test_replace():
-    ray_df = create_test_dataframe()
+    test_replace_inplace()
+    test_regex_replace_scalar()
+    test_regex_replace_scalar_inplace()
+    test_regex_replace_list_obj()
+    test_regex_replace_list_obj_inplace()
+    test_regex_replace_list_mixed()
+    test_regex_replace_list_mixed_inplace()
+    test_regex_replace_dict_mixed()
+    test_regex_replace_dict_nested()
+    test_regex_replace_dict_nested_gh4115()
+    test_regex_replace_list_to_scalar()
+    test_regex_replace_str_to_numeric()
+    test_regex_replace_regex_list_to_numeric()
+    test_regex_replace_series_of_regexes()
+    test_regex_replace_numeric_to_object_conversion()
+    test_replace_regex_metachar()
+    test_replace_sanity()
+    test_replace_list()
+    test_replace_series_dict()
+    test_replace_convert()
+    test_replace_mixed()
+    test_replace_simple_nested_dict()
+    test_replace_simple_nested_dict_with_nonexistent_value()
+    test_replace_value_is_none()
+    test_replace_for_new_dtypes()
+    test_replace_dtypes()
+    test_replace_input_formats_listlike()
+    test_replace_input_formats_scalar()
+    test_replace_dict_tuple_list_ordering_remains_the_same()
+    test_replace_doesnt_replace_without_regex()
+    test_replace_bool_with_string()
+    test_replace_pure_bool_with_string_no_op()
+    test_replace_bool_with_bool()
+    # Ommitted b/c need to look at all data in df to check for error
+    # test_replace_with_dict_with_bool_keys()
+    test_replace_truthy()
+    test_replace_int_to_int_chain()
+    test_replace_str_to_str_chain()
+    test_replace_swapping_bug()
+    test_replace_period()
+    test_replace_datetime()
+    test_replace_datetimetz()
+    test_replace_with_empty_dictlike()
+
+
+@pytest.fixture
+def test_replace_inplace(num_partitions=2):
+    test_data = TestData()
+    test_data.tsframe['A'][:5] = np.nan
+    test_data.tsframe['A'][-5:] = np.nan
+    tsframe = test_data.tsframe.copy()
+    ray_df = from_pandas(tsframe, num_partitions)
+    ray_df_expected = from_pandas(tsframe, num_partitions)
+    ray_df.replace(np.nan, 0, inplace=True)
+    ray_df_equals(ray_df, ray_df_expected.fillna(0))
+
+    pytest.raises(TypeError, ray_df.replace, np.nan, inplace=True)
+    pytest.raises(TypeError, ray_df.replace, np.nan)
+
+    ray_df = from_pandas(tsframe, num_partitions)
+    result = ray_df.replace(np.nan, 0)
+    expected = ray_df.fillna(value=0)
+    ray_df_equals(result, expected)
+
+    tsframe = test_data.tsframe.copy()
+    ray_df = from_pandas(tsframe, num_partitions)
+    ray_df.replace([np.nan], [0], inplace=True)
+    ray_df_equals(ray_df, ray_df.fillna(0))
+
+
+@pytest.fixture
+def test_regex_replace_scalar(num_partitions=2):
+    obj = {'a': list('ab..'), 'b': list('efgh')}
+    dfobj = rdf.DataFrame(obj)
+    mix = {'a': range(4), 'b': list('ab..')}
+    dfmix = rdf.DataFrame(mix)
+
+    # simplest cases
+    # regex -> value
+    # obj frame
+    res = dfobj.replace(r'\s*\.\s*', np.nan, regex=True)
+    ray_df_equals(dfobj, res.fillna('.'))
+
+    # mixed
+    res = dfmix.replace(r'\s*\.\s*', np.nan, regex=True)
+    ray_df_equals(dfmix, res.fillna('.'))
+
+    # regex -> regex
+    # obj frame
+    res = dfobj.replace(r'\s*(\.)\s*', r'\1\1\1', regex=True)
+    objc = obj.copy()
+    objc['a'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(objc)
+    ray_df_equals(res, expec)
+
+    # with mixed
+    res = dfmix.replace(r'\s*(\.)\s*', r'\1\1\1', regex=True)
+    mixc = mix.copy()
+    mixc['b'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(mixc)
+    ray_df_equals(res, expec)
+
+    # everything with compiled regexs as well
+    res = dfobj.replace(re.compile(r'\s*\.\s*'), np.nan, regex=True)
+    ray_df_equals(dfobj, res.fillna('.'))
+
+    # mixed
+    res = dfmix.replace(re.compile(r'\s*\.\s*'), np.nan, regex=True)
+    ray_df_equals(dfmix, res.fillna('.'))
+
+    # regex -> regex
+    # obj frame
+    res = dfobj.replace(re.compile(r'\s*(\.)\s*'), r'\1\1\1')
+    objc = obj.copy()
+    objc['a'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(objc)
+    ray_df_equals(res, expec)
+
+    # with mixed
+    res = dfmix.replace(re.compile(r'\s*(\.)\s*'), r'\1\1\1')
+    mixc = mix.copy()
+    mixc['b'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(mixc)
+    ray_df_equals(res, expec)
+
+    res = dfmix.replace(regex=re.compile(r'\s*(\.)\s*'), value=r'\1\1\1')
+    mixc = mix.copy()
+    mixc['b'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(mixc)
+    ray_df_equals(res, expec)
+
+    res = dfmix.replace(regex=r'\s*(\.)\s*', value=r'\1\1\1')
+    mixc = mix.copy()
+    mixc['b'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(mixc)
+    ray_df_equals(res, expec)
+
+
+@pytest.fixture
+def test_regex_replace_scalar_inplace(num_partitions=2):
+    obj = {'a': list('ab..'), 'b': list('efgh')}
+    dfobj = rdf.DataFrame(obj)
+    mix = {'a': range(4), 'b': list('ab..')}
+    dfmix = rdf.DataFrame(mix)
+
+    # simplest cases
+    # regex -> value
+    # obj frame
+    res = dfobj.copy()
+    res.replace(r'\s*\.\s*', np.nan, regex=True, inplace=True)
+    ray_df_equals(dfobj, res.fillna('.'))
+
+    # mixed
+    res = dfmix.copy()
+    res.replace(r'\s*\.\s*', np.nan, regex=True, inplace=True)
+    ray_df_equals(dfmix, res.fillna('.'))
+
+    # regex -> regex
+    # obj frame
+    res = dfobj.copy()
+    res.replace(r'\s*(\.)\s*', r'\1\1\1', regex=True, inplace=True)
+    objc = obj.copy()
+    objc['a'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(objc)
+    ray_df_equals(res, expec)
+
+    # with mixed
+    res = dfmix.copy()
+    res.replace(r'\s*(\.)\s*', r'\1\1\1', regex=True, inplace=True)
+    mixc = mix.copy()
+    mixc['b'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(mixc)
+    ray_df_equals(res, expec)
+
+    # everything with compiled regexs as well
+    res = dfobj.copy()
+    res.replace(re.compile(r'\s*\.\s*'), np.nan, regex=True, inplace=True)
+    ray_df_equals(dfobj, res.fillna('.'))
+
+    # mixed
+    res = dfmix.copy()
+    res.replace(re.compile(r'\s*\.\s*'), np.nan, regex=True, inplace=True)
+    ray_df_equals(dfmix, res.fillna('.'))
+
+    # regex -> regex
+    # obj frame
+    res = dfobj.copy()
+    res.replace(re.compile(r'\s*(\.)\s*'), r'\1\1\1', regex=True,
+                inplace=True)
+    objc = obj.copy()
+    objc['a'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(objc)
+    ray_df_equals(res, expec)
+
+    # with mixed
+    res = dfmix.copy()
+    res.replace(re.compile(r'\s*(\.)\s*'), r'\1\1\1', regex=True,
+                inplace=True)
+    mixc = mix.copy()
+    mixc['b'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(mixc)
+    ray_df_equals(res, expec)
+
+    res = dfobj.copy()
+    res.replace(regex=r'\s*\.\s*', value=np.nan, inplace=True)
+    ray_df_equals(dfobj, res.fillna('.'))
+
+    # mixed
+    res = dfmix.copy()
+    res.replace(regex=r'\s*\.\s*', value=np.nan, inplace=True)
+    ray_df_equals(dfmix, res.fillna('.'))
+
+    # regex -> regex
+    # obj frame
+    res = dfobj.copy()
+    res.replace(regex=r'\s*(\.)\s*', value=r'\1\1\1', inplace=True)
+    objc = obj.copy()
+    objc['a'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(objc)
+    ray_df_equals(res, expec)
+
+    # with mixed
+    res = dfmix.copy()
+    res.replace(regex=r'\s*(\.)\s*', value=r'\1\1\1', inplace=True)
+    mixc = mix.copy()
+    mixc['b'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(mixc)
+    ray_df_equals(res, expec)
+
+    # everything with compiled regexs as well
+    res = dfobj.copy()
+    res.replace(regex=re.compile(r'\s*\.\s*'), value=np.nan, inplace=True)
+    ray_df_equals(dfobj, res.fillna('.'))
+
+    # mixed
+    res = dfmix.copy()
+    res.replace(regex=re.compile(r'\s*\.\s*'), value=np.nan, inplace=True)
+    ray_df_equals(dfmix, res.fillna('.'))
+
+    # regex -> regex
+    # obj frame
+    res = dfobj.copy()
+    res.replace(regex=re.compile(r'\s*(\.)\s*'), value=r'\1\1\1',
+                inplace=True)
+    objc = obj.copy()
+    objc['a'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(objc)
+    ray_df_equals(res, expec)
+
+    # with mixed
+    res = dfmix.copy()
+    res.replace(regex=re.compile(r'\s*(\.)\s*'), value=r'\1\1\1',
+                inplace=True)
+    mixc = mix.copy()
+    mixc['b'] = ['a', 'b', '...', '...']
+    expec = rdf.DataFrame(mixc)
+    ray_df_equals(res, expec)
+
+
+@pytest.fixture
+def test_regex_replace_list_obj(num_partitions=2):
+    obj = {'a': list('ab..'), 'b': list('efgh'), 'c': list('helo')}
+    dfobj = rdf.DataFrame(obj)
+
+    # lists of regexes and values
+    # list of [re1, re2, ..., reN] -> [v1, v2, ..., vN]
+    to_replace_res = [r'\s*\.\s*', r'e|f|g']
+    values = [np.nan, 'crap']
+    res = dfobj.replace(to_replace_res, values, regex=True)
+    expec = rdf.DataFrame({'a': ['a', 'b', np.nan, np.nan], 'b': ['crap'] * 3 +
+                          ['h'], 'c': ['h', 'crap', 'l', 'o']})
+    ray_df_equals(res, expec)
+
+    # list of [re1, re2, ..., reN] -> [re1, re2, .., reN]
+    to_replace_res = [r'\s*(\.)\s*', r'(e|f|g)']
+    values = [r'\1\1', r'\1_crap']
+    res = dfobj.replace(to_replace_res, values, regex=True)
+    expec = rdf.DataFrame({'a': ['a', 'b', '..', '..'], 'b': ['e_crap',
+                                                              'f_crap',
+                                                              'g_crap', 'h'],
+                          'c': ['h', 'e_crap', 'l', 'o']})
+
+    ray_df_equals(res, expec)
+
+    # list of [re1, re2, ..., reN] -> [(re1 or v1), (re2 or v2), ..., (reN
+    # or vN)]
+    to_replace_res = [r'\s*(\.)\s*', r'e']
+    values = [r'\1\1', r'crap']
+    res = dfobj.replace(to_replace_res, values, regex=True)
+    expec = rdf.DataFrame({'a': ['a', 'b', '..', '..'], 'b': ['crap', 'f', 'g',
+                                                              'h'],
+                          'c': ['h', 'crap', 'l', 'o']})
+    ray_df_equals(res, expec)
+
+    to_replace_res = [r'\s*(\.)\s*', r'e']
+    values = [r'\1\1', r'crap']
+    res = dfobj.replace(value=values, regex=to_replace_res)
+    expec = rdf.DataFrame({'a': ['a', 'b', '..', '..'], 'b': ['crap', 'f', 'g',
+                                                              'h'],
+                          'c': ['h', 'crap', 'l', 'o']})
+    ray_df_equals(res, expec)
+
+
+@pytest.fixture
+def test_regex_replace_list_obj_inplace(num_partitions=2):
+    # same as above with inplace=True
+    # lists of regexes and values
+    obj = {'a': list('ab..'), 'b': list('efgh'), 'c': list('helo')}
+    dfobj = rdf.DataFrame(obj)
+
+    # lists of regexes and values
+    # list of [re1, re2, ..., reN] -> [v1, v2, ..., vN]
+    to_replace_res = [r'\s*\.\s*', r'e|f|g']
+    values = [np.nan, 'crap']
+    res = dfobj.copy()
+    res.replace(to_replace_res, values, inplace=True, regex=True)
+    expec = rdf.DataFrame({'a': ['a', 'b', np.nan, np.nan], 'b': ['crap'] * 3 +
+                          ['h'], 'c': ['h', 'crap', 'l', 'o']})
+    ray_df_equals(res, expec)
+
+    # list of [re1, re2, ..., reN] -> [re1, re2, .., reN]
+    to_replace_res = [r'\s*(\.)\s*', r'(e|f|g)']
+    values = [r'\1\1', r'\1_crap']
+    res = dfobj.copy()
+    res.replace(to_replace_res, values, inplace=True, regex=True)
+    expec = rdf.DataFrame({'a': ['a', 'b', '..', '..'], 'b': ['e_crap',
+                                                              'f_crap',
+                                                              'g_crap', 'h'],
+                          'c': ['h', 'e_crap', 'l', 'o']})
+
+    ray_df_equals(res, expec)
+
+    # list of [re1, re2, ..., reN] -> [(re1 or v1), (re2 or v2), ..., (reN
+    # or vN)]
+    to_replace_res = [r'\s*(\.)\s*', r'e']
+    values = [r'\1\1', r'crap']
+    res = dfobj.copy()
+    res.replace(to_replace_res, values, inplace=True, regex=True)
+    expec = rdf.DataFrame({'a': ['a', 'b', '..', '..'], 'b': ['crap', 'f', 'g',
+                                                              'h'],
+                          'c': ['h', 'crap', 'l', 'o']})
+    ray_df_equals(res, expec)
+
+    to_replace_res = [r'\s*(\.)\s*', r'e']
+    values = [r'\1\1', r'crap']
+    res = dfobj.copy()
+    res.replace(value=values, regex=to_replace_res, inplace=True)
+    expec = rdf.DataFrame({'a': ['a', 'b', '..', '..'], 'b': ['crap', 'f', 'g',
+                                                              'h'],
+                          'c': ['h', 'crap', 'l', 'o']})
+    ray_df_equals(res, expec)
+
+
+@pytest.fixture
+def test_regex_replace_list_mixed(num_partitions=2):
+    # mixed frame to make sure this doesn't break things
+    mix = {'a': range(4), 'b': list('ab..')}
+    dfmix = rdf.DataFrame(mix)
+
+    # lists of regexes and values
+    # list of [re1, re2, ..., reN] -> [v1, v2, ..., vN]
+    to_replace_res = [r'\s*\.\s*', r'a']
+    values = [np.nan, 'crap']
+    mix2 = {'a': range(4), 'b': list('ab..'), 'c': list('halo')}
+    dfmix2 = rdf.DataFrame(mix2)
+    res = dfmix2.replace(to_replace_res, values, regex=True)
+    expec = rdf.DataFrame({'a': mix2['a'], 'b': ['crap', 'b', np.nan, np.nan],
+                          'c': ['h', 'crap', 'l', 'o']})
+    ray_df_equals(res, expec)
+
+    # list of [re1, re2, ..., reN] -> [re1, re2, .., reN]
+    to_replace_res = [r'\s*(\.)\s*', r'(a|b)']
+    values = [r'\1\1', r'\1_crap']
+    res = dfmix.replace(to_replace_res, values, regex=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['a_crap', 'b_crap', '..',
+                          '..']})
+
+    ray_df_equals(res, expec)
+
+    # list of [re1, re2, ..., reN] -> [(re1 or v1), (re2 or v2), ..., (reN
+    # or vN)]
+    to_replace_res = [r'\s*(\.)\s*', r'a', r'(b)']
+    values = [r'\1\1', r'crap', r'\1_crap']
+    res = dfmix.replace(to_replace_res, values, regex=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['crap', 'b_crap', '..', '..']})
+    ray_df_equals(res, expec)
+
+    to_replace_res = [r'\s*(\.)\s*', r'a', r'(b)']
+    values = [r'\1\1', r'crap', r'\1_crap']
+    res = dfmix.replace(regex=to_replace_res, value=values)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['crap', 'b_crap', '..', '..']})
+    ray_df_equals(res, expec)
+
+
+@pytest.fixture
+def test_regex_replace_list_mixed_inplace(num_partitions=2):
+    mix = {'a': range(4), 'b': list('ab..')}
+    dfmix = rdf.DataFrame(mix)
+    # the same inplace
+    # lists of regexes and values
+    # list of [re1, re2, ..., reN] -> [v1, v2, ..., vN]
+    to_replace_res = [r'\s*\.\s*', r'a']
+    values = [np.nan, 'crap']
+    res = dfmix.copy()
+    res.replace(to_replace_res, values, inplace=True, regex=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['crap', 'b', np.nan, np.nan]})
+    ray_df_equals(res, expec)
+
+    # list of [re1, re2, ..., reN] -> [re1, re2, .., reN]
+    to_replace_res = [r'\s*(\.)\s*', r'(a|b)']
+    values = [r'\1\1', r'\1_crap']
+    res = dfmix.copy()
+    res.replace(to_replace_res, values, inplace=True, regex=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['a_crap', 'b_crap', '..',
+                          '..']})
+
+    ray_df_equals(res, expec)
+
+    # list of [re1, re2, ..., reN] -> [(re1 or v1), (re2 or v2), ..., (reN
+    # or vN)]
+    to_replace_res = [r'\s*(\.)\s*', r'a', r'(b)']
+    values = [r'\1\1', r'crap', r'\1_crap']
+    res = dfmix.copy()
+    res.replace(to_replace_res, values, inplace=True, regex=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['crap', 'b_crap', '..', '..']})
+    ray_df_equals(res, expec)
+
+    to_replace_res = [r'\s*(\.)\s*', r'a', r'(b)']
+    values = [r'\1\1', r'crap', r'\1_crap']
+    res = dfmix.copy()
+    res.replace(regex=to_replace_res, value=values, inplace=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['crap', 'b_crap', '..', '..']})
+    ray_df_equals(res, expec)
+
+
+@pytest.fixture
+def test_regex_replace_dict_mixed(num_partitions=2):
+    mix = {'a': range(4), 'b': list('ab..'), 'c': ['a', 'b', np.nan, 'd']}
+    dfmix = rdf.DataFrame(mix)
+
+    # dicts
+    # single dict {re1: v1}, search the whole frame
+    # need test for this...
+
+    # list of dicts {re1: v1, re2: v2, ..., re3: v3}, search the whole
+    # frame
+    res = dfmix.replace({'b': r'\s*\.\s*'}, {'b': np.nan}, regex=True)
+    res2 = dfmix.copy()
+    res2.replace({'b': r'\s*\.\s*'}, {'b': np.nan}, inplace=True, regex=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['a', 'b', np.nan, np.nan], 'c':
+                          mix['c']})
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+
+    # list of dicts {re1: re11, re2: re12, ..., reN: re1N}, search the
+    # whole frame
+    res = dfmix.replace({'b': r'\s*(\.)\s*'}, {'b': r'\1ty'}, regex=True)
+    res2 = dfmix.copy()
+    res2.replace({'b': r'\s*(\.)\s*'}, {'b': r'\1ty'}, inplace=True,
+                 regex=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['a', 'b', '.ty', '.ty'], 'c':
+                          mix['c']})
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+
+    res = dfmix.replace(regex={'b': r'\s*(\.)\s*'}, value={'b': r'\1ty'})
+    res2 = dfmix.copy()
+    res2.replace(regex={'b': r'\s*(\.)\s*'}, value={'b': r'\1ty'},
+                 inplace=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['a', 'b', '.ty', '.ty'], 'c':
+                          mix['c']})
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+
+    # scalar -> dict
+    # to_replace regex, {value: value}
+    expec = rdf.DataFrame({'a': mix['a'], 'b': [np.nan, 'b', '.', '.'], 'c':
+                          mix['c']})
+    res = dfmix.replace('a', {'b': np.nan}, regex=True)
+    res2 = dfmix.copy()
+    res2.replace('a', {'b': np.nan}, regex=True, inplace=True)
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+
+    res = dfmix.replace('a', {'b': np.nan}, regex=True)
+    res2 = dfmix.copy()
+    res2.replace(regex='a', value={'b': np.nan}, inplace=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': [np.nan, 'b', '.', '.'], 'c':
+                          mix['c']})
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+
+
+@pytest.fixture
+def test_regex_replace_dict_nested(num_partitions=2):
+    # nested dicts will not work until this is implemented for Series
+    mix = {'a': range(4), 'b': list('ab..'), 'c': ['a', 'b', np.nan, 'd']}
+    dfmix = rdf.DataFrame(mix)
+    res = dfmix.replace({'b': {r'\s*\.\s*': np.nan}}, regex=True)
+    res2 = dfmix.copy()
+    res4 = dfmix.copy()
+    res2.replace({'b': {r'\s*\.\s*': np.nan}}, inplace=True, regex=True)
+    res3 = dfmix.replace(regex={'b': {r'\s*\.\s*': np.nan}})
+    res4.replace(regex={'b': {r'\s*\.\s*': np.nan}}, inplace=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['a', 'b', np.nan, np.nan], 'c':
+                          mix['c']})
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+    ray_df_equals(res3, expec)
+    ray_df_equals(res4, expec)
+
+
+@pytest.fixture
+def test_regex_replace_dict_nested_gh4115(num_partitions=2):
+    df = rdf.DataFrame({'Type': ['Q', 'T', 'Q', 'Q', 'T'], 'tmp': 2})
+    expected = rdf.DataFrame({'Type': [0, 1, 0, 0, 1], 'tmp': 2})
+    result = df.replace({'Type': {'Q': 0, 'T': 1}})
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_regex_replace_list_to_scalar(num_partitions=2):
+    mix = {'a': range(4), 'b': list('ab..'), 'c': ['a', 'b', np.nan, 'd']}
+    df = rdf.DataFrame(mix)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': np.array([np.nan] * 4),
+                          'c': [np.nan, np.nan, np.nan, 'd']})
+
+    res = df.replace([r'\s*\.\s*', 'a|b'], np.nan, regex=True)
+    res2 = df.copy()
+    res3 = df.copy()
+    res2.replace([r'\s*\.\s*', 'a|b'], np.nan, regex=True, inplace=True)
+    res3.replace(regex=[r'\s*\.\s*', 'a|b'], value=np.nan, inplace=True)
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+    ray_df_equals(res3, expec)
+
+
+@pytest.fixture
+def test_regex_replace_str_to_numeric(num_partitions=2):
+    # what happens when you try to replace a numeric value with a regex?
+    mix = {'a': range(4), 'b': list('ab..'), 'c': ['a', 'b', np.nan, 'd']}
+    df = rdf.DataFrame(mix)
+    res = df.replace(r'\s*\.\s*', 0, regex=True)
+    res2 = df.copy()
+    res2.replace(r'\s*\.\s*', 0, inplace=True, regex=True)
+    res3 = df.copy()
+    res3.replace(regex=r'\s*\.\s*', value=0, inplace=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['a', 'b', 0, 0], 'c':
+                          mix['c']})
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+    ray_df_equals(res3, expec)
+
+
+@pytest.fixture
+def test_regex_replace_regex_list_to_numeric(num_partitions=2):
+    mix = {'a': range(4), 'b': list('ab..'), 'c': ['a', 'b', np.nan, 'd']}
+    df = rdf.DataFrame(mix)
+    res = df.replace([r'\s*\.\s*', 'b'], 0, regex=True)
+    res2 = df.copy()
+    res2.replace([r'\s*\.\s*', 'b'], 0, regex=True, inplace=True)
+    res3 = df.copy()
+    res3.replace(regex=[r'\s*\.\s*', 'b'], value=0, inplace=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['a', 0, 0, 0], 'c': ['a', 0,
+                                                                     np.nan,
+                                                                     'd']})
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+    ray_df_equals(res3, expec)
+
+
+@pytest.fixture
+def test_regex_replace_series_of_regexes(num_partitions=2):
+    mix = {'a': range(4), 'b': list('ab..'), 'c': ['a', 'b', np.nan, 'd']}
+    df = rdf.DataFrame(mix)
+    s1 = pd.Series({'b': r'\s*\.\s*'})
+    s2 = pd.Series({'b': np.nan})
+    res = df.replace(s1, s2, regex=True)
+    res2 = df.copy()
+    res2.replace(s1, s2, inplace=True, regex=True)
+    res3 = df.copy()
+    res3.replace(regex=s1, value=s2, inplace=True)
+    expec = rdf.DataFrame({'a': mix['a'], 'b': ['a', 'b', np.nan, np.nan], 'c':
+                          mix['c']})
+    ray_df_equals(res, expec)
+    ray_df_equals(res2, expec)
+    ray_df_equals(res3, expec)
+
+
+@pytest.fixture
+def test_regex_replace_numeric_to_object_conversion(num_partitions=2):
+    mix = {'a': range(4), 'b': list('ab..'), 'c': ['a', 'b', np.nan, 'd']}
+    df = rdf.DataFrame(mix)
+    expec = rdf.DataFrame({'a': ['a', 1, 2, 3], 'b': mix['b'], 'c': mix['c']})
+    res = df.replace(0, 'a')
+    ray_df_equals(res, expec)
+    assert res.a.dtype == np.object_
+
+
+@pytest.fixture
+def test_replace_regex_metachar(num_partitions=2):
+    metachars = '[]', '()', r'\d', r'\w', r'\s'
+
+    for metachar in metachars:
+        df = rdf.DataFrame({'a': [metachar, 'else']})
+        result = df.replace({'a': {metachar: 'paren'}})
+        expected = rdf.DataFrame({'a': ['paren', 'else']})
+        ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_sanity(num_partitions=2):
+    test_data = TestData()
+    test_data.tsframe['A'][:5] = np.nan
+    test_data.tsframe['A'][-5:] = np.nan
+    ray_df = rdf.DataFrame(test_data.tsframe)
+
+    zero_filled = ray_df.replace(np.nan, -1e8)
+    ray_df_equals(zero_filled, ray_df.fillna(-1e8))
+    ray_df_equals(zero_filled.replace(-1e8, np.nan), ray_df)
+
+    test_data.tsframe['A'][:5] = np.nan
+    test_data.tsframe['A'][-5:] = np.nan
+    test_data.tsframe['B'][:5] = -1e8
+
+    # empty
+    df = rdf.DataFrame(index=['a', 'b'])
+    ray_df_equals(df, df.replace(5, 7))
+
+    # GH 11698
+    # test for mixed data types.
+    df = rdf.DataFrame([('-', pd.to_datetime('20150101')),
+                       ('a', pd.to_datetime('20150102'))])
+    df1 = df.replace('-', np.nan)
+    expected_df = rdf.DataFrame([(np.nan, pd.to_datetime('20150101')),
+                                ('a', pd.to_datetime('20150102'))])
+    ray_df_equals(df1, expected_df)
+
+
+@pytest.fixture
+def test_replace_list(num_partitions=2):
+    obj = {'a': list('ab..'), 'b': list('efgh'), 'c': list('helo')}
+    dfobj = rdf.DataFrame(obj)
+
+    # lists of regexes and values
+    # list of [v1, v2, ..., vN] -> [v1, v2, ..., vN]
+    to_replace_res = [r'.', r'e']
+    values = [np.nan, 'crap']
+    res = dfobj.replace(to_replace_res, values)
+    expec = rdf.DataFrame({'a': ['a', 'b', np.nan, np.nan],
+                          'b': ['crap', 'f', 'g', 'h'], 'c': ['h', 'crap',
+                                                              'l', 'o']})
+    ray_df_equals(res, expec)
+
+    # list of [v1, v2, ..., vN] -> [v1, v2, .., vN]
+    to_replace_res = [r'.', r'f']
+    values = [r'..', r'crap']
+    res = dfobj.replace(to_replace_res, values)
+    expec = rdf.DataFrame({'a': ['a', 'b', '..', '..'], 'b': ['e', 'crap', 'g',
+                                                              'h'],
+                          'c': ['h', 'e', 'l', 'o']})
+
+    ray_df_equals(res, expec)
+
+
+@pytest.fixture
+def test_replace_series_dict(num_partitions=2):
+    # from GH 3064
+    df = rdf.DataFrame({'zero': {'a': 0.0, 'b': 1}, 'one': {'a': 2.0, 'b': 0}})
+    result = df.replace(0, {'zero': 0.5, 'one': 1.0})
+    expected = rdf.DataFrame(
+        {'zero': {'a': 0.5, 'b': 1}, 'one': {'a': 2.0, 'b': 1.0}})
+    ray_df_equals(result, expected)
+
+    result = df.replace(0, df.mean())
+    ray_df_equals(result, expected)
+
+    # series to series/dict
+    df = rdf.DataFrame({'zero': {'a': 0.0, 'b': 1}, 'one': {'a': 2.0, 'b': 0}})
+    s = pd.Series({'zero': 0.0, 'one': 2.0})
+    result = df.replace(s, {'zero': 0.5, 'one': 1.0})
+    expected = rdf.DataFrame(
+        {'zero': {'a': 0.5, 'b': 1}, 'one': {'a': 1.0, 'b': 0.0}})
+    ray_df_equals(result, expected)
+
+    result = df.replace(s, df.mean())
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_convert(num_partitions=2):
+    # gh 3907
+    df = rdf.DataFrame([['foo', 'bar', 'bah'], ['bar', 'foo', 'bah']])
+    m = {'foo': 1, 'bar': 2, 'bah': 3}
+    rep = df.replace(m)
+    expec = pd.Series([np.int64] * 3)
+    res = rep.dtypes
+    assert_series_equal(expec, res)
+
+
+@pytest.fixture
+def test_replace_mixed(num_partitions=2):
+    test_data = TestData()
+    mf = test_data.mixed_frame
+    mf.iloc[5:20, mf.columns.get_loc('foo')] = np.nan
+    mf.iloc[-10:, mf.columns.get_loc('A')] = np.nan
+    ray_df = from_pandas(test_data.mixed_frame, num_partitions)
+
+    result = ray_df.replace(np.nan, -18)
+    expected = ray_df.fillna(value=-18)
+    ray_df_equals(result, expected)
+    ray_df_equals(result.replace(-18, np.nan), ray_df)
+
+    result = ray_df.replace(np.nan, -1e8)
+    expected = ray_df.fillna(value=-1e8)
+    ray_df_equals(result, expected)
+    ray_df_equals(result.replace(-1e8, np.nan), ray_df)
+
+    # int block upcasting
+    df = rdf.DataFrame({'A': pd.Series([1.0, 2.0], dtype='float64'),
+                        'B': pd.Series([0, 1], dtype='int64')})
+    expected = rdf.DataFrame({'A': pd.Series([1.0, 2.0], dtype='float64'),
+                              'B': pd.Series([0.5, 1], dtype='float64')})
+    result = df.replace(0, 0.5)
+    ray_df_equals(result, expected)
+
+    df.replace(0, 0.5, inplace=True)
+    ray_df_equals(df, expected)
+
+    # int block splitting
+    df = rdf.DataFrame({'A': pd.Series([1.0, 2.0], dtype='float64'),
+                        'B': pd.Series([0, 1], dtype='int64'),
+                        'C': pd.Series([1, 2], dtype='int64')})
+    expected = rdf.DataFrame({'A': pd.Series([1.0, 2.0], dtype='float64'),
+                              'B': pd.Series([0.5, 1], dtype='float64'),
+                              'C': pd.Series([1, 2], dtype='int64')})
+    result = df.replace(0, 0.5)
+    ray_df_equals(result, expected)
+
+    # to object block upcasting
+    df = rdf.DataFrame({'A': pd.Series([1.0, 2.0], dtype='float64'),
+                        'B': pd.Series([0, 1], dtype='int64')})
+    expected = rdf.DataFrame({'A': pd.Series([1, 'foo'], dtype='object'),
+                              'B': pd.Series([0, 1], dtype='int64')})
+    result = df.replace(2, 'foo')
+    ray_df_equals(result, expected)
+
+    expected = rdf.DataFrame({'A': pd.Series(['foo', 'bar'], dtype='object'),
+                              'B': pd.Series([0, 'foo'], dtype='object')})
+    result = df.replace([1, 2], ['foo', 'bar'])
+    ray_df_equals(result, expected)
+
+    # test case from
+    df = rdf.DataFrame({'A': pd.Series([3, 0], dtype='int64'),
+                        'B': pd.Series([0, 3], dtype='int64')})
+    result = df.replace(3, df.mean().to_dict())
+    expected = from_pandas(
+        to_pandas(df).copy().astype('float64'),
+        num_partitions
+    )
+    m = df.mean()
+    expected = to_pandas(expected)
+    expected.iloc[0, 0] = m[0]
+    expected.iloc[1, 1] = m[1]
+    expected = from_pandas(
+        expected,
+        num_partitions
+    )
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_simple_nested_dict(num_partitions=2):
+    df = rdf.DataFrame({'col': range(1, 5)})
+    expected = rdf.DataFrame({'col': ['a', 2, 3, 'b']})
+
+    result = df.replace({'col': {1: 'a', 4: 'b'}})
+    ray_df_equals(expected, result)
+
+    # in this case, should be the same as the not nested version
+    result = df.replace({1: 'a', 4: 'b'})
+    ray_df_equals(expected, result)
+
+
+@pytest.fixture
+def test_replace_simple_nested_dict_with_nonexistent_value(num_partitions=2):
+    df = rdf.DataFrame({'col': range(1, 5)})
+    expected = rdf.DataFrame({'col': ['a', 2, 3, 'b']})
+
+    result = df.replace({-1: '-', 1: 'a', 4: 'b'})
+    ray_df_equals(expected, result)
+
+    result = df.replace({'col': {-1: '-', 1: 'a', 4: 'b'}})
+    ray_df_equals(expected, result)
+
+
+@pytest.fixture
+def test_replace_value_is_none(num_partitions=2):
+    test_data = TestData()
+    pytest.raises(TypeError, test_data.tsframe.replace, np.nan)
+
+    test_data.tsframe.iloc[0, 0] = np.nan
+    test_data.tsframe.iloc[1, 0] = 1
+
+    ray_df = rdf.DataFrame(test_data.tsframe)
+    result = ray_df.replace(to_replace={np.nan: 0})
+    expected = ray_df.T.replace(to_replace={np.nan: 0}).T
+    ray_df_equals(result, expected)
+
+    result = ray_df.replace(to_replace={np.nan: 0, 1: -1e8})
+    tsframe = test_data.tsframe.copy()
+    tsframe.iloc[0, 0] = 0
+    tsframe.iloc[1, 0] = -1e8
+    expected = from_pandas(tsframe, num_partitions)
+    ray_df_equals(expected, result)
+
+
+@pytest.fixture
+def test_replace_for_new_dtypes(num_partitions=2):
+    test_data = TestData()
+
+    # dtypes
+    tsframe = test_data.tsframe.copy().astype(np.float32)
+    tsframe['A'][:5] = np.nan
+    tsframe['A'][-5:] = np.nan
+
+    ray_df = from_pandas(tsframe, num_partitions)
+    zero_filled = ray_df.replace(np.nan, -1e8)
+    ray_df_equals(zero_filled, ray_df.fillna(-1e8))
+    ray_df_equals(zero_filled.replace(-1e8, np.nan), ray_df)
+
+    tsframe['A'][:5] = np.nan
+    tsframe['A'][-5:] = np.nan
+    tsframe['B'][:5] = -1e8
+
+    b = tsframe['B']
+    b[b == -1e8] = np.nan
+    tsframe['B'] = b
+    ray_df = from_pandas(tsframe, num_partitions)
+    result = ray_df.fillna(method='bfill')
+    ray_df_equals(result, ray_df.fillna(method='bfill'))
+
+
+@pytest.fixture
+def test_replace_dtypes(num_partitions=2):
+    # int
+    df = rdf.DataFrame({'ints': [1, 2, 3]})
+    result = df.replace(1, 0)
+    expected = rdf.DataFrame({'ints': [0, 2, 3]})
+    ray_df_equals(result, expected)
+
+    df = rdf.DataFrame({'ints': [1, 2, 3]}, dtype=np.int32)
+    result = df.replace(1, 0)
+    expected = rdf.DataFrame({'ints': [0, 2, 3]}, dtype=np.int32)
+    ray_df_equals(result, expected)
+
+    df = rdf.DataFrame({'ints': [1, 2, 3]}, dtype=np.int16)
+    result = df.replace(1, 0)
+    expected = rdf.DataFrame({'ints': [0, 2, 3]}, dtype=np.int16)
+    ray_df_equals(result, expected)
+
+    # bools
+    df = rdf.DataFrame({'bools': [True, False, True]})
+    result = df.replace(False, True)
+    assert result.values.all()
+
+    # complex blocks
+    df = rdf.DataFrame({'complex': [1j, 2j, 3j]})
+    result = df.replace(1j, 0j)
+    expected = rdf.DataFrame({'complex': [0j, 2j, 3j]})
+    ray_df_equals(result, expected)
+
+    # datetime blocks
+    prev = datetime.today()
+    now = datetime.today()
+    df = rdf.DataFrame({'datetime64': pd.Index([prev, now, prev])})
+    result = df.replace(prev, now)
+    expected = rdf.DataFrame({'datetime64': pd.Index([now] * 3)})
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_input_formats_listlike(num_partitions=2):
+    # both dicts
+    to_rep = {'A': np.nan, 'B': 0, 'C': ''}
+    values = {'A': 0, 'B': -1, 'C': 'missing'}
+    df = rdf.DataFrame({'A': [np.nan, 0, np.inf], 'B': [0, 2, 5],
+                        'C': ['', 'asdf', 'fd']})
+    filled = df.replace(to_rep, values)
+    expected = {}
+    for k, v in pd.compat.iteritems(df):
+        expected[k] = v.replace(to_rep[k], values[k])
+    ray_df_equals(filled, rdf.DataFrame(expected))
+
+    result = df.replace([0, 2, 5], [5, 2, 0])
+    expected = rdf.DataFrame({'A': [np.nan, 5, np.inf], 'B': [5, 2, 0],
+                              'C': ['', 'asdf', 'fd']})
+    ray_df_equals(result, expected)
+
+    # scalar to dict
+    values = {'A': 0, 'B': -1, 'C': 'missing'}
+    df = rdf.DataFrame({'A': [np.nan, 0, np.nan], 'B': [0, 2, 5],
+                        'C': ['', 'asdf', 'fd']})
+    filled = df.replace(np.nan, values)
+    expected = {}
+    for k, v in pd.compat.iteritems(df):
+        expected[k] = v.replace(np.nan, values[k])
+    ray_df_equals(filled, rdf.DataFrame(expected))
+
+    # list to list
+    to_rep = [np.nan, 0, '']
+    values = [-2, -1, 'missing']
+
+    result = df.replace(to_rep, values)
+    expected = df.copy()
+    for i in range(len(to_rep)):
+        expected.replace(to_rep[i], values[i], inplace=True)
+    ray_df_equals(result, expected)
+
+    pytest.raises(ValueError, df.replace, to_rep, values[1:])
+
+
+@pytest.fixture
+def test_replace_input_formats_scalar(num_partitions=2):
+    df = rdf.DataFrame({'A': [np.nan, 0, np.inf], 'B': [0, 2, 5],
+                        'C': ['', 'asdf', 'fd']})
+
+    # dict to scalar
+    to_rep = {'A': np.nan, 'B': 0, 'C': ''}
+    filled = df.replace(to_rep, 0)
+    expected = {}
+    for k, v in pd.compat.iteritems(df):
+        expected[k] = v.replace(to_rep[k], 0)
+    ray_df_equals(filled, rdf.DataFrame(expected))
+
+    pytest.raises(TypeError, df.replace, to_rep, [np.nan, 0, ''])
+
+    # list to scalar
+    to_rep = [np.nan, 0, '']
+    result = df.replace(to_rep, -1)
+    expected = df.copy()
+    for i in range(len(to_rep)):
+        expected.replace(to_rep[i], -1, inplace=True)
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_dict_tuple_list_ordering_remains_the_same(num_partitions=2):
+    df = rdf.DataFrame(dict(A=[np.nan, 1]))
+    res1 = df.replace(to_replace={np.nan: 0, 1: -1e8})
+    res2 = df.replace(to_replace=(1, np.nan), value=[-1e8, 0])
+    res3 = df.replace(to_replace=[1, np.nan], value=[-1e8, 0])
+
+    expected = rdf.DataFrame({'A': [0, -1e8]})
+    ray_df_equals(res1, res2)
+    ray_df_equals(res2, res3)
+    ray_df_equals(res3, expected)
+
+
+@pytest.fixture
+def test_replace_doesnt_replace_without_regex(num_partitions=2):
+    raw = """fol T_opp T_Dir T_Enh
+    0    1     0     0    vo
+    1    2    vr     0     0
+    2    2     0     0     0
+    3    3     0    bt     0"""
+    df = from_pandas(pd.read_csv(StringIO(raw), sep=r'\s+'), num_partitions)
+
+    res = df.replace({r'\D': 1})
+    ray_df_equals(df, res)
+
+
+@pytest.fixture
+def test_replace_bool_with_string(num_partitions=2):
+    df = rdf.DataFrame({'a': [True, False], 'b': list('ab')})
+    result = df.replace(True, 'a')
+    expected = rdf.DataFrame({'a': ['a', False], 'b': df.b})
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_pure_bool_with_string_no_op(num_partitions=2):
+    df = rdf.DataFrame(np.random.rand(2, 2) > 0.5)
+    result = df.replace('asdf', 'fdsa')
+    ray_df_equals(df, result)
+
+
+@pytest.fixture
+def test_replace_bool_with_bool(num_partitions=2):
+    df = rdf.DataFrame(np.random.rand(2, 2) > 0.5)
+    result = df.replace(False, True)
+    expected = rdf.DataFrame(np.ones((2, 2), dtype=bool))
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_with_dict_with_bool_keys(num_partitions=2):
+    df = rdf.DataFrame({0: [True, False], 1: [False, True]})
+    with tm.assert_raises_regex(TypeError, 'Cannot compare types .+'):
+        df.replace({'asdf': 'asdb', True: 'yes'})
+
+
+@pytest.fixture
+def test_replace_truthy(num_partitions=2):
+    df = rdf.DataFrame({'a': [True, True]})
+    r = df.replace([np.inf, -np.inf], np.nan)
+    e = df
+    ray_df_equals(r, e)
+
+
+@pytest.fixture
+def test_replace_int_to_int_chain(num_partitions=2):
+    df = rdf.DataFrame({'a': range(1, 5)})
+    with tm.assert_raises_regex(ValueError,
+                                "Replacement not allowed .+"):
+        df.replace({'a': dict(zip(range(1, 5), range(2, 6)))})
+
+
+@pytest.fixture
+def test_replace_str_to_str_chain(num_partitions=2):
+    a = np.arange(1, 5)
+    astr = a.astype(str)
+    bstr = np.arange(2, 6).astype(str)
+    df = rdf.DataFrame({'a': astr})
+    with tm.assert_raises_regex(ValueError,
+                                "Replacement not allowed .+"):
+        df.replace({'a': dict(zip(astr, bstr))})
+
+
+@pytest.fixture
+def test_replace_swapping_bug(num_partitions=2):
+    df = rdf.DataFrame({'a': [True, False, True]})
+    res = df.replace({'a': {True: 'Y', False: 'N'}})
+    expect = rdf.DataFrame({'a': ['Y', 'N', 'Y']})
+    ray_df_equals(res, expect)
+
+    df = rdf.DataFrame({'a': [0, 1, 0]})
+    res = df.replace({'a': {0: 'Y', 1: 'N'}})
+    expect = rdf.DataFrame({'a': ['Y', 'N', 'Y']})
+    ray_df_equals(res, expect)
+
+
+@pytest.fixture
+def test_replace_period(num_partitions=2):
+    d = {
+        'fname': {
+            'out_augmented_AUG_2011.json':
+            pd.Period(year=2011, month=8, freq='M'),
+            'out_augmented_JAN_2011.json':
+            pd.Period(year=2011, month=1, freq='M'),
+            'out_augmented_MAY_2012.json':
+            pd.Period(year=2012, month=5, freq='M'),
+            'out_augmented_SUBSIDY_WEEK.json':
+            pd.Period(year=2011, month=4, freq='M'),
+            'out_augmented_AUG_2012.json':
+            pd.Period(year=2012, month=8, freq='M'),
+            'out_augmented_MAY_2011.json':
+            pd.Period(year=2011, month=5, freq='M'),
+            'out_augmented_SEP_2013.json':
+            pd.Period(year=2013, month=9, freq='M')}}
+
+    df = rdf.DataFrame(['out_augmented_AUG_2012.json',
+                        'out_augmented_SEP_2013.json',
+                        'out_augmented_SUBSIDY_WEEK.json',
+                        'out_augmented_MAY_2012.json',
+                        'out_augmented_MAY_2011.json',
+                        'out_augmented_AUG_2011.json',
+                        'out_augmented_JAN_2011.json'], columns=['fname'])
+    assert set(df.fname.values) == set(d['fname'].keys())
+    expected = rdf.DataFrame({'fname': [d['fname'][k]
+                                        for k in df.fname.values]})
+    result = df.replace(d)
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_datetime(num_partitions=2):
+    d = {'fname':
+         {'out_augmented_AUG_2011.json': pd.Timestamp('2011-08'),
+          'out_augmented_JAN_2011.json': pd.Timestamp('2011-01'),
+          'out_augmented_MAY_2012.json': pd.Timestamp('2012-05'),
+          'out_augmented_SUBSIDY_WEEK.json': pd.Timestamp('2011-04'),
+          'out_augmented_AUG_2012.json': pd.Timestamp('2012-08'),
+          'out_augmented_MAY_2011.json': pd.Timestamp('2011-05'),
+          'out_augmented_SEP_2013.json': pd.Timestamp('2013-09')}}
+
+    df = rdf.DataFrame(['out_augmented_AUG_2012.json',
+                        'out_augmented_SEP_2013.json',
+                        'out_augmented_SUBSIDY_WEEK.json',
+                        'out_augmented_MAY_2012.json',
+                        'out_augmented_MAY_2011.json',
+                        'out_augmented_AUG_2011.json',
+                        'out_augmented_JAN_2011.json'], columns=['fname'])
+    assert set(df.fname.values) == set(d['fname'].keys())
+    expected = rdf.DataFrame({'fname': [d['fname'][k]
+                                        for k in df.fname.values]})
+    result = df.replace(d)
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_datetimetz(num_partitions=2):
+
+    # GH 11326
+    # behaving poorly when presented with a datetime64[ns, tz]
+    df = rdf.DataFrame({'A': date_range('20130101', periods=3,
+                                        tz='US/Eastern'),
+                        'B': [0, np.nan, 2]})
+    result = df.replace(np.nan, 1)
+    expected = rdf.DataFrame({'A': date_range('20130101', periods=3,
+                                              tz='US/Eastern'),
+                             'B': pd.Series([0, 1, 2], dtype='float64')})
+    ray_df_equals(result, expected)
+
+    result = df.fillna(1)
+    ray_df_equals(result, expected)
+
+    result = df.replace(0, np.nan)
+    expected = rdf.DataFrame({'A': date_range('20130101', periods=3,
+                                              tz='US/Eastern'),
+                              'B': [np.nan, np.nan, 2]})
+    ray_df_equals(result, expected)
+
+    result = df.replace(Timestamp('20130102', tz='US/Eastern'),
+                        Timestamp('20130104', tz='US/Eastern'))
+    expected = rdf.DataFrame({'A': [Timestamp('20130101', tz='US/Eastern'),
+                                    Timestamp('20130104', tz='US/Eastern'),
+                                    Timestamp('20130103', tz='US/Eastern')],
+                              'B': [0, np.nan, 2]})
+    ray_df_equals(result, expected)
+
+    result = to_pandas(df.copy())
+    result.iloc[1, 0] = np.nan
+    result = from_pandas(result, num_partitions)
+    result = result.replace(
+        {'A': pd.NaT}, Timestamp('20130104', tz='US/Eastern'))
+    ray_df_equals(result, expected)
+
+    # coerce to object
+    result = to_pandas(df.copy())
+    result.iloc[1, 0] = np.nan
+    result = from_pandas(result, num_partitions)
+    result = result.replace(
+        {'A': pd.NaT}, Timestamp('20130104', tz='US/Pacific'))
+    expected = rdf.DataFrame({'A': [Timestamp('20130101', tz='US/Eastern'),
+                                    Timestamp('20130104', tz='US/Pacific'),
+                                    Timestamp('20130103', tz='US/Eastern')],
+                              'B': [0, np.nan, 2]})
+    ray_df_equals(result, expected)
+
+    result = to_pandas(df.copy())
+    result.iloc[1, 0] = np.nan
+    result = from_pandas(result, num_partitions)
+    result = result.replace({'A': np.nan}, Timestamp('20130104'))
+    expected = rdf.DataFrame({'A': [Timestamp('20130101', tz='US/Eastern'),
+                                    Timestamp('20130104'),
+                                    Timestamp('20130103', tz='US/Eastern')],
+                              'B': [0, np.nan, 2]})
+    ray_df_equals(result, expected)
+
+
+@pytest.fixture
+def test_replace_with_empty_dictlike(num_partitions=2):
+    # GH 15289
+    mix = {'a': range(4), 'b': list('ab..'), 'c': ['a', 'b', np.nan, 'd']}
+    df = rdf.DataFrame(mix)
+    ray_df_equals(df, df.replace({}))
+    ray_df_equals(df, df.replace(pd.Series([])))
 
     with pytest.raises(NotImplementedError):
         ray_df.replace()

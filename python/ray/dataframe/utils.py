@@ -6,8 +6,16 @@ import pandas as pd
 import numpy as np
 import ray
 
+from pandas.core.dtypes.common import (
+    is_datetimelike_v_numeric,
+    is_numeric_v_string_like
+)
 from . import get_npartitions
 
+
+def _are_compareable(item1, item2):
+    return not is_datetimelike_v_numeric(item1, item2)\
+           and not is_numeric_v_string_like(item1, item2)
 
 def _get_lengths(df):
     """Gets the length of the dataframe.
@@ -132,24 +140,6 @@ def _deploy_func(func, dataframe, *args):
         return func(dataframe, *args)
 
 
-@ray.remote
-def _deploy_func_ignore_errors(func, dataframe, *args):
-    """Deploys a function for the _map_partitions call, while ignoring errors.
-    Args:
-        dataframe (pandas.DataFrame): The pandas DataFrame for this partition.
-    Returns:
-        A futures object representing the return value of the function
-        provided.
-    """
-    try:
-        if len(args) == 0:
-            return func(dataframe)
-        else:
-            return func(dataframe, *args)
-    except Exception:
-        return dataframe
-
-
 def _map_partitions(func, partitions=None, *argslists, **kwargs):
     """Apply a function across the specified axis
 
@@ -160,48 +150,31 @@ def _map_partitions(func, partitions=None, *argslists, **kwargs):
     Returns:
         A new Dataframe containing the result of the function
     """
-    block_partitions = kwargs.get('block_partitions', None)
-    ignore_errors = kwargs.get('ignore_errors', False)
-    assert partitions is not None and block_partitions is None or\
-        partitions is None and block_partitions is not None,\
-        "Should pass in either partitions or block_partitions, but not both"
-    new_partitions = None
-    if block_partitions is None:
-        if partitions is None:
-            return new_partitions
-    else:
-        partitions = _block_partitions_to_list(block_partitions)
+    if partitions is None:
+        return None
 
     if len(partitions) == 0:
         return partitions
 
     assert(callable(func))
 
-    deploy_func = _deploy_func
-    if ignore_errors:
-        deploy_func = _deploy_func_ignore_errors
-
     if len(argslists) == 0:
         new_partitions = [
-            deploy_func.remote(func, part)
+            _deploy_func.remote(func, part)
             for part in partitions
         ]
     elif len(argslists) == 1:
         new_partitions = [
-            deploy_func.remote(func, part, argslists[0])
+            _deploy_func.remote(func, part, argslists[0])
             for part in partitions
         ]
     else:
         assert(all([len(args) == len(partitions) for args in argslists]))
         new_partitions = [
-            deploy_func.remote(func, part, *args)
+            _deploy_func.remote(func, part, *args)
             for part, args in zip(partitions, *argslists)
         ]
-    if block_partitions is None:
-        return new_partitions
-    else:
-        return _block_list_to_partitions(new_partitions,
-                                         len(block_partitions[0]))
+    return new_partitions
 
 
 @ray.remote

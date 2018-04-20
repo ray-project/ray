@@ -41,7 +41,8 @@ from .utils import (
     _co_op_helper,
     _match_partitioning,
     _concat_index,
-    _correct_column_dtypes)
+    _correct_column_dtypes,
+    _are_compareable)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -62,7 +63,7 @@ class DataFrame(object):
             index (pandas.Index or list): The row index for this dataframe.
             columns (pandas.Index): The column names for this dataframe, in
                 pandas Index object.
-            dtype: Data type to force. Only a single dtfype is allowed.
+            dtype: Data type to force. Only a single dtype is allowed.
                 If None, infer
             copy (boolean): Copy data from inputs.
                 Only affects DataFrame / 2d ndarray input
@@ -1620,8 +1621,6 @@ class DataFrame(object):
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_rows = _map_partitions(eval_helper, self._row_partitions)
 
-        result_type = ray.get(_deploy_func.remote(lambda df: type(df),
-                                                  new_rows[0]))
         if result_type is pd.Series:
             new_series = pd.concat(ray.get(new_rows), axis=0)
             new_series.index = self.index
@@ -3024,13 +3023,53 @@ class DataFrame(object):
             regex=regex, method=method, axis=axis
         )
 
-        new_block_partitions = _map_partitions(
-            lambda df: df.replace(to_replace=to_replace, value=value,
-                                  limit=limit, regex=regex, method='pad',
-                                  axis=None),
-            block_partitions=self._block_partitions,
+        def _filter_replace_params(df, filtered_key, filtered_value):
+            filtered_replace_pairs = pd.DataFrame(
+                data=[filtered_key, filtered_value],
+                index=['K', 'V'], columns=range(len(filtered_key))
+            ).T
+            should_keep = []
+            col_arrays = [np.array(df.loc[:,col].tolist())
+                          for col in df.columns]
+            for i in range(len(filtered_replace_pairs.index)):
+                if any([_are_compareable(filtered_replace_pairs.K[i],
+                   col_array) for col_array in col_arrays]):
+                        should_keep.append(i)
+            filtered_replace_pairs =\
+                filtered_replace_pairs.iloc[should_keep]
+            filtered_key = filtered_replace_pairs.iloc[:,0].tolist()
+            filtered_value = filtered_replace_pairs.iloc[:,1].tolist()
+            return filtered_key, filtered_value
+
+        def _replace(df):
+            # https://docs.scipy.org/doc/numpy/reference/arrays.scalars.html
+            filtered_to_replace = to_replace
+            filtered_value = value
+            filtered_regex = regex
+            if value is None and isinstance(filtered_to_replace, dict)\
+               and len(filtered_to_replace) > 0\
+               and not isinstance(next(iter(to_replace.values())), dict):
+                filtered_to_replace = [k for k in to_replace.keys()]
+                filtered_value = [v for v in to_replace.values()]
+            if isinstance(filtered_to_replace, list)\
+               and isinstance(filtered_value, list):
+                filtered_to_replace, filtered_value =\
+                    _filter_replace_params(
+                        df, filtered_to_replace, filtered_value)
+            if isinstance(filtered_regex, list)\
+               and isinstance(filtered_value, list):
+                filtered_regex, filtered_value =\
+                    _filter_replace_params(
+                        df, filtered_regex, filtered_value)
+            return df.replace(to_replace=filtered_to_replace,
+                              value=filtered_value, limit=limit,
+                              regex=filtered_regex, method=method, axis=None)
+
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: _replace(df),
+            partitions=block,
             ignore_errors=True
-        )
+        ) for block in self._block_partitions])
 
         if inplace:
             self._update_inplace(
