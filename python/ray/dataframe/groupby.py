@@ -44,8 +44,7 @@ class DataFrameGroupBy(object):
                                              as_index,
                                              sort,
                                              group_keys,
-                                             squeeze,
-                                             *part),
+                                             squeeze) + part,
                                        num_return_vals=len(self))
                        for part in partitions)))
 
