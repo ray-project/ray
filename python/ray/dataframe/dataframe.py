@@ -783,7 +783,7 @@ class DataFrame(object):
         else:
             kwargs['temp_index'] = self.index
 
-        def remote_helper(df, arg, *args, **kwargs):
+        def agg_helper(df, arg, *args, **kwargs):
             if 'temp_index' in kwargs:
                 df.index = kwargs.pop('temp_index', None)
             else:
@@ -813,14 +813,14 @@ class DataFrame(object):
             return is_series, new_df, index, columns
 
         remote_result = \
-            [_deploy_func._submit(args=(lambda df: remote_helper(df,
-                                                                 func,
-                                                                 *args,
-                                                                 **kwargs),
+            [_deploy_func._submit(args=(lambda df: agg_helper(df,
+                                                              func,
+                                                              *args,
+                                                              **kwargs),
                                         part), num_return_vals=4)
              for part in partitions]
 
-        # This magic unzips the list comprehension returned from remote
+        # This magic transposes the list comprehension returned from remote
         is_series, new_parts, index, columns = \
             [list(t) for t in zip(*remote_result)]
 
@@ -833,10 +833,12 @@ class DataFrame(object):
             new_series = pd.concat(ray.get(new_parts))
             new_series.index = self.columns if axis == 0 else self.index
             return new_series
-        # this happens when some of the partitions return Series and others
-        # return DataFrames
+        # This error is thrown when some of the partitions return Series and
+        # others return DataFrames. We do not allow mixed returns.
         elif any(is_series):
             raise ValueError("no results.")
+        # The remaining logic executes when we have only DataFrames in the
+        # remote objects. We build a Ray DataFrame from the Pandas partitions.
         elif axis == 0:
             new_index = ray.get(index[0])
             columns = ray.get(columns)
