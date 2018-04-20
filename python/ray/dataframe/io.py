@@ -10,10 +10,12 @@ import warnings
 
 from pyarrow.parquet import ParquetFile
 import pandas as pd
+from pandas.io.common import _infer_compression  # don't depend on internal API
+
 
 from .dataframe import ray, DataFrame
 from . import get_npartitions
-from .utils import from_pandas
+from .utils import from_pandas, _map_partitions
 
 
 # Parquet
@@ -129,7 +131,7 @@ def _read_csv_with_offset(fn, start, end, header=b'', kwargs={}):
     return pd.read_csv(BytesIO(to_read), **kwargs)
 
 
-def read_csv(filepath,
+def read_csv(filepath_or_buffer,
              sep=',',
              delimiter=None,
              header='infer',
@@ -246,6 +248,21 @@ def read_csv(filepath,
         buffer_lines=buffer_lines,
         memory_map=memory_map,
         float_precision=float_precision)
+
+    # Default to Pandas read_csv for non-serializable objects
+    if not isinstance(filepath_or_buffer, str) or \
+            _infer_compression(filepath_or_buffer, compression) is not None:
+
+        warnings.warn("Defaulting to Pandas implementation",
+                      PendingDeprecationWarning)
+
+        pd_obj = pd.read_csv(filepath_or_buffer, **kwargs)
+        if isinstance(pd_obj, pd.DataFrame):
+            return from_pandas(pd_obj, get_npartitions())
+
+        return pd_obj
+
+    filepath = filepath_or_buffer
 
     offsets = _compute_offset(filepath, get_npartitions())
 

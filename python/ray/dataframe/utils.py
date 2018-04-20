@@ -282,6 +282,7 @@ def create_blocks(df, npartitions, axis):
 def create_blocks_helper(df, npartitions, axis):
     # Single partition dataframes don't need to be repartitioned
     if npartitions == 1:
+        df.columns = pd.RangeIndex(0, len(df.columns))
         return df
     # In the case that the size is not a multiple of the number of partitions,
     # we need to add one to each partition to avoid losing data off the end

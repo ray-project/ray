@@ -44,6 +44,7 @@ from .utils import (
     _match_partitioning,
     _concat_index,
     _correct_column_dtypes)
+from .csv_formatter import CSVFormatter
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -137,7 +138,7 @@ class DataFrame(object):
 
                 # TODO: write explicit tests for "short and wide"
                 # column partitions
-                self._block_partitions = \
+               self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
                                              length=axis_length)
 
@@ -4201,23 +4202,35 @@ class DataFrame(object):
         port_frame = to_pandas(self)
         port_frame.to_clipboard(excel, sep, **kwargs)
 
-    def to_csv(self, path_or_buf=None, sep=',', na_rep='', float_format=None,
+    def to_csv(self, path_or_buf=None, sep=",", na_rep="", float_format=None,
                columns=None, header=True, index=True, index_label=None,
-               mode='w', encoding=None, compression=None, quoting=None,
-               quotechar='"', line_terminator='\n', chunksize=None,
+               mode="w", encoding=None, compression=None, quoting=None,
+               quotechar='"', line_terminator="\n", chunksize=None,
                tupleize_cols=None, date_format=None, doublequote=True,
-               escapechar=None, decimal='.'):
+               escapechar=None, decimal="."):
+        if tupleize_cols is not None:
+            warnings.warn("The 'tupleize_cols' parameter is deprecated and "
+                          "will be removed in a future version",
+                          FutureWarning, stacklevel=2)
+        else:
+            tupleize_cols = False
 
-        warnings.warn("Defaulting to Pandas implementation",
-                      PendingDeprecationWarning)
+        formatter = CSVFormatter(self, path_or_buf,
+                                 line_terminator=line_terminator, sep=sep,
+                                 encoding=encoding,
+                                 compression=compression, quoting=quoting,
+                                 na_rep=na_rep, float_format=float_format,
+                                 cols=columns, header=header, index=index,
+                                 index_label=index_label, mode=mode,
+                                 chunksize=chunksize, quotechar=quotechar,
+                                 tupleize_cols=tupleize_cols,
+                                 date_format=date_format,
+                                 doublequote=doublequote,
+                                 escapechar=escapechar, decimal=decimal)
+        formatter.save()
 
-        port_frame = to_pandas(self)
-        port_frame.to_csv(path_or_buf, sep, na_rep, float_format,
-                          columns, header, index, index_label,
-                          mode, encoding, compression, quoting,
-                          quotechar, line_terminator, chunksize,
-                          tupleize_cols, date_format, doublequote,
-                          escapechar, decimal)
+        if path_or_buf is None:
+            return formatter.path_or_buf.getvalue()
 
     def to_dense(self):
         raise NotImplementedError(
