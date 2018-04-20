@@ -966,18 +966,16 @@ void redis_task_table_update_callback(redisAsyncContext *c,
   // task table update can race with the liveness monitor. Do not retry the
   // update unless the caller is sure that the receiving subscriber is still
   // alive in the db_client table.
-  if (reply->type == REDIS_REPLY_ERROR &&
-      strcmp(reply->str, "No subscribers received message.") == 0) {
-    RAY_LOG(WARNING) << "No subscribers received the task_table_update "
-                     << "message.";
+  if (reply->type == REDIS_REPLY_ERROR) {
+    RAY_LOG(WARNING) << "task_table_update failed with " << reply->str;
     if (callback_data->retry.fail_callback != NULL) {
       callback_data->retry.fail_callback(callback_data->id,
                                          callback_data->user_context,
                                          callback_data->data->Get());
+    } else {
+      RAY_LOG(FATAL) << "task_table_update failed and no fail_callback is set";
     }
   } else {
-    RAY_CHECK(reply->type != REDIS_REPLY_ERROR) << "reply->str is "
-                                                << reply->str;
     RAY_CHECK(strcmp(reply->str, "OK") == 0) << "reply->str is " << reply->str;
 
     /* Call the done callback if there is one. */
