@@ -1,0 +1,22 @@
+# can expect improvement to 90 reward in ~12-24k timesteps
+mountaincarcontinuous-ddpg-2:
+    env: MountainCarContinuous-v0
+    run: DDPG2
+    trial_resources:
+        cpu: 6
+    stop:
+        episode_reward_mean: 90
+    config:
+        n_step: 3
+        actor_hiddens: [32, 64]
+        critic_hiddens: [64, 64]
+        noise_scale: 0.75
+        exploration_fraction: 0.4
+        tau: 0.01
+        l2_reg: 0.00001
+        buffer_size: 50000
+        random_starts: False
+        clip_rewards: False
+        learning_starts: 1000
+        #model:
+        #    fcnet_hiddens: []
