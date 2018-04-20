@@ -2028,9 +2028,63 @@ class DataFrame(object):
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        if on is not None:
+            raise NotImplementedError("Not yet.")
+
+        @ray.remote
+        def join_helper(df, old_index, new_index):
+            df.index = old_index
+            df.reindex(new_index)
+            df.reset_index(inplace=True, drop=True)
+            return df
+
+        if isinstance(other, pd.Series):
+            if other.name is None:
+                raise ValueError("Other Series must have a name")
+            other = DataFrame({other.name: other})
+
+        if isinstance(other, DataFrame):
+            new_index = self.index.join(other.index, how=how, sort=sort)
+
+            new_self = [join_helper.remote(col, self.index, new_index)
+                        for col in self._col_partitions]
+            new_other = [join_helper.remote(col, other.index, new_index)
+                         for col in other._col_partitions]
+
+            new_column_parts = new_self + new_other
+
+            new_column_labels = pd.DataFrame(columns=self.columns)\
+                .join(pd.DataFrame(columns=other.columns),
+                      lsuffix=lsuffix, rsuffix=rsuffix).columns
+
+            return DataFrame(col_partitions=new_column_parts,
+                             index=new_index,
+                             columns=new_column_labels)
+        else:
+            if on is not None:
+                raise ValueError("Joining multiple DataFrames only supported"
+                                 " for joining on index")
+
+            new_index = pd.DataFrame(index=self.index).join(
+                [pd.DataFrame(index=obj.index) for obj in other],
+                how=how, sort=sort).index
+
+            new_column_labels = pd.DataFrame(columns=self.columns).join(
+                [pd.DataFrame(columns=obj.columns) for obj in other],
+                lsuffix=lsuffix, rsuffix=rsuffix).columns
+
+            new_self = [join_helper.remote(col, self.index, new_index)
+                        for col in self._col_partitions]
+
+            new_others = [join_helper.remote(col, obj.index, new_index)
+                          for obj in other for col in obj._col_partitions]
+
+            new_column_parts = new_self + new_others
+
+            return DataFrame(col_partitions=new_column_parts,
+                             index=new_index,
+                             columns=new_column_labels)
 
     def kurt(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):

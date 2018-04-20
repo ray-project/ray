@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from .dataframe import DataFrame as rdf
+from .dataframe import DataFrame
 from .utils import (
     from_pandas,
     _deploy_func)
@@ -14,33 +14,29 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     def _concat(frame1, frame2):
         # Check type on objects
         # Case 1: Both are Pandas DF
-        if isinstance(frame1, pd.DataFrame) and \
-           isinstance(frame2, pd.DataFrame):
+        if isinstance(frame1, (pd.DataFrame, pd.Series)) and \
+           isinstance(frame2, (pd.DataFrame, pd.Series)):
 
             return pd.concat((frame1, frame2), axis, join, join_axes,
                              ignore_index, keys, levels, names,
                              verify_integrity, copy)
 
-        if not (isinstance(frame1, rdf) and
-           isinstance(frame2, rdf)) and join == 'inner':
+        if not (isinstance(frame1, DataFrame) and
+           isinstance(frame2, DataFrame)) and join == 'inner':
             raise NotImplementedError(
                   "Obj as dicts not implemented. To contribute to "
-                  "Pandas on Ray, please visit github.com/ray-project/ray."
-                  )
+                  "Pandas on Ray, please visit github.com/ray-project/ray.")
 
         # Case 2: Both are different types
-        if isinstance(frame1, pd.DataFrame):
+        if isinstance(frame1, (pd.DataFrame, pd.Series)):
             frame1 = from_pandas(frame1, len(frame1) / 2**16 + 1)
-        if isinstance(frame2, pd.DataFrame):
+        if isinstance(frame2, (pd.DataFrame, pd.Series)):
             frame2 = from_pandas(frame2, len(frame2) / 2**16 + 1)
 
         # Case 3: Both are Ray DF
-        if isinstance(frame1, rdf) and \
-           isinstance(frame2, rdf):
+        if isinstance(frame1, DataFrame) and isinstance(frame2, DataFrame):
 
-            new_columns = frame1.columns.join(frame2.columns, how=join)
-
-            def _reindex_helper(pdf, old_columns, join):
+            def _reindex_helper(pdf, old_columns, new_columns, join):
                 pdf.columns = old_columns
                 if join == 'outer':
                     pdf = pdf.reindex(columns=new_columns)
@@ -50,33 +46,42 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
 
                 return pdf
 
+            new_columns = frame1.columns.join(frame2.columns, how=join)
+
             f1_columns, f2_columns = frame1.columns, frame2.columns
-            new_f1 = [_deploy_func.remote(lambda p: _reindex_helper(p,
-                                          f1_columns, join), part) for
-                      part in frame1._row_partitions]
-            new_f2 = [_deploy_func.remote(lambda p: _reindex_helper(p,
-                                          f2_columns, join), part) for
-                      part in frame2._row_partitions]
+            new_f1 = [_deploy_func.remote(
+                lambda p: _reindex_helper(p, f1_columns, new_columns, join),
+                                          part)
+                      for part in frame1._row_partitions]
 
-            return rdf(row_partitions=new_f1 + new_f2, columns=new_columns,
-                       index=frame1.index.append(frame2.index))
+            new_f2 = [_deploy_func.remote(
+                lambda p: _reindex_helper(p, f2_columns, new_columns, join),
+                                          part)
+                      for part in frame2._row_partitions]
 
-    # (TODO) Group all the pandas dataframes
+            return DataFrame(row_partitions=new_f1 + new_f2,
+                             columns=new_columns,
+                             index=frame1.index.append(frame2.index))
+
+    # TODO Group all the pandas dataframes
+
+    if join not in ['inner', 'outer']:
+        raise ValueError("Only can inner (intersect) or outer (union) join the"
+                         " other axis")
 
     if isinstance(objs, dict):
         raise NotImplementedError(
               "Obj as dicts not implemented. To contribute to "
-              "Pandas on Ray, please visit github.com/ray-project/ray."
-              )
+              "Pandas on Ray, please visit github.com/ray-project/ray.")
 
     axis = pd.DataFrame()._get_axis_number(axis)
     if axis == 1:
         raise NotImplementedError(
               "Concat not implemented for axis=1. To contribute to "
-              "Pandas on Ray, please visit github.com/ray-project/ray."
-              )
+              "Pandas on Ray, please visit github.com/ray-project/ray.")
 
-    all_pd = np.all([isinstance(obj, pd.DataFrame) for obj in objs])
+    all_pd = np.all([isinstance(obj, (pd.DataFrame, pd.Series))
+                     for obj in objs])
     if all_pd:
         result = pd.concat(objs, axis, join, join_axes,
                            ignore_index, keys, levels, names,
