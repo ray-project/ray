@@ -344,6 +344,65 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     ObjectID object_id = from_flatbuf(*message->object_id());
     RAY_LOG(DEBUG) << "reconstructing object " << object_id;
     RAY_CHECK_OK(object_manager_.Pull(object_id));
+
+    // If the blocked client is a worker, and the worker isn't already blocked,
+    // then release any CPU resources that it acquired for its assigned task
+    // while it is blocked. The resources will be acquired again once the
+    // worker is unblocked.
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker && !worker->IsBlocked()) {
+      RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+      auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
+      const auto &task = tasks.front();
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus = 0;
+      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      const std::unordered_map<std::string, double> cpu_resources = {
+          {kCPU_ResourceLabel, required_cpus}};
+      // Release the CPU resources.
+      RAY_CHECK(
+          cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+              ResourceSet(cpu_resources)));
+      // Mark the task as blocked.
+      local_queues_.QueueBlockedTasks(tasks);
+      worker->MarkBlocked();
+
+      // Try to dispatch more tasks since the blocked worker released some
+      // resources.
+      DispatchTasks();
+    }
+  } break;
+  case protocol::MessageType_NotifyUnblocked: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    // Re-acquire the CPU resources for the task that was assigned to the
+    // unblocked worker.
+    if (worker) {
+      RAY_CHECK(worker->IsBlocked());
+      RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+
+      auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
+      const auto &task = tasks.front();
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus = 0;
+      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      const std::unordered_map<std::string, double> cpu_resources = {
+          {kCPU_ResourceLabel, required_cpus}};
+      // Acquire the CPU resources.
+      bool oversubscribed =
+          !cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+              ResourceSet(cpu_resources));
+      if (oversubscribed) {
+        const SchedulingResources &local_resources =
+            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()];
+        RAY_LOG(WARNING) << "Resources oversubscribed: "
+                         << local_resources.GetAvailableResources().ToString();
+      }
+      // Mark the task as running again.
+      local_queues_.QueueRunningTasks(tasks);
+      worker->MarkUnblocked();
+    }
   } break;
 
   default:
