@@ -633,6 +633,8 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
           .fail_callback = allow_task_table_update_failure,
       };
 
+      // We allow this call to fail in case the driver has been removed and the
+      // task table entries have already been cleaned up by the monitor.
       task_table_update(state->db, worker->task_in_progress, &retryInfo, NULL,
                         NULL);
 #else
