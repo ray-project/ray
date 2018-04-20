@@ -30,7 +30,9 @@ void ServerConnection<T>::WriteBuffer(
     const std::vector<boost::asio::const_buffer> &buffer, boost::system::error_code &ec) {
   // Loop until all bytes are written, and handle system errors.
   do {
-    boost::asio::write(socket_, buffer, boost::asio::transfer_exactly(boost::asio::buffer_size(buffer)), ec);
+    boost::asio::write(socket_, buffer,
+                       boost::asio::transfer_exactly(boost::asio::buffer_size(buffer)),
+                       ec);
   } while (ec.value() == EINTR);
 }
 
@@ -40,10 +42,10 @@ void ServerConnection<T>::ReadBuffer(
     boost::system::error_code &ec) {
   // Loop until all bytes are read, and handle system errors.
   do {
-
-    boost::asio::read(socket_, buffer, boost::asio::transfer_exactly(boost::asio::buffer_size(buffer)), ec);
+    boost::asio::read(socket_, buffer,
+                      boost::asio::transfer_exactly(boost::asio::buffer_size(buffer)),
+                      ec);
   } while (ec.value() == EINTR);
-
 }
 
 template <class T>
