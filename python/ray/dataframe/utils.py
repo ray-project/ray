@@ -282,3 +282,16 @@ def _inherit_docstrings(parent):
         return cls
 
     return decorator
+
+
+@ray.remote
+def join_helper(df, old_index, new_index, axis):
+    if axis == 0:
+        df.index = old_index
+        df = df.reindex(new_index, copy=False)
+        df.reset_index(inplace=True, drop=True)
+    elif axis == 1:
+        df.columns = old_index
+        df = df.reindex(columns=new_index, copy=False)
+        df.columns = pd.RangeIndex(len(df.columns))
+    return df

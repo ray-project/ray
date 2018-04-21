@@ -26,7 +26,7 @@ class DataFrameGroupBy(object):
         self._col_metadata = df._col_metadata
 
         if axis == 0:
-            partitions = [column for column in df._block_partitions.T]
+            partitons = [column for column in df._block_partitions.T]
             self._index_grouped = pd.Series(self._index, index=self._index)\
                 .groupby(by=by, sort=sort)
         else:

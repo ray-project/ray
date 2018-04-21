@@ -35,7 +35,8 @@ from .utils import (
     _blocks_to_col,
     _blocks_to_row,
     _create_block_partitions,
-    _inherit_docstrings)
+    _inherit_docstrings,
+    join_helper)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -2028,16 +2029,22 @@ class DataFrame(object):
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
+        """Join two or more DataFrames, or a DataFrame with a collection.
+
+        Args:
+            other: What to join this DataFrame with.
+            on: A column name to use from the left for the join.
+            how: What type of join to conduct.
+            lsuffix: The suffix to add to column names that match on left.
+            rsuffix: The suffix to add to column names that match on right.
+            sort: Whether or not to sort.
+
+        Returns:
+            The joined DataFrame.
+        """
 
         if on is not None:
             raise NotImplementedError("Not yet.")
-
-        @ray.remote
-        def join_helper(df, old_index, new_index):
-            df.index = old_index
-            df.reindex(new_index)
-            df.reset_index(inplace=True, drop=True)
-            return df
 
         if isinstance(other, pd.Series):
             if other.name is None:
@@ -2047,16 +2054,20 @@ class DataFrame(object):
         if isinstance(other, DataFrame):
             new_index = self.index.join(other.index, how=how, sort=sort)
 
+            # Joining two empty DataFrames is fast, and error checks for us.
+            new_column_labels = pd.DataFrame(columns=self.columns) \
+                .join(pd.DataFrame(columns=other.columns),
+                      lsuffix=lsuffix, rsuffix=rsuffix).columns
+
+            # Join is a concat once we have shuffled the data internally.
+            # We shuffle the data by computing the correct
             new_self = [join_helper.remote(col, self.index, new_index)
                         for col in self._col_partitions]
             new_other = [join_helper.remote(col, other.index, new_index)
                          for col in other._col_partitions]
 
+            # Append the columns together (i.e. concat)
             new_column_parts = new_self + new_other
-
-            new_column_labels = pd.DataFrame(columns=self.columns)\
-                .join(pd.DataFrame(columns=other.columns),
-                      lsuffix=lsuffix, rsuffix=rsuffix).columns
 
             return DataFrame(col_partitions=new_column_parts,
                              index=new_index,
@@ -2066,6 +2077,9 @@ class DataFrame(object):
                 raise ValueError("Joining multiple DataFrames only supported"
                                  " for joining on index")
 
+            # Joining the empty DataFrames with either index of columns is
+            # fast. It gives us proper error checking for the edge cases that
+            # would otherwise require a lot more logic.
             new_index = pd.DataFrame(index=self.index).join(
                 [pd.DataFrame(index=obj.index) for obj in other],
                 how=how, sort=sort).index
@@ -2080,6 +2094,7 @@ class DataFrame(object):
             new_others = [join_helper.remote(col, obj.index, new_index)
                           for obj in other for col in obj._col_partitions]
 
+            # Append the columns together (i.e. concat)
             new_column_parts = new_self + new_others
 
             return DataFrame(col_partitions=new_column_parts,
