@@ -8,7 +8,7 @@ from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
-from pandas import compat
+from pandas import compat, cPickle as pkl
 from pandas.compat import lzip
 import pandas.core.common as com
 from pandas.core.dtypes.common import (
@@ -3065,7 +3065,8 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def to_pickle(self, path, compression='infer', protocol=4):
+    def to_pickle(self, path, compression='infer',
+                  protocol=pkl.HIGHEST_PROTOCOL):
 
         warnings.warn("Defaulting to Pandas implementation",
                       PendingDeprecationWarning)
