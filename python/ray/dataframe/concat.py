@@ -54,23 +54,6 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     all_index, all_columns = list(zip(*[(obj.index, obj.columns)
                                         for obj in objs]))
 
-    # Using concat on the columns and index is fast because they're empty,
-    # and it forces the error checking. It also puts the columns in the
-    # correct order for us.
-    final_index = \
-        pandas.concat([pandas.DataFrame(index=idx) for idx in all_index],
-                      axis=axis, join=join, join_axes=join_axes,
-                      ignore_index=ignore_index, keys=keys, levels=levels,
-                      names=names, verify_integrity=verify_integrity,
-                      copy=False).index
-    final_columns = \
-        pandas.concat([pandas.DataFrame(columns=col)
-                       for col in all_columns],
-                      axis=axis, join=join, join_axes=join_axes,
-                      ignore_index=ignore_index, keys=keys, levels=levels,
-                      names=names, verify_integrity=verify_integrity,
-                      copy=False).columns
-
     def series_to_df(series, columns):
         df = pandas.DataFrame(series)
         df.columns = columns
@@ -94,6 +77,23 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
         objs = [series_to_df(obj, obj.name if obj.name is not None
                              else name_incrementer(i))
                 if isinstance(obj, pandas.Series) else obj for obj in objs]
+
+    # Using concat on the columns and index is fast because they're empty,
+    # and it forces the error checking. It also puts the columns in the
+    # correct order for us.
+    final_index = \
+        pandas.concat([pandas.DataFrame(index=idx) for idx in all_index],
+                      axis=axis, join=join, join_axes=join_axes,
+                      ignore_index=ignore_index, keys=keys, levels=levels,
+                      names=names, verify_integrity=verify_integrity,
+                      copy=False).index
+    final_columns = \
+        pandas.concat([pandas.DataFrame(columns=col)
+                       for col in all_columns],
+                      axis=axis, join=join, join_axes=join_axes,
+                      ignore_index=ignore_index, keys=keys, levels=levels,
+                      names=names, verify_integrity=verify_integrity,
+                      copy=False).columns
 
     # Put all of the DataFrames into Ray format
     # TODO just partition the DataFrames instead of building a new Ray DF.
