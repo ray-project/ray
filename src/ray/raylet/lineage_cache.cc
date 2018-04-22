@@ -313,7 +313,7 @@ void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
     // about the commit.
     RAY_CHECK(entry->GetStatus() == GcsStatus_COMMITTED);
   }
-  RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
+  // RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
 
   // Stop listening for notifications about this task.
   auto it = subscribed_tasks_.find(task_id);
