@@ -8,8 +8,8 @@ from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
-from pandas import compat, cPickle as pkl
-from pandas.compat import lzip
+from pandas import compat
+from pandas.compat import lzip, cPickle as pkl
 import pandas.core.common as com
 from pandas.core.dtypes.common import (
     is_bool_dtype,
