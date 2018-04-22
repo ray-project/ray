@@ -14,7 +14,7 @@ from ray.dataframe.utils import (
 
 from pandas.util.testing import assert_series_equal
 from pandas.tests.frame.common import TestData
-from pandas.compat import (zip, range, lrange, StringIO)
+from pandas.compat import (zip, range, StringIO)
 from datetime import datetime
 
 

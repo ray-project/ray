@@ -17,6 +17,7 @@ def _are_compareable(item1, item2):
     return not is_datetimelike_v_numeric(item1, item2)\
            and not is_numeric_v_string_like(item1, item2)
 
+
 def _get_lengths(df):
     """Gets the length of the dataframe.
     Args:

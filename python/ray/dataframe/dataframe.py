@@ -3029,7 +3029,7 @@ class DataFrame(object):
                 index=['K', 'V'], columns=range(len(filtered_key))
             ).T
             should_keep = []
-            col_arrays = [np.array(df.loc[:,col].tolist())
+            col_arrays = [np.array(df.loc[:, col].tolist())
                           for col in df.columns]
             for i in range(len(filtered_replace_pairs.index)):
                 if any([_are_compareable(filtered_replace_pairs.K[i],
@@ -3037,8 +3037,8 @@ class DataFrame(object):
                         should_keep.append(i)
             filtered_replace_pairs =\
                 filtered_replace_pairs.iloc[should_keep]
-            filtered_key = filtered_replace_pairs.iloc[:,0].tolist()
-            filtered_value = filtered_replace_pairs.iloc[:,1].tolist()
+            filtered_key = filtered_replace_pairs.iloc[:, 0].tolist()
+            filtered_value = filtered_replace_pairs.iloc[:, 1].tolist()
             return filtered_key, filtered_value
 
         def _replace(df):
