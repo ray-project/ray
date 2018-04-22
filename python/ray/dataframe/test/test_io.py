@@ -48,8 +48,8 @@ def create_test_ray_dataframe():
     df = pd.DataFrame({'col1': [0, 1, 2, 3],
                        'col2': [4, 5, 6, 7],
                        'col3': [8, 9, 10, 11],
-                        'col4': [12, 13, 14, 15],
-                        'col5': [0, 0, 0, 0]})
+                       'col4': [12, 13, 14, 15],
+                       'col5': [0, 0, 0, 0]})
 
     return df
 
@@ -57,10 +57,10 @@ def create_test_ray_dataframe():
 @pytest.fixture
 def create_test_pandas_dataframe():
     df = pandas.DataFrame({'col1': [0, 1, 2, 3],
-                       'col2': [4, 5, 6, 7],
-                       'col3': [8, 9, 10, 11],
-                       'col4': [12, 13, 14, 15],
-                       'col5': [0, 0, 0, 0]})
+                           'col2': [4, 5, 6, 7],
+                           'col3': [8, 9, 10, 11],
+                           'col4': [12, 13, 14, 15],
+                           'col5': [0, 0, 0, 0]})
 
     return df
 
@@ -266,10 +266,10 @@ def setup_sql_file(conn, force=False):
         pass
     else:
         df = pandas.DataFrame({'col1': [0, 1, 2, 3],
-                           'col2': [4, 5, 6, 7],
-                           'col3': [8, 9, 10, 11],
-                           'col4': [12, 13, 14, 15],
-                           'col5': [0, 0, 0, 0]})
+                               'col2': [4, 5, 6, 7],
+                               'col3': [8, 9, 10, 11],
+                               'col4': [12, 13, 14, 15],
+                               'col5': [0, 0, 0, 0]})
         df.to_sql(TEST_SQL_FILENAME.split(".")[0], conn)
 
 
