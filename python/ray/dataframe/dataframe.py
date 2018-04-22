@@ -3212,9 +3212,6 @@ class DataFrame(object):
         """
         key = com._apply_if_callable(key, self)
 
-        if key is None:
-            pd.DataFrame()[None]
-
         # shortcut if we are an actual column
         is_mi_columns = isinstance(self.columns, pd.MultiIndex)
         try:
