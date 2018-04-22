@@ -3067,8 +3067,7 @@ class DataFrame(object):
 
         new_block_partitions = np.array([_map_partitions(
             lambda df: _replace(df),
-            partitions=block,
-            ignore_errors=True
+            partitions=block
         ) for block in self._block_partitions])
 
         if inplace:
