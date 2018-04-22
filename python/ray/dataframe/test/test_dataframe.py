@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
+import re
 import numpy as np
 import pandas as pd
 import pandas.util.testing as tm
@@ -11,7 +12,10 @@ from ray.dataframe.utils import (
     from_pandas,
     to_pandas)
 
+from pandas.util.testing import assert_series_equal
 from pandas.tests.frame.common import TestData
+from pandas.compat import (zip, range, lrange, StringIO)
+from datetime import datetime
 
 
 @pytest.fixture
@@ -3656,12 +3660,12 @@ def test_replace_datetimetz(num_partitions=2):
 
     # GH 11326
     # behaving poorly when presented with a datetime64[ns, tz]
-    df = rdf.DataFrame({'A': date_range('20130101', periods=3,
-                                        tz='US/Eastern'),
+    df = rdf.DataFrame({'A': pd.date_range('20130101', periods=3,
+                                           tz='US/Eastern'),
                         'B': [0, np.nan, 2]})
     result = df.replace(np.nan, 1)
-    expected = rdf.DataFrame({'A': date_range('20130101', periods=3,
-                                              tz='US/Eastern'),
+    expected = rdf.DataFrame({'A': pd.date_range('20130101', periods=3,
+                                                 tz='US/Eastern'),
                              'B': pd.Series([0, 1, 2], dtype='float64')})
     ray_df_equals(result, expected)
 
@@ -3669,16 +3673,16 @@ def test_replace_datetimetz(num_partitions=2):
     ray_df_equals(result, expected)
 
     result = df.replace(0, np.nan)
-    expected = rdf.DataFrame({'A': date_range('20130101', periods=3,
-                                              tz='US/Eastern'),
+    expected = rdf.DataFrame({'A': pd.date_range('20130101', periods=3,
+                                                 tz='US/Eastern'),
                               'B': [np.nan, np.nan, 2]})
     ray_df_equals(result, expected)
 
-    result = df.replace(Timestamp('20130102', tz='US/Eastern'),
-                        Timestamp('20130104', tz='US/Eastern'))
-    expected = rdf.DataFrame({'A': [Timestamp('20130101', tz='US/Eastern'),
-                                    Timestamp('20130104', tz='US/Eastern'),
-                                    Timestamp('20130103', tz='US/Eastern')],
+    result = df.replace(pd.Timestamp('20130102', tz='US/Eastern'),
+                        pd.Timestamp('20130104', tz='US/Eastern'))
+    expected = rdf.DataFrame({'A': [pd.Timestamp('20130101', tz='US/Eastern'),
+                                    pd.Timestamp('20130104', tz='US/Eastern'),
+                                    pd.Timestamp('20130103', tz='US/Eastern')],
                               'B': [0, np.nan, 2]})
     ray_df_equals(result, expected)
 
@@ -3686,7 +3690,7 @@ def test_replace_datetimetz(num_partitions=2):
     result.iloc[1, 0] = np.nan
     result = from_pandas(result, num_partitions)
     result = result.replace(
-        {'A': pd.NaT}, Timestamp('20130104', tz='US/Eastern'))
+        {'A': pd.NaT}, pd.Timestamp('20130104', tz='US/Eastern'))
     ray_df_equals(result, expected)
 
     # coerce to object
@@ -3694,20 +3698,20 @@ def test_replace_datetimetz(num_partitions=2):
     result.iloc[1, 0] = np.nan
     result = from_pandas(result, num_partitions)
     result = result.replace(
-        {'A': pd.NaT}, Timestamp('20130104', tz='US/Pacific'))
-    expected = rdf.DataFrame({'A': [Timestamp('20130101', tz='US/Eastern'),
-                                    Timestamp('20130104', tz='US/Pacific'),
-                                    Timestamp('20130103', tz='US/Eastern')],
+        {'A': pd.NaT}, pd.Timestamp('20130104', tz='US/Pacific'))
+    expected = rdf.DataFrame({'A': [pd.Timestamp('20130101', tz='US/Eastern'),
+                                    pd.Timestamp('20130104', tz='US/Pacific'),
+                                    pd.Timestamp('20130103', tz='US/Eastern')],
                               'B': [0, np.nan, 2]})
     ray_df_equals(result, expected)
 
     result = to_pandas(df.copy())
     result.iloc[1, 0] = np.nan
     result = from_pandas(result, num_partitions)
-    result = result.replace({'A': np.nan}, Timestamp('20130104'))
-    expected = rdf.DataFrame({'A': [Timestamp('20130101', tz='US/Eastern'),
-                                    Timestamp('20130104'),
-                                    Timestamp('20130103', tz='US/Eastern')],
+    result = result.replace({'A': np.nan}, pd.Timestamp('20130104'))
+    expected = rdf.DataFrame({'A': [pd.Timestamp('20130101', tz='US/Eastern'),
+                                    pd.Timestamp('20130104'),
+                                    pd.Timestamp('20130103', tz='US/Eastern')],
                               'B': [0, np.nan, 2]})
     ray_df_equals(result, expected)
 
@@ -3719,9 +3723,6 @@ def test_replace_with_empty_dictlike(num_partitions=2):
     df = rdf.DataFrame(mix)
     ray_df_equals(df, df.replace({}))
     ray_df_equals(df, df.replace(pd.Series([])))
-
-    with pytest.raises(NotImplementedError):
-        ray_df.replace()
 
 
 def test_resample():

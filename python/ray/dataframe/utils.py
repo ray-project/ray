@@ -211,6 +211,7 @@ def _create_block_partitions(partitions, axis=0, length=None):
         npartitions = length
     else:
         npartitions = get_npartitions()
+    npartitions = max(1, npartitions)
 
     x = [create_blocks._submit(args=(partition, npartitions, axis),
                                num_return_vals=npartitions)
