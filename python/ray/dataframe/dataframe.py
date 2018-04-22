@@ -36,7 +36,7 @@ from .utils import (
     _blocks_to_row,
     _create_block_partitions,
     _inherit_docstrings,
-    join_helper)
+    _reindex_helper)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -2052,7 +2052,12 @@ class DataFrame(object):
             other = DataFrame({other.name: other})
 
         if isinstance(other, DataFrame):
-            new_index = self.index.join(other.index, how=how, sort=sort)
+            if on is not None:
+                index = self[on]
+            else:
+                index = self.index
+
+            new_index = index.join(other.index, how=how, sort=sort)
 
             # Joining two empty DataFrames is fast, and error checks for us.
             new_column_labels = pd.DataFrame(columns=self.columns) \
@@ -2060,19 +2065,27 @@ class DataFrame(object):
                       lsuffix=lsuffix, rsuffix=rsuffix).columns
 
             # Join is a concat once we have shuffled the data internally.
-            # We shuffle the data by computing the correct
-            new_self = [join_helper.remote(col, self.index, new_index)
+            # We shuffle the data by computing the correct order.
+            # Another important thing to note: We set the current self index
+            # to the index variable which may be 'on'.
+            new_self = [_reindex_helper.remote(col, index, new_index, 1)
                         for col in self._col_partitions]
-            new_other = [join_helper.remote(col, other.index, new_index)
+            new_other = [_reindex_helper.remote(col, other.index, new_index, 1)
                          for col in other._col_partitions]
 
             # Append the columns together (i.e. concat)
             new_column_parts = new_self + new_other
 
+            # Default index in the case that on is set.
+            if on is not None:
+                new_index = None
+
+            # TODO join the two metadata tables for performance.
             return DataFrame(col_partitions=new_column_parts,
                              index=new_index,
                              columns=new_column_labels)
         else:
+            # This constraint carried over from Pandas.
             if on is not None:
                 raise ValueError("Joining multiple DataFrames only supported"
                                  " for joining on index")
@@ -2088,15 +2101,16 @@ class DataFrame(object):
                 [pd.DataFrame(columns=obj.columns) for obj in other],
                 lsuffix=lsuffix, rsuffix=rsuffix).columns
 
-            new_self = [join_helper.remote(col, self.index, new_index)
+            new_self = [_reindex_helper.remote(col, self.index, new_index, 1)
                         for col in self._col_partitions]
 
-            new_others = [join_helper.remote(col, obj.index, new_index)
+            new_others = [_reindex_helper.remote(col, obj.index, new_index, 1)
                           for obj in other for col in obj._col_partitions]
 
             # Append the columns together (i.e. concat)
             new_column_parts = new_self + new_others
 
+            # TODO join the two metadata tables for performance.
             return DataFrame(col_partitions=new_column_parts,
                              index=new_index,
                              columns=new_column_labels)

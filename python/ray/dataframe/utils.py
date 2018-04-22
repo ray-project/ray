@@ -285,12 +285,23 @@ def _inherit_docstrings(parent):
 
 
 @ray.remote
-def join_helper(df, old_index, new_index, axis):
-    if axis == 0:
+def _reindex_helper(df, old_index, new_index, axis):
+    """Reindexes a dataframe to prepare for join/concat.
+
+    Args:
+        df: The DataFrame partition
+        old_index: The index/column for this partition.
+        new_index: The new index/column to assign.
+        axis: Which axis to reindex over.
+
+    Returns:
+        A new reindexed DataFrame.
+    """
+    if axis == 1:
         df.index = old_index
         df = df.reindex(new_index, copy=False)
         df.reset_index(inplace=True, drop=True)
-    elif axis == 1:
+    elif axis == 0:
         df.columns = old_index
         df = df.reindex(columns=new_index, copy=False)
         df.columns = pd.RangeIndex(len(df.columns))
