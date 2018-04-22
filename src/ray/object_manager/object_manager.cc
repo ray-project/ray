@@ -121,16 +121,32 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 }
 
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
-  pull_requests_[object_id] = std::shared_ptr<boost::asio::deadline_timer>(
-      new asio::deadline_timer(*main_service_, boost::posix_time::milliseconds(wait_ms)));
-  pull_requests_[object_id]->async_wait(
+  if (pull_requests_.count(object_id) == 0){
+    pull_requests_.emplace(std::make_pair(
+        ObjectID(object_id),
+        std::pair<std::shared_ptr<boost::asio::deadline_timer>, int>(
+            std::shared_ptr<boost::asio::deadline_timer>(new asio::deadline_timer(
+                *main_service_, boost::posix_time::milliseconds(wait_ms))),
+            0)));
+    RAY_LOG(DEBUG) << object_id << " creating scheduler";
+  }
+  std::pair<std::shared_ptr<boost::asio::deadline_timer>, int> &time_retries = pull_requests_.find(object_id)->second;
+  if (time_retries.second >= 1000){
+    RAY_LOG(DEBUG) << "failed to pull " << object_id;
+    pull_requests_.erase(object_id);
+    return;
+  }
+  time_retries.second += 1;
+  RAY_LOG(DEBUG) << object_id << " num_retries=" << time_retries.second;
+  time_retries.first->async_wait(
       [this, object_id](const boost::system::error_code &error_code) {
-        pull_requests_.erase(object_id);
         RAY_CHECK_OK(PullGetLocations(object_id));
       });
 }
 
 ray::Status ObjectManager::PullGetLocations(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "pull_requests_.size()=" << pull_requests_.size();
+
   ray::Status status_code = object_directory_->GetLocations(
       object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
@@ -167,7 +183,10 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                                    const ClientID &client_id) {
   // Check client_id is not itself.
   if (client_id == client_id_) {
-    return ray::Status::Invalid("Cannot pull object from self.");
+    if (pull_requests_.count(object_id) > 0){
+      pull_requests_.erase(object_id);
+    }
+    return ray::Status::OK();
   }
 
   // Acquire a message connection and send pull request.
@@ -226,6 +245,9 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
                                   fbb.GetSize(), fbb.GetBufferPointer()));
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+  if (pull_requests_.count(object_id) > 0){
+    pull_requests_.erase(object_id);
+  }
   return ray::Status::OK();
 }
 
