@@ -205,19 +205,6 @@ def _build_coord_df(lengths, index):
     return pd.DataFrame(coords, index=index, columns=col_names)
 
 
-def _block_partitions_to_list(partitions):
-    block_list = []
-    for part in partitions:
-        block_list.extend(part)
-    return block_list
-
-
-def _block_list_to_partitions(block_list, npartitions):
-    n = len(block_list) // npartitions
-    return [[block_list[i * npartitions + j] for j in range(npartitions)]
-            for i in range(n)]
-
-
 def _create_block_partitions(partitions, axis=0, length=None):
 
     if length is not None and length != 0 and get_npartitions() > length:
