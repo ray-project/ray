@@ -86,6 +86,9 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
+  // Only mark an object as no longer in transit when we receive notification
+  // from the object store.
+  RemoveObjectInTransit(object_id);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -106,6 +109,14 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
+  if (ObjectInTransitOrLocal(object_id)) {
+    // Currently, there's no guarantee that the transfer will happen.
+    // Do nothing if the object is already being received.
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << (local_objects_.count(object_id) == 0 ? "in transit "
+                                                            : "is local ");
+    return ray::Status::OK();
+  }
   return PullGetLocations(object_id);
 }
 
@@ -141,14 +152,22 @@ void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
+  if (ObjectInTransitOrLocal(object_id)) {
+    // Currently, there's no guarantee that the transfer will happen.
+    // Do nothing if the object is already being received.
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << (local_objects_.count(object_id) == 0 ? "in transit "
+                                                            : "is local ");
+    return ray::Status::OK();
+  }
   return PullEstablishConnection(object_id, client_id);
 };
 
 ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                                    const ClientID &client_id) {
-  // Check if object is already local, and client_id is not itself.
-  if (local_objects_.count(object_id) != 0 || client_id == client_id_) {
-    return ray::Status::OK();
+  // Check client_id is not itself.
+  if (client_id == client_id_) {
+    return ray::Status::Invalid("Cannot pull object from self.");
   }
 
   // Acquire a message connection and send pull request.
@@ -172,19 +191,33 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
               ConnectionPool::ConnectionType::MESSAGE, connection_info);
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
-          RAY_CHECK_OK(PullSendRequest(object_id, async_conn));
+          Status pull_send_status = PullSendRequest(object_id, async_conn);
+          if (!pull_send_status.ok()) {
+            RAY_LOG(INFO) << pull_send_status.message();
+          }
         },
         [this, object_id](const Status &status) {
           SchedulePull(object_id, config_.pull_timeout_ms);
         });
   } else {
-    RAY_CHECK_OK(PullSendRequest(object_id, conn));
+    status = PullSendRequest(object_id, conn);
   }
   return status;
 }
 
 ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
                                            std::shared_ptr<SenderConnection> conn) {
+  if (ObjectInTransitOrLocal(object_id)) {
+    // Do nothing if the object is already being received.
+    // We check here too just in case the object ends up in transit
+    // in the time between this method call and the Pull method call.
+    RAY_CHECK_OK(
+        connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << (local_objects_.count(object_id) == 0 ? "in transit "
+                                                            : "is local ");
+    return Status::OK();
+  }
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
@@ -204,16 +237,25 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
     return ray::Status::OK();
   }
 
+  if (in_transit_sends_[object_id].count(client_id) > 0) {
+    // Object already being sent to client.
+    return ray::Status::OK();
+  }
+
+  const ObjectInfoT &object_info = local_objects_[object_id];
+  uint64_t data_size =
+      static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
+  uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
+  uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
+  in_transit_sends_[object_id][client_id] = num_chunks;
+  RAY_LOG(DEBUG) << "in_transit_sends_ add " << object_id;
+
   // TODO(hme): Cache this data in ObjectDirectory.
   // Okay for now since the GCS client caches this data.
   Status status = object_directory_->GetInformation(
       client_id,
-      [this, object_id, client_id](const RemoteConnectionInfo &info) {
-        ObjectInfoT object_info = local_objects_[object_id];
-        uint64_t data_size =
-            static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
-        uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
-        uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
+      [this, object_id, client_id, data_size, metadata_size,
+       num_chunks](const RemoteConnectionInfo &info) {
         for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
           send_service_.post([this, client_id, object_id, data_size, metadata_size,
                               chunk_index, info]() {
@@ -222,7 +264,8 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
           });
         }
       },
-      [](const Status &status) {
+      [this, object_id, client_id](const Status &status) {
+        in_transit_sends_[object_id].erase(client_id);
         // Push is best effort, so do nothing here.
       });
   return status;
@@ -259,7 +302,10 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
   // If status is not okay, then return immediately because
   // plasma_client.Get failed.
   // No reference is acquired for this chunk, so no need to release the chunk.
-  RAY_RETURN_NOT_OK(chunk_status.second);
+  if (!chunk_status.second.ok()) {
+    TryRemoveInTransitSend(object_id, conn->GetClientID());
+    return ray::Status::OK();
+  }
 
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
@@ -290,6 +336,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
   }
 
   // Do this regardless of whether it failed or succeeded.
+  TryRemoveInTransitSend(object_id, conn->GetClientID());
   buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::TRANSFER, conn));
@@ -398,6 +445,11 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn
   uint64_t chunk_index = object_header->chunk_index();
   uint64_t data_size = object_header->data_size();
   uint64_t metadata_size = object_header->metadata_size();
+  if (!ObjectInTransitOrLocal(object_id)) {
+    // Record that the object is in progress.
+    AddObjectInTransit(object_id);
+    RAY_LOG(DEBUG) << "Receive Push " << object_id;
+  }
   receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
     ExecuteReceiveObject(conn->GetClientID(), object_id, data_size, metadata_size,
                          chunk_index, conn);
@@ -427,7 +479,8 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
-    RAY_LOG(ERROR) << "Buffer Create Failed: " << chunk_status.second.message();
+    RAY_LOG(ERROR) << "Create Chunk Failed index=" << chunk_index << ": "
+                   << chunk_status.second.message();
     // Read object into empty buffer.
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
     std::vector<uint8_t> mutable_vec;
