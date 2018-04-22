@@ -92,8 +92,7 @@ def from_pandas(df, num_partitions=None, chunksize=None):
     """
     from .dataframe import DataFrame
 
-    row_partitions = \
-        _partition_pandas_dataframe(df, num_partitions, chunksize)
+    row_partitions = _partition_pandas_dataframe(df, num_partitions, chunksize)
 
     return DataFrame(row_partitions=row_partitions,
                      columns=df.columns,

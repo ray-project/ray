@@ -21,12 +21,7 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
                              ignore_index, keys, levels, names,
                              verify_integrity, copy)
 
-        if not (isinstance(frame1, rdf) and
-           isinstance(frame2, rdf)) and join == 'inner':
-            raise NotImplementedError(
-                  "Obj as dicts not implemented. To contribute to "
-                  "Pandas on Ray, please visit github.com/ray-project/ray."
-                  )
+        f1_columns, f2_columns = frame1.columns, frame2.columns
 
         # Case 2: Both are different types
         if isinstance(frame1, pd.DataFrame):
@@ -34,32 +29,28 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
         if isinstance(frame2, pd.DataFrame):
             frame2 = from_pandas(frame2, len(frame2) / 2**16 + 1)
 
-        # Case 3: Both are Ray DF
-        if isinstance(frame1, rdf) and \
-           isinstance(frame2, rdf):
+        new_columns = f1_columns.join(f2_columns, how=join)
 
-            new_columns = frame1.columns.join(frame2.columns, how=join)
+        def _reindex_helper(pdf, old_columns, join):
+            pdf.columns = old_columns
+            if join == 'outer':
+                pdf = pdf.reindex(columns=new_columns)
+            else:
+                pdf = pdf[new_columns]
 
-            def _reindex_helper(pdf, old_columns, join):
-                pdf.columns = old_columns
-                if join == 'outer':
-                    pdf = pdf.reindex(columns=new_columns)
-                else:
-                    pdf = pdf[new_columns]
-                pdf.columns = pd.RangeIndex(len(new_columns))
+            pdf.columns = pd.RangeIndex(len(new_columns))
 
-                return pdf
+            return pdf
 
-            f1_columns, f2_columns = frame1.columns, frame2.columns
-            new_f1 = [_deploy_func.remote(lambda p: _reindex_helper(p,
-                                          f1_columns, join), part) for
-                      part in frame1._row_partitions]
-            new_f2 = [_deploy_func.remote(lambda p: _reindex_helper(p,
-                                          f2_columns, join), part) for
-                      part in frame2._row_partitions]
+        new_f1 = [_deploy_func.remote(lambda p: _reindex_helper(p,
+                                      f1_columns, join), part) for
+                  part in frame1._row_partitions]
+        new_f2 = [_deploy_func.remote(lambda p: _reindex_helper(p,
+                                      f2_columns, join), part) for
+                  part in frame2._row_partitions]
 
-            return rdf(row_partitions=new_f1 + new_f2, columns=new_columns,
-                       index=frame1.index.append(frame2.index))
+        return rdf(row_partitions=new_f1 + new_f2, columns=new_columns,
+                   index=frame1.index.append(frame2.index))
 
     # (TODO) Group all the pandas dataframes
 
