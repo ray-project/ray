@@ -714,9 +714,25 @@ class DataFrame(object):
         raise NotImplementedError("Not yet")
 
     def add(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Add this DataFrame to another or a scalar/list.
+
+        Args:
+            other: What to add this this DataFrame.
+            axis: The axis to apply addition over. Only applicaable to Series or list 'other'.
+            level: A level in the multilevel axis to add over.
+            fill_value: The value to fill NaN.
+
+        Returns:
+            A new DataFrame with the applied addition.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.add(y, axis, level, fill_value),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.add(other, axis, level, fill_value),
+                other, axis, level)
 
     def agg(self, func, axis=0, *args, **kwargs):
         return self.aggregate(func, axis, *args, **kwargs)
@@ -1261,14 +1277,39 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def div(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Divides this DataFrame against another DataFrame/Series/scalar.
+
+        Args:
+            other: The object to use to apply the divide against this.
+            axis: The axis to divide over.
+            level: The Multilevel index level to apply divide over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+            A new DataFrame with the Divide applied.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.div(y, axis, level, fill_value),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.div(other, axis, level, fill_value),
+                other, axis, level)
 
     def divide(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Synonym for div.
+
+        Args:
+            other: The object to use to apply the divide against this.
+            axis: The axis to divide over.
+            level: The Multilevel index level to apply divide over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+            A new DataFrame with the Divide applied.
+        """
+        return self.div(other, axis, level, fill_value)
 
     def dot(self, other):
         raise NotImplementedError(
@@ -1688,9 +1729,25 @@ class DataFrame(object):
         return self._row_metadata.first_valid_index()
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Divides this DataFrame against another DataFrame/Series/scalar.
+
+        Args:
+            other: The object to use to apply the divide against this.
+            axis: The axis to divide over.
+            level: The Multilevel index level to apply divide over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+            A new DataFrame with the Divide applied.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.floordiv(y, axis, level, fill_value),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.floordiv(other, axis, level, fill_value),
+                other, axis, level)
 
     @classmethod
     def from_csv(self, path, header=0, sep=', ', index_col=0,
@@ -2303,9 +2360,25 @@ class DataFrame(object):
         return self._arithmetic_helper(remote_func, axis, level)
 
     def mod(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Mods this DataFrame against another DataFrame/Series/scalar.
+
+        Args:
+            other: The object to use to apply the mod against this.
+            axis: The axis to mod over.
+            level: The Multilevel index level to apply mod over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+            A new DataFrame with the Mod applied.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.mod(y, axis, level, fill_value),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.mod(other, axis, level, fill_value),
+                other, axis, level)
 
     def mode(self, axis=0, numeric_only=False):
         raise NotImplementedError(
@@ -2313,14 +2386,39 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def mul(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Multiplies this DataFrame against another DataFrame/Series/scalar.
+
+        Args:
+            other: The object to use to apply the multiply against this.
+            axis: The axis to multiply over.
+            level: The Multilevel index level to apply multiply over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+            A new DataFrame with the Multiply applied.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.mul(y, axis, level, fill_value),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.mul(other, axis, level, fill_value),
+                other, axis, level)
 
     def multiply(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Synonym for mul.
+
+        Args:
+            other: The object to use to apply the multiply against this.
+            axis: The axis to multiply over.
+            level: The Multilevel index level to apply multiply over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+            A new DataFrame with the Multiply applied.
+        """
+        return self.mul(other, axis, level, fill_value)
 
     def ne(self, other, axis='columns', level=None):
         raise NotImplementedError(
@@ -2426,9 +2524,25 @@ class DataFrame(object):
         return result
 
     def pow(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Pow this DataFrame against another DataFrame/Series/scalar.
+
+        Args:
+            other: The object to use to apply the pow against this.
+            axis: The axis to pow over.
+            level: The Multilevel index level to apply pow over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+            A new DataFrame with the Pow applied.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.pow(y, axis, level, fill_value),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.pow(other, axis, level, fill_value),
+                other, axis, level)
 
     def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
              min_count=0, **kwargs):
@@ -3002,14 +3116,39 @@ class DataFrame(object):
         return self._arithmetic_helper(remote_func, axis, level)
 
     def sub(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Subtract a DataFrame/Series/scalar from this DataFrame.
+
+        Args:
+            other: The object to use to apply the subtraction to this.
+            axis: THe axis to apply the subtraction over.
+            level: Mutlilevel index level to subtract over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+             A new DataFrame with the subtraciont applied.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.sub(y, axis, level, fill_value),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.sub(other, axis, level, fill_value),
+                other, axis, level)
 
     def subtract(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Alias for sub.
+
+        Args:
+            other: The object to use to apply the subtraction to this.
+            axis: THe axis to apply the subtraction over.
+            level: Mutlilevel index level to subtract over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+             A new DataFrame with the subtraciont applied.
+        """
+        return self.sub(other, axis, level, fill_value)
 
     def swapaxes(self, axis1, axis2, copy=True):
         raise NotImplementedError(
@@ -3259,9 +3398,25 @@ class DataFrame(object):
         return result
 
     def truediv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Divides this DataFrame against another DataFrame/Series/scalar.
+
+        Args:
+            other: The object to use to apply the divide against this.
+            axis: The axis to divide over.
+            level: The Multilevel index level to apply divide over.
+            fill_value: The value to fill NaNs with.
+
+        Returns:
+            A new DataFrame with the Divide applied.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.truediv(y, axis, level, fill_value),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.truediv(other, axis, level, fill_value),
+                other, axis, level)
 
     def truncate(self, before=None, after=None, axis=None, copy=True):
         raise NotImplementedError(
@@ -3660,9 +3815,7 @@ class DataFrame(object):
         return not self.equals(other)
 
     def __add__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.add(other)
 
     def __iadd__(self, other):
         raise NotImplementedError(
@@ -3670,9 +3823,7 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __mul__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.mul(other)
 
     def __imul__(self, other):
         raise NotImplementedError(
@@ -3680,9 +3831,7 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __pow__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.pow(other)
 
     def __ipow__(self, other):
         raise NotImplementedError(
@@ -3690,9 +3839,7 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __sub__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.sub(other)
 
     def __isub__(self, other):
         raise NotImplementedError(
@@ -3721,19 +3868,13 @@ class DataFrame(object):
                          index=self.index)
 
     def __floordiv__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.floordiv(other)
 
     def __truediv__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.truediv(other)
 
     def __mod__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.mod(other)
 
     def __sizeof__(self):
         raise NotImplementedError(
@@ -3758,12 +3899,12 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def iat(axis=None):
+    def iat(self, axis=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def __rsub__(other, axis=None, level=None, fill_value=None):
+    def __rsub__(self, other, axis=None, level=None, fill_value=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -3785,22 +3926,20 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def __itruediv__(other):
+    def __itruediv__(self, other):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def __div__(other, axis=None, level=None, fill_value=None):
+    def __div__(self, other, axis=None, level=None, fill_value=None):
+        return self.div(other, axis, level, fill_value)
+
+    def at(self, axis=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def at(axis=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
-
-    def ix(axis=None):
+    def ix(self, axis=None):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
@@ -3815,3 +3954,92 @@ class DataFrame(object):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
+
+    def _copartition(self, other, new_index):
+        """Colocates the values of other with this for certain operations.
+
+        Args:
+            other: The other DataFrame to copartition with.
+
+        Returns:
+            Two new sets of partitions, copartitioned and zipped.
+        """
+        # Put in the object store so they aren't serialized each iteration.
+        old_self_index = ray.put(self.index)
+        new_index = ray.put(new_index)
+        old_other_index = ray.put(other.index)
+
+        new_partitions_self = [_reindex_helper.remote(df, old_self_index,
+                                                      new_index, 1)
+                               for df in self._col_partitions]
+
+        new_partitions_other = [_reindex_helper.remote(df, old_other_index,
+                                                       new_index, 1)
+                                for df in other._col_partitions]
+
+        return zip(new_partitions_self, new_partitions_other)
+
+    def _inter_df_op_helper(self, func, other, axis, level):
+        if level is not None:
+            raise NotImplementedError("Mutlilevel index not yet supported "
+                                      "in Pandas on Ray")
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        # Adding two DataFrames causes an outer join.
+        if isinstance(other, DataFrame):
+            new_column_index = self.columns.join(other.columns, how="outer")
+            new_index = self.index.join(other.index, how="outer")
+            copartitions = self._copartition(other, new_index)
+
+            new_columns = [co_op_helper.remote(func, *part)
+                           for part in copartitions]
+
+            return DataFrame(col_partitions=new_columns,
+                             columns=new_column_index,
+                             index=new_index)
+
+    def _single_df_op_helper(self, func, other, axis, level):
+        if level is not None:
+            raise NotImplementedError("Mutlilevel index not yet supported "
+                                      "in Pandas on Ray")
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        if is_list_like(other):
+            new_index = self.index
+            new_column_index = self.columns
+            new_col_metadata = self._col_metadata
+            new_row_metadata = self._row_metadata
+
+            if axis == 0:
+                if len(other) != len(self.index):
+                    raise ValueError(
+                        "Unable to coerce to Series, length must be {0}: "
+                        "given {1}".format(len(self.index), len(other)))
+                new_columns = _map_partitions(func, self._col_partitions)
+                new_rows = None
+            else:
+                if len(other) != len(self.columns):
+                    raise ValueError(
+                        "Unable to coerce to Series, length must be {0}: "
+                        "given {1}".format(len(self.columns), len(other)))
+                new_rows = _map_partitions(func, self._row_partitions)
+                new_columns = None
+
+        else:
+            new_columns = _map_partitions(func, self._col_partitions)
+            new_rows = None
+            new_index = self.index
+            new_column_index = self.columns
+            new_col_metadata = self._col_metadata
+            new_row_metadata = self._row_metadata
+
+        return DataFrame(col_partitions=new_columns,
+                         row_partitions=new_rows,
+                         index=new_index,
+                         columns=new_column_index,
+                         col_metadata=new_col_metadata,
+                         row_metadata=new_row_metadata)
+
+@ray.remote
+def co_op_helper(func, *zipped):
+    return func(zipped[0], zipped[1])
