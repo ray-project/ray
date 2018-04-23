@@ -456,7 +456,8 @@ class DataFrame(object):
         return len(self.index), len(self.columns)
 
     def _update_inplace(self, row_partitions=None, col_partitions=None,
-                        columns=None, index=None):
+                        block_partitions=None, columns=None, index=None,
+                        col_metadata=None, row_metadata=None):
         """Updates the current DataFrame inplace.
 
         Behavior should be similar to the constructor, given the corresponding
@@ -480,22 +481,31 @@ class DataFrame(object):
                 not have enough contextual info to rebuild the indexes
                 correctly based on the addition/subtraction of rows/columns.
         """
-        assert row_partitions is not None or col_partitions is not None, \
+        assert row_partitions is not None or col_partitions is not None\
+            or block_partitions is not None, \
             "To update inplace, new column or row partitions must be set."
 
-        if row_partitions is not None:
+        if block_partitions is not None:
+            self._block_partitions = block_partitions
+        elif row_partitions is not None:
             self._row_partitions = row_partitions
 
         elif col_partitions is not None:
             self._col_partitions = col_partitions
 
-        if row_partitions is not None or col_partitions is not None:
-            # At least one partition list is being updated, so recompute
-            # lengths and indices
-            self._row_metadata = _IndexMetadata(self._block_partitions[:, 0],
-                                                index=index, axis=0)
-            self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
-                                                index=columns, axis=1)
+        if col_metadata is not None:
+            self._col_metadata = col_metadata
+        else:
+            assert columns is not None, \
+                "Columns must be passed without col_metadata"
+            self._col_metadata = _IndexMetadata(
+                self._block_partitions[0, :], index=columns, axis=1)
+        if row_metadata is not None:
+            self._row_metadata = row_metadata
+        else:
+            # Index can be None for default index, so we don't check
+            self._row_metadata = _IndexMetadata(
+                self._block_partitions[:, 0], index=index, axis=0)
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -2637,9 +2647,7 @@ class DataFrame(object):
             return DataFrame(row_partitions=new_rows, columns=self.columns)
 
     def radd(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.add(other, axis, level, fill_value)
 
     def rank(self, axis=0, method='average', numeric_only=None,
              na_option='keep', ascending=True, pct=False):
@@ -2648,9 +2656,9 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def rdiv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self._single_df_op_helper(
+            lambda df: df.rdiv(other, axis, level, fill_value),
+            other, axis, level)
 
     def reindex(self, labels=None, index=None, columns=None, axis=None,
                 method=None, copy=True, level=None, fill_value=np.nan,
@@ -2869,19 +2877,17 @@ class DataFrame(object):
             return new_obj
 
     def rfloordiv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self._single_df_op_helper(
+            lambda df: df.rfloordiv(other, axis, level, fill_value),
+            other, axis, level)
 
     def rmod(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self._single_df_op_helper(
+            lambda df: df.rmod(other, axis, level, fill_value),
+            other, axis, level)
 
     def rmul(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.mul(other, axis, level, fill_value)
 
     def rolling(self, window, min_periods=None, freq=None, center=False,
                 win_type=None, on=None, axis=0, closed=None):
@@ -2899,19 +2905,19 @@ class DataFrame(object):
                          index=self.index)
 
     def rpow(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self._single_df_op_helper(
+            lambda df: df.rpow(other, axis, level, fill_value),
+            other, axis, level)
 
     def rsub(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self._single_df_op_helper(
+            lambda df: df.rsub(other, axis, level, fill_value),
+            other, axis, level)
 
     def rtruediv(self, other, axis='columns', level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self._single_df_op_helper(
+            lambda df: df.rtruediv(other, axis, level, fill_value),
+            other, axis, level)
 
     def sample(self, n=None, frac=None, replace=False, weights=None,
                random_state=None, axis=None):
@@ -3818,33 +3824,71 @@ class DataFrame(object):
         return self.add(other)
 
     def __iadd__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.add(other)
+
+    def __radd__(self, other, axis="columns", level=None, fill_value=None):
+        return self.radd(other, axis, level, fill_value)
 
     def __mul__(self, other):
         return self.mul(other)
 
     def __imul__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.mul(other)
+
+    def __rmul__(self, other, axis="columns", level=None, fill_value=None):
+        return self.rmul(other, axis, level, fill_value)
 
     def __pow__(self, other):
         return self.pow(other)
 
     def __ipow__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.pow(other)
+
+    def __rpow__(self, other, axis="columns", level=None, fill_value=None):
+        return self.rpow(other, axis, level, fill_value)
 
     def __sub__(self, other):
         return self.sub(other)
 
     def __isub__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.sub(other)
+
+    def __rsub__(self, other, axis="columns", level=None, fill_value=None):
+        return self.rsub(other, axis, level, fill_value)
+
+    def __floordiv__(self, other):
+        return self.floordiv(other)
+
+    def __ifloordiv__(self, other):
+        return self.floordiv(other)
+
+    def __rfloordiv__(self, other, axis="columns", level=None,
+                      fill_value=None):
+        return self.rfloordiv(other, axis, level, fill_value)
+
+    def __truediv__(self, other):
+        return self.truediv(other)
+
+    def __itruediv__(self, other):
+        return self.truediv(other)
+
+    def __rtruediv__(self, other, axis="columns", level=None, fill_value=None):
+        return self.rtruediv(other, axis, level, fill_value)
+
+    def __mod__(self, other):
+        return self.mod(other)
+
+    def __imod__(self, other):
+        return self.mod(other)
+
+    def __rmod__(self, other, axis="columns", level=None, fill_value=None):
+        return self.rmod(other, axis, level, fill_value)
+
+    def __div__(self, other, axis=None, level=None, fill_value=None):
+        return self.div(other, axis, level, fill_value)
+
+    def __rdiv__(self, other, axis="columns", level=None, fill_value=None):
+        return self.rdiv(other, axis, level, fill_value)
 
     def __neg__(self):
         """Computes an element wise negative DataFrame
@@ -3866,15 +3910,6 @@ class DataFrame(object):
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index)
-
-    def __floordiv__(self, other):
-        return self.floordiv(other)
-
-    def __truediv__(self, other):
-        return self.truediv(other)
-
-    def __mod__(self, other):
-        return self.mod(other)
 
     def __sizeof__(self):
         raise NotImplementedError(
@@ -3904,11 +3939,6 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def __rsub__(self, other, axis=None, level=None, fill_value=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
-
     @property
     def loc(self):
         """Purely label-location based indexer for selection by label.
@@ -3925,14 +3955,6 @@ class DataFrame(object):
         raise NotImplementedError(
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
-
-    def __itruediv__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
-
-    def __div__(self, other, axis=None, level=None, fill_value=None):
-        return self.div(other, axis, level, fill_value)
 
     def at(self, axis=None):
         raise NotImplementedError(
