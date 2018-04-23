@@ -19,6 +19,11 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     if len(objs) == 0:
         raise ValueError("No objects to concatenate")
 
+    objs = [obj for obj in objs if obj is not None]
+
+    if len(objs) == 0:
+        raise ValueError("All objects passed were None")
+
     try:
         type_check = next(obj for obj in objs
                           if not isinstance(obj, (pandas.Series,
@@ -28,8 +33,8 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
         type_check = None
     if type_check is not None:
         raise ValueError("cannot concatenate object of type \"{0}\"; only "
-                         "pandas.Series, pandas.DataFrame, pandas.Panel "
-                         "(deprecated), and ray.dataframe.DataFrame objs are "
+                         "pandas.Series, pandas.DataFrame, "
+                         "and ray.dataframe.DataFrame objs are "
                          "valid", type(type_check))
 
     all_series = all([isinstance(obj, pandas.Series)
@@ -57,7 +62,7 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     def series_to_df(series, columns):
         df = pandas.DataFrame(series)
         df.columns = columns
-        return df
+        return DataFrame(df)
 
     # Pandas puts all of the Series in a single column named 0. This is
     # true regardless of the existence of another column named 0 in the

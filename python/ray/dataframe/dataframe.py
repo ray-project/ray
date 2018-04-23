@@ -2130,7 +2130,7 @@ class DataFrame(object):
                 raise ValueError("Joining multiple DataFrames only supported"
                                  " for joining on index")
 
-            # Joining the empty DataFrames with either index of columns is
+            # Joining the empty DataFrames with either index or columns is
             # fast. It gives us proper error checking for the edge cases that
             # would otherwise require a lot more logic.
             new_index = pd.DataFrame(index=self.index).join(
