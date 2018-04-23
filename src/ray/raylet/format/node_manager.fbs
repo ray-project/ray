@@ -1,7 +1,5 @@
 // Local scheduler protocol specification
 
-include "../../../../thirdparty/build/arrow/cpp/src/plasma/format/plasma.fbs";
-
 // TODO(swang): We put the flatbuffer types in a separate namespace for now to
 // avoid conflicts with legacy Ray types.
 namespace ray.protocol;
@@ -9,7 +7,7 @@ namespace ray.protocol;
 enum MessageType:int {
   // Task is submitted to the local scheduler. This is sent from a worker to a
   // local scheduler.
-  SubmitTask = 101,
+  SubmitTask = 1,
   // Notify the local scheduler that a task has finished. This is sent from a
   // worker to a local scheduler.
   TaskDone,
@@ -57,7 +55,11 @@ enum MessageType:int {
   // making their execution dependencies available.
   SetActorFrontier,
   // A node manager request to process a task forwarded from another node manager.
-  ForwardTaskRequest
+  ForwardTaskRequest,
+
+  // PLASMA STUFF
+  // Fetch objects from remote Plasma stores.
+  PlasmaFetchRequest = 21
 }
 
 table TaskExecutionSpecification {
@@ -120,4 +122,9 @@ table ForwardTaskRequest {
 table ReconstructObject {
   // Object ID of the object that needs to be reconstructed.
   object_id: string;
+}
+
+table PlasmaFetchRequest {
+  // IDs of objects to be gotten.
+  object_ids: [string];
 }

@@ -454,11 +454,8 @@ class Worker(object):
         ]
         for i in range(0, len(object_ids),
                        ray._config.worker_fetch_request_size()):
-            if not self.use_raylet:
-                self.plasma_client.fetch(plain_object_ids[i:(
-                    i + ray._config.worker_fetch_request_size())])
-            else:
-                print("plasma_client.fetch has not been implemented yet")
+            self.plasma_client.fetch(plain_object_ids[i:(
+                i + ray._config.worker_fetch_request_size())])
 
         # Get the objects. We initially try to get the objects immediately.
         final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
@@ -482,11 +479,8 @@ class Worker(object):
                 map(plasma.ObjectID, unready_ids.keys()))
             for i in range(0, len(object_ids_to_fetch),
                            ray._config.worker_fetch_request_size()):
-                if not self.use_raylet:
-                    self.plasma_client.fetch(object_ids_to_fetch[i:(
-                        i + ray._config.worker_fetch_request_size())])
-                else:
-                    print("plasma_client.fetch has not been implemented yet")
+                self.plasma_client.fetch(object_ids_to_fetch[i:(
+                    i + ray._config.worker_fetch_request_size())])
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
                 max([
