@@ -1,8 +1,6 @@
 pendulum-ddpg-2:
     env: Pendulum-v0
     run: DDPG2
-    trial_resources:
-        cpu: 2
     stop:
         episode_reward_mean: -160
         time_total_s: 900

@@ -4,7 +4,5 @@ pendulum-ddpg:
     stop:
         episode_reward_mean: -100
         time_total_s: 600
-    trial_resources:
-        cpu: 1
     config:
         num_workers: 1

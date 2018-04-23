@@ -2,8 +2,6 @@
 mountaincarcontinuous-ddpg-2:
     env: MountainCarContinuous-v0
     run: DDPG2
-    trial_resources:
-        cpu: 6
     stop:
         episode_reward_mean: 90
     config:
