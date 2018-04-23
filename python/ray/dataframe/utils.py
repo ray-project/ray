@@ -200,12 +200,16 @@ def _create_block_partitions(partitions, axis=0, length=None):
          for partition in partitions]
 
     # In the case that axis is 1 we have to transpose because we build the
-    # columns into rows. Fortunately numpy is efficent at this.
+    # columns into rows. Fortunately numpy is efficient at this.
     return np.array(x) if axis == 0 else np.array(x).T
 
 
 @ray.remote
 def create_blocks(df, npartitions, axis):
+    return create_blocks_helper(df, npartitions, axis)
+
+
+def create_blocks_helper(df, npartitions, axis):
     # Single partition dataframes don't need to be repartitioned
     if npartitions == 1:
         return df
@@ -285,7 +289,7 @@ def _inherit_docstrings(parent):
 
 
 @ray.remote
-def _reindex_helper(df, old_index, new_index, axis):
+def _reindex_helper(old_index, new_index, axis, npartitions, *df):
     """Reindexes a dataframe to prepare for join/concat.
 
     Args:
@@ -295,8 +299,9 @@ def _reindex_helper(df, old_index, new_index, axis):
         axis: Which axis to reindex over.
 
     Returns:
-        A new reindexed DataFrame.
+        A new set of blocks made up of DataFrames.
     """
+    df = pd.concat(df, axis=axis ^ 1)
     if axis == 1:
         df.index = old_index
         df = df.reindex(new_index, copy=False)
@@ -305,4 +310,4 @@ def _reindex_helper(df, old_index, new_index, axis):
         df.columns = old_index
         df = df.reindex(columns=new_index, copy=False)
         df.columns = pd.RangeIndex(len(df.columns))
-    return df
+    return create_blocks_helper(df, npartitions, axis)

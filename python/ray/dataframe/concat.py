@@ -110,21 +110,24 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     # from remote memory built in the previous line. In the future, we won't be
     # building new DataFrames, rather just partitioning the DataFrames.
     if axis == 0:
-        new_rows = [_reindex_helper.remote(part, all_columns[i],
-                                           final_columns, axis)
-                    for i in range(len(objs))
-                    for part in objs[i]._row_partitions]
-
-        return DataFrame(row_partitions=new_rows,
-                         columns=final_columns,
-                         index=final_index)
-
+        new_blocks = [_reindex_helper._submit(args=(all_columns[i],
+                                                    final_columns,
+                                                    axis,
+                                                    len(objs[i]),
+                                                    *part),
+                                              num_return_vals=len(objs[i]))
+                      for i in range(len(objs))
+                      for part in objs[i]._block_partitions]
     else:
-        new_columns = [_reindex_helper.remote(part, all_index[i],
-                                              final_index, axis)
-                       for i in range(len(objs))
-                       for part in objs[i]._col_partitions]
+        new_blocks = [_reindex_helper._submit(args=(all_index[i],
+                                                    final_index,
+                                                    axis,
+                                                    len(objs[i]),
+                                                    *part),
+                                              num_return_vals=len(objs[i]))
+                      for i in range(len(objs))
+                      for part in objs[i]._block_partitions.T]
 
-        return DataFrame(col_partitions=new_columns,
-                         columns=final_columns,
-                         index=final_index)
+    return DataFrame(block_partitions=new_blocks,
+                     columns=final_columns,
+                     index=final_index)

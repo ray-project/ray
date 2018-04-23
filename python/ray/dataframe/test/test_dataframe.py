@@ -807,10 +807,28 @@ def test_nan_dataframe():
 
 
 def test_add():
-    ray_df = create_test_dataframe()
+    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
 
-    with pytest.raises(NotImplementedError):
-        ray_df.add(None)
+    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+
+    ray_df_equals_pandas(ray_df.add(ray_df), pandas_df.add(pandas_df))
+    ray_df_equals_pandas(ray_df.add(4), pandas_df.add(4))
+    ray_df_equals_pandas(ray_df.add(4.0), pandas_df.add(4.0))
+
+    ray_df2 = rdf.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
+    pandas_df2 = pd.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
+
+    ray_df_equals_pandas(ray_df.add(ray_df2), pandas_df.add(pandas_df2))
+
+    list_test = [0, 1, 2, 4]
+
+    ray_df_equals_pandas(ray_df.add(list_test, axis=1),
+                         pandas_df.add(list_test, axis=1))
+
+    ray_df_equals_pandas(ray_df.add(list_test, axis=0),
+                         pandas_df.add(list_test, axis=0))
 
 
 @pytest.fixture

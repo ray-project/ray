@@ -4084,10 +4084,13 @@ class DataFrame(object):
             new_column_index = self.columns.join(other.columns, how="outer")
             new_index = self.index.join(other.index, how="outer")
             copartitions = self._copartition(other, new_index)
-
+            for part in copartitions:
+                print(ray.get(part[0]))
+                print(ray.get(part[1]))
             new_columns = [co_op_helper.remote(func, *part)
                            for part in copartitions]
-
+            # print(ray.get(new_columns))
+            print(new_column_index)
             return DataFrame(col_partitions=new_columns,
                              columns=new_column_index,
                              index=new_index)
