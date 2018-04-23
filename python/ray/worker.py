@@ -76,6 +76,9 @@ DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 DEFAULT_ACTOR_CREATION_GPUS_SPECIFIED_CASE = 0
 
+# Timeline hook that the user can set for custom profiling
+global_timeline = None
+
 
 class FunctionID(object):
     def __init__(self, function_id):
@@ -2333,6 +2336,10 @@ class RayLogSpan(object):
 
     def __enter__(self):
         """Log the beginning of a span event."""
+
+        if global_timeline:
+            global_timeline.start(self.event_type)
+
         log(event_type=self.event_type,
             contents=self.contents,
             kind=LOG_SPAN_START,
@@ -2340,6 +2347,10 @@ class RayLogSpan(object):
 
     def __exit__(self, type, value, tb):
         """Log the end of a span event. Log any exception that occurred."""
+
+        if global_timeline:
+            global_timeline.end(self.event_type)
+
         if type is None:
             log(event_type=self.event_type,
                 kind=LOG_SPAN_END,
