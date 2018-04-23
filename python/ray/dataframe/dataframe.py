@@ -1470,9 +1470,24 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def eq(self, other, axis='columns', level=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Checks element-wise that this is equal to other.
+
+        Args:
+            other: A DataFrame or Series or scalar to compare to.
+            axis: The axis to perform the eq over.
+            level: The Multilevel index level to apply eq over.
+
+        Returns:
+            A new DataFrame filled with Booleans.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.eq(y, axis, level),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.eq(other, axis, level),
+                other, axis, level)
 
     def equals(self, other):
         """
@@ -1787,9 +1802,24 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def ge(self, other, axis='columns', level=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Checks element-wise that this is greater than or equal to other.
+
+        Args:
+            other: A DataFrame or Series or scalar to compare to.
+            axis: The axis to perform the gt over.
+            level: The Multilevel index level to apply gt over.
+
+        Returns:
+            A new DataFrame filled with Booleans.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.ge(y, axis, level),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.ge(other, axis, level),
+                other, axis, level)
 
     def get(self, key, default=None):
         """Get item from object for given key (DataFrame column, Panel
@@ -1837,9 +1867,24 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def gt(self, other, axis='columns', level=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Checks element-wise that this is greater than other.
+
+        Args:
+            other: A DataFrame or Series or scalar to compare to.
+            axis: The axis to perform the gt over.
+            level: The Multilevel index level to apply gt over.
+
+        Returns:
+            A new DataFrame filled with Booleans.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.gt(y, axis, level),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.gt(other, axis, level),
+                other, axis, level)
 
     def head(self, n=5):
         """Get the first n rows of the dataframe.
@@ -2248,9 +2293,24 @@ class DataFrame(object):
         return self._row_metadata.last_valid_index()
 
     def le(self, other, axis='columns', level=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Checks element-wise that this is less than or equal to other.
+
+        Args:
+            other: A DataFrame or Series or scalar to compare to.
+            axis: The axis to perform the le over.
+            level: The Multilevel index level to apply le over.
+
+        Returns:
+            A new DataFrame filled with Booleans.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.le(y, axis, level),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.le(other, axis, level),
+                other, axis, level)
 
     def lookup(self, row_labels, col_labels):
         raise NotImplementedError(
@@ -2258,9 +2318,24 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def lt(self, other, axis='columns', level=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Checks element-wise that this is less than other.
+
+        Args:
+            other: A DataFrame or Series or scalar to compare to.
+            axis: The axis to perform the lt over.
+            level: The Multilevel index level to apply lt over.
+
+        Returns:
+            A new DataFrame filled with Booleans.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.lt(y, axis, level),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.lt(other, axis, level),
+                other, axis, level)
 
     def mad(self, axis=None, skipna=None, level=None):
         raise NotImplementedError(
@@ -2431,9 +2506,24 @@ class DataFrame(object):
         return self.mul(other, axis, level, fill_value)
 
     def ne(self, other, axis='columns', level=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Checks element-wise that this is not equal to other.
+
+        Args:
+            other: A DataFrame or Series or scalar to compare to.
+            axis: The axis to perform the ne over.
+            level: The Multilevel index level to apply ne over.
+
+        Returns:
+            A new DataFrame filled with Booleans.
+        """
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: x.ne(y, axis, level),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: df.ne(other, axis, level),
+                other, axis, level)
 
     def nlargest(self, n, columns, keep='first'):
         raise NotImplementedError(
@@ -3785,40 +3875,22 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __lt__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.lt(other)
 
     def __le__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.le(other)
 
     def __gt__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.gt(other)
 
     def __ge__(self, other):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return self.ge(other)
 
     def __eq__(self, other):
-        """Computes the equality of this DataFrame with another
-
-        Returns:
-            True, if the DataFrames are equal. False otherwise.
-        """
-        return self.equals(other)
+        return self.eq(other)
 
     def __ne__(self, other):
-        """Checks that this DataFrame is not equal to another
-
-        Returns:
-            True, if the DataFrames are not equal. False otherwise.
-        """
-        return not self.equals(other)
+        return self.ne(other)
 
     def __add__(self, other):
         return self.add(other)
