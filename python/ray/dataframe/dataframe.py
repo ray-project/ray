@@ -3266,7 +3266,7 @@ class DataFrame(object):
                              columns=columns,
                              index=index)
         else:
-            columns = self.columns[key]
+            columns = self._col_metadata[key].index
 
             indices_for_rows = [self.columns.index(new_col)
                                 for new_col in columns]
