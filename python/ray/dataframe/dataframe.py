@@ -15,7 +15,8 @@ from pandas.core.dtypes.common import (
     is_bool_dtype,
     is_list_like,
     is_numeric_dtype,
-    is_timedelta64_dtype)
+    is_timedelta64_dtype,
+    _get_dtype_from_object)
 from pandas.core.indexing import check_bool_indexer
 
 import warnings
@@ -977,9 +978,34 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def astype(self, dtype, copy=True, errors='raise', **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if errors == 'raise':
+            try:
+                pd.DataFrame().astype(dtype)
+            except (ValueError, TypeError):
+                return self
+        if isinstance(dtype, dict):
+            new_rows = _map_partitions(lambda df: df.astype(dtype=dtype,
+                                                            copy=True,
+                                                            errors='ignore',
+                                                            **kwargs),
+                                       self._row_partitions)
+            if copy:
+                return DataFrame(row_partitions=new_rows,
+                                 columns=self.columns,
+                                 index=self.index)
+            self._row_partitions = new_rows
+        else:
+            new_blocks = [_map_partitions(lambda d: d.astype(dtype=dtype,
+                                                             copy=True,
+                                                             errors='ignore',
+                                                             **kwargs),
+                                          block)
+                          for block in self._block_partitions]
+            if copy:
+                return DataFrame(block_partitions=new_blocks,
+                                 columns=self.columns,
+                                 index=self.index)
+            self._block_partitions = new_blocks
 
     def at_time(self, time, asof=False):
         raise NotImplementedError(
@@ -2418,9 +2444,28 @@ class DataFrame(object):
     def reindex(self, labels=None, index=None, columns=None, axis=None,
                 method=None, copy=True, level=None, fill_value=np.nan,
                 limit=None, tolerance=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        col_idx = [i if columns[i] in self.columns[i] else columns[i]
+                   for i in range(len(columns))]
+
+        if not copy:
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+
+        axis = pd.DataFrame()._get_axis_number(axis) if (axis) else 0
+        if axis == 1 or columns:
+            def row_helper(df, col_idx):
+                df = df.reindex(columns=col_idx, copy=True)
+                return df
+            new_rows = _map_partitions(row_helper,
+                                       self._row_partitions, col_idx)
+            return DataFrame(row_partitions=new_rows,
+                             columns=columns,
+                             index=self.index)
+        else:
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
 
     def reindex_axis(self, labels, axis=0, method=None, level=None, copy=True,
                      limit=None, fill_value=np.nan):
@@ -2688,9 +2733,33 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def select_dtypes(self, include=None, exclude=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        # Validates arguments for whether both include and exclude are None or
+        # if they are disjoint. Also invalidates string dtypes.
+        pd.DataFrame().select_dtypes(include, exclude)
+
+        if include and not is_list_like(include):
+            include = [include]
+        elif not include:
+            include = []
+
+        if exclude and not is_list_like(exclude):
+            exclude = [exclude]
+        elif not exclude:
+            exclude = []
+
+        sel = tuple(map(set, (include, exclude)))
+
+        include, exclude = map(
+            lambda x: set(map(_get_dtype_from_object, x)), sel)
+
+        dtypes = self.dtypes
+        indicate = [i for i in range(len(dtypes))
+                    if ((len(exclude) != 0 and any(map(
+                        lambda x: issubclass(dtypes[i].type, x), exclude)))
+                    or (len(include) != 0 and not any(map(
+                        lambda x: issubclass(dtypes[i].type, x), include))))]
+
+        return self.drop(columns=self.columns[indicate], inplace=False)
 
     def sem(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
@@ -3260,7 +3329,7 @@ class DataFrame(object):
             new_parts = _map_partitions(lambda df: df[key],
                                         self._col_partitions)
             columns = self.columns
-            index = self.index[key]
+            index = self._col_metadata[key].index
 
             return DataFrame(col_partitions=new_parts,
                              columns=columns,
@@ -3317,9 +3386,16 @@ class DataFrame(object):
             raise e
 
     def __setitem__(self, key, value):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if not isinstance(key, str):
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+        if key not in self.columns:
+            self.insert(loc=len(self.columns), column=key, value=value)
+        else:
+            loc = self.columns.get_loc(key)
+            self.__delitem__(key)
+            self.insert(loc=loc, column=key, value=value)
 
     def __len__(self):
         """Gets the length of the dataframe.
