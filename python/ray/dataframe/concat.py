@@ -27,8 +27,8 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     try:
         type_check = next(obj for obj in objs
                           if not isinstance(obj, (pandas.Series,
-                                                  pandas.DataFrame, DataFrame,
-                                                  pandas.Panel)))
+                                                  pandas.DataFrame,
+                                                  DataFrame)))
     except StopIteration:
         type_check = None
     if type_check is not None:
