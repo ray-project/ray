@@ -30,8 +30,11 @@ def get_npartitions():
 # because they depend on npartitions.
 from .dataframe import DataFrame  # noqa: 402
 from .series import Series  # noqa: 402
-from .io import (read_csv, read_parquet)  # noqa: 402
-from .concat import concat # noqa: 402
+from .io import (read_csv, read_parquet, read_json, read_html,  # noqa: 402
+                 read_clipboard, read_excel, read_hdf, read_feather,  # noqa: 402
+                 read_msgpack, read_stata, read_sas, read_pickle,  # noqa: 402
+                 read_sql)  # noqa: 402
+from .concat import concat  # noqa: 402
 
 __all__ = [
     "DataFrame", "Series", "read_csv", "read_parquet", "concat", "eval"
