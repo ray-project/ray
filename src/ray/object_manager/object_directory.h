@@ -13,6 +13,7 @@
 
 namespace ray {
 
+/// Connection information for remote object managers.
 struct RemoteConnectionInfo {
   RemoteConnectionInfo() = default;
   RemoteConnectionInfo(const ClientID &id, const std::string &ip_address,
@@ -23,7 +24,6 @@ struct RemoteConnectionInfo {
   uint16_t port;
 };
 
-/// Connection information for remote object managers.
 class ObjectDirectoryInterface {
  public:
   ObjectDirectoryInterface() = default;

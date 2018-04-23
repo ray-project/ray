@@ -311,6 +311,7 @@ MOD_INIT(liblocal_scheduler_library) {
                      "A module for the local scheduler.");
 #endif
 
+  init_numpy_module();
   init_pickle_module();
 
   Py_INCREF(&PyTaskType);

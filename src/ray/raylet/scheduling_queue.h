@@ -65,6 +65,13 @@ class SchedulingQueue {
   /// executing on a worker.
   const std::list<Task> &GetRunningTasks() const;
 
+  /// Get the tasks in the blocked state.
+  ///
+  /// \return A const reference to the queue of tasks that have been dispatched
+  /// to a worker but are blocked on a data dependency discovered to be missing
+  /// at runtime.
+  const std::list<Task> &GetBlockedTasks() const;
+
   /// Remove tasks from the task queue.
   ///
   /// \param tasks The set of task IDs to remove from the queue. The
@@ -77,7 +84,8 @@ class SchedulingQueue {
   /// \param tasks The tasks to queue.
   void QueueUncreatedActorMethods(const std::vector<Task> &tasks);
 
-  /// Queue tasks in the waiting state.
+  /// Queue tasks in the waiting state. These are tasks that cannot yet be
+  /// scheduled since they are blocked on a missing data dependency.
   ///
   /// \param tasks The tasks to queue.
   void QueueWaitingTasks(const std::vector<Task> &tasks);
@@ -97,6 +105,13 @@ class SchedulingQueue {
   /// \param tasks The tasks to queue.
   void QueueRunningTasks(const std::vector<Task> &tasks);
 
+  /// Queue tasks in the blocked state. These are tasks that have been
+  /// dispatched to a worker but are blocked on a data dependency that was
+  /// discovered to be missing at runtime.
+  ///
+  /// \param tasks The tasks to queue.
+  void QueueBlockedTasks(const std::vector<Task> &tasks);
+
  private:
   /// Tasks that are destined for actors that have not yet been created.
   std::list<Task> uncreated_actor_methods_;
@@ -109,6 +124,9 @@ class SchedulingQueue {
   std::list<Task> scheduled_tasks_;
   /// Tasks that are running on a worker.
   std::list<Task> running_tasks_;
+  /// Tasks that were dispatched to a worker but are blocked on a data
+  /// dependency that was missing at runtime.
+  std::list<Task> blocked_tasks_;
 };
 
 }  // namespace raylet

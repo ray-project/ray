@@ -13,6 +13,10 @@ TaskDependencyManager::TaskDependencyManager(
       task_waiting_callback_(task_waiting_handler) {
 }
 
+bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
+  return local_objects_.count(object_id) == 1;
+}
+
 void TaskDependencyManager::HandleObjectLocal(const ray::ObjectID &object_id) {
   RAY_LOG(DEBUG) << "object ready " << object_id.hex();
   // Add the object to the table of locally available objects.

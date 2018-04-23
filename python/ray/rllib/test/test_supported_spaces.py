@@ -114,6 +114,7 @@ class ModelSupportedSpaces(unittest.TestCase):
     def testAll(self):
         ray.init()
         stats = {}
+        check_support("DDPG2", {"timesteps_per_iteration": 1}, stats)
         check_support("DQN", {"timesteps_per_iteration": 1}, stats)
         check_support(
             "A3C", {"num_workers": 1, "optimizer": {"grads_per_step": 1}},

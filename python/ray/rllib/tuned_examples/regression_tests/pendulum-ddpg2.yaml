@@ -1,0 +1,16 @@
+pendulum-ddpg-2:
+    env: Pendulum-v0
+    run: DDPG2
+    trial_resources:
+        cpu: 2
+    stop:
+        episode_reward_mean: -160
+        time_total_s: 900
+    config:
+        use_huber: True
+        random_starts: False
+        clip_rewards: False
+        exploration_fraction: 0.4
+        model:
+            fcnet_hiddens: []
+        smoothing_num_episodes: 10

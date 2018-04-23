@@ -27,23 +27,19 @@ int64_t current_time_ms() {
 class MockServer {
  public:
   MockServer(boost::asio::io_service &main_service,
-             std::unique_ptr<boost::asio::io_service> object_manager_service,
              const ObjectManagerConfig &object_manager_config,
              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
       : object_manager_acceptor_(
             main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
-        object_manager_(main_service, std::move(object_manager_service),
-                        object_manager_config, gcs_client) {
+        object_manager_(main_service, object_manager_config, gcs_client) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
   }
 
-  ~MockServer() {
-    RAY_CHECK_OK(gcs_client_->client_table().Disconnect());
-  }
+  ~MockServer() { RAY_CHECK_OK(gcs_client_->client_table().Disconnect()); }
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
@@ -98,47 +94,60 @@ class TestObjectManagerBase : public ::testing::Test {
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
     store_id = store_id + id;
+    std::string store_pid = store_id + ".pid";
     std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
-                                 " 1> /dev/null 2> /dev/null &";
+                                 " 1> /dev/null 2> /dev/null &" + " echo $! > " +
+                                 store_pid;
+
     RAY_LOG(DEBUG) << plasma_command;
     int ec = system(plasma_command.c_str());
     RAY_CHECK(ec == 0);
+    sleep(1);
     return store_id;
+  }
+
+  void StopStore(std::string store_id) {
+    std::string store_pid = store_id + ".pid";
+    std::string kill_1 = "kill -9 `cat " + store_pid + "`";
+    int s = system(kill_1.c_str());
+    ASSERT_TRUE(!s);
   }
 
   void SetUp() {
     flushall_redis();
 
-    object_manager_service_1.reset(new boost::asio::io_service());
-    object_manager_service_2.reset(new boost::asio::io_service());
-
     // start store
-    std::string store_sock_1 = StartStore("1");
-    std::string store_sock_2 = StartStore("2");
+    store_id_1 = StartStore(UniqueID::from_random().hex());
+    store_id_2 = StartStore(UniqueID::from_random().hex());
+
+    uint pull_timeout_ms = 1;
+    int max_sends = 2;
+    int max_receives = 2;
+    uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
-    om_config_1.store_socket_name = store_sock_1;
-    om_config_1.num_threads = 4;
-    om_config_1.max_sends = 20;
-    om_config_1.max_receives = 20;
-    server1.reset(new MockServer(main_service, std::move(object_manager_service_1),
-                                 om_config_1, gcs_client_1));
+    om_config_1.store_socket_name = store_id_1;
+    om_config_1.pull_timeout_ms = pull_timeout_ms;
+    om_config_1.max_sends = max_sends;
+    om_config_1.max_receives = max_receives;
+    om_config_1.object_chunk_size = object_chunk_size;
+    server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
-    om_config_2.store_socket_name = store_sock_2;
-    om_config_2.num_threads = 4;
-    om_config_2.max_sends = 20;
-    om_config_2.max_receives = 20;
-    server2.reset(new MockServer(main_service, std::move(object_manager_service_2),
-                                 om_config_2, gcs_client_2));
+    om_config_2.store_socket_name = store_id_2;
+    om_config_2.pull_timeout_ms = pull_timeout_ms;
+    om_config_2.max_sends = max_sends;
+    om_config_2.max_receives = max_receives;
+    om_config_2.object_chunk_size = object_chunk_size;
+    server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
-    ARROW_CHECK_OK(client2.Connect(store_sock_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client1.Connect(store_id_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client2.Connect(store_id_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
   }
 
   void TearDown() {
@@ -149,8 +158,8 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    int s = system("killall plasma_store &");
-    ASSERT_TRUE(!s);
+    StopStore(store_id_1);
+    StopStore(store_id_2);
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -172,8 +181,6 @@ class TestObjectManagerBase : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::unique_ptr<boost::asio::io_service> object_manager_service_1;
-  std::unique_ptr<boost::asio::io_service> object_manager_service_2;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
   std::unique_ptr<MockServer> server1;
@@ -183,6 +190,9 @@ class TestObjectManagerBase : public ::testing::Test {
   plasma::PlasmaClient client2;
   std::vector<ObjectID> v1;
   std::vector<ObjectID> v2;
+
+  std::string store_id_1;
+  std::string store_id_2;
 };
 
 class StressTestObjectManager : public TestObjectManagerBase {
@@ -261,7 +271,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     async_loop_index += 1;
     if ((uint)async_loop_index < async_loop_patterns.size()) {
       TransferPattern pattern = async_loop_patterns[async_loop_index];
-      TransferTestExecute(1000, 100, pattern);
+      TransferTestExecute(100, 3 * std::pow(10, 3) - 1, pattern);
     } else {
       main_service.stop();
     }
@@ -283,11 +293,14 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void CompareObjects(ObjectID &object_id_1, ObjectID &object_id_2) {
     plasma::ObjectBuffer object_buffer_1 = GetObject(client1, object_id_1);
-    plasma::ObjectBuffer object_buffer_2 = GetObject(client1, object_id_1);
+    plasma::ObjectBuffer object_buffer_2 = GetObject(client2, object_id_2);
     uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
     uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->data());
-    ASSERT_EQ(object_buffer_1.data_size, object_buffer_2.data_size);
-    for (int i = -1; ++i < object_buffer_1.data_size;) {
+    ASSERT_EQ(object_buffer_1.data->size(), object_buffer_2.data_size);
+    ASSERT_EQ(object_buffer_1.metadata_size, object_buffer_2.metadata_size);
+    int64_t total_size = object_buffer_1.data->size() + object_buffer_1.metadata_size;
+    RAY_LOG(DEBUG) << "total_size " << total_size;
+    for (int i = -1; ++i < total_size;) {
       ASSERT_TRUE(data_1[i] == data_2[i]);
     }
   }

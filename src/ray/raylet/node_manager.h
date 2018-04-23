@@ -59,9 +59,6 @@ class NodeManager {
   void ProcessNodeManagerMessage(std::shared_ptr<TcpClientConnection> node_manager_client,
                                  int64_t message_type, const uint8_t *message);
 
-  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
-                      const HeartbeatTableDataT &data);
-
  private:
   // Handler for the addition of a new GCS client.
   void ClientAdded(const ClientTableDataT &data);
@@ -94,12 +91,20 @@ class NodeManager {
   void Heartbeat();
   /// Send notifications to the GCS about objects that are pending creation.
   void PendingObjectsHeartbeat();
+  /// Handler for a notification about a new client from the GCS.
+  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
+                   const ClientTableDataT &data);
+  /// Handler for a heartbeat notification from the GCS.
+  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
+                      const HeartbeatTableDataT &data);
+  /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
+  /// "running" task state.
+  void DispatchTasks();
 
   boost::asio::io_service &io_service_;
+  ObjectManager &object_manager_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
-  // A reference to the object manager.
-  ObjectManager &object_manager_;
   boost::asio::deadline_timer heartbeat_timer_;
   uint64_t heartbeat_period_ms_;
   /// The resources local to this node.

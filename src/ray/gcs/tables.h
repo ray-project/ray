@@ -27,13 +27,18 @@ class RedisContext;
 
 class AsyncGcsClient;
 
+/// \class PubsubInterface
+///
+/// The interface for a pubsub storage system. The client of a storage system
+/// that implements this interface can request and cancel notifications for
+/// specific keys.
 template <typename ID>
 class PubsubInterface {
  public:
   virtual Status RequestNotifications(const JobID &job_id, const ID &id,
-                                      const ClientID &client_id);
+                                      const ClientID &client_id) = 0;
   virtual Status CancelNotifications(const JobID &job_id, const ID &id,
-                                     const ClientID &client_id);
+                                     const ClientID &client_id) = 0;
   virtual ~PubsubInterface(){};
 };
 
@@ -58,7 +63,7 @@ class LogInterface {
 ///   ClientTable: Stores a log of which GCS clients have been added or deleted
 ///                from the system.
 template <typename ID, typename Data>
-class Log : public LogInterface<ID, Data>, public PubsubInterface<ID> {
+class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
  public:
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
@@ -205,7 +210,9 @@ class TableInterface {
 /// Example tables backed by Log:
 ///   TaskTable: Stores Task metadata needed for executing the task.
 template <typename ID, typename Data>
-class Table : private Log<ID, Data>, public TableInterface<ID, Data> {
+class Table : private Log<ID, Data>,
+              public TableInterface<ID, Data>,
+              virtual public PubsubInterface<ID> {
  public:
   using DataT = typename Log<ID, Data>::DataT;
   using Callback =

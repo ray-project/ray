@@ -37,6 +37,12 @@ class TaskDependencyManager {
                         std::function<void(const TaskID &)> task_ready_handler,
                         std::function<void(const TaskID &)> task_waiting_handler);
 
+  /// Check whether an object is locally available.
+  ///
+  /// \param object_id The object to check for.
+  /// \return Whether the object is local.
+  bool CheckObjectLocal(const ObjectID &object_id) const;
+
   /// Subscribe to a task that is waiting or ready to execute. The registered
   /// remote object handler will be called for any missing dependencies that
   /// need to be transferred from another node or reconstructed. The registered

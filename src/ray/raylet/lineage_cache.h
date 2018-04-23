@@ -164,7 +164,9 @@ class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
-  LineageCache(gcs::TableInterface<TaskID, protocol::Task> &task_storage);
+  LineageCache(const ClientID &client_id,
+               gcs::TableInterface<TaskID, protocol::Task> &task_storage,
+               gcs::PubsubInterface<TaskID> &task_pubsub);
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
   /// These entries will not be written to the GCS until set to ready.
@@ -181,7 +183,11 @@ class LineageCache {
   /// \param task The task to set as ready.
   void AddReadyTask(const Task &task);
 
-  void RemoveWaitingTask(const TaskID &entry_id);
+  /// Remove a task that was waiting for execution. Its uncommitted lineage
+  /// will remain unchanged.
+  ///
+  /// \param task_id The ID of the waiting task to remove.
+  void RemoveWaitingTask(const TaskID &task_id);
 
   /// Get the uncommitted lineage of a task. The uncommitted lineage consists
   /// of all tasks in the given task's lineage that have not been committed in
@@ -199,14 +205,34 @@ class LineageCache {
   /// \return Status.
   Status Flush();
 
- private:
-  void HandleEntryCommitted(const TaskID &unique_id);
+  /// Handle the commit of a task entry in the GCS. This sets the task to
+  /// COMMITTED and cleans up any ancestor tasks that are in the cache.
+  ///
+  /// \param task_id The ID of the task entry that was committed.
+  void HandleEntryCommitted(const TaskID &task_id);
 
+ private:
+  /// The client ID, used to request notifications for specific tasks.
+  /// TODO(swang): Move the ClientID into the generic Table implementation.
+  ClientID client_id_;
   /// The durable storage system for task information.
   gcs::TableInterface<TaskID, protocol::Task> &task_storage_;
+  /// The pubsub storage system for task information. This can be used to
+  /// request notifications for the commit of a task entry.
+  gcs::PubsubInterface<TaskID> &task_pubsub_;
+  /// The set of tasks that are in UNCOMMITTED_READY state. This is a cache of
+  /// the tasks that may be flushable.
+  // TODO(swang): As an optimization, we may also want to further distinguish
+  // which tasks are flushable, to avoid iterating over tasks that are in
+  // UNCOMMITTED_READY, but that have dependencies that have not been committed
+  // yet.
+  std::unordered_set<TaskID, UniqueIDHasher> uncommitted_ready_tasks_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;
+  /// The tasks that we've subscribed to notifications for from the pubsub
+  /// storage system. We will receive a notification for these tasks on commit.
+  std::unordered_set<TaskID, UniqueIDHasher> subscribed_tasks_;
 };
 
 }  // namespace raylet
