@@ -114,7 +114,8 @@ class _IndexMetadata(_IndexMetadataBase):
     partitions.
     """
 
-    def __init__(self, dfs, index=None, axis=0):
+    def __init__(self, dfs=None, index=None, axis=0, lengths_oid=None,
+                 coord_df_oid=None):
         """Inits a IndexMetadata from Ray DataFrame partitions
 
         Args:
@@ -126,9 +127,10 @@ class _IndexMetadata(_IndexMetadataBase):
             A IndexMetadata backed by the specified pd.Index, partitioned off
             specified partitions
         """
-        lengths_oid, coord_df_oid = \
-            _build_index.remote(dfs, index) if axis == 0 else \
-            _build_columns.remote(dfs, index)
+        if dfs is not None:
+            lengths_oid, coord_df_oid = \
+                _build_index.remote(dfs, index) if axis == 0 else \
+                _build_columns.remote(dfs, index)
         self._coord_df = coord_df_oid
         self._lengths = lengths_oid
 
@@ -268,6 +270,10 @@ class _IndexMetadata(_IndexMetadataBase):
             self._coord_df.index_within_partition > index_within_partition
         self._coord_df.loc[partition_mask & index_within_partition_mask,
                            'index_within_partition'] -= 1
+
+    def copy(self):
+        return _IndexMetadata(coord_df_oid=self._coord_df,
+                              lengths_oid=self._lengths)
 
 
 class _WrappingIndexMetadata(_IndexMetadata):
