@@ -49,7 +49,7 @@ std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
       SchedulingResources node_resources = client_resource_pair.second;
       RAY_LOG(DEBUG) << "client_id " << node_client_id << " resources: "
                      << node_resources.GetAvailableResources().ToString();
-      if (resource_demand.IsSubset(node_resources.GetTotalResources())) {
+      if (resource_demand.IsSubset(node_resources.GetAvailableResources())) {
         // This node is a feasible candidate.
         client_keys.push_back(node_client_id);
       }
