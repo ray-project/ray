@@ -587,6 +587,62 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeId) {
   TestLogSubscribeId(job_id_, client_);
 }
 
+void TestLogSubscribeEmptyAppends(const JobID &job_id,
+                                  std::shared_ptr<gcs::AsyncGcsClient> client) {
+  // Add a log entry.
+  ObjectID object_id = ObjectID::from_random();
+  uint8_t num_appends = 3;
+
+  // The callback for a notification from the table. This should only be
+  // received for keys that we requested notifications for.
+  auto notification_callback = [object_id, num_appends](
+      gcs::AsyncGcsClient *client, const ObjectID &id,
+      const std::vector<ObjectTableDataT> &data) {
+    // Check that we only get notifications for the requested key.
+    ASSERT_EQ(id, object_id);
+    ASSERT_TRUE(data.empty());
+    test->IncrementNumCallbacks();
+    if (test->NumCallbacks() == num_appends) {
+      test->Stop();
+    }
+  };
+
+  // The callback for subscription success. Once we've subscribed, request
+  // notifications for only one of the keys, then write to both keys.
+  auto subscribe_callback = [job_id, object_id,
+                             num_appends](gcs::AsyncGcsClient *client) {
+    // Request notifications for one of the keys.
+    RAY_CHECK_OK(client->object_table().RequestNotifications(
+        job_id, object_id, client->client_table().GetLocalClientId()));
+    // Write the key. We should receive empty notifications.
+    for (int i = 0; i < num_appends; i++) {
+      RAY_CHECK_OK(client->object_table().Append(job_id, object_id, nullptr, nullptr));
+    }
+  };
+
+  // Subscribe to notifications for this client. This allows us to request and
+  // receive notifications for specific keys.
+  RAY_CHECK_OK(
+      client->object_table().Subscribe(job_id, client->client_table().GetLocalClientId(),
+                                       notification_callback, subscribe_callback));
+  // Run the event loop. The loop will only stop if the registered subscription
+  // callback is called for the requested key.
+  test->Start();
+  // Check that we received one notification callback for each write to the
+  // requested key.
+  ASSERT_EQ(test->NumCallbacks(), num_appends);
+}
+
+TEST_F(TestGcsWithAe, TestLogSubscribeEmptyAppends) {
+  test = this;
+  TestLogSubscribeEmptyAppends(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAsio, TestLogSubscribeEmptyAppends) {
+  test = this;
+  TestLogSubscribeEmptyAppends(job_id_, client_);
+}
+
 void TestTableSubscribeCancel(const JobID &job_id,
                               std::shared_ptr<gcs::AsyncGcsClient> client) {
   // Add a table entry.

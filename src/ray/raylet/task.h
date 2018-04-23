@@ -37,6 +37,13 @@ class Task {
       : task_execution_spec_(*task_flatbuffer.task_execution_spec()),
         task_spec_(*task_flatbuffer.task_specification()) {}
 
+  /// Create a task from a serialized flatbuffer unpacked to a struct.
+  ///
+  /// \param task_flatbuffer The serialized task, unpacked to a struct.
+  Task(const protocol::TaskT &unpacked_task_flatbuffer)
+      : task_execution_spec_(*unpacked_task_flatbuffer.task_execution_spec),
+        task_spec_(unpacked_task_flatbuffer.task_specification) {}
+
   /// Destroy the task.
   virtual ~Task() {}
 

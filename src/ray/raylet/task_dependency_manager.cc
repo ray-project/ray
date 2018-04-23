@@ -5,113 +5,170 @@ namespace ray {
 namespace raylet {
 
 TaskDependencyManager::TaskDependencyManager(
-    ObjectManager &object_manager,
-    // ReconstructionPolicy &reconstruction_policy,
-    std::function<void(const TaskID &)> handler)
-    : object_manager_(object_manager),
-      // reconstruction_policy_(reconstruction_policy),
-      task_ready_callback_(handler) {
-  // TODO(swang): Check return status.
-  ray::Status status =
-      object_manager_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
-        handleObjectReady(ObjectID::from_binary(object_info.object_id));
-      });
-  // TODO(swang): Subscribe to object removed notifications.
+    std::function<void(const ObjectID)> object_remote_handler,
+    std::function<void(const TaskID &)> task_ready_handler,
+    std::function<void(const TaskID &)> task_waiting_handler)
+    : object_remote_callback_(object_remote_handler),
+      task_ready_callback_(task_ready_handler),
+      task_waiting_callback_(task_waiting_handler) {
 }
 
 bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
   return local_objects_.count(object_id) == 1;
 }
 
-bool TaskDependencyManager::argumentsReady(const std::vector<ObjectID> arguments) const {
-  for (auto &argument : arguments) {
-    // Check if any argument is missing.
-    if (local_objects_.count(argument) == 0) {
-      return false;
-    }
-  }
-  // All arguments are ready.
-  return true;
-}
-
-void TaskDependencyManager::handleObjectReady(const ray::ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "object ready " << object_id;
+void TaskDependencyManager::HandleObjectLocal(const ray::ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "object ready " << object_id.hex();
   // Add the object to the table of locally available objects.
-  RAY_CHECK(local_objects_.count(object_id) == 0);
-  local_objects_.insert(object_id);
+  auto &object_entry = local_objects_[object_id];
+  RAY_CHECK(object_entry.status != ObjectAvailability::kLocal);
+  object_entry.status = ObjectAvailability::kLocal;
 
-  // Handle any tasks that were dependent on the newly available object.
+  // Find any tasks that are dependent on the newly available object.
   std::vector<TaskID> ready_task_ids;
-  auto dependent_tasks = remote_object_dependencies_.find(object_id);
-  if (dependent_tasks != remote_object_dependencies_.end()) {
-    for (auto &dependent_task_id : dependent_tasks->second) {
-      // If the dependent task now has all of its arguments ready, it's ready
-      // to run.
-      if (argumentsReady(task_dependencies_[dependent_task_id])) {
-        ready_task_ids.push_back(dependent_task_id);
-      }
+  for (auto &dependent_task_id : object_entry.dependent_tasks) {
+    auto &task_entry = task_dependencies_[dependent_task_id];
+    task_entry.num_missing_arguments--;
+    // If the dependent task now has all of its arguments ready, it's ready
+    // to run.
+    if (task_entry.num_missing_arguments == 0) {
+      ready_task_ids.push_back(dependent_task_id);
     }
-    remote_object_dependencies_.erase(dependent_tasks);
   }
   // Process callbacks for all of the tasks dependent on the object that are
   // now ready to run.
   for (auto &ready_task_id : ready_task_ids) {
-    UnsubscribeTaskReady(ready_task_id);
     task_ready_callback_(ready_task_id);
   }
 }
 
-bool TaskDependencyManager::TaskReady(const Task &task) const {
-  const std::vector<ObjectID> arguments = task.GetDependencies();
-  return argumentsReady(arguments);
+void TaskDependencyManager::HandleObjectMissing(const ray::ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "object ready " << object_id.hex();
+  // Add the object to the table of locally available objects.
+  auto &object_entry = local_objects_[object_id];
+  RAY_CHECK(object_entry.status == ObjectAvailability::kLocal);
+  object_entry.status = ObjectAvailability::kRemote;
+
+  // Find any tasks that are dependent on the missing object.
+  std::vector<TaskID> waiting_task_ids;
+  for (auto &dependent_task_id : object_entry.dependent_tasks) {
+    auto &task_entry = task_dependencies_[dependent_task_id];
+    // If the dependent task had all of its arguments ready, it was ready to
+    // run but must be switched to waiting since one of its arguments is now
+    // missing.
+    if (task_entry.num_missing_arguments == 0) {
+      waiting_task_ids.push_back(dependent_task_id);
+    }
+    task_entry.num_missing_arguments++;
+  }
+  // Process callbacks for all of the tasks dependent on the object that are
+  // now ready to run.
+  // TODO(swang): We should not call this for tasks that have already started
+  // executing.
+  for (auto &waiting_task_id : waiting_task_ids) {
+    task_waiting_callback_(waiting_task_id);
+  }
 }
 
-void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
-  // TODO(swang): Don't pull arguments that are going to be created by a queued
-  // or running task.
+void TaskDependencyManager::SubscribeTask(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
-  const std::vector<ObjectID> arguments = task.GetDependencies();
+  TaskEntry task_entry;
+
   // Add the task's arguments to the table of subscribed tasks.
-  task_dependencies_[task_id] = arguments;
-  // Add the task's remote arguments to the table of remote objects.
-  int num_missing_arguments = 0;
-  for (auto &argument : arguments) {
-    if (local_objects_.count(argument) == 0) {
-      remote_object_dependencies_[argument].push_back(task_id);
-      num_missing_arguments++;
-      // TODO(swang): Check return status.
-      // TODO(swang): Handle Pull failure (if object manager does not retry).
-      // TODO(atumanov): pull return status should be propagated back to the caller.
-      ray::Status status = object_manager_.Pull(argument);
+  task_entry.arguments = task.GetDependencies();
+  task_entry.num_missing_arguments = task_entry.arguments.size();
+  // Record the task as being dependent on each of its arguments.
+  for (const auto &argument_id : task_entry.arguments) {
+    auto &argument_entry = local_objects_[argument_id];
+    if (argument_entry.status == ObjectAvailability::kRemote) {
+      object_remote_callback_(argument_id);
+    } else if (argument_entry.status == ObjectAvailability::kLocal) {
+      task_entry.num_missing_arguments--;
+    }
+    argument_entry.dependent_tasks.push_back(task_id);
+  }
+
+  for (int i = 0; i < task.GetTaskSpecification().NumReturns(); i++) {
+    auto return_id = task.GetTaskSpecification().ReturnId(i);
+    task_entry.returns.push_back(return_id);
+  }
+  // Record the task's return values as pending creation.
+  for (const auto &return_id : task_entry.returns) {
+    auto &return_entry = local_objects_[return_id];
+    // Some of a task's return values may already be local if this is a
+    // re-executed task and it created multiple objects, only some of which
+    // needed to be reconstructed. We only want to mark the object as waiting
+    // for creation if it was previously not available at all.
+    if (return_entry.status < ObjectAvailability::kWaiting) {
+      // The object does not already exist locally. Mark the object as
+      // pending creation.
+      return_entry.status = ObjectAvailability::kWaiting;
     }
   }
-  // Check that the task has some missing arguments.
-  RAY_CHECK(num_missing_arguments > 0);
+
+  auto emplaced = task_dependencies_.emplace(task_id, task_entry);
+  RAY_CHECK(emplaced.second);
+
+  if (task_entry.num_missing_arguments == 0) {
+    task_ready_callback_(task_id);
+  } else {
+    task_waiting_callback_(task_id);
+  }
 }
 
-void TaskDependencyManager::UnsubscribeTaskReady(const TaskID &task_id) {
-  const std::vector<ObjectID> arguments = task_dependencies_[task_id];
+void TaskDependencyManager::UnsubscribeForwardedTask(const TaskID &task_id) {
+  UnsubscribeTask(task_id, ObjectAvailability::kRemote);
+}
+
+void TaskDependencyManager::UnsubscribeExecutingTask(const TaskID &task_id) {
+  UnsubscribeTask(task_id, ObjectAvailability::kConstructing);
+}
+
+void TaskDependencyManager::UnsubscribeTask(const TaskID &task_id,
+                                            ObjectAvailability outputs_status) {
   // Remove the task from the table of subscribed tasks.
-  task_dependencies_.erase(task_id);
-  // Remove the task from the table of remote objects to dependent tasks.
-  for (auto &argument : arguments) {
-    if (local_objects_.count(argument) == 1) {
-      continue;
-    }
-    // The argument is not local. Remove the task from the list of tasks that
-    // are dependent on this object.
-    std::vector<TaskID> &dependent_tasks = remote_object_dependencies_[task_id];
+  auto it = task_dependencies_.find(task_id);
+  RAY_CHECK(it != task_dependencies_.end());
+  const TaskEntry task_entry = std::move(it->second);
+  task_dependencies_.erase(it);
+
+  // Remove the task from the table of objects to dependent tasks.
+  for (const auto &argument_id : task_entry.arguments) {
+    // Remove the task from the list of tasks that are dependent on this
+    // object.
+    auto argument_entry = local_objects_.find(argument_id);
+    std::vector<TaskID> &dependent_tasks = argument_entry->second.dependent_tasks;
     for (auto it = dependent_tasks.begin(); it != dependent_tasks.end(); it++) {
       if (*it == task_id) {
         it = dependent_tasks.erase(it);
         break;
       }
     }
+    if (dependent_tasks.empty()) {
+      if (argument_entry->second.status == ObjectAvailability::kRemote) {
+        local_objects_.erase(argument_entry);
+      }
+    }
   }
-}
 
-void TaskDependencyManager::MarkDependencyReady(const ObjectID &object) {
-  handleObjectReady(object);
+  // Record the task's return values as remote.
+  for (const auto &return_id : task_entry.returns) {
+    auto return_entry = local_objects_.find(return_id);
+    RAY_CHECK(return_entry != local_objects_.end());
+    // Some of a task's return values may already be local if this is a
+    // re-executed task and it created multiple objects, only some of which
+    // needed to be reconstructed. We only want to update the object's status
+    // if it was previously not available.
+    if (return_entry->second.status != ObjectAvailability::kLocal) {
+      RAY_CHECK(return_entry->second.status == ObjectAvailability::kWaiting);
+      return_entry->second.status = outputs_status;
+    }
+    if (return_entry->second.dependent_tasks.empty()) {
+      local_objects_.erase(return_entry);
+    } else if (return_entry->second.status == ObjectAvailability::kRemote) {
+      object_remote_callback_(return_id);
+    }
+  }
 }
 
 }  // namespace raylet

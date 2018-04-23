@@ -36,6 +36,11 @@ class NodeManager {
               ObjectManager &object_manager,
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
+  /// Register any necessary callbacks on the GCS.
+  ///
+  /// \return Status.
+  ray::Status RegisterGcs();
+
   /// Process a new client connection.
   void ProcessNewClient(std::shared_ptr<LocalClientConnection> client);
 
@@ -53,8 +58,6 @@ class NodeManager {
 
   void ProcessNodeManagerMessage(std::shared_ptr<TcpClientConnection> node_manager_client,
                                  int64_t message_type, const uint8_t *message);
-
-  ray::Status RegisterGcs();
 
  private:
   // Handler for the addition of a new GCS client.
@@ -74,13 +77,20 @@ class NodeManager {
   void ScheduleTasks();
   /// Handle a task whose local dependencies were missing and are now available.
   void HandleWaitingTaskReady(const TaskID &task_id);
+  /// Handle a task whose local dependencies were available and are now missing.
+  void HandleReadyTaskWaiting(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
+  /// Handle an object becoming local. This updates any local accounting, but
+  /// does not write to any global accounting in the GCS.
+  void HandleObjectLocal(const ObjectID &object_id);
   /// Forward a task to another node to execute. The task is assumed to not be
   /// queued in local_queues_.
   ray::Status ForwardTask(const Task &task, const ClientID &node_id);
   /// Send heartbeats to the GCS.
   void Heartbeat();
+  /// Send notifications to the GCS about objects that are pending creation.
+  void PendingObjectsHeartbeat();
   /// Handler for a notification about a new client from the GCS.
   void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
                    const ClientTableDataT &data);

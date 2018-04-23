@@ -20,11 +20,21 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
         }
         return true;
       });
-  flatbuffers::FlatBufferBuilder fbb;
-  fbb.ForceDefaults(true);
-  fbb.Finish(Data::Pack(fbb, data.get()));
-  return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, callback_index);
+
+  if (data != nullptr) {
+    // If data was provided, then serialize it to a flatbuffer.
+    flatbuffers::FlatBufferBuilder fbb;
+    fbb.ForceDefaults(true);
+    fbb.Finish(Data::Pack(fbb, data.get()));
+    return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(),
+                              fbb.GetSize(), prefix_, pubsub_channel_, callback_index);
+  } else {
+    // If no data was provided, then send a nil TABLE_APPEND, which acts as a
+    // heartbeat.
+    std::vector<uint8_t> nil;
+    return context_->RunAsync("RAY.TABLE_APPEND", id, nil.data(), nil.size(), prefix_,
+                              pubsub_channel_, callback_index);
+  }
 }
 
 template <typename ID, typename Data>
