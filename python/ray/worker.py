@@ -2039,8 +2039,8 @@ def connect(info,
         worker.plasma_client = plasma.connect(info["store_socket_name"],
                                               info["manager_socket_name"], 64)
     else:
-        worker.plasma_client = plasma.connect(info["store_socket_name"], "",
-                                              64)
+        worker.plasma_client = plasma.connect(info["store_socket_name"],
+                                              info["raylet_socket_name"], 64)
 
     if not worker.use_raylet:
         local_scheduler_socket = info["local_scheduler_socket_name"]
