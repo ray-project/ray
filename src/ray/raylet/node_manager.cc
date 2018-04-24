@@ -6,6 +6,25 @@
 
 namespace {
 
+#define RAY_CHECK_ENUM(x, y) \
+  static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
+
+// Check consistency between client and server protocol.
+RAY_CHECK_ENUM(protocol::MessageType_SubmitTask, MessageType_SubmitTask);
+RAY_CHECK_ENUM(protocol::MessageType_TaskDone, MessageType_TaskDone);
+RAY_CHECK_ENUM(protocol::MessageType_EventLogMessage, MessageType_EventLogMessage);
+RAY_CHECK_ENUM(protocol::MessageType_RegisterClientRequest, MessageType_RegisterClientRequest);
+RAY_CHECK_ENUM(protocol::MessageType_RegisterClientReply, MessageType_RegisterClientReply);
+RAY_CHECK_ENUM(protocol::MessageType_DisconnectClient, MessageType_DisconnectClient);
+RAY_CHECK_ENUM(protocol::MessageType_GetTask, MessageType_GetTask);
+RAY_CHECK_ENUM(protocol::MessageType_ExecuteTask, MessageType_ExecuteTask);
+RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject, MessageType_ReconstructObject);
+RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked, MessageType_NotifyUnblocked);
+RAY_CHECK_ENUM(protocol::MessageType_PutObject, MessageType_PutObject);
+RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierRequest, MessageType_GetActorFrontierRequest);
+RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierReply, MessageType_GetActorFrontierReply);
+RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier, MessageType_SetActorFrontier);
+
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
 bool CheckDuplicateActorTask(
@@ -39,9 +58,6 @@ namespace ray {
 
 namespace raylet {
 
-#define RAY_CHECK_ENUM(x, y) \
-  static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
-
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
@@ -64,23 +80,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       remote_clients_(),
       remote_server_connections_(),
       actor_registry_() {
-  // Check consistency between client and server protocol.
-  RAY_CHECK_ENUM(protocol::MessageType_SubmitTask, MessageType_SubmitTask);
-  RAY_CHECK_ENUM(protocol::MessageType_TaskDone, MessageType_TaskDone);
-  RAY_CHECK_ENUM(protocol::MessageType_EventLogMessage, MessageType_EventLogMessage);
-  RAY_CHECK_ENUM(protocol::MessageType_RegisterClientRequest, MessageType_RegisterClientRequest);
-  RAY_CHECK_ENUM(protocol::MessageType_RegisterClientReply, MessageType_RegisterClientReply);
-  RAY_CHECK_ENUM(protocol::MessageType_DisconnectClient, MessageType_DisconnectClient);
-  RAY_CHECK_ENUM(protocol::MessageType_GetTask, MessageType_GetTask);
-  RAY_CHECK_ENUM(protocol::MessageType_ExecuteTask, MessageType_ExecuteTask);
-  RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject, MessageType_ReconstructObject);
-  RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked, MessageType_NotifyUnblocked);
-  RAY_CHECK_ENUM(protocol::MessageType_PutObject, MessageType_PutObject);
-  RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierRequest, MessageType_GetActorFrontierRequest);
-  RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierReply, MessageType_GetActorFrontierReply);
-  RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier, MessageType_SetActorFrontier);
-
-
   RAY_CHECK(heartbeat_period_ms_ > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
