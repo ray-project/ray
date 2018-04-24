@@ -7,7 +7,7 @@ You can find the code for RLlib `here on GitHub <https://github.com/ray-project/
 
 RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, which include:
 
-- Proximal Policy Optimization (`PPO <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ppo>`__)  which is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
+- Proximal Policy Optimization (`PPO <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ppo>`__) which is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
 
 - Policy Gradients (`PG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/pg>`__).
 
@@ -19,7 +19,7 @@ RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, w
 
 - Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg2/apex.py>`__ variants.
 
--  Evolution Strategies (`ES <https://github.com/ray-project/ray/tree/master/python/ray/rllib/es>`__), as described in `this
+- Evolution Strategies (`ES <https://github.com/ray-project/ray/tree/master/python/ray/rllib/es>`__), as described in `this
    paper <https://arxiv.org/abs/1703.03864>`__.
 
 These algorithms can be run on any `OpenAI Gym MDP <https://github.com/openai/gym>`__,
