@@ -10,7 +10,7 @@ if(UNIX AND NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -rdynamic")
 endif()
 
-set(FLATBUFFERS_VERSION "1.7.1")
+set(FLATBUFFERS_VERSION "1.9.0")
 
 set(FLATBUFFERS_PREFIX "${CMAKE_BINARY_DIR}/flatbuffers_ep-prefix/src/flatbuffers_ep-install")
 if (NOT TARGET flatbuffers_ep)
