@@ -7,7 +7,7 @@ set -e
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)/../
 
-FLATBUFFERS_VERSION=1.7.1
+FLATBUFFERS_VERSION=1.9.0
 
 # Download and compile flatbuffers if it isn't already present.
 if [ ! -d $TP_DIR/pkg/flatbuffers ]; then
