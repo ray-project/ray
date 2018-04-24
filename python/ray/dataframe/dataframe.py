@@ -2801,9 +2801,94 @@ class DataFrame(object):
 
     def sample(self, n=None, frac=None, replace=False, weights=None,
                random_state=None, axis=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
+            else 0
+
+        if axis == 0:
+            axis_length = len(self._row_metadata) 
+        else:
+            axis_length = len(self._col_metadata)
+
+        if weights is not None:
+
+            # If a series, align with frame
+            if isinstance(weights, pd.Series):
+                weights = weights.reindex(self.axes[axis])
+
+            # Strings acceptable if a dataframe and axis = 0
+            if isinstance(weights, string_types):
+                if axis == 0:
+                    try:
+                        weights = self[weights]
+                    except KeyError:
+                        raise KeyError("String passed to weights not a "
+                                       "valid column")
+                else:
+                    raise ValueError("Strings can only be passed to "
+                                     "weights when sampling from rows on "
+                                     "a DataFrame")
+
+            weights = pd.Series(weights, dtype='float64')
+
+            if len(weights) != axis_length:
+                raise ValueError("Weights and axis to be sampled must be of "
+                                 "same length")
+
+            if (weights == np.inf).any() or (weights == -np.inf).any():
+                raise ValueError("weight vector may not include `inf` values")
+
+            if (weights < 0).any():
+                raise ValueError("weight vector many not include negative "
+                                 "values")
+
+            # If has nan, set to zero.
+            weights = weights.fillna(0)
+
+            # Renormalize if don't sum to 1
+            if weights.sum() != 1:
+                if weights.sum() != 0:
+                    weights = weights / weights.sum()
+                else:
+                    raise ValueError("Invalid weights: weights sum to zero")
+
+            weights = weights.values
+
+        if n is None and frac is None:
+            # default to n = 1 if n and frac are None
+            n = 1
+        elif n is not None and frac is None and n % 1 != 0:
+            # n must be an integer
+            raise ValueError("Only integers accepted as `n` values")
+        elif n is None and frac is not None:
+            # compute the number of samples based on frac
+            n = int(round(frac * axis_length))
+        elif n is not None and frac is not None:
+            raise ValueError('Please enter a value for `frac` OR `n`, not '
+                             'both')
+        if n < 0:
+            raise ValueError("A negative number of rows requested. Please "
+                             "provide positive value.")
+
+        if axis == 1:
+            samples = np.random.choice(a=self.columns, size=n,
+                                       replace=replace, p=weights)
+            part_ind_tuples = [self._col_metadata[sample] for sample in samples]
+            new_cols = [_deploy_func.remote(lambda df: df.iloc[:, [tup[1]]],
+                    self._col_partitions[tup[0]]) for tup in part_ind_tuples]
+            return DataFrame(col_partitions=new_cols,
+                             columns=samples,
+                             index=self.index)
+        else:
+            samples = np.random.choice(a=self.index, size=n,
+                                       replace=replace, p=weights)
+            part_ind_tuples = [self._row_metadata[sample] for sample in samples]
+            new_rows = [_deploy_func.remote(lambda df: df.loc[[tup[1]]],
+                    self._row_partitions[tup[0]]) for tup in part_ind_tuples]
+            return DataFrame(row_partitions=new_rows,
+                             columns=self.columns,
+                             index=samples)
+        print(samples)
 
     def select(self, crit, axis=0):
         raise NotImplementedError(
