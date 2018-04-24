@@ -35,7 +35,8 @@ from .utils import (
     _blocks_to_col,
     _blocks_to_row,
     _create_block_partitions,
-    _inherit_docstrings)
+    _inherit_docstrings,
+    _reindex_helper)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -911,9 +912,49 @@ class DataFrame(object):
         return self._arithmetic_helper(remote_func, axis, level)
 
     def append(self, other, ignore_index=False, verify_integrity=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Append another DataFrame/list/Series to this one.
+
+        Args:
+            other: The object to append to this.
+            ignore_index: Ignore the index on appending.
+            verify_integrity: Verify the integrity of the index on completion.
+
+        Returns:
+            A new DataFrame containing the concatenated values.
+        """
+        if isinstance(other, (pd.Series, dict)):
+            if isinstance(other, dict):
+                other = pd.Series(other)
+            if other.name is None and not ignore_index:
+                raise TypeError('Can only append a Series if ignore_index=True'
+                                ' or if the Series has a name')
+
+            if other.name is None:
+                index = None
+            else:
+                # other must have the same index name as self, otherwise
+                # index name will be reset
+                index = pd.Index([other.name], name=self.index.name)
+
+            combined_columns = self.columns.tolist() + self.columns.union(
+                other.index).difference(self.columns).tolist()
+            other = other.reindex(combined_columns, copy=False)
+            other = pd.DataFrame(other.values.reshape((1, len(other))),
+                                 index=index,
+                                 columns=combined_columns)
+            other = other._convert(datetime=True, timedelta=True)
+        elif isinstance(other, list) and not isinstance(other[0], DataFrame):
+            other = pd.DataFrame(other)
+            if (self.columns.get_indexer(other.columns) >= 0).all():
+                other = other.loc[:, self.columns]
+
+        from .concat import concat
+        if isinstance(other, (list, tuple)):
+            to_concat = [self] + other
+        else:
+            to_concat = [self, other]
+        return concat(to_concat, ignore_index=ignore_index,
+                      verify_integrity=verify_integrity)
 
     def apply(self, func, axis=0, broadcast=False, raw=False, reduce=None,
               args=(), **kwds):
@@ -2028,9 +2069,91 @@ class DataFrame(object):
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Join two or more DataFrames, or a DataFrame with a collection.
+
+        Args:
+            other: What to join this DataFrame with.
+            on: A column name to use from the left for the join.
+            how: What type of join to conduct.
+            lsuffix: The suffix to add to column names that match on left.
+            rsuffix: The suffix to add to column names that match on right.
+            sort: Whether or not to sort.
+
+        Returns:
+            The joined DataFrame.
+        """
+
+        if on is not None:
+            raise NotImplementedError("Not yet.")
+
+        if isinstance(other, pd.Series):
+            if other.name is None:
+                raise ValueError("Other Series must have a name")
+            other = DataFrame({other.name: other})
+
+        if isinstance(other, DataFrame):
+            if on is not None:
+                index = self[on]
+            else:
+                index = self.index
+
+            new_index = index.join(other.index, how=how, sort=sort)
+
+            # Joining two empty DataFrames is fast, and error checks for us.
+            new_column_labels = pd.DataFrame(columns=self.columns) \
+                .join(pd.DataFrame(columns=other.columns),
+                      lsuffix=lsuffix, rsuffix=rsuffix).columns
+
+            # Join is a concat once we have shuffled the data internally.
+            # We shuffle the data by computing the correct order.
+            # Another important thing to note: We set the current self index
+            # to the index variable which may be 'on'.
+            new_self = [_reindex_helper.remote(col, index, new_index, 1)
+                        for col in self._col_partitions]
+            new_other = [_reindex_helper.remote(col, other.index, new_index, 1)
+                         for col in other._col_partitions]
+
+            # Append the columns together (i.e. concat)
+            new_column_parts = new_self + new_other
+
+            # Default index in the case that on is set.
+            if on is not None:
+                new_index = None
+
+            # TODO join the two metadata tables for performance.
+            return DataFrame(col_partitions=new_column_parts,
+                             index=new_index,
+                             columns=new_column_labels)
+        else:
+            # This constraint carried over from Pandas.
+            if on is not None:
+                raise ValueError("Joining multiple DataFrames only supported"
+                                 " for joining on index")
+
+            # Joining the empty DataFrames with either index or columns is
+            # fast. It gives us proper error checking for the edge cases that
+            # would otherwise require a lot more logic.
+            new_index = pd.DataFrame(index=self.index).join(
+                [pd.DataFrame(index=obj.index) for obj in other],
+                how=how, sort=sort).index
+
+            new_column_labels = pd.DataFrame(columns=self.columns).join(
+                [pd.DataFrame(columns=obj.columns) for obj in other],
+                lsuffix=lsuffix, rsuffix=rsuffix).columns
+
+            new_self = [_reindex_helper.remote(col, self.index, new_index, 1)
+                        for col in self._col_partitions]
+
+            new_others = [_reindex_helper.remote(col, obj.index, new_index, 1)
+                          for obj in other for col in obj._col_partitions]
+
+            # Append the columns together (i.e. concat)
+            new_column_parts = new_self + new_others
+
+            # TODO join the two metadata tables for performance.
+            return DataFrame(col_partitions=new_column_parts,
+                             index=new_index,
+                             columns=new_column_labels)
 
     def kurt(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):

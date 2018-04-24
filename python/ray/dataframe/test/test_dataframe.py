@@ -853,10 +853,21 @@ def test_any(ray_df, pd_df):
 
 
 def test_append():
-    ray_df = create_test_dataframe()
+    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
 
-    with pytest.raises(NotImplementedError):
-        ray_df.append(None)
+    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+
+    ray_df2 = rdf.DataFrame({"col5": [0], "col6": [1]})
+
+    pandas_df2 = pd.DataFrame({"col5": [0], "col6": [1]})
+
+    assert ray_df_equals_pandas(ray_df.append(ray_df2),
+                                pandas_df.append(pandas_df2))
+
+    with pytest.raises(ValueError):
+        ray_df.append(ray_df2, verify_integrity=True)
 
 
 @pytest.fixture
@@ -1870,10 +1881,31 @@ def test_itertuples(ray_df, pandas_df):
 
 
 def test_join():
-    ray_df = create_test_dataframe()
+    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                           "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
 
-    with pytest.raises(NotImplementedError):
-        ray_df.join(None)
+    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+
+    ray_df2 = rdf.DataFrame({"col5": [0], "col6": [1]})
+
+    pandas_df2 = pd.DataFrame({"col5": [0], "col6": [1]})
+
+    join_types = ["left", "right", "outer", "inner"]
+    for how in join_types:
+        ray_join = ray_df.join(ray_df2, how=how)
+        pandas_join = pandas_df.join(pandas_df2, how=how)
+        ray_df_equals_pandas(ray_join, pandas_join)
+
+    ray_df3 = rdf.DataFrame({"col7": [1, 2, 3, 5, 6, 7, 8]})
+
+    pandas_df3 = pd.DataFrame({"col7": [1, 2, 3, 5, 6, 7, 8]})
+
+    join_types = ["left", "outer", "inner"]
+    for how in join_types:
+        ray_join = ray_df.join([ray_df2, ray_df3], how=how)
+        pandas_join = pandas_df.join([pandas_df2, pandas_df3], how=how)
+        ray_df_equals_pandas(ray_join, pandas_join)
 
 
 def test_kurt():
