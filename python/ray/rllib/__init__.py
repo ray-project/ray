@@ -10,7 +10,9 @@ from ray.tune.registry import register_trainable
 def _register_all():
 
     for key in ["PPO", "ES", "DQN", "APEX", "A3C", "BC", "PG", "DDPG",
-                "DDPG_beselines", "__fake", "__sigmoid_fake_data", "__parameter_tuning"]:
+                "DDPG2", "APEX_DDPG2", "DDPG_baselines", "__fake", "__sigmoid_fake_data",
+                "__parameter_tuning"]:
+
         from ray.rllib.agent import get_agent_class
         register_trainable(key, get_agent_class(key))
 

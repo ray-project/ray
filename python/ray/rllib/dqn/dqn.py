@@ -13,6 +13,7 @@ from ray.rllib import optimizers
 from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
+from ray.tune.trial import Resources
 
 
 OPTIMIZER_SHARED_CONFIGS = [
@@ -100,14 +101,16 @@ DEFAULT_CONFIG = dict(
     },
 
     # === Parallelism ===
+    # Whether to use a GPU for local optimization.
+    gpu=False,
     # Number of workers for collecting samples with. This only makes sense
     # to increase if your environment is particularly slow to sample, or if
     # you're using the Async or Ape-X optimizers.
     num_workers=0,
     # Whether to allocate GPUs for workers (if > 0).
     num_gpus_per_worker=0,
-    # Whether to reserve CPUs for workers (if not None).
-    num_cpus_per_worker=None,
+    # Whether to allocate CPUs for workers (if > 0).
+    num_cpus_per_worker=1,
     # Optimizer class to use.
     optimizer_class="LocalSyncReplayOptimizer",
     # Config to pass to the optimizer.
@@ -123,6 +126,14 @@ class DQNAgent(Agent):
     _allow_unknown_subkeys = [
         "model", "optimizer", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
+
+    @classmethod
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        return Resources(
+            cpu=1, gpu=cf["gpu"] and 1 or 0,
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
         self.local_evaluator = DQNEvaluator(

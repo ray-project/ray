@@ -31,6 +31,12 @@ class TaskDependencyManager {
                         // ReconstructionPolicy &reconstruction_policy,
                         std::function<void(const TaskID &)> handler);
 
+  /// Check whether an object is locally available.
+  ///
+  /// \param object_id The object to check for.
+  /// \return Whether the object is local.
+  bool CheckObjectLocal(const ObjectID &object_id) const;
+
   /// Check whether a task's object dependencies are locally available.
   ///
   /// \param task The task whose object dependencies will be checked.

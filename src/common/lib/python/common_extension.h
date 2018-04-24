@@ -43,6 +43,8 @@ extern PyObject *pickle_module;
 extern PyObject *pickle_dumps;
 extern PyObject *pickle_loads;
 
+int init_numpy_module(void);
+
 void init_pickle_module(void);
 
 extern TaskBuilder *g_task_builder;

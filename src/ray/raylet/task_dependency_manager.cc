@@ -19,6 +19,10 @@ TaskDependencyManager::TaskDependencyManager(
   // TODO(swang): Subscribe to object removed notifications.
 }
 
+bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
+  return local_objects_.count(object_id) == 1;
+}
+
 bool TaskDependencyManager::argumentsReady(const std::vector<ObjectID> arguments) const {
   for (auto &argument : arguments) {
     // Check if any argument is missing.
@@ -31,7 +35,7 @@ bool TaskDependencyManager::argumentsReady(const std::vector<ObjectID> arguments
 }
 
 void TaskDependencyManager::handleObjectReady(const ray::ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "object ready " << object_id.hex();
+  RAY_LOG(DEBUG) << "object ready " << object_id;
   // Add the object to the table of locally available objects.
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_.insert(object_id);

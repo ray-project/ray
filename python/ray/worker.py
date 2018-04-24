@@ -504,7 +504,7 @@ class Worker(object):
 
         # If there were objects that we weren't able to get locally, let the
         # local scheduler know that we're now unblocked.
-        if was_blocked and not self.use_raylet:
+        if was_blocked:
             self.local_scheduler_client.notify_unblocked()
 
         assert len(final_results) == len(object_ids)

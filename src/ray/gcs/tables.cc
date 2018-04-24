@@ -238,7 +238,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
     if (!entry->second.is_insertion) {
       RAY_CHECK(!data.is_insertion)
           << "Notification for addition of a client that was already removed:"
-          << client_id.hex();
+          << client_id;
     }
   }
 
@@ -262,8 +262,8 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
 void ClientTable::HandleConnected(AsyncGcsClient *client,
                                   const std::shared_ptr<ClientTableDataT> data) {
   auto connected_client_id = ClientID::from_binary(data->client_id);
-  RAY_CHECK(client_id_ == connected_client_id) << connected_client_id.hex() << " "
-                                               << client_id_.hex();
+  RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
+                                               << client_id_;
 }
 
 const ClientID &ClientTable::GetLocalClientId() { return client_id_; }
@@ -347,6 +347,7 @@ template class Table<TaskID, TaskTableData>;
 template class Log<ActorID, ActorTableData>;
 template class Log<TaskID, TaskReconstructionData>;
 template class Table<ClientID, HeartbeatTableData>;
+template class Log<UniqueID, ClientTableData>;
 
 }  // namespace gcs
 

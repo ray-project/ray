@@ -42,7 +42,8 @@ class TrialRunner(object):
                  scheduler=None,
                  launch_web_server=False,
                  server_port=TuneServer.DEFAULT_PORT,
-                 verbose=True):
+                 verbose=True,
+                 queue_trials=False):
         """Initializes a new TrialRunner.
 
         Args:
@@ -51,6 +52,10 @@ class TrialRunner(object):
             server_port (int): Port number for launching TuneServer
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
+            queue_trials (bool): Whether to queue trials when the cluster does
+                not currently have enough resources to launch one. This should
+                be set to True when running on an autoscaling cluster to enable
+                automatic scale-up.
         """
 
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -70,6 +75,7 @@ class TrialRunner(object):
             self._server = TuneServer(self, server_port)
         self._stop_queue = []
         self._verbose = verbose
+        self._queue_trials = queue_trials
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -102,9 +108,14 @@ class TrialRunner(object):
                         raise TuneError(
                             ("Insufficient cluster resources to launch trial: "
                              "trial requested {} but the cluster only has {} "
-                             "available.").format(
+                             "available. Pass `queue_trials=True` in "
+                             "ray.tune.run_experiments() or on the command "
+                             "line to queue trials until the cluster scales "
+                             "up. {}").format(
                                  trial.resources.summary_string(),
-                                 self._avail_resources.summary_string()))
+                                 self._avail_resources.summary_string(),
+                                 trial._get_trainable_cls().resource_help(
+                                     trial.config)))
                 elif trial.status == Trial.PAUSED:
                     raise TuneError(
                         "There are paused trials, but no more pending "
@@ -177,9 +188,10 @@ class TrialRunner(object):
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
         if self._resources_initialized:
-            messages.append("Resources used: {}/{} CPUs, {}/{} GPUs".format(
-                self._committed_resources.cpu, self._avail_resources.cpu,
-                self._committed_resources.gpu, self._avail_resources.gpu))
+            messages.append(
+                "Resources requested: {}/{} CPUs, {}/{} GPUs".format(
+                    self._committed_resources.cpu, self._avail_resources.cpu,
+                    self._committed_resources.gpu, self._avail_resources.gpu))
         return messages
 
     def has_resources(self, resources):
@@ -187,8 +199,29 @@ class TrialRunner(object):
 
         cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
         gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
-        return (resources.cpu_total() <= cpu_avail
-                and resources.gpu_total() <= gpu_avail)
+
+        have_space = (resources.cpu_total() <= cpu_avail
+                      and resources.gpu_total() <= gpu_avail)
+
+        if have_space:
+            return True
+
+        can_overcommit = self._queue_trials
+
+        if ((resources.cpu_total() > 0 and cpu_avail <= 0)
+                or (resources.gpu_total() > 0 and gpu_avail <= 0)):
+            can_overcommit = False  # requested resource is already saturated
+
+        if can_overcommit:
+            print("WARNING:tune:allowing trial to start even though the "
+                  "cluster does not have enough free resources. Trial actors "
+                  "may appear to hang until enough resources are added to the "
+                  "cluster (e.g., via autoscaling). You can disable this "
+                  "behavior by specifying `queue_trials=False` in "
+                  "ray.tune.run_experiments().")
+            return True
+
+        return False
 
     def _get_next_trial(self):
         self._update_avail_resources()

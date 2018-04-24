@@ -61,6 +61,7 @@ matrix:
         - bash ../../../src/common/test/run_valgrind.sh
         - bash ../../../src/plasma/test/run_valgrind.sh
         - bash ../../../src/local_scheduler/test/run_valgrind.sh
+        - bash ../../../src/ray/test/run_object_manager_valgrind.sh
         - cd ../../..
 
         - python ./python/ray/plasma/test/test.py valgrind
@@ -145,6 +146,7 @@ script:
   - python -m pytest python/ray/dataframe/test/test_dataframe.py
   - python -m pytest python/ray/dataframe/test/test_series.py
   - python -m pytest python/ray/dataframe/test/test_concat.py
+  - python -m pytest python/ray/dataframe/test/test_io.py
 
   # ray tune tests
   - python python/ray/tune/test/dependency_test.py
