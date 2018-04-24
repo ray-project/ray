@@ -8,7 +8,7 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.ddpg2 import models
+from ray.rllib.ddpg import models
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.compression import pack

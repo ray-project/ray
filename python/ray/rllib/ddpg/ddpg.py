@@ -10,7 +10,7 @@ import tensorflow as tf
 
 import ray
 from ray.rllib import optimizers
-from ray.rllib.ddpg2.ddpg_evaluator import DDPGEvaluator
+from ray.rllib.ddpg.ddpg_evaluator import DDPGEvaluator
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
@@ -132,8 +132,8 @@ DEFAULT_CONFIG = dict(
     worker_side_prioritization=False)
 
 
-class DDPG2Agent(Agent):
-    _agent_name = "DDPG2"
+class DDPGAgent(Agent):
+    _agent_name = "DDPG"
     _allow_unknown_subkeys = [
         "model", "optimizer", "tf_session_args", "env_config"
     ]
