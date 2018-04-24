@@ -2433,9 +2433,31 @@ class DataFrame(object):
                                      fill_value)
 
     def mode(self, axis=0, numeric_only=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        def mode_helper(df):
+            if numeric_only:
+                return df.select_dtypes(exclude='object').mode(axis=axis)
+            return df.mode(axis=axis)
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        if axis == 0:
+            parts = ray.get(_map_partitions(mode_helper, self._col_partitions))
+            parts = [(parts[i], i) for i in range(len(parts))]
+            for df, partition in parts:
+                this_partition = self._col_metadata.partition_series(partition)
+                df.columns = this_partition[this_partition.isin(df.columns)].index
+
+            result = pd.concat([obj[0] for obj in parts], axis=1, copy=False)
+            return result
+        else:
+            parts = ray.get(_map_partitions(mode_helper, self._row_partitions))
+            parts = [(parts[i], i) for i in range(len(parts))]
+            for df, partition in parts:
+                this_partition = self._row_metadata.partition_series(partition)
+                df.index = this_partition[this_partition.isin(df.index)].index
+
+            result = pd.concat([obj[0] for obj in parts], copy=False)
+            return result
 
     def mul(self, other, axis='columns', level=None, fill_value=None):
         """Multiplies this DataFrame against another DataFrame/Series/scalar.
@@ -3734,9 +3756,9 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-
-            indices_for_rows = [self.columns.index(new_col)
-                                for new_col in columns]
+            indices_for_rows = self.columns.isin(columns)
+            indices_for_rows = [i for i in range(len(indices_for_rows))
+                                if indices_for_rows[i]]
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
