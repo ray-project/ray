@@ -2171,7 +2171,7 @@ def test_reindex():
                          'd': np.arange(4.0, 7.0, dtype='float64'),
                          'e': [True, False, True],
                          'f': pd.date_range('now', periods=3).values})
-    assert(trd.reindex(columns=['a','b'])['b'].equals(trd['b']))
+    assert(trd.reindex(columns=['a', 'b'])['b'].equals(trd['b']))
 
 
 def test_reindex_axis():
