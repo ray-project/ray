@@ -26,7 +26,7 @@ endif()
 set(FBS_DEPENDS flatbuffers_ep)
 
 set(FLATBUFFERS_INCLUDE_DIR "${FLATBUFFERS_PREFIX}/include")
-set(FLATBUFFERS_STATIC_LIB "${FLATBUFFERS_PREFIX}/lib/libflatbuffers.a")
+set(FLATBUFFERS_STATIC_LIB "${FLATBUFFERS_PREFIX}/lib${LIB_SUFFIX}/libflatbuffers.a")
 set(FLATBUFFERS_COMPILER "${FLATBUFFERS_PREFIX}/bin/flatc")
 
 message(STATUS "Flatbuffers include dir: ${FLATBUFFERS_INCLUDE_DIR}")
