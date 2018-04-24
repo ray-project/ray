@@ -60,6 +60,20 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       remote_clients_(),
       remote_server_connections_(),
       actor_registry_() {
+  // Check consistency between client and server protocol.
+  RAY_CHECK_EQ(protocol::MessageType_SubmitTask, MessageType_SubmitTask);
+  RAY_CHECK_EQ(protocol::MessageType_TaskDone, MessageType_TaskDone);
+  RAY_CHECK_EQ(protocol::MessageType_EventLogMessage, MessageType_EventLogMessage);
+  RAY_CHECK_EQ(protocol::MessageType_RegisterClientRequest, MessageType_RegisterClientRequest);
+  RAY_CHECK_EQ(protocol::MessageType_RegisterClientReply, MessageType_RegisterClientReply);
+  RAY_CHECK_EQ(protocol::MessageType_DisconnectClient, MessageType_DisconnectClient);
+  RAY_CHECK_EQ(protocol::MessageType_GetTask, MessageType_GetTask);
+  RAY_CHECK_EQ(protocol::MessageType_ExecuteTask, MessageType_ExecuteTask);
+  RAY_CHECK_EQ(protocol::MessageType_ReconstructObject, MessageType_ReconstructObject);
+  RAY_CHECK_EQ(protocol::MessageType_NotifyUnblocked, MessageType_NotifyUnblocked);
+  RAY_CHECK_EQ(protocol::MessageType_PutObject, MessageType_PutObject);
+
+
   RAY_CHECK(heartbeat_period_ms_ > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
