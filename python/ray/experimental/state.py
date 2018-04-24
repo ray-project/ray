@@ -75,6 +75,8 @@ class GlobalState(object):
         self.redis_client = None
         # A list of redis shards, storing the object table & task table.
         self.redis_clients = None
+        # True if we are using the raylet code path and false otherwise.
+        self.use_raylet = None
 
     def _check_connected(self):
         """Check that the object has been initialized before it is used.
@@ -110,6 +112,8 @@ class GlobalState(object):
         """
         self.redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port)
+
+        self.use_raylet = int(self.redis_client.get("UseRaylet")) == 1
 
         start_time = time.time()
 
@@ -181,14 +185,12 @@ class GlobalState(object):
             result.extend(client.keys(pattern))
         return result
 
-    def _object_table(self, object_id, use_raylet=False):
+    def _object_table(self, object_id):
         """Fetch and parse the object table information for a single object ID.
 
         Args:
             object_id_binary: A string of bytes with the object ID to get
                 information about.
-            use_raylet: True if the raylet code path is being used and false
-                otherwise.
 
         Returns:
             A dictionary with information about the object ID in question.
@@ -199,7 +201,7 @@ class GlobalState(object):
 
         # Return information about a single object ID.
 
-        if not use_raylet:
+        if not self.use_raylet:
             # Use the non-raylet code path.
             object_locations = self._execute_command(object_id,
                                                      "RAY.OBJECT_TABLE_LOOKUP",
@@ -238,14 +240,12 @@ class GlobalState(object):
 
         return result
 
-    def object_table(self, object_id=None, use_raylet=False):
+    def object_table(self, object_id=None):
         """Fetch and parse the object table info for one or more object IDs.
 
         Args:
             object_id: An object ID to fetch information about. If this is
                 None, then the entire object table is fetched.
-            use_raylet: True if the raylet code path is being used and false
-                otherwise.
 
         Returns:
             Information from the object table.
@@ -253,10 +253,10 @@ class GlobalState(object):
         self._check_connected()
         if object_id is not None:
             # Return information about a single object ID.
-            return self._object_table(object_id, use_raylet=use_raylet)
+            return self._object_table(object_id)
         else:
             # Return the entire object table.
-            if not use_raylet:
+            if not self.use_raylet:
                 object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
                 object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
                 object_ids_binary = set(
@@ -273,25 +273,22 @@ class GlobalState(object):
             results = {}
             for object_id_binary in object_ids_binary:
                 results[binary_to_object_id(object_id_binary)] = (
-                    self._object_table(binary_to_object_id(object_id_binary),
-                                       use_raylet=use_raylet))
+                    self._object_table(binary_to_object_id(object_id_binary)))
             return results
 
-    def _task_table(self, task_id, use_raylet=False):
+    def _task_table(self, task_id):
         """Fetch and parse the task table information for a single task ID.
 
         Args:
             task_id_binary: A string of bytes with the task ID to get
                 information about.
-            use_raylet: True if the raylet code path is being used and false
-                otherwise.
 
         Returns:
             A dictionary with information about the task ID in question.
                 TASK_STATUS_MAPPING should be used to parse the "State" field
                 into a human-readable string.
         """
-        if not use_raylet:
+        if not self.use_raylet:
             # Use the non-raylet code path.
             task_table_response = self._execute_command(task_id,
                                                         "RAY.TASK_TABLE_GET",
@@ -382,14 +379,12 @@ class GlobalState(object):
                 task_table_message.Updated()
             }
 
-    def task_table(self, task_id=None, use_raylet=False):
+    def task_table(self, task_id=None):
         """Fetch and parse the task table information for one or more task IDs.
 
         Args:
             task_id: A hex string of the task ID to fetch information about. If
                 this is None, then the task object table is fetched.
-            use_raylet: True if the raylet code path is being used and false
-                otherwise.
 
         Returns:
             Information from the task table.
@@ -397,9 +392,9 @@ class GlobalState(object):
         self._check_connected()
         if task_id is not None:
             task_id = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
-            return self._task_table(task_id, use_raylet=use_raylet)
+            return self._task_table(task_id)
         else:
-            if not use_raylet:
+            if not self.use_raylet:
                 task_table_keys = self._keys(TASK_PREFIX + "*")
                 task_ids_binary = [key[len(TASK_PREFIX):]
                                    for key in task_table_keys]
@@ -411,8 +406,7 @@ class GlobalState(object):
             results = {}
             for task_id_binary in task_ids_binary:
                 results[binary_to_hex(task_id_binary)] = self._task_table(
-                    ray.local_scheduler.ObjectID(task_id_binary),
-                    use_raylet=use_raylet)
+                    ray.local_scheduler.ObjectID(task_id_binary))
             return results
 
     def function_table(self, function_id=None):
