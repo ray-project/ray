@@ -2447,8 +2447,8 @@ class DataFrame(object):
                 this_partition = self._col_metadata.partition_series(partition)
                 df.columns = this_partition[this_partition.isin(df.columns)].index
 
-            result = pd.concat([obj[0] for obj in parts], axis=1, copy=False)
-            return result
+            return DataFrame(col_partitions=[obj[0] for obj in parts],
+                             columns=self.columns)
         else:
             parts = ray.get(_map_partitions(mode_helper, self._row_partitions))
             parts = [(parts[i], i) for i in range(len(parts))]
@@ -2456,8 +2456,8 @@ class DataFrame(object):
                 this_partition = self._row_metadata.partition_series(partition)
                 df.index = this_partition[this_partition.isin(df.index)].index
 
-            result = pd.concat([obj[0] for obj in parts], copy=False)
-            return result
+            return DataFrame(row_partitions=[obj[0] for obj in parts],
+                             index=self.index)
 
     def mul(self, other, axis='columns', level=None, fill_value=None):
         """Multiplies this DataFrame against another DataFrame/Series/scalar.

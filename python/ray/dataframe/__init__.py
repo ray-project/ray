@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
-from pandas import (eval, Panel, date_range, MultiIndex)
+from pandas import (eval, unique, value_counts, Panel, date_range, MultiIndex)
 import threading
 
 pd_version = pd.__version__
@@ -38,7 +38,7 @@ from .concat import concat  # noqa: 402
 
 __all__ = [
     "DataFrame", "Series", "read_csv", "read_parquet", "concat", "eval",
-    "Panel", "date_range", "MultiIndex"
+    "unique", "value_counts", "Panel", "date_range", "MultiIndex"
 ]
 
 try:
