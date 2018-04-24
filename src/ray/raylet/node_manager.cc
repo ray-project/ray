@@ -40,7 +40,7 @@ namespace ray {
 namespace raylet {
 
 #define RAY_CHECK_ENUM(x, y) \
-  RAY_CHECK(static_cast<int>(x) == static_cast<int>(y))
+  static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
