@@ -36,7 +36,8 @@ from .utils import (
     _blocks_to_row,
     _create_block_partitions,
     _inherit_docstrings,
-    _reindex_helper)
+    _reindex_helper,
+    create_blocks_helper)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -2216,24 +2217,35 @@ class DataFrame(object):
                 .join(pd.DataFrame(columns=other.columns),
                       lsuffix=lsuffix, rsuffix=rsuffix).columns
 
+            new_partition_num = max(len(self._block_partitions.T),
+                                    len(other._block_partitions.T))
+
             # Join is a concat once we have shuffled the data internally.
             # We shuffle the data by computing the correct order.
             # Another important thing to note: We set the current self index
             # to the index variable which may be 'on'.
-            new_self = [_reindex_helper.remote(col, index, new_index, 1)
-                        for col in self._col_partitions]
-            new_other = [_reindex_helper.remote(col, other.index, new_index, 1)
-                         for col in other._col_partitions]
+            new_self = np.array([
+                _reindex_helper._submit(args=(index, new_index, 1,
+                                              new_partition_num,
+                                              *block),
+                                        num_return_vals=new_partition_num)
+                for block in self._block_partitions.T])
+            new_other = np.array([
+                _reindex_helper._submit(args=(other.index, new_index, 1,
+                                              new_partition_num,
+                                              *block),
+                                        num_return_vals=new_partition_num)
+                for block in other._block_partitions.T])
 
-            # Append the columns together (i.e. concat)
-            new_column_parts = new_self + new_other
+            # Append the blocks together (i.e. concat)
+            new_block_parts = np.concatenate((new_self, new_other)).T
 
             # Default index in the case that on is set.
             if on is not None:
                 new_index = None
 
             # TODO join the two metadata tables for performance.
-            return DataFrame(col_partitions=new_column_parts,
+            return DataFrame(block_partitions=new_block_parts,
                              index=new_index,
                              columns=new_column_labels)
         else:
@@ -2253,17 +2265,27 @@ class DataFrame(object):
                 [pd.DataFrame(columns=obj.columns) for obj in other],
                 lsuffix=lsuffix, rsuffix=rsuffix).columns
 
-            new_self = [_reindex_helper.remote(col, self.index, new_index, 1)
-                        for col in self._col_partitions]
+            new_partition_num = max([len(self._block_partitions.T)] +
+                                    [len(obj._block_partitions.T)
+                                     for obj in other])
 
-            new_others = [_reindex_helper.remote(col, obj.index, new_index, 1)
-                          for obj in other for col in obj._col_partitions]
+            new_self = np.array([
+                _reindex_helper._submit(args=(self.index, new_index, 1,
+                                              new_partition_num,
+                                              *block),
+                                        num_return_vals=new_partition_num)
+                for block in self._block_partitions.T])
+
+            new_others = np.array([_reindex_helper._submit(
+                args=(obj.index, new_index, 1, new_partition_num, *block),
+                num_return_vals=new_partition_num
+            ) for obj in other for block in obj._block_partitions.T])
 
             # Append the columns together (i.e. concat)
-            new_column_parts = new_self + new_others
+            new_block_parts = np.concatenate((new_self, new_others)).T
 
             # TODO join the two metadata tables for performance.
-            return DataFrame(col_partitions=new_column_parts,
+            return DataFrame(block_partitions=new_block_parts,
                              index=new_index,
                              columns=new_column_labels)
 
@@ -4063,13 +4085,22 @@ class DataFrame(object):
         new_index = ray.put(new_index)
         old_other_index = ray.put(other.index)
 
-        new_partitions_self = [_reindex_helper.remote(df, old_self_index,
-                                                      new_index, 1)
-                               for df in self._col_partitions]
+        new_num_partitions = max(len(self._block_partitions.T),
+                                 len(other._block_partitions.T))
 
-        new_partitions_other = [_reindex_helper.remote(df, old_other_index,
-                                                       new_index, 1)
-                                for df in other._col_partitions]
+        new_partitions_self = np.array([_reindex_helper._submit(args=(old_self_index,
+                                                       new_index, 1,
+                                                       new_num_partitions,
+                                                       *block),
+                                                       num_return_vals=new_num_partitions)
+                               for block in self._block_partitions.T]).T
+
+        new_partitions_other = np.array([_reindex_helper._submit(args=(old_other_index,
+                                                        new_index, 1,
+                                                        new_num_partitions,
+                                                        *block),
+                                                        num_return_vals=new_num_partitions)
+                                for block in other._block_partitions.T]).T
 
         return zip(new_partitions_self, new_partitions_other)
 
@@ -4084,14 +4115,14 @@ class DataFrame(object):
             new_column_index = self.columns.join(other.columns, how="outer")
             new_index = self.index.join(other.index, how="outer")
             copartitions = self._copartition(other, new_index)
-            for part in copartitions:
-                print(ray.get(part[0]))
-                print(ray.get(part[1]))
-            new_columns = [co_op_helper.remote(func, *part)
-                           for part in copartitions]
-            # print(ray.get(new_columns))
-            print(new_column_index)
-            return DataFrame(col_partitions=new_columns,
+
+            new_blocks = np.array([co_op_helper._submit(args=(func, self.columns,
+                                               other.columns,
+                                               *np.concatenate(part)),
+                                               num_return_vals=len(part[0]))
+                           for part in copartitions])
+
+            return DataFrame(block_partitions=new_blocks,
                              columns=new_column_index,
                              index=new_index)
 
@@ -4138,5 +4169,14 @@ class DataFrame(object):
                          row_metadata=new_row_metadata)
 
 @ray.remote
-def co_op_helper(func, *zipped):
-    return func(zipped[0], zipped[1])
+def co_op_helper(func, left_columns, right_columns, *zipped):
+
+    left = pd.concat(zipped[:len(left_columns)], axis=1, copy=False)
+    left.columns = left_columns
+
+    right = pd.concat(zipped[len(left_columns):], axis=1, copy=False)
+    right.columns = right_columns
+
+    new_rows = func(left, right)
+    return create_blocks_helper(new_rows, max(len(left_columns),
+                                              len(right_columns)), 0)

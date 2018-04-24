@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas
+import numpy as np
 from .dataframe import DataFrame
 from .utils import _reindex_helper
 
@@ -110,23 +111,27 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     # from remote memory built in the previous line. In the future, we won't be
     # building new DataFrames, rather just partitioning the DataFrames.
     if axis == 0:
-        new_blocks = [_reindex_helper._submit(args=(all_columns[i],
+        new_blocks = np.array([_reindex_helper._submit(args=(all_columns[i],
                                                     final_columns,
                                                     axis,
                                                     len(objs[i]),
                                                     *part),
                                               num_return_vals=len(objs[i]))
                       for i in range(len(objs))
-                      for part in objs[i]._block_partitions]
+                      for part in objs[i]._block_partitions])
     else:
-        new_blocks = [_reindex_helper._submit(args=(all_index[i],
-                                                    final_index,
-                                                    axis,
-                                                    len(objs[i]),
-                                                    *part),
-                                              num_return_vals=len(objs[i]))
-                      for i in range(len(objs))
-                      for part in objs[i]._block_partitions.T]
+        # Transposing the columns is necessary because the remote task treats
+        # everything like rows and returns in row-major format. Luckily, this
+        # operation is cheap in numpy.
+        new_blocks = np.array([
+            _reindex_helper._submit(args=(all_index[i],
+                                          final_index,
+                                          axis,
+                                          len(objs[i].columns),
+                                          *part),
+                                    num_return_vals=len(objs[i].columns))
+            for i in range(len(objs))
+            for part in objs[i]._block_partitions.T]).T
 
     return DataFrame(block_partitions=new_blocks,
                      columns=final_columns,
