@@ -76,6 +76,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject, MessageType_ReconstructObject);
   RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked, MessageType_NotifyUnblocked);
   RAY_CHECK_ENUM(protocol::MessageType_PutObject, MessageType_PutObject);
+  RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierRequest, MessageType_GetActorFrontierRequest);
+  RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierReply, MessageType_GetActorFrontierReply);
+  RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier, MessageType_SetActorFrontier);
 
 
   RAY_CHECK(heartbeat_period_ms_ > 0);
