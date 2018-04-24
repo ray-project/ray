@@ -1,1 +1,1 @@
-Code in this package follows the style of dqn.
+Alternate DDPG implementation. See also https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg.
