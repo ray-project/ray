@@ -534,7 +534,7 @@ class GlobalState(object):
         # The heap is used to maintain the set of x tasks that occurred the
         # most recently across all of the workers, where x is defined as the
         # function parameter num. The key is the start time of the "get_task"
-        # component of each task. Calling heappop will result in the taks with
+        # component of each task. Calling heappop will result in the task with
         # the earliest "get_task_start" to be removed from the heap.
         heap = []
         heapq.heapify(heap)

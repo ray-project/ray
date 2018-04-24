@@ -2398,6 +2398,8 @@ def flush_log(worker=global_worker):
     if not worker.use_raylet:
         worker.local_scheduler_client.log_event(event_log_key, event_log_value,
                                                 time.time())
+    else:
+        worker.redis_client.zadd(event_log_key, time.time(), event_log_value)
     worker.events = []
 
 
