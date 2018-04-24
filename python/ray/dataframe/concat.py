@@ -1,90 +1,130 @@
-import pandas as pd
-import numpy as np
-from .dataframe import DataFrame as rdf
-from .utils import (
-    from_pandas,
-    _deploy_func)
-from functools import reduce
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import pandas
+from .dataframe import DataFrame
+from .utils import _reindex_helper
 
 
 def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
            keys=None, levels=None, names=None, verify_integrity=False,
            copy=True):
 
-    def _concat(frame1, frame2):
-        # Check type on objects
-        # Case 1: Both are Pandas DF
-        if isinstance(frame1, pd.DataFrame) and \
-           isinstance(frame2, pd.DataFrame):
+    if keys is not None:
+        objs = [objs[k] for k in keys]
+    else:
+        objs = list(objs)
 
-            return pd.concat((frame1, frame2), axis, join, join_axes,
+    if len(objs) == 0:
+        raise ValueError("No objects to concatenate")
+
+    objs = [obj for obj in objs if obj is not None]
+
+    if len(objs) == 0:
+        raise ValueError("All objects passed were None")
+
+    try:
+        type_check = next(obj for obj in objs
+                          if not isinstance(obj, (pandas.Series,
+                                                  pandas.DataFrame,
+                                                  DataFrame)))
+    except StopIteration:
+        type_check = None
+    if type_check is not None:
+        raise ValueError("cannot concatenate object of type \"{0}\"; only "
+                         "pandas.Series, pandas.DataFrame, "
+                         "and ray.dataframe.DataFrame objs are "
+                         "valid", type(type_check))
+
+    all_series = all([isinstance(obj, pandas.Series)
+                      for obj in objs])
+    if all_series:
+        return pandas.concat(objs, axis, join, join_axes,
                              ignore_index, keys, levels, names,
                              verify_integrity, copy)
-
-        if not (isinstance(frame1, rdf) and
-           isinstance(frame2, rdf)) and join == 'inner':
-            raise NotImplementedError(
-                  "Obj as dicts not implemented. To contribute to "
-                  "Pandas on Ray, please visit github.com/ray-project/ray."
-                  )
-
-        # Case 2: Both are different types
-        if isinstance(frame1, pd.DataFrame):
-            frame1 = from_pandas(frame1, len(frame1) / 2**16 + 1)
-        if isinstance(frame2, pd.DataFrame):
-            frame2 = from_pandas(frame2, len(frame2) / 2**16 + 1)
-
-        # Case 3: Both are Ray DF
-        if isinstance(frame1, rdf) and \
-           isinstance(frame2, rdf):
-
-            new_columns = frame1.columns.join(frame2.columns, how=join)
-
-            def _reindex_helper(pdf, old_columns, join):
-                pdf.columns = old_columns
-                if join == 'outer':
-                    pdf = pdf.reindex(columns=new_columns)
-                else:
-                    pdf = pdf[new_columns]
-                pdf.columns = pd.RangeIndex(len(new_columns))
-
-                return pdf
-
-            f1_columns, f2_columns = frame1.columns, frame2.columns
-            new_f1 = [_deploy_func.remote(lambda p: _reindex_helper(p,
-                                          f1_columns, join), part) for
-                      part in frame1._row_partitions]
-            new_f2 = [_deploy_func.remote(lambda p: _reindex_helper(p,
-                                          f2_columns, join), part) for
-                      part in frame2._row_partitions]
-
-            return rdf(row_partitions=new_f1 + new_f2, columns=new_columns,
-                       index=frame1.index.append(frame2.index))
-
-    # (TODO) Group all the pandas dataframes
 
     if isinstance(objs, dict):
         raise NotImplementedError(
               "Obj as dicts not implemented. To contribute to "
-              "Pandas on Ray, please visit github.com/ray-project/ray."
-              )
+              "Pandas on Ray, please visit github.com/ray-project/ray.")
 
-    axis = pd.DataFrame()._get_axis_number(axis)
-    if axis == 1:
-        raise NotImplementedError(
-              "Concat not implemented for axis=1. To contribute to "
-              "Pandas on Ray, please visit github.com/ray-project/ray."
-              )
+    axis = pandas.DataFrame()._get_axis_number(axis)
 
-    all_pd = np.all([isinstance(obj, pd.DataFrame) for obj in objs])
-    if all_pd:
-        result = pd.concat(objs, axis, join, join_axes,
-                           ignore_index, keys, levels, names,
-                           verify_integrity, copy)
+    if join not in ['inner', 'outer']:
+        raise ValueError("Only can inner (intersect) or outer (union) join the"
+                         " other axis")
+
+    # We need this in a list because we use it later.
+    all_index, all_columns = list(zip(*[(obj.index, obj.columns)
+                                        for obj in objs]))
+
+    def series_to_df(series, columns):
+        df = pandas.DataFrame(series)
+        df.columns = columns
+        return DataFrame(df)
+
+    # Pandas puts all of the Series in a single column named 0. This is
+    # true regardless of the existence of another column named 0 in the
+    # concat.
+    if axis == 0:
+        objs = [series_to_df(obj, [0])
+                if isinstance(obj, pandas.Series) else obj for obj in objs]
     else:
-        result = reduce(_concat, objs)
+        # Pandas starts the count at 0 so this will increment the names as
+        # long as there's a new nameless Series being added.
+        def name_incrementer(i):
+            val = i[0]
+            i[0] += 1
+            return val
 
-    if isinstance(result, pd.DataFrame):
-        return from_pandas(result, len(result) / 2**16 + 1)
+        i = [0]
+        objs = [series_to_df(obj, obj.name if obj.name is not None
+                             else name_incrementer(i))
+                if isinstance(obj, pandas.Series) else obj for obj in objs]
 
-    return result
+    # Using concat on the columns and index is fast because they're empty,
+    # and it forces the error checking. It also puts the columns in the
+    # correct order for us.
+    final_index = \
+        pandas.concat([pandas.DataFrame(index=idx) for idx in all_index],
+                      axis=axis, join=join, join_axes=join_axes,
+                      ignore_index=ignore_index, keys=keys, levels=levels,
+                      names=names, verify_integrity=verify_integrity,
+                      copy=False).index
+    final_columns = \
+        pandas.concat([pandas.DataFrame(columns=col)
+                       for col in all_columns],
+                      axis=axis, join=join, join_axes=join_axes,
+                      ignore_index=ignore_index, keys=keys, levels=levels,
+                      names=names, verify_integrity=verify_integrity,
+                      copy=False).columns
+
+    # Put all of the DataFrames into Ray format
+    # TODO just partition the DataFrames instead of building a new Ray DF.
+    objs = [DataFrame(obj) if isinstance(obj, (pandas.DataFrame,
+                                               pandas.Series)) else obj
+            for obj in objs]
+
+    # Here we reuse all_columns/index so we don't have to materialize objects
+    # from remote memory built in the previous line. In the future, we won't be
+    # building new DataFrames, rather just partitioning the DataFrames.
+    if axis == 0:
+        new_rows = [_reindex_helper.remote(part, all_columns[i],
+                                           final_columns, axis)
+                    for i in range(len(objs))
+                    for part in objs[i]._row_partitions]
+
+        return DataFrame(row_partitions=new_rows,
+                         columns=final_columns,
+                         index=final_index)
+
+    else:
+        new_columns = [_reindex_helper.remote(part, all_index[i],
+                                              final_index, axis)
+                       for i in range(len(objs))
+                       for part in objs[i]._col_partitions]
+
+        return DataFrame(col_partitions=new_columns,
+                         columns=final_columns,
+                         index=final_index)
