@@ -32,8 +32,6 @@ enum MessageType:int {
   // Reconstruct a possibly lost object. This is sent from a worker to a local
   // scheduler.
   ReconstructObject,
-  // Fetch data from a remote node.
-  FetchObject,
   // For a worker that was blocked on some object(s), tell the local scheduler
   // that the worker is now unblocked. This is sent from a worker to a local
   // scheduler.
