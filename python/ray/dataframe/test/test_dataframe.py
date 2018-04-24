@@ -772,12 +772,12 @@ def test_nan_dataframe():
     # test___array__(ray_df, pandas_df)
 
 def test_empty_df():
-    df = rdf.DataFrame(pd.DataFrame(index=['a','b']))
+    df = rdf.DataFrame(pd.DataFrame(index=['a', 'b']))
     test_is_empty(df)
     tm.assert_index_equal(df.index, pd.Index(['a', 'b']))
     assert len(df.columns) == 0
 
-    df = rdf.DataFrame(pd.DataFrame(columns=['a','b']))
+    df = rdf.DataFrame(pd.DataFrame(columns=['a', 'b']))
     test_is_empty(df)
     assert len(df.index) == 0
     tm.assert_index_equal(df.columns, pd.Index(['a', 'b']))
@@ -787,12 +787,12 @@ def test_empty_df():
     assert len(df.index) == 0
     assert len(df.columns) == 0
 
-    df = rdf.DataFrame(index=['a','b'])
+    df = rdf.DataFrame(index=['a', 'b'])
     test_is_empty(df)
     tm.assert_index_equal(df.index, pd.Index(['a', 'b']))
     assert len(df.columns) == 0
 
-    df = rdf.DataFrame(columns=['a','b'])
+    df = rdf.DataFrame(columns=['a', 'b'])
     test_is_empty(df)
     assert len(df.index) == 0
     tm.assert_index_equal(df.columns, pd.Index(['a', 'b']))
