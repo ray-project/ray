@@ -2446,8 +2446,9 @@ class DataFrame(object):
                 limit=None, tolerance=None):
         if not columns:
             return DataFrame()
-        col_idx = [i if columns[i] in self.columns[i] else columns[i]
-                   for i in range(len(columns))]
+        col_idx = [self.columns.get_loc(columns[i])
+                   for i in range(len(columns))
+                   if columns[i] in self.columns]
 
         if not copy:
             raise NotImplementedError(
