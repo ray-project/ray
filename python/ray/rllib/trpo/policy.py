@@ -1,3 +1,4 @@
+"""Code adapted from https://github.com/mjacar/pytorch-trpo."""
 from __future__ import absolute_import, division, print_function
 
 from copy import deepcopy
@@ -21,9 +22,9 @@ from torch.nn.utils.convert_parameters import (_check_param_device,
 from torch.optim import LBFGS, Adam
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
-# TODO rm unused imports
+# TODO(alok) rm unused imports
 
-# TODO support tensorflow
+# TODO(alok) support tensorflow
 
 
 def explained_variance_1d(ypred, y):
@@ -37,6 +38,7 @@ def explained_variance_1d(ypred, y):
 
 
 def vector_to_gradient(v, parameters):
+    # TODO(alok) may have to rm the .data from v
     r"""Convert one vector representing the
     gradient to the .grad of the parameters.
 
@@ -68,56 +70,16 @@ def vector_to_gradient(v, parameters):
         pointer += num_param
 
 
-class _ValueFunctionWrapper(nn.Module):
-    """Wrapper around any value function model to add fit and predict
-    functions."""
-
-    def __init__(self, model, lr):
-        super().__init__()
-        self.model = model
-        self.loss_fn = nn.MSELoss()
-        self.lr = lr
-
-    def forward(self, data):
-        return self.model.forward(data)
-
-    def fit(self, observations, labels):
-        def closure():
-            predicted = self.predict(observations)
-            loss = self.loss_fn(predicted, labels)
-            self.optimizer.zero_grad()
-            loss.backward()
-            return loss
-
-        old_params = parameters_to_vector(self.model.parameters())
-        for lr in self.lr * .5**np.arange(10):
-            self.optimizer = LBFGS(self.model.parameters(), lr=lr)
-            self.optimizer.step(closure)
-            current_params = parameters_to_vector(self.model.parameters())
-            if any(np.isnan(current_params.data.cpu().numpy())):
-                # LBFGS optimization diverged. Roll back update.
-                vector_to_parameters(old_params, self.model.parameters())
-        else:
-            return
-
-    def predict(self, observations):
-        return self.forward(
-            torch.cat([
-                Variable(Tensor(observation)).unsqueeze(0)
-                for observation in observations
-            ]))
-
-
 class TRPOPolicy(SharedTorchPolicy):
     def __init__(self, *args, **kwargs):
-
+        # TODO 
         super().__init__(*args, **kwargs)
 
-    def mean_kl(self, states, policy):
+    def mean_kl(self, policy):
         """Returns an estimate of the average KL divergence between a given
-        policy and self.policy."""
-        new_p = policy(states).detach() + 1e-8
-        old_p = self.policy(states)
+        policy and self._model."""
+        new_p = policy(self.s).detach() + 1e-8
+        old_p = self._model(self.s)
 
         return (old_p.dot((old_p / new_p).log())).mean()
 
@@ -125,17 +87,15 @@ class TRPOPolicy(SharedTorchPolicy):
         """Returns the product of the Hessian of the KL divergence and the
         given vector."""
 
-        self.policy.zero_grad()
-        mean_kl = self.mean_kl(self.policy)
+        self._model.zero_grad()
 
         g_kl = torch.autograd.grad(
-            mean_kl, self.policy.parameters(), create_graph=True)
+            self.kl, self._model.parameters(), create_graph=True)
         gvp = torch.cat([grad.view(-1) for grad in g_kl]).dot(v)
 
-        H = torch.autograd.grad(gvp, self.policy.parameters())
+        H = torch.autograd.grad(gvp, self._model.parameters())
         fisher_vector_product = torch.cat(
             [grad.contiguous().view(-1) for grad in H]).data
-
 
         return fisher_vector_product + (self.config['cg_damping'] * v.data)
 
@@ -161,22 +121,25 @@ class TRPOPolicy(SharedTorchPolicy):
                 break
         return x
 
-    def surrogate_loss(self, params, states, actions, adv):
+    def surrogate_loss(self, params):
         """Returns the surrogate loss wrt the given parameter vector params."""
 
-        new_policy = deepcopy(self.policy)
+        new_policy = deepcopy(self._model)
         vector_to_parameters(params, new_policy.parameters())
 
         EPSILON = 1e-8
 
-        prob_new = new_policy(states).gather(1, torch.cat(actions)).data
-        prob_old = self.policy(states).gather(
-            1, torch.cat(actions)).data + EPSILON
+        prob_new = new_policy(self.states).gather(1, torch.cat(self.actions)).data
+        prob_old = self._model(self.states).gather(
+            1, torch.cat(self.actions)).data + EPSILON
 
-        return -torch.mean((prob_new / prob_old) * adv)
+        return -torch.mean((prob_new / prob_old) * self.adv)
 
     def linesearch(self, x, fullstep, expected_improve_rate):
-        """Returns the parameter vector given by a linesearch."""
+        """Returns the scaled gradient that would improve the loss.
+
+        Found via linesearch.
+        """
 
         accept_ratio = 0.1
         max_backtracks = 10
@@ -195,132 +158,80 @@ class TRPOPolicy(SharedTorchPolicy):
             if actual_improve / expected_improve > accept_ratio and actual_improve > 0:
                 # return Variable(torch.from_numpy(xnew))
                 return g
+
+        # If no improvement could be obtained, return 0 gradient
         else:
             return 0
 
     def _backward(self, batch):
         """Fills gradient buffers up."""
 
-        # TODO what's in a batch by default? calculate batches
-        #
-        # TODO does the policy used return logits as well as an action or does
-        # it need to be modified to do so?
-        #
-        # TODO how to just get grad rather than setting weights directly?
-        # Maybe just this the `set_weights` or `model_update` method?
-
-        # TODO update critic
+        # TODO(alok) update critic as well
 
         states, actions, advs, rewards, _ = convert_batch(batch)
-        discounted_rewards = discount(rewards, self.config['discount_rate'])
-        values, log_probs, entropy = self._evaluate(states, actions)
-        policy_error = -torch.dot(advs, log_probs)
+        values, action_log_probs, entropy = self._evaluate(states, actions)
 
-        value_err = F.mse(values, rewards)
-
-        self.env = env
-        self.policy = policy
-        # TODO rm wrapper?
-        self.vf = _ValueFunctionWrapper(
-            self.vf,
-            self.config['vf_lr'],
-        )
+        # TODO(alok) rm wrapper?
 
         bs = self.config['batch_size']
 
-        # TODO add cuda
+        # TODO(alok) add cuda
 
         # XXX compute_action: S -> a, prob dist
 
-        # TODO implement in separate file or use existing implementation.
-        # TODO accumulate until data is one batch big
+        # TODO(alok) implement in separate file or use existing implementation.
+        # TODO(alok) accumulate until data is one batch big
         num_batches = len(actions) // bs if len(
             actions) % bs == 0 else (len(actions) // bs) + 1
 
         for batch_n in range(num_batches):
-            _states = states[batch_n * bs:(batch_n + 1) * bs]
-
-            _disc_rews = discounted_rewards[batch_n * bs:bs * (batch_n + 1)]
-
-            _actions = actions[batch_n * bs:(batch_n + 1) * bs]
-
-            _action_dists = action_dists[batch_n * bs:(batch_n + 1) * bs]
-
-            baseline = self.vf.predict(_states).data
-            advantage = Tensor(_disc_rews).unsqueeze(1) - baseline
-
-            # Normalize the advantage
-            self.advantage = (advantage - advantage.mean()) / (
-                advantage.std() + 1e-8)
+            _slice = slice(batch_n * bs, (batch_n + 1) * bs)
+            self.s = states[_slice]
+            self.a = actions[_slice]
+            self.a_dists = action_log_probs[_slice]
+            self.adv = advs[_slice]
+            self.kl = self.mean_kl(self.s, self._model)
 
             # Calculate the surrogate loss as the element-wise product of the
             # advantage and the probability ratio of actions taken.
-            new_p = torch.cat(_action_dists).gather(1, torch.cat(_actions))
+            # TODO(alok) Do we need log probs or the actual probabilities here?
+            new_p = torch.cat(self.a_dists).gather(1, torch.cat(self.a))
             old_p = new_p.detach() + 1e-8
 
             prob_ratio = new_p / old_p
-            surrogate_loss = -torch.mean(prob_ratio * Variable(advantage)) - (
+            surrogate_loss = -torch.mean(prob_ratio * Variable(self.adv)) - (
                 self.config['ent_coeff'] * entropy)
 
             # Calculate the gradient of the surrogate loss
-            self.policy.zero_grad()
+            # TODO(alok) self.policy -> self._model
+            self._model.zero_grad()
 
             surrogate_loss.backward(retain_graph=True)
 
             g = parameters_to_vector(
-                [v.grad for v in self.policy.parameters()]).squeeze(0)
+                [v.grad for v in self._model.parameters()]).squeeze(0)
 
-            if g.nonzero().size()[0]:
+            # if g.nonzero().size()[0]:
+            if g.nonzero().size():
                 # Use conjugate gradient algorithm to determine the step direction in params space
-                step_direction = self.conjugate_gradient(-g)
-                step_direction_variable = Variable(
-                    torch.from_numpy(step_direction))
+                step_dir = self.conjugate_gradient(-g)
+                _step_dir = Variable(torch.from_numpy(step_dir))
 
-                # Do line search to determine the stepsize of params in the direction of step_direction
-                shs = step_direction.dot(
-                    self.HVP(step_direction_variable).numpy().T) / 2
-                lm = np.sqrt(shs / self.max_kl)
-                fullstep = step_direction / lm
-                gdotstepdir = -g.dot(step_direction_variable).data[0]
+                # Do line search to determine the stepsize of params in the direction of step_dir
+                shs = step_dir.dot(self.HVP(self.kl, _step_dir).numpy().T) / 2
+                # TODO(alok) set max_kl to 0.001 as default
+                lm = np.sqrt(shs / self.config['max_kl'])
+                fullstep = step_dir / lm
+                g_step_dir = -g.dot(_step_dir).data[0]
 
-                params = self.linesearch(
-                    x=parameters_to_vector(self.policy.parameters()),
+                grad = self.linesearch(
+                    x=parameters_to_vector(self._model.parameters()),
                     fullstep=fullstep,
-                    expected_improve_rate=gdotstepdir / lm,
+                    expected_improve_rate=g_step_dir / lm,
                 )
 
-                # TODO use explained variance to fit vf?
-                # Fit the estimated value function to the actual observed discounted rewards
-                ev_before = explained_variance_1d(
-                    baseline.squeeze(1).numpy(),
-                    _disc_rews,
-                )
+                # TODO(alok) fit critic
 
-                self.vf.zero_grad()
-                vf_params = parameters_to_vector(self.vf.parameters())
-
-                self.vf.fit(
-                    _states,
-                    Variable(Tensor(_disc_rews)),
-                )
-
-                ev_after = explained_variance_1d(
-                    self.vf.predict(_states).data.squeeze(1).numpy(),
-                    _disc_rews,
-                )
-                if ev_after < ev_before or np.abs(ev_after) < 1e-4:
-                    vector_to_parameters(
-                        vf_params,
-                        self.vf.parameters(),
-                    )
-
-                # Update parameters of policy model
-                old_model = deepcopy(self.policy)
-                old_model.load_state_dict(self.policy.state_dict())
-
-                # XXX fills gradient buffers here
-                # TODO fill gradient buffers rather than changing the parameters
-                # TODO set grad buffers to params
-
-                # if not any(np.isnan(params.data.numpy())):
-                # vector_to_parameters(params, self.policy.parameters())
+                # Here we fill the gradient buffers
+                if not any(np.isnan(grad.data.numpy())):
+                    vector_to_gradient(grad, self._model.parameters())
