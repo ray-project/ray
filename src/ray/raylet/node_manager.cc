@@ -1,9 +1,33 @@
 #include "ray/raylet/node_manager.h"
 
 #include "common_protocol.h"
+#include "local_scheduler/format/local_scheduler_generated.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace {
+
+#define RAY_CHECK_ENUM(x, y) \
+  static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
+
+// Check consistency between client and server protocol.
+RAY_CHECK_ENUM(protocol::MessageType_SubmitTask, MessageType_SubmitTask);
+RAY_CHECK_ENUM(protocol::MessageType_TaskDone, MessageType_TaskDone);
+RAY_CHECK_ENUM(protocol::MessageType_EventLogMessage, MessageType_EventLogMessage);
+RAY_CHECK_ENUM(protocol::MessageType_RegisterClientRequest,
+               MessageType_RegisterClientRequest);
+RAY_CHECK_ENUM(protocol::MessageType_RegisterClientReply,
+               MessageType_RegisterClientReply);
+RAY_CHECK_ENUM(protocol::MessageType_DisconnectClient, MessageType_DisconnectClient);
+RAY_CHECK_ENUM(protocol::MessageType_GetTask, MessageType_GetTask);
+RAY_CHECK_ENUM(protocol::MessageType_ExecuteTask, MessageType_ExecuteTask);
+RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject, MessageType_ReconstructObject);
+RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked, MessageType_NotifyUnblocked);
+RAY_CHECK_ENUM(protocol::MessageType_PutObject, MessageType_PutObject);
+RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierRequest,
+               MessageType_GetActorFrontierRequest);
+RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierReply,
+               MessageType_GetActorFrontierReply);
+RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier, MessageType_SetActorFrontier);
 
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
