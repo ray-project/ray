@@ -2444,6 +2444,8 @@ class DataFrame(object):
     def reindex(self, labels=None, index=None, columns=None, axis=None,
                 method=None, copy=True, level=None, fill_value=np.nan,
                 limit=None, tolerance=None):
+        if not columns:
+            return DataFrame()
         col_idx = [i if columns[i] in self.columns[i] else columns[i]
                    for i in range(len(columns))]
 
