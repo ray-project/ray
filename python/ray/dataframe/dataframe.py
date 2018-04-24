@@ -4118,6 +4118,7 @@ class DataFrame(object):
 
             new_blocks = np.array([co_op_helper._submit(args=(func, self.columns,
                                                other.columns,
+                                                              len(part[0]),
                                                *np.concatenate(part)),
                                                num_return_vals=len(part[0]))
                            for part in copartitions])
@@ -4169,14 +4170,13 @@ class DataFrame(object):
                          row_metadata=new_row_metadata)
 
 @ray.remote
-def co_op_helper(func, left_columns, right_columns, *zipped):
+def co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
 
-    left = pd.concat(zipped[:len(left_columns)], axis=1, copy=False)
+    left = pd.concat(zipped[:left_df_len], axis=1, copy=False)
     left.columns = left_columns
 
-    right = pd.concat(zipped[len(left_columns):], axis=1, copy=False)
+    right = pd.concat(zipped[left_df_len:], axis=1, copy=False)
     right.columns = right_columns
 
     new_rows = func(left, right)
-    return create_blocks_helper(new_rows, max(len(left_columns),
-                                              len(right_columns)), 0)
+    return create_blocks_helper(new_rows, left_df_len, 0)
