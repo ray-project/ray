@@ -311,3 +311,16 @@ def _reindex_helper(old_index, new_index, axis, npartitions, *df):
         df = df.reindex(columns=new_index, copy=False)
         df.columns = pd.RangeIndex(len(df.columns))
     return create_blocks_helper(df, npartitions, axis)
+
+
+@ray.remote
+def co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
+
+    left = pd.concat(zipped[:left_df_len], axis=1, copy=False)
+    left.columns = left_columns
+
+    right = pd.concat(zipped[left_df_len:], axis=1, copy=False)
+    right.columns = right_columns
+
+    new_rows = func(left, right)
+    return create_blocks_helper(new_rows, left_df_len, 0)

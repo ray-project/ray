@@ -111,7 +111,8 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     # from remote memory built in the previous line. In the future, we won't be
     # building new DataFrames, rather just partitioning the DataFrames.
     if axis == 0:
-        new_blocks = np.array([_reindex_helper._submit(args=(all_columns[i],
+        new_blocks = \
+            np.array([_reindex_helper._submit(args=(all_columns[i],
                                                     final_columns,
                                                     axis,
                                                     len(objs[i]),

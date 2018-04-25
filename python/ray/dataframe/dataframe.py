@@ -37,7 +37,7 @@ from .utils import (
     _create_block_partitions,
     _inherit_docstrings,
     _reindex_helper,
-    create_blocks_helper)
+    co_op_helper)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -729,7 +729,8 @@ class DataFrame(object):
 
         Args:
             other: What to add this this DataFrame.
-            axis: The axis to apply addition over. Only applicaable to Series or list 'other'.
+            axis: The axis to apply addition over. Only applicaable to Series
+                or list 'other'.
             level: A level in the multilevel axis to add over.
             fill_value: The value to fill NaN.
 
@@ -4088,19 +4089,19 @@ class DataFrame(object):
         new_num_partitions = max(len(self._block_partitions.T),
                                  len(other._block_partitions.T))
 
-        new_partitions_self = np.array([_reindex_helper._submit(args=(old_self_index,
-                                                       new_index, 1,
-                                                       new_num_partitions,
-                                                       *block),
-                                                       num_return_vals=new_num_partitions)
-                               for block in self._block_partitions.T]).T
+        new_partitions_self = \
+            np.array([_reindex_helper._submit(
+                args=(old_self_index, new_index, 1, new_num_partitions,
+                      *block),
+                num_return_vals=new_num_partitions)
+                for block in self._block_partitions.T]).T
 
-        new_partitions_other = np.array([_reindex_helper._submit(args=(old_other_index,
-                                                        new_index, 1,
-                                                        new_num_partitions,
-                                                        *block),
-                                                        num_return_vals=new_num_partitions)
-                                for block in other._block_partitions.T]).T
+        new_partitions_other = \
+            np.array([_reindex_helper._submit(
+                args=(old_other_index, new_index, 1, new_num_partitions,
+                      *block),
+                num_return_vals=new_num_partitions)
+                for block in other._block_partitions.T]).T
 
         return zip(new_partitions_self, new_partitions_other)
 
@@ -4116,12 +4117,12 @@ class DataFrame(object):
             new_index = self.index.join(other.index, how="outer")
             copartitions = self._copartition(other, new_index)
 
-            new_blocks = np.array([co_op_helper._submit(args=(func, self.columns,
-                                               other.columns,
-                                                              len(part[0]),
-                                               *np.concatenate(part)),
-                                               num_return_vals=len(part[0]))
-                           for part in copartitions])
+            new_blocks = \
+                np.array([co_op_helper._submit(
+                    args=(func, self.columns, other.columns, len(part[0]),
+                          *np.concatenate(part)),
+                    num_return_vals=len(part[0]))
+                    for part in copartitions])
 
             return DataFrame(block_partitions=new_blocks,
                              columns=new_column_index,
@@ -4168,15 +4169,3 @@ class DataFrame(object):
                          columns=new_column_index,
                          col_metadata=new_col_metadata,
                          row_metadata=new_row_metadata)
-
-@ray.remote
-def co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
-
-    left = pd.concat(zipped[:left_df_len], axis=1, copy=False)
-    left.columns = left_columns
-
-    right = pd.concat(zipped[left_df_len:], axis=1, copy=False)
-    right.columns = right_columns
-
-    new_rows = func(left, right)
-    return create_blocks_helper(new_rows, left_df_len, 0)
