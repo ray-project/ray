@@ -151,6 +151,9 @@ class Lineage {
   flatbuffers::Offset<protocol::ForwardTaskRequest> ToFlatbuffer(
       flatbuffers::FlatBufferBuilder &fbb, const TaskID &entry_id) const;
 
+  size_t Size() const;
+  bool IsEmpty() const;
+
  private:
   /// The lineage entries.
   std::unordered_map<const TaskID, LineageEntry, UniqueIDHasher> entries_;

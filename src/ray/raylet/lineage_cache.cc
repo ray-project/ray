@@ -109,6 +109,14 @@ const std::unordered_map<const UniqueID, LineageEntry, UniqueIDHasher>
   return entries_;
 }
 
+size_t Lineage::Size() const {
+  return entries_.size();
+}
+
+bool Lineage::IsEmpty() const {
+  return entries_.empty();
+}
+
 flatbuffers::Offset<protocol::ForwardTaskRequest> Lineage::ToFlatbuffer(
     flatbuffers::FlatBufferBuilder &fbb, const TaskID &task_id) const {
   RAY_CHECK(GetEntry(task_id));
@@ -166,6 +174,27 @@ void MergeLineageHelper(const UniqueID &task_id, const Lineage &lineage_from,
   }
 }
 
+/// Just adds the task.
+void MergeLineageHelper2(const UniqueID &task_id, const Lineage &lineage_from,
+                        Lineage &lineage_to,
+                        std::function<bool(GcsStatus)> stopping_condition) {
+  // If the entry is not found in the lineage to merge, then we stop since
+  // there is nothing to copy into the merged lineage.
+  auto entry = lineage_from.GetEntry(task_id);
+  if (!entry) {
+    return;
+  }
+  // Check whether we should stop at this entry in the DFS.
+  auto status = entry->GetStatus();
+  if (stopping_condition(status)) {
+    return;
+  }
+
+  // Insert a copy of the entry into lineage_to.
+  LineageEntry entry_copy = *entry;
+  (void)lineage_to.SetEntry(std::move(entry_copy));
+}
+
 void LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_lineage) {
   auto task_id = task.GetTaskSpecification().TaskId();
   // Merge the uncommitted lineage into the lineage cache.
@@ -213,13 +242,15 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id) const {
   Lineage uncommitted_lineage;
   // Add all uncommitted ancestors from the lineage cache to the uncommitted
   // lineage of the requested task.
-  MergeLineageHelper(task_id, lineage_, uncommitted_lineage, [](GcsStatus status) {
+  MergeLineageHelper2(task_id, lineage_, uncommitted_lineage, [](GcsStatus status) {
     // The stopping condition for recursion is that the entry has been
     // committed to the GCS.
     return status == GcsStatus_COMMITTED;
   });
   return uncommitted_lineage;
 }
+
+
 
 Status LineageCache::Flush() {
   // Iterate through all tasks that are READY.

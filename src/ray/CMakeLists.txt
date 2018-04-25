@@ -26,6 +26,7 @@ set(HIREDIS_SRCS
 set(UTIL_SRCS
   ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/sha256.c
   ${CMAKE_CURRENT_LIST_DIR}/../common/common_protocol.cc
+  ${CMAKE_CURRENT_LIST_DIR}/../common/common.cc
 )
 
 set(RAY_SRCS
