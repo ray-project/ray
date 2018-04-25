@@ -11,7 +11,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # The following is needed because in CentOS, the lib directory is named lib64
-if(LINUX AND EXISTS "/etc/redhat-release" AND CMAKE_SYSTEM_PROCESSOR MATCHES "64$")
+if(LINUX AND EXISTS "/etc/redhat-release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(LIB_SUFFIX 64)
 endif()
 
