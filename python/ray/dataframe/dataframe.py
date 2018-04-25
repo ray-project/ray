@@ -978,17 +978,25 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def astype(self, dtype, copy=True, errors='raise', **kwargs):
-        if errors == 'raise':
-            try:
-                pd.DataFrame().astype(dtype)
-            except (ValueError, TypeError):
-                return self
         if isinstance(dtype, dict):
-            new_rows = _map_partitions(lambda df: df.astype(dtype=dtype,
-                                                            copy=True,
-                                                            errors='ignore',
-                                                            **kwargs),
-                                       self._row_partitions)
+            if (not set(dtype.keys()).issubset(set(self.columns)) and
+                    errors == 'raise'):
+                raise KeyError(
+                    "Only a column name can be used for the key in"
+                    "a dtype mappings argument.")
+            columns = list(dtype.keys())
+            col_idx = [(self.columns.get_loc(columns[i]), columns[i])
+                       if columns[i] in self.columns
+                       else (columns[i], columns[i])
+                       for i in range(len(columns))]
+            new_dict = {}
+            for idx, key in col_idx:
+                new_dict[idx] = dtype[key]
+            new_rows = _map_partitions(lambda df, dt: df.astype(dtype=dt,
+                                                                copy=True,
+                                                                errors=errors,
+                                                                **kwargs),
+                                       self._row_partitions, new_dict)
             if copy:
                 return DataFrame(row_partitions=new_rows,
                                  columns=self.columns,
@@ -997,7 +1005,7 @@ class DataFrame(object):
         else:
             new_blocks = [_map_partitions(lambda d: d.astype(dtype=dtype,
                                                              copy=True,
-                                                             errors='ignore',
+                                                             errors=errors,
                                                              **kwargs),
                                           block)
                           for block in self._block_partitions]
