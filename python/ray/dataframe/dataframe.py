@@ -104,8 +104,7 @@ class DataFrame(object):
             if block_partitions is not None:
                 # put in numpy array here to make accesses easier since it's 2D
                 self._block_partitions = np.array(block_partitions)
-                assert self._block_partitions.ndim == 2, \
-                    "Block Partitions must be 2D."
+                axis = 0
             else:
                 if row_partitions is not None:
                     axis = 0
@@ -126,9 +125,11 @@ class DataFrame(object):
         # Sometimes we only get a single column or row, which is
         # problematic for building blocks from the partitions, so we
         # add whatever dimension we're missing from the input.
-        if self._block_partitions.ndim != 2:
+        if self._block_partitions.ndim < 2:
             self._block_partitions = np.expand_dims(self._block_partitions,
                                                     axis=axis ^ 1)
+
+        assert self._block_partitions.ndim == 2, "Block Partitions must be 2D."
 
         # Create the row and column index objects for using our partitioning.
         # If the objects haven't been inherited, then generate them
@@ -981,6 +982,7 @@ class DataFrame(object):
             to_concat = [self] + other
         else:
             to_concat = [self, other]
+
         return concat(to_concat, ignore_index=ignore_index,
                       verify_integrity=verify_integrity)
 
@@ -3979,7 +3981,7 @@ class DataFrame(object):
     def __rmod__(self, other, axis="columns", level=None, fill_value=None):
         return self.rmod(other, axis, level, fill_value)
 
-    def __div__(self, other, axis=None, level=None, fill_value=None):
+    def __div__(self, other, axis="columns", level=None, fill_value=None):
         return self.div(other, axis, level, fill_value)
 
     def __rdiv__(self, other, axis="columns", level=None, fill_value=None):
