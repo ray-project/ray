@@ -1271,7 +1271,6 @@ def test_eq():
     test_comparison_inter_ops("eq")
 
 
-
 def test_equals():
     pandas_df1 = pd.DataFrame({'col1': [2.9, 3, 3, 3],
                                'col2': [2, 3, 4, 1]})
