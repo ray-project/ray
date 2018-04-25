@@ -39,19 +39,16 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
     echo "building arrow"
 
     if [[ ! -d $TP_DIR/build/arrow ]]; then
-      git clone https://github.com/apache/arrow.git "$TP_DIR/build/arrow"
+      git clone https://github.com/ray-project/arrow.git "$TP_DIR/build/arrow"
     fi
 
     pushd $TP_DIR/build/arrow
     git fetch origin master
-    # The PR for this commit is https://github.com/apache/arrow/pull/1874. We
-    # include the link here to make it easier to find the right commit because
+    # The PR for this commit is https://github.com/apache/arrow/pull/ARROW-2458.
+    # We also reverted https://github.com/apache/arrow/pull/1807.
+    # We include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout 0f87c12d45250ee763ac8c43b7e57e8f06a0b9f3
-
-    # Revert https://github.com/apache/arrow/pull/1807, which unfortunately
-    # introduces the issue in https://issues.apache.org/jira/browse/ARROW-2448.
-    git revert --no-commit cf396867df6f1f93948c69ce10ceb0f95e399242
+    git checkout 055d34a909acd3a40aa0a778a967bb8fc07efa2e
 
     cd cpp
     if [ ! -d "build" ]; then
