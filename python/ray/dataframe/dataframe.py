@@ -738,14 +738,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the applied addition.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.add(y, axis, level, fill_value),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.add(other, axis, level, fill_value),
-                other, axis, level)
+        return self._inter_and_single_op_helper("add", other, axis, level,
+                                                fill_value)
 
     def agg(self, func, axis=0, *args, **kwargs):
         return self.aggregate(func, axis, *args, **kwargs)
@@ -1302,14 +1296,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Divide applied.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.div(y, axis, level, fill_value),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.div(other, axis, level, fill_value),
-                other, axis, level)
+        return self._inter_and_single_op_helper("div", other, axis, level,
+                                                fill_value)
 
     def divide(self, other, axis='columns', level=None, fill_value=None):
         """Synonym for div.
@@ -1769,14 +1757,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Divide applied.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.floordiv(y, axis, level, fill_value),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.floordiv(other, axis, level, fill_value),
-                other, axis, level)
+        return self._inter_and_single_op_helper("floordiv", other, axis, level,
+                                                fill_value)
 
     @classmethod
     def from_csv(self, path, header=0, sep=', ', index_col=0,
@@ -2481,14 +2463,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Mod applied.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.mod(y, axis, level, fill_value),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.mod(other, axis, level, fill_value),
-                other, axis, level)
+        return self._inter_and_single_op_helper("mod", other, axis, level,
+                                                fill_value)
 
     def mode(self, axis=0, numeric_only=False):
         raise NotImplementedError(
@@ -2507,14 +2483,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Multiply applied.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.mul(y, axis, level, fill_value),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.mul(other, axis, level, fill_value),
-                other, axis, level)
+        return self._inter_and_single_op_helper("mul", other, axis, level,
+                                                fill_value)
 
     def multiply(self, other, axis='columns', level=None, fill_value=None):
         """Synonym for mul.
@@ -2660,14 +2630,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Pow applied.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.pow(y, axis, level, fill_value),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.pow(other, axis, level, fill_value),
-                other, axis, level)
+        return self._inter_and_single_op_helper("pow", other, axis, level,
+                                                fill_value)
 
     def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
              min_count=0, **kwargs):
@@ -3248,14 +3212,8 @@ class DataFrame(object):
         Returns:
              A new DataFrame with the subtraciont applied.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.sub(y, axis, level, fill_value),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.sub(other, axis, level, fill_value),
-                other, axis, level)
+        return self._inter_and_single_op_helper("sub", other, axis, level,
+                                                fill_value)
 
     def subtract(self, other, axis='columns', level=None, fill_value=None):
         """Alias for sub.
@@ -3530,14 +3488,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Divide applied.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.truediv(y, axis, level, fill_value),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.truediv(other, axis, level, fill_value),
-                other, axis, level)
+        return self._inter_and_single_op_helper("truediv", other, axis, level,
+                                                fill_value)
 
     def truncate(self, before=None, after=None, axis=None, copy=True):
         raise NotImplementedError(
@@ -4106,6 +4058,16 @@ class DataFrame(object):
                 for block in other._block_partitions.T]).T
 
         return zip(new_partitions_self, new_partitions_other)
+
+    def _inter_and_single_op_helper(self, op, other, axis, level, *args):
+        if isinstance(other, DataFrame):
+            return self._inter_df_op_helper(
+                lambda x, y: getattr(x, op)(y, axis, level, *args),
+                other, axis, level)
+        else:
+            return self._single_df_op_helper(
+                lambda df: getattr(df, op)(other, axis, level, *args),
+                other, axis, level)
 
     def _inter_df_op_helper(self, func, other, axis, level):
         if level is not None:
