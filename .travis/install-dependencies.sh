@@ -82,6 +82,8 @@ elif [[ "$LINUX_WHEELS" == "1" ]]; then
   sudo apt-get install docker
   sudo usermod -a -G docker travis
 elif [[ "$MAC_WHEELS" == "1" ]]; then
+  # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
+  pip install --upgrade setuptools
   which -s brew
   if [[ $? != 0 ]]; then
     echo "Could not find brew, please install brew (see http://brew.sh/)."

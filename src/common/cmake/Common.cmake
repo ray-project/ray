@@ -10,6 +10,11 @@ if(UNIX AND NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -rdynamic")
 endif()
 
+# The following is needed because in CentOS, the lib directory is named lib64
+if(LINUX AND EXISTS "/etc/redhat-release" AND CMAKE_SYSTEM_PROCESSOR MATCHES "64$")
+  set(LIB_SUFFIX 64)
+endif()
+
 set(FLATBUFFERS_VERSION "1.9.0")
 
 set(FLATBUFFERS_PREFIX "${CMAKE_BINARY_DIR}/flatbuffers_ep-prefix/src/flatbuffers_ep-install")
