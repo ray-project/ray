@@ -2,38 +2,64 @@ from __future__ import absolute_import, division, print_function
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import PolicyEvaluator
-from ray.rllib.utils.filter import NoFilter
+from ray.rllib.utils.filter import NoFilter, get_filter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
 
-# TODO use from ray.rllib.trpo.policy import TRPOPolicy
 from policy import TRPOPolicy
 
 
 class TRPOEvaluator(PolicyEvaluator):
-    def __init__(self, registry, env_creator, config):
+    """Actor object to start running simulation on workers.
+
+    The gradient computation is also executed from this object.
+
+    Attributes:
+        policy: Copy of graph used for policy. Used by sampler and gradients.
+        obs_filter: Observation filter used in environment sampling
+        rew_filter: Reward filter used in rollout post-processing.
+        sampler: Component for interacting with environment and generating
+            rollouts.
+    """
+
+    def __init__(
+            self,
+            registry,
+            env_creator,
+            config,
+    ):
+        self.config = config
 
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
             registry,
-            env=env_creator(config["env_config"]),
-            options=config["model"],
+            env=env_creator(self.config['env_config']),
+            options=self.config['model'],
         )
 
-        self.config = config
-
+        # TODO(alok): should obs space be the whole space or its shape?
         self.policy = TRPOPolicy(
             registry,
             self.env.observation_space,
             self.env.action_space,
-            config,
+            self.config,
         )
+
+        self.obs_filter = get_filter(
+            self.config['observation_filter'],
+            self.env.observation_space.shape,
+        )
+        self.rew_filter = get_filter(self.config['reward_filter'], ())
+        self.filters = {
+            'obs_filter': self.obs_filter,
+            'rew_filter': self.rew_filter,
+        }
 
         self.sampler = SyncSampler(
             self.env,
             self.policy,
             obs_filter=NoFilter(),
-            num_local_steps=config["batch_size"],
-            horizon=config["horizon"],
+            num_local_steps=config['batch_size'],
+            horizon=config['horizon'],
         )
 
     def sample(self):
@@ -42,7 +68,7 @@ class TRPOEvaluator(PolicyEvaluator):
         samples = process_rollout(
             rollout,
             NoFilter(),
-            gamma=self.config["gamma"],
+            gamma=self.config['gamma'],
             use_gae=False,
         )
 
@@ -60,7 +86,7 @@ class TRPOEvaluator(PolicyEvaluator):
 
         samples.
         """
-        gradient, info = self.policy.compute_gradients(samples)
+        gradient, _ = self.policy.compute_gradients(samples)
         return gradient, {}
 
     def apply_gradients(self, grads):

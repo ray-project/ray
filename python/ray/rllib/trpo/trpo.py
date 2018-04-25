@@ -6,34 +6,42 @@ from ray.rllib.agent import Agent
 from ray.rllib.optimizers import LocalSyncOptimizer
 from ray.tune.result import TrainingResult
 
-# TODO use from ray.rllib.trpo.trpo_evaluator import TRPOEvaluator
 from trpo_evaluator import TRPOEvaluator
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
-    "num_workers": 4,
+    'num_workers': 4,
     # Size of rollout batch
-    "batch_size": 512,
+    'batch_size': 512,
     # Discount factor of MDP
-    "gamma": 0.99,
+    'gamma': 0.99,
+    'use_pytorch': True,
+    'observation_filter': 'NoFilter',
+    'reward_filter': 'NoFilter',
+    'ent_coeff': 0.0,
+    'max_kl': 0.001,
+    'cg_damping': 0.001,
+    'residual_tol': 1e-10,
+
     # Number of steps after which the rollout gets cut
-    "horizon": 500,
+    'horizon': 500,
     # Learning rate
-    "lr": 0.0004,
-    # Arguments to pass to the rllib optimizer
-    "optimizer": {},
+    'lr': 0.0004,
+    # Arguments to pass to the RLlib optimizer
+    'optimizer': {},
     # Model parameters
-    "model": {
-        "fcnet_hiddens": [128, 128]
+    'model': {
+        'fcnet_hiddens': [128, 128]
     },
     # Arguments to pass to the env creator
-    "env_config": {},
+    'env_config': {},
 }
 
 
 class TRPOAgent(Agent):
-    _agent_name = "TRPO"
+    _agent_name = 'TRPO'
     _default_config = DEFAULT_CONFIG
+    _allow_unknown_subkeys = ['model', 'optimizer', 'env_config']
 
     def _init(self):
 
@@ -44,22 +52,18 @@ class TRPOAgent(Agent):
         )
 
         self.remote_evaluators = [
-            RemoteTRPOEvaluator.remote(
+            ray.remote(TRPOEvaluator)(
                 self.registry,
                 self.env_creator,
                 self.config,
-            ) for _ in range(self.config["num_workers"])
+            ) for _ in range(self.config['num_workers'])
         ]
 
         self.optimizer = LocalSyncOptimizer.make(
             evaluator_cls=TRPOEvaluator,
-            evaluator_args=[
-                self.registry,
-                self.env_creator,
-                self.config,
-            ],
-            num_workers=self.config["num_workers"],
-            optimizer_config=self.config["optimizer"],
+            evaluator_args=[self.registry, self.env_creator, self.config],
+            num_workers=self.config['num_workers'],
+            optimizer_config=self.config['optimizer'],
         )
 
     def _train(self):
@@ -91,6 +95,9 @@ class TRPOAgent(Agent):
 
         return result
 
+    # TODO(alok): implement `_stop`, `_save`, `_restore`
+
     def compute_action(self, observation):
-        action, info = self.evaluator.policy.compute(observation)
+        obs = self.local_evaluator.obs_filter(observation, update=False)
+        action, _ = self.local_evaluator.policy.compute(obs)
         return action

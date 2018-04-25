@@ -22,10 +22,6 @@ from torch.nn.utils.convert_parameters import (_check_param_device,
 from torch.optim import LBFGS, Adam
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
-# TODO(alok) rm unused imports
-
-# TODO(alok) support tensorflow
-
 
 def explained_variance_1d(ypred, y):
     """
@@ -71,15 +67,25 @@ def vector_to_gradient(v, parameters):
 
 
 class TRPOPolicy(SharedTorchPolicy):
-    def __init__(self, *args, **kwargs):
-        # TODO 
-        super().__init__(*args, **kwargs)
+    def __init__(self, registry, obs_space, act_space, config, *args,
+                 **kwargs):
+        super().__init__(registry, obs_space, act_space, config, *args,
+                         **kwargs)
+
+    def _evaluate_action_dists(self, obs, *args):
+        logits, _ = self._model(obs)
+        # TODO(alok): Handle continuous case since this assumes a
+        # Categorical distribution.
+        action_dists = F.softmax(logits, dim=1)
+        return action_dists
 
     def mean_kl(self, policy):
         """Returns an estimate of the average KL divergence between a given
         policy and self._model."""
-        new_p = policy(self.s).detach() + 1e-8
-        old_p = self._model(self.s)
+        # TODO(alok): Handle continuous case since this assumes a
+        # Categorical distribution.
+        new_p = policy(self._states).detach() + 1e-8
+        old_p = self._model(self._states)
 
         return (old_p.dot((old_p / new_p).log())).mean()
 
@@ -90,7 +96,7 @@ class TRPOPolicy(SharedTorchPolicy):
         self._model.zero_grad()
 
         g_kl = torch.autograd.grad(
-            self.kl, self._model.parameters(), create_graph=True)
+            self._kl, self._model.parameters(), create_graph=True)
         gvp = torch.cat([grad.view(-1) for grad in g_kl]).dot(v)
 
         H = torch.autograd.grad(gvp, self._model.parameters())
@@ -129,11 +135,12 @@ class TRPOPolicy(SharedTorchPolicy):
 
         EPSILON = 1e-8
 
-        prob_new = new_policy(self.states).gather(1, torch.cat(self.actions)).data
-        prob_old = self._model(self.states).gather(
-            1, torch.cat(self.actions)).data + EPSILON
+        prob_new = new_policy(self.states).gather(1,
+                                                  torch.cat(self.actions)).data
+        prob_old = self._model(self.states).gather(1, torch.cat(
+            self.actions)).data + EPSILON
 
-        return -torch.mean((prob_new / prob_old) * self.adv)
+        return -torch.mean((prob_new / prob_old) * self._adv)
 
     def linesearch(self, x, fullstep, expected_improve_rate):
         """Returns the scaled gradient that would improve the loss.
@@ -166,44 +173,37 @@ class TRPOPolicy(SharedTorchPolicy):
     def _backward(self, batch):
         """Fills gradient buffers up."""
 
-        # TODO(alok) update critic as well
-
         states, actions, advs, rewards, _ = convert_batch(batch)
-        values, action_log_probs, entropy = self._evaluate(states, actions)
-
-        # TODO(alok) rm wrapper?
+        values, _, entropy = self._evaluate(states, actions)
+        action_dists = self._evaluate_action_dists(states)
 
         bs = self.config['batch_size']
 
-        # TODO(alok) add cuda
-
-        # XXX compute_action: S -> a, prob dist
-
-        # TODO(alok) implement in separate file or use existing implementation.
-        # TODO(alok) accumulate until data is one batch big
         num_batches = len(actions) // bs if len(
             actions) % bs == 0 else (len(actions) // bs) + 1
 
         for batch_n in range(num_batches):
             _slice = slice(batch_n * bs, (batch_n + 1) * bs)
-            self.s = states[_slice]
-            self.a = actions[_slice]
-            self.a_dists = action_log_probs[_slice]
-            self.adv = advs[_slice]
-            self.kl = self.mean_kl(self.s, self._model)
+
+            self._states = states[_slice]
+            self._actions = actions[_slice]
+            self._action_dists = action_dists[_slice]
+            self._adv = advs[_slice]
+
+            self._kl = self.mean_kl(self._states, self._model)
 
             # Calculate the surrogate loss as the element-wise product of the
             # advantage and the probability ratio of actions taken.
             # TODO(alok) Do we need log probs or the actual probabilities here?
-            new_p = torch.cat(self.a_dists).gather(1, torch.cat(self.a))
+            new_p = torch.cat(self._action_dists).gather(
+                1, torch.cat(self._actions))
             old_p = new_p.detach() + 1e-8
 
             prob_ratio = new_p / old_p
-            surrogate_loss = -torch.mean(prob_ratio * Variable(self.adv)) - (
+            surrogate_loss = -torch.mean(prob_ratio * Variable(self._adv)) - (
                 self.config['ent_coeff'] * entropy)
 
-            # Calculate the gradient of the surrogate loss
-            # TODO(alok) self.policy -> self._model
+            # Gradient wrt policy
             self._model.zero_grad()
 
             surrogate_loss.backward(retain_graph=True)
@@ -211,27 +211,25 @@ class TRPOPolicy(SharedTorchPolicy):
             g = parameters_to_vector(
                 [v.grad for v in self._model.parameters()]).squeeze(0)
 
-            # if g.nonzero().size()[0]:
-            if g.nonzero().size():
-                # Use conjugate gradient algorithm to determine the step direction in params space
+            if g.nonzero().size()[0]:
                 step_dir = self.conjugate_gradient(-g)
                 _step_dir = Variable(torch.from_numpy(step_dir))
 
                 # Do line search to determine the stepsize of params in the direction of step_dir
-                shs = step_dir.dot(self.HVP(self.kl, _step_dir).numpy().T) / 2
-                # TODO(alok) set max_kl to 0.001 as default
+                shs = step_dir.dot(self.HVP(self._kl, _step_dir).numpy().T) / 2
                 lm = np.sqrt(shs / self.config['max_kl'])
                 fullstep = step_dir / lm
                 g_step_dir = -g.dot(_step_dir).data[0]
-
                 grad = self.linesearch(
                     x=parameters_to_vector(self._model.parameters()),
                     fullstep=fullstep,
                     expected_improve_rate=g_step_dir / lm,
                 )
 
-                # TODO(alok) fit critic
-
                 # Here we fill the gradient buffers
                 if not any(np.isnan(grad.data.numpy())):
                     vector_to_gradient(grad, self._model.parameters())
+
+            # Also get gradient wrt value function
+            value_err = F.mse_loss(values, rewards)
+            value_err.backward()
