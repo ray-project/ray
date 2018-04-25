@@ -4088,13 +4088,14 @@ class DataFrame(object):
                     num_return_vals=len(part[0]))
                     for part in copartitions])
 
+            # TODO join the Index Metadata objects together for performance.
             return DataFrame(block_partitions=new_blocks,
                              columns=new_column_index,
                              index=new_index)
 
     def _single_df_op_helper(self, func, other, axis, level):
         if level is not None:
-            raise NotImplementedError("Mutlilevel index not yet supported "
+            raise NotImplementedError("Multilevel index not yet supported "
                                       "in Pandas on Ray")
         axis = pd.DataFrame()._get_axis_number(axis)
 
@@ -4103,6 +4104,7 @@ class DataFrame(object):
             new_column_index = self.columns
             new_col_metadata = self._col_metadata
             new_row_metadata = self._row_metadata
+            new_blocks = None
 
             if axis == 0:
                 if len(other) != len(self.index):
@@ -4120,7 +4122,9 @@ class DataFrame(object):
                 new_columns = None
 
         else:
-            new_columns = _map_partitions(func, self._col_partitions)
+            new_blocks = np.array([_map_partitions(func, block)
+                                   for block in self._block_partitions])
+            new_columns = None
             new_rows = None
             new_index = self.index
             new_column_index = self.columns
@@ -4129,6 +4133,7 @@ class DataFrame(object):
 
         return DataFrame(col_partitions=new_columns,
                          row_partitions=new_rows,
+                         block_partitions=new_blocks,
                          index=new_index,
                          columns=new_column_index,
                          col_metadata=new_col_metadata,
