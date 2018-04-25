@@ -2444,31 +2444,9 @@ class DataFrame(object):
     def reindex(self, labels=None, index=None, columns=None, axis=None,
                 method=None, copy=True, level=None, fill_value=np.nan,
                 limit=None, tolerance=None):
-        if not columns:
-            return DataFrame()
-        col_idx = [self.columns.get_loc(columns[i])
-                   for i in range(len(columns))
-                   if columns[i] in self.columns]
-
-        if not copy:
-            raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
-
-        axis = pd.DataFrame()._get_axis_number(axis) if (axis) else 0
-        if axis == 1 or columns:
-            def row_helper(df, col_idx):
-                df = df.reindex(columns=col_idx, copy=True)
-                return df
-            new_rows = _map_partitions(row_helper,
-                                       self._row_partitions, col_idx)
-            return DataFrame(row_partitions=new_rows,
-                             columns=columns,
-                             index=self.index)
-        else:
-            raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def reindex_axis(self, labels, axis=0, method=None, level=None, copy=True,
                      limit=None, fill_value=np.nan):
@@ -3332,7 +3310,7 @@ class DataFrame(object):
             new_parts = _map_partitions(lambda df: df[key],
                                         self._col_partitions)
             columns = self.columns
-            index = self._col_metadata[key].index
+            index = self.index[key]
 
             return DataFrame(col_partitions=new_parts,
                              columns=columns,
