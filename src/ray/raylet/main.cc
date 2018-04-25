@@ -6,7 +6,7 @@
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
-  RAY_CHECK(argc == 9);
+  RAY_CHECK(argc == 12);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
@@ -16,6 +16,11 @@ int main(int argc, char *argv[]) {
   int num_initial_workers = std::stoi(argv[6]);
   const std::string worker_command = std::string(argv[7]);
   const std::string static_resource_list = std::string(argv[8]);
+
+  // ObjectManager parameters.
+  uint64_t max_sends = std::stoul(argv[9]);
+  uint64_t max_receives = std::stoul(argv[10]);
+  uint64_t object_chunk_size = std::stoul(argv[11]);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -51,11 +56,15 @@ int main(int argc, char *argv[]) {
   object_manager_config.store_socket_name = store_socket_name;
   object_manager_config.pull_timeout_ms =
       RayConfig::instance().object_manager_pull_timeout_ms();
-  object_manager_config.max_sends = RayConfig::instance().object_manager_max_sends();
-  object_manager_config.max_receives =
-      RayConfig::instance().object_manager_max_receives();
-  object_manager_config.object_chunk_size =
-      RayConfig::instance().object_manager_default_chunk_size();
+  object_manager_config.max_sends = max_sends;
+  object_manager_config.max_receives = max_receives;
+  object_manager_config.object_chunk_size = object_chunk_size;
+
+  RAY_LOG(INFO) << "Starting object manager with configuration: \n"
+      "pull_timeout_ms = " << object_manager_config.pull_timeout_ms << "\n"
+      "max_sends = " << object_manager_config.max_sends << "\n"
+      "max_receives = " << object_manager_config.max_receives << "\n"
+      "object_chunk_size = " << object_manager_config.object_chunk_size;
 
   //  initialize mock gcs & object directory
   auto gcs_client = std::make_shared<ray::gcs::AsyncGcsClient>();
