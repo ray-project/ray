@@ -8,9 +8,8 @@ import pandas as pd
 import pandas.util.testing as tm
 import ray.dataframe as rdf
 from ray.dataframe.utils import (
-    to_pandas,
-    from_pandas
-)
+    from_pandas,
+    to_pandas)
 
 from pandas.tests.frame.common import TestData
 
@@ -2665,118 +2664,6 @@ def test_take():
         ray_df.take(None)
 
 
-def test_to_clipboard():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_clipboard()
-
-
-def test_to_csv():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_csv()
-
-
-def test_to_dense():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_dense()
-
-
-def test_to_dict():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_dict()
-
-
-def test_to_excel():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_excel(None)
-
-
-def test_to_feather():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_feather(None)
-
-
-def test_to_gbq():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_gbq(None, None)
-
-
-def test_to_hdf():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_hdf(None, None)
-
-
-def test_to_html():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_html()
-
-
-def test_to_json():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_json()
-
-
-def test_to_latex():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_latex()
-
-
-def test_to_msgpack():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_msgpack()
-
-
-def test_to_panel():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_panel()
-
-
-def test_to_parquet():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_parquet(None)
-
-
-def test_to_period():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_period()
-
-
-def test_to_pickle():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_pickle(None)
-
-
 def test_to_records():
     ray_df = create_test_dataframe()
 
@@ -2789,20 +2676,6 @@ def test_to_sparse():
 
     with pytest.raises(NotImplementedError):
         ray_df.to_sparse()
-
-
-def test_to_sql():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_sql(None, None)
-
-
-def test_to_stata():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.to_stata(None)
 
 
 def test_to_string():

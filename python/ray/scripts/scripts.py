@@ -146,11 +146,29 @@ def cli():
     is_flag=True,
     default=False,
     help="use the raylet code path, this is not supported yet")
+@click.option(
+    "--max-sends",
+    required=False,
+    type=int,
+    default=2,
+    help="the maximum number of concurrent outgoing object transfers")
+@click.option(
+    "--max-receives",
+    required=False,
+    type=int,
+    default=2,
+    help="the maximum number of concurrent incoming object transfers")
+@click.option(
+    "--object-chunk-size",
+    required=False,
+    type=int,
+    default=100000000,
+    help="the chunk size into which objects are segmented")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages, autoscaling_config,
-          use_raylet):
+          use_raylet, max_sends, max_receives, object_chunk_size):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -222,7 +240,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             autoscaling_config=autoscaling_config,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            max_sends=max_sends,
+            max_receives=max_receives,
+            object_chunk_size=object_chunk_size)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"
@@ -289,7 +310,10 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             resources=resources,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
-            use_raylet=use_raylet)
+            use_raylet=use_raylet,
+            max_sends=max_sends,
+            max_receives=max_receives,
+            object_chunk_size=object_chunk_size)
         print(address_info)
         print("\nStarted Ray on this node. If you wish to terminate the "
               "processes that have been started, run\n\n"
