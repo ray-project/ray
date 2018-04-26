@@ -2433,31 +2433,43 @@ class DataFrame(object):
                                      fill_value)
 
     def mode(self, axis=0, numeric_only=False):
-        def mode_helper(df):
-            if numeric_only:
-                return df.select_dtypes(exclude='object').mode(axis=axis)
-            return df.mode(axis=axis)
-
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        if axis == 0:
-            parts = ray.get(_map_partitions(mode_helper, self._col_partitions))
-            parts = [(parts[i], i) for i in range(len(parts))]
-            for df, partition in parts:
-                this_partition = self._col_metadata.partition_series(partition)
-                df.columns = this_partition[this_partition.isin(df.columns)].index
+        def mode_helper(df):
+            if numeric_only:
+                df = df.select_dtypes(exclude='object')
+            mode_df = df.mode(axis=axis)
+            return mode_df, mode_df.shape[axis]
 
-            return DataFrame(col_partitions=[obj[0] for obj in parts],
+        def reindex_helper(df, *lengths):
+            max_len = max(lengths[0])
+            df = df.reindex(pd.RangeIndex(max_len), axis=axis)
+            return df
+
+        if axis == 0:
+            result = [_deploy_func._submit(args=(lambda df: mode_helper(df),
+                                                 part), num_return_vals=2)
+                      for part in self._col_partitions]
+            parts, lengths = [list(t) for t in zip(*result)]
+
+            parts = [_deploy_func.remote(
+                lambda df, *l: reindex_helper(df, l), part, *lengths)
+                for part in parts]
+
+            return DataFrame(col_partitions=parts,
                              columns=self.columns)
         else:
-            parts = ray.get(_map_partitions(mode_helper, self._row_partitions))
-            parts = [(parts[i], i) for i in range(len(parts))]
-            for df, partition in parts:
-                this_partition = self._row_metadata.partition_series(partition)
-                df.index = this_partition[this_partition.isin(df.index)].index
+            result = [_deploy_func._submit(args=(lambda df: mode_helper(df),
+                                                 part), num_return_vals=2)
+                      for part in self._row_partitions]
+            parts, lengths = [list(t) for t in zip(*result)]
 
-            return DataFrame(row_partitions=[obj[0] for obj in parts],
-                             index=self.index)
+            parts = [_deploy_func.remote(
+                lambda df, *l: reindex_helper(df, l), part, *lengths)
+                for part in parts]
+
+            return DataFrame(row_partitions=parts,
+                             columns=self.columns)
 
     def mul(self, other, axis='columns', level=None, fill_value=None):
         """Multiplies this DataFrame against another DataFrame/Series/scalar.

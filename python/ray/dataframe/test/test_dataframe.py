@@ -2059,11 +2059,11 @@ def test_mod():
     test_inter_df_math("mod", simple=False)
 
 
-def test_mode():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.mode()
+@pytest.fixture
+def test_mode(ray_df, pandas_df):
+    assert(ray_series_equals_pandas(ray_df.mode(), pandas_df.mode()))
+    assert(ray_series_equals_pandas(ray_df.mode(axis=1),
+           pandas_df.mode(axis=1)))
 
 
 def test_mul():
