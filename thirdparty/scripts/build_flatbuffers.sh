@@ -7,7 +7,7 @@ set -e
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)/../
 
-FLATBUFFERS_VERSION=1.7.1
+FLATBUFFERS_VERSION=1.9.0
 
 # Download and compile flatbuffers if it isn't already present.
 if [ ! -d $TP_DIR/pkg/flatbuffers ]; then
@@ -20,6 +20,7 @@ if [ ! -d $TP_DIR/pkg/flatbuffers ]; then
   # Compile flatbuffers.
   pushd flatbuffers-$FLATBUFFERS_VERSION
     cmake -DCMAKE_CXX_FLAGS=-fPIC \
+          -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX:PATH=$TP_DIR/pkg/flatbuffers \
           -DFLATBUFFERS_BUILD_TESTS=OFF
     make -j5
