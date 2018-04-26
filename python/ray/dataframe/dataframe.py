@@ -2830,7 +2830,7 @@ class DataFrame(object):
             else 0
 
         if axis == 0:
-            axis_length = len(self._row_metadata) 
+            axis_length = len(self._row_metadata)
         else:
             axis_length = len(self._col_metadata)
 
@@ -2893,11 +2893,11 @@ class DataFrame(object):
         if n < 0:
             raise ValueError("A negative number of rows requested. Please "
                              "provide positive value.")
-        
+
         if n == 0:
             # An Empty DataFrame is returned if the number of samples is 0
-            return DataFrame(columns=[] if axis==1 else self.columns,
-                             index=self.index if axis==1 else [])
+            return DataFrame(columns=[] if axis == 1 else self.columns,
+                             index=self.index if axis == 1 else [])
 
         if axis == 1:
             axis_labels = self.columns

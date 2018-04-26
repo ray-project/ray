@@ -37,7 +37,8 @@ from .io import (read_csv, read_parquet, read_json, read_html,  # noqa: 402
 from .concat import concat  # noqa: 402
 
 __all__ = [
-    "DataFrame", "Series", "read_csv", "read_parquet", "concat", "eval"
+    "DataFrame", "Series", "read_csv", "read_parquet", "concat", "eval",
+    "Panel", "date_range", "MultiIndex"
 ]
 
 try:
