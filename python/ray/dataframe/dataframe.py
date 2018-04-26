@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
+# from functools import reduce
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
@@ -23,6 +24,7 @@ import warnings
 import numpy as np
 import ray
 import itertools
+import functools
 import io
 import sys
 import re
@@ -1047,52 +1049,81 @@ class DataFrame(object):
         """
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        if is_list_like(func) and not all([isinstance(obj, str)
-                                           for obj in func]):
-            raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
+        # if is_list_like(func) and not all([isinstance(obj, str)
+        #                                    for obj in func]):
+        #     raise NotImplementedError(
+        #         "To contribute to Pandas on Ray, please visit "
+        #         "github.com/ray-project/ray.")
 
-        if axis == 0 and is_list_like(func):
-            return self.aggregate(func, axis, *args, **kwds)
+        # if axis == 0 and is_list_like(func):
+            # return self.aggregate(func, axis, *args, **kwds)
         if isinstance(func, compat.string_types):
             if axis == 1:
                 kwds['axis'] = axis
             return getattr(self, func)(*args, **kwds)
         else:
             if isinstance(func, dict):
-                warnings.warn("Currently not supporting functions that return "
-                              "a DataFrame.", FutureWarning, stacklevel=2)
                 result = []
-                for key in func:
-                    part, ind = self._col_metadata[key]
+                if list not in map(type, func.values()):
+                    for key in func:
+                        part, ind = self._col_metadata[key]
 
-                    if isinstance(func[key], compat.string_types):
-                        if axis == 1:
-                            kwds['axis'] = axis
-                        # find the corresponding pd.Series function
-                        f = getattr(pd.core.series.Series, func[key])
-                    elif isinstance(func[key], list):
-                        # not yet supporting lists of functions in the dict
-                        raise NotImplementedError(
-                            "To contribute to Pandas on Ray, please visit "
-                            "github.com/ray-project/ray.")
-                    else:
-                        f = func[key]
+                        if isinstance(func[key], compat.string_types):
+                            if axis == 1:
+                                kwds['axis'] = axis
+                            # find the corresponding pd.Series function
+                            f = getattr(pd.core.series.Series, func[key])
+                        else:
+                            f = func[key]
 
-                    def helper(df):
-                        x = df.iloc[:, ind]
-                        return f(x)
+                        def helper(df):
+                            x = df.iloc[:, ind]
+                            return f(x)
 
-                    result.append(_deploy_func.remote(
-                            helper, self._col_partitions[part]))
+                        result.append(_deploy_func.remote(
+                                helper, self._col_partitions[part]))
 
-                return pd.Series(ray.get(result), index=func.keys())
+                    return pd.Series(ray.get(result), index=func.keys())
+                else:
+                    for key in func:
+                        part, ind = self._col_metadata[key]
+
+                        if isinstance(func[key], compat.string_types):
+                            if axis == 1:
+                                kwds['axis'] = axis
+                            f = [getattr(pd.core.series.Series, func[key])]
+                        elif isinstance(func[key], list):
+                            f = func[key]
+                        else:
+                            f = [func[key]]
+
+                        def helper(df):
+                            x = df.iloc[:, ind].apply(f).to_frame()
+                            x.columns = [key]
+                            return x
+                        
+                        result.append(_deploy_func.remote(helper,
+                            self._col_partitions[part]))
+                        
+                    result = ray.get(result)
+                    return functools.reduce((lambda l,r: l.join(r, how='outer')), result)
 
             elif isinstance(func, list):
-                raise NotImplementedError(
-                    "To contribute to Pandas on Ray, please visit "
-                    "github.com/ray-project/ray.")
+                rows = []
+                for function in func:
+                    if isinstance(function, compat.string_types):
+                        if axis == 1:
+                            kwds['axis'] = axis
+                        f = getattr(pd.core.series.Series, function)
+                    else:
+                        f = function
+                    rows.append(pd.concat(ray.get(_map_partitions(lambda df: f(df),
+                        self._col_partitions)), axis=1))
+                df = pd.concat(rows, axis=0)
+                df.columns = self.columns
+                df.index = [f if isinstance(f,compat.string_types) \
+                            else f.__name__ for f in func]
+                return df
             elif callable(func):
                 return self._callable_function(func, axis=axis, *args, **kwds)
 
