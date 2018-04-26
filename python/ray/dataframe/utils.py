@@ -161,8 +161,7 @@ def _map_partitions(func, partitions, *argslists):
 def _build_columns(df_col, columns):
     """Build columns and compute lengths for each partition."""
     # Columns and width
-    widths = np.array(ray.get([_deploy_func.remote(lambda df: len(df.columns),
-                                                   d)
+    widths = np.array(ray.get([_deploy_func.remote(_get_widths, d)
                       for d in df_col]))
     dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(widths))
                     for p_sub_idx in range(widths[p_idx])]
@@ -190,7 +189,7 @@ def _build_index(df_row, index):
 
 def _create_block_partitions(partitions, axis=0, length=None):
 
-    if length is not None and get_npartitions() > length:
+    if length is not None and length != 0 and get_npartitions() > length:
         npartitions = length
     else:
         npartitions = get_npartitions()

@@ -9,7 +9,7 @@ from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas import compat
-from pandas.compat import lzip, cPickle as pkl
+from pandas.compat import lzip, string_types, cPickle as pkl
 import pandas.core.common as com
 from pandas.core.dtypes.common import (
     is_bool_dtype,
@@ -2801,6 +2801,30 @@ class DataFrame(object):
 
     def sample(self, n=None, frac=None, replace=False, weights=None,
                random_state=None, axis=None):
+        """Returns a random sample of items from an axis of object.
+
+        Args:
+            n: Number of items from axis to return. Cannot be used with frac.
+                Default = 1 if frac = None.
+            frac: Fraction of axis items to return. Cannot be used with n.
+            replace: Sample with or without replacement. Default = False.
+            weights: Default ‘None’ results in equal probability weighting.
+                If passed a Series, will align with target object on index.
+                Index values in weights not found in sampled object will be
+                ignored and index values in sampled object not in weights will
+                be assigned weights of zero. If called on a DataFrame, will
+                accept the name of a column when axis = 0. Unless weights are
+                a Series, weights must be same length as axis being sampled.
+                If weights do not sum to 1, they will be normalized to sum
+                to 1. Missing values in the weights column will be treated as
+                zero. inf and -inf values not allowed.
+            random_state: Seed for the random number generator (if int), or
+                numpy RandomState object.
+            axis: Axis to sample. Accepts axis number or name.
+
+        Returns:
+            A new Dataframe
+        """
 
         axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
             else 0
@@ -2869,26 +2893,58 @@ class DataFrame(object):
         if n < 0:
             raise ValueError("A negative number of rows requested. Please "
                              "provide positive value.")
+        
+        if n == 0:
+            # An Empty DataFrame is returned if the number of samples is 0
+            return DataFrame(columns=[] if axis==1 else self.columns,
+                             index=self.index if axis==1 else [])
 
         if axis == 1:
-            samples = np.random.choice(a=self.columns, size=n,
+            axis_labels = self.columns
+            partition_metadata = self._col_metadata
+            partitions = self._col_partitions
+        else:
+            axis_labels = self.index
+            partition_metadata = self._row_metadata
+            partitions = self._row_partitions
+
+        if random_state is not None:
+            if isinstance(random_state, int):
+                random_num_gen = np.random.RandomState(random_state)
+            elif isinstance(random_state, np.random.randomState):
+                random_num_gen = random_state
+            else:
+                # random_state must be an int or a numpy RandomState object
+                raise ValueError("Please enter an `int` OR a "
+                                 "np.random.RandomState for random_state")
+
+            # choose random numbers and then get corresponding labels from
+            # chosen axis
+            sample_indices = random_num_gen.randint(
+                                low=0,
+                                high=len(partition_metadata),
+                                size=n)
+            samples = axis_labels[sample_indices]
+        else:
+            # randomly select labels from chosen axis
+            samples = np.random.choice(a=axis_labels, size=n,
                                        replace=replace, p=weights)
-            part_ind_tuples = [self._col_metadata[sample] for sample in samples]
+
+        part_ind_tuples = [partition_metadata[sample]
+                           for sample in samples]
+
+        if axis == 1:
             new_cols = [_deploy_func.remote(lambda df: df.iloc[:, [tup[1]]],
-                    self._col_partitions[tup[0]]) for tup in part_ind_tuples]
+                        partitions[tup[0]]) for tup in part_ind_tuples]
             return DataFrame(col_partitions=new_cols,
                              columns=samples,
                              index=self.index)
         else:
-            samples = np.random.choice(a=self.index, size=n,
-                                       replace=replace, p=weights)
-            part_ind_tuples = [self._row_metadata[sample] for sample in samples]
             new_rows = [_deploy_func.remote(lambda df: df.loc[[tup[1]]],
-                    self._row_partitions[tup[0]]) for tup in part_ind_tuples]
+                        partitions[tup[0]]) for tup in part_ind_tuples]
             return DataFrame(row_partitions=new_rows,
                              columns=self.columns,
                              index=samples)
-        print(samples)
 
     def select(self, crit, axis=0):
         raise NotImplementedError(

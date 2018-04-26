@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
-from pandas import eval
+from pandas import (eval, Panel, date_range, MultiIndex)
 import threading
 
 pd_version = pd.__version__
