@@ -774,7 +774,16 @@ class DataFrame(object):
             If inplace is set to True, returns None, otherwise returns a new
             DataFrame with the dropna applied.
         """
-        raise NotImplementedError("Not yet")
+        if is_list_like(axis):
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        if axis == 1:
+            subset = self.index.isin(subset)
+            subset = [i for i in range(len(subset)) if subset[i]]
 
     def add(self, other, axis='columns', level=None, fill_value=None):
         """Add this DataFrame to another or a scalar/list.
