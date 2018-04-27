@@ -9,7 +9,7 @@ from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas import compat
-from pandas.compat import lzip, string_types, cPickle as pkl
+from pandas.compat import lzip, to_str, string_types, cPickle as pkl
 import pandas.core.common as com
 from pandas.core.dtypes.common import (
     is_bool_dtype,
@@ -1772,9 +1772,36 @@ class DataFrame(object):
             return new_obj
 
     def filter(self, items=None, like=None, regex=None, axis=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        import re
+
+        nkw = com._count_not_none(items, like, regex)
+        if nkw > 1:
+            raise TypeError('Keyword arguments `items`, `like`, or `regex` '
+                            'are mutually exclusive')
+        if nkw == 0:
+            raise TypeError('Must pass either `items`, `like`, or `regex`')
+
+        if axis is None:
+            axis = 'columns'  # This is the default info axis for dataframes
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+        labels = self.columns if axis else self.index
+
+        if items is not None:
+            bool_arr = labels.isin(items)
+        elif like:
+            def f(x):
+                return like in to_str(x)
+            bool_arr = labels.map(f).tolist()
+        else:
+            def f(x):
+                return matcher.search(to_str(x)) is not None
+            matcher = re.compile(regex)
+            bool_arr = labels.map(f).tolist()
+
+        if not axis:
+            return self[bool_arr]
+        return self[self.columns[bool_arr]]
 
     def first(self, offset):
         raise NotImplementedError(

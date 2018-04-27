@@ -190,6 +190,11 @@ def test_int_dataframe():
             'col3',
             'col4']
 
+    filter_by = {'items': ['col1', 'col5'],
+                 'regex': '4$|3$',
+                 'like': 'col'}
+
+    test_filter(ray_df, pandas_df, filter_by)
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -350,6 +355,11 @@ def test_float_dataframe():
             'col3',
             'col4']
 
+    filter_by = {'items': ['col1', 'col5'],
+                 'regex': '4$|3$',
+                 'like': 'col'}
+
+    test_filter(ray_df, pandas_df, filter_by)
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -510,6 +520,11 @@ def test_mixed_dtype_dataframe():
             'col3',
             'col4']
 
+    filter_by = {'items': ['col1', 'col5'],
+                 'regex': '4$|3$',
+                 'like': 'col'}
+
+    test_filter(ray_df, pandas_df, filter_by)
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -670,6 +685,11 @@ def test_nan_dataframe():
             'col3',
             'col4']
 
+    filter_by = {'items': ['col1', 'col5'],
+                 'regex': '4$|3$',
+                 'like': 'col'}
+
+    test_filter(ray_df, pandas_df, filter_by)
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -1755,11 +1775,16 @@ def test_fillna_datetime_columns(num_partitions=2):
 """
 
 
-def test_filter():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_filter(ray_df, pandas_df, by):
+    ray_df_equals_pandas(ray_df.filter(items=by['items']),
+                         pandas_df.filter(items=by['items']))
 
-    with pytest.raises(NotImplementedError):
-        ray_df.filter()
+    ray_df_equals_pandas(ray_df.filter(regex=by['regex']),
+                         pandas_df.filter(regex=by['regex']))
+
+    ray_df_equals_pandas(ray_df.filter(like=by['like']),
+                         pandas_df.filter(like=by['like']))
 
 
 def test_first():
