@@ -270,7 +270,8 @@ class _Loc_Indexer(_Location_Indexer_Base):
         lens = row_meta._lengths if axis == 'row' else col_meta._lengths
         lens = np.concatenate([lens, np.array([n_nan_labels])])
 
-        row_metadata_view = _IndexMetadata(coord_df_oid=coord_df, lengths_oid=lens)
+        row_metadata_view = _IndexMetadata(
+            coord_df_oid=coord_df, lengths_oid=lens)
 
         return row_metadata_view
 
@@ -411,11 +412,13 @@ class _iLoc_Indexer(_Location_Indexer_Base):
 
         row_coord_df = self.row_coord_df.iloc[row_loc]
         row_metadata_view = _IndexMetadata(
-            coord_df_oid=row_coord_df, lengths_oid=self.df._row_metadata._lengths)
+            coord_df_oid=row_coord_df,
+            lengths_oid=self.df._row_metadata._lengths)
 
         col_coord_df = self.col_coord_df.iloc[col_loc]
         col_metadata_view = _IndexMetadata(
-            coord_df_oid=col_coord_df, lengths_oid=self.df._col_metadata._lengths)
+            coord_df_oid=col_coord_df,
+            lengths_oid=self.df._col_metadata._lengths)
 
         df_view = DataFrame(
             block_partitions=self.block_oids,

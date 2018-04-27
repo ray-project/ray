@@ -133,7 +133,6 @@ class DataFrame(object):
                     _create_block_partitions(partitions, axis=axis,
                                              length=len(columns))
 
-
         # Sometimes we only get a single column or row, which is
         # problematic for building blocks from the partitions, so we
         # add whatever dimension we're missing from the input.
