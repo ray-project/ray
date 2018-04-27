@@ -193,9 +193,12 @@ def _create_block_partitions(partitions, axis=0, length=None):
         npartitions = get_ncolpartitions() if axis == 0 else get_nrowpartitions()
         # npartitions = get_npartitions()
 
-    x = [create_blocks._submit(args=(partition, npartitions, axis),
-                               num_return_vals=npartitions)
-         for partition in partitions]
+    if npartitions == 1:
+        x = [[part] for part in partitions]
+    else:
+        x = [create_blocks._submit(args=(partition, npartitions, axis),
+                                   num_return_vals=npartitions)
+             for partition in partitions]
 
     # In the case that axis is 1 we have to transpose because we build the
     # columns into rows. Fortunately numpy is efficient at this.
@@ -467,3 +470,7 @@ def _map_partitions_coalesce(func, block_partitions, axis):
     else:
         # get row partitions, reduce, perform
         return [_deploy_func_row.remote(func, *part) for part in block_partitions]
+
+def waitall(df):
+    parts = df._block_partitions.flatten().tolist()
+    ray.wait(parts, len(parts))
