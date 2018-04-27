@@ -179,7 +179,7 @@ class ObjectManager {
   ConnectionPool connection_pool_;
 
   /// Timeout for failed pull requests.
-  std::unordered_map<ObjectID, std::shared_ptr<boost::asio::deadline_timer>,
+  std::unordered_map<ObjectID, std::pair<std::shared_ptr<boost::asio::deadline_timer>, int>,
                      UniqueIDHasher>
       pull_requests_;
 

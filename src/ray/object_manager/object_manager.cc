@@ -121,16 +121,32 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 }
 
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
-  pull_requests_[object_id] = std::shared_ptr<boost::asio::deadline_timer>(
-      new asio::deadline_timer(*main_service_, boost::posix_time::milliseconds(wait_ms)));
-  pull_requests_[object_id]->async_wait(
+  if (pull_requests_.count(object_id) == 0){
+    pull_requests_.emplace(std::make_pair(
+        ObjectID(object_id),
+        std::pair<std::shared_ptr<boost::asio::deadline_timer>, int>(
+            std::shared_ptr<boost::asio::deadline_timer>(new asio::deadline_timer(
+                *main_service_, boost::posix_time::milliseconds(wait_ms))),
+            0)));
+    RAY_LOG(DEBUG) << object_id << " creating scheduler";
+  }
+  std::pair<std::shared_ptr<boost::asio::deadline_timer>, int> &time_retries = pull_requests_.find(object_id)->second;
+  if (time_retries.second >= 1000){
+    RAY_LOG(DEBUG) << "failed to pull " << object_id;
+    pull_requests_.erase(object_id);
+    return;
+  }
+  time_retries.second += 1;
+  RAY_LOG(DEBUG) << object_id << " num_retries=" << time_retries.second;
+  time_retries.first->async_wait(
       [this, object_id](const boost::system::error_code &error_code) {
-        pull_requests_.erase(object_id);
         RAY_CHECK_OK(PullGetLocations(object_id));
       });
 }
 
 ray::Status ObjectManager::PullGetLocations(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "pull_requests_.size()=" << pull_requests_.size();
+
   ray::Status status_code = object_directory_->GetLocations(
       object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
@@ -145,6 +161,7 @@ void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client
   RAY_CHECK(!client_ids.empty());
   ClientID client_id = client_ids.front();
   ray::Status status_code = Pull(object_id, client_id);
+  RAY_CHECK_OK(status_code);
 }
 
 void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
@@ -152,8 +169,17 @@ void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
+  // Check client_id is not itself.
+  if (client_id == client_id_) {
+    if (pull_requests_.count(object_id) > 0){
+      pull_requests_.erase(object_id);
+    }
+    return ray::Status::Invalid("Cannot pull object from self.");
+  }
   if (ObjectInTransitOrLocal(object_id)) {
-    // Currently, there's no guarantee that the transfer will happen.
+    if (pull_requests_.count(object_id) > 0){
+      pull_requests_.erase(object_id);
+    }    // Currently, there's no guarantee that the transfer will happen.
     // Do nothing if the object is already being received.
     RAY_LOG(DEBUG) << "Object " << object_id
                    << (local_objects_.count(object_id) == 0 ? "in transit "
@@ -165,24 +191,14 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &clien
 
 ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                                    const ClientID &client_id) {
-  // Check client_id is not itself.
-  if (client_id == client_id_) {
-    return ray::Status::Invalid("Cannot pull object from self.");
-  }
-
   // Acquire a message connection and send pull request.
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
   // TODO(hme): There is no cap on the number of pull request connections.
   status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id,
                                       &conn);
-  if (!status.ok()) {
-    // TODO(hme): Keep track of retries,
-    // and only retry on object not local
-    // for now.
-    SchedulePull(object_id, config_.pull_timeout_ms);
-    return status;
-  }
+  RAY_CHECK_OK(status);
+
   if (conn == nullptr) {
     status = object_directory_->GetInformation(
         client_id,
@@ -211,6 +227,9 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
     // Do nothing if the object is already being received.
     // We check here too just in case the object ends up in transit
     // in the time between this method call and the Pull method call.
+    if (pull_requests_.count(object_id) > 0){
+      pull_requests_.erase(object_id);
+    }
     RAY_CHECK_OK(
         connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
     RAY_LOG(DEBUG) << "Object " << object_id
@@ -226,6 +245,9 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
                                   fbb.GetSize(), fbb.GetBufferPointer()));
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
+  if (pull_requests_.count(object_id) > 0){
+    pull_requests_.erase(object_id);
+  }
   return ray::Status::OK();
 }
 
@@ -302,10 +324,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
   // If status is not okay, then return immediately because
   // plasma_client.Get failed.
   // No reference is acquired for this chunk, so no need to release the chunk.
-  if (!chunk_status.second.ok()) {
-    TryRemoveInTransitSend(object_id, conn->GetClientID());
-    return ray::Status::OK();
-  }
+  RAY_CHECK_OK(chunk_status.second);
 
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
