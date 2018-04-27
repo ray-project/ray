@@ -117,7 +117,7 @@ class NodeManager {
   std::unordered_map<ClientID, TcpServerConnection, UniqueIDHasher>
       remote_server_connections_;
   std::unordered_map<ActorID, ActorRegistration, UniqueIDHasher> actor_registry_;
-  std::unordered_map<ObjectID, ClientID, UniqueIDHasher> push_objects_;
+  std::unordered_map<ObjectID, std::unordered_set<ClientID, UniqueIDHasher>, UniqueIDHasher> push_objects_;
 };
 
 }  // namespace raylet
