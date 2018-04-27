@@ -143,7 +143,6 @@ class DataFrame(object):
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
                 for part in self._block_partitions]
-                for part in self._block_partitions]
 
     def _set_row_partitions(self, new_row_partitions):
         self._block_partitions = \
