@@ -103,7 +103,7 @@ def _compute_offset(fn, npartitions):
         # The position of the \n we just crossed.
         new_line_cursor = start + total_offset - 1
         offsets.append((start, new_line_cursor))
-        start = new_line_cursor + 1
+        start = start + total_offset + 1
 
     bio.close()
     return offsets
