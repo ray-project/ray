@@ -339,3 +339,19 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
 
     new_rows = func(left, right)
     return create_blocks_helper(new_rows, left_df_len, 0)
+
+
+@ray.remote
+def _match_partitioning(column_partition, lengths):
+
+    partitioned_list = []
+
+    columns = column_partition.columns
+    for length in lengths:
+        if len(column_partition) == 0:
+            partitioned_list.append(pd.DataFrame(columns=columns))
+            continue
+
+        partitioned_list.append(column_partition.iloc[:length, :])
+        column_partition = column_partition.iloc[length:, :]
+    return partitioned_list

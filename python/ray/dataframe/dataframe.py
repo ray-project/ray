@@ -37,7 +37,8 @@ from .utils import (
     _create_block_partitions,
     _inherit_docstrings,
     _reindex_helper,
-    _co_op_helper)
+    _co_op_helper,
+    _match_partitioning)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -2408,38 +2409,26 @@ class DataFrame(object):
         # left because the defaults of merge rely on the order of the left.
         if not np.array_equal(self._row_metadata._lengths,
                               right._row_metadata._lengths):
-            @ray.remote
-            def _match_partitioning(column_partition, lengths):
-
-                partitioned_list = []
-
-                columns = column_partition.columns
-                for length in lengths:
-                    if len(column_partition) == 0:
-                        partitioned_list.append(pd.DataFrame(columns=columns))
-                        continue
-
-                    partitioned_list.append(column_partition.iloc[:length, :])
-                    column_partition = column_partition.iloc[length:, :]
-                return partitioned_list
 
             repartitioned_right = np.array([_match_partitioning._submit(
                 args=(df, self._row_metadata._lengths),
                 num_return_vals=len(self._row_metadata._lengths))
                 for df in right._col_partitions]).T
+        else:
+            repartitioned_right = right._block_partitions
 
-            left_cols = ray.put(self.columns)
-            right_cols = ray.put(right.columns)
+        left_cols = ray.put(self.columns)
+        right_cols = ray.put(right.columns)
 
-            new_blocks = \
-                np.array([co_op_helper._submit(
-                    args=tuple([lambda x, y: getattr(x, "merge")(y),
-                                left_cols, right_cols,
-                                len(self._block_partitions.T)] +
-                               np.concatenate(obj).tolist()),
-                    num_return_vals=len(self._block_partitions.T))
-                    for obj in zip(self._block_partitions,
-                                   repartitioned_right)])
+        new_blocks = \
+            np.array([co_op_helper._submit(
+                args=tuple([lambda x, y: getattr(x, "merge")(y),
+                            left_cols, right_cols,
+                            len(self._block_partitions.T)] +
+                           np.concatenate(obj).tolist()),
+                num_return_vals=len(self._block_partitions.T))
+                for obj in zip(self._block_partitions,
+                               repartitioned_right)])
 
             return DataFrame(block_partitions=new_blocks,
                              columns=new_columns)
