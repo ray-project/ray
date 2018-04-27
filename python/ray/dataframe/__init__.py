@@ -36,10 +36,11 @@ from .io import (read_csv, read_parquet, read_json, read_html,  # noqa: 402
                  read_sql)  # noqa: 402
 from .concat import concat  # noqa: 402
 from .datetime import to_datetime  # noqa: 402
+from .reshape import get_dummies  # noqa: 402
 
 __all__ = [
     "DataFrame", "Series", "read_csv", "read_parquet", "concat", "eval",
-    "unique", "value_counts", "to_datetime", "Panel", "date_range", "MultiIndex"
+    "unique", "value_counts", "to_datetime", "get_dummies", "Panel", "date_range", "MultiIndex"
 ]
 
 try:
