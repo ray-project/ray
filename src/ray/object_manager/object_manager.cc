@@ -88,7 +88,9 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
   // Only mark an object as no longer in transit when we receive notification
   // from the object store.
-  RemoveObjectInTransit(object_id);
+  if (in_transit_receives_.count(object_id) > 0){
+    RemoveObjectInTransit(object_id);
+  }
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -121,6 +123,10 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 }
 
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
+  if (ObjectInTransitOrLocal(object_id)){
+    pull_requests_.erase(object_id);
+    return;
+  }
   if (pull_requests_.count(object_id) == 0){
     pull_requests_.emplace(std::make_pair(
         ObjectID(object_id),
@@ -146,6 +152,10 @@ void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
 
 ray::Status ObjectManager::PullGetLocations(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "pull_requests_.size()=" << pull_requests_.size();
+  if (ObjectInTransitOrLocal(object_id)){
+    pull_requests_.erase(object_id);
+    return ray::Status::OK();
+  }
 
   ray::Status status_code = object_directory_->GetLocations(
       object_id,
@@ -191,6 +201,14 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &clien
 
 ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                                    const ClientID &client_id) {
+  // Check client_id is not itself.
+  if (client_id == client_id_) {
+    if (pull_requests_.count(object_id) > 0){
+      pull_requests_.erase(object_id);
+    }
+    return ray::Status::OK();
+  }
+
   // Acquire a message connection and send pull request.
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
