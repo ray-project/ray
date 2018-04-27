@@ -76,7 +76,7 @@ class LineageEntry {
   /// that created its arguments.
   ///
   /// \return The IDs of the parent entries.
-  const std::unordered_set<TaskID, UniqueIDHasher> GetParentTaskIds() const;
+  const std::unordered_set<TaskID> GetParentTaskIds() const;
 
   /// Get the task data.
   ///
@@ -85,7 +85,6 @@ class LineageEntry {
 
   Task &TaskDataMutable();
 
- private:
   /// The current state of this entry according to its status in the GCS.
   GcsStatus status_;
   /// The task data to be written to the GCS. This is nullptr if the entry is
@@ -139,7 +138,7 @@ class Lineage {
   /// Get all entries in the lineage.
   ///
   /// \return A const reference to the lineage entries.
-  const std::unordered_map<const TaskID, LineageEntry, UniqueIDHasher> &GetEntries()
+  const std::unordered_map<const TaskID, LineageEntry> &GetEntries()
       const;
 
   /// Serialize this lineage to a ForwardTaskRequest flatbuffer.
@@ -153,7 +152,7 @@ class Lineage {
 
  private:
   /// The lineage entries.
-  std::unordered_map<const TaskID, LineageEntry, UniqueIDHasher> entries_;
+  std::unordered_map<const TaskID, LineageEntry> entries_;
 };
 
 /// \class LineageCache
@@ -226,13 +225,13 @@ class LineageCache {
   // which tasks are flushable, to avoid iterating over tasks that are in
   // UNCOMMITTED_READY, but that have dependencies that have not been committed
   // yet.
-  std::unordered_set<TaskID, UniqueIDHasher> uncommitted_ready_tasks_;
+  std::unordered_set<TaskID> uncommitted_ready_tasks_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;
   /// The tasks that we've subscribed to notifications for from the pubsub
   /// storage system. We will receive a notification for these tasks on commit.
-  std::unordered_set<TaskID, UniqueIDHasher> subscribed_tasks_;
+  std::unordered_set<TaskID> subscribed_tasks_;
 };
 
 }  // namespace raylet

@@ -77,7 +77,7 @@ void ObjectDirectory::GetLocationsComplete(
     return;
   }
   // Build the set of current locations based on the entries in the log.
-  std::unordered_set<ClientID, UniqueIDHasher> locations;
+  std::unordered_set<ClientID> locations;
   for (auto entry : location_entries) {
     ClientID client_id = ClientID::from_binary(entry.manager);
     if (!entry.is_eviction) {

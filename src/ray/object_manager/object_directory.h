@@ -123,7 +123,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                             const std::vector<ObjectTableDataT> &location_entries);
 
   /// Maintain map of in-flight GetLocation requests.
-  std::unordered_map<ObjectID, ODCallbacks, UniqueIDHasher> existing_requests_;
+  std::unordered_map<ObjectID, ODCallbacks> existing_requests_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
 };

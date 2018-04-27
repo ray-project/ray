@@ -362,7 +362,7 @@ void print_worker_info(const char *message,
  * @return A map from handle ID to the number of tasks submitted by that handle
  *         that have executed so far.
  */
-std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
+std::unordered_map<ActorHandleID, int64_t>
 get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
                         ActorID actor_id);
 
@@ -381,7 +381,7 @@ get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
 void set_actor_task_counters(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
+    const std::unordered_map<ActorHandleID, int64_t>
         &task_counters);
 
 /**
@@ -395,7 +395,7 @@ void set_actor_task_counters(
  * @return A map from handle ID to execution dependency for the earliest
  *         runnable task submitted through that handle.
  */
-std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
+std::unordered_map<ActorHandleID, ObjectID> get_actor_frontier(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id);
 
@@ -414,7 +414,7 @@ void set_actor_frontier(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
+    const std::unordered_map<ActorHandleID, ObjectID>
         &frontier_dependencies);
 
 /** The following methods are for testing purposes only. */

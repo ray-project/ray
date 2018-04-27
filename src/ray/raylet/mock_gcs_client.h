@@ -31,8 +31,7 @@ class ObjectTable {
 
  private:
   std::vector<ClientID> empty_set_;
-  std::unordered_map<ObjectID, std::unordered_set<ClientID, UniqueIDHasher>,
-                     UniqueIDHasher>
+  std::unordered_map<ObjectID, std::unordered_set<ClientID>>
       client_lookup;
 };
 
@@ -53,7 +52,7 @@ class ClientInformation {
 
 class ClientTable {
  public:
-  typedef std::unordered_map<ClientID, ClientInformation, UniqueIDHasher> info_type;
+  typedef std::unordered_map<ClientID, ClientInformation> info_type;
 
   using ClientIDsCallback = std::function<void(std::vector<ray::ClientID>)>;
   using SingleInfoCallback = std::function<void(ClientInformation info)>;
