@@ -43,7 +43,7 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
     check_len(prefix_sep, 'prefix_sep')
     if isinstance(prefix, compat.string_types):
         prefix = cycle([prefix])
-        prefix = [prefix.__next__() for i in range(len(columns_to_encode))]
+        prefix = [next(prefix) for i in range(len(columns_to_encode))]
     if isinstance(prefix, dict):
         prefix = [prefix[col] for col in columns_to_encode]
 
@@ -53,8 +53,7 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
     # validate separators
     if isinstance(prefix_sep, compat.string_types):
         prefix_sep = cycle([prefix_sep])
-        prefix_sep = [prefix_sep.__next__()
-                      for i in range(len(columns_to_encode))]
+        prefix_sep = [next(prefix_sep) for i in range(len(columns_to_encode))]
     elif isinstance(prefix_sep, dict):
         prefix_sep = [prefix_sep[col] for col in columns_to_encode]
 
