@@ -1049,14 +1049,6 @@ class DataFrame(object):
         """
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        # if is_list_like(func) and not all([isinstance(obj, str)
-        #                                    for obj in func]):
-        #     raise NotImplementedError(
-        #         "To contribute to Pandas on Ray, please visit "
-        #         "github.com/ray-project/ray.")
-
-        # if axis == 0 and is_list_like(func):
-            # return self.aggregate(func, axis, *args, **kwds)
         if isinstance(func, compat.string_types):
             if axis == 1:
                 kwds['axis'] = axis
@@ -1088,11 +1080,7 @@ class DataFrame(object):
                     for key in func:
                         part, ind = self._col_metadata[key]
 
-                        if isinstance(func[key], compat.string_types):
-                            if axis == 1:
-                                kwds['axis'] = axis
-                            f = [getattr(pd.core.series.Series, func[key])]
-                        elif isinstance(func[key], list):
+                        if isinstance(func[key], list):
                             f = func[key]
                         else:
                             f = [func[key]]
@@ -1101,12 +1089,14 @@ class DataFrame(object):
                             x = df.iloc[:, ind].apply(f).to_frame()
                             x.columns = [key]
                             return x
-                        
+
                         result.append(_deploy_func.remote(helper,
-                            self._col_partitions[part]))
-                        
+                                      self._col_partitions[part]))
+
                     result = ray.get(result)
-                    return functools.reduce((lambda l,r: l.join(r, how='outer')), result)
+                    return functools.reduce(lambda l, r: l.join(r,
+                                                                how='outer'),
+                                            result)
 
             elif isinstance(func, list):
                 rows = []
@@ -1117,12 +1107,12 @@ class DataFrame(object):
                         f = getattr(pd.core.series.Series, function)
                     else:
                         f = function
-                    rows.append(pd.concat(ray.get(_map_partitions(lambda df: f(df),
-                        self._col_partitions)), axis=1))
+                    rows.append(pd.concat(ray.get(_map_partitions(
+                        lambda df: f(df), self._col_partitions)), axis=1))
                 df = pd.concat(rows, axis=0)
                 df.columns = self.columns
-                df.index = [f if isinstance(f,compat.string_types) \
-                            else f.__name__ for f in func]
+                df.index = [f_name if isinstance(f_name, compat.string_types)
+                            else f.__name__ for f_name in func]
                 return df
             elif callable(func):
                 return self._callable_function(func, axis=axis, *args, **kwds)
