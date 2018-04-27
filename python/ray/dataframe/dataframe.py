@@ -281,7 +281,7 @@ class DataFrame(object):
         # We split so that we insert our correct dataframe dimensions.
         result = self._repr_helper_()._repr_html_()
         return result.split("<p>")[0] + \
-            "<p>{0} rows × {1} columns</p>\n</div>".format(len(self.index),
+            "<p>{0} rows x {1} columns</p>\n</div>".format(len(self.index),
                                                            len(self.columns))
 
     def _get_index(self):
