@@ -195,10 +195,12 @@ class ObjectManager {
   std::unordered_set<ObjectID, UniqueIDHasher> in_transit_receives_;
 
   void TryRemoveInTransitSend(const ObjectID &object_id, const ClientID &client_id) {
-    if (--in_transit_sends_[object_id][client_id] == 0) {
-      RAY_LOG(DEBUG) << "in_transit_sends_ erase " << object_id;
-      in_transit_sends_[object_id].erase(client_id);
-    };
+    main_service_->post([this, object_id, client_id](){
+      if (--in_transit_sends_[object_id][client_id] == 0) {
+        RAY_LOG(DEBUG) << "in_transit_sends_ erase " << object_id;
+        in_transit_sends_[object_id].erase(client_id);
+      };
+    });
   }
 
   /// Record an object receive as soon as one of its chunks begins
