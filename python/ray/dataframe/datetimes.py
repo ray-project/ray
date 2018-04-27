@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import pandas
 import ray
 
@@ -15,7 +19,12 @@ def to_datetime(arg, errors='raise', dayfirst=False, yearfirst=False, utc=None,
                                   infer_datetime_format=infer_datetime_format,
                                   origin=origin)
     if errors == 'raise':
-        pandas.to_datetime(pandas.DataFrame(columns=arg.columns))
+        pandas.to_datetime(pandas.DataFrame(columns=arg.columns),
+                           errors=errors, dayfirst=dayfirst,
+                           yearfirst=yearfirst, utc=utc, box=box,
+                           format=format, exact=exact, unit=unit,
+                           infer_datetime_format=infer_datetime_format,
+                           origin=origin)
 
     def datetime_helper(df, cols):
         df.columns = cols

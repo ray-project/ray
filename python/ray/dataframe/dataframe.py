@@ -2436,40 +2436,32 @@ class DataFrame(object):
         axis = pd.DataFrame()._get_axis_number(axis)
 
         def mode_helper(df):
-            if numeric_only:
-                df = df.select_dtypes(exclude='object')
-            mode_df = df.mode(axis=axis)
+            mode_df = df.mode(axis=axis, numeric_only=numeric_only)
             return mode_df, mode_df.shape[axis]
 
-        def reindex_helper(df, *lengths):
+        def fix_length(df, *lengths):
             max_len = max(lengths[0])
             df = df.reindex(pd.RangeIndex(max_len), axis=axis)
             return df
 
+        parts = self._col_partitions if axis == 0 else self._row_partitions
+
+        result = [_deploy_func._submit(args=(lambda df: mode_helper(df),
+                                             part), num_return_vals=2)
+                  for part in parts]
+
+        parts, lengths = [list(t) for t in zip(*result)]
+
+        parts = [_deploy_func.remote(
+            lambda df, *l: fix_length(df, l), part, *lengths)
+            for part in parts]
+
         if axis == 0:
-            result = [_deploy_func._submit(args=(lambda df: mode_helper(df),
-                                                 part), num_return_vals=2)
-                      for part in self._col_partitions]
-            parts, lengths = [list(t) for t in zip(*result)]
-
-            parts = [_deploy_func.remote(
-                lambda df, *l: reindex_helper(df, l), part, *lengths)
-                for part in parts]
-
             return DataFrame(col_partitions=parts,
                              columns=self.columns)
         else:
-            result = [_deploy_func._submit(args=(lambda df: mode_helper(df),
-                                                 part), num_return_vals=2)
-                      for part in self._row_partitions]
-            parts, lengths = [list(t) for t in zip(*result)]
-
-            parts = [_deploy_func.remote(
-                lambda df, *l: reindex_helper(df, l), part, *lengths)
-                for part in parts]
-
             return DataFrame(row_partitions=parts,
-                             columns=self.columns)
+                             index=self.index)
 
     def mul(self, other, axis='columns', level=None, fill_value=None):
         """Multiplies this DataFrame against another DataFrame/Series/scalar.
