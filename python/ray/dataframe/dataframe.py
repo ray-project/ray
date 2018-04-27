@@ -2397,11 +2397,11 @@ class DataFrame(object):
               suffixes=('_x', '_y'), copy=True, indicator=False,
               validate=None):
 
-        new_columns = pd.DataFrame(columns=self.columns, index=[0])\
-            .merge(pd.DataFrame(columns=right.columns, index=[0]), how=how, on=on,
-                   left_on=left_on, right_on=right_on, left_index=left_index,
-                   right_index=right_index, sort=sort, suffixes=suffixes,
-                   copy=False, indicator=indicator).columns
+        new_columns = pd.DataFrame(columns=self.columns, index=[0]).merge(
+            pd.DataFrame(columns=right.columns, index=[0]), how=how, on=on,
+            left_on=left_on, right_on=right_on, left_index=left_index,
+            right_index=right_index, sort=sort, suffixes=suffixes, copy=False,
+            indicator=indicator, validate=validate).columns
 
         # There's a small chance that our partitions are already perfect, but
         # if it's not, we need to adjust them. We adjust the right against the
@@ -2411,19 +2411,19 @@ class DataFrame(object):
             @ray.remote
             def _match_partitioning(column_partition, lengths):
 
-                r = []
+                partitioned_list = []
 
                 columns = column_partition.columns
                 for length in lengths:
                     if len(column_partition) == 0:
-                        r.append(pd.DataFrame(columns=columns))
+                        partitioned_list.append(pd.DataFrame(columns=columns))
                         continue
 
-                    r.append(column_partition.iloc[:length, :])
+                    partitioned_list.append(column_partition.iloc[:length, :])
                     column_partition = column_partition.iloc[length:, :]
-                return r
+                return partitioned_list
 
-            b = np.array([_match_partitioning._submit(
+            repartitioned_right = np.array([_match_partitioning._submit(
                 args=(df, self._row_metadata._lengths),
                 num_return_vals=len(self._row_metadata._lengths))
                 for df in right._col_partitions]).T
@@ -2432,12 +2432,14 @@ class DataFrame(object):
             right_cols = ray.put(right.columns)
 
             new_blocks = \
-                np.array([co_op_helper._submit(args=(lambda x, y: getattr(x, "merge")(y), left_cols,
-                                                     right_cols,
-                                                     len(self._block_partitions.T),
-                                                     *np.concatenate(obj)),
-                                               num_return_vals=len(self._block_partitions.T))
-                          for obj in zip(self._block_partitions, b)])
+                np.array([co_op_helper._submit(
+                    args=tuple([lambda x, y: getattr(x, "merge")(y),
+                                left_cols, right_cols,
+                                len(self._block_partitions.T)] +
+                               np.concatenate(obj).tolist()),
+                    num_return_vals=len(self._block_partitions.T))
+                    for obj in zip(self._block_partitions,
+                                   repartitioned_right)])
 
             return DataFrame(block_partitions=new_blocks,
                              columns=new_columns)
