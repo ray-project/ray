@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
-# from functools import reduce
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
