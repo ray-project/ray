@@ -82,7 +82,7 @@ void TaskDependencyManager::SubscribeTaskReady(const Task &task) {
       // TODO(swang): Check return status.
       // TODO(swang): Handle Pull failure (if object manager does not retry).
       // TODO(atumanov): pull return status should be propagated back to the caller.
-      ray::Status status = object_manager_.Pull(argument);
+      // ray::Status status = object_manager_.Pull(argument);
     }
   }
   // Check that the task has some missing arguments.
