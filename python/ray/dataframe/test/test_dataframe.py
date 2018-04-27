@@ -3058,3 +3058,25 @@ def test__doc__():
             pd_obj = getattr(pd.DataFrame, attr, None)
             if callable(pd_obj) or isinstance(pd_obj, property):
                 assert obj.__doc__ == pd_obj.__doc__
+
+
+def test_to_datetime():
+    ray_df = rdf.DataFrame({'year': [2015, 2016],
+                            'month': [2, 3],
+                            'day': [4, 5]})
+    pd_df = pd.DataFrame({'year': [2015, 2016],
+                          'month': [2, 3],
+                          'day': [4, 5]})
+
+    rdf.to_datetime(ray_df).equals(pd.to_datetime(pd_df))
+
+
+def test_get_dummies():
+    ray_df = rdf.DataFrame({'A': ['a', 'b', 'a'],
+                            'B': ['b', 'a', 'c'],
+                            'C': [1, 2, 3]})
+    pd_df = pd.DataFrame({'A': ['a', 'b', 'a'],
+                          'B': ['b', 'a', 'c'],
+                          'C': [1, 2, 3]})
+
+    ray_df_equals_pandas(rdf.get_dummies(ray_df), pd.get_dummies(pd_df))
