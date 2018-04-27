@@ -3767,6 +3767,7 @@ class DataFrame(object):
                              columns=columns,
                              index=index)
         else:
+            columns = self._col_metadata[key].index
             indices_for_rows = self.columns.isin(columns)
             indices_for_rows = [i for i in range(len(indices_for_rows))
                                 if indices_for_rows[i]]
