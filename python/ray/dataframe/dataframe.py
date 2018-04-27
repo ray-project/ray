@@ -35,10 +35,12 @@ from .utils import (
     _blocks_to_col,
     _blocks_to_row,
     _create_block_partitions,
+    _mask_block_partitions,
     _inherit_docstrings,
     _reindex_helper)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
+from .indexing import _Loc_Indexer, _iLoc_Indexer
 
 
 @_inherit_docstrings(pd.DataFrame)
@@ -46,7 +48,8 @@ class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
                  copy=False, col_partitions=None, row_partitions=None,
-                 block_partitions=None, row_metadata=None, col_metadata=None):
+                 block_partitions=None, row_metadata=None, col_metadata=None,
+                 partial=False):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -69,7 +72,11 @@ class DataFrame(object):
                 Metadata for the new dataframe's rows
             col_metadata (_IndexMetadata):
                 Metadata for the new dataframe's columns
+            partial (boolean):
+                Internal: row_metadata and col_metadata only covers part of the
+                block partitions. (Used in index 'vew' accessor)
         """
+        self.partial = partial
         self._row_metadata = self._col_metadata = None
 
         # Check type of data and use appropriate constructor
@@ -93,6 +100,7 @@ class DataFrame(object):
             axis = 0
             columns = pd_df.columns
             index = pd_df.index
+            self._row_metadata = self._col_metadata = None
         else:
             # created this invariant to make sure we never have to go into the
             # partitions to get the columns
@@ -103,24 +111,28 @@ class DataFrame(object):
             if block_partitions is not None:
                 # put in numpy array here to make accesses easier since it's 2D
                 self._block_partitions = np.array(block_partitions)
+                if row_metadata is not None:
+                    self._row_metadata = row_metadata.copy()
+                if col_metadata is not None:
+                    self._col_metadata = col_metadata.copy()
                 assert self._block_partitions.ndim == 2, \
                     "Block Partitions must be 2D."
             else:
                 if row_partitions is not None:
                     axis = 0
                     partitions = row_partitions
+                    if row_metadata is not None:
+                        self._row_metadata = row_metadata.copy()
                 elif col_partitions is not None:
                     axis = 1
                     partitions = col_partitions
+                    if col_metadata is not None:
+                        self._col_metadata = col_metadata.copy()
 
                 self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
                                              length=len(columns))
 
-        if row_metadata is not None:
-            self._row_metadata = row_metadata.copy()
-        if col_metadata is not None:
-            self._col_metadata = col_metadata.copy()
 
         # Sometimes we only get a single column or row, which is
         # problematic for building blocks from the partitions, so we
@@ -137,6 +149,21 @@ class DataFrame(object):
         if self._col_metadata is None:
             self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
                                                 index=columns, axis=1)
+
+    def _get_block_partitions(self):
+        if (self._row_metadata is None or self._col_metadata is None)\
+                or (not self.partial):
+            return self._block_partitions_data
+        else:  # is partial, need mask
+            oid_arr = _mask_block_partitions(self._block_partitions_data,
+                                             self._row_metadata,
+                                             self._col_metadata)
+            return oid_arr
+
+    def _set_block_partitions(self, new_block_partitions):
+        self._block_partitions_data = new_block_partitions
+
+    _block_partitions = property(_get_block_partitions, _set_block_partitions)
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -408,6 +435,10 @@ class DataFrame(object):
         Returns:
             The dtypes for this DataFrame.
         """
+        # Deal with empty column case
+        if self.shape[1] == 0:
+            return pd.Series()
+
         # The dtypes are common across all partitions.
         # The first partition will be enough.
         result = ray.get(_deploy_func.remote(lambda df: df.dtypes,
@@ -3775,9 +3806,7 @@ class DataFrame(object):
         We currently support: single label, list array, slice object
         We do not support: boolean array, callable
         """
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return _Loc_Indexer(self)
 
     @property
     def is_copy(self):
@@ -3812,6 +3841,4 @@ class DataFrame(object):
         We currently support: single label, list array, slice object
         We do not support: boolean array, callable
         """
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        return _iLoc_Indexer(self)
