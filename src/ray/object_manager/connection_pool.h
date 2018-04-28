@@ -93,8 +93,7 @@ class ConnectionPool {
   using SenderMapType =
       std::unordered_map<ray::ClientID, std::vector<std::shared_ptr<SenderConnection>>>;
   using ReceiverMapType =
-      std::unordered_map<ray::ClientID, 
-                         std::vector<std::shared_ptr<TcpClientConnection>>>;
+      std::unordered_map<ray::ClientID, std::vector<std::shared_ptr<TcpClientConnection>>>;
 
   /// Adds a receiver for ClientID to the given map.
   void Add(ReceiverMapType &conn_map, const ClientID &client_id,

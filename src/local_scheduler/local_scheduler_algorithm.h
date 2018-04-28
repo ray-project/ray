@@ -362,9 +362,9 @@ void print_worker_info(const char *message,
  * @return A map from handle ID to the number of tasks submitted by that handle
  *         that have executed so far.
  */
-std::unordered_map<ActorHandleID, int64_t>
-get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
-                        ActorID actor_id);
+std::unordered_map<ActorHandleID, int64_t> get_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id);
 
 /**
  * Set the number of tasks, per actor handle, that have been executed on an
@@ -381,8 +381,7 @@ get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
 void set_actor_task_counters(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, int64_t>
-        &task_counters);
+    const std::unordered_map<ActorHandleID, int64_t> &task_counters);
 
 /**
  * Get the actor's frontier of task dependencies.

@@ -88,7 +88,6 @@ const TaskID ComputeTaskId(const ObjectID &object_id);
 /// if created by a put.
 int64_t ComputeObjectIndex(const ObjectID &object_id);
 
-
 }  // namespace ray
 
 namespace std {
