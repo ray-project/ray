@@ -32,9 +32,9 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
         DataFrame or one-hot encoded data.
     """
     if not isinstance(data, DataFrame):
-        pandas.get_dummies(data, prefix=prefix, prefix_sep=prefix_sep,
-                           dummy_na=dummy_na, columns=columns, sparse=sparse,
-                           drop_first=drop_first)
+        return pandas.get_dummies(data, prefix=prefix, prefix_sep=prefix_sep,
+                                  dummy_na=dummy_na, columns=columns,
+                                  sparse=sparse, drop_first=drop_first)
 
     if sparse:
         raise NotImplementedError(
