@@ -2433,6 +2433,15 @@ class DataFrame(object):
                                      fill_value)
 
     def mode(self, axis=0, numeric_only=False):
+        """Perform mode across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the mode on.
+            numeric_only (bool): if True, only apply to numeric columns.
+
+        Returns:
+            DataFrame: The mode of the DataFrame.
+        """
         axis = pd.DataFrame()._get_axis_number(axis)
 
         def mode_helper(df):

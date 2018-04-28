@@ -12,6 +12,28 @@ from .utils import _map_partitions
 def to_datetime(arg, errors='raise', dayfirst=False, yearfirst=False, utc=None,
                 box=True, format=None, exact=True, unit=None,
                 infer_datetime_format=False, origin='unix'):
+    """Convert the arg to datetime format. If not Ray DataFrame, this falls
+       back on pandas.
+
+    Args:
+        errors ('raise' or 'ignore'): If 'ignore', errors are silenced.
+        dayfirst (bool): Date format is passed in as day first.
+        yearfirst (bool): Date format is passed in as year first.
+        utc (bool): retuns a UTC DatetimeIndex if True.
+        box (bool): If True, returns a DatetimeIndex.
+        format (string): strftime to parse time, eg "%d/%m/%Y".
+        exact (bool): If True, require an exact format match.
+        unit (string, default 'ns'): unit of the arg.
+        infer_datetime_format (bool): Whether or not to infer the format.
+        origin (string): Define the reference date.
+
+    Returns:
+        Type depends on input:
+
+        - list-like: DatetimeIndex
+        - Series: Series of datetime64 dtype
+        - scalar: Timestamp
+    """
     if not isinstance(arg, DataFrame):
         return pandas.to_datetime(arg, errors=errors, dayfirst=dayfirst,
                                   yearfirst=yearfirst, utc=utc, box=box,
