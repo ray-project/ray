@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import ray
 
+import copy
+
 from .utils import (
     _build_index,
     _build_columns)
@@ -122,6 +124,12 @@ class _IndexMetadata(_IndexMetadataBase):
             dfs ([ObjectID]): ObjectIDs of dataframe partitions
             index (pd.Index): Index of the Ray DataFrame.
             axis: Axis of partition (0=row partitions, 1=column partitions)
+            lengths_oid (Union[ObjectId, [ObjectId]):
+                Internal, used for constructing IndexMetadata without building
+                lengths from scratch.
+            coord_df_oid (Union[ObjectId, [ObjectId]):
+                Internal, used for constructing IndexMetadata without building
+                coord_df from scratch.
 
         Returns:
             A IndexMetadata backed by the specified pd.Index, partitioned off
@@ -133,6 +141,9 @@ class _IndexMetadata(_IndexMetadataBase):
                 _build_columns.remote(dfs, index)
         self._coord_df = coord_df_oid
         self._lengths = lengths_oid
+
+    def copy(self):
+        return copy.copy(self)
 
     def _get__lengths(self):
         if isinstance(self._lengths_cache, ray.local_scheduler.ObjectID) or \
@@ -271,14 +282,23 @@ class _IndexMetadata(_IndexMetadataBase):
         self._coord_df.loc[partition_mask & index_within_partition_mask,
                            'index_within_partition'] -= 1
 
-    def copy(self):
-        return _IndexMetadata(coord_df_oid=self._coord_df,
-                              lengths_oid=self._lengths)
+    def get_partition(self, partition_id):
+        """Return a view of coord_df where partition = partition_id
+        """
+        return self._coord_df[self._coord_df.partition == partition_id]
+
+    def sorted_index(self):
+        return (self._coord_df
+                    .sort_values(['partition', 'index_within_partition'])
+                    .index)
 
 
 class _WrappingIndexMetadata(_IndexMetadata):
     """IndexMetadata implementation for index across a non-partitioned axis.
     This implementation assumes the underlying index lies across one partition.
+
+    Deprecated:
+        This class was used to wrap column info when we have row partition.
     """
 
     def __init__(self, index):
