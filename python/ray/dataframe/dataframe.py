@@ -71,7 +71,6 @@ class DataFrame(object):
             col_metadata (_IndexMetadata):
                 Metadata for the new dataframe's columns
         """
-        self._row_metadata = self._col_metadata = None
 
         # Check type of data and use appropriate constructor
         if data is not None or (col_partitions is None and
@@ -97,9 +96,9 @@ class DataFrame(object):
         else:
             # created this invariant to make sure we never have to go into the
             # partitions to get the columns
-            assert columns is not None, \
-                "Columns not defined, must define columns for internal " \
-                "DataFrame creations"
+            assert columns is not None or col_metadata is not None, \
+                "Columns not defined, must define columns or col_metadata " \
+                "for internal DataFrame creations"
 
             if block_partitions is not None:
                 # put in numpy array here to make accesses easier since it's 2D
@@ -117,11 +116,6 @@ class DataFrame(object):
                     _create_block_partitions(partitions, axis=axis,
                                              length=len(columns))
 
-        if row_metadata is not None:
-            self._row_metadata = row_metadata.copy()
-        if col_metadata is not None:
-            self._col_metadata = col_metadata.copy()
-
         # Sometimes we only get a single column or row, which is
         # problematic for building blocks from the partitions, so we
         # add whatever dimension we're missing from the input.
@@ -133,12 +127,18 @@ class DataFrame(object):
 
         # Create the row and column index objects for using our partitioning.
         # If the objects haven't been inherited, then generate them
-        if self._row_metadata is None:
+        if row_metadata is not None:
+            self._row_metadata = row_metadata.copy()
+        else:
             self._row_metadata = _IndexMetadata(self._block_partitions[:, 0],
                                                 index=index, axis=0)
-        if self._col_metadata is None:
+
+        if col_metadata is not None:
+            self._col_metadata = col_metadata.copy()
+        else:
             self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
                                                 index=columns, axis=1)
+
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -546,8 +546,8 @@ class DataFrame(object):
             for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+                         row_metadata=self._row_metadata,
+                         col_metadata=self._col_metadata)
 
     def copy(self, deep=True):
         """Creates a shallow copy of the DataFrame.
@@ -659,8 +659,6 @@ class DataFrame(object):
             lambda df: df.isna(), block) for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index,
                          row_metadata=self._row_metadata,
                          col_metadata=self._col_metadata)
 
@@ -678,8 +676,8 @@ class DataFrame(object):
             for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+                         row_metadata=self._row_metadata,
+                         col_metadata=self._col_metadata)
 
     def keys(self):
         """Get the info axis for the DataFrame.

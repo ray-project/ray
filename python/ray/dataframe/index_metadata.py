@@ -127,7 +127,7 @@ class _IndexMetadata(_IndexMetadataBase):
             A IndexMetadata backed by the specified pd.Index, partitioned off
             specified partitions
         """
-        if dfs is not None:
+        if dfs is not None and (lengths_oid is None and coord_df_oid is None):
             lengths_oid, coord_df_oid = \
                 _build_index.remote(dfs, index) if axis == 0 else \
                 _build_columns.remote(dfs, index)
@@ -272,8 +272,8 @@ class _IndexMetadata(_IndexMetadataBase):
                            'index_within_partition'] -= 1
 
     def copy(self):
-        return _IndexMetadata(coord_df_oid=self._coord_df,
-                              lengths_oid=self._lengths)
+        return _IndexMetadata(coord_df_oid=self._coord_df_cache,
+                              lengths_oid=self._lengths_cache)
 
 
 class _WrappingIndexMetadata(_IndexMetadata):
