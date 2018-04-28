@@ -335,7 +335,7 @@ class DataFrameGroupBy(object):
         return self._apply_df_function(lambda df: df.take(**kwargs))
 
     def _apply_agg_function(self, f):
-        assert callable(f), "\'{0}\' object is not callable".format(type(f))
+        assert callable(f), "\'{}\' object is not callable".format(type(f))
 
         result = [pd.DataFrame(f(v)).T for k, v in self._iter]
 
@@ -350,7 +350,7 @@ class DataFrameGroupBy(object):
         return new_df
 
     def _apply_df_function(self, f):
-        assert callable(f), "\'{0}\' object is not callable".format(type(f))
+        assert callable(f), "\'{}\' object is not callable".format(type(f))
 
         result = [f(v) for k, v in self._iter]
 

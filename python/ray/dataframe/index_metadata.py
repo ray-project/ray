@@ -226,7 +226,7 @@ class _IndexMetadata(_IndexMetadataBase):
             partition = np.digitize(loc, cum_lens[:-1])
             if partition >= len(cum_lens):
                 if loc > cum_lens[-1]:
-                    raise IndexError("index {0} is out of bounds".format(loc))
+                    raise IndexError("index {} is out of bounds".format(loc))
                 else:
                     index_within_partition = self._lengths[-1]
             else:
