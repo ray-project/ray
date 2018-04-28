@@ -35,7 +35,7 @@ from .io import (read_csv, read_parquet, read_json, read_html,  # noqa: 402
                  read_msgpack, read_stata, read_sas, read_pickle,  # noqa: 402
                  read_sql)  # noqa: 402
 from .concat import concat  # noqa: 402
-from .datetime import to_datetime  # noqa: 402
+from .datetimes import to_datetime  # noqa: 402
 from .reshape import get_dummies  # noqa: 402
 
 __all__ = [

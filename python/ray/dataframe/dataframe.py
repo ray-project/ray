@@ -3769,9 +3769,7 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-            indices_for_rows = self.columns.isin(columns)
-            indices_for_rows = [i for i in range(len(indices_for_rows))
-                                if indices_for_rows[i]]
+            indices_for_rows = [col for col in self.col if col in set(columns)]
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
