@@ -2930,10 +2930,14 @@ class DataFrame(object):
             samples = np.random.choice(a=axis_labels, size=n,
                                        replace=replace, p=weights)
 
+        # create an array of (partition, index_within_partition) tuples for
+        # each sample
         part_ind_tuples = [partition_metadata[sample]
                            for sample in samples]
 
         if axis == 1:
+            # tup[0] refers to the partition number and tup[1] is the index
+            # within that partition
             new_cols = [_deploy_func.remote(lambda df: df.iloc[:, [tup[1]]],
                         partitions[tup[0]]) for tup in part_ind_tuples]
             return DataFrame(col_partitions=new_cols,
