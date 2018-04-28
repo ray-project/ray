@@ -26,6 +26,10 @@ const std::list<Task> &SchedulingQueue::GetRunningTasks() const {
   return this->running_tasks_;
 }
 
+const std::list<Task> &SchedulingQueue::GetBlockedTasks() const {
+  return this->blocked_tasks_;
+}
+
 const std::list<Task> &SchedulingQueue::GetReadyMethods() const {
   throw std::runtime_error("Method not implemented");
 }
@@ -65,6 +69,7 @@ std::vector<Task> SchedulingQueue::RemoveTasks(
   removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(scheduled_tasks_, task_ids, removed_tasks);
   removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
+  removeTasksFromQueue(blocked_tasks_, task_ids, removed_tasks);
   // TODO(swang): Remove from running methods.
 
   RAY_CHECK(task_ids.size() == 0);
@@ -89,6 +94,10 @@ void SchedulingQueue::QueueScheduledTasks(const std::vector<Task> &tasks) {
 
 void SchedulingQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
   queueTasks(running_tasks_, tasks);
+}
+
+void SchedulingQueue::QueueBlockedTasks(const std::vector<Task> &tasks) {
+  queueTasks(blocked_tasks_, tasks);
 }
 
 }  // namespace raylet

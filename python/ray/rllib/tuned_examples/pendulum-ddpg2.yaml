@@ -1,0 +1,16 @@
+# can expect improvement to -160 reward in ~30-40k timesteps
+pendulum-ddpg-2:
+    env: Pendulum-v0
+    run: DDPG2
+    trial_resources:
+        cpu: 6
+        gpu: 1
+    stop:
+        episode_reward_mean: -160
+    config:
+        use_huber: True
+        random_starts: False
+        clip_rewards: False
+        exploration_fraction: 0.4
+        model:
+            fcnet_hiddens: []

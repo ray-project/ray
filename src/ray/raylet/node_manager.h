@@ -87,6 +87,9 @@ class NodeManager {
   /// Handler for a heartbeat notification from the GCS.
   void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
                       const HeartbeatTableDataT &data);
+  /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
+  /// "running" task state.
+  void DispatchTasks();
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
