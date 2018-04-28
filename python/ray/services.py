@@ -1037,7 +1037,7 @@ def start_objstore(node_ip_address,
             # On linux we use /dev/shm, its size is half the size of the
             # physical memory. To not overflow it, we set the plasma memory
             # limit to 0.4 times the size of the physical memory.
-            objstore_memory = int(system_memory * 0.4)
+            objstore_memory = int(system_memory * 0.8)
             # Compare the requested memory size to the memory available in
             # /dev/shm.
             shm_fd = os.open("/dev/shm", os.O_RDONLY)

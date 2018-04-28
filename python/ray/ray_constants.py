@@ -8,7 +8,7 @@ from __future__ import print_function
 AUTOSCALER_MAX_NUM_FAILURES = 5
 
 # Max number of nodes to launch at a time.
-AUTOSCALER_MAX_CONCURRENT_LAUNCHES = 10
+AUTOSCALER_MAX_CONCURRENT_LAUNCHES = 20
 
 # Interval at which to perform autoscaling updates.
 AUTOSCALER_UPDATE_INTERVAL_S = 5
