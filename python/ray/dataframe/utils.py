@@ -342,11 +342,14 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
 
 
 @ray.remote
-def _match_partitioning(column_partition, lengths):
+def _match_partitioning(column_partition, lengths, index):
 
     partitioned_list = []
 
     columns = column_partition.columns
+    # We set this because this is the only place we can guarantee correct
+    # placement. We use it in the case the user wants to join on the index.
+    column_partition.index = index
     for length in lengths:
         if len(column_partition) == 0:
             partitioned_list.append(pd.DataFrame(columns=columns))

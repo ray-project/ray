@@ -2397,12 +2397,36 @@ class DataFrame(object):
               left_index=False, right_index=False, sort=False,
               suffixes=('_x', '_y'), copy=True, indicator=False,
               validate=None):
+        """Database style join, where common columns in "on" are merged.
 
-        new_columns = pd.DataFrame(columns=self.columns, index=[0]).merge(
-            pd.DataFrame(columns=right.columns, index=[0]), how=how, on=on,
-            left_on=left_on, right_on=right_on, left_index=left_index,
-            right_index=right_index, sort=sort, suffixes=suffixes, copy=False,
-            indicator=indicator, validate=validate).columns
+        Args:
+            right: The DataFrame to merge against.
+            how: What type of join to use.
+            on: The common column name(s) to join on. If None, and left_on and
+                right_on  are also None, will default to all commonly named
+                columns.
+            left_on: The column(s) on the left to use for the join.
+            right_on: The column(s) on the right to use for the join.
+            left_index: Use the index from the left as the join keys.
+            right_index: Use the index from the right as the join keys.
+            sort: Sort the join keys lexicographically in the result.
+            suffixes: Add this suffix to the common names not in the "on".
+            copy: Does nothing in our implementation
+            indicator: Adds a row named _merge to the DataFrame with metadata
+                from the merge about each row.
+            validate: Checks if merge is a specific type.
+
+        Returns:
+             A merged Dataframe
+        """
+
+        args = (how, on, left_on, right_on, left_index, right_index, sort,
+                suffixes, False, indicator, validate)
+        # This can be put in a remote function because we don't need it until
+        # the end, and the columns can be built asynchronously. This takes the
+        # columns defining off the critical path and speeds up the overall
+        # merge.
+        new_columns = _merge_columns.remote(self.columns, right.columns, *args)
 
         # There's a small chance that our partitions are already perfect, but
         # if it's not, we need to adjust them. We adjust the right against the
@@ -2411,7 +2435,7 @@ class DataFrame(object):
                               right._row_metadata._lengths):
 
             repartitioned_right = np.array([_match_partitioning._submit(
-                args=(df, self._row_metadata._lengths),
+                args=(df, self._row_metadata._lengths, right.index),
                 num_return_vals=len(self._row_metadata._lengths))
                 for df in right._col_partitions]).T
         else:
@@ -2420,18 +2444,57 @@ class DataFrame(object):
         left_cols = ray.put(self.columns)
         right_cols = ray.put(right.columns)
 
-        new_blocks = \
-            np.array([co_op_helper._submit(
-                args=tuple([lambda x, y: getattr(x, "merge")(y),
-                            left_cols, right_cols,
-                            len(self._block_partitions.T)] +
-                           np.concatenate(obj).tolist()),
-                num_return_vals=len(self._block_partitions.T))
-                for obj in zip(self._block_partitions,
-                               repartitioned_right)])
+        if not left_index and not right_index:
+            new_blocks = \
+                np.array([co_op_helper._submit(
+                    args=tuple([lambda x, y: getattr(x, "merge")(y, *args),
+                                left_cols, right_cols,
+                                len(self._block_partitions.T)] +
+                               np.concatenate(obj).tolist()),
+                    num_return_vals=len(self._block_partitions.T))
+                    for obj in zip(self._block_partitions,
+                                   repartitioned_right)])
 
-            return DataFrame(block_partitions=new_blocks,
-                             columns=new_columns)
+            # Default to RangeIndex if left_index and right_index both false.
+            new_index = None
+            new_rows = None
+        else:
+            @ray.remote(num_return_vals=2)
+            def merge_on_index(obj, left_idx, left_cols, right_cols, *args):
+                left = pd.concat(ray.get(obj[0].tolist()), axis=1, copy=False)
+                left.index = left_idx
+                left.columns = left_cols
+
+                right = pd.concat(ray.get(obj[1].tolist()), axis=1, copy=False)
+                right.columns = right_cols
+
+                result = left.merge(right, *args)
+                return result, result.index
+
+            # This will give us an iterator that we use to send the index to
+            # the remote partitions for use in the join.
+            left_index_collection = \
+                (v.index for k, v in
+                 self._row_metadata._coord_df.copy().groupby('partition'))
+
+            # Since our index is getting updated and we don't have a way to
+            # know how much it will change from the outside, we have to get it
+            # from within the partitions.
+            new_rows, remote_idx = list(zip(*[
+                merge_on_index.remote(obj, next(left_index_collection),
+                                      left_cols, right_cols, *args)
+                for obj in zip(self._block_partitions,
+                               repartitioned_right)]))
+
+            new_index = ray.get(list(remote_idx))
+            new_index = new_index[0].append(new_index[1:])
+            new_blocks = None
+            new_rows = list(new_rows)
+
+        return DataFrame(block_partitions=new_blocks,
+                         row_partitions=new_rows,
+                         columns=ray.get(new_columns),
+                         index=new_index)
 
     def min(self, axis=None, skipna=None, level=None, numeric_only=None,
             **kwargs):
@@ -4136,3 +4199,10 @@ class DataFrame(object):
                          columns=new_column_index,
                          col_metadata=new_col_metadata,
                          row_metadata=new_row_metadata)
+
+
+@ray.remote
+def _merge_columns(left_columns, right_columns, *args):
+    return pd.DataFrame(columns=left_columns, index=[0], dtype='uint8').merge(
+        pd.DataFrame(columns=right_columns, index=[0], dtype='uint8'),
+        *args).columns
