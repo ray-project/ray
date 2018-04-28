@@ -1068,8 +1068,10 @@ class DataFrame(object):
                             f = func[key]
 
                         def helper(df):
-                            x = df.iloc[:, ind]
-                            return f(x)
+                            x = df.iloc[:, ind].apply(f)
+                            return x
+                            # x = df.iloc[:, ind]
+                            # return f(x)
 
                         result.append(_deploy_func.remote(
                                 helper, self._col_partitions[part]))
@@ -1097,13 +1099,14 @@ class DataFrame(object):
                                                                 how='outer'),
                                             result)
 
-            elif isinstance(func, list):
+            # TODO: change this to is_list_like
+            elif isinstance(func, list) and axis==0:
                 rows = []
                 for function in func:
                     if isinstance(function, compat.string_types):
                         if axis == 1:
                             kwds['axis'] = axis
-                        f = getattr(pd.core.series.Series, function)
+                        f = getattr(pd.DataFrame, function)
                     else:
                         f = function
                     rows.append(pd.concat(ray.get(_map_partitions(
