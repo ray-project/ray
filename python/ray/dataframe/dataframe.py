@@ -108,13 +108,18 @@ class DataFrame(object):
                 if row_partitions is not None:
                     axis = 0
                     partitions = row_partitions
+                    bp_length = len(columns) if columns is not None else \
+                        len(col_metadata)
                 elif col_partitions is not None:
                     axis = 1
                     partitions = col_partitions
+                    bp_length = None
 
+                # TODO: write explicit tests for "short and wide"
+                # column partitions
                 self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
-                                             length=len(columns))
+                                             length=bp_length)
 
         # Sometimes we only get a single column or row, which is
         # problematic for building blocks from the partitions, so we
@@ -129,12 +134,16 @@ class DataFrame(object):
         # If the objects haven't been inherited, then generate them
         if row_metadata is not None:
             self._row_metadata = row_metadata.copy()
+            if index is not None:
+                self.index = index
         else:
             self._row_metadata = _IndexMetadata(self._block_partitions[:, 0],
                                                 index=index, axis=0)
 
         if col_metadata is not None:
             self._col_metadata = col_metadata.copy()
+            if columns is not None:
+                self.columns = columns
         else:
             self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
                                                 index=columns, axis=1)
@@ -517,7 +526,8 @@ class DataFrame(object):
         new_cols = self.columns.map(lambda x: str(prefix) + str(x))
         return DataFrame(block_partitions=self._block_partitions,
                          columns=new_cols,
-                         index=self.index)
+                         col_metadata=self._col_metadata,
+                         row_metadata=self._row_metadata)
 
     def add_suffix(self, suffix):
         """Add a suffix to each of the column names.
@@ -528,7 +538,8 @@ class DataFrame(object):
         new_cols = self.columns.map(lambda x: str(x) + str(suffix))
         return DataFrame(block_partitions=self._block_partitions,
                          columns=new_cols,
-                         index=self.index)
+                         col_metadata=self._col_metadata,
+                         row_metadata=self._row_metadata)
 
     def applymap(self, func):
         """Apply a function to a DataFrame elementwise.
@@ -1170,13 +1181,13 @@ class DataFrame(object):
         if axis == 0:
             new_cols = _map_partitions(func, self._col_partitions)
             return DataFrame(col_partitions=new_cols,
-                             columns=self.columns,
-                             index=self.index)
+                             row_metadata=self._row_metadata,
+                             col_metadata=self._col_metadata)
         else:
             new_rows = _map_partitions(func, self._row_partitions)
             return DataFrame(row_partitions=new_rows,
-                             columns=self.columns,
-                             index=self.index)
+                             row_metadata=self._row_metadata,
+                             col_metadata=self._col_metadata)
 
     def cummax(self, axis=None, skipna=True, *args, **kwargs):
         """Perform a cumulative maximum across the DataFrame.
@@ -1866,7 +1877,7 @@ class DataFrame(object):
         index = self._row_metadata.index[:n]
 
         return DataFrame(col_partitions=new_dfs,
-                         columns=self.columns,
+                         col_metadata=self._col_metadata,
                          index=index)
 
     def hist(self, data, column=None, by=None, grid=True, xlabelsize=None,
@@ -2495,8 +2506,8 @@ class DataFrame(object):
             lambda df: df.notna(), block) for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+                         row_metadata=self._row_metadata,
+                         col_metadata=self._col_metadata)
 
     def notnull(self):
         """Perform notnull across the DataFrame.
@@ -2513,8 +2524,8 @@ class DataFrame(object):
             for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+                         row_metadata=self._row_metadata,
+                         col_metadata=self._col_metadata)
 
     def nsmallest(self, n, columns, keep='first'):
         raise NotImplementedError(
@@ -2679,7 +2690,8 @@ class DataFrame(object):
         if inplace:
             self._update_inplace(row_partitions=new_rows)
         else:
-            return DataFrame(row_partitions=new_rows, columns=self.columns)
+            return DataFrame(row_partitions=new_rows,
+                             col_metadata=self._col_metadata)
 
     def radd(self, other, axis='columns', level=None, fill_value=None):
         return self.add(other, axis, level, fill_value)
@@ -2936,8 +2948,8 @@ class DataFrame(object):
             for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+                         row_metadata=self._row_metadata,
+                         col_metadata=self._col_metadata)
 
     def rpow(self, other, axis='columns', level=None, fill_value=None):
         return self._single_df_op_helper(
@@ -3369,7 +3381,7 @@ class DataFrame(object):
 
         index = self._row_metadata.index[-n:]
         return DataFrame(col_partitions=new_dfs,
-                         columns=self.columns,
+                         col_metadata=self._col_metadata,
                          index=index)
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
@@ -3761,8 +3773,8 @@ class DataFrame(object):
 
         index = self.index[key]
         return DataFrame(col_partitions=new_cols,
-                         index=index,
-                         columns=self.columns)
+                         col_metadata=self._col_metadata,
+                         index=index)
 
     def __getattr__(self, key):
         """After regular attribute access, looks up the name in the columns
@@ -4070,8 +4082,8 @@ class DataFrame(object):
             for block in self._block_partitions])
 
         return DataFrame(block_partitions=new_block_partitions,
-                         columns=self.columns,
-                         index=self.index)
+                         col_metadata=self._col_metadata,
+                         row_metadata=self._row_metadata)
 
     def __sizeof__(self):
         raise NotImplementedError(

@@ -272,8 +272,17 @@ class _IndexMetadata(_IndexMetadataBase):
                            'index_within_partition'] -= 1
 
     def copy(self):
-        return _IndexMetadata(coord_df_oid=self._coord_df_cache,
-                              lengths_oid=self._lengths_cache)
+        # TODO: Investigate copy-on-write wrapper for metadata objects
+        coord_df_copy = self._coord_df_cache
+        if not isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
+            coord_df_copy = self._coord_df_cache.copy()
+
+        lengths_copy = self._lengths_cache
+        if not isinstance(self._lengths_cache, ray.local_scheduler.ObjectID):
+            lengths_copy = self._lengths_cache.copy()
+
+        return _IndexMetadata(coord_df_oid=coord_df_copy,
+                              lengths_oid=lengths_copy)
 
 
 class _WrappingIndexMetadata(_IndexMetadata):
