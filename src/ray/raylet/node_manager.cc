@@ -65,6 +65,15 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
+  object_manager_.SubscribeObjAdded([this](const ObjectInfoT &object_info){
+    ObjectID oid = ObjectID::from_binary(object_info.object_id);
+    if (push_objects_[oid].size() > 0){
+      for (auto cid : push_objects_[oid]){
+        object_manager_.Push(oid, cid);
+      }
+      push_objects_[oid].clear();
+    }
+  });
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -726,6 +735,8 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
           // If the argument is local, then push it to the receiving node.
           if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
             RAY_CHECK_OK(object_manager_.Push(argument_id, node_id));
+          } else {
+            push_objects_[argument_id].insert(node_id);
           }
         }
       }
