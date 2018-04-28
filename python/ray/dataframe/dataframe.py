@@ -1046,78 +1046,67 @@ class DataFrame(object):
         Returns:
             Series or DataFrame, depending on func.
         """
+        # TODO: improve performance
+        # TODO: do axis checking
+        # TODO: call agg instead of reimplementing the list pary
+        # TODO: return ray dataframes
+        # TODO: try to do series and concat instead of join
         axis = pd.DataFrame()._get_axis_number(axis)
 
         if isinstance(func, compat.string_types):
             if axis == 1:
                 kwds['axis'] = axis
             return getattr(self, func)(*args, **kwds)
-        else:
-            if isinstance(func, dict):
-                result = []
-                if list not in map(type, func.values()):
-                    for key in func:
-                        part, ind = self._col_metadata[key]
+        elif isinstance(func, dict):
+            result = []
 
-                        if isinstance(func[key], compat.string_types):
-                            if axis == 1:
-                                kwds['axis'] = axis
-                            # find the corresponding pd.Series function
-                            f = getattr(pd.core.series.Series, func[key])
-                        else:
-                            f = func[key]
+            has_list = list in map(type, func.values())
+            for key in func:
+                part, ind = self._col_metadata[key]
 
-                        def helper(df):
-                            x = df.iloc[:, ind].apply(f)
-                            return x
-                            # x = df.iloc[:, ind]
-                            # return f(x)
-
-                        result.append(_deploy_func.remote(
-                                helper, self._col_partitions[part]))
-
-                    return pd.Series(ray.get(result), index=func.keys())
+                if not isinstance(func[key], list) and has_list:
+                    f = [func[key]]
                 else:
-                    for key in func:
-                        part, ind = self._col_metadata[key]
+                    f = func[key]
 
-                        if isinstance(func[key], list):
-                            f = func[key]
-                        else:
-                            f = [func[key]]
-
-                        def helper(df):
-                            x = df.iloc[:, ind].apply(f).to_frame()
-                            x.columns = [key]
-                            return x
-
-                        result.append(_deploy_func.remote(helper,
-                                      self._col_partitions[part]))
-
-                    result = ray.get(result)
-                    return functools.reduce(lambda l, r: l.join(r,
-                                                                how='outer'),
-                                            result)
-
-            # TODO: change this to is_list_like
-            elif isinstance(func, list) and axis==0:
-                rows = []
-                for function in func:
-                    if isinstance(function, compat.string_types):
-                        if axis == 1:
-                            kwds['axis'] = axis
-                        f = getattr(pd.DataFrame, function)
+                def helper(df):
+                    x = df.iloc[:, ind].apply(f)
+                    if has_list:
+                        x = x.to_frame()
+                        x.columns = [key]
+                        return x
                     else:
-                        f = function
-                    rows.append(pd.concat(ray.get(_map_partitions(
-                        lambda df: f(df), self._col_partitions)), axis=1))
-                df = pd.concat(rows, axis=0)
-                df.columns = self.columns
-                df.index = [f_name if isinstance(f_name, compat.string_types)
-                            else f.__name__ for f_name in func]
-                return df
-            elif callable(func):
-                return self._callable_function(func, axis=axis, *args, **kwds)
+                        return x
+
+                result.append(_deploy_func.remote(
+                        helper, self._col_partitions[part]))
+                
+            if has_list:
+                return functools.reduce(lambda l, r: l.join(r,
+                                                            how='outer'),
+                                        ray.get(result))
+            else:
+                return pd.Series(ray.get(result), index=func.keys())
+
+        # TODO: change this to is_list_like
+        elif isinstance(func, list) and axis==0:
+            rows = []
+            for function in func:
+                if isinstance(function, compat.string_types):
+                    if axis == 1:
+                        kwds['axis'] = axis
+                    f = getattr(pd.DataFrame, function)
+                else:
+                    f = function
+                rows.append(pd.concat(ray.get(_map_partitions(
+                    lambda df: f(df), self._col_partitions)), axis=1))
+            df = pd.concat(rows, axis=0)
+            df.columns = self.columns
+            df.index = [f_name if isinstance(f_name, compat.string_types)
+                        else f.__name__ for f_name in func]
+            return df
+        elif callable(func):
+            return self._callable_function(func, axis=axis, *args, **kwds)
 
     def as_blocks(self, copy=True):
         raise NotImplementedError(
