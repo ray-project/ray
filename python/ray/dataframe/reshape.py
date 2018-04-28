@@ -83,7 +83,7 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
         with_dummies = data.drop(columns_to_encode, axis=1)._col_partitions
         dropped_columns = data.columns.drop(columns_to_encode)
 
-    def remote_func(df, to_drop, prefix, prefix_sep):
+    def get_dummies_remote(df, to_drop, prefix, prefix_sep):
         df = df.drop(to_drop, axis=1)
 
         if df.size == 0:
@@ -108,7 +108,7 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
         to_drop = col_index.drop(to_encode.index)
 
         result = _deploy_func._submit(
-            args=(remote_func, part, to_drop,
+            args=(get_dummies_remote, part, to_drop,
                   prefix[total:total + len(to_encode)],
                   prefix_sep[total:total + len(to_encode)]),
             num_return_vals=2)
