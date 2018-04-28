@@ -331,10 +331,10 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
     Returns:
          A new set of blocks for the partitioned DataFrame.
     """
-    left = pd.concat(zipped[:left_df_len], axis=1, copy=False)
+    left = pd.concat(zipped[:left_df_len], axis=1, copy=False).copy()
     left.columns = left_columns
 
-    right = pd.concat(zipped[left_df_len:], axis=1, copy=False)
+    right = pd.concat(zipped[left_df_len:], axis=1, copy=False).copy()
     right.columns = right_columns
 
     new_rows = func(left, right)
