@@ -139,7 +139,6 @@ class DataFrame(object):
             self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
                                                 index=columns, axis=1)
 
-
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
                 for part in self._block_partitions]
