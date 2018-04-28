@@ -1838,6 +1838,17 @@ class DataFrame(object):
             return new_obj
 
     def filter(self, items=None, like=None, regex=None, axis=None):
+        """Subset rows or columns based on their labels
+
+        Args:
+            items (list): list of labels to subset
+            like (string): retain labels where `arg in label == True`
+            regex (string): retain labels matching regex input
+            axis: axis to filter on
+
+        Returns:
+            A new dataframe with the filter applied.
+        """
         import re
 
         nkw = com._count_not_none(items, like, regex)

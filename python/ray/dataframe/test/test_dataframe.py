@@ -826,6 +826,21 @@ def test_nan_dataframe():
         test_transform(ray_df, pandas_df)
 
 
+def test_dense_nan_df():
+    ray_df = rdf.DataFrame([[np.nan, 2, np.nan, 0],
+                            [3, 4, np.nan, 1],
+                            [np.nan, np.nan, np.nan, 5]],
+                           columns=list('ABCD'))
+
+    pd_df = pd.DataFrame([[np.nan, 2, np.nan, 0],
+                          [3, 4, np.nan, 1],
+                          [np.nan, np.nan, np.nan, 5]],
+                         columns=list('ABCD'))
+
+    test_dropna(ray_df, pd_df)
+    test_dropna_inplace(ray_df, pd_df)
+
+
 @pytest.fixture
 def test_inter_df_math(op, simple=False):
     ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
@@ -1278,6 +1293,36 @@ def test_drop_duplicates():
 
     with pytest.raises(NotImplementedError):
         ray_df.drop_duplicates()
+
+
+@pytest.fixture
+def test_dropna(ray_df, pd_df):
+    ray_df_equals_pandas(ray_df.dropna(axis=1, how='all'),
+                         pd_df.dropna(axis=1, how='all'))
+
+    ray_df_equals_pandas(ray_df.dropna(axis=1, how='any'),
+                         pd_df.dropna(axis=1, how='any'))
+
+    ray_df_equals_pandas(ray_df.dropna(axis=0, how='all'),
+                         pd_df.dropna(axis=0, how='all'))
+
+    ray_df_equals_pandas(ray_df.dropna(thresh=2), pd_df.dropna(thresh=2))
+
+
+@pytest.fixture
+def test_dropna_inplace(ray_df, pd_df):
+    ray_df = ray_df.copy()
+    pd_df = pd_df.copy()
+
+    ray_df.dropna(thresh=2, inplace=True)
+    pd_df.dropna(thresh=2, inplace=True)
+
+    ray_df_equals_pandas(ray_df, pd_df)
+
+    ray_df.dropna(axis=1, how='any', inplace=True)
+    pd_df.dropna(axis=1, how='any', inplace=True)
+
+    ray_df_equals_pandas(ray_df, pd_df)
 
 
 def test_duplicated():
