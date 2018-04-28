@@ -2895,7 +2895,9 @@ class DataFrame(object):
                              "provide positive value.")
 
         if n == 0:
-            # An Empty DataFrame is returned if the number of samples is 0
+            # An Empty DataFrame is returned if the number of samples is 0.
+            # The Empty Dataframe should have either columns or index specified
+            # depending on which axis is passed in.
             return DataFrame(columns=[] if axis == 1 else self.columns,
                              index=self.index if axis == 1 else [])
 
@@ -2909,6 +2911,8 @@ class DataFrame(object):
             partitions = self._row_partitions
 
         if random_state is not None:
+            # Get a random number generator depending on the type of
+            # random_state that is passed in
             if isinstance(random_state, int):
                 random_num_gen = np.random.RandomState(random_state)
             elif isinstance(random_state, np.random.randomState):
