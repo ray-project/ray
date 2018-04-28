@@ -756,7 +756,8 @@ class DataFrame(object):
 
     T = property(transpose)
 
-    def dropna(self, axis, how, thresh=None, subset=[], inplace=False):
+    def dropna(self, axis=0, how='any', thresh=None, subset=None,
+               inplace=False):
         """Create a new DataFrame from the removed NA values from this one.
 
         Args:
@@ -780,10 +781,66 @@ class DataFrame(object):
                 "github.com/ray-project/ray.")
 
         axis = pd.DataFrame()._get_axis_number(axis)
+        inplace = validate_bool_kwarg(inplace, "inplace")
 
-        if axis == 1:
+        if axis == 1 and subset is not None:
             subset = self.index.isin(subset)
             subset = [i for i in range(len(subset)) if subset[i]]
+        elif subset is not None:
+            subset = self.columns.isin(subset)
+            subset = [i for i in range(len(subset)) if subset[i]]
+
+        def dropna_helper(df):
+            new_df = df.dropna(axis=axis, how=how, thresh=thresh,
+                               subset=subset, inplace=False)
+
+            if axis == 1:
+                new_index = new_df.columns
+                new_df.columns = pd.RangeIndex(0, len(new_df.columns))
+            else:
+                new_index = new_df.index
+                new_df.reset_index(drop=True, inplace=True)
+
+            return new_df, new_index
+
+        parts = self._col_partitions if axis == 1 else self._row_partitions
+        result = [_deploy_func._submit(args=(dropna_helper, df),
+                                       num_return_vals=2) for df in parts]
+        new_parts, new_vals = [list(t) for t in zip(*result)]
+
+        if axis == 1:
+            new_vals = [self._col_metadata.get_global_indices(i, vals)
+                        for i, vals in enumerate(ray.get(new_vals))]
+
+            # This flattens the 2d array to 1d
+            new_vals = [i for j in new_vals for i in j]
+            new_cols = self.columns[new_vals]
+
+            if not inplace:
+                return DataFrame(col_partitions=new_parts,
+                                 columns=new_cols,
+                                 index=self.index)
+
+            self._col_metadata = self._col_metadata[new_cols]
+            self.columns = new_cols
+            self._col_partitions = new_parts
+
+        else:
+            new_vals = [self._row_metadata.get_global_indices(i, vals)
+                        for i, vals in enumerate(ray.get(new_vals))]
+
+            # This flattens the 2d array to 1d
+            new_vals = [i for j in new_vals for i in j]
+            new_rows = self.index[new_vals]
+
+            if not inplace:
+                return DataFrame(row_partitions=new_parts,
+                                 index=new_rows,
+                                 columns=self.columns)
+
+            self._row_metadata = self._row_metadata[new_rows]
+            self.index = new_rows
+            self._row_partitions = new_parts
 
     def add(self, other, axis='columns', level=None, fill_value=None):
         """Add this DataFrame to another or a scalar/list.
