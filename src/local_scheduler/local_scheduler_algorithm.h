@@ -414,8 +414,7 @@ void set_actor_frontier(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, ObjectID>
-        &frontier_dependencies);
+    const std::unordered_map<ActorHandleID, ObjectID> &frontier_dependencies);
 
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST

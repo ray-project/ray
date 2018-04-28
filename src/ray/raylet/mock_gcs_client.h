@@ -31,8 +31,7 @@ class ObjectTable {
 
  private:
   std::vector<ClientID> empty_set_;
-  std::unordered_map<ObjectID, std::unordered_set<ClientID>>
-      client_lookup;
+  std::unordered_map<ObjectID, std::unordered_set<ClientID>> client_lookup;
 };
 
 class ClientInformation {

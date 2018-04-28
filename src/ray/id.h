@@ -93,17 +93,14 @@ size_t hash_UniqueID(const ::ray::UniqueID& id);
 }  // namespace ray
 
 namespace std {
-  
-  template<> struct hash<::ray::UniqueID> {
-    size_t operator()(const ::ray::UniqueID& id) const {
-      return id.hash();
-    }
-  };
+template <>
+struct hash<::ray::UniqueID> {
+  size_t operator()(const ::ray::UniqueID &id) const { return id.hash(); }
+};
 
-  template<> struct hash<const ::ray::UniqueID> {
-    size_t operator()(const ::ray::UniqueID& id) const {
-      return id.hash();
-    }
-  };
+template <>
+struct hash<const ::ray::UniqueID> {
+  size_t operator()(const ::ray::UniqueID &id) const { return id.hash(); }
+};
 }
 #endif  // RAY_ID_H_

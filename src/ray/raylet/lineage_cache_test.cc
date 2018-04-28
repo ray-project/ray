@@ -68,18 +68,14 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     callbacks_.clear();
   }
 
-  const std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>>
-      &TaskTable() const {
+  const std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> &TaskTable() const {
     return task_table_;
   }
 
-  const std::unordered_set<TaskID> &SubscribedTasks() const {
-    return subscribed_tasks_;
-  }
+  const std::unordered_set<TaskID> &SubscribedTasks() const { return subscribed_tasks_; }
 
  private:
-  std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>>
-      task_table_;
+  std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> task_table_;
   std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
   gcs::raylet::TaskTable::WriteCallback notification_callback_;
   std::unordered_set<TaskID> subscribed_tasks_;

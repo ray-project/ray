@@ -265,8 +265,7 @@ struct ClientConnection {
   /* A set of object IDs which are queued in the transfer_queue and waiting to
    * be sent. This is used to avoid sending the same object ID to the same
    * manager multiple times. */
-  std::unordered_map<ObjectID, PlasmaRequestBuffer *>
-      pending_object_transfers;
+  std::unordered_map<ObjectID, PlasmaRequestBuffer *> pending_object_transfers;
   /** Buffer used to receive transfers (data fetches) we want to ignore */
   PlasmaRequestBuffer *ignore_buffer;
   /** File descriptor for the socket connected to the other

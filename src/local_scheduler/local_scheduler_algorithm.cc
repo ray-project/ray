@@ -58,8 +58,7 @@ typedef struct {
    *  actor's runnable tasks. For each actor handle, we store the object ID
    *  that represents the execution dependency for the next runnable task
    *  submitted by that handle. */
-  std::unordered_map<ActorHandleID, ObjectID>
-      frontier_dependencies;
+  std::unordered_map<ActorHandleID, ObjectID> frontier_dependencies;
   /** The return value of the most recently executed task. The next task to
    *  execute should take this as an execution dependency at dispatch time. Set
    *  to nil if there are no execution dependencies (e.g., this is the first
@@ -1805,9 +1804,9 @@ void print_worker_info(const char *message,
                  << " blocked";
 }
 
-std::unordered_map<ActorHandleID, int64_t>
-get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
-                        ActorID actor_id) {
+std::unordered_map<ActorHandleID, int64_t> get_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   return algorithm_state->local_actor_infos[actor_id].task_counters;
 }
@@ -1815,8 +1814,7 @@ get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
 void set_actor_task_counters(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, int64_t>
-        &task_counters) {
+    const std::unordered_map<ActorHandleID, int64_t> &task_counters) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   /* Overwrite the current task counters for the actor. This is necessary
    * during reconstruction when resuming from a checkpoint so that we can
@@ -1871,8 +1869,7 @@ void set_actor_frontier(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, ObjectID>
-        &frontier_dependencies) {
+    const std::unordered_map<ActorHandleID, ObjectID> &frontier_dependencies) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   auto entry = algorithm_state->local_actor_infos[actor_id];
   entry.frontier_dependencies = frontier_dependencies;

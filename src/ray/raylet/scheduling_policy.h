@@ -29,8 +29,7 @@ class SchedulingPolicy {
   ///         configured and current resource capacity on each node.
   /// \return Scheduling decision, mapping tasks to node managers for placement.
   std::unordered_map<TaskID, ClientID> Schedule(
-      const std::unordered_map<ClientID, SchedulingResources>
-          &cluster_resources,
+      const std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
       const ClientID &local_client_id, const std::vector<ClientID> &others);
 
   /// \brief SchedulingPolicy destructor.

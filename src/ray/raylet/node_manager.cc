@@ -32,8 +32,7 @@ RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier, MessageType_SetActorFront
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
 bool CheckDuplicateActorTask(
-    const std::unordered_map<ActorID, ray::raylet::ActorRegistration>
-        &actor_registry,
+    const std::unordered_map<ActorID, ray::raylet::ActorRegistration> &actor_registry,
     const ray::raylet::TaskSpecification &spec) {
   auto actor_entry = actor_registry.find(spec.ActorId());
   RAY_CHECK(actor_entry != actor_registry.end());

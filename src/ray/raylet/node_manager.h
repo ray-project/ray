@@ -114,8 +114,7 @@ class NodeManager {
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
   std::vector<ClientID> remote_clients_;
-  std::unordered_map<ClientID, TcpServerConnection>
-      remote_server_connections_;
+  std::unordered_map<ClientID, TcpServerConnection> remote_server_connections_;
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
 };
 

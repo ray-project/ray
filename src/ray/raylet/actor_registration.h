@@ -63,8 +63,7 @@ class ActorRegistration {
   ///
   /// \return The actor frontier, a map from handle ID to execution state for
   /// that handle.
-  const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier()
-      const;
+  const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
 
   /// Extend the frontier of the actor by a single task. This should be called
   /// whenever the actor executes a task.

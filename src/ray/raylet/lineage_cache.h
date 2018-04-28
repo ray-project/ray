@@ -138,8 +138,7 @@ class Lineage {
   /// Get all entries in the lineage.
   ///
   /// \return A const reference to the lineage entries.
-  const std::unordered_map<const TaskID, LineageEntry> &GetEntries()
-      const;
+  const std::unordered_map<const TaskID, LineageEntry> &GetEntries() const;
 
   /// Serialize this lineage to a ForwardTaskRequest flatbuffer.
   ///

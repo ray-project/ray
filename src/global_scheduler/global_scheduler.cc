@@ -234,8 +234,7 @@ void add_local_scheduler(GlobalSchedulerState *state,
   handle_new_local_scheduler(state, state->policy_state, db_client_id);
 }
 
-std::unordered_map<DBClientID, LocalScheduler>::iterator
-remove_local_scheduler(
+std::unordered_map<DBClientID, LocalScheduler>::iterator remove_local_scheduler(
     GlobalSchedulerState *state,
     std::unordered_map<DBClientID, LocalScheduler>::iterator it) {
   RAY_CHECK(it != state->local_schedulers.end());

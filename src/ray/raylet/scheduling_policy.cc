@@ -10,8 +10,7 @@ SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
     : scheduling_queue_(scheduling_queue), gen_(rd_()) {}
 
 std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
-    const std::unordered_map<ClientID, SchedulingResources>
-        &cluster_resources,
+    const std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
     const ClientID &local_client_id, const std::vector<ClientID> &others) {
   // The policy decision to be returned.
   std::unordered_map<TaskID, ClientID> decision;
