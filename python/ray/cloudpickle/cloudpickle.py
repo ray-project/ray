@@ -572,8 +572,8 @@ class CloudPickler(Pickler):
                 # PyPy "builtin-code" object
                 out_names = set()
             else:
-                out_names = set(names[oparg]
-                                for op, oparg in _walk_global_ops(co))
+                out_names = {names[oparg]
+                                for op, oparg in _walk_global_ops(co)}
 
                 # see if nested function have any global refs
                 if co.co_consts:
