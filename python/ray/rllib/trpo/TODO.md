@@ -1,0 +1,4 @@
+-   [] rm unused imports with autoflake aggressive
+-   [] add TRPO config params to `DEFAULT_CONFIG`
+-   (replace) `observation -> obs` or `state` or `s` (as local var)
+-   (replace) `action -> act` or `a`

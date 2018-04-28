@@ -17,9 +17,9 @@ class SharedTorchPolicy(TorchPolicy):
     other_output = ["vf_preds"]
     is_recurrent = False
 
-    def __init__(self, ob_space, ac_space, config, **kwargs):
+    def __init__(self, registry, ob_space, ac_space, config, **kwargs):
         super(SharedTorchPolicy, self).__init__(
-            ob_space, ac_space, config, **kwargs)
+            registry, ob_space, ac_space, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         _, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
@@ -66,8 +66,8 @@ class SharedTorchPolicy(TorchPolicy):
 
         states, acs, advs, rs, _ = convert_batch(batch)
         values, ac_logprobs, entropy = self._evaluate(states, acs)
-        pi_err = -(advs * ac_logprobs).sum()
-        value_err = 0.5 * (values - rs).pow(2).sum()
+        policy_err = -advs.dot(ac_logprobs)
+        value_err = F.mse_loss(values, rs)
 
         self.optimizer.zero_grad()
         overall_err = (pi_err +

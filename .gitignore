@@ -143,3 +143,5 @@ build
 
 # Pytest Cache
 **/.pytest_cache
+thirdparty/
+.eggs/

@@ -261,6 +261,9 @@ def get_agent_class(alg):
     elif alg == "DDPG":
         from ray.rllib import ddpg
         return ddpg.DDPGAgent
+    elif alg == "TRPO":
+        from ray.rllib import trpo
+        return trpo.TRPOAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner
