@@ -2,15 +2,19 @@ from __future__ import absolute_import, division, print_function
 
 import numpy as np
 import ray
+from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import LocalSyncOptimizer
 from ray.tune.result import TrainingResult
 
-from trpo_evaluator import TRPOEvaluator
+from ray.rllib.trpo.trpo_evaluator import TRPOEvaluator
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     'num_workers': 4,
+    'use_gpu_for_workers': False,
+    'vf_loss_coeff': 0.5,
+    'use_lstm': False,
     # Size of rollout batch
     'batch_size': 512,
     # Discount factor of MDP
@@ -43,6 +47,15 @@ class TRPOAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _allow_unknown_subkeys = ['model', 'optimizer', 'env_config']
 
+    @classmethod
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        return Resources(
+            cpu=1,
+            gpu=0,
+            extra_cpu=cf["num_workers"],
+            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
+
     def _init(self):
 
         self.local_evaluator = TRPOEvaluator(
@@ -52,7 +65,7 @@ class TRPOAgent(Agent):
         )
 
         self.remote_evaluators = [
-            ray.remote(TRPOEvaluator)(
+            ray.remote(TRPOEvaluator).remote(
                 self.registry,
                 self.env_creator,
                 self.config,

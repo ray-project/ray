@@ -4,23 +4,18 @@ from __future__ import absolute_import, division, print_function
 from copy import deepcopy
 
 import numpy as np
-import ray
 import torch
 import torch.nn.functional as F
-import torchvision.datasets as dset
-import torchvision.transforms as transforms
-from ray.rllib.a3c.shared_torch_policy import SharedTorchPolicy
-from ray.rllib.a3c.torchpolicy import TorchPolicy
-from ray.rllib.models.pytorch.misc import convert_batch, var_to_np
-from ray.rllib.utils.process_rollout import discount, process_rollout
-from torch import Tensor, distributions, nn
 from torch.autograd import Variable
-from torch.nn import BatchNorm1d, Dropout, Linear, ReLU, Sequential, Softmax
 from torch.nn.utils.convert_parameters import (_check_param_device,
                                                parameters_to_vector,
                                                vector_to_parameters,)
-from torch.optim import LBFGS, Adam
-from torch.utils.data import DataLoader, Dataset, TensorDataset
+
+import ray
+from ray.rllib.a3c.shared_torch_policy import SharedTorchPolicy
+from ray.rllib.models.pytorch.misc import convert_batch
+# TODO(alok): use `process_rollout`
+from ray.rllib.utils.process_rollout import discount, process_rollout
 
 
 def explained_variance_1d(ypred, y):
@@ -67,10 +62,22 @@ def vector_to_gradient(v, parameters):
 
 
 class TRPOPolicy(SharedTorchPolicy):
-    def __init__(self, registry, obs_space, act_space, config, *args,
-                 **kwargs):
-        super().__init__(registry, obs_space, act_space, config, *args,
-                         **kwargs)
+
+    def __init__(
+            self,
+            registry,
+            ob_space,
+            ac_space,
+            config,
+            **kwargs,
+    ):
+        super().__init__(
+            registry,
+            ob_space,
+            ac_space,
+            config,
+            **kwargs,
+        )
 
     def _evaluate_action_dists(self, obs, *args):
         logits, _ = self._model(obs)
@@ -135,10 +142,10 @@ class TRPOPolicy(SharedTorchPolicy):
 
         EPSILON = 1e-8
 
-        prob_new = new_policy(self.states).gather(1,
-                                                  torch.cat(self.actions)).data
-        prob_old = self._model(self.states).gather(1, torch.cat(
-            self.actions)).data + EPSILON
+        prob_new = new_policy(self._states).gather(1,
+                                                  torch.cat(self._actions)).data
+        prob_old = self._model(self._states).gather(1, torch.cat(
+            self._actions)).data + EPSILON
 
         return -torch.mean((prob_new / prob_old) * self._adv)
 

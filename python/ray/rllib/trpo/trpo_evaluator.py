@@ -2,11 +2,10 @@ from __future__ import absolute_import, division, print_function
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import PolicyEvaluator
+from ray.rllib.trpo.policy import TRPOPolicy
 from ray.rllib.utils.filter import NoFilter, get_filter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
-
-from policy import TRPOPolicy
 
 
 class TRPOEvaluator(PolicyEvaluator):
@@ -36,10 +35,10 @@ class TRPOEvaluator(PolicyEvaluator):
             options=self.config['model'],
         )
 
-        # TODO(alok): should obs space be the whole space or its shape?
+        # TODO(alok): use ob_space directly rather than shape
         self.policy = TRPOPolicy(
             registry,
-            self.env.observation_space,
+            self.env.observation_space.shape,
             self.env.action_space,
             self.config,
         )
