@@ -2412,8 +2412,8 @@ class DataFrame(object):
             sort: Sort the join keys lexicographically in the result.
             suffixes: Add this suffix to the common names not in the "on".
             copy: Does nothing in our implementation
-            indicator: Adds a row named _merge to the DataFrame with metadata
-                from the merge about each row.
+            indicator: Adds a column named _merge to the DataFrame with
+                metadata from the merge about each row.
             validate: Checks if merge is a specific type.
 
         Returns:
@@ -2445,6 +2445,7 @@ class DataFrame(object):
         right_cols = ray.put(right.columns)
 
         if not left_index and not right_index:
+
             new_blocks = \
                 np.array([co_op_helper._submit(
                     args=tuple([lambda x, y: getattr(x, "merge")(y, *args),
@@ -2475,6 +2476,7 @@ class DataFrame(object):
             # the remote partitions for use in the join.
             left_index_collection = \
                 (v.index for k, v in
+                 #TODO Check _IndexMetadata.groupby
                  self._row_metadata._coord_df.copy().groupby('partition'))
 
             # Since our index is getting updated and we don't have a way to
@@ -2486,8 +2488,8 @@ class DataFrame(object):
                 for obj in zip(self._block_partitions,
                                repartitioned_right)]))
 
-            new_index = ray.get(list(remote_idx))
-            new_index = new_index[0].append(new_index[1:])
+            new_indexes = ray.get(list(remote_idx))
+            new_index = new_indexes[0].append(new_indexes[1:])
             new_blocks = None
             new_rows = list(new_rows)
 
