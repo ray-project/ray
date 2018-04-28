@@ -112,8 +112,8 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     # building new DataFrames, rather just partitioning the DataFrames.
     if axis == 0:
         new_blocks = np.array([_reindex_helper._submit(
-            args=(all_columns[i], final_columns, axis,
-                  len(objs[0]._block_partitions), *part),
+            args=tuple([all_columns[i], final_columns, axis,
+                  len(objs[0]._block_partitions)] + part.tolist),
             num_return_vals=len(objs[0]._block_partitions))
             for i in range(len(objs))
             for part in objs[i]._block_partitions])
@@ -122,8 +122,8 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
         # everything like rows and returns in row-major format. Luckily, this
         # operation is cheap in numpy.
         new_blocks = np.array([_reindex_helper._submit(
-            args=(all_index[i], final_index, axis,
-                  len(objs[0]._block_partitions.T), *part),
+            args=tuple([all_index[i], final_index, axis,
+                  len(objs[0]._block_partitions.T)] + part),
             num_return_vals=len(objs[0]._block_partitions.T))
             for i in range(len(objs))
             for part in objs[i]._block_partitions.T]).T
