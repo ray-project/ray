@@ -774,7 +774,7 @@ class ActorsWithGPUs(unittest.TestCase):
         # Make sure that no two actors are assigned to the same GPU.
         locations_and_ids = ray.get(
             [actor.get_location_and_ids.remote() for actor in actors])
-        node_names = set([location for location, gpu_id in locations_and_ids])
+        node_names = {location for location, gpu_id in locations_and_ids}
         self.assertEqual(len(node_names), num_local_schedulers)
         location_actor_combinations = []
         for node_name in node_names:
@@ -815,7 +815,7 @@ class ActorsWithGPUs(unittest.TestCase):
         # Make sure that no two actors are assigned to the same GPU.
         locations_and_ids = ray.get(
             [actor.get_location_and_ids.remote() for actor in actors1])
-        node_names = set([location for location, gpu_id in locations_and_ids])
+        node_names = {location for location, gpu_id in locations_and_ids}
         self.assertEqual(len(node_names), num_local_schedulers)
 
         # Keep track of which GPU IDs are being used for each location.
@@ -849,7 +849,7 @@ class ActorsWithGPUs(unittest.TestCase):
             [actor.get_location_and_ids.remote() for actor in actors2])
         self.assertEqual(
             node_names,
-            set([location for location, gpu_id in locations_and_ids]))
+            {location for location, gpu_id in locations_and_ids})
         for location, gpu_ids in locations_and_ids:
             gpus_in_use[location].extend(gpu_ids)
         for node_name in node_names:
@@ -887,7 +887,7 @@ class ActorsWithGPUs(unittest.TestCase):
         # Make sure that no two actors are assigned to the same GPU.
         locations_and_ids = ray.get(
             [actor.get_location_and_ids.remote() for actor in actors])
-        node_names = set([location for location, gpu_id in locations_and_ids])
+        node_names = {location for location, gpu_id in locations_and_ids}
         self.assertEqual(len(node_names), 2)
         for node_name in node_names:
             node_gpu_ids = [
@@ -897,7 +897,7 @@ class ActorsWithGPUs(unittest.TestCase):
             self.assertIn(len(node_gpu_ids), [5, 10])
             self.assertEqual(
                 set(node_gpu_ids),
-                set([(i, ) for i in range(len(node_gpu_ids))]))
+                {(i, ) for i in range(len(node_gpu_ids))})
 
         # Creating a new actor should fail because all of the GPUs are being
         # used.
@@ -1942,7 +1942,7 @@ class ActorPlacementAndResources(unittest.TestCase):
 
         results = ray.get([result1, result2, result3])
         self.assertEqual(results[0], results[2])
-        self.assertEqual(set(results), set([0, 1]))
+        self.assertEqual(set(results), {0, 1})
 
         # Make sure that when one actor goes out of scope a new actor is
         # created because some resources have been freed up.
