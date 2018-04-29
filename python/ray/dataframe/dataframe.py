@@ -2836,11 +2836,13 @@ class DataFrame(object):
 
         if weights is not None:
 
-            # If a series, align with frame
+            # Index of the weights Series should correspond to the index of the
+            # Dataframe in order to sample
             if isinstance(weights, pd.Series):
                 weights = weights.reindex(self.axes[axis])
 
-            # Strings acceptable if a dataframe and axis = 0
+            # If weights arg is a string, the weights used for sampling will
+            # the be values in the column corresponding to that string
             if isinstance(weights, string_types):
                 if axis == 0:
                     try:
@@ -2866,12 +2868,15 @@ class DataFrame(object):
                 raise ValueError("weight vector many not include negative "
                                  "values")
 
-            # If has nan, set to zero.
+            # weights cannot be NaN when sampling, so we must set all nan
+            # values to 0
             weights = weights.fillna(0)
 
-            # Renormalize if don't sum to 1
-            if weights.sum() != 1:
-                if weights.sum() != 0:
+            # If passed in weights are not equal to 1, renormalize them
+            # otherwise numpy sampling function will error
+            weights_sum = weights.sum()
+            if weights_sum != 1:
+                if weights_sum != 0:
                     weights = weights / weights.sum()
                 else:
                     raise ValueError("Invalid weights: weights sum to zero")
@@ -2879,7 +2884,8 @@ class DataFrame(object):
             weights = weights.values
 
         if n is None and frac is None:
-            # default to n = 1 if n and frac are None
+            # default to n = 1 if n and frac are both None (in accordance with
+            # Pandas specification)
             n = 1
         elif n is not None and frac is None and n % 1 != 0:
             # n must be an integer
@@ -2888,6 +2894,8 @@ class DataFrame(object):
             # compute the number of samples based on frac
             n = int(round(frac * axis_length))
         elif n is not None and frac is not None:
+            # Pandas specification does not allow both n and frac to be passed
+            # in
             raise ValueError('Please enter a value for `frac` OR `n`, not '
                              'both')
         if n < 0:
