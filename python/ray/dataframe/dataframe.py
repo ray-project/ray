@@ -37,7 +37,7 @@ from .utils import (
     _create_block_partitions,
     _inherit_docstrings,
     _reindex_helper,
-    co_op_helper)
+    _co_op_helper)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -738,8 +738,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the applied addition.
         """
-        return self._inter_and_single_op_helper("add", other, axis, level,
-                                                fill_value)
+        return self._operator_helper(pd.DataFrame.add, other, axis, level,
+                                     fill_value)
 
     def agg(self, func, axis=0, *args, **kwargs):
         return self.aggregate(func, axis, *args, **kwargs)
@@ -1296,8 +1296,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Divide applied.
         """
-        return self._inter_and_single_op_helper("div", other, axis, level,
-                                                fill_value)
+        return self._operator_helper(pd.DataFrame.add, other, axis, level,
+                                     fill_value)
 
     def divide(self, other, axis='columns', level=None, fill_value=None):
         """Synonym for div.
@@ -1472,14 +1472,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame filled with Booleans.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.eq(y, axis, level),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.eq(other, axis, level),
-                other, axis, level)
+        return self._operator_helper(pd.DataFrame.eq, other, axis, level)
 
     def equals(self, other):
         """
@@ -1757,8 +1750,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Divide applied.
         """
-        return self._inter_and_single_op_helper("floordiv", other, axis, level,
-                                                fill_value)
+        return self._operator_helper(pd.DataFrame.floordiv, other, axis, level,
+                                     fill_value)
 
     @classmethod
     def from_csv(self, path, header=0, sep=', ', index_col=0,
@@ -1798,14 +1791,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame filled with Booleans.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.ge(y, axis, level),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.ge(other, axis, level),
-                other, axis, level)
+        return self._operator_helper(pd.DataFrame.ge, other, axis, level)
 
     def get(self, key, default=None):
         """Get item from object for given key (DataFrame column, Panel
@@ -1863,14 +1849,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame filled with Booleans.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.gt(y, axis, level),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.gt(other, axis, level),
-                other, axis, level)
+        return self._operator_helper(pd.DataFrame.gt, other, axis, level)
 
     def head(self, n=5):
         """Get the first n rows of the dataframe.
@@ -2210,15 +2189,15 @@ class DataFrame(object):
             # Another important thing to note: We set the current self index
             # to the index variable which may be 'on'.
             new_self = np.array([
-                _reindex_helper._submit(args=(tuple([index, new_index, 1,
+                _reindex_helper._submit(args=tuple([index, new_index, 1,
                                               new_partition_num] +
-                                              block.tolist())),
+                                              block.tolist()),
                                         num_return_vals=new_partition_num)
                 for block in self._block_partitions.T])
             new_other = np.array([
-                _reindex_helper._submit(args=(tuple([other.index, new_index, 1,
+                _reindex_helper._submit(args=tuple([other.index, new_index, 1,
                                               new_partition_num] +
-                                              block.tolist())),
+                                              block.tolist()),
                                         num_return_vals=new_partition_num)
                 for block in other._block_partitions.T])
 
@@ -2255,15 +2234,15 @@ class DataFrame(object):
                                      for obj in other])
 
             new_self = np.array([
-                _reindex_helper._submit(args=(tuple([self.index, new_index, 1,
+                _reindex_helper._submit(args=tuple([self.index, new_index, 1,
                                               new_partition_num] +
-                                              block.tolist())),
+                                              block.tolist()),
                                         num_return_vals=new_partition_num)
                 for block in self._block_partitions.T])
 
             new_others = np.array([_reindex_helper._submit(
-                args=(tuple([obj.index, new_index, 1, new_partition_num] +
-                            block.tolist())),
+                args=tuple([obj.index, new_index, 1, new_partition_num] +
+                            block.tolist()),
                 num_return_vals=new_partition_num
             ) for obj in other for block in obj._block_partitions.T])
 
@@ -2311,14 +2290,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame filled with Booleans.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.le(y, axis, level),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.le(other, axis, level),
-                other, axis, level)
+        return self._operator_helper(pd.DataFrame.le, other, axis, level)
 
     def lookup(self, row_labels, col_labels):
         raise NotImplementedError(
@@ -2336,14 +2308,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame filled with Booleans.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.lt(y, axis, level),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.lt(other, axis, level),
-                other, axis, level)
+        return self._operator_helper(pd.DataFrame.lt, other, axis, level)
 
     def mad(self, axis=None, skipna=None, level=None):
         raise NotImplementedError(
@@ -2464,8 +2429,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Mod applied.
         """
-        return self._inter_and_single_op_helper("mod", other, axis, level,
-                                                fill_value)
+        return self._operator_helper(pd.DataFrame.mod, other, axis, level,
+                                     fill_value)
 
     def mode(self, axis=0, numeric_only=False):
         raise NotImplementedError(
@@ -2484,8 +2449,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Multiply applied.
         """
-        return self._inter_and_single_op_helper("mul", other, axis, level,
-                                                fill_value)
+        return self._operator_helper(pd.DataFrame.mul, other, axis, level,
+                                     fill_value)
 
     def multiply(self, other, axis='columns', level=None, fill_value=None):
         """Synonym for mul.
@@ -2512,14 +2477,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame filled with Booleans.
         """
-        if isinstance(other, DataFrame):
-            return self._inter_df_op_helper(
-                lambda x, y: x.ne(y, axis, level),
-                other, axis, level)
-        else:
-            return self._single_df_op_helper(
-                lambda df: df.ne(other, axis, level),
-                other, axis, level)
+        return self._operator_helper(pd.DataFrame.ne, other, axis, level)
 
     def nlargest(self, n, columns, keep='first'):
         raise NotImplementedError(
@@ -2631,8 +2589,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Pow applied.
         """
-        return self._inter_and_single_op_helper("pow", other, axis, level,
-                                                fill_value)
+        return self._operator_helper(pd.DataFrame.pow, other, axis, level,
+                                     fill_value)
 
     def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
              min_count=0, **kwargs):
@@ -3213,8 +3171,8 @@ class DataFrame(object):
         Returns:
              A new DataFrame with the subtraciont applied.
         """
-        return self._inter_and_single_op_helper("sub", other, axis, level,
-                                                fill_value)
+        return self._operator_helper(pd.DataFrame.sub, other, axis, level,
+                                     fill_value)
 
     def subtract(self, other, axis='columns', level=None, fill_value=None):
         """Alias for sub.
@@ -3489,8 +3447,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Divide applied.
         """
-        return self._inter_and_single_op_helper("truediv", other, axis, level,
-                                                fill_value)
+        return self._operator_helper(pd.DataFrame.truediv, other, axis, level,
+                                     fill_value)
 
     def truncate(self, before=None, after=None, axis=None, copy=True):
         raise NotImplementedError(
@@ -4046,28 +4004,29 @@ class DataFrame(object):
 
         new_partitions_self = \
             np.array([_reindex_helper._submit(
-                args=(tuple([old_self_index, new_index, 1,
-                             new_num_partitions] + block.tolist())),
+                args=tuple([old_self_index, new_index, 1,
+                             new_num_partitions] + block.tolist()),
                 num_return_vals=new_num_partitions)
                 for block in self._block_partitions.T]).T
 
         new_partitions_other = \
             np.array([_reindex_helper._submit(
-                args=(tuple([old_other_index, new_index, 1,
-                             new_num_partitions] + block.tolist())),
+                args=tuple([old_other_index, new_index, 1,
+                             new_num_partitions] + block.tolist()),
                 num_return_vals=new_num_partitions)
                 for block in other._block_partitions.T]).T
 
         return zip(new_partitions_self, new_partitions_other)
 
-    def _inter_and_single_op_helper(self, op, other, axis, level, *args):
+    def _operator_helper(self, func, other, axis, level, *args):
+        """Helper method for inter-dataframe and scalar operations"""
         if isinstance(other, DataFrame):
             return self._inter_df_op_helper(
-                lambda x, y: getattr(x, op)(y, axis, level, *args),
+                lambda x, y: func(x, y, axis, level, *args),
                 other, axis, level)
         else:
             return self._single_df_op_helper(
-                lambda df: getattr(df, op)(other, axis, level, *args),
+                lambda df: func(df, other, axis, level, *args),
                 other, axis, level)
 
     def _inter_df_op_helper(self, func, other, axis, level):
@@ -4083,7 +4042,7 @@ class DataFrame(object):
             copartitions = self._copartition(other, new_index)
 
             new_blocks = \
-                np.array([co_op_helper._submit(
+                np.array([_co_op_helper._submit(
                     args=tuple([func, self.columns, other.columns,
                                 len(part[0])] +
                           np.concatenate(part).tolist()),

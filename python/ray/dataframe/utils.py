@@ -314,8 +314,23 @@ def _reindex_helper(old_index, new_index, axis, npartitions, *df):
 
 
 @ray.remote
-def co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
+def _co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
+    """Copartition operation where two DataFrames must have aligned indexes.
 
+    NOTE: This function assumes things are already copartitioned. Requires that
+        row partitions are passed in as blocks.
+
+    Args:
+        func: The operation to conduct between two DataFrames.
+        left_columns: The column names for the left DataFrame.
+        right_columns: The column names for the right DataFrame.
+        left_df_len: The length of the left. This is used so we can split up
+            the zipped partitions.
+        zipped: The DataFrame partitions (in blocks).
+
+    Returns:
+         A new set of blocks for the partitioned DataFrame.
+    """
     left = pd.concat(zipped[:left_df_len], axis=1, copy=False)
     left.columns = left_columns
 
