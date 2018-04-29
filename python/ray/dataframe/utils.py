@@ -112,6 +112,7 @@ def to_pandas(df):
     else:
         pd_df = pd.concat(ray.get(df._col_partitions),
                           axis=1)
+    print(df.columns)
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
@@ -157,34 +158,32 @@ def _map_partitions(func, partitions, *argslists):
                 for part, args in zip(partitions, *argslists)]
 
 
-@ray.remote(num_return_vals=2)
-def _build_columns(df_col, columns):
-    """Build columns and compute lengths for each partition."""
-    # Columns and width
+@ray.remote
+def _build_col_widths(df_col):
     widths = np.array(ray.get([_deploy_func.remote(_get_widths, d)
                       for d in df_col]))
-    dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(widths))
-                    for p_sub_idx in range(widths[p_idx])]
 
-    col_names = ("partition", "index_within_partition")
-    column_df = pd.DataFrame(dest_indices, index=columns, columns=col_names)
-
-    return widths, column_df
+    return widths
 
 
-@ray.remote(num_return_vals=2)
-def _build_index(df_row, index):
-    """Build index and compute lengths for each partition."""
-    # Rows and length
+@ray.remote
+def _build_row_lengths(df_row):
+    """Compute lengths for each partition."""
     lengths = np.array(ray.get([_deploy_func.remote(_get_lengths, d)
                        for d in df_row]))
 
+    return lengths
+
+
+@ray.remote
+def _build_coord_df(lengths, index):
+    """Build index for each partition."""
     dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(lengths))
                     for p_sub_idx in range(lengths[p_idx])]
     col_names = ("partition", "index_within_partition")
-    index_df = pd.DataFrame(dest_indices, index=index, columns=col_names)
+    coord_df = pd.DataFrame(dest_indices, index=index, columns=col_names)
 
-    return lengths, index_df
+    return coord_df
 
 
 def _create_block_partitions(partitions, axis=0, length=None):

@@ -3,115 +3,21 @@ import numpy as np
 import ray
 
 from .utils import (
-    _build_index,
-    _build_columns)
+    _build_row_lengths,
+    _build_col_widths,
+    _build_coord_df)
 
 from pandas.core.indexing import convert_to_index_sliceable
 
 
-class _IndexMetadataBase(object):
+class _IndexMetadata(object):
     """Wrapper for Pandas indexes in Ray DataFrames. Handles all of the
     metadata specific to the axis of partition (setting indexes,
-    calculating the index within partition of a value, etc.) since the
-    dataframe may be partitioned across either axis. This way we can unify the
-    possible index  operations over one axis-agnostic interface.
-
-    This class is the abstract superclass for IndexMetadata and
-    WrappingIndexMetadata, which handle indexes along the partitioned and
-    non-partitioned axes, respectively.
-
-    IMPORTANT NOTE: Currently all operations, as implemented, are inplace.
-    """
-
-    def _get__coord_df(self):
-        if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
-            self._coord_df_cache = ray.get(self._coord_df_cache)
-        return self._coord_df_cache
-
-    def _set__coord_df(self, coord_df):
-        self._coord_df_cache = coord_df
-
-    _coord_df = property(_get__coord_df, _set__coord_df)
-
-    def _get_index(self):
-        """Get the index wrapped by this IndexDF.
-
-        Returns:
-            The index wrapped by this IndexDF
-        """
-        return self._coord_df.index
-
-    def _set_index(self, new_index):
-        """Set the index wrapped by this IndexDF.
-
-        Args:
-            new_index: The new index to wrap
-        """
-        self._coord_df.index = new_index
-
-    index = property(_get_index, _set_index)
-
-    def coords_of(self, key):
-        raise NotImplementedError()
-
-    def __getitem__(self, key):
-        return self.coords_of(key)
-
-    def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
-                group_keys=True, squeeze=False, **kwargs):
-        raise NotImplementedError()
-
-    def __len__(self):
-        return len(self._coord_df)
-
-    def first_valid_index(self):
-        return self._coord_df.first_valid_index()
-
-    def last_valid_index(self):
-        return self._coord_df.last_valid_index()
-
-    def insert(self, key, loc=None, partition=None,
-               index_within_partition=None):
-        raise NotImplementedError()
-
-    def drop(self, labels, errors='raise'):
-        """Drop the specified labels from the IndexMetadata
-
-        Args:
-            labels (scalar or list-like):
-                The labels to drop
-            errors ('raise' or 'ignore'):
-                If 'ignore', suppress errors for when labels don't exist
-
-        Returns:
-            DataFrame with coordinates of dropped labels
-        """
-        # TODO(patyang): This produces inconsistent indexes.
-        dropped = self.coords_of(labels)
-        self._coord_df = self._coord_df.drop(labels, errors=errors)
-        return dropped
-
-    def rename_index(self, mapper):
-        """Rename the index.
-
-        Args:
-            mapper: name to rename the index as
-        """
-        self._coord_df = self._coord_df.rename_axis(mapper, axis=0)
-
-    def convert_to_index_sliceable(self, key):
-        """Converts and performs error checking on the passed slice
-
-        Args:
-            key: slice to convert and check
-        """
-        return convert_to_index_sliceable(self._coord_df, key)
-
-
-class _IndexMetadata(_IndexMetadataBase):
-    """IndexMetadata implementation for index across a partitioned axis. This
+    calculating the index within partition of a value, etc.). This
     implementation assumes the underlying index lies across multiple
     partitions.
+
+    IMPORTANT NOTE: Currently all operations, as implemented, are inplace.
     """
 
     def __init__(self, dfs=None, index=None, axis=0, lengths_oid=None,
@@ -127,12 +33,38 @@ class _IndexMetadata(_IndexMetadataBase):
             A IndexMetadata backed by the specified pd.Index, partitioned off
             specified partitions
         """
-        if dfs is not None and (lengths_oid is None and coord_df_oid is None):
-            lengths_oid, coord_df_oid = \
-                _build_index.remote(dfs, index) if axis == 0 else \
-                _build_columns.remote(dfs, index)
+        assert (lengths_oid is None) == (coord_df_oid is None), \
+            "Must pass both or neither of lengths_oid and coord_df_oid"
+
+        if dfs is not None and lengths_oid is None:
+            if axis == 0:
+                lengths_oid = _build_row_lengths.remote(dfs)
+            else:
+                lengths_oid = _build_col_widths.remote(dfs)
+            coord_df_oid = _build_coord_df.remote(lengths_oid, index)
+
         self._coord_df = coord_df_oid
         self._lengths = lengths_oid
+        self._index_cache = index
+        self._new_index = False
+
+    def _get__coord_df(self):
+        if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
+            self._coord_df_cache = ray.get(self._coord_df_cache)
+        if self._new_index:
+            self._coord_df_cache.index = self.index
+        return self._coord_df_cache
+
+    def _set__coord_df(self, coord_df):
+        # Sometimes we set the _IndexMetadata's coord_df outside of the
+        # constructor, generally using fxns like squeeze(), drop(), etc.
+        # This produces a modified index, so we need to reflec the change on
+        # the index cache
+        if not isinstance(coord_df, ray.local_scheduler.ObjectID):
+            self._index_cache = coord_df.index
+        self._coord_df_cache = coord_df
+
+    _coord_df = property(_get__coord_df, _set__coord_df)
 
     def _get__lengths(self):
         if isinstance(self._lengths_cache, ray.local_scheduler.ObjectID) or \
@@ -145,6 +77,30 @@ class _IndexMetadata(_IndexMetadataBase):
         self._lengths_cache = lengths
 
     _lengths = property(_get__lengths, _set__lengths)
+
+    def _get_index(self):
+        """Get the index wrapped by this IndexDF.
+
+        Returns:
+            The index wrapped by this IndexDF
+        """
+        if self._index_cache is None:
+            self._index_cache = pd.RangeIndex(len(self))
+        print(self._index_cache)
+        return self._index_cache
+
+    def _set_index(self, new_index):
+        """Set the index wrapped by this IndexDF.
+
+        Args:
+            new_index: The new index to wrap
+        """
+        new_index = pd.DataFrame(index=new_index).index
+        assert len(new_index) == len(self)
+        self._index_cache = new_index
+        self._new_index = True
+
+    index = property(_get_index, _set_index)
 
     def coords_of(self, key):
         """Returns the coordinates (partition, index_within_partition) of the
@@ -180,8 +136,6 @@ class _IndexMetadata(_IndexMetadataBase):
                     'index_within_partition']
 
     def __len__(self):
-        # Hard to say if this is faster than IndexMetadataBase.__len__ if
-        # self._coord_df is non-resident
         return sum(self._lengths)
 
     def reset_partition_coords(self, partitions=None):
@@ -281,76 +235,52 @@ class _IndexMetadata(_IndexMetadataBase):
         if not isinstance(self._lengths_cache, ray.local_scheduler.ObjectID):
             lengths_copy = self._lengths_cache.copy()
 
-        return _IndexMetadata(coord_df_oid=coord_df_copy,
+        index_copy = self._index_cache
+        if self._index_cache is not None:
+            index_copy = self._index_cache.copy()
+
+        return _IndexMetadata(index=index_copy,
+                              coord_df_oid=coord_df_copy,
                               lengths_oid=lengths_copy)
 
+    def __getitem__(self, key):
+        return self.coords_of(key)
 
-class _WrappingIndexMetadata(_IndexMetadata):
-    """IndexMetadata implementation for index across a non-partitioned axis.
-    This implementation assumes the underlying index lies across one partition.
-    """
+    def first_valid_index(self):
+        return self._coord_df.first_valid_index()
 
-    def __init__(self, index):
-        """Inits a IndexMetadata from Pandas Index only.
+    def last_valid_index(self):
+        return self._coord_df.last_valid_index()
 
-        Args:
-            index (pd.Index): Index to wrap.
-
-        Returns:
-            A IndexMetadata backed by the specified pd.Index.
-        """
-        self._coord_df = pd.DataFrame(index=index)
-        # Set _lengths as a dummy variable for future-proof method inheritance
-        self._lengths = [len(index)]
-
-    def coords_of(self, key):
-        """Returns the coordinates (partition, index_within_partition) of the
-        provided key in the index
+    def drop(self, labels, errors='raise'):
+        """Drop the specified labels from the IndexMetadata
 
         Args:
-            key: item to get coordinates of
+            labels (scalar or list-like):
+                The labels to drop
+            errors ('raise' or 'ignore'):
+                If 'ignore', suppress errors for when labels don't exist
 
         Returns:
-            Pandas object with the keys specified. If key is a single object
-            it will be a pd.Series with items `partition` and
-            `index_within_partition`, and if key is a slice it will be a
-            pd.DataFrame with said items as columns.
+            DataFrame with coordinates of dropped labels
         """
-        locs = self.index.get_loc(key)
-        # locs may be a single int, a slice, or a boolean mask.
-        # Convert here to iterable of integers
-        loc_idxs = pd.RangeIndex(len(self.index))[locs]
-        # TODO: Investigate "modify view/copy" warning
-        ret_obj = self._coord_df.loc[key]
-        ret_obj['partition'] = 0
-        ret_obj['index_within_partition'] = loc_idxs
-        return ret_obj
+        # TODO(patyang): This produces inconsistent indexes.
+        dropped = self.coords_of(labels)
+        self._coord_df = self._coord_df.drop(labels, errors=errors)
+        return dropped
 
-    def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
-                group_keys=True, squeeze=False, **kwargs):
-        raise NotImplementedError()
-
-    def insert(self, key, loc=None, partition=None,
-               index_within_partition=None):
-        """Inserts a key at a certain location in the index, or a certain coord
-        in a partition. Called with either `loc` or `partition` and
-        `index_within_partition`. If called with both, `loc` will be used.
+    def rename_index(self, mapper):
+        """Rename the index.
 
         Args:
-            key: item to insert into index
-            loc: location to insert into index
-            partition: partition to insert into
-            index_within_partition: index within partition to insert into
-
-        Returns:
-            DataFrame with coordinates of insert
+            mapper: name to rename the index as
         """
-        # Generate new index
-        new_index = self.index.insert(loc, key)
+        self._coord_df = self._coord_df.rename_axis(mapper, axis=0)
 
-        # Make new empty coord_df
-        self._coord_df = pd.DataFrame(index=new_index)
+    def convert_to_index_sliceable(self, key):
+        """Converts and performs error checking on the passed slice
 
-        # Shouldn't really need this, but here to maintain API consistency
-        return pd.DataFrame({'partition': 0, 'index_within_partition': loc},
-                            index=[key])
+        Args:
+            key: slice to convert and check
+        """
+        return convert_to_index_sliceable(self._coord_df, key)
