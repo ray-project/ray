@@ -3988,6 +3988,10 @@ class DataFrame(object):
     def _copartition(self, other, new_index):
         """Colocates the values of other with this for certain operations.
 
+        NOTE: This method uses the indexes of each DataFrame to order them the
+            same. This operation does an implicit shuffling of data and zips
+            the two DataFrames together to be operated on.
+
         Args:
             other: The other DataFrame to copartition with.
 
