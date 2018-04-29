@@ -1095,8 +1095,9 @@ class DataFrame(object):
                     f = getattr(pd.DataFrame, function)
                 else:
                     f = function
+                #TODO: can these just be block_partitions?
                 rows.append(pd.concat(ray.get(_map_partitions(
-                    lambda df: f(df), self._col_partitions)), axis=1))
+                    lambda df: df.apply(f), self._col_partitions)), axis=1))
             df = pd.concat(rows, axis=0)
             df.columns = self.columns
             df.index = [f_name if isinstance(f_name, compat.string_types)
