@@ -1050,7 +1050,6 @@ class DataFrame(object):
         # TODO: do axis checking
         # TODO: call agg instead of reimplementing the list pary
         # TODO: return ray dataframes
-        # TODO: try to do series and concat instead of join
         axis = pd.DataFrame()._get_axis_number(axis)
 
         if isinstance(func, compat.string_types):
@@ -1058,15 +1057,18 @@ class DataFrame(object):
                 kwds['axis'] = axis
             return getattr(self, func)(*args, **kwds)
         elif isinstance(func, dict):
+            if axis == 1:
+                raise TypeError("(\"'dict' object is not callable\", " 
+                    "'occurred at index {0}'".format(self.index[0]))
             result = []
 
             has_list = list in map(type, func.values())
             part_ind_tuples = [(self._col_metadata[key], key) for key in func]
             
+            # tup[1] is the key of the dict
+            # tup[0][0] is partition index
+            # tup[0][1] is the index within the partition
             if has_list:
-                # tup[1] is the key of the dict
-                # tup[0][0] is partition index
-                # tup[0][1] is the index within the partition
                 result = [_deploy_func.remote(
                     lambda df: df.iloc[:, tup[0][1]].apply(func[tup[1]] 
                                                            if is_list_like(func[tup[1]])
@@ -1079,28 +1081,12 @@ class DataFrame(object):
                     lambda df: df.iloc[:, tup[0][1]].apply(func[tup[1]]),
                     self._col_partitions[tup[0][0]]) 
                     for tup in part_ind_tuples]
-                return pd.Series(ray.get(result), index = func.keys())
+                return pd.Series(ray.get(result), index=func.keys())
 
-
-            # for key in func:
-            #     part, ind = self._col_metadata[key]
-
-            #     if not is_list_like(func[key]) and has_list:
-            #         f = [func[key]]
-            #     else:
-            #         f = func[key]
-
-            #     result.append(_deploy_func.remote(
-            #         lambda df: df.iloc[:, ind].apply(f),
-            #         self._col_partitions[part]))
-                
-            # if has_list:
-            #     return pd.concat(ray.get(result), axis=1)
-            # else:
-            #     return pd.Series(ray.get(result), index=func.keys())
-
-        # TODO: change this to is_list_like
-        elif is_list_like(func) and axis==0:
+        elif is_list_like(func):
+            if axis == 1:
+                raise TypeError("(\"'list' object is not callable\", " 
+                    "'occurred at index {0}'".format(self.index[0]))
             rows = []
             for function in func:
                 if isinstance(function, compat.string_types):
