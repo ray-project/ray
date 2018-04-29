@@ -2428,11 +2428,15 @@ class DataFrame(object):
         # merge.
         new_columns = _merge_columns.remote(self.columns, right.columns, *args)
 
+        # TODO ERROR CHECK
+
         # There's a small chance that our partitions are already perfect, but
         # if it's not, we need to adjust them. We adjust the right against the
-        # left because the defaults of merge rely on the order of the left.
+        # left because the defaults of merge rely on the order of the left. We
+        # have to push the index down here, so if we're joining on the right's
+        # index we go ahead and push it down here too.
         if not np.array_equal(self._row_metadata._lengths,
-                              right._row_metadata._lengths):
+                              right._row_metadata._lengths) or right_index:
 
             repartitioned_right = np.array([_match_partitioning._submit(
                 args=(df, self._row_metadata._lengths, right.index),
@@ -2445,57 +2449,47 @@ class DataFrame(object):
         right_cols = ray.put(right.columns)
 
         if not left_index and not right_index:
+            # Passing None to each call specifies that we don't care about the
+            # left's index for the join.
+            left_idx = itertools.repeat(None)
 
-            new_blocks = \
-                np.array([co_op_helper._submit(
-                    args=tuple([lambda x, y: getattr(x, "merge")(y, *args),
-                                left_cols, right_cols,
-                                len(self._block_partitions.T)] +
-                               np.concatenate(obj).tolist()),
-                    num_return_vals=len(self._block_partitions.T))
-                    for obj in zip(self._block_partitions,
-                                   repartitioned_right)])
+            # We only return the index if we need to update it, and that only
+            # happens when either left_index or right_index is True. We will
+            # use this value to add the return vals if we are getting an index
+            # back.
+            return_index = False
+        else:
+            # We build this to push the index down so that we can use it for
+            # the join.
+            left_idx = \
+                (v.index for k, v in
+                 self._row_metadata._coord_df.copy().groupby('partition'))
+            return_index = True
 
+        new_blocks = \
+            np.array([co_op_helper._submit(
+                args=tuple([lambda x, y: x.merge(y, *args),
+                            left_cols, right_cols,
+                            len(self._block_partitions.T), next(left_idx)] +
+                           np.concatenate(obj).tolist()),
+                num_return_vals=len(self._block_partitions.T) + return_index)
+                for obj in zip(self._block_partitions,
+                               repartitioned_right)])
+
+        if not return_index:
             # Default to RangeIndex if left_index and right_index both false.
             new_index = None
-            new_rows = None
         else:
-            @ray.remote(num_return_vals=2)
-            def merge_on_index(obj, left_idx, left_cols, right_cols, *args):
-                left = pd.concat(ray.get(obj[0].tolist()), axis=1, copy=False)
-                left.index = left_idx
-                left.columns = left_cols
+            @ray.remote
+            def concat_index(*index_parts):
+                return index_parts[0].append(index_parts[1:])
 
-                right = pd.concat(ray.get(obj[1].tolist()), axis=1, copy=False)
-                right.columns = right_cols
-
-                result = left.merge(right, *args)
-                return result, result.index
-
-            # This will give us an iterator that we use to send the index to
-            # the remote partitions for use in the join.
-            left_index_collection = \
-                (v.index for k, v in
-                 #TODO Check _IndexMetadata.groupby
-                 self._row_metadata._coord_df.copy().groupby('partition'))
-
-            # Since our index is getting updated and we don't have a way to
-            # know how much it will change from the outside, we have to get it
-            # from within the partitions.
-            new_rows, remote_idx = list(zip(*[
-                merge_on_index.remote(obj, next(left_index_collection),
-                                      left_cols, right_cols, *args)
-                for obj in zip(self._block_partitions,
-                               repartitioned_right)]))
-
-            new_indexes = ray.get(list(remote_idx))
-            new_index = new_indexes[0].append(new_indexes[1:])
-            new_blocks = None
-            new_rows = list(new_rows)
+            new_index_parts = new_blocks[:, -1]
+            new_index = concat_index.remote(*new_index_parts)
+            new_blocks = new_blocks[:, :-1]
 
         return DataFrame(block_partitions=new_blocks,
-                         row_partitions=new_rows,
-                         columns=ray.get(new_columns),
+                         columns=new_columns,
                          index=new_index)
 
     def min(self, axis=None, skipna=None, level=None, numeric_only=None,

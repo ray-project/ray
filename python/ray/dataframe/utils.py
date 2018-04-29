@@ -314,7 +314,8 @@ def _reindex_helper(old_index, new_index, axis, npartitions, *df):
 
 
 @ray.remote
-def _co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
+def _co_op_helper(func, left_columns, right_columns, left_df_len, left_idx,
+                  *zipped):
     """Copartition operation where two DataFrames must have aligned indexes.
 
     NOTE: This function assumes things are already copartitioned. Requires that
@@ -333,12 +334,20 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
     """
     left = pd.concat(zipped[:left_df_len], axis=1, copy=False).copy()
     left.columns = left_columns
+    if left_idx is not None:
+        left.index = left_idx
 
     right = pd.concat(zipped[left_df_len:], axis=1, copy=False).copy()
     right.columns = right_columns
 
     new_rows = func(left, right)
-    return create_blocks_helper(new_rows, left_df_len, 0)
+
+    new_blocks = create_blocks_helper(new_rows, left_df_len, 0)
+
+    if left_idx is not None:
+        new_blocks.append(new_rows.index)
+
+    return new_blocks
 
 
 @ray.remote
