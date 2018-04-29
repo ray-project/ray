@@ -619,7 +619,6 @@ void NodeManager::AssignTask(Task &task) {
       // Extend the frontier to include the executing task.
       auto actor_entry = actor_registry_.find(spec.ActorId());
       RAY_CHECK(actor_entry != actor_registry_.end());
-      actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
       // Update the task's execution dependencies to reflect the actual
       // execution order, to support deterministic reconstruction.
       // NOTE(swang): The update of an actor task's execution dependencies is
@@ -627,9 +626,13 @@ void NodeManager::AssignTask(Task &task) {
       // we may lose updates that are in flight to the task table. We only
       // guarantee deterministic reconstruction ordering for tasks whose
       // updates are reflected in the task table.
-      TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
-      mutable_spec.SetExecutionDependencies(
-          {actor_entry->second.GetExecutionDependency()});
+      auto execution_dependency = actor_entry->second.GetExecutionDependency();
+      if (!execution_dependency.is_nil()) {
+        TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
+        mutable_spec.SetExecutionDependencies(
+            {actor_entry->second.GetExecutionDependency()});
+      }
+      actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
     }
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
@@ -662,7 +665,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     auto actor_notification = std::make_shared<ActorTableDataT>();
     actor_notification->actor_id = actor_id.binary();
     actor_notification->actor_creation_dummy_object_id =
-        task.GetTaskSpecification().ActorCreationDummyObjectId().binary();
+        task.GetTaskSpecification().ActorDummyObject().binary();
     // TODO(swang): The driver ID.
     actor_notification->driver_id = JobID::nil().binary();
     actor_notification->node_manager_id =
