@@ -108,18 +108,18 @@ class DataFrame(object):
                 if row_partitions is not None:
                     axis = 0
                     partitions = row_partitions
-                    bp_length = len(columns) if columns is not None else \
+                    axis_length = len(columns) if columns is not None else \
                         len(col_metadata)
                 elif col_partitions is not None:
                     axis = 1
                     partitions = col_partitions
-                    bp_length = None
+                    axis_length = None
 
                 # TODO: write explicit tests for "short and wide"
                 # column partitions
                 self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
-                                             length=bp_length)
+                                             length=axis_length)
 
         # Sometimes we only get a single column or row, which is
         # problematic for building blocks from the partitions, so we
