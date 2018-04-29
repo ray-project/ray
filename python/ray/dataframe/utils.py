@@ -6,7 +6,13 @@ import pandas as pd
 import numpy as np
 import ray
 
-from . import (get_npartitions, get_nrowpartitions, get_ncolpartitions)
+from . import (
+    get_npartitions,
+    get_nrowpartitions,
+    get_ncolpartitions,
+    get_nworkers)
+
+from itertools import product
 
 
 def _get_lengths(df):
@@ -429,6 +435,64 @@ def _map_partitions_coalesce(func, block_partitions, axis):
     else:
         # get row partitions, reduce, perform
         return [_deploy_func_row.remote(func, *part) for part in block_partitions]
+
+flookup = {
+    "isna": {"type": "applymap", "op_rate": 0, "op_stdev": 0},
+    "sum": {"type": "axis-reduce", "op_rate": 0, "op_stdev": 0}
+}
+
+MAX_ZSCORE = 2.5
+
+def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
+    in_rows, in_cols = in_dims
+    in_nparts = in_rows * in_cols
+    fprofile = flookup[fname]
+    ftype = fprofile["type"]
+    op_rate = fprofile["op_rate"]
+    op_stdev = fprofile["op_stdev"]
+
+    op_stdev_f = lambda x: op_stdev * x
+    overhead_f = lambda x: 0
+
+    def est_time(split):
+        # Explode time. Add possible task overhead to explode?
+        explode_time = 0 if split == in_dims else \
+                       (ser_rate + deser_rate) * in_nparts
+
+        split_rows, split_cols = split
+        split_nparts = split_rows * split_cols
+
+        if ftype == "applymap":
+            dsplit = dsize / split_nparts
+
+        elif ftype == "axis-reduce":
+            axis = kwargs["axis"]
+            dsplit = dsize / (split_cols if axis == 0 else split_rows)
+
+        ser_time = ser_rate * dsplit
+        op_time = op_rate * dsplit
+        deser_time = deser_rate * dsplit
+
+        task_split_time = ser_time + op_time + deser_time
+        total_iters = np.ceil(split_nparts / get_nworkers())
+
+        task_time = total_iters * task_split_time
+
+        # \eps(x, y)
+        task_overhead = overhead_f(split)
+
+        # Var(x, y)
+        task_var = MAX_ZSCORE * op_stdev_f(dsplit) * np.sqrt(total_iters)
+
+        total_time = explode_time + task_time + task_overhead + task_var
+        return total_time
+
+    ser_rate = 0
+    deser_rate = 0
+    candidate_splits = list(product([1, 2, 4, 6, 8], repeat=2))
+    times = [(split, est_time(split)) for split in candidate_splits]
+    split = max(times, key=lambda x: x[1])[0]
+    print(split)
 
 def waitall(df):
     parts = df._block_partitions.flatten().tolist()

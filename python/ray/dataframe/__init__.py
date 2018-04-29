@@ -5,6 +5,7 @@ from __future__ import print_function
 import pandas as pd
 from pandas import (eval, Panel, date_range, MultiIndex)
 import threading
+import psutil
 
 pd_version = pd.__version__
 pd_major = int(pd_version.split(".")[0])
@@ -41,6 +42,9 @@ def set_ncolpartitions(n):
     global DEFAULT_COL_PARTITIONS
     DEFAULT_COL_PARTITIONS = n
 
+def get_nworkers():
+    return NWORKERS
+
 # We import these file after above two function
 # because they depend on npartitions.
 from .dataframe import DataFrame  # noqa: 402
@@ -62,3 +66,5 @@ try:
         ray.init()
 except AssertionError:
     pass
+
+NWORKERS = psutil.cpu_count()
