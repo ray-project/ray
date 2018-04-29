@@ -3272,15 +3272,119 @@ class DataFrame(object):
     def sort_index(self, axis=0, level=None, ascending=True, inplace=False,
                    kind='quicksort', na_position='last', sort_remaining=True,
                    by=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Sort a DataFrame by one of the indices (columns or index).
+
+        Args:
+            axis: The axis to sort over.
+            level: The MultiIndex level to sort over.
+            ascending: Ascending or descending
+            inplace: Whether or not to update this DataFrame inplace.
+            kind: How to perform the sort.
+            na_position: Where to position NA on the sort.
+            sort_remaining: On Multilevel Index sort based on all levels.
+            by: (Deprecated) argument to pass to sort_values.
+
+        Returns:
+            A sorted DataFrame
+        """
+        if level is not None:
+            raise NotImplementedError("Multilevel index not yet implemented.")
+
+        if by is not None:
+            warnings.warn("by argument to sort_index is deprecated, "
+                          "please use .sort_values(by=...)",
+                          FutureWarning, stacklevel=2)
+            if level is not None:
+                raise ValueError("unable to simultaneously sort by and level")
+            return self.sort_values(by, axis=axis, ascending=ascending,
+                                    inplace=inplace)
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        args = (axis, level, ascending, False, kind, na_position,
+                sort_remaining)
+
+        def _sort_helper(df, index, axis, *args):
+            if axis == 0:
+                df.index = index
+            else:
+                df.columns = index
+
+            return df.sort_index(*args)
+
+        if axis == 0:
+            index = (self.index)
+            new_column_parts = _map_partitions(
+                lambda df: _sort_helper(df, index, axis, *args),
+                self._col_partitions)
+
+            new_columns = self.columns
+            new_index = self.index.sort_values()
+            new_row_parts = None
+        else:
+            columns = (self.columns)
+            new_row_parts = _map_partitions(
+                lambda df: _sort_helper(df, columns, axis, *args),
+                self._row_partitions)
+
+            new_columns = self.columns.sort_values()
+            new_index = self.index
+            new_column_parts = None
+
+        if not inplace:
+            return DataFrame(col_partitions=new_column_parts,
+                             row_partitions=new_row_parts,
+                             index=new_index,
+                             columns=new_columns)
+        else:
+            self._update_inplace(row_partitions=new_row_parts,
+                                 col_partitions=new_column_parts,
+                                 columns=new_columns,
+                                 index=new_index)
 
     def sort_values(self, by, axis=0, ascending=True, inplace=False,
                     kind='quicksort', na_position='last'):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        # TODO Fix the bug where an integer is passed in and there will be a
+        # match on the inner frame.
+        broadcast_values = self[by]
+
+        if isinstance(broadcast_values, pd.Series):
+            broadcast_values = pd.DataFrame(broadcast_values)
+
+        print(broadcast_values)
+        args = (by, axis, ascending, False, kind, na_position)
+        broadcast_values = broadcast_values.sort_values(*args)
+
+        def _sort_helper(df, broadcast_values, axis, *args):
+            if axis == 0:
+                broadcast_values.index = df.index
+                names = broadcast_values.columns
+            else:
+                broadcast_values.columns = df.columns
+                names = broadcast_values.index
+
+            return pd.concat([df, broadcast_values], axis=axis ^ 1, copy=False)\
+                .sort_values(*args).drop(names, axis=axis ^ 1)
+
+        if axis == 0:
+            new_parts = _map_partitions(
+                lambda df: _sort_helper(df, broadcast_values, axis, *args),
+                self._col_partitions)
+
+            return DataFrame(col_partitions=new_parts,
+                             columns=self.columns,
+                             index=broadcast_values.index)
+        else:
+            new_parts = _map_partitions(
+                lambda df: _sort_helper(df, broadcast_values, axis, *args),
+                self._row_partitions)
+
+            return DataFrame(row_partitions=new_parts,
+                             columns=broadcast_values.columns,
+                             index=self.index)
 
     def sortlevel(self, level=0, axis=0, ascending=True, inplace=False,
                   sort_remaining=True):
