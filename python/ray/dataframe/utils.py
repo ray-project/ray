@@ -364,15 +364,24 @@ def explode_block(df, factors):
         if df.shape[1] % col_factor == 0 \
         else df.shape[1] // col_factor + 1
 
-    blocks = [df.iloc[i * block_len_row: (i + 1) * block_len_row,
-                      j * block_len_col: (j + 1) * block_len_col]
-              for i in range(row_factor) for j in range(col_factor)]
+    # XXX: For some reason, serializing `iloc` on columns is very expensive.
+    # Performing a `copy` prior to the serialization negates a bit of this cost
+    # Performing a transpose, then a copy, then tranposing again negates more (???)
+    iloc = df.iloc
+    if col_factor > 1: 
+        blocks = [iloc[i * block_len_row: (i + 1) * block_len_row,
+                       j * block_len_col: (j + 1) * block_len_col].T.copy().T
+                  for i in range(row_factor) for j in range(col_factor)]
+    else:
+        blocks = [iloc[i * block_len_row: (i + 1) * block_len_row, :]
+                  for i in range(row_factor)]
 
     for block in blocks:
         block.columns = pd.RangeIndex(0, len(block.columns))
     return blocks
 
 def _explode_block_partitions(block_partitions, factors):
+    # Sometimes the optimizer might want the same size, thus short circuit
     if factors == (1, 1):
         return block_partitions
 
@@ -381,6 +390,8 @@ def _explode_block_partitions(block_partitions, factors):
 
     nblocks_row, nblocks_col = block_partitions.shape
 
+    # Ray doesn't support OIDs in NDArrays, so everything must be treated as
+    # flat lists and then rebuilt
     explode_lists = [[explode_block._submit(args=(block, factors),
                                 num_return_vals=nreturns)
                       for block in row]
@@ -437,11 +448,11 @@ def _map_partitions_coalesce(func, block_partitions, axis):
         return [_deploy_func_row.remote(func, *part) for part in block_partitions]
 
 flookup = {
-    "isna": {"type": "applymap", "op_rate": 0, "op_stdev": 0},
+    "isna": {"type": "applymap", "op_rate": 7500 / (2**22 * 2**8 * 2**3), "op_stdev": 0},
     "sum": {"type": "axis-reduce", "op_rate": 0, "op_stdev": 0}
 }
 
-MAX_ZSCORE = 2.5
+MAX_ZSCORE = 2
 
 def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
     in_rows, in_cols = in_dims
@@ -452,15 +463,25 @@ def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
     op_stdev = fprofile["op_stdev"]
 
     op_stdev_f = lambda x: op_stdev * x
-    overhead_f = lambda x: 0
+
+    def overhead_f(split):
+        x_sp, y_sp = split
+        return 1.6 * x_sp * y_sp
 
     def est_time(split):
-        # Explode time. Add possible task overhead to explode?
-        explode_time = 0 if split == in_dims else \
-                       (ser_rate + deser_rate) * in_nparts
-
+        in_dsplit = dsize / in_nparts
+        
         split_rows, split_cols = split
         split_nparts = split_rows * split_cols
+
+        # Explode time. Add possible task overhead to explode?
+        if split == in_dims:
+            explode_time = 0
+        else:
+            # Serializing iloc'd-on-columns DFs is much more expensive than just on rows
+            explode_rate = explode_no_cols_rate if split_cols == 1 else explode_cols_rate
+            explode_iters = np.ceil((in_nparts) / get_nworkers())
+            explode_time = explode_rate * in_dsplit * explode_iters + overhead_f(in_dims)
 
         if ftype == "applymap":
             dsplit = dsize / split_nparts
@@ -469,30 +490,29 @@ def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
             axis = kwargs["axis"]
             dsplit = dsize / (split_cols if axis == 0 else split_rows)
 
-        ser_time = ser_rate * dsplit
-        op_time = op_rate * dsplit
-        deser_time = deser_rate * dsplit
-
-        task_split_time = ser_time + op_time + deser_time
-        total_iters = np.ceil(split_nparts / get_nworkers())
+        task_split_time = op_rate * dsplit
+        total_iters = np.ceil((split_nparts) / get_nworkers())
 
         task_time = total_iters * task_split_time
 
         # \eps(x, y)
         task_overhead = overhead_f(split)
 
-        # Var(x, y)
+        # Var(x, y): StdDev for Summed Normal grows by O(sqrt(k))
         task_var = MAX_ZSCORE * op_stdev_f(dsplit) * np.sqrt(total_iters)
 
         total_time = explode_time + task_time + task_overhead + task_var
         return total_time
 
-    ser_rate = 0
-    deser_rate = 0
-    candidate_splits = list(product([1, 2, 4, 6, 8], repeat=2))
+    explode_no_cols_rate = 350 / (2**20 * 2**8 * 2**3)
+    explode_cols_rate = 2000 / (2**20 * 2**8 * 2**3)
+    candidate_splits = list(product(range(in_rows, 17), range(in_cols, 17)))
     times = [(split, est_time(split)) for split in candidate_splits]
-    split = max(times, key=lambda x: x[1])[0]
-    print(split)
+    res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((17 - in_rows, 17 - in_cols)),
+                          index=range(in_rows, 17), columns=range(in_cols, 17))
+    print(res_df)
+    split, time = min(times, key=lambda x: x[1])
+    return split, time
 
 def waitall(df):
     parts = df._block_partitions.flatten().tolist()
