@@ -2546,9 +2546,8 @@ def test_rtruediv():
 
 def test_sample():
     ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.sample()
+    assert len(ray_df.sample(n=4)) == 4
+    assert len(ray_df.sample(frac=0.5)) == 2
 
 
 def test_select():
