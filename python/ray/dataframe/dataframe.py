@@ -2517,7 +2517,7 @@ class DataFrame(object):
             return_index = True
 
         new_blocks = \
-            np.array([co_op_helper._submit(
+            np.array([_co_op_helper._submit(
                 args=tuple([lambda x, y: x.merge(y, *args),
                             left_cols, right_cols,
                             len(self._block_partitions.T), next(left_idx)] +
