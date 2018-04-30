@@ -39,7 +39,8 @@ from .utils import (
     _inherit_docstrings,
     _reindex_helper,
     _co_op_helper,
-    _match_partitioning)
+    _match_partitioning,
+    _concat_index)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -2531,7 +2532,7 @@ class DataFrame(object):
             new_index = None
         else:
             new_index_parts = new_blocks[:, -1]
-            new_index = concat_index.remote(*new_index_parts)
+            new_index = _concat_index.remote(*new_index_parts)
             new_blocks = new_blocks[:, :-1]
 
         return DataFrame(block_partitions=new_blocks,
@@ -4245,11 +4246,16 @@ class DataFrame(object):
 
 @ray.remote
 def _merge_columns(left_columns, right_columns, *args):
+    """Merge two columns to get the correct column names and order.
+
+    Args:
+        left_columns: The columns on the left side of the merge.
+        right_columns: The columns on the right side of the merge.
+        args: The arguments for the merge.
+
+    Returns:
+         The columns for the merge operation.
+    """
     return pd.DataFrame(columns=left_columns, index=[0], dtype='uint8').merge(
         pd.DataFrame(columns=right_columns, index=[0], dtype='uint8'),
         *args).columns
-
-
-@ray.remote
-def concat_index(*index_parts):
-    return index_parts[0].append(index_parts[1:])

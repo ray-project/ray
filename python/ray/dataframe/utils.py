@@ -352,7 +352,17 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, left_idx,
 
 @ray.remote
 def _match_partitioning(column_partition, lengths, index):
+    """Match the number of rows on each partition. Used in df.merge().
 
+    Args:
+        column_partition: The column partition to change.
+        lengths: The lengths of each row partition to match to.
+        index: The index index of the column_partition. This is used to push
+            down to the inner frame for correctness in the merge.
+
+    Returns:
+         A list of blocks created from this column partition.
+    """
     partitioned_list = []
 
     columns = column_partition.columns
@@ -367,3 +377,8 @@ def _match_partitioning(column_partition, lengths, index):
         partitioned_list.append(column_partition.iloc[:length, :])
         column_partition = column_partition.iloc[length:, :]
     return partitioned_list
+
+
+@ray.remote
+def _concat_index(*index_parts):
+    return index_parts[0].append(index_parts[1:])
