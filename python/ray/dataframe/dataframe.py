@@ -4186,7 +4186,7 @@ class DataFrame(object):
             new_blocks = \
                 np.array([_co_op_helper._submit(
                     args=tuple([func, self.columns, other.columns,
-                                len(part[0])] +
+                                len(part[0]), None] +
                           np.concatenate(part).tolist()),
                     num_return_vals=len(part[0]))
                     for part in copartitions])
