@@ -20,6 +20,8 @@ Example of constructing and using a policy optimizer `(link to full example) <ht
         print("optimizer stats", optimizer.stats())
         print("local evaluator stats", optimizer.local_evaluator.stats())
 
+Read more about policy optimizers in this post: `Distributed Policy Optimizers for Scalable and Reproducible Deep RL <https://rise.cs.berkeley.edu/blog/distributed-policy-optimizers-for-scalable-and-reproducible-deep-rl/>`__.
+
 Here are the steps for using a RLlib policy optimizer with an existing algorithm.
 
 1. Implement the `Policy evaluator interface <rllib-dev.html#policy-evaluators-and-optimizers>`__.
