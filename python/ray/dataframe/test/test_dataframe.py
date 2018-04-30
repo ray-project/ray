@@ -806,11 +806,75 @@ def test_nan_dataframe():
         test_transform(ray_df, pandas_df)
 
 
-def test_add():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_inter_df_math(op, simple=False):
+    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
 
-    with pytest.raises(NotImplementedError):
-        ray_df.add(None)
+    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+
+    ray_df_equals_pandas(getattr(ray_df, op)(ray_df),
+                         getattr(pandas_df, op)(pandas_df))
+    ray_df_equals_pandas(getattr(ray_df, op)(4),
+                         getattr(pandas_df, op)(4))
+    ray_df_equals_pandas(getattr(ray_df, op)(4.0),
+                         getattr(pandas_df, op)(4.0))
+
+    ray_df2 = rdf.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
+    pandas_df2 = pd.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
+
+    ray_df_equals_pandas(getattr(ray_df, op)(ray_df2),
+                         getattr(pandas_df, op)(pandas_df2))
+
+    list_test = [0, 1, 2, 4]
+
+    if not simple:
+        ray_df_equals_pandas(getattr(ray_df, op)(list_test, axis=1),
+                             getattr(pandas_df, op)(list_test, axis=1))
+
+        ray_df_equals_pandas(getattr(ray_df, op)(list_test, axis=0),
+                             getattr(pandas_df, op)(list_test, axis=0))
+
+
+@pytest.fixture
+def test_comparison_inter_ops(op):
+    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+
+    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+
+    ray_df_equals_pandas(getattr(ray_df, op)(ray_df),
+                         getattr(pandas_df, op)(pandas_df))
+    ray_df_equals_pandas(getattr(ray_df, op)(4),
+                         getattr(pandas_df, op)(4))
+    ray_df_equals_pandas(getattr(ray_df, op)(4.0),
+                         getattr(pandas_df, op)(4.0))
+
+    ray_df2 = rdf.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
+    pandas_df2 = pd.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
+
+    ray_df_equals_pandas(getattr(ray_df, op)(ray_df2),
+                         getattr(pandas_df, op)(pandas_df2))
+
+
+@pytest.fixture
+def test_inter_df_math_right_ops(op):
+    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+
+    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+
+    ray_df_equals_pandas(getattr(ray_df, op)(4),
+                         getattr(pandas_df, op)(4))
+    ray_df_equals_pandas(getattr(ray_df, op)(4.0),
+                         getattr(pandas_df, op)(4.0))
+
+
+def test_add():
+    test_inter_df_math("add", simple=False)
 
 
 @pytest.fixture
@@ -862,6 +926,8 @@ def test_append():
     ray_df2 = rdf.DataFrame({"col5": [0], "col6": [1]})
 
     pandas_df2 = pd.DataFrame({"col5": [0], "col6": [1]})
+
+    print(ray_df.append(ray_df2))
 
     assert ray_df_equals_pandas(ray_df.append(ray_df2),
                                 pandas_df.append(pandas_df2))
@@ -1083,17 +1149,11 @@ def test_diff():
 
 
 def test_div():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.div(None)
+    test_inter_df_math("div", simple=False)
 
 
 def test_divide():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.divide(None)
+    test_inter_df_math("divide", simple=False)
 
 
 def test_dot():
@@ -1208,10 +1268,7 @@ def test_duplicated():
 
 
 def test_eq():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.eq(None)
+    test_comparison_inter_ops("eq")
 
 
 def test_equals():
@@ -1718,10 +1775,7 @@ def test_first_valid_index(ray_df, pandas_df):
 
 
 def test_floordiv():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.floordiv(None)
+    test_inter_df_math("floordiv", simple=False)
 
 
 def test_from_csv():
@@ -1745,10 +1799,7 @@ def test_from_records():
 
 
 def test_ge():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.ge(None)
+    test_comparison_inter_ops("ge")
 
 
 def test_get_value():
@@ -1766,10 +1817,7 @@ def test_get_values():
 
 
 def test_gt():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.gt(None)
+    test_comparison_inter_ops("gt")
 
 
 @pytest.fixture
@@ -1935,10 +1983,7 @@ def test_last_valid_index(ray_df, pandas_df):
 
 
 def test_le():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.le(None)
+    test_comparison_inter_ops("le")
 
 
 def test_lookup():
@@ -1949,10 +1994,7 @@ def test_lookup():
 
 
 def test_lt():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.lt(None)
+    test_comparison_inter_ops("lt")
 
 
 def test_mad():
@@ -2014,10 +2056,7 @@ def test_min(ray_df, pandas_df):
 
 
 def test_mod():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.mod(None)
+    test_inter_df_math("mod", simple=False)
 
 
 def test_mode():
@@ -2028,24 +2067,15 @@ def test_mode():
 
 
 def test_mul():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.mul(None)
+    test_inter_df_math("mul", simple=False)
 
 
 def test_multiply():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.multiply(None)
+    test_inter_df_math("multiply", simple=False)
 
 
 def test_ne():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.ne(None)
+    test_comparison_inter_ops("ne")
 
 
 def test_nlargest():
@@ -2125,10 +2155,7 @@ def test_pop(ray_df, pandas_df):
 
 
 def test_pow():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.pow(None)
+    test_inter_df_math("pow", simple=False)
 
 
 def test_prod():
@@ -2158,10 +2185,7 @@ def test_query(ray_df, pandas_df, funcs):
 
 
 def test_radd():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.radd(None)
+    test_inter_df_math_right_ops("radd")
 
 
 def test_rank():
@@ -2172,10 +2196,7 @@ def test_rank():
 
 
 def test_rdiv():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.rdiv(None)
+    test_inter_df_math_right_ops("rdiv")
 
 
 def test_reindex():
@@ -2487,24 +2508,15 @@ def test_reset_index(ray_df, pandas_df, inplace=False):
 
 
 def test_rfloordiv():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.rfloordiv(None)
+    test_inter_df_math_right_ops("rfloordiv")
 
 
 def test_rmod():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.rmod(None)
+    test_inter_df_math_right_ops("rmod")
 
 
 def test_rmul():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.rmul(None)
+    test_inter_df_math_right_ops("rmul")
 
 
 def test_rolling():
@@ -2521,24 +2533,15 @@ def test_round(ray_df, pd_df):
 
 
 def test_rpow():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.rpow(None)
+    test_inter_df_math_right_ops("rpow")
 
 
 def test_rsub():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.rsub(None)
+    test_inter_df_math_right_ops("rsub")
 
 
 def test_rtruediv():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.rtruediv(None)
+    test_inter_df_math_right_ops("rtruediv")
 
 
 def test_sample():
@@ -2657,17 +2660,11 @@ def test_std(ray_df, pandas_df):
 
 
 def test_sub():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.sub(None)
+    test_inter_df_math("sub", simple=False)
 
 
 def test_subtract():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.subtract(None)
+    test_inter_df_math("subtract", simple=False)
 
 
 def test_swapaxes():
@@ -2740,10 +2737,7 @@ def test_transform(ray_df, pandas_df):
 
 
 def test_truediv():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.truediv(None)
+    test_inter_df_math("truediv", simple=False)
 
 
 def test_truncate():
@@ -2992,10 +2986,7 @@ def test_iat():
 
 
 def test___rsub__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__rsub__(None, None, None)
+    test_inter_df_math_right_ops("__rsub__")
 
 
 @pytest.fixture
@@ -3022,17 +3013,11 @@ def test_is_copy():
 
 
 def test___itruediv__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__itruediv__()
+    test_inter_df_math("__itruediv__", simple=True)
 
 
 def test___div__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__div__(None)
+    test_inter_df_math("__div__", simple=True)
 
 
 def test_at():
