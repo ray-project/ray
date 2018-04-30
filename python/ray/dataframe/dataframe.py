@@ -2190,14 +2190,14 @@ class DataFrame(object):
             # to the index variable which may be 'on'.
             new_self = np.array([
                 _reindex_helper._submit(args=tuple([index, new_index, 1,
-                                              new_partition_num] +
-                                              block.tolist()),
+                                                    new_partition_num] +
+                                                   block.tolist()),
                                         num_return_vals=new_partition_num)
                 for block in self._block_partitions.T])
             new_other = np.array([
                 _reindex_helper._submit(args=tuple([other.index, new_index, 1,
-                                              new_partition_num] +
-                                              block.tolist()),
+                                                    new_partition_num] +
+                                                   block.tolist()),
                                         num_return_vals=new_partition_num)
                 for block in other._block_partitions.T])
 
@@ -2235,14 +2235,14 @@ class DataFrame(object):
 
             new_self = np.array([
                 _reindex_helper._submit(args=tuple([self.index, new_index, 1,
-                                              new_partition_num] +
-                                              block.tolist()),
+                                                    new_partition_num] +
+                                                   block.tolist()),
                                         num_return_vals=new_partition_num)
                 for block in self._block_partitions.T])
 
             new_others = np.array([_reindex_helper._submit(
                 args=tuple([obj.index, new_index, 1, new_partition_num] +
-                            block.tolist()),
+                           block.tolist()),
                 num_return_vals=new_partition_num
             ) for obj in other for block in obj._block_partitions.T])
 
@@ -4009,14 +4009,14 @@ class DataFrame(object):
         new_partitions_self = \
             np.array([_reindex_helper._submit(
                 args=tuple([old_self_index, new_index, 1,
-                             new_num_partitions] + block.tolist()),
+                            new_num_partitions] + block.tolist()),
                 num_return_vals=new_num_partitions)
                 for block in self._block_partitions.T]).T
 
         new_partitions_other = \
             np.array([_reindex_helper._submit(
                 args=tuple([old_other_index, new_index, 1,
-                             new_num_partitions] + block.tolist()),
+                            new_num_partitions] + block.tolist()),
                 num_return_vals=new_num_partitions)
                 for block in other._block_partitions.T]).T
 
