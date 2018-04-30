@@ -55,18 +55,15 @@ typedef struct {
   ray::gcs::AsyncGcsClient gcs_client;
   /** A hash table mapping local scheduler ID to the local schedulers that are
    *  connected to Redis. */
-  std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>
-      local_schedulers;
+  std::unordered_map<DBClientID, LocalScheduler> local_schedulers;
   /** The state managed by the scheduling policy. */
   GlobalSchedulerPolicyState *policy_state;
   /** The plasma_manager ip:port -> local_scheduler_db_client_id association. */
   std::unordered_map<std::string, DBClientID> plasma_local_scheduler_map;
   /** The local_scheduler_db_client_id -> plasma_manager ip:port association. */
-  std::unordered_map<DBClientID, std::string, UniqueIDHasher>
-      local_scheduler_plasma_map;
+  std::unordered_map<DBClientID, std::string> local_scheduler_plasma_map;
   /** Objects cached by this global scheduler instance. */
-  std::unordered_map<ObjectID, SchedulerObjectInfo, UniqueIDHasher>
-      scheduler_object_info_table;
+  std::unordered_map<ObjectID, SchedulerObjectInfo> scheduler_object_info_table;
   /** An array of tasks that haven't been scheduled yet. */
   std::vector<Task *> pending_tasks;
 } GlobalSchedulerState;

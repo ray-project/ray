@@ -36,8 +36,7 @@ const std::list<Task> &SchedulingQueue::GetReadyMethods() const {
 
 // Helper function to remove tasks in the given set of task_ids from a
 // queue, and append them to the given vector removed_tasks.
-void removeTasksFromQueue(std::list<Task> &queue,
-                          std::unordered_set<TaskID, UniqueIDHasher> &task_ids,
+void removeTasksFromQueue(std::list<Task> &queue, std::unordered_set<TaskID> &task_ids,
                           std::vector<Task> &removed_tasks) {
   for (auto it = queue.begin(); it != queue.end();) {
     auto task_id = task_ids.find(it->GetTaskSpecification().TaskId());
@@ -58,8 +57,7 @@ void queueTasks(std::list<Task> &queue, const std::vector<Task> &tasks) {
   }
 }
 
-std::vector<Task> SchedulingQueue::RemoveTasks(
-    std::unordered_set<TaskID, UniqueIDHasher> task_ids) {
+std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> task_ids) {
   // List of removed tasks to be returned.
   std::vector<Task> removed_tasks;
 

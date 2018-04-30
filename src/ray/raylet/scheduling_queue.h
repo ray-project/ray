@@ -77,7 +77,7 @@ class SchedulingQueue {
   /// \param tasks The set of task IDs to remove from the queue. The
   ///        corresponding tasks must be contained in the queue.
   /// \return A vector of the tasks that were removed.
-  std::vector<Task> RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher> tasks);
+  std::vector<Task> RemoveTasks(std::unordered_set<TaskID> tasks);
 
   /// Queue tasks that are destined for actors that have not yet been created.
   ///

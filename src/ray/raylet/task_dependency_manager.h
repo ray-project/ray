@@ -73,14 +73,12 @@ class TaskDependencyManager {
   ObjectManager &object_manager_;
   /// A mapping from task ID of each subscribed task to its list of
   /// dependencies.
-  std::unordered_map<ray::TaskID, std::vector<ray::ObjectID>, UniqueIDHasher>
-      task_dependencies_;
+  std::unordered_map<ray::TaskID, std::vector<ray::ObjectID>> task_dependencies_;
   // A mapping from object ID of each object that is not locally available to
   // the list of subscribed tasks that are dependent on it.
-  std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>, UniqueIDHasher>
-      remote_object_dependencies_;
+  std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>> remote_object_dependencies_;
   // The set of locally available objects.
-  std::unordered_set<ray::ObjectID, UniqueIDHasher> local_objects_;
+  std::unordered_set<ray::ObjectID> local_objects_;
   // The callback to call when a subscribed task becomes ready.
   std::function<void(const TaskID &)> task_ready_callback_;
 };
