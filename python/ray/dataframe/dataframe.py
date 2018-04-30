@@ -501,7 +501,7 @@ class DataFrame(object):
             self._col_metadata = col_metadata
         else:
             assert columns is not None, \
-                "Columns must be passed without col_metadata"
+                "If col_metadata is None, columns must be passed in"
             self._col_metadata = _IndexMetadata(
                 self._block_partitions[0, :], index=columns, axis=1)
         if row_metadata is not None:
