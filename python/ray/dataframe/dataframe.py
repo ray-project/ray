@@ -1048,7 +1048,7 @@ class DataFrame(object):
         """
         # TODO: improve performance
         # TODO: do axis checking
-        # TODO: call agg instead of reimplementing the list pary
+        # TODO: call agg instead of reimplementing the list part
         # TODO: return ray dataframes
         axis = pd.DataFrame()._get_axis_number(axis)
 
@@ -1087,22 +1087,14 @@ class DataFrame(object):
             if axis == 1:
                 raise TypeError("(\"'list' object is not callable\", " 
                     "'occurred at index {0}'".format(self.index[0]))
-            rows = []
-            for function in func:
-                if isinstance(function, compat.string_types):
-                    if axis == 1:
-                        kwds['axis'] = axis
-                    f = getattr(pd.DataFrame, function)
-                else:
-                    f = function
-                #TODO: can these just be block_partitions?
-                rows.append(pd.concat(ray.get(_map_partitions(
-                    lambda df: df.apply(f), self._col_partitions)), axis=1))
-            df = pd.concat(rows, axis=0)
-            df.columns = self.columns
-            df.index = [f_name if isinstance(f_name, compat.string_types)
+            # TODO: some checking on functions that return Series or Dataframe
+            new_cols = _map_partitions(lambda df: df.apply(func),
+                self._col_partitions)
+            new_index = [f_name if isinstance(f_name, compat.string_types)
                         else f.__name__ for f_name in func]
-            return df
+            return DataFrame(col_partitions=new_cols,
+                             columns=self.columns,
+                             index=new_index)
         elif callable(func):
             return self._callable_function(func, axis=axis, *args, **kwds)
 
