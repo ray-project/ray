@@ -3344,17 +3344,39 @@ class DataFrame(object):
 
     def sort_values(self, by, axis=0, ascending=True, inplace=False,
                     kind='quicksort', na_position='last'):
+        """Sorts by a column/row or list of columns/rows.
+
+        Args:
+            by: A list of labels for the axis to sort over.
+            axis: The axis to sort.
+            ascending: Sort in ascending or descending order.
+            inplace: If true, do the operation inplace.
+            kind: How to sort.
+            na_position: Where to put np.nan values.
+
+        Returns:
+             A sorted DataFrame.
+        """
 
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        # TODO Fix the bug where an integer is passed in and there will be a
-        # match on the inner frame.
-        broadcast_values = self[by]
+        if not is_list_like(by):
+            by = [by]
 
-        if isinstance(broadcast_values, pd.Series):
-            broadcast_values = pd.DataFrame(broadcast_values)
+        if axis == 0:
+            broadcast_value_dict = {str(col): self[col] for col in by}
+            broadcast_values = pd.DataFrame(broadcast_value_dict)
+        else:
+            broadcast_value_list = [self[row::len(self)] for row in by]
+            # Put this here to match the by below.
+            by = [str(col) for col in by]
+            broadcast_values = pd.DataFrame(broadcast_value_list, index=by)
 
-        print(broadcast_values)
+        # We are converting the by to string here so that we don't have a
+        # collision with the RangeIndex on the inner frame. It is cheap and
+        # gaurantees that we sort by the correct column.
+        by = [str(col) for col in by]
+
         args = (by, axis, ascending, False, kind, na_position)
         broadcast_values = broadcast_values.sort_values(*args)
 
@@ -3366,8 +3388,9 @@ class DataFrame(object):
                 broadcast_values.columns = df.columns
                 names = broadcast_values.index
 
-            return pd.concat([df, broadcast_values], axis=axis ^ 1, copy=False)\
-                .sort_values(*args).drop(names, axis=axis ^ 1)
+            return pd.concat([df, broadcast_values], axis=axis ^ 1,
+                             copy=False).sort_values(*args)\
+                .drop(names, axis=axis ^ 1)
 
         if axis == 0:
             new_parts = _map_partitions(
