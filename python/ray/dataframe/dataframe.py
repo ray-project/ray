@@ -17,6 +17,7 @@ from pandas.core.dtypes.common import (
     is_numeric_dtype,
     is_timedelta64_dtype)
 from pandas.core.indexing import check_bool_indexer
+from pandas.errors import MergeError
 
 import warnings
 import numpy as np
@@ -2420,15 +2421,67 @@ class DataFrame(object):
              A merged Dataframe
         """
 
+        if not isinstance(right, DataFrame):
+            raise ValueError("can not merge DataFrame with instance of type "
+                             "{}".format(type(right)))
+
         args = (how, on, left_on, right_on, left_index, right_index, sort,
                 suffixes, False, indicator, validate)
+
+        left_cols = ray.put(self.columns)
+        right_cols = ray.put(right.columns)
+
         # This can be put in a remote function because we don't need it until
         # the end, and the columns can be built asynchronously. This takes the
         # columns defining off the critical path and speeds up the overall
         # merge.
-        new_columns = _merge_columns.remote(self.columns, right.columns, *args)
+        new_columns = _merge_columns.remote(left_cols, right_cols, *args)
 
-        # TODO ERROR CHECK
+        if on is not None:
+            if left_on is not None or right_on is not None:
+                raise MergeError("Can only pass argument \"on\" OR \"left_on\""
+                                 " and \"right_on\", not a combination of "
+                                 "both.")
+            if not is_list_like(on):
+                on = [on]
+
+            if next((True for key in on if key not in self), False) or \
+                    next((True for key in on if key not in right), False):
+
+                missing_key = \
+                    next((str(key) for key in on if key not in self), "") + \
+                    next((str(key) for key in on if key not in right), "")
+                raise KeyError(missing_key)
+
+        elif right_on is not None or right_index is True:
+            if left_on is None and left_index is False:
+                # Note: This is not the same error as pandas, but pandas throws
+                # a ValueError NoneType has no len(), and I don't think that
+                # helps enough.
+                raise TypeError("left_on must be specified or left_index must "
+                                "be true if right_on is specified.")
+
+        elif left_on is not None or left_index is True:
+            if right_on is None and right_index is False:
+                # Note: See note above about TypeError.
+                raise TypeError("right_on must be specified or right_index "
+                                "must be true if right_on is specified.")
+
+        if left_on is not None:
+            if not is_list_like(left_on):
+                left_on = [left_on]
+
+            if next((True for key in left_on if key not in self), False):
+                raise KeyError(next(key for key in left_on
+                                    if key not in self))
+
+        if right_on is not None:
+            if not is_list_like(right_on):
+                right_on = [right_on]
+
+            if next((True for key in right_on if key not in right), False):
+                raise KeyError(next(key for key in right_on
+                                    if key not in right))
 
         # There's a small chance that our partitions are already perfect, but
         # if it's not, we need to adjust them. We adjust the right against the
@@ -2444,9 +2497,6 @@ class DataFrame(object):
                 for df in right._col_partitions]).T
         else:
             repartitioned_right = right._block_partitions
-
-        left_cols = ray.put(self.columns)
-        right_cols = ray.put(right.columns)
 
         if not left_index and not right_index:
             # Passing None to each call specifies that we don't care about the
@@ -2480,10 +2530,6 @@ class DataFrame(object):
             # Default to RangeIndex if left_index and right_index both false.
             new_index = None
         else:
-            @ray.remote
-            def concat_index(*index_parts):
-                return index_parts[0].append(index_parts[1:])
-
             new_index_parts = new_blocks[:, -1]
             new_index = concat_index.remote(*new_index_parts)
             new_blocks = new_blocks[:, :-1]
@@ -4202,3 +4248,8 @@ def _merge_columns(left_columns, right_columns, *args):
     return pd.DataFrame(columns=left_columns, index=[0], dtype='uint8').merge(
         pd.DataFrame(columns=right_columns, index=[0], dtype='uint8'),
         *args).columns
+
+
+@ray.remote
+def concat_index(*index_parts):
+    return index_parts[0].append(index_parts[1:])
