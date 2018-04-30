@@ -1052,8 +1052,8 @@ void handle_set_actor_frontier(LocalSchedulerState *state,
                                ActorFrontier const &frontier) {
   /* Parse the ActorFrontier flatbuffer. */
   ActorID actor_id = from_flatbuf(*frontier.actor_id());
-  std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
-  std::unordered_map<ActorID, ObjectID, UniqueIDHasher> frontier_dependencies;
+  std::unordered_map<ActorID, int64_t> task_counters;
+  std::unordered_map<ActorID, ObjectID> frontier_dependencies;
   for (size_t i = 0; i < frontier.handle_ids()->size(); ++i) {
     ActorID handle_id = from_flatbuf(*frontier.handle_ids()->Get(i));
     task_counters[handle_id] = frontier.task_counters()->Get(i);

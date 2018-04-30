@@ -103,7 +103,7 @@ class WorkerPool {
   /// The pool of idle workers.
   std::list<std::shared_ptr<Worker>> pool_;
   /// The pool of idle actor workers.
-  std::unordered_map<ActorID, std::shared_ptr<Worker>, UniqueIDHasher> actor_pool_;
+  std::unordered_map<ActorID, std::shared_ptr<Worker>> actor_pool_;
   /// All workers that have registered and are still connected, including both
   /// idle and executing.
   // TODO(swang): Make this a map to make GetRegisteredWorker faster.
