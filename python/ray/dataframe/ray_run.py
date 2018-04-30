@@ -1,6 +1,7 @@
 import argparse
 import time
 import sys
+import numpy as np
 
 parser = argparse.ArgumentParser(
     description='Run a performance test on a dataframe function.')
@@ -17,6 +18,10 @@ def waitall(this_df):
     if args.is_ray:
         parts = this_df._block_partitions.flatten().tolist()
         ray.wait(parts, len(parts))
+
+def waitall_parts(parts):
+    parts = parts.flatten().tolist()
+    ray.wait(parts, len(parts))
 
 datafile = args.data
 test_op = args.test_op
@@ -41,6 +46,8 @@ try:
     res_df = eval(test_op)
     if isinstance(res_df, pd.DataFrame):
         waitall(res_df)
+    # res_parts = np.array([pd.utils._map_partitions(lambda df: df.isna(), block) for block in df._block_partitions])
+    # waitall_parts(res_parts)
 except KeyboardInterrupt:
     print("\nABORTED!", end=' ')
 finally:
