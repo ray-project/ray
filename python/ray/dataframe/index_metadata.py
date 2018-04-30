@@ -110,7 +110,7 @@ class _IndexMetadata(object):
         Args:
             key:
                 item to get coordinates of. Can also be a tuple of item
-                and {partition, index_within_partition} if caller only
+                and {"partition", "index_within_partition"} if caller only
                 needs one of the coordinates
 
         Returns:
@@ -244,6 +244,24 @@ class _IndexMetadata(object):
                               lengths_oid=lengths_copy)
 
     def __getitem__(self, key):
+        """Returns the coordinates (partition, index_within_partition) of the
+        provided key in the index. Essentially just an alias for
+        `_IndexMetadata.coords_of` that allows for slice passing, since
+        slices cannot be passed with slice notation other than through
+        `__getitem__` calls.
+
+        Args:
+            key:
+                item to get coordinates of. Can also be a tuple of item
+                and {"partition", "index_within_partition"} if caller only
+                needs one of the coordinates
+
+        Returns:
+            Pandas object with the keys specified. If key is a single object
+            it will be a pd.Series with items `partition` and
+            `index_within_partition`, and if key is a slice or if the key is
+            duplicate it will be a pd.DataFrame with said items as columns.
+        """
         return self.coords_of(key)
 
     def first_valid_index(self):
@@ -264,7 +282,6 @@ class _IndexMetadata(object):
         Returns:
             DataFrame with coordinates of dropped labels
         """
-        # TODO(patyang): This produces inconsistent indexes.
         dropped = self.coords_of(labels)
         self._coord_df = self._coord_df.drop(labels, errors=errors)
         return dropped

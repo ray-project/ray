@@ -160,6 +160,7 @@ def _map_partitions(func, partitions, *argslists):
 
 @ray.remote
 def _build_col_widths(df_col):
+    """Compute widths (# of columns) for each partition."""
     widths = np.array(ray.get([_deploy_func.remote(_get_widths, d)
                       for d in df_col]))
 
@@ -168,7 +169,7 @@ def _build_col_widths(df_col):
 
 @ray.remote
 def _build_row_lengths(df_row):
-    """Compute lengths for each partition."""
+    """Compute lengths (# of rows) for each partition."""
     lengths = np.array(ray.get([_deploy_func.remote(_get_lengths, d)
                        for d in df_row]))
 
