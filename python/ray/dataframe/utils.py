@@ -177,13 +177,12 @@ def _build_row_lengths(df_row):
 
 @ray.remote
 def _build_coord_df(lengths, index):
-    """Build index for each partition."""
-    dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(lengths))
-                    for p_sub_idx in range(lengths[p_idx])]
-    col_names = ("partition", "index_within_partition")
-    coord_df = pd.DataFrame(dest_indices, index=index, columns=col_names)
+    """Build the coordinate dataframe over all partitions."""
+    coords = np.vstack([np.column_stack((np.full(l, i), np.arange(l)))
+                        for i, l in enumerate(lengths)])
 
-    return coord_df
+    col_names = ("partition", "index_within_partition")
+    return pd.DataFrame(coords, index=index, columns=col_names)
 
 
 def _create_block_partitions(partitions, axis=0, length=None):
