@@ -260,7 +260,7 @@ class DataFrame(object):
         # The split here is so that we don't repr pandas row lengths.
         result = self._repr_helper_()
         final_result = repr(result).rsplit("\n\n", maxsplit=1)[0] + \
-            "\n\n[{} rows x {} columns]".format(len(self.index),
+            "\n\n[{0} rows x {1} columns]".format(len(self.index),
                                                   len(self.columns))
         return final_result
 
@@ -279,7 +279,7 @@ class DataFrame(object):
         # We split so that we insert our correct dataframe dimensions.
         result = self._repr_helper_()._repr_html_()
         return result.split('<p>')[0] + \
-            '<p>{} rows × {} columns</p>\n</div>'.format(len(self.index),
+            '<p>{0} rows × {1} columns</p>\n</div>'.format(len(self.index),
                                                            len(self.columns))
 
     def _get_index(self):
@@ -527,7 +527,7 @@ class DataFrame(object):
         """
         if not callable(func):
             raise ValueError(
-                "\'{}\' object is not callable".format(type(func)))
+                "\'{0}\' object is not callable".format(type(func)))
 
         new_block_partitions = np.array([
             _map_partitions(lambda df: df.applymap(func), block)
@@ -1601,7 +1601,7 @@ class DataFrame(object):
 
         if isinstance(value, (list, tuple)):
             raise TypeError('"value" parameter must be a scalar or dict, but '
-                            'you passed a "{}"'.format(type(value).__name__))
+                            'you passed a "{0}"'.format(type(value).__name__))
         if value is None and method is None:
             raise ValueError('must specify a fill method or value')
         if value is not None and method is not None:
@@ -1875,7 +1875,7 @@ class DataFrame(object):
         index_string = self.index.summary() + '\n'
 
         # A column header is needed in the inf() output
-        col_header = 'Data columns (total {} columns):\n'.format(
+        col_header = 'Data columns (total {0} columns):\n'.format(
                 len(self.columns))
 
         # Parse the per-partition values to get the per-column details
@@ -1884,7 +1884,7 @@ class DataFrame(object):
         col_lines = [prog.match(line) for line in lines]
         cols = [c.group(0) for c in col_lines if c is not None]
         # replace the partition columns names with real column names
-        columns = ["{}\t{}\n".format(self.columns[i],
+        columns = ["{0}\t{1}\n".format(self.columns[i],
                                        cols[i].split(" ", 1)[1])
                    for i in range(len(cols))]
         col_string = ''.join(columns) + '\n'
@@ -1892,7 +1892,7 @@ class DataFrame(object):
         # A summary of the dtypes in the dataframe
         dtypes_string = "dtypes: "
         for dtype, count in self.dtypes.value_counts().iteritems():
-            dtypes_string += "{}({}),".format(dtype, count)
+            dtypes_string += "{0}({1}),".format(dtype, count)
         dtypes_string = dtypes_string[:-1] + '\n'
 
         # Compute the memory usage by summing per-partitions return values
@@ -1907,10 +1907,10 @@ class DataFrame(object):
         if len(mem_vals) != 0:
             # Sum memory usage from each partition
             if memory_usage != 'deep':
-                memory_string = 'memory usage: {}+ bytes'.format(
+                memory_string = 'memory usage: {0}+ bytes'.format(
                         sum(mem_vals))
             else:
-                memory_string = 'memory usage: {} bytes'.format(sum(mem_vals))
+                memory_string = 'memory usage: {0} bytes'.format(sum(mem_vals))
 
         # Combine all the components of the info() output
         result = ''.join([class_string, index_string, col_header,
@@ -1939,10 +1939,10 @@ class DataFrame(object):
                 "Length of values does not match length of index")
         if not allow_duplicates and column in self.columns:
             raise ValueError(
-                "cannot insert {}, already exists".format(column))
+                "cannot insert {0}, already exists".format(column))
         if loc > len(self.columns):
             raise IndexError(
-                "index {} is out of bounds for axis 0 with size {}".format(
+                "index {0} is out of bounds for axis 0 with size {1}".format(
                     loc, len(self.columns)))
         if loc < 0:
             raise ValueError("unbounded slice")
