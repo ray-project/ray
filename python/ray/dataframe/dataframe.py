@@ -2877,7 +2877,7 @@ class DataFrame(object):
             weights_sum = weights.sum()
             if weights_sum != 1:
                 if weights_sum != 0:
-                    weights = weights / weights.sum()
+                    weights = weights / weights_sum
                 else:
                     raise ValueError("Invalid weights: weights sum to zero")
 
