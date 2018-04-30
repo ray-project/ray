@@ -1,12 +1,7 @@
 # This can be expected to reach -160 reward within 2.5 timesteps / ~250 seconds on a K40 GPU
-pendulum-apex-ddpg-2:
+pendulum-apex-ddpg:
     env: Pendulum-v0
-    run: APEX_DDPG2
-    trial_resources:
-        cpu: 1
-        gpu: 1
-        extra_cpu:
-            eval: 4 + spec.config.num_workers
+    run: APEX_DDPG
     stop:
         episode_reward_mean: -160
     config:

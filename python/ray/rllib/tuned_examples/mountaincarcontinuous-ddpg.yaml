@@ -1,9 +1,7 @@
 # can expect improvement to 90 reward in ~12-24k timesteps
-mountaincarcontinuous-ddpg-2:
+mountaincarcontinuous-ddpg:
     env: MountainCarContinuous-v0
-    run: DDPG2
-    trial_resources:
-        cpu: 6
+    run: DDPG
     stop:
         episode_reward_mean: 90
     config:
