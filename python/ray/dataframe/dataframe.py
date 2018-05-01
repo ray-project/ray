@@ -23,7 +23,6 @@ import warnings
 import numpy as np
 import ray
 import itertools
-import functools
 import io
 import sys
 import re
@@ -828,16 +827,7 @@ class DataFrame(object):
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
         elif is_list_like(arg):
-            from .concat import concat
-
-            x = [self._aggregate(func, *args, **kwargs)
-                 for func in arg]
-
-            new_dfs = [x[i] if not isinstance(x[i], pd.Series)
-                       else pd.DataFrame(x[i], columns=[arg[i]]).T
-                       for i in range(len(x))]
-
-            return concat(new_dfs)
+            return self.apply(arg, axis=_axis, args=args, **kwargs)
         elif callable(arg):
             self._callable_function(arg, _axis, *args, **kwargs)
         else:
@@ -1046,10 +1036,6 @@ class DataFrame(object):
         Returns:
             Series or DataFrame, depending on func.
         """
-        # TODO: improve performance
-        # TODO: do axis checking
-        # TODO: call agg instead of reimplementing the list part
-        # TODO: return ray dataframes
         axis = pd.DataFrame()._get_axis_number(axis)
 
         if isinstance(func, compat.string_types):
@@ -1058,40 +1044,45 @@ class DataFrame(object):
             return getattr(self, func)(*args, **kwds)
         elif isinstance(func, dict):
             if axis == 1:
-                raise TypeError("(\"'dict' object is not callable\", " 
+                raise TypeError(
+                    "(\"'dict' object is not callable\", "
                     "'occurred at index {0}'".format(self.index[0]))
-            result = []
-
             has_list = list in map(type, func.values())
             part_ind_tuples = [(self._col_metadata[key], key) for key in func]
-            
+
             # tup[1] is the key of the dict
             # tup[0][0] is partition index
             # tup[0][1] is the index within the partition
             if has_list:
+                # if input dict has a list, the function to apply must wrap
+                # single functions in lists as well to get the desired output
+                # format
                 result = [_deploy_func.remote(
-                    lambda df: df.iloc[:, tup[0][1]].apply(func[tup[1]] 
-                                                           if is_list_like(func[tup[1]])
-                                                           else [func[tup[1]]]),
+                    lambda df: df.iloc[:, tup[0][1]].apply(
+                        func[tup[1]] if is_list_like(func[tup[1]])
+                        else [func[tup[1]]]),
                     self._col_partitions[tup[0][0]])
                     for tup in part_ind_tuples]
                 return pd.concat(ray.get(result), axis=1)
             else:
                 result = [_deploy_func.remote(
                     lambda df: df.iloc[:, tup[0][1]].apply(func[tup[1]]),
-                    self._col_partitions[tup[0][0]]) 
+                    self._col_partitions[tup[0][0]])
                     for tup in part_ind_tuples]
                 return pd.Series(ray.get(result), index=func.keys())
 
         elif is_list_like(func):
             if axis == 1:
-                raise TypeError("(\"'list' object is not callable\", " 
+                raise TypeError(
+                    "(\"'list' object is not callable\", "
                     "'occurred at index {0}'".format(self.index[0]))
             # TODO: some checking on functions that return Series or Dataframe
             new_cols = _map_partitions(lambda df: df.apply(func),
-                self._col_partitions)
+                                       self._col_partitions)
+
+            # resolve function names for the DataFrame index
             new_index = [f_name if isinstance(f_name, compat.string_types)
-                        else f.__name__ for f_name in func]
+                         else f_name.__name__ for f_name in func]
             return DataFrame(col_partitions=new_cols,
                              columns=self.columns,
                              index=new_index)
