@@ -18,6 +18,12 @@ class _IndexMetadata(object):
     partitions.
 
     IMPORTANT NOTE: Currently all operations, as implemented, are inplace.
+
+    WARNING: Currently, the `_lengths` item is the source of truth for an
+    _IndexMetadata object, since it is easy to manage, and that the coord_df
+    item may be deprecated in the future. As such, it is _very_ important that
+    any functions that mutate the coord_df splits in anyway first modify the
+    lengths. Otherwise bad things might happen!
     """
 
     def __init__(self, dfs=None, index=None, axis=0, lengths_oid=None,
@@ -43,28 +49,10 @@ class _IndexMetadata(object):
                 lengths_oid = _build_col_widths.remote(dfs)
             coord_df_oid = _build_coord_df.remote(lengths_oid, index)
 
-        self._coord_df = coord_df_oid
         self._lengths = lengths_oid
+        self._coord_df = coord_df_oid
         self._index_cache = index
-        self._new_index = False
-
-    def _get__coord_df(self):
-        if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
-            self._coord_df_cache = ray.get(self._coord_df_cache)
-        if self._new_index:
-            self._coord_df_cache.index = self.index
-        return self._coord_df_cache
-
-    def _set__coord_df(self, coord_df):
-        # Sometimes we set the _IndexMetadata's coord_df outside of the
-        # constructor, generally using fxns like squeeze(), drop(), etc.
-        # This produces a modified index, so we need to reflec the change on
-        # the index cache
-        if not isinstance(coord_df, ray.local_scheduler.ObjectID):
-            self._index_cache = coord_df.index
-        self._coord_df_cache = coord_df
-
-    _coord_df = property(_get__coord_df, _set__coord_df)
+        self._cached_index = False
 
     def _get__lengths(self):
         if isinstance(self._lengths_cache, ray.local_scheduler.ObjectID) or \
@@ -78,27 +66,65 @@ class _IndexMetadata(object):
 
     _lengths = property(_get__lengths, _set__lengths)
 
-    def _get_index(self):
-        """Get the index wrapped by this IndexDF.
+    def _get__coord_df(self):
+        """Get the coordinate dataframe wrapped by this _IndexMetadata.
 
-        Returns:
-            The index wrapped by this IndexDF
+        Since we may have had an index set before our coord_df was
+        materialized, we'll have to apply it to the newly materialized df
         """
-        if self._index_cache is None:
-            self._index_cache = pd.RangeIndex(len(self))
-        print(self._index_cache)
-        return self._index_cache
+        if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
+            self._coord_df_cache = ray.get(self._coord_df_cache)
+        if self._cached_index:
+            self._coord_df_cache.index = self._index_cache
+            self._cached_index = False
+        return self._coord_df_cache
+
+    def _set__coord_df(self, coord_df):
+        """Set the coordinate dataframe wrapped by this _IndexMetadata.
+
+        Sometimes we set the _IndexMetadata's coord_df outside of the
+        constructor, generally using fxns like drop(). This produces a modified
+        index, so we need to reflect the change on the index cache.
+
+        If the set _IndexMetadata is an OID instead (due to a copy or whatever
+        reason), we fall back relying on `_index_cache`.
+        """
+        if not isinstance(coord_df, ray.local_scheduler.ObjectID):
+            self._index_cache = coord_df.index
+        self._coord_df_cache = coord_df
+
+    _coord_df = property(_get__coord_df, _set__coord_df)
+
+    def _get_index(self):
+        """Get the index wrapped by this _IndexMetadata.
+
+        The only time `self._index_cache` would be None is in a newly created
+        _IndexMetadata object without a specified `index` parameter (See the
+        _IndexMetadata constructor for more details)
+        """
+        if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
+            if self._index_cache is None:
+                self._index_cache = pd.RangeIndex(len(self))
+            return self._index_cache
+        else:
+            return self._coord_df_cache.index
 
     def _set_index(self, new_index):
-        """Set the index wrapped by this IndexDF.
+        """Set the index wrapped by this _IndexMetadata.
 
-        Args:
-            new_index: The new index to wrap
+        It is important to always set `_index_cache` even if the coord_df is
+        materialized due to the possibility that it is set to an OID later on.
+        This design is more straightforward than caching indexes on setting the
+        coord_df to an OID due to the possibility of an OID-to-OID change.
         """
         new_index = pd.DataFrame(index=new_index).index
         assert len(new_index) == len(self)
+
         self._index_cache = new_index
-        self._new_index = True
+        if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
+            self._cached_index = True
+        else:
+            self._coord_df_cache.index = new_index
 
     index = property(_get_index, _set_index)
 
@@ -217,6 +243,12 @@ class _IndexMetadata(object):
         return coord_to_insert
 
     def squeeze(self, partition, index_within_partition):
+        """Prepare a single coordinate for removal by "squeezing" the
+        subsequent coordinates "up" one index within that partition. To be used
+        with "_IndexMetadata.drop" for when all the "squeezed" coordinates are
+        dropped in batch. Note that this function doesn't actually mutate the
+        coord_df.
+        """
         self._coord_df = self._coord_df.copy()
 
         partition_mask = self._coord_df.partition == partition
@@ -283,6 +315,19 @@ class _IndexMetadata(object):
             DataFrame with coordinates of dropped labels
         """
         dropped = self.coords_of(labels)
+
+        # Update first lengths to prevent possible length inconsistencies
+        if isinstance(dropped, pd.DataFrame):
+            drop_per_part = dropped.groupby(["partition"]).size()\
+                    .reindex(index=pd.RangeIndex(len(self._lengths)),
+                             fill_value=0)
+        elif isinstance(dropped, pd.Series):
+            drop_per_part = np.zeros_like(self._lengths)
+            drop_per_part[dropped["partition"]] = 1
+        else:
+            raise AssertionError("Unrecognized result from `coords_of`")
+        self._lengths = self._lengths - drop_per_part
+
         self._coord_df = self._coord_df.drop(labels, errors=errors)
         return dropped
 
