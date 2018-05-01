@@ -3018,23 +3018,49 @@ class DataFrame(object):
 
     def replace(self, to_replace=None, value=None, inplace=False, limit=None,
                 regex=False, method='pad', axis=None):
+        """Replace values given in 'to_replace' with 'value'.
+
+        Args:
+            to_replace: values to replace in df
+            value: value to use to fill holes (e.g. 0)
+            inplace: If True, in place.
+            limit: Maximum size gap to forward or backward fill
+            regex: Whether to interpret `to_replace` and/or `value` as regular
+                expressions.
+            method: The method to use when for replacement, when ``to_replace``
+                is a ``list``.
+
+        Returns:
+            filled: NDFrame
+        """
         pd.DataFrame(index=self.index, columns=self.columns).replace(
             to_replace=to_replace, value=value, inplace=inplace, limit=limit,
             regex=regex, method=method, axis=axis
         )
 
         def _filter_replace_params(df, filtered_key, filtered_value):
+            """Filter keys and values given to match dtypes in df
+
+            Args:
+                df: pandas partition df to consider
+                filtered_key: the keys to filter
+                filtered_value: the values to filter
+
+            Returns:
+                tuple of (filtered_keys, filtered_values) that are filtered for
+                dtype of df
+            """
             filtered_replace_pairs = pd.DataFrame(
                 data=[filtered_key, filtered_value],
                 index=['K', 'V'], columns=range(len(filtered_key))
             ).T
-            should_keep = []
             col_arrays = [np.array(df.loc[:, col].tolist())
                           for col in df.columns]
-            for i in range(len(filtered_replace_pairs.index)):
+            should_keep = [
+                i for i in range(len(filtered_replace_pairs.index))
                 if any([_are_compareable(filtered_replace_pairs.K[i],
-                   col_array) for col_array in col_arrays]):
-                        should_keep.append(i)
+                   col_array) for col_array in col_arrays])
+            ]
             filtered_replace_pairs =\
                 filtered_replace_pairs.iloc[should_keep]
             filtered_key = filtered_replace_pairs.iloc[:, 0].tolist()
@@ -3042,7 +3068,14 @@ class DataFrame(object):
             return filtered_key, filtered_value
 
         def _replace(df):
-            # https://docs.scipy.org/doc/numpy/reference/arrays.scalars.html
+            """Performs a df.replace on the given pandas partition df
+
+            Args:
+                df: pandas partition df to consider
+
+            Returns:
+                df after running df.replace
+            """
             filtered_to_replace = to_replace
             filtered_value = value
             filtered_regex = regex
