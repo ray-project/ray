@@ -582,7 +582,7 @@ class DataFrame(object):
             mismatch = len(by) != len(self) if axis == 0 \
                 else len(by) != len(self.columns)
 
-            if all([obj in self for obj in by]) and mismatch:
+            if all(obj in self for obj in by) and mismatch:
                 raise NotImplementedError(
                     "Groupby with lists of columns not yet supported.")
             elif mismatch:
@@ -996,8 +996,8 @@ class DataFrame(object):
         """
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        if is_list_like(func) and not all([isinstance(obj, str)
-                                           for obj in func]):
+        if is_list_like(func) and not all(isinstance(obj, str)
+                                         for obj in func):
             raise NotImplementedError(
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
@@ -1890,7 +1890,7 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
-        if not all([d != np.dtype('O') for d in self.dtypes]):
+        if not all(d != np.dtype('O') for d in self.dtypes):
             raise TypeError(
                 "reduction operation 'argmax' not allowed for this dtype")
 
@@ -1912,7 +1912,7 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
-        if not all([d != np.dtype('O') for d in self.dtypes]):
+        if not all(d != np.dtype('O') for d in self.dtypes):
             raise TypeError(
                 "reduction operation 'argmax' not allowed for this dtype")
 

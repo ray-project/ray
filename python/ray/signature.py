@@ -52,7 +52,7 @@ def get_signature_params(func):
             "__code__", "__annotations__", "__defaults__", "__kwdefaults__"
         ]
 
-        if all([hasattr(func, attr) for attr in attrs]):
+        if all(hasattr(func, attr) for attr in attrs):
             original_func = func
 
             def func():

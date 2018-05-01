@@ -113,4 +113,4 @@ class MedianStoppingRule(FIFOScheduler):
 
     def _best_result(self, trial):
         results = self._results[trial]
-        return max([getattr(r, self._reward_attr) for r in results])
+        return max(getattr(r, self._reward_attr) for r in results)

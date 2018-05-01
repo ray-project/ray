@@ -192,10 +192,10 @@ class ESAgent(agent.Agent):
                 # Update the number of episodes and the number of timesteps
                 # keeping in mind that result.noisy_lengths is a list of lists,
                 # where the inner lists have length 2.
-                num_episodes += sum([len(pair) for pair
-                                     in result.noisy_lengths])
-                num_timesteps += sum([sum(pair) for pair
-                                      in result.noisy_lengths])
+                num_episodes += sum(len(pair) for pair
+                                    in result.noisy_lengths)
+                num_timesteps += sum(sum(pair) for pair
+                                     in result.noisy_lengths)
         return results, num_episodes, num_timesteps
 
     def _train(self):

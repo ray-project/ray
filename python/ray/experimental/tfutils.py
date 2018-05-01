@@ -109,9 +109,8 @@ class TensorFlowVariables(object):
         Returns:
             The length of all flattened variables concatenated.
         """
-        return sum([
-            np.prod(v.get_shape().as_list()) for v in self.variables.values()
-        ])
+        return sum(
+            np.prod(v.get_shape().as_list()) for v in self.variables.values())
 
     def _check_sess(self):
         """Checks if the session is set, and if not throw an error message."""
