@@ -1,27 +1,34 @@
 #!/usr/bin/env bash
 
 # Cause the script to exit if a single command fails
-set -e
+set -eo pipefail
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+# should be $PROJECT_ROOT
+PROJECT_ROOT="$(dirname "$(dirname "${BASH_SOURCE:-$0}")")"
+builtin cd "$PROJECT_ROOT" && echo "Project Root: $PROJECT_ROOT"
 
-pushd $ROOT_DIR/../test
-  find . -name '*.py' -type f -exec yapf --style=pep8 -i -r {} \;
-popd
+yapf \
+    --style "$PROJECT_ROOT/.style.yapf" \
+    --in-place --recursive --parallel \
+    --exclude 'python/ray/dataframe/' \
+    --exclude 'python/ray/rllib/' \
+    --exclude 'python/ray/cloudpickle/' \
+    -- \
+    'test/' 'python/'
 
-pushd $ROOT_DIR/../python
-  find . -name '*.py' -type f -not -path './ray/dataframe/*' -not -path './ray/rllib/*' -not -path './ray/cloudpickle/*' -exec yapf --style=pep8 -i -r {} \;
-popd
+CHANGED_FILES=("$(git diff --name-only)")
 
-CHANGED_FILES=(`git diff --name-only`)
-if [ "$CHANGED_FILES" ]; then
-  echo 'Reformatted staged files. Please review and stage the changes.'
-  echo
-  echo 'Files updated:'
-  for file in ${CHANGED_FILES[@]}; do
-    echo "  $file"
-  done
-  exit 1
+if [[ "${#CHANGED_FILES[@]}" -gt 0 ]]; then
+    echo 'Reformatted staged files. Please review and stage the changes.'
+    echo
+    echo 'Files updated:'
+
+    for file in "${CHANGED_FILES[@]}"; do
+        echo "$file"
+    done
+
+    exit 1
 else
-  exit 0
+    exit 0
 fi
+
