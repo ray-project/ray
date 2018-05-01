@@ -145,8 +145,8 @@ def _configure_key_pair(config):
 def _configure_subnet(config):
     ec2 = _resource("ec2", config)
     subnets = sorted(
-        s for s in ec2.subnets.all()
-        if s.state == "available" and s.map_public_ip_on_launch,
+        (s for s in ec2.subnets.all()
+         if s.state == "available" and s.map_public_ip_on_launch),
         reverse=True,  # sort from Z-A
         key=lambda subnet: subnet.availability_zone)
     if not subnets:
