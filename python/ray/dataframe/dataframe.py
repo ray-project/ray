@@ -30,6 +30,8 @@ from .groupby import DataFrameGroupBy
 from .utils import (
     _deploy_func,
     _map_partitions,
+    _map_partitions_coalesce,
+    _explode_block_partitions,
     _partition_pandas_dataframe,
     to_pandas,
     _blocks_to_col,
@@ -38,7 +40,7 @@ from .utils import (
     _inherit_docstrings,
     _reindex_helper,
     _co_op_helper)
-from . import get_npartitions
+from . import (get_npartitions, get_nrowpartitions, get_ncolpartitions)
 from .index_metadata import _IndexMetadata
 
 
@@ -47,7 +49,8 @@ class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
                  copy=False, col_partitions=None, row_partitions=None,
-                 block_partitions=None, row_metadata=None, col_metadata=None):
+                 block_partitions=None, row_metadata=None, col_metadata=None,
+                 nrows=None, ncols=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -70,6 +73,11 @@ class DataFrame(object):
                 Metadata for the new dataframe's rows
             col_metadata (_IndexMetadata):
                 Metadata for the new dataframe's columns
+            nrows:
+                The number of row partitions to generate
+            ncols:
+                The number of col partitions to generate
+
         """
         self._row_metadata = self._col_metadata = None
 
@@ -81,14 +89,17 @@ class DataFrame(object):
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
 
+            if nrows is None:
+                nrows = get_nrowpartitions()
+
             # TODO convert _partition_pandas_dataframe to block partitioning.
             row_partitions = \
                 _partition_pandas_dataframe(pd_df,
-                                            num_partitions=get_npartitions())
+                                            num_partitions=nrows)
 
             self._block_partitions = \
                 _create_block_partitions(row_partitions, axis=0,
-                                         length=len(pd_df.columns))
+                                         length=ncols)
 
             # Set in case we were only given a single row/column for below.
             axis = 0
@@ -109,13 +120,19 @@ class DataFrame(object):
                 if row_partitions is not None:
                     axis = 0
                     partitions = row_partitions
+                    if row_metadata is not None:
+                        self._row_metadata = row_metadata.copy()
+                    n_blocks = ncols
                 elif col_partitions is not None:
                     axis = 1
                     partitions = col_partitions
+                    if col_metadata is not None:
+                        self._col_metadata = col_metadata.copy()
+                    n_blocks = nrows
 
                 self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
-                                             length=len(columns))
+                                             length=n_blocks)
 
         if row_metadata is not None:
             self._row_metadata = row_metadata.copy()
@@ -328,9 +345,14 @@ class DataFrame(object):
         axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
             else 0
 
-        oid_series = ray.get(_map_partitions(remote_func,
-                             self._col_partitions if axis == 0
-                             else self._row_partitions))
+        ### EXPERIMENTAL ###
+        new_blocks = _explode_block_partitions(self._block_partitions, (1, 8))
+        self._col_metadata.explode(8)
+        oid_series = ray.get(_map_partitions_coalesce(remote_func, new_blocks, axis))
+
+        # oid_series = ray.get(_map_partitions(remote_func,
+        #                      self._col_partitions if axis == 0
+        #                      else self._row_partitions))
 
         if axis == 0:
             # We use the index to get the internal index.
@@ -655,8 +677,45 @@ class DataFrame(object):
             True: cell contains NA.
             False: otherwise.
         """
+        # old_l = self._block_partitions.flatten().tolist()
+        # ray.wait(old_l, len(old_l))
+        # import time
+        # s = original = time.time()
+
         new_block_partitions = np.array([_map_partitions(
             lambda df: df.isna(), block) for block in self._block_partitions])
+
+        # new_col_partitions = np.array([_map_partitions(
+        #     lambda df: df.isna(), block) for block in self._block_partitions])
+
+        # l = new_block_partitions.flatten().tolist()
+        # for i in range(0, len(l), 8):
+        #     ray.wait(l, i+8)
+        #     e = time.time()
+        #     print("_map_partitions, {}-th partition: {}".format(i+8, e - s))
+        #     s = e
+        # print("_map_partitions, end: {}".format(e - original))
+
+        # def timer_test(df):
+        #     import time as tim
+        #     s = tim.perf_counter()
+        #     df.isna()
+        #     e = tim.perf_counter()
+        #     return e - s
+
+        # s = original = time.time()
+
+        # timer_partitions = np.array([_map_partitions(
+        #     timer_test, block) for block in self._block_partitions])
+
+        # l = timer_partitions.flatten().tolist()
+        # for i in range(0, len(l), 8):
+        #     ray.wait(l, i+8)
+        #     e = time.time()
+        #     print("_map_partitions-op, {}-th partition: {}".format(i+8, e - s))
+        #     s = e
+        # print("_map_partitions-op, end: {}".format(e - original))
+        # print("remote_op sum: {}".format(sum(ray.get(l))))
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,

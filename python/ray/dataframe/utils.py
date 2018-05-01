@@ -6,7 +6,13 @@ import pandas as pd
 import numpy as np
 import ray
 
-from . import get_npartitions
+from . import (
+    get_npartitions,
+    get_nrowpartitions,
+    get_ncolpartitions,
+    get_nworkers)
+
+from itertools import product
 
 
 def _get_lengths(df):
@@ -189,14 +195,19 @@ def _build_index(df_row, index):
 
 def _create_block_partitions(partitions, axis=0, length=None):
 
-    if length is not None and length != 0 and get_npartitions() > length:
+    if length is not None and length != 0:  # and get_npartitions() > length:
         npartitions = length
     else:
-        npartitions = get_npartitions()
+        npartitions = get_ncolpartitions() if axis == 0 \
+                else get_nrowpartitions()
+        # npartitions = get_npartitions()
 
-    x = [create_blocks._submit(args=(partition, npartitions, axis),
-                               num_return_vals=npartitions)
-         for partition in partitions]
+    if npartitions == 1:
+        x = [[part] for part in partitions]
+    else:
+        x = [create_blocks._submit(args=(partition, npartitions, axis),
+                                   num_return_vals=npartitions)
+             for partition in partitions]
 
     # In the case that axis is 1 we have to transpose because we build the
     # columns into rows. Fortunately numpy is efficient at this.
@@ -338,3 +349,268 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, *zipped):
 
     new_rows = func(left, right)
     return create_blocks_helper(new_rows, left_df_len, 0)
+
+
+"""EXPERIMENTAL"""
+
+
+@ray.remote
+def explode_block(df, factors):
+    row_factor, col_factor = factors
+
+    # In the case that the size is not a multiple of the number of partitions,
+    # we need to add one to each partition to avoid losing data off the end
+    block_len_row = df.shape[0] // row_factor \
+        if df.shape[0] % row_factor == 0 \
+        else df.shape[0] // row_factor + 1
+
+    block_len_col = df.shape[1] // col_factor \
+        if df.shape[1] % col_factor == 0 \
+        else df.shape[1] // col_factor + 1
+
+    # XXX: For some reason, serializing `iloc` on columns is very expensive.
+    # Performing a `copy` prior to the serialization negates a bit of this cost
+    # Performing a transpose, a copy, and tranposing again negates more (???)
+    iloc = df.iloc
+    if col_factor > 1:
+        blocks = [iloc[i * block_len_row: (i + 1) * block_len_row,
+                       j * block_len_col: (j + 1) * block_len_col].T.copy().T
+                  for i in range(row_factor) for j in range(col_factor)]
+    else:
+        blocks = [iloc[i * block_len_row: (i + 1) * block_len_row, :]
+                  for i in range(row_factor)]
+
+    for block in blocks:
+        block.columns = pd.RangeIndex(0, len(block.columns))
+    return blocks
+
+
+def _explode_block_partitions(block_partitions, factors):
+    # Sometimes the optimizer might want the same size, thus short circuit
+    if factors == (1, 1):
+        return block_partitions
+
+    row_factor, col_factor = factors
+    nreturns = row_factor * col_factor
+
+    nblocks_row, nblocks_col = block_partitions.shape
+
+    # Ray doesn't support OIDs in NDArrays, so everything must be treated as
+    # flat lists and then rebuilt
+    explode_lists = [[explode_block._submit(args=(block, factors),
+                                            num_return_vals=nreturns)
+                      for block in row]
+                     for row in block_partitions]
+    reshaped_lists = [[np.array(explode_list).reshape(row_factor, col_factor)
+                       for explode_list in row]
+                      for row in explode_lists]
+    joined = np.concatenate([np.concatenate(row, axis=1)
+                             for row in reshaped_lists],
+                            axis=0)
+
+    assert joined.shape == (row_factor * nblocks_row, col_factor * nblocks_col)
+
+    return joined
+
+
+@ray.remote
+def _deploy_func_row(func, *partition):
+    row_part = pd.concat(partition, axis=1, copy=False, ignore_index=True)\
+        .reset_index(drop=True)
+
+    return func(row_part)
+
+
+@ray.remote
+def _deploy_func_col(func, *partition):
+    col_part = pd.concat(partition, axis=0, copy=False, ignore_index=True)
+
+    return func(col_part)
+
+
+@ray.remote
+def _deploy_func_condense(func, shape, *partitions):
+    nrows, ncols = shape
+
+    assert nrows * ncols == len(partitions)
+
+    cc_kwargs = dict(copy=False, ignore_index=True)
+
+    if nrows == 1 and ncols == 1:
+        res_df = partitions[0]
+    elif nrows == 1:
+        res_df = pd.concat(partitions, axis=1, **cc_kwargs)
+        # TODO: possible replacement?
+        # res_df = pd.concat([p.T for p in partitions], axis=1, **cc_kwargs).T
+    elif ncols == 1:
+        res_df = pd.concat(partitions, axis=0, **cc_kwargs)
+    else:
+        res_df = pd.concat([pd.concat(partitions[i*ncols:(i + 1)*ncols],
+                                      axis=1,
+                                      **cc_kwargs) for i in range(nrows)],
+                           axis=0, **cc_kwargs)
+
+    return func(res_df)
+
+
+def _map_partitions_coalesce(func, block_partitions, axis):
+    """Apply a function across the specified axis
+
+    Args:
+        func (callable): The function to apply
+        axis (0 or 1):
+            The axis to coalesce across before performing the function
+        partitions ([ObjectID]): The list of partitions to map func on.
+
+    Returns:
+        A new Dataframe containing the result of the function
+    """
+    if block_partitions is None:
+        return None
+
+    assert(callable(func))
+
+    if axis == 0:
+        # get col partitions, reduce, perform
+        return [_deploy_func_col.remote(func, *block_partitions[:, i])
+                for i in range(block_partitions.shape[1])]
+    else:
+        # get row partitions, reduce, perform
+        return [_deploy_func_row.remote(func, *part)
+                for part in block_partitions]
+
+
+flookup = {
+    "isna": {"type": "applymap", "op_rate": 7500 / (2**22 * 2**8 * 2**3), "op_stdev": 0},
+    "sum": {"type": "axis-reduce", "op_rate": 0, "op_stdev": 0}
+}
+
+
+params = {
+    "explode_no_cols": 350 / (2**20 * 2**8 * 2**3),
+    "explode_cols": 2000 / (2**20 * 2**8 * 2**3),
+    "condense": 0,
+    "flookup": flookup
+}
+
+
+MAX_ZSCORE = 2
+
+
+def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
+    in_rows, in_cols = in_dims
+    in_nparts = in_rows * in_cols
+    in_dsplit = dsize / in_nparts
+
+    flookup = params["flookup"]
+    fprofile = flookup[fname]
+    ftype = fprofile["type"]
+    op_rate = fprofile["op_rate"]
+    op_stdev = fprofile["op_stdev"]
+
+    def op_stdev_f(x):
+        return op_stdev * x
+
+    def overhead_f(split):
+        x_sp, y_sp = split
+        return 1.6 * x_sp * y_sp
+
+    def est_time(split):
+        split_rows, split_cols = split
+
+        # If the split dimensions aren't integer factors/products of the
+        # existing dimensions, mark as uncompatible (infinite runtime)
+        if split_rows % in_rows != 0 or in_rows % split_rows != 0 or \
+           split_cols % in_cols != 0 or in_cols % split_cols != 0:
+            return np.inf
+
+        split_nparts = split_rows * split_cols
+
+        # Explode time. Add possible task overhead to explode?
+        if split == in_dims:
+            explode_time = 0
+        else:
+            # Serializing iloc'd-on-columns DFs is much more expensive than just on rows
+            explode_rate = explode_no_cols_rate if split_cols <= in_cols else explode_cols_rate
+            explode_iters = np.ceil((in_nparts) / get_nworkers())
+
+            if split_rows > in_rows and split_cols > in_cols:
+                # Explode both dims
+                explode_time = explode_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = 0
+            elif split_rows > in_rows and split_cols == in_cols:
+                # Explode rows
+                explode_time = explode_no_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = 0
+            elif split_rows > in_rows and split_cols < in_cols:
+                # Explode rows, condense cols
+                explode_time = explode_no_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = condense_rate # figure out how to measure this
+
+            elif split_rows < in_rows and split_cols > in_cols:
+                # Explode cols, condense rows
+                explode_time = explode_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = condense_rate # figure out how to measure this
+            elif split_rows < in_rows and split_cols == in_cols:
+                # Condense rows
+                explode_time = 0
+                condense_time = condense_rate # figure out how to measure this
+            elif split_rows < in_rows and split_cols < in_cols:
+                # Condense both dims
+                explode_time = 0
+                condense_time = condense_rate # figure out how to measure this
+
+            elif split_rows == in_rows and split_cols > in_cols:
+                # Explode columns
+                explode_time = explode_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = 0
+            elif split_rows == in_rows and split_cols < in_cols:
+                # Condense columns
+                explode_time = 0
+                condense_time = condense_rate # figure out how to measure this
+
+        if ftype == "applymap":
+            dsplit = dsize / split_nparts
+
+        elif ftype == "axis-reduce":
+            axis = kwargs["axis"]
+            dsplit = dsize / (split_cols if axis == 0 else split_rows)
+
+        task_split_time = op_rate * dsplit
+        total_iters = np.ceil((split_nparts) / get_nworkers())
+
+        task_time = total_iters * task_split_time
+
+        # \eps(x, y)
+        task_overhead = overhead_f(split)
+
+        # Var(x, y): StdDev for Summed Normal grows by O(sqrt(k))
+        task_var = MAX_ZSCORE * op_stdev_f(dsplit) * np.sqrt(total_iters)
+
+        total_time = explode_time + task_time + task_overhead + task_var
+        return total_time
+
+    explode_no_cols_rate = params["explode_no_cols"]
+    explode_cols_rate = params["explode_cols"]
+
+    condense_rate = params["condense"]
+
+    unlim_rows = (np.arange(get_nworkers() * 2) + 1) * in_rows
+    unlim_cols = (np.arange(get_nworkers() * 2) + 1) * in_cols
+
+    candidate_rows = unlim_rows[unlim_rows < get_nworkers() * 2]
+    candidate_cols = unlim_cols[unlim_cols < get_nworkers() * 2]
+
+    candidate_splits = list(product(candidate_rows, candidate_cols))
+    times = [(split, est_time(split)) for split in candidate_splits]
+    res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((len(candidate_rows), len(candidate_cols))),
+                          index=candidate_rows, columns=candidate_cols)
+    print(res_df)
+    split, time = min(times, key=lambda x: x[1])
+    return split, time
+
+
+def waitall(df):
+    parts = df._block_partitions.flatten().tolist()
+    ray.wait(parts, len(parts))
+    df._row_metadata._coord_df, df._col_metadata._coord_df
