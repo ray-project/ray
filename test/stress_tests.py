@@ -211,7 +211,9 @@ class ReconstructionTests(unittest.TestCase):
         if os.environ.get('RAY_USE_NEW_GCS', False):
             tasks = state.task_table()
             local_scheduler_ids = {
-                task["LocalSchedulerID"] for task in tasks.values()}
+                task["LocalSchedulerID"]
+                for task in tasks.values()
+            }
 
         # Make sure that all nodes in the cluster were used by checking that
         # the set of local scheduler IDs that had a task scheduled or submitted
