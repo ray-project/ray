@@ -49,7 +49,7 @@ class TensorFlowVariables(object):
         self.sess = sess
         queue = deque([loss])
         variable_names = []
-        explored_inputs = set([loss])
+        explored_inputs = {loss}
 
         # We do a BFS on the dependency graph of the input function to find
         # the variables.
