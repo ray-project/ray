@@ -409,19 +409,40 @@ def _explode_block_partitions(block_partitions, factors):
 
 @ray.remote
 def _deploy_func_row(func, *partition):
-    row_part = pd.concat(partition, axis=1, copy=False)\
+    row_part = pd.concat(partition, axis=1, copy=False, ignore_index=True)\
         .reset_index(drop=True)
-    # Because our block partitions contain different indices (for the
-    # columns), this change is needed to ensure correctness.
-    row_part.columns = pd.RangeIndex(0, len(row_part.columns))
+
     return func(row_part)
 
 @ray.remote
 def _deploy_func_col(func, *partition):
-    col_part = pd.concat(partition, axis=0, copy=False)\
-        .reset_index(drop=True)
+    col_part = pd.concat(partition, axis=0, copy=False, ignore_index=True)
 
     return func(col_part)
+
+@ray.remote
+def _deploy_func_condense(func, shape, *partitions):
+    nrows, ncols = shape
+
+    assert nrows * ncols == len(partitions)
+
+    cc_kwargs = dict(copy=False, ignore_index=True)
+
+    if nrows == 1 and ncols == 1:
+        res_df = partitions[0]
+    elif nrows == 1:
+        res_df = pd.concat(partitions, axis=1, **cc_kwargs)
+        # TODO: possible replacement?
+        # res_df = pd.concat([p.T for p in partitions], axis=1, **cc_kwargs).T
+    elif ncols == 1:
+        res_df = pd.concat(partitions, axis=0, **cc_kwargs)
+    else:
+        res_df = pd.concat([pd.concat(partitions[i*ncols:(i + 1)*ncols],
+                                      axis=1,
+                                      **cc_kwargs) for i in range(nrows)],
+                           axis=0, **cc_kwargs)
+
+    return func(res_df)
 
 def _map_partitions_coalesce(func, block_partitions, axis):
     """Apply a function across the specified axis
@@ -452,11 +473,21 @@ flookup = {
     "sum": {"type": "axis-reduce", "op_rate": 0, "op_stdev": 0}
 }
 
+params = {
+    "explode_no_cols": 350 / (2**20 * 2**8 * 2**3),
+    "explode_cols": 2000 / (2**20 * 2**8 * 2**3),
+    "condense": 0
+    "flookup": flookup
+}
+
 MAX_ZSCORE = 2
 
 def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
     in_rows, in_cols = in_dims
     in_nparts = in_rows * in_cols
+    in_dsplit = dsize / in_nparts
+
+    flookup = params["flookup"]
     fprofile = flookup[fname]
     ftype = fprofile["type"]
     op_rate = fprofile["op_rate"]
@@ -469,9 +500,14 @@ def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
         return 1.6 * x_sp * y_sp
 
     def est_time(split):
-        in_dsplit = dsize / in_nparts
-        
         split_rows, split_cols = split
+
+        # If the split dimensions aren't integer factors/products of the
+        # existing dimensions, mark as uncompatible (infinite runtime)
+        if split_rows % in_rows != 0 or in_rows % split_rows != 0 or \
+           split_cols % in_cols != 0 or in_cols % split_cols != 0:
+            return np.inf
+
         split_nparts = split_rows * split_cols
 
         # Explode time. Add possible task overhead to explode?
@@ -479,9 +515,43 @@ def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
             explode_time = 0
         else:
             # Serializing iloc'd-on-columns DFs is much more expensive than just on rows
-            explode_rate = explode_no_cols_rate if split_cols == 1 else explode_cols_rate
+            explode_rate = explode_no_cols_rate if split_cols <= in_cols else explode_cols_rate
             explode_iters = np.ceil((in_nparts) / get_nworkers())
-            explode_time = explode_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+
+            if split_rows > in_rows and split_cols > in_cols:
+                # Explode both dims
+                explode_time = explode_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = 0
+            elif split_rows > in_rows and split_cols == in_cols:
+                # Explode rows
+                explode_time = explode_no_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = 0
+            elif split_rows > in_rows and split_cols < in_cols:
+                # Explode rows, condense cols
+                explode_time = explode_no_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = condense_rate # figure out how to measure this
+
+            elif split_rows < in_rows and split_cols > in_cols:
+                # Explode cols, condense rows
+                explode_time = explode_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = condense_rate # figure out how to measure this
+            elif split_rows < in_rows and split_cols == in_cols:
+                # Condense rows
+                explode_time = 0
+                condense_time = condense_rate # figure out how to measure this
+            elif split_rows < in_rows and split_cols < in_cols:
+                # Condense both dims
+                explode_time = 0
+                condense_time = condense_rate # figure out how to measure this
+
+            elif split_rows == in_rows and split_cols > in_cols:
+                # Explode columns
+                explode_time = explode_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                condense_time = 0
+            elif split_rows == in_rows and split_cols < in_cols:
+                # Condense columns
+                explode_time = 0
+                condense_time = condense_rate # figure out how to measure this
 
         if ftype == "applymap":
             dsplit = dsize / split_nparts
@@ -504,12 +574,21 @@ def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
         total_time = explode_time + task_time + task_overhead + task_var
         return total_time
 
-    explode_no_cols_rate = 350 / (2**20 * 2**8 * 2**3)
-    explode_cols_rate = 2000 / (2**20 * 2**8 * 2**3)
-    candidate_splits = list(product(range(in_rows, 17), range(in_cols, 17)))
+    explode_no_cols_rate = params["explode_no_cols"]
+    explode_cols_rate = params["explode_cols"]
+
+    condense_rate = params["condense"]
+
+    unlim_rows = (np.arange(get_nworkers() * 2) + 1) * in_rows
+    unlim_cols = (np.arange(get_nworkers() * 2) + 1) * in_cols
+
+    candidate_rows = unlim_rows[unlim_rows < get_nworkers() * 2]
+    candidate_cols = unlim_cols[unlim_cols < get_nworkers() * 2]
+
+    candidate_splits = list(product(candidate_rows, candidate_cols))
     times = [(split, est_time(split)) for split in candidate_splits]
-    res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((17 - in_rows, 17 - in_cols)),
-                          index=range(in_rows, 17), columns=range(in_cols, 17))
+    res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((len(candidate_rows), len(candidate_cols))),
+                          index=candidate_rows, columns=candidate_cols)
     print(res_df)
     split, time = min(times, key=lambda x: x[1])
     return split, time
@@ -517,3 +596,4 @@ def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
 def waitall(df):
     parts = df._block_partitions.flatten().tolist()
     ray.wait(parts, len(parts))
+    _ = df._row_metadata._coord_df, df._col_metadata._coord_df
