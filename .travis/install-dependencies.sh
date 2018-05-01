@@ -77,7 +77,7 @@ elif [[ "$LINT" == "1" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   # Install Python linting tools.
-  pip install -q flake8
+  pip install -q flake8 flake8-comprehensions
 elif [[ "$LINUX_WHEELS" == "1" ]]; then
   sudo apt-get install docker
   sudo usermod -a -G docker travis
