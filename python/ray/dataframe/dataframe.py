@@ -3367,10 +3367,17 @@ class DataFrame(object):
             broadcast_value_dict = {str(col): self[col] for col in by}
             broadcast_values = pd.DataFrame(broadcast_value_dict)
         else:
-            broadcast_value_list = [self[row::len(self)] for row in by]
+            broadcast_value_list = [to_pandas(self[row::len(self.columns)])
+                                    for row in by]
+
+            index_builder = list(zip(broadcast_value_list, by))
+
+            for row, idx in index_builder:
+                row.index = [str(idx)]
+
             # Put this here to match the by below.
             by = [str(col) for col in by]
-            broadcast_values = pd.DataFrame(broadcast_value_list, index=by)
+            broadcast_values = pd.concat([row for row, idx in index_builder])
 
         # We are converting the by to string here so that we don't have a
         # collision with the RangeIndex on the inner frame. It is cheap and
@@ -3378,9 +3385,19 @@ class DataFrame(object):
         by = [str(col) for col in by]
 
         args = (by, axis, ascending, False, kind, na_position)
-        broadcast_values = broadcast_values.sort_values(*args)
 
         def _sort_helper(df, broadcast_values, axis, *args):
+            """Sorts the data on a partition.
+
+            Args:
+                df: The DataFrame to sort.
+                broadcast_values: The by DataFrame to use for the sort.
+                axis: The axis to sort over.
+                args: The args for the sort.
+
+            Returns:
+                 A new sorted DataFrame.
+            """
             if axis == 0:
                 broadcast_values.index = df.index
                 names = broadcast_values.columns
@@ -3393,21 +3410,36 @@ class DataFrame(object):
                 .drop(names, axis=axis ^ 1)
 
         if axis == 0:
-            new_parts = _map_partitions(
+            new_column_partitions = _map_partitions(
                 lambda df: _sort_helper(df, broadcast_values, axis, *args),
                 self._col_partitions)
 
-            return DataFrame(col_partitions=new_parts,
-                             columns=self.columns,
-                             index=broadcast_values.index)
+            new_row_partitions = None
+            new_columns = self.columns
+
+            # This is important because it allows us to get the axis that we
+            # aren't sorting over. We need the order of the columns/rows and this
+            # will provide that in the return value.
+            new_index = broadcast_values.sort_values(*args).index
         else:
-            new_parts = _map_partitions(
+            new_row_partitions = _map_partitions(
                 lambda df: _sort_helper(df, broadcast_values, axis, *args),
                 self._row_partitions)
 
-            return DataFrame(row_partitions=new_parts,
-                             columns=broadcast_values.columns,
-                             index=self.index)
+            new_column_partitions = None
+            new_columns = broadcast_values.sort_values(*args).columns
+            new_index = self.index
+
+        if inplace:
+            self._update_inplace(row_partitions=new_row_partitions,
+                                 col_partitions=new_column_partitions,
+                                 columns=new_columns,
+                                 index=new_index)
+        else:
+            return DataFrame(row_partitions=new_row_partitions,
+                             col_partitions=new_column_partitions,
+                             columns=new_columns,
+                             index=new_index)
 
     def sortlevel(self, level=0, axis=0, ascending=True, inplace=False,
                   sort_remaining=True):
