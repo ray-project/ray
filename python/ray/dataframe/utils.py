@@ -193,10 +193,11 @@ def _build_coord_df(lengths, index):
 
 def _create_block_partitions(partitions, axis=0, length=None):
 
-    if length is not None and length != 0: # and get_npartitions() > length:
+    if length is not None and length != 0:  # and get_npartitions() > length:
         npartitions = length
     else:
-        npartitions = get_ncolpartitions() if axis == 0 else get_nrowpartitions()
+        npartitions = get_ncolpartitions() if axis == 0 \
+                else get_nrowpartitions()
         # npartitions = get_npartitions()
 
     if npartitions == 1:
@@ -253,6 +254,7 @@ def _blocks_to_row(*partition):
     # columns), this change is needed to ensure correctness.
     row_part.columns = pd.RangeIndex(0, len(row_part.columns))
     return row_part
+
 
 def _inherit_docstrings(parent):
     """Creates a decorator which overwrites a decorated class' __doc__
@@ -389,7 +391,9 @@ def _match_partitioning(column_partition, lengths, index):
 def _concat_index(*index_parts):
     return index_parts[0].append(index_parts[1:])
 
-### EXPERIMENTAL ###
+
+"""EXPERIMENTAL"""
+
 
 @ray.remote
 def explode_block(df, factors):
@@ -407,9 +411,9 @@ def explode_block(df, factors):
 
     # XXX: For some reason, serializing `iloc` on columns is very expensive.
     # Performing a `copy` prior to the serialization negates a bit of this cost
-    # Performing a transpose, then a copy, then tranposing again negates more (???)
+    # Performing a transpose, a copy, and tranposing again negates more (???)
     iloc = df.iloc
-    if col_factor > 1: 
+    if col_factor > 1:
         blocks = [iloc[i * block_len_row: (i + 1) * block_len_row,
                        j * block_len_col: (j + 1) * block_len_col].T.copy().T
                   for i in range(row_factor) for j in range(col_factor)]
@@ -420,6 +424,7 @@ def explode_block(df, factors):
     for block in blocks:
         block.columns = pd.RangeIndex(0, len(block.columns))
     return blocks
+
 
 def _explode_block_partitions(block_partitions, factors):
     # Sometimes the optimizer might want the same size, thus short circuit
@@ -434,7 +439,7 @@ def _explode_block_partitions(block_partitions, factors):
     # Ray doesn't support OIDs in NDArrays, so everything must be treated as
     # flat lists and then rebuilt
     explode_lists = [[explode_block._submit(args=(block, factors),
-                                num_return_vals=nreturns)
+                                            num_return_vals=nreturns)
                       for block in row]
                      for row in block_partitions]
     reshaped_lists = [[np.array(explode_list).reshape(row_factor, col_factor)
@@ -448,6 +453,7 @@ def _explode_block_partitions(block_partitions, factors):
 
     return joined
 
+
 @ray.remote
 def _deploy_func_row(func, *partition):
     row_part = pd.concat(partition, axis=1, copy=False, ignore_index=True)\
@@ -455,11 +461,13 @@ def _deploy_func_row(func, *partition):
 
     return func(row_part)
 
+
 @ray.remote
 def _deploy_func_col(func, *partition):
     col_part = pd.concat(partition, axis=0, copy=False, ignore_index=True)
 
     return func(col_part)
+
 
 @ray.remote
 def _deploy_func_condense(func, shape, *partitions):
@@ -485,12 +493,14 @@ def _deploy_func_condense(func, shape, *partitions):
 
     return func(res_df)
 
+
 def _map_partitions_coalesce(func, block_partitions, axis):
     """Apply a function across the specified axis
 
     Args:
         func (callable): The function to apply
-        axis (0 or 1): The axis to coalesce across before performing the function
+        axis (0 or 1):
+            The axis to coalesce across before performing the function
         partitions ([ObjectID]): The list of partitions to map func on.
 
     Returns:
@@ -507,21 +517,26 @@ def _map_partitions_coalesce(func, block_partitions, axis):
                 for i in range(block_partitions.shape[1])]
     else:
         # get row partitions, reduce, perform
-        return [_deploy_func_row.remote(func, *part) for part in block_partitions]
+        return [_deploy_func_row.remote(func, *part)
+                for part in block_partitions]
+
 
 flookup = {
     "isna": {"type": "applymap", "op_rate": 7500 / (2**22 * 2**8 * 2**3), "op_stdev": 0},
     "sum": {"type": "axis-reduce", "op_rate": 0, "op_stdev": 0}
 }
 
+
 params = {
     "explode_no_cols": 350 / (2**20 * 2**8 * 2**3),
     "explode_cols": 2000 / (2**20 * 2**8 * 2**3),
-    "condense": 0
+    "condense": 0,
     "flookup": flookup
 }
 
+
 MAX_ZSCORE = 2
+
 
 def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
     in_rows, in_cols = in_dims
@@ -534,7 +549,8 @@ def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
     op_rate = fprofile["op_rate"]
     op_stdev = fprofile["op_stdev"]
 
-    op_stdev_f = lambda x: op_stdev * x
+    def op_stdev_f(x):
+        return op_stdev * x
 
     def overhead_f(split):
         x_sp, y_sp = split
@@ -634,7 +650,8 @@ def _optimize_partitions(in_dims, dsize, fname='isna', **kwargs):
     split, time = min(times, key=lambda x: x[1])
     return split, time
 
+
 def waitall(df):
     parts = df._block_partitions.flatten().tolist()
     ray.wait(parts, len(parts))
-    _ = df._row_metadata._coord_df, df._col_metadata._coord_df
+    df._row_metadata._coord_df, df._col_metadata._coord_df
