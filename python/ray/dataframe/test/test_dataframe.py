@@ -812,21 +812,21 @@ def test_is_empty(df):
 def test_add():
     ray_df = create_test_dataframe()
 
-        func = ['sum', lambda df: df.sum()]
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 1)
+    func = ['sum', lambda df: df.sum()]
+    with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 0)
+    with pytest.raises(NotImplementedError):
+        test_aggregate(ray_df, pandas_df, func, 0)
+    with pytest.raises(NotImplementedError):
+        test_agg(ray_df, pandas_df, func, 0)
+    with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 1)
+    with pytest.raises(NotImplementedError):
+        test_aggregate(ray_df, pandas_df, func, 1)
+    with pytest.raises(NotImplementedError):
+        test_agg(ray_df, pandas_df, func, 1)
 
-        test_transform(ray_df, pandas_df)
+    test_transform(ray_df, pandas_df)
 
 
 @pytest.fixture
