@@ -1,4 +1,5 @@
 [style]
+based_on_style=pep8
 # Align closing bracket with visual indentation.
 align_closing_bracket_with_visual_indent=True
 
