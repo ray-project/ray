@@ -1047,28 +1047,29 @@ class DataFrame(object):
                 raise TypeError(
                     "(\"'dict' object is not callable\", "
                     "'occurred at index {0}'".format(self.index[0]))
+            if len(self.columns) != len(set(self.columns)):
+                warnings.warn(
+                    'duplicate column names not supported with apply().',
+                    FutureWarning, stacklevel=2)
             has_list = list in map(type, func.values())
             part_ind_tuples = [(self._col_metadata[key], key) for key in func]
 
-            # tup[1] is the key of the dict
-            # tup[0][0] is partition index
-            # tup[0][1] is the index within the partition
             if has_list:
                 # if input dict has a list, the function to apply must wrap
                 # single functions in lists as well to get the desired output
                 # format
                 result = [_deploy_func.remote(
-                    lambda df: df.iloc[:, tup[0][1]].apply(
-                        func[tup[1]] if is_list_like(func[tup[1]])
-                        else [func[tup[1]]]),
-                    self._col_partitions[tup[0][0]])
-                    for tup in part_ind_tuples]
+                    lambda df: df.iloc[:, ind].apply(
+                        func[key] if is_list_like(func[key])
+                        else [func[key]]),
+                    self._col_partitions[part])
+                    for (part, ind), key in part_ind_tuples]
                 return pd.concat(ray.get(result), axis=1)
             else:
                 result = [_deploy_func.remote(
-                    lambda df: df.iloc[:, tup[0][1]].apply(func[tup[1]]),
-                    self._col_partitions[tup[0][0]])
-                    for tup in part_ind_tuples]
+                    lambda df: df.iloc[:, ind].apply(func[key]),
+                    self._col_partitions[part])
+                    for (part, ind), key in part_ind_tuples]
                 return pd.Series(ray.get(result), index=func.keys())
 
         elif is_list_like(func):
