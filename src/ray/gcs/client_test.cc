@@ -93,7 +93,7 @@ void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
 
   // Check that we added the correct task.
   auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                      const protocol::TaskT& d) {
+                                      const protocol::TaskT &d) {
     ASSERT_EQ(id, task_id);
     ASSERT_EQ(data->task_specification, d.task_specification);
   };
@@ -139,7 +139,7 @@ void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
     data->manager = manager;
     // Check that we added the correct object entries.
     auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                          const ObjectTableDataT& d) {
+                                          const ObjectTableDataT &d) {
       ASSERT_EQ(id, object_id);
       ASSERT_EQ(data->manager, d.manager);
     };
@@ -222,7 +222,7 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
 
   // Check that we added the correct task.
   auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                    const TaskReconstructionDataT& d) {
+                                    const TaskReconstructionDataT &d) {
     ASSERT_EQ(id, task_id);
     test->IncrementNumCallbacks();
   };
@@ -265,7 +265,7 @@ TEST_F(TestGcsWithAsio, TestLogAppendAt) {
 
 // Task table callbacks.
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
-               const TaskTableDataT& data) {
+               const TaskTableDataT &data) {
   ASSERT_EQ(data.scheduling_state, SchedulingState_SCHEDULED);
 }
 

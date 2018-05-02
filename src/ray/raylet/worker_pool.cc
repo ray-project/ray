@@ -95,7 +95,7 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
-    const std::shared_ptr<LocalClientConnection>& connection) const {
+    const std::shared_ptr<LocalClientConnection> &connection) const {
   for (auto it = registered_workers_.begin(); it != registered_workers_.end(); it++) {
     if ((*it)->Connection() == connection) {
       return (*it);
@@ -136,7 +136,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const ActorID &actor_id) {
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
 bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool,
-                  const std::shared_ptr<Worker>& worker) {
+                  const std::shared_ptr<Worker> &worker) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if (*it == worker) {
       worker_pool.erase(it);

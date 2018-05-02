@@ -184,7 +184,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
 }
 
 ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
-                                           std::shared_ptr<SenderConnection>& conn) {
+                                           std::shared_ptr<SenderConnection> &conn) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
@@ -209,7 +209,7 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
   Status status = object_directory_->GetInformation(
       client_id,
       [this, object_id, client_id](const RemoteConnectionInfo &info) {
-        const ObjectInfoT& object_info = local_objects_[object_id];
+        const ObjectInfoT &object_info = local_objects_[object_id];
         uint64_t data_size =
             static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
         uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
@@ -251,7 +251,7 @@ void ObjectManager::ExecuteSendObject(const ClientID &client_id,
 ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
                                              uint64_t data_size, uint64_t metadata_size,
                                              uint64_t chunk_index,
-                                             std::shared_ptr<SenderConnection>& conn) {
+                                             std::shared_ptr<SenderConnection> &conn) {
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
@@ -276,7 +276,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
 
 ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
                                           const ObjectBufferPool::ChunkInfo &chunk_info,
-                                          std::shared_ptr<SenderConnection>& conn) {
+                                          std::shared_ptr<SenderConnection> &conn) {
   boost::system::error_code ec;
   std::vector<asio::const_buffer> buffer;
   buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
@@ -328,11 +328,11 @@ std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
   return conn;
 }
 
-void ObjectManager::ProcessNewClient(TcpClientConnection& conn) {
+void ObjectManager::ProcessNewClient(TcpClientConnection &conn) {
   conn.ProcessMessages();
 }
 
-void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection>& conn,
+void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                                          int64_t message_type, const uint8_t *message) {
   switch (message_type) {
   case object_manager_protocol::MessageType_PushRequest: {
@@ -407,7 +407,7 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &con
 void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
                                          const ObjectID &object_id, uint64_t data_size,
                                          uint64_t metadata_size, uint64_t chunk_index,
-                                         TcpClientConnection& conn) {
+                                         TcpClientConnection &conn) {
   RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
                  << chunk_index;
 

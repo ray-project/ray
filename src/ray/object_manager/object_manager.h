@@ -110,7 +110,7 @@ class ObjectManager {
   ///
   /// \param conn The connection.
   /// \return Status of whether the connection was successfully established.
-  void ProcessNewClient(TcpClientConnection& conn);
+  void ProcessNewClient(TcpClientConnection &conn);
 
   /// Process messages sent from other nodes. We only establish
   /// transfer connections using this method; all other transfer communication
@@ -226,7 +226,7 @@ class ObjectManager {
   /// Synchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.
   ray::Status PullSendRequest(const ObjectID &object_id,
-                              std::shared_ptr<SenderConnection>& conn);
+                              std::shared_ptr<SenderConnection> &conn);
 
   std::shared_ptr<SenderConnection> CreateSenderConnection(
       ConnectionPool::ConnectionType type, RemoteConnectionInfo info);
@@ -241,13 +241,13 @@ class ObjectManager {
   /// Executes on send_service_ thread pool.
   ray::Status SendObjectHeaders(const ObjectID &object_id, uint64_t data_size,
                                 uint64_t metadata_size, uint64_t chunk_index,
-                                std::shared_ptr<SenderConnection>& conn);
+                                std::shared_ptr<SenderConnection> &conn);
 
   /// This method initiates the actual object transfer.
   /// Executes on send_service_ thread pool.
   ray::Status SendObjectData(const ObjectID &object_id,
                              const ObjectBufferPool::ChunkInfo &chunk_info,
-                             std::shared_ptr<SenderConnection>& conn);
+                             std::shared_ptr<SenderConnection> &conn);
 
   /// Invoked when a remote object manager pushes an object to this object manager.
   /// This will invoke the object receive on the receive_service_ thread pool.
@@ -256,8 +256,7 @@ class ObjectManager {
   /// Execute a receive on the receive_service_ thread pool.
   void ExecuteReceiveObject(const ClientID &client_id, const ObjectID &object_id,
                             uint64_t data_size, uint64_t metadata_size,
-                            uint64_t chunk_index,
-                            TcpClientConnection& conn);
+                            uint64_t chunk_index, TcpClientConnection &conn);
 
   /// Handles receiving a pull request message.
   void ReceivePullRequest(std::shared_ptr<TcpClientConnection> &conn,

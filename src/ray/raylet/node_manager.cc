@@ -156,7 +156,7 @@ void NodeManager::Heartbeat() {
   ray::Status status = heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
       [](ray::gcs::AsyncGcsClient *client, const ClientID &id,
-         const HeartbeatTableDataT& data) {
+         const HeartbeatTableDataT &data) {
         RAY_LOG(DEBUG) << "[HEARTBEAT] heartbeat sent callback";
       });
 
@@ -279,7 +279,7 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   }
 }
 
-void NodeManager::ProcessNewClient(LocalClientConnection& client) {
+void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   // The new client is a worker, so begin listening for messages.
   client.ProcessMessages();
 }
@@ -309,9 +309,9 @@ void NodeManager::DispatchTasks() {
   }
 }
 
-void NodeManager::ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
-                                       int64_t message_type,
-                                       const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(
+    const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
+    const uint8_t *message_data) {
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (message_type) {
@@ -319,7 +319,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<LocalClientConnecti
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     if (message->is_worker()) {
       // Create a new worker from the registration request.
-      std::shared_ptr<Worker> worker = std::make_shared<Worker>(message->worker_pid(), client);
+      auto worker = std::make_shared<Worker>(message->worker_pid(), client);
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
     }
@@ -436,14 +436,13 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<LocalClientConnecti
   client->ProcessMessages();
 }
 
-void NodeManager::ProcessNewNodeManager(
-    TcpClientConnection& node_manager_client) {
+void NodeManager::ProcessNewNodeManager(TcpClientConnection& node_manager_client) {
   node_manager_client.ProcessMessages();
 }
 
-void NodeManager::ProcessNodeManagerMessage(
-    TcpClientConnection& node_manager_client, int64_t message_type,
-    const uint8_t *message_data) {
+void NodeManager::ProcessNodeManagerMessage(TcpClientConnection& node_manager_client, 
+                                            int64_t message_type,
+                                            const uint8_t *message_data) {
   switch (message_type) {
   case protocol::MessageType_ForwardTaskRequest: {
     auto message = flatbuffers::GetRoot<protocol::ForwardTaskRequest>(message_data);
@@ -639,7 +638,7 @@ void NodeManager::AssignTask(Task &task) {
   }
 }
 
-void NodeManager::FinishAssignedTask(Worker& worker) {
+void NodeManager::FinishAssignedTask(Worker &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
   auto tasks = local_queues_.RemoveTasks({task_id});

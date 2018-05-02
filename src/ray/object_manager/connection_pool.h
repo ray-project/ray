@@ -106,7 +106,7 @@ class ConnectionPool {
 
   /// Removes the given receiver for ClientID from the given map.
   void Remove(ReceiverMapType &conn_map, const ClientID &client_id,
-              std::shared_ptr<TcpClientConnection>& conn);
+              std::shared_ptr<TcpClientConnection> &conn);
 
   /// Returns the count of sender connections to ClientID.
   uint64_t Count(SenderMapType &conn_map, const ClientID &client_id);

@@ -53,7 +53,7 @@ ray::Status ConnectionPool::GetSender(ConnectionType type, const ClientID &clien
 }
 
 ray::Status ConnectionPool::ReleaseSender(ConnectionType type,
-                                          std::shared_ptr<SenderConnection>& conn) {
+                                          std::shared_ptr<SenderConnection> &conn) {
   std::unique_lock<std::mutex> guard(connection_mutex);
   SenderMapType &conn_map = (type == ConnectionType::MESSAGE)
                                 ? available_message_send_connections_
@@ -73,7 +73,7 @@ void ConnectionPool::Add(SenderMapType &conn_map, const ClientID &client_id,
 }
 
 void ConnectionPool::Remove(ReceiverMapType &conn_map, const ClientID &client_id,
-                            std::shared_ptr<TcpClientConnection>& conn) {
+                            std::shared_ptr<TcpClientConnection> &conn) {
 
   auto it = conn_map.find(client_id);
   if (it == conn_map.end()) {

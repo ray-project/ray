@@ -104,8 +104,7 @@ int64_t RedisCallbackManager::add(const RedisCallback &function) {
   return num_callbacks;
 }
 
-RedisCallback &RedisCallbackManager::get(
-    int64_t callback_index) {
+RedisCallback &RedisCallbackManager::get(int64_t callback_index) {
   RAY_CHECK(callbacks_.find(callback_index) != callbacks_.end());
   return callbacks_[callback_index];
 }
@@ -185,8 +184,8 @@ Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
                               const uint8_t *data, int64_t length,
                               const TablePrefix prefix, const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
-  int64_t callback_index = redisCallback != nullptr ? 
-                              RedisCallbackManager::instance().add(redisCallback) : -1;
+  int64_t callback_index = 
+      redisCallback != nullptr ? RedisCallbackManager::instance().add(redisCallback) : -1;
   if (length > 0) {
     if (log_length >= 0) {
       std::string redis_command = command + " %d %d %b %b %d";

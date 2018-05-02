@@ -14,7 +14,7 @@ std::shared_ptr<SenderConnection> SenderConnection::Create(
   return std::make_shared<SenderConnection>(std::move(conn), client_id);
 };
 
-SenderConnection::SenderConnection(std::shared_ptr<TcpServerConnection>&& conn,
+SenderConnection::SenderConnection(std::shared_ptr<TcpServerConnection> &&conn,
                                    const ClientID &client_id)
     : conn_(conn) {
   client_id_ = client_id;

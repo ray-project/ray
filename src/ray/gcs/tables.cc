@@ -57,8 +57,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
         RAY_CHECK(from_flatbuf(*root->id()) == id);
         for (size_t i = 0; i < root->entries()->size(); i++) {
           DataT result;
-          auto data_root =
-              flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
+          auto data_root = flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
           data_root->UnPackTo(&result);
           results.emplace_back(std::move(result));
         }
@@ -97,8 +96,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
         std::vector<DataT> results;
         for (size_t i = 0; i < root->entries()->size(); i++) {
           DataT result;
-          auto data_root =
-              flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
+          auto data_root = flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
           data_root->UnPackTo(&result);
           results.emplace_back(std::move(result));
         }
@@ -119,8 +117,7 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client requested notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), prefix_, pubsub_channel_,
-                            nullptr);
+                            client_id.size(), prefix_, pubsub_channel_, nullptr);
 }
 
 template <typename ID, typename Data>
@@ -129,8 +126,7 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
   RAY_CHECK(subscribe_callback_index_ >= 0)
       << "Client canceled notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
-                            client_id.size(), prefix_, pubsub_channel_,
-                            nullptr);
+                            client_id.size(), prefix_, pubsub_channel_, nullptr);
 }
 
 template <typename ID, typename Data>
@@ -244,8 +240,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   }
 }
 
-void ClientTable::HandleConnected(AsyncGcsClient *client,
-                                  const ClientTableDataT& data) {
+void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT& data) {
   auto connected_client_id = ClientID::from_binary(data.client_id);
   RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
                                                << client_id_;
@@ -296,7 +291,7 @@ Status ClientTable::Disconnect() {
   auto data = std::make_shared<ClientTableDataT>(local_client_);
   data->is_insertion = false;
   auto add_callback = [this](AsyncGcsClient *client, const ClientID &id,
-                             const ClientTableDataT& data) {
+                             const ClientTableDataT &data) {
     HandleConnected(client, data);
     RAY_CHECK_OK(CancelNotifications(JobID::nil(), client_log_key_, id));
   };

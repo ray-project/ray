@@ -38,7 +38,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     bool send_notification = (subscribed_tasks_.count(task_id) == 1);
     auto callback = [this, send_notification](ray::gcs::AsyncGcsClient *client,
                                               const TaskID &task_id,
-                                              const protocol::TaskT& data) {
+                                              const protocol::TaskT &data) {
       if (send_notification) {
         notification_callback_(client, task_id, data);
       }
@@ -86,7 +86,7 @@ class LineageCacheTest : public ::testing::Test {
   LineageCacheTest()
       : mock_gcs_(), lineage_cache_(ClientID::from_random(), mock_gcs_, mock_gcs_) {
     mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-                               const ray::protocol::TaskT& data) {
+                               const ray::protocol::TaskT &data) {
       lineage_cache_.HandleEntryCommitted(task_id);
     });
   }

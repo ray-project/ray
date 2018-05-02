@@ -57,8 +57,8 @@ class Log : virtual public PubsubInterface<ID> {
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
-  using WriteCallback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                           const DataT& data)>;
+  using WriteCallback = 
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataT& data)>;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
@@ -487,8 +487,7 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// Handle a client table notification.
   void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(AsyncGcsClient *client,
-                       const ClientTableDataT& client_data);
+  void HandleConnected(AsyncGcsClient *client, const ClientTableDataT &client_data);
 
   /// The key at which the log of client information is stored. This key must
   /// be kept the same across all instances of the ClientTable, so that all

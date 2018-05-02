@@ -37,7 +37,7 @@ class NodeManager {
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
   /// Process a new client connection.
-  void ProcessNewClient(LocalClientConnection& client);
+  void ProcessNewClient(LocalClientConnection &client);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -69,7 +69,7 @@ class NodeManager {
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   void AssignTask(Task &task);
   /// Handle a worker finishing its assigned task.
-  void FinishAssignedTask(Worker& worker);
+  void FinishAssignedTask(Worker &worker);
   /// Schedule tasks.
   void ScheduleTasks();
   /// Handle a task whose local dependencies were missing and are now available.
