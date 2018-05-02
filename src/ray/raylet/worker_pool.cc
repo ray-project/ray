@@ -87,14 +87,15 @@ void WorkerPool::StartWorker(bool force_start) {
 }
 
 void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
-  RAY_LOG(DEBUG) << "Registering worker with pid " << worker->Pid();
-  registered_workers_.push_back(worker);
-  RAY_CHECK(started_worker_pids_.count(worker->Pid()) > 0);
-  started_worker_pids_.erase(worker->Pid());
+  auto pid = worker->Pid();
+  RAY_LOG(DEBUG) << "Registering worker with pid " << pid;
+  registered_workers_.push_back(std::move(worker));
+  RAY_CHECK(started_worker_pids_.count(pid) > 0);
+  started_worker_pids_.erase(pid);
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(
-    std::shared_ptr<LocalClientConnection> connection) const {
+    const std::shared_ptr<LocalClientConnection>& connection) const {
   for (auto it = registered_workers_.begin(); it != registered_workers_.end(); it++) {
     if ((*it)->Connection() == connection) {
       return (*it);
@@ -135,7 +136,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const ActorID &actor_id) {
 // A helper function to remove a worker from a list. Returns true if the worker
 // was found and removed.
 bool removeWorker(std::list<std::shared_ptr<Worker>> &worker_pool,
-                  std::shared_ptr<Worker> worker) {
+                  const std::shared_ptr<Worker>& worker) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if (*it == worker) {
       worker_pool.erase(it);

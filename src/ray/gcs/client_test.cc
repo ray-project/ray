@@ -93,9 +93,9 @@ void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
 
   // Check that we added the correct task.
   auto add_callback = [task_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                      const std::shared_ptr<protocol::TaskT> d) {
+                                      const protocol::TaskT& d) {
     ASSERT_EQ(id, task_id);
-    ASSERT_EQ(data->task_specification, d->task_specification);
+    ASSERT_EQ(data->task_specification, d.task_specification);
   };
 
   // Check that the lookup returns the added task.
@@ -139,9 +139,9 @@ void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
     data->manager = manager;
     // Check that we added the correct object entries.
     auto add_callback = [object_id, data](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                          const std::shared_ptr<ObjectTableDataT> d) {
+                                          const ObjectTableDataT& d) {
       ASSERT_EQ(id, object_id);
-      ASSERT_EQ(data->manager, d->manager);
+      ASSERT_EQ(data->manager, d.manager);
     };
     RAY_CHECK_OK(client->object_table().Append(job_id, object_id, data, add_callback));
   }
@@ -222,7 +222,7 @@ void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
 
   // Check that we added the correct task.
   auto failure_callback = [task_id](gcs::AsyncGcsClient *client, const UniqueID &id,
-                                    const std::shared_ptr<TaskReconstructionDataT> d) {
+                                    const TaskReconstructionDataT& d) {
     ASSERT_EQ(id, task_id);
     test->IncrementNumCallbacks();
   };
@@ -265,8 +265,8 @@ TEST_F(TestGcsWithAsio, TestLogAppendAt) {
 
 // Task table callbacks.
 void TaskAdded(gcs::AsyncGcsClient *client, const TaskID &id,
-               const std::shared_ptr<TaskTableDataT> data) {
-  ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);
+               const TaskTableDataT& data) {
+  ASSERT_EQ(data.scheduling_state, SchedulingState_SCHEDULED);
 }
 
 void TaskLookup(gcs::AsyncGcsClient *client, const TaskID &id,
