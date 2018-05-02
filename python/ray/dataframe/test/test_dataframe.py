@@ -927,8 +927,6 @@ def test_append():
 
     pandas_df2 = pd.DataFrame({"col5": [0], "col6": [1]})
 
-    print(ray_df.append(ray_df2))
-
     assert ray_df_equals_pandas(ray_df.append(ray_df2),
                                 pandas_df.append(pandas_df2))
 
@@ -2619,17 +2617,43 @@ def test_slice_shift():
 
 
 def test_sort_index():
-    ray_df = create_test_dataframe()
+    pandas_df = pd.DataFrame(np.random.randint(0, 100, size=(1000, 100)))
+    ray_df = rdf.DataFrame(pandas_df)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.sort_index()
+    pandas_result = pandas_df.sort_index()
+    ray_result = ray_df.sort_index()
+
+    ray_df_equals_pandas(ray_result, pandas_result)
+
+    pandas_result = pandas_df.sort_index(ascending=False)
+    ray_result = ray_df.sort_index(ascending=False)
+
+    ray_df_equals_pandas(ray_result, pandas_result)
 
 
 def test_sort_values():
-    ray_df = create_test_dataframe()
+    pandas_df = pd.DataFrame(np.random.randint(0, 100, size=(1000, 100)))
+    ray_df = rdf.DataFrame(pandas_df)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.sort_values(None)
+    pandas_result = pandas_df.sort_values(by=1)
+    ray_result = ray_df.sort_values(by=1)
+
+    ray_df_equals_pandas(ray_result, pandas_result)
+
+    pandas_result = pandas_df.sort_values(by=1, axis=1)
+    ray_result = ray_df.sort_values(by=1, axis=1)
+
+    ray_df_equals_pandas(ray_result, pandas_result)
+
+    pandas_result = pandas_df.sort_values(by=[1, 3])
+    ray_result = ray_df.sort_values(by=[1, 3])
+
+    ray_df_equals_pandas(ray_result, pandas_result)
+
+    pandas_result = pandas_df.sort_values(by=[1, 67], axis=1)
+    ray_result = ray_df.sort_values(by=[1, 67], axis=1)
+
+    ray_df_equals_pandas(ray_result, pandas_result)
 
 
 def test_sortlevel():

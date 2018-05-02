@@ -3367,7 +3367,7 @@ class DataFrame(object):
             broadcast_value_dict = {str(col): self[col] for col in by}
             broadcast_values = pd.DataFrame(broadcast_value_dict)
         else:
-            broadcast_value_list = [to_pandas(self[row::len(self.columns)])
+            broadcast_value_list = [to_pandas(self[row::len(self.index)])
                                     for row in by]
 
             index_builder = list(zip(broadcast_value_list, by))
@@ -3418,8 +3418,8 @@ class DataFrame(object):
             new_columns = self.columns
 
             # This is important because it allows us to get the axis that we
-            # aren't sorting over. We need the order of the columns/rows and this
-            # will provide that in the return value.
+            # aren't sorting over. We need the order of the columns/rows and
+            # this will provide that in the return value.
             new_index = broadcast_values.sort_values(*args).index
         else:
             new_row_partitions = _map_partitions(
