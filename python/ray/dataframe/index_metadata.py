@@ -128,6 +128,35 @@ class _IndexMetadata(object):
 
     index = property(_get_index, _set_index)
 
+    def _get_index_cache(self):
+        """Get the cached Index object, which may sometimes be an OID.
+
+        This will ray.get the Index object out of the Ray store lazily, such
+        that it is not grabbed until it is needed in the driver. This layer of
+        abstraction is important for allowing this object to be instantiated
+        with a remote Index object.
+
+        Returns
+            The Index object in _index_cache.
+        """
+        if isinstance(self._index_cache_validator,
+                      ray.local_scheduler.ObjectID):
+            self._index_cache_validator = ray.get(self._index_cache_validator)
+
+        return self._index_cache_validator
+
+    def _set_index_cache(self, new_index):
+        """Sets the new index cache.
+
+        Args:
+            new_index: The Index to set the _index_cache to.
+        """
+        self._index_cache_validator = new_index
+
+    # _index_cache_validator is an extra layer of abstraction to allow the
+    # cache to accept ObjectIDs and ray.get them when needed.
+    _index_cache = property(_get_index_cache, _set_index_cache)
+
     def coords_of(self, key):
         """Returns the coordinates (partition, index_within_partition) of the
         provided key in the index. Can be called on its own or implicitly
