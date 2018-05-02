@@ -100,15 +100,14 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
 
 int64_t RedisCallbackManager::add(const RedisCallback &function) {
   num_callbacks += 1;
-  callbacks_.emplace(num_callbacks, std::unique_ptr<RedisCallback>(
-                                        new RedisCallback(function)));
+  callbacks_.emplace(num_callbacks, function);
   return num_callbacks;
 }
 
 RedisCallback &RedisCallbackManager::get(
     int64_t callback_index) {
   RAY_CHECK(callbacks_.find(callback_index) != callbacks_.end());
-  return *callbacks_[callback_index];
+  return callbacks_[callback_index];
 }
 
 void RedisCallbackManager::remove(int64_t callback_index) {
