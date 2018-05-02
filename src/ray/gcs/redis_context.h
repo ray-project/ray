@@ -18,13 +18,13 @@ struct aeEventLoop;
 namespace ray {
 
 namespace gcs {
+/// Every callback should take in a vector of the results from the Redis
+/// operation and return a bool indicating whether the callback should be
+/// deleted once called.
+using RedisCallback = std::function<bool(const std::string &)>;
 
 class RedisCallbackManager {
  public:
-  /// Every callback should take in a vector of the results from the Redis
-  /// operation and return a bool indicating whether the callback should be
-  /// deleted once called.
-  using RedisCallback = std::function<bool(const std::string &)>;
 
   static RedisCallbackManager &instance() {
     static RedisCallbackManager instance;
@@ -70,11 +70,11 @@ class RedisContext {
   ///        -1 for unused. If set, then data must be provided.
   Status RunAsync(const std::string &command, const UniqueID &id, const uint8_t *data,
                   int64_t length, const TablePrefix prefix,
-                  const TablePubsub pubsub_channel, int64_t callback_index,
+                  const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
 
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
-                        int64_t callback_index);
+                        const RedisCallback &redisCallback);
   redisAsyncContext *async_context() { return async_context_; }
   redisAsyncContext *subscribe_context() { return subscribe_context_; };
 

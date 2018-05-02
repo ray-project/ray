@@ -212,17 +212,6 @@ class Table : private Log<ID, Data>,
   /// request and receive notifications.
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
 
-  struct CallbackData {
-    ID id;
-    std::shared_ptr<DataT> data;
-    Callback callback;
-    // An optional callback to call for subscription operations, where the
-    // first message is a notification of subscription success.
-    SubscriptionCallback subscription_callback;
-    Log<ID, Data> *log;
-    AsyncGcsClient *client;
-  };
-
   Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Log<ID, Data>(context, client) {}
 
@@ -358,19 +347,18 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   Status TestAndUpdate(const JobID &job_id, const TaskID &id,
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
-    int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, callback, id](const std::string &data) {
-          auto result = std::make_shared<TaskTableDataT>();
-          auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
-          root->UnPackTo(result.get());
-          callback(client_, id, *result, root->updated());
-          return true;
-        });
+    auto redisCallback = [this, callback, id](const std::string &data) {
+      auto result = std::make_shared<TaskTableDataT>();
+      auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
+      root->UnPackTo(result.get());
+      callback(client_, id, *result, root->updated());
+      return true;
+    };
     flatbuffers::FlatBufferBuilder fbb;
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_TEST_AND_UPDATE", id,
                                          fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
-                                         pubsub_channel_, callback_index));
+                                         pubsub_channel_, redisCallback));
     return Status::OK();
   }
 

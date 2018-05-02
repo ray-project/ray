@@ -9,76 +9,67 @@ namespace gcs {
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
-                             std::shared_ptr<DataT> &data, const WriteCallback &done) {
-  auto d = std::make_shared<CallbackData>(
-      CallbackData({id, data, nullptr, nullptr, this, client_}));
-  int64_t callback_index =
-      RedisCallbackManager::instance().add([d, done](const std::string &data) {
-        RAY_CHECK(data.empty());
-        if (done != nullptr) {
-          (done)(d->client, d->id, *d->data);
-        }
-        return true;
-      });
+                             std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
+  auto callback = [this, id, dataT, done](const std::string &data) {
+    RAY_CHECK(data.empty());
+    if (done != nullptr) {
+      (done)(client_, id, *dataT);
+    }
+    return true;
+  };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
-  fbb.Finish(Data::Pack(fbb, data.get()));
+  fbb.Finish(Data::Pack(fbb, dataT.get()));
   return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, callback_index);
+                            prefix_, pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
-                               std::shared_ptr<DataT> &data, const WriteCallback &done,
+                               std::shared_ptr<DataT> &dataT, const WriteCallback &done,
                                const WriteCallback &failure, int log_length) {
-  auto d = std::make_shared<CallbackData>(
-      CallbackData({id, data, nullptr, nullptr, this, client_}));
-  int64_t callback_index =
-      RedisCallbackManager::instance().add([d, done, failure](const std::string &data) {
-        if (data.empty()) {
-          if (done != nullptr) {
-            (done)(d->client, d->id, *d->data);
-          }
-        } else {
-          if (failure != nullptr) {
-            (failure)(d->client, d->id, *d->data);
-          }
-        }
-        return true;
-      });
+  auto callback = [this, id, dataT, done, failure](const std::string &data) {
+    if (data.empty()) {
+      if (done != nullptr) {
+        (done)(client_, id, *dataT);
+      }
+    } else {
+      if (failure != nullptr) {
+        (failure)(client_, id, *dataT);
+      }
+    }
+    return true;
+  };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
-  fbb.Finish(Data::Pack(fbb, data.get()));
+  fbb.Finish(Data::Pack(fbb, dataT.get()));
   return context_->RunAsync("RAY.TABLE_APPEND", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, callback_index, log_length);
+                            prefix_, pubsub_channel_, std::move(callback), log_length);
 }
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
-  auto d = std::make_shared<CallbackData>(
-      CallbackData({id, nullptr, lookup, nullptr, this, client_}));
-  int64_t callback_index =
-      RedisCallbackManager::instance().add([d](const std::string &data) {
-        if (d->callback != nullptr) {
-          std::vector<DataT> results;
-          if (!data.empty()) {
-            auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
-            RAY_CHECK(from_flatbuf(*root->id()) == d->id);
-            for (size_t i = 0; i < root->entries()->size(); i++) {
-              DataT result;
-              auto data_root =
-                  flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
-              data_root->UnPackTo(&result);
-              results.emplace_back(std::move(result));
-            }
-          }
-          (d->callback)(d->client, d->id, results);
+  auto callback = [this, id, lookup](const std::string &data) {
+    if (lookup != nullptr) {
+      std::vector<DataT> results;
+      if (!data.empty()) {
+        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+        RAY_CHECK(from_flatbuf(*root->id()) == id);
+        for (size_t i = 0; i < root->entries()->size(); i++) {
+          DataT result;
+          auto data_root =
+              flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
+          data_root->UnPackTo(&result);
+          results.emplace_back(std::move(result));
         }
-        return true;
-      });
+      }
+      lookup(client_, id, results);
+    }
+    return true;
+  };
   std::vector<uint8_t> nil;
   return context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), prefix_,
-                            pubsub_channel_, callback_index);
+                            pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
@@ -87,42 +78,39 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                 const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
       << "Client called Subscribe twice on the same table";
-  auto d = std::make_shared<CallbackData>(
-        CallbackData({client_id, nullptr, subscribe, done, this, client_}));
-  int64_t callback_index =
-      RedisCallbackManager::instance().add([d](const std::string &data) {
-        if (data.empty()) {
-          // No notification data is provided. This is the callback for the
-          // initial subscription request.
-          if (d->subscription_callback != nullptr) {
-            (d->subscription_callback)(d->client);
-          }
-        } else {
-          // Data is provided. This is the callback for a message.
-          if (d->callback != nullptr) {
-            // Parse the notification.
-            auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
-            ID id = UniqueID::nil();
-            if (root->id()->size() > 0) {
-              id = from_flatbuf(*root->id());
-            }
-            std::vector<DataT> results;
-            for (size_t i = 0; i < root->entries()->size(); i++) {
-              DataT result;
-              auto data_root =
-                  flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
-              data_root->UnPackTo(&result);
-              results.emplace_back(std::move(result));
-            }
-            (d->callback)(d->client, id, results);
-          }
+  auto callback = [this, subscribe, done](const std::string &data) {
+    if (data.empty()) {
+      // No notification data is provided. This is the callback for the
+      // initial subscription request.
+      if (done != nullptr) {
+        done(client_);
+      }
+    } else {
+      // Data is provided. This is the callback for a message.
+      if (subscribe != nullptr) {
+        // Parse the notification.
+        auto root = flatbuffers::GetRoot<GcsTableEntry>(data.data());
+        ID id = UniqueID::nil();
+        if (root->id()->size() > 0) {
+          id = from_flatbuf(*root->id());
         }
-        // We do not delete the callback after calling it since there may be
-        // more subscription messages.
-        return false;
-      });
-  subscribe_callback_index_ = callback_index;
-  return context_->SubscribeAsync(client_id, pubsub_channel_, callback_index);
+        std::vector<DataT> results;
+        for (size_t i = 0; i < root->entries()->size(); i++) {
+          DataT result;
+          auto data_root =
+              flatbuffers::GetRoot<Data>(root->entries()->Get(i)->data());
+          data_root->UnPackTo(&result);
+          results.emplace_back(std::move(result));
+        }
+        subscribe(client_, id, results);
+      }
+    }
+    // We do not delete the callback after calling it since there may be
+    // more subscription messages.
+    return false;
+  };
+  subscribe_callback_index_ = 1;
+  return context_->SubscribeAsync(client_id, pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
@@ -132,7 +120,7 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
       << "Client requested notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_REQUEST_NOTIFICATIONS", id, client_id.data(),
                             client_id.size(), prefix_, pubsub_channel_,
-                            /*callback_index=*/-1);
+                            nullptr);
 }
 
 template <typename ID, typename Data>
@@ -142,26 +130,23 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
       << "Client canceled notifications on a key before Subscribe completed";
   return context_->RunAsync("RAY.TABLE_CANCEL_NOTIFICATIONS", id, client_id.data(),
                             client_id.size(), prefix_, pubsub_channel_,
-                            /*callback_index=*/-1);
+                            nullptr);
 }
 
 template <typename ID, typename Data>
 Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
-                            std::shared_ptr<DataT> &data, const WriteCallback &done) {
-  auto d = std::make_shared<CallbackData>(
-      CallbackData({id, data, nullptr, nullptr, this, client_}));
-  int64_t callback_index =
-      RedisCallbackManager::instance().add([d, done](const std::string &data) {
-        if (done != nullptr) {
-          (done)(d->client, d->id, *d->data);
-        }
-        return true;
-      });
+                            std::shared_ptr<DataT> &dataT, const WriteCallback &done) {
+  auto callback = [this, id, dataT, done](const std::string &data) {
+    if (done != nullptr) {
+      (done)(client_, id, *dataT);
+    }
+    return true;
+  };
   flatbuffers::FlatBufferBuilder fbb;
   fbb.ForceDefaults(true);
-  fbb.Finish(Data::Pack(fbb, data.get()));
+  fbb.Finish(Data::Pack(fbb, dataT.get()));
   return context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(),
-                            prefix_, pubsub_channel_, callback_index);
+                            prefix_, pubsub_channel_, std::move(callback));
 }
 
 template <typename ID, typename Data>
