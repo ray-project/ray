@@ -163,9 +163,7 @@ class DataFrame(object):
                                                 index=columns, axis=1)
 
         if self._dtypes_cache is None:
-            self._dtypes_cache = [_deploy_func.remote(
-                                  lambda df: df.dtypes, pd_df)
-                                  for pd_df in self._block_partitions[0]]
+            self._correct_dtypes()
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
