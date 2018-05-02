@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.ddpg2.ddpg import DDPG2Agent, DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.ddpg.ddpg import DDPGAgent, DEFAULT_CONFIG as DDPG_CONFIG
 
 APEX_DDPG_DEFAULT_CONFIG = dict(DDPG_CONFIG,
                                 **dict(
@@ -28,7 +28,7 @@ APEX_DDPG_DEFAULT_CONFIG = dict(DDPG_CONFIG,
                                 ))
 
 
-class ApexDDPG2Agent(DDPG2Agent):
+class ApexDDPGAgent(DDPGAgent):
     """DDPG variant that uses the Ape-X distributed policy optimizer.
 
     By default, this is configured for a large single node (32 cores). For
