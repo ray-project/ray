@@ -103,8 +103,6 @@ class _IndexMetadata(object):
         _IndexMetadata constructor for more details)
         """
         if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
-            if self._index_cache is None:
-                self._index_cache = pd.RangeIndex(len(self))
             return self._index_cache
         else:
             return self._coord_df_cache.index
@@ -139,8 +137,10 @@ class _IndexMetadata(object):
         Returns
             The Index object in _index_cache.
         """
-        if isinstance(self._index_cache_validator,
-                      ray.local_scheduler.ObjectID):
+        if self._index_cache_validator is None:
+            self._index_cache_validator = pd.RangeIndex(len(self))
+        elif isinstance(self._index_cache_validator,
+                        ray.local_scheduler.ObjectID):
             self._index_cache_validator = ray.get(self._index_cache_validator)
 
         return self._index_cache_validator
