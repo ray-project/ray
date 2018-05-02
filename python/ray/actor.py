@@ -396,13 +396,18 @@ def export_actor_class(class_id, Class, actor_method_names,
                        worker):
     key = b"ActorClass:" + class_id
     actor_class_info = {
-        "class_name": Class.__name__,
-        "module": Class.__module__,
-        "class": pickle.dumps(Class),
-        "checkpoint_interval": checkpoint_interval,
-        "actor_method_names": json.dumps(list(actor_method_names)),
+        "class_name":
+            Class.__name__,
+        "module":
+            Class.__module__,
+        "class":
+            pickle.dumps(Class),
+        "checkpoint_interval":
+            checkpoint_interval,
+        "actor_method_names":
+            json.dumps(list(actor_method_names)),
         "actor_method_num_return_vals":
-        json.dumps(actor_method_num_return_vals)
+            json.dumps(actor_method_num_return_vals)
     }
 
     if worker.mode is None:

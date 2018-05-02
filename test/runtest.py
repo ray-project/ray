@@ -184,12 +184,11 @@ DICT_OBJECTS = (
     [{
         obj: obj
     } for obj in PRIMITIVE_OBJECTS
-     if (obj.__hash__ is not None and type(obj).__module__ != "numpy")] +
-    [{
-        0: obj
-    } for obj in BASE_OBJECTS] + [{
-        Foo(123): Foo(456)
-    }])
+     if (obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
+         0: obj
+     } for obj in BASE_OBJECTS] + [{
+         Foo(123): Foo(456)
+     }])
 
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
@@ -706,8 +705,8 @@ class APITest(unittest.TestCase):
         assert ray.get(f._submit(args=[3], num_return_vals=3)) == [0, 1, 2]
         assert ray.get(
             g._submit(
-                args=[], num_cpus=1, num_gpus=1, resources={"Custom":
-                                                            1})) == [0]
+                args=[], num_cpus=1, num_gpus=1,
+                resources={"Custom": 1})) == [0]
 
     def testGetMultiple(self):
         self.init_ray()

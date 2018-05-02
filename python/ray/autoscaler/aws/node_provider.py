@@ -102,14 +102,14 @@ class AWSNodeProvider(NodeProvider):
             })
         conf.update({
             "MinCount":
-            1,
+                1,
             "MaxCount":
-            count,
+                count,
             "TagSpecifications":
-            conf.get("TagSpecifications", []) + [{
-                "ResourceType": "instance",
-                "Tags": tag_pairs,
-            }]
+                conf.get("TagSpecifications", []) + [{
+                    "ResourceType": "instance",
+                    "Tags": tag_pairs,
+                }]
         })
         self.ec2.create_instances(**conf)
 
