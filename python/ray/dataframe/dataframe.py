@@ -3137,9 +3137,52 @@ class DataFrame(object):
 
     def rank(self, axis=0, method='average', numeric_only=None,
              na_option='keep', ascending=True, pct=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        
+        """
+        Compute numerical data ranks (1 through n) along axis.
+        Equal values are assigned a rank that is the [method] of
+        the ranks of those values.
+        
+        Args:
+            axis (int): 0 or 'index' for row-wise,
+                        1 or 'columns' for column-wise
+            interpolation: {‘average’, ‘min’, ‘max’, ‘first’, ‘dense’}
+                Specifies which method to use for equal vals
+            numeric_only (boolean)
+                Include only float, int, boolean data.
+            na_option: {'keep', 'top', 'bottom'}
+                Specifies how to handle NA options
+            ascending (boolean):
+                Decedes ranking order
+            pct (boolean):
+                Computes percentage ranking of data
+        Returns:
+            A new DataFrame
+        """
+        
+        def remote_func(df):
+            return df.rank(axis=axis, method=method,
+                           numeric_only=numeric_only,
+                           na_option=na_option,
+                           ascending=ascending, pct=pct)
+
+        # return self._arithmetic_helper(remote_func, axis, level)
+    
+        index = self._row_metadata.index
+
+        if (axis == 1 or axis == 'columns'):
+            result = _map_partitions(remote_func,
+                                      self._row_partitions)
+            return DataFrame(row_partitions=result,
+                 columns=self.columns,
+                 index=index)
+
+        if (axis == 0 or axis == 'index'): 
+            result = _map_partitions(remote_func,
+                                      self._col_partitions)
+            return DataFrame(col_partitions=result,
+                 columns=self.columns,
+                 index=index)
 
     def rdiv(self, other, axis='columns', level=None, fill_value=None):
         return self._single_df_op_helper(
