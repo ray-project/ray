@@ -134,7 +134,7 @@ class _IndexMetadata(object):
         abstraction is important for allowing this object to be instantiated
         with a remote Index object.
 
-        Returns
+        Returns:
             The Index object in _index_cache.
         """
         if self._index_cache_validator is None:
