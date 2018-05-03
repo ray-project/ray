@@ -4464,9 +4464,46 @@ class DataFrame(object):
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        inplace = validate_bool_kwarg(inplace, 'inplace')
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        cond = cond(self) if callable(cond) else cond
+
+        if not isinstance(cond, DataFrame):
+            if not hasattr(cond, 'shape'):
+                cond = np.asanyarray(cond)
+            if cond.shape != self.shape:
+                raise ValueError("Array conditional must be same shape as "
+                                 "self")
+            cond = DataFrame(cond, index=self.index, columns=self.columns)
+
+        zipped_partitions = self._copartition(other, self.index)
+
+        @ray.remote
+        def where_helper(left, cond, other, *args):
+
+            left.columns = left_columns
+            cond.columns = cond_columns
+
+            return left.where(cond, other=other, axis=axis, *args)
+
+        if isinstance(other, DataFrame):
+            other_zipped = (v for k, v in self._copartition(other,
+                                                            self.index))
+
+            new_partitions = [where_helper.remote(k, v, next(other_zipped))
+                              for k, v in zipped_partitions]
+        elif isinstance(other, pd.Series):
+            if axis == 0:
+                other = other.reindex(self.index)
+            else:
+                other = other.reindex(self.columns)
+
+        other.index = pd.RangeIndex(len(other))
+
+
+
 
     def xs(self, key, axis=0, level=None, drop_level=True):
         raise NotImplementedError(
