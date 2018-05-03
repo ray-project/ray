@@ -358,12 +358,11 @@ class DataFrame(object):
         oid_series = ray.get(_map_partitions(remote_func,
                              self._col_partitions if axis == 0
                              else self._row_partitions))
-
         if axis == 0:
             # We use the index to get the internal index.
             oid_series = [(oid_series[i], i) for i in range(len(oid_series))]
 
-            if len(oid_series) > 1:
+            if len(oid_series) > 0:
                 for df, partition in oid_series:
                     this_partition = \
                         self._col_metadata.partition_series(partition)
@@ -3103,37 +3102,66 @@ class DataFrame(object):
                     are the quantiles.
         """
 
-        def quantile_helper(df, q, axis, numeric_only, interpolation):
-            try:
-                return df.quantile(q=q, axis=axis, numeric_only=numeric_only,
-                                   interpolation=interpolation)
-            except ValueError:
-                return pd.Series()
+        # deal with error checking for bad dtyping when numeric_only is False
+        if not numeric_only:
+            # check if there are any object columns
+            for t in self.dtypes:
+                if t == np.dtype('O'):
+                    e_msg = "Cannot call quantile on columns of type " + str(t)
+                    raise TypeError(e_msg)
+
+        # check that all qs are between 0 and 1
+        msg = ("percentiles should all be in the interval [0, 1]. "
+               "Try {0} instead.")
 
         if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
-            # In the case of a list, we build it one at a time.
-            # TODO Revisit for performance
-            quantiles = []
-            for q_i in q:
-                def remote_func(df):
-                    return quantile_helper(df, q=q_i, axis=axis,
-                                           numeric_only=numeric_only,
-                                           interpolation=interpolation)
-
-                result = self._arithmetic_helper(remote_func, axis)
-                result.name = q_i
-                quantiles.append(result)
-
-            return pd.concat(quantiles, axis=1).T
+            if not all(0 <= qs <= 1 for qs in q):
+                raise ValueError(msg.format(np.asarray(q) / 100.0))
         else:
+            if not (0 <= q <= 1):
+                raise ValueError(msg.format(q / 100.0))
+
+        if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
+
+            if axis == 0 or axis == 'index':
+                result = _map_partitions(
+                                        lambda df: df.quantile(
+                                                q, axis, numeric_only,
+                                                interpolation),
+                                        self._col_partitions)
+                q_index = pd.Float64Index(q)
+                return DataFrame(col_partitions=result,
+                                 index=q_index,
+                                 columns=self.columns)
+
+            if axis == 1 or axis == 'columns':
+                result = _map_partitions(
+                                        lambda df: df.quantile(
+                                                q, axis, numeric_only,
+                                                interpolation),
+                                        self._row_partitions)
+                q_index = pd.Float64Index(q)
+                return DataFrame(col_partitions=result,
+                                 index=q_index,
+                                 columns=self.index)
+
+        # single q means we can use arithmetic helper
+        else:
+            def quantile_helper(df, q, axis, numeric_only, interpolation):
+                try:
+                    return df.quantile(q=q, axis=axis,
+                                       numeric_only=numeric_only,
+                                       interpolation=interpolation)
+                except ValueError:
+                    return pd.Series()
+
             def remote_func(df):
                 return quantile_helper(df, q=q, axis=axis,
                                        numeric_only=numeric_only,
                                        interpolation=interpolation)
-
             result = self._arithmetic_helper(remote_func, axis)
             result.name = q
-            return result
+            return pd.Series(result)
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression
