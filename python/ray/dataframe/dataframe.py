@@ -138,7 +138,7 @@ class DataFrame(object):
 
                 # TODO: write explicit tests for "short and wide"
                 # column partitions
-               self._block_partitions = \
+                self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
                                              length=axis_length)
 
