@@ -112,7 +112,6 @@ def to_pandas(df):
     else:
         pd_df = pd.concat(ray.get(df._col_partitions),
                           axis=1)
-    print(df.columns)
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
