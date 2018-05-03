@@ -19,6 +19,8 @@ from pandas.core.dtypes.common import (
     is_numeric_dtype,
     is_timedelta64_dtype,
     _get_dtype_from_object)
+    is_timedelta64_dtype)
+from pandas.core.dtypes.generic import ABCPanel
 from pandas.core.indexing import check_bool_indexer
 from pandas.errors import MergeError
 from pandas.compat.numpy import function as nv
@@ -1303,32 +1305,74 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
-    def _clip_scalar_helper(self, lower, upper, inplace=False):
+    def _clip_with_scalar(self, lower, upper, inplace=False):
         new_partitions = np.array([
             _map_partitions(lambda df: df.clip(lower=lower,
-                upper=upper, inplace=False))
-            for block in self.block_partitions])
+                upper=upper, inplace=False), block)
+            for block in self._block_partitions])
         if inplace:
-            self._update_inplace(
-                block_partitions=new_parttions,
+            return self._update_inplace(
+                block_partitions=new_partitions,
                 columns=self.columns,
-                index=self.index,
-                col_metadata=self._col_metadata,
-                row_metadata=self._row_metadata)
+                index=self.index)
         else:
             return DataFrame(
-                block_partitions=new_parttions,
+                block_partitions=new_partitions,
                 columns=self.columns,
-                index=self.index,
-                col_metadata=self._col_metadata,
-                row_metadata=self._row_metadata)
+                index=self.index)
+
+    def _clip_list_like_helper(self, threshold, f, axis=None, inplace=False):
+        # import pdb; pdb.set_trace()
+        new_col_partitions, new_row_partitions = None, None
+        new_block_partitions = None
+
+        if isinstance(threshold, pd.DataFrame):
+            threshold = DataFrame(threshold)
+
+        if isinstance(threshold, DataFrame):
+            return self._operator_helper(
+                lambda x, y, axis, level: f(y, x), threshold, 0, None
+            )
+
+        if axis == 0:
+            new_col_partitions = _map_partitions(
+                lambda df: f(threshold, df), self._col_partitions
+            )
+        else:
+            new_row_partitions = _map_partitions(
+                lambda df: f(threshold, df), self._row_partitions
+            )
+        if inplace:
+            return self._update_inplace(
+                block_partitions=new_block_partitions,
+                row_partitions=new_row_partitions,
+                col_partitions=new_col_partitions,
+                columns=self.columns,
+                index=self.index)
+        else:
+            return DataFrame(
+                block_partitions=new_block_partitions,
+                row_partitions=new_row_partitions,
+                col_partitions=new_col_partitions,
+                columns=self.columns,
+                index=self.index)
 
     def _clip_helper(self, lower=None, upper=None, axis=None, inplace=False):
+        new_partitions = None
         if ((lower is None or (is_scalar(lower) and is_number(lower))) and
                 (upper is None or (is_scalar(upper) and is_number(upper)))):
-            return self._clip_scalar_helper(lower, upper, inplace=inplace)
+            return self._clip_with_scalar(
+                lower, upper, inplace=inplace
+            )
+        result = self
+        if lower is not None:
+            result = result.clip_lower(lower, axis, inplace=inplace)
+        if upper is not None:
+            if inplace:
+                result = self
+            result = result.clip_upper(upper, axis, inplace=inplace)
 
-        # TODO: take care of list like lower and upper.
+        return result
 
     def clip(self, lower=None, upper=None, axis=None, inplace=False, *args,
              **kwargs):
@@ -1340,15 +1384,86 @@ class DataFrame(object):
 
         axis = nv.validate_clip_with_axis(axis, args, kwargs)
 
-        return _clip_helper(lower=lower, upper=upper, axis=axis, inplace=inplace)
+        # GH 17276
+        # numpy doesn't like NaN as a clip value
+        # so ignore
+        if np.any(pd.isnull(lower)):
+            lower = None
+        if np.any(pd.isnull(upper)):
+            upper = None
+
+        # GH 2747 (arguments were reversed)
+        if lower is not None and upper is not None:
+            if is_scalar(lower) and is_scalar(upper):
+                lower, upper = min(lower, upper), max(lower, upper)
+
+        return self._clip_helper(lower=lower, upper=upper, axis=axis,
+                                 inplace=inplace)
 
     def clip_lower(self, threshold, axis=None, inplace=False):
-        return _clip_helper(lower=threshold,
-            upper=None, axis=axis, inplace=inplace)
+        if axis is not None:
+            axis = pd.DataFrame()._get_axis_number(axis)
+        return self._clip_list_like_helper(
+            threshold,
+            lambda _threshold, df: df.clip_lower(
+                _threshold, axis=axis, inplace=False),
+            axis=axis, inplace=inplace
+        )
 
     def clip_upper(self, threshold, axis=None, inplace=False):
-        return _clip_helper(lower=None,
-            upper=threshold, axis=axis, inplace=inplace)
+        if axis is not None:
+            axis = pd.DataFrame()._get_axis_number(axis)
+        # self._clip_validate(threshold, axis)
+        return self._clip_list_like_helper(
+            threshold,
+            lambda _threshold, df: df.clip_upper(
+                _threshold, axis=axis, inplace=False),
+            axis=axis, inplace=inplace
+        )
+
+    def _clip_validate(self, threshold, axis):
+        if axis is None:
+            dummy_frame = pd.DataFrame(columns=self.columns)
+            dummy_frame.clip_lower(threshold, axis)
+            dummy_frame = pd.DataFrame(index=self.index)
+            dummy_frame.clip_lower(threshold, axis)
+
+        elif not is_scalar(threshold):
+            df_threshold = pd.DataFrame(threshold)
+            if df_threshold.shape[1] > 1:
+                if self.shape != df_threshold.shape:
+                    msg = ("Unable to coerce to Data Frame, shape "
+                           "must be {req_shape}: given {given_shape}"
+                           ).format(
+                                req_shape=self.shape,
+                                given_shape=df_threshold.shape
+                            )
+                    raise ValueError(msg)
+
+    def _clip_with_one_bound(self, threshold, method, axis, inplace):
+
+        inplace = validate_bool_kwarg(inplace, 'inplace')
+        if axis is not None:
+            axis = pd.DataFrame()._get_axis_number(axis)
+
+        # method is self.le for upper bound and self.ge for lower bound
+        if is_scalar(threshold) and is_number(threshold):
+            if method.__name__ == 'le':
+                return self._clip_with_scalar(None, threshold, inplace=inplace)
+            return self._clip_with_scalar(threshold, None, inplace=inplace)
+
+        subset = method(threshold, axis=axis) | isna(self)
+
+        # GH #15390
+        # In order for where method to work, the threshold must
+        # be transformed to NDFrame from other array like structure.
+        if (not isinstance(threshold, ABCSeries)) and is_list_like(threshold):
+            if isinstance(self, ABCSeries):
+                threshold = pd.Series(threshold, index=self.index)
+            else:
+                threshold = _align_method_FRAME(self, np.asarray(threshold),
+                                                axis)
+        return self.where(subset, threshold, axis=axis, inplace=inplace)
 
     def combine(self, other, func, fill_value=None, overwrite=True):
         raise NotImplementedError(
@@ -5040,7 +5155,6 @@ class DataFrame(object):
         if level is not None:
             raise NotImplementedError("Mutlilevel index not yet supported "
                                       "in Pandas on Ray")
-        axis = pd.DataFrame()._get_axis_number(axis)
 
         new_column_index = self.columns.join(other.columns, how=how)
         new_index = self.index.join(other.index, how=how)
