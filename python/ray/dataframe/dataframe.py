@@ -62,7 +62,8 @@ class DataFrame(object):
             data (numpy ndarray (structured or homogeneous) or dict):
                 Dict can contain Series, arrays, constants, or list-like
                 objects.
-            index (pandas.Index or list): The row index for this dataframe.
+            index (pandas.Index, list, ObjectID): The row index for this
+                dataframe.
             columns (pandas.Index): The column names for this dataframe, in
                 pandas Index object.
             dtype: Data type to force. Only a single dtype is allowed.

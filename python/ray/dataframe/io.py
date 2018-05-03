@@ -123,12 +123,21 @@ def _infer_column(first_line, kwargs={}):
 
 
 @ray.remote
-def _read_csv_with_offset(fn, start, end, header=b'', kwargs={}):
+def _read_csv_with_offset(fn, start, end, kwargs={}, header=b''):
     bio = open(fn, 'rb')
     bio.seek(start)
     to_read = header + bio.read(end - start)
     bio.close()
-    return pd.read_csv(BytesIO(to_read), **kwargs)
+    pd_df = pd.read_csv(BytesIO(to_read), **kwargs)
+    index = pd_df.index
+    # Partitions must have RangeIndex
+    pd_df.index = pd.RangeIndex(0, len(pd_df))
+    return pd_df, index
+
+
+@ray.remote
+def get_index(*partition_indices):
+    return partition_indices[0].append(partition_indices[1:])
 
 
 def read_csv(filepath_or_buffer,
@@ -269,16 +278,27 @@ def read_csv(filepath_or_buffer,
     first_line = _get_firstline(filepath)
     columns = _infer_column(first_line, kwargs=kwargs)
 
+    # Serialize objects to speed up later use in remote tasks
+    first_line_id = ray.put(first_line)
+    kwargs_id = ray.put(kwargs)
+
     df_obj_ids = []
+    index_obj_ids = []
     for start, end in offsets:
         if start != 0:
-            df = _read_csv_with_offset.remote(
-                filepath, start, end, header=first_line, kwargs=kwargs)
+            df, index = _read_csv_with_offset._submit(
+                args=(filepath, start, end, kwargs_id, first_line_id),
+                num_return_vals=2)
         else:
-            df = _read_csv_with_offset.remote(
-                filepath, start, end, kwargs=kwargs)
+            df, index = _read_csv_with_offset._submit(
+                args=(filepath, start, end, kwargs_id),
+                num_return_vals=2)
         df_obj_ids.append(df)
-    return DataFrame(row_partitions=df_obj_ids, columns=columns)
+        index_obj_ids.append(index)
+
+    index_id = get_index.remote(*index_obj_ids)
+
+    return DataFrame(row_partitions=df_obj_ids, columns=columns, index=index_id)
 
 
 def read_json(path_or_buf=None,
