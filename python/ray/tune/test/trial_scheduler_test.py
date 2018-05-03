@@ -688,36 +688,36 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Categorical case
         assertProduces(
             lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            set([3, 8]))
+            {3, 8})
         assertProduces(
             lambda: explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            set([3, 4]))
+            {3, 4})
         assertProduces(
             lambda: explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            set([8, 10]))
+            {8, 10})
         assertProduces(
             lambda: explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            set([3, 4, 8, 10]))
+            {3, 4, 8, 10})
         assertProduces(
             lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
-            set([3, 4, 8, 10]))
+            {3, 4, 8, 10})
 
         # Continuous case
         assertProduces(
             lambda: explore(
                 {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0,
                 lambda x: x),
-            set([80, 120]))
+            {80, 120})
         assertProduces(
             lambda: explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0,
                 lambda x: x),
-            set([80.0, 120.0]))
+            {80.0, 120.0})
         assertProduces(
             lambda: explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0,
                 lambda x: x),
-            set([10.0, 100.0]))
+            {10.0, 100.0})
 
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()

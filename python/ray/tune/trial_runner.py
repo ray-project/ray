@@ -172,7 +172,7 @@ class TrialRunner(object):
             if max_debug == start_num:
                 break
 
-        for local_dir in sorted(set([t.local_dir for t in self._trials])):
+        for local_dir in sorted({t.local_dir for t in self._trials}):
             messages.append("Result logdir: {}".format(local_dir))
         for state, trials in sorted(states.items()):
             limit = limit_per_state[state]
