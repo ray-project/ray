@@ -42,7 +42,10 @@ from .utils import (
     _reindex_helper,
     _co_op_helper,
     _match_partitioning,
-    _concat_index)
+    _concat_index,
+    _optimize_partitions,
+    _explode_block_partitions,
+    _map_partitions_condense)
 from . import (get_npartitions, get_nrowpartitions, get_ncolpartitions)
 from .index_metadata import _IndexMetadata
 
@@ -684,49 +687,51 @@ class DataFrame(object):
             True: cell contains NA.
             False: otherwise.
         """
-        # old_l = self._block_partitions.flatten().tolist()
-        # ray.wait(old_l, len(old_l))
-        # import time
-        # s = original = time.time()
 
-        new_block_partitions = np.array([_map_partitions(
-            lambda df: df.isna(), block) for block in self._block_partitions])
+        block_parts = self._block_partitions
+        curr_rows, curr_cols = block_dims = block_parts.shape
 
-        # new_col_partitions = np.array([_map_partitions(
-        #     lambda df: df.isna(), block) for block in self._block_partitions])
+        # TODO: might be a blocking call
+        row_len, col_len = axis_dims = (len(self._row_metadata), len(self._col_metadata))
 
-        # l = new_block_partitions.flatten().tolist()
-        # for i in range(0, len(l), 8):
-        #     ray.wait(l, i+8)
-        #     e = time.time()
-        #     print("_map_partitions, {}-th partition: {}".format(i+8, e - s))
-        #     s = e
-        # print("_map_partitions, end: {}".format(e - original))
+        dsize = row_len * col_len * 2**3 # Hardcode dtype for now
 
-        # def timer_test(df):
-        #     import time as tim
-        #     s = tim.perf_counter()
-        #     df.isna()
-        #     e = tim.perf_counter()
-        #     return e - s
+        (opt_rows, opt_cols), _ = _optimize_partitions(block_dims, axis_dims, dsize, "isna")
 
-        # s = original = time.time()
+        # Explode routine
+        row_explode_factor = max(opt_rows // curr_rows, 1)
+        col_explode_factor = max(opt_cols // curr_cols, 1)
+        curr_rows *= row_explode_factor
+        curr_cols *= col_explode_factor
 
-        # timer_partitions = np.array([_map_partitions(
-        #     timer_test, block) for block in self._block_partitions])
+        block_parts = _explode_block_partitions(block_parts, 
+                                                (row_explode_factor,
+                                                 col_explode_factor))
 
-        # l = timer_partitions.flatten().tolist()
-        # for i in range(0, len(l), 8):
-        #     ray.wait(l, i+8)
-        #     e = time.time()
-        #     print("_map_partitions-op, {}-th partition: {}".format(i+8, e - s))
-        #     s = e
-        # print("_map_partitions-op, end: {}".format(e - original))
-        # print("remote_op sum: {}".format(sum(ray.get(l))))
+        # TODO: Possibly short-circuit for 1x1 factor
+        row_condense_factor = curr_rows // opt_rows
+        col_condense_factor = curr_cols // opt_cols
+
+        new_block_partitions = _map_partitions_condense(lambda df: df.isna(),
+                                                        (row_condense_factor,
+                                                         col_condense_factor),
+                                                        block_parts)
+
+        # Since we know that an axis will be (exploded XOR condensed XOR
+        # unchanged), we can use if-else here, each fxn has a short circuit
+        if row_explode_factor > row_condense_factor:
+            new_row_metadata = self._row_metadata.explode(row_explode_factor)
+        else:
+            new_row_metadata = self._row_metadata.condense(row_condense_factor)
+
+        if col_explode_factor > col_condense_factor:
+            new_col_metadata = self._col_metadata.explode(col_explode_factor)
+        else:
+            new_col_metadata = self._col_metadata.condense(col_condense_factor)
 
         return DataFrame(block_partitions=new_block_partitions,
-                         row_metadata=self._row_metadata,
-                         col_metadata=self._col_metadata)
+                         row_metadata=new_row_metadata,
+                         col_metadata=new_col_metadata)
 
     def isnull(self):
         """Fill a DataFrame with booleans for cells containing a null value.

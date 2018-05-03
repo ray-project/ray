@@ -12,7 +12,7 @@ from . import (
     get_ncolpartitions,
     get_nworkers)
 
-from itertools import product
+from itertools import product, chain
 
 
 def _get_lengths(df):
@@ -193,7 +193,7 @@ def _build_coord_df(lengths, index):
 
 def _create_block_partitions(partitions, axis=0, length=None):
 
-    if length is not None and length != 0:  # and get_npartitions() > length:
+    if length is not None and length != 0 and get_npartitions() > length:
         npartitions = length
     else:
         npartitions = get_ncolpartitions() if axis == 0 \
@@ -453,6 +453,27 @@ def _explode_block_partitions(block_partitions, factors):
 
     return joined
 
+@ray.remote
+def _explode_lengths(lengths, factor):
+    def explode_length(length):
+        # In the case that the size is not a multiple of the number of partitions,
+        # we need to add one to each partition to avoid losing data off the end
+        if length % factor == 0:
+            new_lengths = [length // factor for _ in range(factor)]
+        else:
+            new_lengths = [length // factor + 1 for _ in range(factor - 1)]
+            new_lengths.append(length - sum(new_lengths))
+        return new_lengths
+
+    return list(chain.from_iterable([explode_length(length)
+                                     for length in lengths]))
+
+
+@ray.remote
+def _condense_lengths(lengths, factor):
+    return [sum(lengths[i*factor:(i+1)*factor])
+            for i in range(len(lengths) // factor)]
+
 
 @ray.remote
 def _deploy_func_row(func, *partition):
@@ -480,18 +501,40 @@ def _deploy_func_condense(func, shape, *partitions):
     if nrows == 1 and ncols == 1:
         res_df = partitions[0]
     elif nrows == 1:
-        res_df = pd.concat(partitions, axis=1, **cc_kwargs)
+        # res_df = pd.concat(partitions, axis=1, **cc_kwargs)
         # TODO: possible replacement?
-        # res_df = pd.concat([p.T for p in partitions], axis=1, **cc_kwargs).T
+        res_df = pd.concat([p.T for p in partitions], axis=0, **cc_kwargs).T
     elif ncols == 1:
         res_df = pd.concat(partitions, axis=0, **cc_kwargs)
     else:
-        res_df = pd.concat([pd.concat(partitions[i*ncols:(i + 1)*ncols],
-                                      axis=1,
-                                      **cc_kwargs) for i in range(nrows)],
+        res_df = pd.concat([pd.concat([df.T for df in partitions[i*ncols:(i + 1)*ncols]],
+                                      axis=0,
+                                      **cc_kwargs).T for i in range(nrows)],
                            axis=0, **cc_kwargs)
 
     return func(res_df)
+
+
+def _map_partitions_condense(func, shape, block_partitions):
+    """
+    """
+    if block_partitions is None:
+        return None
+
+    assert(callable(func))
+
+    block_rows, block_cols = block_partitions.shape
+    stride_row, stride_col = shape
+    final_rows, final_cols = block_rows // stride_row, block_cols // stride_col
+
+    result = np.empty((final_rows, final_cols), dtype=object)
+    for i in range(final_rows):
+        for j in range(final_cols):
+            result[i, j] = _deploy_func_condense.remote(func, shape, 
+                *block_partitions[i*stride_row:(i+1)*stride_row,
+                                  j*stride_col:(j+1)*stride_col].flatten().tolist())
+
+    return result
 
 
 def _map_partitions_coalesce(func, block_partitions, axis):
@@ -537,8 +580,14 @@ params = {
 
 MAX_ZSCORE = 2
 
+out_dims = (get_nrowpartitions(), get_ncolpartitions())
+
+def temp(ndims):
+    global out_dims
+    out_dims = ndims
 
 def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
+    return out_dims, 0
     in_rows, in_cols = in_dims
     row_len, col_len = shape
     in_nparts = in_rows * in_cols

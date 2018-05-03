@@ -6,7 +6,9 @@ import itertools
 from .utils import (
     _build_row_lengths,
     _build_col_widths,
-    _build_coord_df)
+    _build_coord_df,
+    _explode_lengths,
+    _condense_lengths)
 
 from pandas.core.indexing import convert_to_index_sliceable
 
@@ -289,27 +291,24 @@ class _IndexMetadata(object):
 
     def explode(self, factor):
         if factor == 1:
-            return
+            return self
 
-        nparts = len(self._lengths)
+        new_lengths = _explode_lengths.remote(self._lengths_cache, factor)
+        new_coord_df = _build_coord_df.remote(new_lengths, self._index_cache_validator)
+        return _IndexMetadata(index=self._index_cache_validator,
+                              coord_df_oid=new_coord_df,
+                              lengths_oid=new_lengths)
 
-        def explode_length(length):
-            # In the case that the size is not a multiple of the number of partitions,
-            # we need to add one to each partition to avoid losing data off the end
-            if length % factor == 0:
-                new_lengths = [length // factor for _ in range(factor)]
-            else:
-                new_lengths = [length // factor + 1 for _ in range(factor - 1)]
-                new_lengths.append(length - sum(new_lengths))
-            return new_lengths
+    def condense(self, factor):
+        if factor == 1:
+            return self
 
-        self._lengths = list(itertools.chain.from_iterable([explode_length(length)
-                                                            for length in self._lengths]))
+        new_lengths = _condense_lengths.remote(self._lengths_cache, factor)
+        new_coord_df = _build_coord_df.remote(new_lengths, self._index_cache_validator)
+        return _IndexMetadata(index=self._index_cache_validator,
+                              coord_df_oid=new_coord_df,
+                              lengths_oid=new_lengths)
 
-        dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(self._lengths))
-                        for p_sub_idx in range(self._lengths[p_idx])]
-        col_names = ("partition", "index_within_partition")
-        self._coord_df = pd.DataFrame(dest_indices, index=self.index, columns=col_names)
 
     def copy(self):
         # TODO: Investigate copy-on-write wrapper for metadata objects
