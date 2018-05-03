@@ -1357,15 +1357,15 @@ class DataFrame(object):
 
     def diff(self, periods=1, axis=0):
         """Finds the difference between elements on the axis requested
-        
+
         Args:
             periods: Periods to shift for forming difference
             axis: Take difference over rows or columns
-        
+
         Returns:
-            DataFrame with the diff applied        
+            DataFrame with the diff applied
         """
-        
+
         if (axis == 1 or axis == 'columns'):
             result = _map_partitions(lambda df:
                                      df.diff(axis=axis, periods=periods),
