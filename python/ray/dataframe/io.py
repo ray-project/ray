@@ -261,7 +261,6 @@ def read_csv(filepath,
             df = _read_csv_with_offset.remote(
                 filepath, start, end, kwargs=kwargs)
         df_obj_ids.append(df)
-
     return DataFrame(row_partitions=df_obj_ids, columns=columns)
 
 
