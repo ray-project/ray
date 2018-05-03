@@ -40,7 +40,8 @@ from .utils import (
     _reindex_helper,
     _co_op_helper,
     _match_partitioning,
-    _concat_index)
+    _concat_index,
+    _correct_column_dtypes)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -50,7 +51,8 @@ class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
                  copy=False, col_partitions=None, row_partitions=None,
-                 block_partitions=None, row_metadata=None, col_metadata=None):
+                 block_partitions=None, row_metadata=None, col_metadata=None,
+                 dtypes_cache=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -74,6 +76,7 @@ class DataFrame(object):
             col_metadata (_IndexMetadata):
                 Metadata for the new dataframe's columns
         """
+        self._dtypes_cache = dtypes_cache
 
         # Check type of data and use appropriate constructor
         if data is not None or (col_partitions is None and
@@ -82,6 +85,9 @@ class DataFrame(object):
 
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
+
+            # Cache dtypes
+            self._dtypes_cache = pd_df.dtypes
 
             # TODO convert _partition_pandas_dataframe to block partitioning.
             row_partitions = \
@@ -117,6 +123,11 @@ class DataFrame(object):
                     axis = 1
                     partitions = col_partitions
                     axis_length = None
+                    # All partitions will already have correct dtypes
+                    self._dtypes_cache = [
+                            _deploy_func.remote(lambda df: df.dtypes, pd_df)
+                            for pd_df in col_partitions
+                    ]
 
                 # TODO: write explicit tests for "short and wide"
                 # column partitions
@@ -150,6 +161,9 @@ class DataFrame(object):
         else:
             self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
                                                 index=columns, axis=1)
+
+        if self._dtypes_cache is None:
+            self._correct_dtypes()
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -414,6 +428,24 @@ class DataFrame(object):
         result.index = self.columns
         return result
 
+    def _correct_dtypes(self):
+        """Corrects dtypes by concatenating column blocks and then splitting them
+        apart back into the original blocks.
+
+        Also caches ObjectIDs for the dtypes of every column.
+
+        Args:
+            block_partitions: arglist of column blocks.
+        """
+        if self._block_partitions.shape[0] > 1:
+            self._block_partitions = np.array(
+                    [_correct_column_dtypes._submit(
+                     args=column, num_return_vals=len(column))
+                     for column in self._block_partitions.T]).T
+
+        self._dtypes_cache = [_deploy_func.remote(lambda df: df.dtypes, pd_df)
+                              for pd_df in self._block_partitions[0]]
+
     @property
     def dtypes(self):
         """Get the dtypes for this DataFrame.
@@ -421,12 +453,15 @@ class DataFrame(object):
         Returns:
             The dtypes for this DataFrame.
         """
-        # The dtypes are common across all partitions.
-        # The first partition will be enough.
-        result = ray.get(_deploy_func.remote(lambda df: df.dtypes,
-                                             self._row_partitions[0]))
-        result.index = self.columns
-        return result
+        assert self._dtypes_cache is not None
+
+        if isinstance(self._dtypes_cache, list) and \
+                isinstance(self._dtypes_cache[0],
+                           ray.local_scheduler.ObjectID):
+            self._dtypes_cache = pd.concat(ray.get(self._dtypes_cache))
+            self._dtypes_cache.index = self.columns
+
+        return self._dtypes_cache
 
     @property
     def empty(self):
@@ -500,6 +535,7 @@ class DataFrame(object):
 
         if block_partitions is not None:
             self._block_partitions = block_partitions
+
         elif row_partitions is not None:
             self._row_partitions = row_partitions
 
@@ -519,6 +555,9 @@ class DataFrame(object):
             # Index can be None for default index, so we don't check
             self._row_metadata = _IndexMetadata(
                 self._block_partitions[:, 0], index=index, axis=0)
+
+        # Update dtypes
+        self._correct_dtypes()
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -570,7 +609,8 @@ class DataFrame(object):
         """
         return DataFrame(block_partitions=self._block_partitions,
                          columns=self.columns,
-                         index=self.index)
+                         index=self.index,
+                         dtypes_cache=self.dtypes)
 
     def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
                 group_keys=True, squeeze=False, **kwargs):
@@ -2580,9 +2620,44 @@ class DataFrame(object):
                                      fill_value)
 
     def mode(self, axis=0, numeric_only=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Perform mode across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the mode on.
+            numeric_only (bool): if True, only apply to numeric columns.
+
+        Returns:
+            DataFrame: The mode of the DataFrame.
+        """
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        def mode_helper(df):
+            mode_df = df.mode(axis=axis, numeric_only=numeric_only)
+            return mode_df, mode_df.shape[axis]
+
+        def fix_length(df, *lengths):
+            max_len = max(lengths[0])
+            df = df.reindex(pd.RangeIndex(max_len), axis=axis)
+            return df
+
+        parts = self._col_partitions if axis == 0 else self._row_partitions
+
+        result = [_deploy_func._submit(args=(lambda df: mode_helper(df),
+                                             part), num_return_vals=2)
+                  for part in parts]
+
+        parts, lengths = [list(t) for t in zip(*result)]
+
+        parts = [_deploy_func.remote(
+            lambda df, *l: fix_length(df, l), part, *lengths)
+            for part in parts]
+
+        if axis == 0:
+            return DataFrame(col_partitions=parts,
+                             columns=self.columns)
+        else:
+            return DataFrame(row_partitions=parts,
+                             index=self.index)
 
     def mul(self, other, axis='columns', level=None, fill_value=None):
         """Multiplies this DataFrame against another DataFrame/Series/scalar.
@@ -3882,9 +3957,7 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-
-            indices_for_rows = [self.columns.index(new_col)
-                                for new_col in columns]
+            indices_for_rows = [col for col in self.col if col in set(columns)]
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
