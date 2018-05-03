@@ -544,7 +544,6 @@ def test_mixed_dtype_dataframe():
     test_quantile(ray_df, pandas_df, .5)
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
-    test_diff(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -1137,8 +1136,9 @@ def test_describe(ray_df, pandas_df):
     assert(ray_df.describe().equals(pandas_df.describe()))
 
 
+@pytest.fixture
 def test_diff(ray_df, pandas_df):
-    assert(ray_df.diff().equals(pandas_df.diff()))
+    assert(ray_df_equals_pandas(ray_df.diff(), pandas_df.diff()))
 
 
 def test_div():
