@@ -1254,17 +1254,132 @@ def test_drop_api_equivalence():
 
 
 def test_drop_duplicates():
-    ray_df = create_test_dataframe()
+    df = pd.DataFrame({'AAA': ['foo', 'bar', 'foo', 'bar',
+                               'foo', 'bar', 'bar', 'foo'],
+                       'B': ['one', 'one', 'two', 'two',
+                             'two', 'two', 'one', 'two'],
+                       'C': [1, 1, 2, 2, 2, 2, 1, 2],
+                       'D': range(8)})
+    ray_df = rdf.DataFrame(df)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.drop_duplicates()
+    # single column
+    result = ray_df.drop_duplicates('AAA')
+    expected = rdf.DataFrame(df[:2])
+    assert ray_df_equals(result, expected)
+
+    result = ray_df.drop_duplicates('AAA', keep='last')
+    expected = rdf.DataFrame(df.loc[[6, 7]])
+    assert ray_df_equals(result, expected)
+
+    result = ray_df.drop_duplicates('AAA', keep=False)
+    expected = rdf.DataFrame(df.loc[[]])
+    assert ray_df_equals(result, expected)
+    assert len(result) == 0
+
+    # multi column
+    expected = rdf.DataFrame(df.loc[[0, 1, 2, 3]])
+    result = ray_df.drop_duplicates(np.array(['AAA', 'B']))
+    assert ray_df_equals(result, expected)
+    result = ray_df.drop_duplicates(['AAA', 'B'])
+    assert ray_df_equals(result, expected)
+
+    result = ray_df.drop_duplicates(('AAA', 'B'), keep='last')
+    expected = rdf.DataFrame(df.loc[[0, 5, 6, 7]])
+    assert ray_df_equals(result, expected)
+
+    result = ray_df.drop_duplicates(('AAA', 'B'), keep=False)
+    expected = rdf.DataFrame(df.loc[[0]])
+    assert ray_df_equals(result, expected)
+
+    # consider everything
+    df2 = df.loc[:, ['AAA', 'B', 'C']]
+    ray_df2 = rdf.DataFrame(df2)
+
+    result = ray_df2.drop_duplicates()
+    # in this case only
+    expected = ray_df2.drop_duplicates(['AAA', 'B'])
+    assert ray_df_equals(result, expected)
+
+    result = ray_df2.drop_duplicates(keep='last')
+    expected = ray_df2.drop_duplicates(['AAA', 'B'], keep='last')
+    assert ray_df_equals(result, expected)
+
+    result = ray_df2.drop_duplicates(keep=False)
+    expected = ray_df2.drop_duplicates(['AAA', 'B'], keep=False)
+    assert ray_df_equals(result, expected)
+
+    # integers
+    result = ray_df.drop_duplicates('C')
+    expected = rdf.DataFrame(df.iloc[[0, 2]])
+    assert ray_df_equals(result, expected)
+    result = ray_df.drop_duplicates('C', keep='last')
+    expected = rdf.DataFrame(df.iloc[[-2, -1]])
+    assert ray_df_equals(result, expected)
+
+    df['E'] = df['C'].astype('int8')
+    ray_df = rdf.DataFrame(df)
+    result = ray_df.drop_duplicates('E')
+    expected = rdf.DataFrame(df.iloc[[0, 2]])
+    assert ray_df_equals(result, expected)
+    result = ray_df.drop_duplicates('E', keep='last')
+    expected = rdf.DataFrame(df.iloc[[-2, -1]])
+    assert ray_df_equals(result, expected)
+
+    # GH 11376
+    df = pd.DataFrame({'x': [7, 6, 3, 3, 4, 8, 0],
+                       'y': [0, 6, 5, 5, 9, 1, 2]})
+    ray_df = rdf.DataFrame(df)
+    expected = rdf.DataFrame(df.loc[df.index != 3])
+    assert ray_df_equals(ray_df.drop_duplicates(), expected)
+
+    df = rdf.DataFrame([[1, 0], [0, 2]])
+    assert ray_df_equals(df.drop_duplicates(), df)
+
+    df = rdf.DataFrame([[-2, 0], [0, -4]])
+    assert ray_df_equals(df.drop_duplicates(), df)
+
+    x = np.iinfo(np.int64).max / 3 * 2
+    df = rdf.DataFrame([[-x, x], [0, x + 4]])
+    assert ray_df_equals(df.drop_duplicates(), df)
+
+    df = rdf.DataFrame([[-x, x], [x, x + 4]])
+    assert ray_df_equals(df.drop_duplicates(), df)
+
+    # GH 11864
+    df = rdf.DataFrame([i] * 9 for i in range(16))
+    df = df.append([[1] + [0] * 8], ignore_index=True)
+
+    for keep in ['first', 'last', False]:
+        assert df.duplicated(keep=keep).sum() == 0
 
 
 def test_duplicated():
-    ray_df = create_test_dataframe()
+    ray_df = rdf.DataFrame([[1, 1, 3, 4, 5],
+                            [6, 6, 8, 9, 9]])
+    expected = pd.Series([
+        False, True, False, False, False
+    ])
+    tm.assert_series_equal(ray_df.T.duplicated(), expected)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.duplicated()
+    expected = pd.Series([
+        False, True, False, False, False
+    ])
+    tm.assert_series_equal(ray_df.T.duplicated(0), expected)
+
+    expected = pd.Series([
+        False, True, False, False, True
+    ])
+    tm.assert_series_equal(ray_df.T.duplicated(1), expected)
+
+    expected = pd.Series([
+        False, True, False, False, False
+    ])
+    tm.assert_series_equal(ray_df.T.duplicated([0, 1]), expected)
+
+    expected = pd.Series([
+        False, True, False, False, False
+    ])
+    tm.assert_series_equal(ray_df.T.duplicated([1, 0]), expected)
 
 
 def test_eq():

@@ -1561,8 +1561,9 @@ class DataFrame(object):
             subsets[part].append(index)
 
         def _duplicated_helper(df, subset):
+            """Create initial sets of indices of duplicate rows"""
             if any([(c in subset) for c in df.columns]):
-                df = df.copy().fillna(value='None')
+                df = df.fillna(value='None')
                 mask = df.duplicated(subset, keep)
                 g = df.groupby(subset)
                 ret = df.set_index(subset).index.map(
@@ -1575,14 +1576,17 @@ class DataFrame(object):
             else:
                 return None
 
-        def _arr_reducer(ar1, ar2):
-            if ar1 is None:
-                return ar2
-            elif ar2 is None:
-                return ar1
-            ret = ar1.copy()
-            for i in range(len(ret)):
-                ret[i] = ar1[i] & ar2[i]
+        def _arr_reducer(*args):
+            """Reduce list of sets of matching indices"""
+            arr_list = [x for x in args if x is not None]
+            if len(arr_list) == 0:
+                return None
+            if len(arr_list) == 1:
+                return arr_list[0]
+            ret = arr_list[0]
+            for i in range(len(arr_list)):
+                for j in range(len(ret)):
+                    ret[j] &= arr_list[i][j]
             return ret
 
         duplicated_array = [
@@ -1594,16 +1598,22 @@ class DataFrame(object):
 
         while len(duplicated_array) > 1:
             n = len(duplicated_array)
+            k = len(self._block_partitions)
 
             new_duplicated_array = [
                 _deploy_func.remote(
                     _arr_reducer,
-                    duplicated_array[i], duplicated_array[i + 1]
+                    *duplicated_array[i:i + k]
                 )
-                for i in range(0, n - 1, 2)
+                for i in range(0, n // k * k - 1, k)
             ]
-            if n % 2 != 0:
-                new_duplicated_array.append(duplicated_array[n - 1])
+            if n % k != 0:
+                new_duplicated_array.append(
+                    _deploy_func.remote(
+                        _arr_reducer,
+                        *duplicated_array[n // k * k:]
+                    )
+                )
             duplicated_array = new_duplicated_array
         mask = ray.get(duplicated_array[0])
         ret = [True] * len(self.index)
