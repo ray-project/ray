@@ -54,7 +54,7 @@ class SharedTorchPolicy(TorchPolicy):
     def _evaluate(self, obs, actions):
         """Passes in multiple obs."""
         logits, values = self._model(obs)
-        log_probs = F.log_softmax(logits)
+        log_probs = F.log_softmax(logits,dim=1)
         probs = self._model.probs(logits)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
         entropy = -(log_probs * probs).sum(-1).sum()

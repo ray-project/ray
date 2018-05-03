@@ -60,7 +60,7 @@ class SlimFC(nn.Module):
         linear = nn.Linear(in_size, size)
         if initializer:
             initializer(linear.weight)
-        nn.init.constant(linear.bias, bias_init)
+        nn.init.constant_(linear.bias, bias_init)
         layers.append(linear)
         if activation_fn:
             layers.append(activation_fn())
