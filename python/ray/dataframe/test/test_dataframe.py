@@ -262,6 +262,7 @@ def test_int_dataframe():
     test_cummin(ray_df, pandas_df)
     test_cumprod(ray_df, pandas_df)
     test_cumsum(ray_df, pandas_df)
+    test_pipe(ray_df, pandas_df)
 
     # test_loc(ray_df, pandas_df)
     # test_iloc(ray_df, pandas_df)
@@ -408,6 +409,7 @@ def test_float_dataframe():
     test_cummin(ray_df, pandas_df)
     test_cumprod(ray_df, pandas_df)
     test_cumsum(ray_df, pandas_df)
+    test_pipe(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
@@ -574,6 +576,7 @@ def test_mixed_dtype_dataframe():
     test_min(ray_df, pandas_df)
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
+    test_pipe(ray_df, pandas_df)
 
     # TODO Fix pandas so that the behavior is correct
     # We discovered a bug where argmax does not always give the same result
@@ -727,6 +730,7 @@ def test_nan_dataframe():
     test_cummin(ray_df, pandas_df)
     test_cumprod(ray_df, pandas_df)
     test_cumsum(ray_df, pandas_df)
+    test_pipe(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
@@ -2163,13 +2167,14 @@ def test_pct_change():
         ray_df.pct_change()
 
 
-def test_pipe():
-    ray_df = create_test_dataframe()
-
-    a, b, c = 2, 0, 3
+@pytest.fixture
+def test_pipe(ray_df, pandas_df):
+    n = len(ray_df.index)
+    a, b, c = 2 % n, 0, 3 % n
+    col = ray_df.columns[3 % len(ray_df.columns)]
 
     def h(x):
-        return x.drop(columns=['col3'])
+        return x.drop(columns=[col])
 
     def g(x, arg1=0):
         for _ in range(arg1):
@@ -2181,6 +2186,13 @@ def test_pipe():
 
     assert ray_df_equals(f(g(h(ray_df), arg1=a), arg2=b, arg3=c),
                          (ray_df.pipe(h)
+                                .pipe(g, arg1=a)
+                                .pipe(f, arg2=b, arg3=c)))
+
+    assert ray_df_equals_pandas((ray_df.pipe(h)
+                                .pipe(g, arg1=a)
+                                .pipe(f, arg2=b, arg3=c)),
+                                (pandas_df.pipe(h)
                                 .pipe(g, arg1=a)
                                 .pipe(f, arg2=b, arg3=c)))
 
