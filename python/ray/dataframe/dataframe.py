@@ -1086,7 +1086,8 @@ class DataFrame(object):
                          else f_name.__name__ for f_name in func]
             return DataFrame(col_partitions=new_cols,
                              columns=self.columns,
-                             index=new_index)
+                             index=new_index,
+                             col_metadata=self._col_metadata)
         elif callable(func):
             return self._callable_function(func, axis=axis, *args, **kwds)
 
