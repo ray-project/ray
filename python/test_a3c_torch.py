@@ -7,7 +7,8 @@ from ray.rllib.a3c import DEFAULT_CONFIG, A3CAgent
 ray.init(num_workers=0)
 
 config = DEFAULT_CONFIG.copy()
-config['num_workers'] = 2
+config['num_workers'] = 1 # TODO try >1 worker
+config['batch_size'] = 15
 config['use_pytorch'] = True  # tf agent
 
 agent = A3CAgent(config, 'CartPole-v0')
