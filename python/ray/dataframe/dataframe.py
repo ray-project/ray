@@ -4464,9 +4464,26 @@ class DataFrame(object):
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):
+        """Replaces values not meeting condition with values in other.
+
+        Args:
+            cond: A condition to be met, can be callable, array-like or a
+                DataFrame.
+            other: A value or DataFrame of values to use for setting this.
+            inplace: Whether or not to operate inplace.
+            axis: The axis to apply over. Only valid when a Series is passed
+                as other.
+            level: The MultiLevel index level to apply over.
+            errors: Whether or not to raise errors. Does nothing in Pandas.
+            try_cast: Try to cast the result back to the input type.
+            raise_on_error: Whether to raise invalid datatypes (deprecated).
+
+        Returns:
+            A new DataFrame with the replaced values.
+        """
 
         inplace = validate_bool_kwarg(inplace, 'inplace')
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None else 0
 
         cond = cond(self) if callable(cond) else cond
 
@@ -4478,32 +4495,58 @@ class DataFrame(object):
                                  "self")
             cond = DataFrame(cond, index=self.index, columns=self.columns)
 
-        zipped_partitions = self._copartition(other, self.index)
+        zipped_partitions = self._copartition(cond, self.index)
+        args = (False, axis, level, errors, try_cast, raise_on_error)
 
         @ray.remote
         def where_helper(left, cond, other, *args):
+            left = pd.concat(ray.get(left.tolist()), axis=1)
+            cond = pd.concat(ray.get(cond.tolist()), axis=1)
+            if isinstance(other, np.ndarray):
+                other = pd.concat(ray.get(other.tolist()), axis=1)
 
-            left.columns = left_columns
-            cond.columns = cond_columns
-
-            return left.where(cond, other=other, axis=axis, *args)
+            return left.where(cond, other, *args)
 
         if isinstance(other, DataFrame):
             other_zipped = (v for k, v in self._copartition(other,
                                                             self.index))
 
-            new_partitions = [where_helper.remote(k, v, next(other_zipped))
+            new_partitions = [where_helper.remote(k, v, next(other_zipped),
+                                                     *args)
                               for k, v in zipped_partitions]
+
         elif isinstance(other, pd.Series):
             if axis == 0:
                 other = other.reindex(self.index)
+
+                other_builder = []
+                for length in self._row_metadata._lengths:
+                    other_builder.append(other[:length])
+                    other = other[length:]
+                    other.index = pd.RangeIndex(len(other))
+
+                other = (obj for obj in other_builder)
+                new_partitions = [where_helper.remote(k, v, next(other),
+                                                      *args)
+                                  for k, v in zipped_partitions]
             else:
                 other = other.reindex(self.columns)
+                other.index = pd.RangeIndex(len(other))
+                new_partitions = [where_helper.remote(k, v, other, *args)
+                                  for k, v in zipped_partitions]
 
-        other.index = pd.RangeIndex(len(other))
+        else:
+            new_partitions = [where_helper.remote(k, v, other, *args)
+                              for k, v in zipped_partitions]
 
-
-
+        if inplace:
+            self._update_inplace(row_partitions=new_partitions,
+                                 row_metadata=self._row_metadata,
+                                 col_metadata=self._col_metadata)
+        else:
+            return DataFrame(row_partitions=new_partitions,
+                             row_metadata=self._row_metadata,
+                             col_metadata=self._col_metadata)
 
     def xs(self, key, axis=0, level=None, drop_level=True):
         raise NotImplementedError(
