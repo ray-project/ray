@@ -23,7 +23,7 @@ def register_trainable(name, trainable):
 
     Args:
         name (str): Name to register.
-        trainable (obj): Function or tune.Trainable clsas. Functions must
+        trainable (obj): Function or tune.Trainable class. Functions must
             take (config, status_reporter) as arguments and will be
             automatically converted into a class during registration.
     """

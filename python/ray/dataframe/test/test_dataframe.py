@@ -2066,10 +2066,57 @@ def test_memory_usage(ray_df):
 
 
 def test_merge():
-    ray_df = create_test_dataframe()
+    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
 
-    with pytest.raises(NotImplementedError):
-        ray_df.merge(None)
+    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
+                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+
+    ray_df2 = rdf.DataFrame({"col1": [0, 1, 2], "col2": [1, 5, 6]})
+
+    pandas_df2 = pd.DataFrame({"col1": [0, 1, 2], "col2": [1, 5, 6]})
+
+    join_types = ["outer", "inner"]
+    for how in join_types:
+        # Defaults
+        ray_result = ray_df.merge(ray_df2, how=how)
+        pandas_result = pandas_df.merge(pandas_df2, how=how)
+        ray_df_equals_pandas(ray_result, pandas_result)
+
+        # left_on and right_index
+        ray_result = ray_df.merge(ray_df2, how=how, left_on='col1',
+                                  right_index=True)
+        pandas_result = pandas_df.merge(pandas_df2, how=how, left_on='col1',
+                                        right_index=True)
+        ray_df_equals_pandas(ray_result, pandas_result)
+
+        # left_index and right_index
+        ray_result = ray_df.merge(ray_df2, how=how, left_index=True,
+                                  right_index=True)
+        pandas_result = pandas_df.merge(pandas_df2, how=how, left_index=True,
+                                        right_index=True)
+        ray_df_equals_pandas(ray_result, pandas_result)
+
+        # left_index and right_on
+        ray_result = ray_df.merge(ray_df2, how=how, left_index=True,
+                                  right_on='col1')
+        pandas_result = pandas_df.merge(pandas_df2, how=how, left_index=True,
+                                        right_on='col1')
+        ray_df_equals_pandas(ray_result, pandas_result)
+
+        # left_on and right_on col1
+        ray_result = ray_df.merge(ray_df2, how=how, left_on='col1',
+                                  right_on='col1')
+        pandas_result = pandas_df.merge(pandas_df2, how=how, left_on='col1',
+                                        right_on='col1')
+        ray_df_equals_pandas(ray_result, pandas_result)
+
+        # left_on and right_on col2
+        ray_result = ray_df.merge(ray_df2, how=how, left_on='col2',
+                                  right_on='col2')
+        pandas_result = pandas_df.merge(pandas_df2, how=how, left_on='col2',
+                                        right_on='col2')
+        ray_df_equals_pandas(ray_result, pandas_result)
 
 
 @pytest.fixture
