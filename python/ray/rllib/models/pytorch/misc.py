@@ -11,7 +11,7 @@ from torch.autograd import Variable
 def convert_batch(trajectory, has_features=False):
     """Convert trajectory from numpy to PT variable"""
     states = Variable(torch.from_numpy(
-        trajectory["observations"]).float())
+        trajectory["obs"]).float())
     acs = Variable(torch.from_numpy(
         trajectory["actions"]))
     advs = Variable(torch.from_numpy(
