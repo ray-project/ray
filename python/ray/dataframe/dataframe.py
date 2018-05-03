@@ -4500,10 +4500,23 @@ class DataFrame(object):
 
         @ray.remote
         def where_helper(left, cond, other, *args):
+
             left = pd.concat(ray.get(left.tolist()), axis=1)
+            # We have to reset the index and columns here because we are coming
+            # from blocks and the axes are set according to the blocks. We have
+            # already correctly copartitioned everything, so there's no
+            # correctness problems with doing this.
+            left.reset_index(inplace=True, drop=True)
+            left.columns = pd.RangeIndex(len(left.columns))
+
             cond = pd.concat(ray.get(cond.tolist()), axis=1)
+            cond.reset_index(inplace=True, drop=True)
+            cond.columns = pd.RangeIndex(len(cond.columns))
+
             if isinstance(other, np.ndarray):
                 other = pd.concat(ray.get(other.tolist()), axis=1)
+                other.reset_index(inplace=True, drop=True)
+                other.columns = pd.RangeIndex(len(other.columns))
 
             return left.where(cond, other, *args)
 
