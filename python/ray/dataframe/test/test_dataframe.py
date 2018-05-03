@@ -1118,11 +1118,31 @@ def test_clip():
     original = rdf.DataFrame(test_data.frame.copy())
     frame_copy = original.copy()
 
-    capped = original.clip_upper(median)
-    assert not (capped.values > median).any()
+    double = frame_copy.clip(upper=median, lower=median)
+    assert not (double.values != median).any()
+
+    # Verify that frame_copy was not changed inplace
+    assert (frame_copy.values == original.values).all()
+
+
+def test_clip_lower():
+    test_data = TestData()
+    median = test_data.frame.median().median()
+    original = rdf.DataFrame(test_data.frame.copy())
+    frame_copy = original.copy()
 
     floored = frame_copy.clip_lower(median)
     assert not (floored.values < median).any()
+
+    # Verify that frame_copy was not changed inplace
+    assert (frame_copy.values == original.values).all()
+
+
+def test_clip_upper():
+    test_data = TestData()
+    median = test_data.frame.median().median()
+    original = rdf.DataFrame(test_data.frame.copy())
+    frame_copy = original.copy()
 
     double = frame_copy.clip(upper=median, lower=median)
     assert not (double.values != median).any()

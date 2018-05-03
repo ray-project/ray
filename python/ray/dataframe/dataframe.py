@@ -5131,6 +5131,7 @@ class DataFrame(object):
         if level is not None:
             raise NotImplementedError("Mutlilevel index not yet supported "
                                       "in Pandas on Ray")
+        axis = pd.DataFrame()._get_axis_number(axis)
 
         new_column_index = self.columns.join(other.columns, how=how)
         new_index = self.index.join(other.index, how=how)
