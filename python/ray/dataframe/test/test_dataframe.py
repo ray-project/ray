@@ -2180,7 +2180,9 @@ def test_pipe():
         return x.drop([arg2, arg3])
 
     assert ray_df_equals(f(g(h(ray_df), arg1=a), arg2=b, arg3=c),
-        (ray_df.pipe(h).pipe(g, arg1=a).pipe(f, arg2=b, arg3=c)))
+                         (ray_df.pipe(h)
+                                .pipe(g, arg1=a)
+                                .pipe(f, arg2=b, arg3=c)))
 
 
 def test_pivot():
