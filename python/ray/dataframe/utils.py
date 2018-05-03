@@ -112,6 +112,7 @@ def to_pandas(df):
     else:
         pd_df = pd.concat(ray.get(df._col_partitions),
                           axis=1)
+    print(df.columns)
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
@@ -140,7 +141,7 @@ def _map_partitions(func, partitions, *argslists):
         partitions ([ObjectID]): The list of partitions to map func on.
 
     Returns:
-        A new Dataframe containing the result of the function
+        A list of partitions ([ObjectID]) with the result of the function
     """
     if partitions is None:
         return None
