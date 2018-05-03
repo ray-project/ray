@@ -2166,8 +2166,21 @@ def test_pct_change():
 def test_pipe():
     ray_df = create_test_dataframe()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.pipe(None)
+    a, b, c = 2, 0, 3
+
+    def h(x):
+        return x.drop(columns=['col3'])
+
+    def g(x, arg1=0):
+        for _ in range(arg1):
+            x = x.append(x)
+        return x
+
+    def f(x, arg2=0, arg3=0):
+        return x.drop([arg2, arg3])
+
+    assert ray_df_equals(f(g(h(ray_df), arg1=a), arg2=b, arg3=c),
+        (ray_df.pipe(h).pipe(g, arg1=a).pipe(f, arg2=b, arg3=c)))
 
 
 def test_pivot():
