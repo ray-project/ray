@@ -297,7 +297,7 @@ class TestPlasmaManager(unittest.TestCase):
         self.client1.seal(obj_id1)
         ready, waiting = self.client1.wait(
             [obj_id1], timeout=100, num_returns=1)
-        self.assertEqual(set(ready), set([obj_id1]))
+        self.assertEqual(set(ready), {obj_id1})
         self.assertEqual(waiting, [])
 
         # Test wait if only one object available and only one object waited
@@ -307,8 +307,8 @@ class TestPlasmaManager(unittest.TestCase):
         # Don't seal.
         ready, waiting = self.client1.wait(
             [obj_id2, obj_id1], timeout=100, num_returns=1)
-        self.assertEqual(set(ready), set([obj_id1]))
-        self.assertEqual(set(waiting), set([obj_id2]))
+        self.assertEqual(set(ready), {obj_id1})
+        self.assertEqual(set(waiting), {obj_id2})
 
         # Test wait if object is sealed later.
         obj_id3 = random_object_id()
@@ -321,14 +321,14 @@ class TestPlasmaManager(unittest.TestCase):
         t.start()
         ready, waiting = self.client1.wait(
             [obj_id3, obj_id2, obj_id1], timeout=1000, num_returns=2)
-        self.assertEqual(set(ready), set([obj_id1, obj_id3]))
-        self.assertEqual(set(waiting), set([obj_id2]))
+        self.assertEqual(set(ready), {obj_id1, obj_id3})
+        self.assertEqual(set(waiting), {obj_id2})
 
         # Test if the appropriate number of objects is shown if some objects
         # are not ready.
         ready, waiting = self.client1.wait([obj_id3, obj_id2, obj_id1], 100, 3)
-        self.assertEqual(set(ready), set([obj_id1, obj_id3]))
-        self.assertEqual(set(waiting), set([obj_id2]))
+        self.assertEqual(set(ready), {obj_id1, obj_id3})
+        self.assertEqual(set(waiting), {obj_id2})
 
         # Don't forget to seal obj_id2.
         self.client1.seal(obj_id2)
