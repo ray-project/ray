@@ -1113,24 +1113,22 @@ def test_boxplot():
 
 
 def test_clip():
-    ray_df = create_test_dataframe()
+    test_data = TestData()
+    median = test_data.frame.median().median()
+    original = rdf.DataFrame(test_data.frame.copy())
+    frame_copy = original.copy()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.clip()
+    capped = original.clip_upper(median)
+    assert not (capped.values > median).any()
 
+    floored = frame_copy.clip_lower(median)
+    assert not (floored.values < median).any()
 
-def test_clip_lower():
-    ray_df = create_test_dataframe()
+    double = frame_copy.clip(upper=median, lower=median)
+    assert not (double.values != median).any()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.clip_lower(None)
-
-
-def test_clip_upper():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.clip_upper(None)
+    # Verify that frame_copy was not changed inplace
+    assert (frame_copy.values == original.values).all()
 
 
 def test_combine():
