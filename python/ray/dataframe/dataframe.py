@@ -1307,8 +1307,10 @@ class DataFrame(object):
 
     def _clip_with_scalar(self, lower, upper, inplace=False):
         new_partitions = np.array([
-            _map_partitions(lambda df: df.clip(lower=lower,
-                upper=upper, inplace=False), block)
+            _map_partitions(
+                lambda df: df.clip(lower=lower, upper=upper,
+                                   inplace=False),
+                block)
             for block in self._block_partitions])
         if inplace:
             return self._update_inplace(
@@ -1358,7 +1360,6 @@ class DataFrame(object):
                 index=self.index)
 
     def _clip_helper(self, lower=None, upper=None, axis=None, inplace=False):
-        new_partitions = None
         if ((lower is None or (is_scalar(lower) and is_number(lower))) and
                 (upper is None or (is_scalar(upper) and is_number(upper)))):
             return self._clip_with_scalar(
@@ -1439,31 +1440,6 @@ class DataFrame(object):
                                 given_shape=df_threshold.shape
                             )
                     raise ValueError(msg)
-
-    def _clip_with_one_bound(self, threshold, method, axis, inplace):
-
-        inplace = validate_bool_kwarg(inplace, 'inplace')
-        if axis is not None:
-            axis = pd.DataFrame()._get_axis_number(axis)
-
-        # method is self.le for upper bound and self.ge for lower bound
-        if is_scalar(threshold) and is_number(threshold):
-            if method.__name__ == 'le':
-                return self._clip_with_scalar(None, threshold, inplace=inplace)
-            return self._clip_with_scalar(threshold, None, inplace=inplace)
-
-        subset = method(threshold, axis=axis) | isna(self)
-
-        # GH #15390
-        # In order for where method to work, the threshold must
-        # be transformed to NDFrame from other array like structure.
-        if (not isinstance(threshold, ABCSeries)) and is_list_like(threshold):
-            if isinstance(self, ABCSeries):
-                threshold = pd.Series(threshold, index=self.index)
-            else:
-                threshold = _align_method_FRAME(self, np.asarray(threshold),
-                                                axis)
-        return self.where(subset, threshold, axis=axis, inplace=inplace)
 
     def combine(self, other, func, fill_value=None, overwrite=True):
         raise NotImplementedError(
