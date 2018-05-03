@@ -771,62 +771,39 @@ def test_nan_dataframe():
     # TODO Nans are always not equal to each other, fix it
     # test___array__(ray_df, pandas_df)
 
-def test_empty_df():
-    df = rdf.DataFrame(pd.DataFrame(index=['a', 'b']))
-    test_is_empty(df)
-    tm.assert_index_equal(df.index, pd.Index(['a', 'b']))
-    assert len(df.columns) == 0
-
-    df = rdf.DataFrame(pd.DataFrame(columns=['a', 'b']))
-    test_is_empty(df)
-    assert len(df.index) == 0
-    tm.assert_index_equal(df.columns, pd.Index(['a', 'b']))
-
-    df = rdf.DataFrame(pd.DataFrame())
-    test_is_empty(df)
-    assert len(df.index) == 0
-    assert len(df.columns) == 0
-
-    df = rdf.DataFrame(index=['a', 'b'])
-    test_is_empty(df)
-    tm.assert_index_equal(df.index, pd.Index(['a', 'b']))
-    assert len(df.columns) == 0
-
-    df = rdf.DataFrame(columns=['a', 'b'])
-    test_is_empty(df)
-    assert len(df.index) == 0
-    tm.assert_index_equal(df.columns, pd.Index(['a', 'b']))
-
-    df = rdf.DataFrame()
-    test_is_empty(df)
-    assert len(df.index) == 0
-    assert len(df.columns) == 0
-
-
-@pytest.fixture
-def test_is_empty(df):
-    assert df.size == 0 and df.empty
-    assert df.shape[0] == 0 or df.shape[1] == 0
-
-
-def test_add():
-    ray_df = create_test_dataframe()
-
-    func = ['sum', lambda df: df.sum()]
-    with pytest.raises(NotImplementedError):
+    apply_agg_functions = ['sum', lambda df: df.sum(), ['sum', 'mean'],
+                           ['sum', 'sum']]
+    for func in apply_agg_functions:
         test_apply(ray_df, pandas_df, func, 0)
-    with pytest.raises(NotImplementedError):
         test_aggregate(ray_df, pandas_df, func, 0)
-    with pytest.raises(NotImplementedError):
         test_agg(ray_df, pandas_df, func, 0)
-    with pytest.raises(NotImplementedError):
-        test_apply(ray_df, pandas_df, func, 1)
-    with pytest.raises(NotImplementedError):
-        test_aggregate(ray_df, pandas_df, func, 1)
-    with pytest.raises(NotImplementedError):
-        test_agg(ray_df, pandas_df, func, 1)
+        if not isinstance(func, list):
+            test_agg(ray_df, pandas_df, func, 1)
+            test_apply(ray_df, pandas_df, func, 1)
+            test_aggregate(ray_df, pandas_df, func, 1)
+        else:
+            with pytest.raises(NotImplementedError):
+                test_agg(ray_df, pandas_df, func, 1)
+            with pytest.raises(NotImplementedError):
+                test_apply(ray_df, pandas_df, func, 1)
+            with pytest.raises(NotImplementedError):
+                test_aggregate(ray_df, pandas_df, func, 1)
 
-    test_transform(ray_df, pandas_df)
+        func = ['sum', lambda df: df.sum()]
+        with pytest.raises(NotImplementedError):
+            test_apply(ray_df, pandas_df, func, 0)
+        with pytest.raises(NotImplementedError):
+            test_aggregate(ray_df, pandas_df, func, 0)
+        with pytest.raises(NotImplementedError):
+            test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(NotImplementedError):
+            test_apply(ray_df, pandas_df, func, 1)
+        with pytest.raises(NotImplementedError):
+            test_aggregate(ray_df, pandas_df, func, 1)
+        with pytest.raises(NotImplementedError):
+            test_agg(ray_df, pandas_df, func, 1)
+
+        test_transform(ray_df, pandas_df)
 
 
 @pytest.fixture
