@@ -19,6 +19,7 @@ from pandas.core.dtypes.common import (
 from pandas.core.indexing import check_bool_indexer
 from pandas.errors import MergeError
 
+from itertools import combinations_with_replacement
 import warnings
 import numpy as np
 import ray
@@ -1186,9 +1187,64 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def corr(self, method='pearson', min_periods=1):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        # cols = pd.concat(ray.get(_map_partitions(lambda df: df.sum(axis=0),
+        #     self._row_partitions)), axis=1)
+        # means = cols.sum(axis=1) / len(self._row_metadata)
+        means = self.mean()
+        # square_sums = pd.concat(ray.get(_map_partitions(lambda df: df.pow(2).sum() - means.pow(2),
+        #     self._row_partitions)), axis=1)
+        # norm_square_sums = square_sums.sum(axis=1) / (len(self._row_metadata)-1)
+        # stdevs = np.sqrt(norm_square_sums)
+        stdevs = self.std()
+        # column_combos = list(combinations_with_replacement(stdevs.index,2))
+        column_combos = list(combinations_with_replacement([0,1,2,3,4],2))
+        sum_min_cols = pd.concat(ray.get(_map_partitions(lambda df: df - means,
+            self._row_partitions)), axis=0)
+        new_df = pd.DataFrame(columns=stdevs.index, index=stdevs.index)
+        for c1, c2 in column_combos:
+            if c1 == c2:
+                new_df[c1][c2] = 1.0
+                continue
+
+            cov = sum(sum_min_cols[c1] * sum_min_cols[c2]) / (len(self._row_metadata)-1)
+            a = stdevs[c1]*stdevs[c2]
+            if a == 0:
+                new_df[c1][c2] = None
+                new_df[c2][c1] = None
+            else:
+                new_df[c1][c2] = (cov / a)
+                new_df[c2][c1] = (cov / a)
+        new_df.columns = self.columns
+        new_df.index = self.columns
+        return new_df
+            
+
+
+
+
+
+
+
+
+
+
+        ############old code
+        diag_blocks = _map_partitions(lambda df: df.corr(
+                                            method=method,
+                                            min_periods=min_periods),
+                                      self._col_partitions)
+        #take pairwise combos of partitions - (1,2), (2,3), (3,1)
+
+        if method == 'pearson':
+            # take the correlation of each row partition
+            # average all of those correlations together
+            row_corr = ray.get(_map_partitions(lambda df: df.corr(method='pearson',
+                                                          min_periods=min_periods),
+                                       self._row_partitions))
+            # print(row_corr)
+            return sum(row_corr) / len(row_corr)
+
+
 
     def corrwith(self, other, axis=0, drop=False):
         raise NotImplementedError(
