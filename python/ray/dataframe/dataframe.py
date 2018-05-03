@@ -1621,11 +1621,6 @@ class DataFrame(object):
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_rows = _map_partitions(eval_helper, self._row_partitions)
 
-        if result_type is pd.Series:
-            new_series = pd.concat(ray.get(new_rows), axis=0)
-            new_series.index = self.index
-            return new_series
-
         columns_copy = self._col_metadata._coord_df.copy().T
         columns_copy.eval(expr, inplace=True, **kwargs)
         columns = columns_copy.columns
@@ -3059,7 +3054,8 @@ class DataFrame(object):
             should_keep = [
                 i for i in range(len(filtered_replace_pairs.index))
                 if any([_are_compareable(filtered_replace_pairs.K[i],
-                   col_array) for col_array in col_arrays])
+                                         col_array)
+                        for col_array in col_arrays])
             ]
             filtered_replace_pairs =\
                 filtered_replace_pairs.iloc[should_keep]
