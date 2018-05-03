@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-import re
 import numpy as np
 import pandas as pd
 import pandas.util.testing as tm
@@ -772,21 +771,40 @@ def test_nan_dataframe():
 
     # TODO Nans are always not equal to each other, fix it
     # test___array__(ray_df, pandas_df)
-    func = ['sum', lambda df: df.sum()]
-    with pytest.raises(NotImplementedError):
-        test_apply(ray_df, pandas_df, func, 0)
-    with pytest.raises(NotImplementedError):
-        test_aggregate(ray_df, pandas_df, func, 0)
-    with pytest.raises(NotImplementedError):
-        test_agg(ray_df, pandas_df, func, 0)
-    with pytest.raises(NotImplementedError):
-        test_apply(ray_df, pandas_df, func, 1)
-    with pytest.raises(NotImplementedError):
-        test_aggregate(ray_df, pandas_df, func, 1)
-    with pytest.raises(NotImplementedError):
-        test_agg(ray_df, pandas_df, func, 1)
 
-    test_transform(ray_df, pandas_df)
+    apply_agg_functions = ['sum', lambda df: df.sum(), ['sum', 'mean'],
+                           ['sum', 'sum']]
+    for func in apply_agg_functions:
+        test_apply(ray_df, pandas_df, func, 0)
+        test_aggregate(ray_df, pandas_df, func, 0)
+        test_agg(ray_df, pandas_df, func, 0)
+        if not isinstance(func, list):
+            test_agg(ray_df, pandas_df, func, 1)
+            test_apply(ray_df, pandas_df, func, 1)
+            test_aggregate(ray_df, pandas_df, func, 1)
+        else:
+            with pytest.raises(NotImplementedError):
+                test_agg(ray_df, pandas_df, func, 1)
+            with pytest.raises(NotImplementedError):
+                test_apply(ray_df, pandas_df, func, 1)
+            with pytest.raises(NotImplementedError):
+                test_aggregate(ray_df, pandas_df, func, 1)
+
+        func = ['sum', lambda df: df.sum()]
+        with pytest.raises(NotImplementedError):
+            test_apply(ray_df, pandas_df, func, 0)
+        with pytest.raises(NotImplementedError):
+            test_aggregate(ray_df, pandas_df, func, 0)
+        with pytest.raises(NotImplementedError):
+            test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(NotImplementedError):
+            test_apply(ray_df, pandas_df, func, 1)
+        with pytest.raises(NotImplementedError):
+            test_aggregate(ray_df, pandas_df, func, 1)
+        with pytest.raises(NotImplementedError):
+            test_agg(ray_df, pandas_df, func, 1)
+
+        test_transform(ray_df, pandas_df)
 
 
 @pytest.fixture
@@ -2511,223 +2529,27 @@ def test_reorder_levels():
 
 
 def test_replace():
-    test_replace_inplace()
-    test_regex_replace_scalar()
-    test_regex_replace_scalar_inplace()
-
-
-@pytest.fixture
-def test_replace_inplace(num_partitions=2):
     test_data = TestData()
     test_data.tsframe['A'][:5] = np.nan
     test_data.tsframe['A'][-5:] = np.nan
     tsframe = test_data.tsframe.copy()
-    ray_df = from_pandas(tsframe, num_partitions)
-    ray_df_expected = from_pandas(tsframe, num_partitions)
+    ray_df = rdf.DataFrame(tsframe)
+    ray_df_expected = rdf.DataFrame(tsframe)
     ray_df.replace(np.nan, 0, inplace=True)
     ray_df_equals(ray_df, ray_df_expected.fillna(0))
 
     pytest.raises(TypeError, ray_df.replace, np.nan, inplace=True)
     pytest.raises(TypeError, ray_df.replace, np.nan)
 
-    ray_df = from_pandas(tsframe, num_partitions)
+    ray_df = rdf.DataFrame(tsframe)
     result = ray_df.replace(np.nan, 0)
     expected = ray_df.fillna(value=0)
     ray_df_equals(result, expected)
 
     tsframe = test_data.tsframe.copy()
-    ray_df = from_pandas(tsframe, num_partitions)
+    ray_df = rdf.DataFrame(tsframe)
     ray_df.replace([np.nan], [0], inplace=True)
     ray_df_equals(ray_df, ray_df.fillna(0))
-
-
-@pytest.fixture
-def test_regex_replace_scalar(num_partitions=2):
-    obj = {'a': list('ab..'), 'b': list('efgh')}
-    dfobj = rdf.DataFrame(obj)
-    mix = {'a': range(4), 'b': list('ab..')}
-    dfmix = rdf.DataFrame(mix)
-
-    # simplest cases
-    # regex -> value
-    # obj frame
-    res = dfobj.replace(r'\s*\.\s*', np.nan, regex=True)
-    ray_df_equals(dfobj, res.fillna('.'))
-
-    # mixed
-    res = dfmix.replace(r'\s*\.\s*', np.nan, regex=True)
-    ray_df_equals(dfmix, res.fillna('.'))
-
-    # regex -> regex
-    # obj frame
-    res = dfobj.replace(r'\s*(\.)\s*', r'\1\1\1', regex=True)
-    objc = obj.copy()
-    objc['a'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(objc)
-    ray_df_equals(res, expec)
-
-    # with mixed
-    res = dfmix.replace(r'\s*(\.)\s*', r'\1\1\1', regex=True)
-    mixc = mix.copy()
-    mixc['b'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(mixc)
-    ray_df_equals(res, expec)
-
-    # everything with compiled regexs as well
-    res = dfobj.replace(re.compile(r'\s*\.\s*'), np.nan, regex=True)
-    ray_df_equals(dfobj, res.fillna('.'))
-
-    # mixed
-    res = dfmix.replace(re.compile(r'\s*\.\s*'), np.nan, regex=True)
-    ray_df_equals(dfmix, res.fillna('.'))
-
-    # regex -> regex
-    # obj frame
-    res = dfobj.replace(re.compile(r'\s*(\.)\s*'), r'\1\1\1')
-    objc = obj.copy()
-    objc['a'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(objc)
-    ray_df_equals(res, expec)
-
-    # with mixed
-    res = dfmix.replace(re.compile(r'\s*(\.)\s*'), r'\1\1\1')
-    mixc = mix.copy()
-    mixc['b'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(mixc)
-    ray_df_equals(res, expec)
-
-    res = dfmix.replace(regex=re.compile(r'\s*(\.)\s*'), value=r'\1\1\1')
-    mixc = mix.copy()
-    mixc['b'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(mixc)
-    ray_df_equals(res, expec)
-
-    res = dfmix.replace(regex=r'\s*(\.)\s*', value=r'\1\1\1')
-    mixc = mix.copy()
-    mixc['b'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(mixc)
-    ray_df_equals(res, expec)
-
-
-@pytest.fixture
-def test_regex_replace_scalar_inplace(num_partitions=2):
-    obj = {'a': list('ab..'), 'b': list('efgh')}
-    dfobj = rdf.DataFrame(obj)
-    mix = {'a': range(4), 'b': list('ab..')}
-    dfmix = rdf.DataFrame(mix)
-
-    # simplest cases
-    # regex -> value
-    # obj frame
-    res = dfobj.copy()
-    res.replace(r'\s*\.\s*', np.nan, regex=True, inplace=True)
-    ray_df_equals(dfobj, res.fillna('.'))
-
-    # mixed
-    res = dfmix.copy()
-    res.replace(r'\s*\.\s*', np.nan, regex=True, inplace=True)
-    ray_df_equals(dfmix, res.fillna('.'))
-
-    # regex -> regex
-    # obj frame
-    res = dfobj.copy()
-    res.replace(r'\s*(\.)\s*', r'\1\1\1', regex=True, inplace=True)
-    objc = obj.copy()
-    objc['a'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(objc)
-    ray_df_equals(res, expec)
-
-    # with mixed
-    res = dfmix.copy()
-    res.replace(r'\s*(\.)\s*', r'\1\1\1', regex=True, inplace=True)
-    mixc = mix.copy()
-    mixc['b'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(mixc)
-    ray_df_equals(res, expec)
-
-    # everything with compiled regexs as well
-    res = dfobj.copy()
-    res.replace(re.compile(r'\s*\.\s*'), np.nan, regex=True, inplace=True)
-    ray_df_equals(dfobj, res.fillna('.'))
-
-    # mixed
-    res = dfmix.copy()
-    res.replace(re.compile(r'\s*\.\s*'), np.nan, regex=True, inplace=True)
-    ray_df_equals(dfmix, res.fillna('.'))
-
-    # regex -> regex
-    # obj frame
-    res = dfobj.copy()
-    res.replace(re.compile(r'\s*(\.)\s*'), r'\1\1\1', regex=True,
-                inplace=True)
-    objc = obj.copy()
-    objc['a'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(objc)
-    ray_df_equals(res, expec)
-
-    # with mixed
-    res = dfmix.copy()
-    res.replace(re.compile(r'\s*(\.)\s*'), r'\1\1\1', regex=True,
-                inplace=True)
-    mixc = mix.copy()
-    mixc['b'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(mixc)
-    ray_df_equals(res, expec)
-
-    res = dfobj.copy()
-    res.replace(regex=r'\s*\.\s*', value=np.nan, inplace=True)
-    ray_df_equals(dfobj, res.fillna('.'))
-
-    # mixed
-    res = dfmix.copy()
-    res.replace(regex=r'\s*\.\s*', value=np.nan, inplace=True)
-    ray_df_equals(dfmix, res.fillna('.'))
-
-    # regex -> regex
-    # obj frame
-    res = dfobj.copy()
-    res.replace(regex=r'\s*(\.)\s*', value=r'\1\1\1', inplace=True)
-    objc = obj.copy()
-    objc['a'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(objc)
-    ray_df_equals(res, expec)
-
-    # with mixed
-    res = dfmix.copy()
-    res.replace(regex=r'\s*(\.)\s*', value=r'\1\1\1', inplace=True)
-    mixc = mix.copy()
-    mixc['b'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(mixc)
-    ray_df_equals(res, expec)
-
-    # everything with compiled regexs as well
-    res = dfobj.copy()
-    res.replace(regex=re.compile(r'\s*\.\s*'), value=np.nan, inplace=True)
-    ray_df_equals(dfobj, res.fillna('.'))
-
-    # mixed
-    res = dfmix.copy()
-    res.replace(regex=re.compile(r'\s*\.\s*'), value=np.nan, inplace=True)
-    ray_df_equals(dfmix, res.fillna('.'))
-
-    # regex -> regex
-    # obj frame
-    res = dfobj.copy()
-    res.replace(regex=re.compile(r'\s*(\.)\s*'), value=r'\1\1\1',
-                inplace=True)
-    objc = obj.copy()
-    objc['a'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(objc)
-    ray_df_equals(res, expec)
-
-    # with mixed
-    res = dfmix.copy()
-    res.replace(regex=re.compile(r'\s*(\.)\s*'), value=r'\1\1\1',
-                inplace=True)
-    mixc = mix.copy()
-    mixc['b'] = ['a', 'b', '...', '...']
-    expec = rdf.DataFrame(mixc)
-    ray_df_equals(res, expec)
 
 
 def test_resample():

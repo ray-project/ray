@@ -143,9 +143,11 @@ def _deploy_func(func, dataframe, *args):
 
 def _map_partitions(func, partitions, *argslists):
     """Apply a function across the specified axis
+
     Args:
         func (callable): The function to apply
         partitions ([ObjectID]): The list of partitions to map func on.
+
     Returns:
         A new Dataframe containing the result of the function
     """
@@ -198,7 +200,6 @@ def _create_block_partitions(partitions, axis=0, length=None):
         npartitions = length
     else:
         npartitions = get_npartitions()
-    npartitions = max(1, npartitions)
 
     x = [create_blocks._submit(args=(partition, npartitions, axis),
                                num_return_vals=npartitions)

@@ -1621,6 +1621,13 @@ class DataFrame(object):
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_rows = _map_partitions(eval_helper, self._row_partitions)
 
+        result_type = ray.get(_deploy_func.remote(lambda df: type(df),
+                                                  new_rows[0]))
+        if result_type is pd.Series:
+            new_series = pd.concat(ray.get(new_rows), axis=0)
+            new_series.index = self.index
+            return new_series
+
         columns_copy = self._col_metadata._coord_df.copy().T
         columns_copy.eval(expr, inplace=True, **kwargs)
         columns = columns_copy.columns
