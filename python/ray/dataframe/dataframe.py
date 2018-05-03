@@ -2620,9 +2620,44 @@ class DataFrame(object):
                                      fill_value)
 
     def mode(self, axis=0, numeric_only=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Perform mode across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the mode on.
+            numeric_only (bool): if True, only apply to numeric columns.
+
+        Returns:
+            DataFrame: The mode of the DataFrame.
+        """
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        def mode_helper(df):
+            mode_df = df.mode(axis=axis, numeric_only=numeric_only)
+            return mode_df, mode_df.shape[axis]
+
+        def fix_length(df, *lengths):
+            max_len = max(lengths[0])
+            df = df.reindex(pd.RangeIndex(max_len), axis=axis)
+            return df
+
+        parts = self._col_partitions if axis == 0 else self._row_partitions
+
+        result = [_deploy_func._submit(args=(lambda df: mode_helper(df),
+                                             part), num_return_vals=2)
+                  for part in parts]
+
+        parts, lengths = [list(t) for t in zip(*result)]
+
+        parts = [_deploy_func.remote(
+            lambda df, *l: fix_length(df, l), part, *lengths)
+            for part in parts]
+
+        if axis == 0:
+            return DataFrame(col_partitions=parts,
+                             columns=self.columns)
+        else:
+            return DataFrame(row_partitions=parts,
+                             index=self.index)
 
     def mul(self, other, axis='columns', level=None, fill_value=None):
         """Multiplies this DataFrame against another DataFrame/Series/scalar.
@@ -3922,9 +3957,7 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-
-            indices_for_rows = [self.columns.index(new_col)
-                                for new_col in columns]
+            indices_for_rows = [col for col in self.col if col in set(columns)]
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
