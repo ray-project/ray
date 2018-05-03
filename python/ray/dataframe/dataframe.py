@@ -692,9 +692,10 @@ class DataFrame(object):
         curr_rows, curr_cols = block_dims = block_parts.shape
 
         # TODO: might be a blocking call
-        row_len, col_len = axis_dims = (len(self._row_metadata), len(self._col_metadata))
+        # row_len, col_len = axis_dims = (len(self._row_metadata), len(self._col_metadata))
+        axis_dims = (0, 0)
 
-        dsize = row_len * col_len * 2**3 # Hardcode dtype for now
+        dsize = 2**28 * 2**3 # Hardcode dtype for now
 
         (opt_rows, opt_cols), _ = _optimize_partitions(block_dims, axis_dims, dsize, "isna")
 
@@ -711,6 +712,8 @@ class DataFrame(object):
         # TODO: Possibly short-circuit for 1x1 factor
         row_condense_factor = curr_rows // opt_rows
         col_condense_factor = curr_cols // opt_cols
+
+        print(block_parts.shape, (row_condense_factor, col_condense_factor))
 
         new_block_partitions = _map_partitions_condense(lambda df: df.isna(),
                                                         (row_condense_factor,

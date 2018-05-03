@@ -537,6 +537,59 @@ def _map_partitions_condense(func, shape, block_partitions):
     return result
 
 
+@ray.remote
+def _deploy_func_explode(func, factor, sector, partition):
+    row_factor, col_factor = factor
+    i, j = sector // row_factor, sector % col_factor
+    nrows, ncols = partition.shape
+
+    # In the case that the size is not a multiple of the number of partitions,
+    # we need to add one to each partition to avoid losing data off the end
+    row_stride = nrows // row_factor \
+        if nrows % row_factor == 0 \
+        else nrows // row_factor + 1
+
+    col_stride = ncols // col_factor \
+        if ncols % col_factor == 0 \
+        else ncols // col_factor + 1
+
+    res_df = partition.iloc[i*row_stride:(i+1)*row_stride, j*col_stride:(j+1)*col_stride]
+
+    return func(res_df)
+
+
+def _map_partitions_flex(func, opt_shape, block_partitions):
+    """
+    """
+    if block_partitions is None:
+        return None
+
+    block_rows, block_cols = block_partitions.shape
+    opt_rows, opt_cols = opt_shape
+
+    if opt_rows >= block_rows: # Explode rows
+        row_explode_factor = opt_rows // block_rows
+    else: # Condense rows
+        row_condense_factor = block_rows // opt_rows
+
+    if opt_cols >= block_cols: # Explode cols
+        col_explode_factor = opt_cols // block_cols
+    else: # Condense cols
+        col_condense_factor = block_cols // opt_cols
+
+    result = np.empty((opt_rows, opt_cols), dtype=object)
+    for i in range(block_rows):
+        for j in range(block_cols):
+            for k in range(row_explode_factor):
+                for l in range(col_explode_factor):
+                    result[i*k, j*l] = _deploy_func_explode.remote(func, 
+                                                                   (row_explode_factor, col_explode_factor),
+                                                                   k * row_explode_factor + l,
+                                                                   block_partitions[i, j])
+
+    return result
+
+
 def _map_partitions_coalesce(func, block_partitions, axis):
     """Apply a function across the specified axis
 
@@ -587,7 +640,6 @@ def temp(ndims):
     out_dims = ndims
 
 def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
-    return out_dims, 0
     in_rows, in_cols = in_dims
     row_len, col_len = shape
     in_nparts = in_rows * in_cols
@@ -694,7 +746,7 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
             dsplit = dsize / (split_cols if axis == 0 else split_rows)
 
         task_base_time = op_rate * dsplit + condense_time_per_task + 1
-        task_split_time = task_base_time * (1 + wide_penalty_f(dsplit, row_len / split_rows, col_len / split_cols))
+        task_split_time = task_base_time # * (1 + wide_penalty_f(dsplit, row_len / split_rows, col_len / split_cols))
         total_iters = np.ceil((split_nparts) / get_nworkers())
 
         task_time = total_iters * task_split_time
@@ -727,9 +779,9 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
 
     candidate_splits = list(product(candidate_rows, candidate_cols))
     times = [(split, est_time(split)) for split in candidate_splits]
-    res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((len(candidate_rows), len(candidate_cols))),
-                          index=candidate_rows, columns=candidate_cols)
-    print(res_df)
+    # res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((len(candidate_rows), len(candidate_cols))),
+    #                       index=candidate_rows, columns=candidate_cols)
+    # print(res_df)
     split, time = min(times, key=lambda x: x[1])
     return split, time
 
