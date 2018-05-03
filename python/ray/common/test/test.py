@@ -133,7 +133,7 @@ class TestObjectID(unittest.TestCase):
         x = random_object_id()
         y = random_object_id()
         {x: y}
-        set([x, y])
+        {x, y}
 
 
 class TestTask(unittest.TestCase):
