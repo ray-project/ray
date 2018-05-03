@@ -34,7 +34,7 @@ class SharedTorchPolicy(TorchPolicy):
             ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
             logits, values = self._model(ob)
             samples = self._model.probs(logits).multinomial(num_samples=1).squeeze()
-            values = values.squeeze(0)
+            values = values.squeeze()
             return var_to_np(samples), {"vf_preds": var_to_np(values)}
 
     def compute_logits(self, ob, *args):
@@ -48,7 +48,7 @@ class SharedTorchPolicy(TorchPolicy):
             ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
             res = self._model.hidden_layers(ob)
             res = self._model.value_branch(res)
-            res = res.squeeze(0)
+            res = res.squeeze()
             return var_to_np(res)
 
     def _evaluate(self, obs, actions):

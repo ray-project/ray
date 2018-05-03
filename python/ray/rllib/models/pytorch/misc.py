@@ -29,7 +29,7 @@ def convert_batch(trajectory, has_features=False):
 
 
 def var_to_np(var):
-    return var.data.numpy()[0]
+    return var.data.numpy()
 
 
 def normc_initializer(std=1.0):
