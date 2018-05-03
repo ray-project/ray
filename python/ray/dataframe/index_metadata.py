@@ -103,8 +103,6 @@ class _IndexMetadata(object):
         _IndexMetadata constructor for more details)
         """
         if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
-            if self._index_cache is None:
-                self._index_cache = pd.RangeIndex(len(self))
             return self._index_cache
         else:
             return self._coord_df_cache.index
@@ -127,6 +125,37 @@ class _IndexMetadata(object):
             self._coord_df_cache.index = new_index
 
     index = property(_get_index, _set_index)
+
+    def _get_index_cache(self):
+        """Get the cached Index object, which may sometimes be an OID.
+
+        This will ray.get the Index object out of the Ray store lazily, such
+        that it is not grabbed until it is needed in the driver. This layer of
+        abstraction is important for allowing this object to be instantiated
+        with a remote Index object.
+
+        Returns:
+            The Index object in _index_cache.
+        """
+        if self._index_cache_validator is None:
+            self._index_cache_validator = pd.RangeIndex(len(self))
+        elif isinstance(self._index_cache_validator,
+                        ray.local_scheduler.ObjectID):
+            self._index_cache_validator = ray.get(self._index_cache_validator)
+
+        return self._index_cache_validator
+
+    def _set_index_cache(self, new_index):
+        """Sets the new index cache.
+
+        Args:
+            new_index: The Index to set the _index_cache to.
+        """
+        self._index_cache_validator = new_index
+
+    # _index_cache_validator is an extra layer of abstraction to allow the
+    # cache to accept ObjectIDs and ray.get them when needed.
+    _index_cache = property(_get_index_cache, _set_index_cache)
 
     def coords_of(self, key):
         """Returns the coordinates (partition, index_within_partition) of the
