@@ -2151,9 +2151,9 @@ def test_nsmallest():
 
 @pytest.fixture
 def test_nunique(ray_df, pandas_df):
-    assert(ray_df_equals_pandas(ray_df.nunique(), 
+    assert(ray_df_equals_pandas(ray_df.nunique(),
            pandas_df.nunique()))
-    assert(ray_df_equals_pandas(ray_df.nunique(axis=1), 
+    assert(ray_df_equals_pandas(ray_df.nunique(axis=1),
            pandas_df.nunique(axis=1)))
 
 
@@ -2654,9 +2654,9 @@ def test_shift():
 
 @pytest.fixture
 def test_skew(ray_df, pandas_df):
-    assert(ray_df_equals_pandas(ray_df.skew(), 
+    assert(ray_df_equals_pandas(ray_df.skew(),
            pandas_df.skew()))
-    assert(ray_df_equals_pandas(ray_df.skew(axis=1), 
+    assert(ray_df_equals_pandas(ray_df.skew(axis=1),
            pandas_df.skew(axis=1)))
 
 
