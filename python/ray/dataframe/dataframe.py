@@ -604,7 +604,7 @@ class DataFrame(object):
         return DataFrameGroupBy(self, by, axis, level, as_index, sort,
                                 group_keys, squeeze, **kwargs)
 
-    def sum(self, axis=None, skipna=True, level=None, numeric_only=None, 
+    def sum(self, axis=None, skipna=True, level=None, numeric_only=None,
             min_count=1, **kwargs):
         """Perform a sum across the DataFrame.
 
@@ -617,7 +617,7 @@ class DataFrame(object):
         """
         def remote_func(df):
             return df.sum(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, min_count=min_count, 
+                          numeric_only=numeric_only, min_count=min_count,
                           **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
@@ -2757,8 +2757,8 @@ class DataFrame(object):
         """
         def remote_func(df):
             return df.prod(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, min_count=min_count, 
-                          **kwargs)
+                           numeric_only=numeric_only, min_count=min_count,
+                           **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -2777,7 +2777,7 @@ class DataFrame(object):
             product : Series or DataFrame (if level specified)
         """
         return self.prod(axis=axis, skipna=skipna, level=level,
-                         numeric_only=numeric_only, min_count=min_count, 
+                         numeric_only=numeric_only, min_count=min_count,
                          **kwargs)
 
     def quantile(self, q=0.5, axis=0, numeric_only=True,
