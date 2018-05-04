@@ -3160,23 +3160,26 @@ class DataFrame(object):
             A new DataFrame
         """
 
-        def remote_func(df):
+        def rank_helper(df):
             return df.rank(axis=axis, method=method,
                            numeric_only=numeric_only,
                            na_option=na_option,
                            ascending=ascending, pct=pct)
 
-        index = self._row_metadata.index
+        index = self.index
 
-        if (axis == 1 or axis == 'columns'):
-            result = _map_partitions(remote_func,
+        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
+            else 0
+
+        if (axis == 1):
+            result = _map_partitions(rank_helper,
                                      self._row_partitions)
             return DataFrame(row_partitions=result,
                              columns=self.columns,
                              index=index)
 
-        if (axis == 0 or axis == 'index'):
-            result = _map_partitions(remote_func,
+        if (axis == 0):
+            result = _map_partitions(rank_helper,
                                      self._col_partitions)
             return DataFrame(col_partitions=result,
                              columns=self.columns,
