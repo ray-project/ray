@@ -2042,6 +2042,7 @@ class GlobalStateAPI(unittest.TestCase):
         worker_ids = set()
         while len(worker_ids) != num_workers:
             worker_ids = set(ray.get([f.remote() for _ in range(10)]))
+            time.sleep(0.1)
 
         worker_info = ray.global_state.workers()
         self.assertEqual(len(worker_info), num_workers)

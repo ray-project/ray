@@ -11,10 +11,10 @@ std::shared_ptr<SenderConnection> SenderConnection::Create(
   RAY_CHECK_OK(TcpConnect(socket, ip, port));
   std::shared_ptr<TcpServerConnection> conn =
       std::make_shared<TcpServerConnection>(std::move(socket));
-  return std::make_shared<SenderConnection>(conn, client_id);
+  return std::make_shared<SenderConnection>(std::move(conn), client_id);
 };
 
-SenderConnection::SenderConnection(std::shared_ptr<TcpServerConnection> conn,
+SenderConnection::SenderConnection(std::shared_ptr<TcpServerConnection> &&conn,
                                    const ClientID &client_id)
     : conn_(conn) {
   client_id_ = client_id;

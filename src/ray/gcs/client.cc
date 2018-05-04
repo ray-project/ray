@@ -7,7 +7,7 @@ namespace ray {
 namespace gcs {
 
 AsyncGcsClient::AsyncGcsClient(const ClientID &client_id) {
-  context_.reset(new RedisContext());
+  context_ = std::make_shared<RedisContext>();
   client_table_.reset(new ClientTable(context_, this, client_id));
   object_table_.reset(new ObjectTable(context_, this));
   actor_table_.reset(new ActorTable(context_, this));

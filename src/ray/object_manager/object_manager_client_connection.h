@@ -31,7 +31,8 @@ class SenderConnection : public boost::enable_shared_from_this<SenderConnection>
 
   /// \param socket A reference to the socket created by the static Create method.
   /// \param client_id The ClientID of the remote node.
-  SenderConnection(std::shared_ptr<TcpServerConnection> conn, const ClientID &client_id);
+  SenderConnection(std::shared_ptr<TcpServerConnection> &&conn, 
+                   const ClientID &client_id);
 
   /// Write a message to the client.
   ///
