@@ -53,13 +53,12 @@ typedef struct {
    *  handle. This is used to guarantee execution of tasks on actors in the
    *  order that the tasks were submitted, per handle. Tasks from different
    *  handles to the same actor may be interleaved. */
-  std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher> task_counters;
+  std::unordered_map<ActorHandleID, int64_t> task_counters;
   /** These are the execution dependencies that make up the frontier of the
    *  actor's runnable tasks. For each actor handle, we store the object ID
    *  that represents the execution dependency for the next runnable task
    *  submitted by that handle. */
-  std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
-      frontier_dependencies;
+  std::unordered_map<ActorHandleID, ObjectID> frontier_dependencies;
   /** The return value of the most recently executed task. The next task to
    *  execute should take this as an execution dependency at dispatch time. Set
    *  to nil if there are no execution dependencies (e.g., this is the first
@@ -85,12 +84,12 @@ struct SchedulingAlgorithmState {
   /** This is a hash table from actor ID to information about that actor. In
    *  particular, a queue of tasks that are waiting to execute on that actor.
    *  This is only used for actors that exist locally. */
-  std::unordered_map<ActorID, LocalActorInfo, UniqueIDHasher> local_actor_infos;
+  std::unordered_map<ActorID, LocalActorInfo> local_actor_infos;
   /** This is a set of the IDs of the actors that have tasks waiting to run.
    *  The purpose is to make it easier to dispatch tasks without looping over
    *  all of the actors. Note that this is an optimization and is not strictly
    *  necessary. */
-  std::unordered_set<ActorID, UniqueIDHasher> actors_with_pending_tasks;
+  std::unordered_set<ActorID> actors_with_pending_tasks;
   /** A vector of actor tasks that have been submitted but this local scheduler
    *  doesn't know which local scheduler is responsible for them, so cannot
    *  assign them to the correct local scheduler yet. Whenever a notification
@@ -112,13 +111,13 @@ struct SchedulingAlgorithmState {
   std::vector<LocalSchedulerClient *> blocked_workers;
   /** A hash map of the objects that are available in the local Plasma store.
    *  The key is the object ID. This information could be a little stale. */
-  std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> local_objects;
+  std::unordered_map<ObjectID, ObjectEntry> local_objects;
   /** A hash map of the objects that are not available locally. These are
    *  currently being fetched by this local scheduler. The key is the object
    *  ID. Every local_scheduler_fetch_timeout_milliseconds, a Plasma fetch
    *  request will be sent the object IDs in this table. Each entry also holds
    *  an array of queued tasks that are dependent on it. */
-  std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> remote_objects;
+  std::unordered_map<ObjectID, ObjectEntry> remote_objects;
 };
 
 SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
@@ -809,7 +808,7 @@ int rerun_actor_creation_tasks_timeout_handler(event_loop *loop,
 
   // Create a set of the dummy object IDs for the actor creation tasks to
   // reconstruct.
-  std::unordered_set<ObjectID, UniqueIDHasher> actor_dummy_objects;
+  std::unordered_set<ObjectID> actor_dummy_objects;
   for (auto const &execution_spec :
        state->algorithm_state->cached_submitted_actor_tasks) {
     ObjectID actor_creation_dummy_object_id =
@@ -1805,9 +1804,9 @@ void print_worker_info(const char *message,
                  << " blocked";
 }
 
-std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
-get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
-                        ActorID actor_id) {
+std::unordered_map<ActorHandleID, int64_t> get_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   return algorithm_state->local_actor_infos[actor_id].task_counters;
 }
@@ -1815,8 +1814,7 @@ get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
 void set_actor_task_counters(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
-        &task_counters) {
+    const std::unordered_map<ActorHandleID, int64_t> &task_counters) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   /* Overwrite the current task counters for the actor. This is necessary
    * during reconstruction when resuming from a checkpoint so that we can
@@ -1860,7 +1858,7 @@ void set_actor_task_counters(
   }
 }
 
-std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
+std::unordered_map<ActorHandleID, ObjectID> get_actor_frontier(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
@@ -1871,8 +1869,7 @@ void set_actor_frontier(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
-        &frontier_dependencies) {
+    const std::unordered_map<ActorHandleID, ObjectID> &frontier_dependencies) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   auto entry = algorithm_state->local_actor_infos[actor_id];
   entry.frontier_dependencies = frontier_dependencies;

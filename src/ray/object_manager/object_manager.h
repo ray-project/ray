@@ -179,12 +179,11 @@ class ObjectManager {
   ConnectionPool connection_pool_;
 
   /// Timeout for failed pull requests.
-  std::unordered_map<ObjectID, std::shared_ptr<boost::asio::deadline_timer>,
-                     UniqueIDHasher>
+  std::unordered_map<ObjectID, std::shared_ptr<boost::asio::deadline_timer>>
       pull_requests_;
 
   /// Cache of locally available objects.
-  std::unordered_map<ObjectID, ObjectInfoT, UniqueIDHasher> local_objects_;
+  std::unordered_map<ObjectID, ObjectInfoT> local_objects_;
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();

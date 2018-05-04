@@ -224,7 +224,7 @@ class StandardAutoscaler(object):
                  max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
                  max_failures=AUTOSCALER_MAX_NUM_FAILURES,
                  process_runner=subprocess,
-                 verbose_updates=False,
+                 verbose_updates=True,
                  node_updater_cls=NodeUpdaterProcess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path

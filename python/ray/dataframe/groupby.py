@@ -106,7 +106,7 @@ class DataFrameGroupBy(object):
 
     @property
     def groups(self):
-        return dict([(k, pd.Index(v)) for k, v in self._keys_and_values])
+        return {k: pd.Index(v) for k, v in self._keys_and_values}
 
     def min(self, **kwargs):
         return self._apply_agg_function(lambda df: df.min(**kwargs))

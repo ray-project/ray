@@ -195,8 +195,8 @@ static PyObject *PyObjectID_richcompare(PyObjectID *self,
 static PyObject *PyObjectID_redis_shard_hash(PyObjectID *self) {
   /* NOTE: The hash function used here must match the one in get_redis_context
    * in src/common/state/redis.cc. Changes to the hash function should only be
-   * made through UniqueIDHasher in src/common/common.h */
-  UniqueIDHasher hash;
+   * made through std::hash in src/common/common.h */
+  std::hash<ray::UniqueID> hash;
   return PyLong_FromSize_t(hash(self->object_id));
 }
 

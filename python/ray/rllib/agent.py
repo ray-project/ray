@@ -234,9 +234,12 @@ def get_agent_class(alg):
     if alg == "DDPG2":
         from ray.rllib import ddpg2
         return ddpg2.DDPG2Agent
-    elif alg == "APEX_DDPG2":
-        from ray.rllib import ddpg2
-        return ddpg2.ApexDDPG2Agent
+    elif alg == "DDPG":
+        from ray.rllib import ddpg
+        return ddpg.DDPGAgent
+    elif alg == "APEX_DDPG":
+        from ray.rllib import ddpg
+        return ddpg.ApexDDPGAgent
     elif alg == "PPO":
         from ray.rllib import ppo
         return ppo.PPOAgent
@@ -258,9 +261,6 @@ def get_agent_class(alg):
     elif alg == "PG":
         from ray.rllib import pg
         return pg.PGAgent
-    elif alg == "DDPG":
-        from ray.rllib import ddpg
-        return ddpg.DDPGAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner

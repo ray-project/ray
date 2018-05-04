@@ -157,40 +157,37 @@ def _map_partitions(func, partitions, *argslists):
                 for part, args in zip(partitions, *argslists)]
 
 
-@ray.remote(num_return_vals=2)
-def _build_columns(df_col, columns):
-    """Build columns and compute lengths for each partition."""
-    # Columns and width
-    widths = np.array(ray.get([_deploy_func.remote(lambda df: len(df.columns),
-                                                   d)
+@ray.remote
+def _build_col_widths(df_col):
+    """Compute widths (# of columns) for each partition."""
+    widths = np.array(ray.get([_deploy_func.remote(_get_widths, d)
                       for d in df_col]))
-    dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(widths))
-                    for p_sub_idx in range(widths[p_idx])]
 
-    col_names = ("partition", "index_within_partition")
-    column_df = pd.DataFrame(dest_indices, index=columns, columns=col_names)
-
-    return widths, column_df
+    return widths
 
 
-@ray.remote(num_return_vals=2)
-def _build_index(df_row, index):
-    """Build index and compute lengths for each partition."""
-    # Rows and length
+@ray.remote
+def _build_row_lengths(df_row):
+    """Compute lengths (# of rows) for each partition."""
     lengths = np.array(ray.get([_deploy_func.remote(_get_lengths, d)
                        for d in df_row]))
 
-    dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(lengths))
-                    for p_sub_idx in range(lengths[p_idx])]
-    col_names = ("partition", "index_within_partition")
-    index_df = pd.DataFrame(dest_indices, index=index, columns=col_names)
+    return lengths
 
-    return lengths, index_df
+
+@ray.remote
+def _build_coord_df(lengths, index):
+    """Build the coordinate dataframe over all partitions."""
+    coords = np.vstack([np.column_stack((np.full(l, i), np.arange(l)))
+                        for i, l in enumerate(lengths)])
+
+    col_names = ("partition", "index_within_partition")
+    return pd.DataFrame(coords, index=index, columns=col_names)
 
 
 def _create_block_partitions(partitions, axis=0, length=None):
 
-    if length is not None and get_npartitions() > length:
+    if length is not None and length != 0 and get_npartitions() > length:
         npartitions = length
     else:
         npartitions = get_npartitions()
@@ -200,12 +197,16 @@ def _create_block_partitions(partitions, axis=0, length=None):
          for partition in partitions]
 
     # In the case that axis is 1 we have to transpose because we build the
-    # columns into rows. Fortunately numpy is efficent at this.
+    # columns into rows. Fortunately numpy is efficient at this.
     return np.array(x) if axis == 0 else np.array(x).T
 
 
 @ray.remote
 def create_blocks(df, npartitions, axis):
+    return create_blocks_helper(df, npartitions, axis)
+
+
+def create_blocks_helper(df, npartitions, axis):
     # Single partition dataframes don't need to be repartitioned
     if npartitions == 1:
         return df
@@ -285,7 +286,7 @@ def _inherit_docstrings(parent):
 
 
 @ray.remote
-def _reindex_helper(df, old_index, new_index, axis):
+def _reindex_helper(old_index, new_index, axis, npartitions, *df):
     """Reindexes a dataframe to prepare for join/concat.
 
     Args:
@@ -295,8 +296,9 @@ def _reindex_helper(df, old_index, new_index, axis):
         axis: Which axis to reindex over.
 
     Returns:
-        A new reindexed DataFrame.
+        A new set of blocks made up of DataFrames.
     """
+    df = pd.concat(df, axis=axis ^ 1)
     if axis == 1:
         df.index = old_index
         df = df.reindex(new_index, copy=False)
@@ -305,4 +307,86 @@ def _reindex_helper(df, old_index, new_index, axis):
         df.columns = old_index
         df = df.reindex(columns=new_index, copy=False)
         df.columns = pd.RangeIndex(len(df.columns))
-    return df
+    return create_blocks_helper(df, npartitions, axis)
+
+
+@ray.remote
+def _co_op_helper(func, left_columns, right_columns, left_df_len, left_idx,
+                  *zipped):
+    """Copartition operation where two DataFrames must have aligned indexes.
+
+    NOTE: This function assumes things are already copartitioned. Requires that
+        row partitions are passed in as blocks.
+
+    Args:
+        func: The operation to conduct between two DataFrames.
+        left_columns: The column names for the left DataFrame.
+        right_columns: The column names for the right DataFrame.
+        left_df_len: The length of the left. This is used so we can split up
+            the zipped partitions.
+        zipped: The DataFrame partitions (in blocks).
+
+    Returns:
+         A new set of blocks for the partitioned DataFrame.
+    """
+    left = pd.concat(zipped[:left_df_len], axis=1, copy=False).copy()
+    left.columns = left_columns
+    if left_idx is not None:
+        left.index = left_idx
+
+    right = pd.concat(zipped[left_df_len:], axis=1, copy=False).copy()
+    right.columns = right_columns
+
+    new_rows = func(left, right)
+
+    new_blocks = create_blocks_helper(new_rows, left_df_len, 0)
+
+    if left_idx is not None:
+        new_blocks.append(new_rows.index)
+
+    return new_blocks
+
+
+@ray.remote
+def _match_partitioning(column_partition, lengths, index):
+    """Match the number of rows on each partition. Used in df.merge().
+
+    Args:
+        column_partition: The column partition to change.
+        lengths: The lengths of each row partition to match to.
+        index: The index index of the column_partition. This is used to push
+            down to the inner frame for correctness in the merge.
+
+    Returns:
+         A list of blocks created from this column partition.
+    """
+    partitioned_list = []
+
+    columns = column_partition.columns
+    # We set this because this is the only place we can guarantee correct
+    # placement. We use it in the case the user wants to join on the index.
+    column_partition.index = index
+    for length in lengths:
+        if len(column_partition) == 0:
+            partitioned_list.append(pd.DataFrame(columns=columns))
+            continue
+
+        partitioned_list.append(column_partition.iloc[:length, :])
+        column_partition = column_partition.iloc[length:, :]
+    return partitioned_list
+
+
+@ray.remote
+def _concat_index(*index_parts):
+    return index_parts[0].append(index_parts[1:])
+
+
+@ray.remote
+def _correct_column_dtypes(*column):
+    """Corrects dtypes of a column by concatenating column partitions and
+    splitting the column back into partitions.
+
+    Args:
+    """
+    concat_column = pd.concat(column, copy=False)
+    return create_blocks_helper(concat_column, len(column), 1)
