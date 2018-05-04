@@ -1192,54 +1192,42 @@ class DataFrame(object):
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
 
-        new_cols = self.dtypes[self.dtypes.apply(lambda x: is_numeric_dtype(x))].index
+        new_cols = self.dtypes[self.dtypes.apply(
+            lambda x: is_numeric_dtype(x))].index
+        num_rows = len(self._row_metadata)
 
         # compute the means for each column
-        num_rows = len(self._row_metadata)
-        means = _map_partitions(lambda df: (df.select_dtypes([np.number]).sum(axis=0)/num_rows).values,
-                self._col_partitions)
+        means = _map_partitions(
+                lambda df: (df.select_dtypes([np.number])
+                    .sum(axis=0)/num_rows).values,
+            self._col_partitions)
 
-        @ray.remote
-        def func_helper(func, part1, part2):
-            return func(part1, part2)
-
-        def mapper(func, partitions1, partitions2):
-            return [func_helper.remote(func, p1, p2) for p1,p2 in
-                    zip(partitions1, partitions2)]
+        subtracted_means = _map_partitions(
+                lambda df, means: np.subtract(df.select_dtypes([np.number]),
+                                              means),
+            self._col_partitions, means)
 
         # compute the standard deviations from each column
-        subtracted_means = _map_partitions(lambda df, means: np.subtract(df.select_dtypes([np.number]),means),
-            self._col_partitions, means)
-        stdevs = _map_partitions(lambda df: np.sqrt(df.pow(2).sum()/(num_rows-1)),
+        stdevs = _map_partitions(
+                lambda df: np.sqrt(df.pow(2).sum()/(num_rows-1)),
             subtracted_means)
 
         # compute the sums for the covariance for each column
-        sum_min_cols = pd.concat(ray.get(subtracted_means), axis=1)
-        sum_min_cols.columns = new_cols
+        norms = pd.concat(ray.get(subtracted_means), axis=1)
+        norms.columns = new_cols
         stdevs = pd.concat(ray.get(stdevs), axis=0)
         stdevs.index = new_cols
 
+        data_dict = {}
+        for col in new_cols:
+            norm = norms[col]
+            stdev = stdevs[col]
+            data = [(norm*norms[col2]).sum()/((num_rows-1)*stdev*stdevs[col2])
+                    if stdev*stdevs[col2] != 0 else np.nan 
+                    for col2 in new_cols]
+            data_dict[col] = data
 
-        # populate the dataframe with the correlation values
-        column_combos = list(combinations_with_replacement(stdevs.index,2))
-        new_df = pd.DataFrame(columns=stdevs.index, index=stdevs.index)
-        for c1, c2 in column_combos:
-            denom = stdevs[c1]*stdevs[c2]
-            if denom == 0:
-                # cannot divide by 0 so these must be NaN
-                new_df[c1][c2] = np.nan
-                new_df[c2][c1] = np.nan
-            elif c1 == c2:
-                # correlation of a variable with itself is always 1.0
-                new_df[c1][c2] = 1.0
-            else:
-                # compute the cov(x,y)/(std(x)*std(y))
-                cov = (sum_min_cols[c1] * sum_min_cols[c2]).sum() / (len(self._row_metadata)-1)
-                new_df[c1][c2] = (cov / denom)
-                new_df[c2][c1] = (cov / denom)
-        new_df.columns = new_cols
-        new_df.index = new_cols
-        return new_df
+        return DataFrame(data=data_dict, index=new_cols, columns=new_cols)
 
     def corrwith(self, other, axis=0, drop=False):
         raise NotImplementedError(
