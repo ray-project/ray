@@ -1580,7 +1580,7 @@ class DataFrame(object):
         # all its selected col values
         while len(duplicated_array) > 1:
             n = len(duplicated_array)
-            k = len(self._block_partitions)
+            k = max(len(self.columns) // len(self._block_partitions), 2)
 
             new_duplicated_array = [
                 _deploy_func.remote(
