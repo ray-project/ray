@@ -605,7 +605,7 @@ class DataFrame(object):
                                 group_keys, squeeze, **kwargs)
 
     def sum(self, axis=None, skipna=True, level=None, numeric_only=None, 
-            min_count=0):
+            min_count=1, **kwargs):
         """Perform a sum across the DataFrame.
 
         Args:
@@ -617,7 +617,8 @@ class DataFrame(object):
         """
         def remote_func(df):
             return df.sum(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, min_count=min_count)
+                          numeric_only=numeric_only, min_count=min_count, 
+                          **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -2673,20 +2674,9 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def nunique(self, axis=0, dropna=True):
-        """Return Series with number of distinct 
-           observations over requested axis.
-
-        Args:
-            axis : {0 or ‘index’, 1 or ‘columns’}, default 0
-            dropna : boolean, default True
-
-        Returns:
-            nunique : Series
-        """
-        def remote_func(df):
-            return df.nunique(axis=axis, dropna=dropna)
-
-        return self._arithmetic_helper(remote_func, axis)
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def pct_change(self, periods=1, fill_method='pad', limit=None, freq=None,
                    **kwargs):
@@ -2752,38 +2742,43 @@ class DataFrame(object):
                                      fill_value)
 
     def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
-             min_count=0, **kwargs):
-        """Perform a product across the DataFrame.
+             min_count=1, **kwargs):
+        """Return the product of the values for the requested axis
 
         Args:
-            axis (int): The axis to product on.
-            skipna (bool): True to skip NA values, false otherwise.
+            axis : {index (0), columns (1)}
+            skipna : boolean, default True
+            level : int or level name, default None
+            numeric_only : boolean, default None
+            min_count : int, default 1
 
         Returns:
-            The product of the DataFrame.
+            prod : Series or DataFrame (if level specified)
         """
         def remote_func(df):
             return df.prod(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, min_count=min_count)
+                          numeric_only=numeric_only, min_count=min_count, 
+                          **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
     def product(self, axis=None, skipna=None, level=None, numeric_only=None,
-                min_count=0, **kwargs):
-        """Perform a product across the DataFrame.
+                min_count=1, **kwargs):
+        """Return the product of the values for the requested axis
 
         Args:
-            axis (int): The axis to product on.
-            skipna (bool): True to skip NA values, false otherwise.
+            axis : {index (0), columns (1)}
+            skipna : boolean, default True
+            level : int or level name, default None
+            numeric_only : boolean, default None
+            min_count : int, default 1
 
         Returns:
-            The product of the DataFrame.
+            product : Series or DataFrame (if level specified)
         """
-        def remote_func(df):
-            return df.product(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, min_count=min_count)
-
-        return self._arithmetic_helper(remote_func, axis, level)
+        return self.prod(axis=axis, skipna=skipna, level=level,
+                         numeric_only=numeric_only, min_count=min_count, 
+                         **kwargs)
 
     def quantile(self, q=0.5, axis=0, numeric_only=True,
                  interpolation='linear'):
@@ -3442,23 +3437,9 @@ class DataFrame(object):
 
     def skew(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
-        """Return unbiased skew over requested axis Normalized by N-1
-
-        Args:
-            axis : {index (0), columns (1)}
-            skipna : boolean, default True
-            Exclude NA/null values when computing the result.
-            level : int or level name, default None
-            numeric_only : boolean, default None
-            
-        Returns:
-            skew : Series or DataFrame (if level specified)
-        """
-        def remote_func(df):
-            return df.skew(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only)
-
-        return self._arithmetic_helper(remote_func, axis, level)
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def slice_shift(self, periods=1, axis=0):
         raise NotImplementedError(
