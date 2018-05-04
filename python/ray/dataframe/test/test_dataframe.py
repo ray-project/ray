@@ -2208,7 +2208,7 @@ def test_prod():
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
-        ray_df.prod()
+        ray_df.prod(None)
 
 
 def test_product():
@@ -2653,6 +2653,7 @@ def test_shift():
 @pytest.fixture
 def test_skew(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.skew(), pandas_df.skew()))
+    assert(ray_df_equals_pandas(ray_df.skew(axis=1), pandas_df.skew(axis=1)))
 
 
 def test_slice_shift():
