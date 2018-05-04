@@ -2152,6 +2152,7 @@ def test_nsmallest():
 @pytest.fixture
 def test_nunique(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.nunique(), pandas_df.nunique()))
+    assert(ray_df_equals_pandas(ray_df.nunique(axis=1), pandas_df.nunique(axis=1)))
 
 
 def test_pct_change():
@@ -2203,14 +2204,14 @@ def test_pow():
     test_inter_df_math("pow", simple=False)
 
 
-def test_prod(ray_df, pandas_df):
+def test_prod():
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
         ray_df.prod()
 
 
-def test_product(ray_df, pandas_df):
+def test_product():
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
