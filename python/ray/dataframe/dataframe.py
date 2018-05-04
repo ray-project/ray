@@ -861,7 +861,7 @@ class DataFrame(object):
             self._update_inplace(row_partitions=new_parts,
                                  index=new_rows,
                                  columns=self.columns)
-            
+
             return None
 
     def add(self, other, axis='columns', level=None, fill_value=None):
