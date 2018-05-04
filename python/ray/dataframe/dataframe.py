@@ -604,8 +604,7 @@ class DataFrame(object):
         return DataFrameGroupBy(self, by, axis, level, as_index, sort,
                                 group_keys, squeeze, **kwargs)
 
-    def sum(self, axis=None, skipna=True, level=None, numeric_only=None, 
-            min_count=0):
+    def sum(self, axis=None, skipna=True, level=None, numeric_only=None):
         """Perform a sum across the DataFrame.
 
         Args:
@@ -617,7 +616,7 @@ class DataFrame(object):
         """
         def remote_func(df):
             return df.sum(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, min_count=min_count)
+                          numeric_only=numeric_only)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -2753,37 +2752,15 @@ class DataFrame(object):
 
     def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
              min_count=0, **kwargs):
-        """Perform a product across the DataFrame.
-
-        Args:
-            axis (int): The axis to product on.
-            skipna (bool): True to skip NA values, false otherwise.
-
-        Returns:
-            The product of the DataFrame.
-        """
-        def remote_func(df):
-            return df.prod(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, min_count=min_count)
-
-        return self._arithmetic_helper(remote_func, axis, level)
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def product(self, axis=None, skipna=None, level=None, numeric_only=None,
                 min_count=0, **kwargs):
-        """Perform a product across the DataFrame.
-
-        Args:
-            axis (int): The axis to product on.
-            skipna (bool): True to skip NA values, false otherwise.
-
-        Returns:
-            The product of the DataFrame.
-        """
-        def remote_func(df):
-            return df.product(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, min_count=min_count)
-
-        return self._arithmetic_helper(remote_func, axis, level)
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def quantile(self, q=0.5, axis=0, numeric_only=True,
                  interpolation='linear'):
@@ -3456,7 +3433,7 @@ class DataFrame(object):
         """
         def remote_func(df):
             return df.skew(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only)
+                          numeric_only=numeric_only, **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
