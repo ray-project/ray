@@ -782,12 +782,19 @@ class DataFrame(object):
 
         axis = pd.DataFrame()._get_axis_number(axis)
         inplace = validate_bool_kwarg(inplace, "inplace")
-        subset = set(subset)
 
-        if axis == 1 and subset is not None:
-            subset = [item for item in self.index if item in subset]
-        elif subset is not None:
-            subset = [item for item in self.columns if item in subset]
+        if how is not None and how not in ['any', 'all']:
+            raise ValueError('invalid how option: %s' % how)
+        if how is None and thresh is None:
+            raise TypeError('must specify how or thresh')
+
+        if subset is not None:
+            subset = set(subset)
+
+            if axis == 1:
+                subset = [item for item in self.index if item in subset]
+            else:
+                subset = [item for item in self.columns if item in subset]
 
         def dropna_helper(df):
             new_df = df.dropna(axis=axis, how=how, thresh=thresh,
