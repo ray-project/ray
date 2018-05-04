@@ -827,16 +827,7 @@ class DataFrame(object):
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
         elif is_list_like(arg):
-            from .concat import concat
-
-            x = [self._aggregate(func, *args, **kwargs)
-                 for func in arg]
-
-            new_dfs = [x[i] if not isinstance(x[i], pd.Series)
-                       else pd.DataFrame(x[i], columns=[arg[i]]).T
-                       for i in range(len(x))]
-
-            return concat(new_dfs)
+            return self.apply(arg, axis=_axis, args=args, **kwargs)
         elif callable(arg):
             self._callable_function(arg, _axis, *args, **kwargs)
         else:
@@ -1047,24 +1038,58 @@ class DataFrame(object):
         """
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        if is_list_like(func) and not all([isinstance(obj, str)
-                                           for obj in func]):
-            raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
-
-        if axis == 0 and is_list_like(func):
-            return self.aggregate(func, axis, *args, **kwds)
         if isinstance(func, compat.string_types):
             if axis == 1:
                 kwds['axis'] = axis
             return getattr(self, func)(*args, **kwds)
+        elif isinstance(func, dict):
+            if axis == 1:
+                raise TypeError(
+                    "(\"'dict' object is not callable\", "
+                    "'occurred at index {0}'".format(self.index[0]))
+            if len(self.columns) != len(set(self.columns)):
+                warnings.warn(
+                    'duplicate column names not supported with apply().',
+                    FutureWarning, stacklevel=2)
+            has_list = list in map(type, func.values())
+            part_ind_tuples = [(self._col_metadata[key], key) for key in func]
+
+            if has_list:
+                # if input dict has a list, the function to apply must wrap
+                # single functions in lists as well to get the desired output
+                # format
+                result = [_deploy_func.remote(
+                    lambda df: df.iloc[:, ind].apply(
+                        func[key] if is_list_like(func[key])
+                        else [func[key]]),
+                    self._col_partitions[part])
+                    for (part, ind), key in part_ind_tuples]
+                return pd.concat(ray.get(result), axis=1)
+            else:
+                result = [_deploy_func.remote(
+                    lambda df: df.iloc[:, ind].apply(func[key]),
+                    self._col_partitions[part])
+                    for (part, ind), key in part_ind_tuples]
+                return pd.Series(ray.get(result), index=func.keys())
+
+        elif is_list_like(func):
+            if axis == 1:
+                raise TypeError(
+                    "(\"'list' object is not callable\", "
+                    "'occurred at index {0}'".format(self.index[0]))
+            # TODO: some checking on functions that return Series or Dataframe
+            new_cols = _map_partitions(lambda df: df.apply(func),
+                                       self._col_partitions)
+
+            # resolve function names for the DataFrame index
+            new_index = [f_name if isinstance(f_name, compat.string_types)
+                         else f_name.__name__ for f_name in func]
+            return DataFrame(col_partitions=new_cols,
+                             columns=self.columns,
+                             index=new_index,
+                             col_metadata=self._col_metadata)
         elif callable(func):
             return self._callable_function(func, axis=axis, *args, **kwds)
-        else:
-            raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
 
     def as_blocks(self, copy=True):
         raise NotImplementedError(

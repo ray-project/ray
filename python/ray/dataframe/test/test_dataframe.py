@@ -302,25 +302,22 @@ def test_int_dataframe():
             test_apply(ray_df, pandas_df, func, 1)
             test_aggregate(ray_df, pandas_df, func, 1)
         else:
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_agg(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_apply(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_aggregate(ray_df, pandas_df, func, 1)
 
         func = ['sum', lambda df: df.sum()]
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 0)
+        test_aggregate(ray_df, pandas_df, func, 0)
+        test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(TypeError):
             test_apply(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_aggregate(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
         test_transform(ray_df, pandas_df)
@@ -464,25 +461,22 @@ def test_float_dataframe():
             test_apply(ray_df, pandas_df, func, 1)
             test_aggregate(ray_df, pandas_df, func, 1)
         else:
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_agg(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_apply(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_aggregate(ray_df, pandas_df, func, 1)
 
         func = ['sum', lambda df: df.sum()]
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 0)
+        test_aggregate(ray_df, pandas_df, func, 0)
+        test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(TypeError):
             test_apply(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_aggregate(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
         test_transform(ray_df, pandas_df)
@@ -632,17 +626,14 @@ def test_mixed_dtype_dataframe():
         test_agg(ray_df, pandas_df, func, 0)
 
         func = ['sum', lambda df: df.sum()]
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 0)
+        test_aggregate(ray_df, pandas_df, func, 0)
+        test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(TypeError):
             test_apply(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_aggregate(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
         test_transform(ray_df, pandas_df)
@@ -782,25 +773,22 @@ def test_nan_dataframe():
             test_apply(ray_df, pandas_df, func, 1)
             test_aggregate(ray_df, pandas_df, func, 1)
         else:
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_agg(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_apply(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_aggregate(ray_df, pandas_df, func, 1)
 
         func = ['sum', lambda df: df.sum()]
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 0)
+        test_aggregate(ray_df, pandas_df, func, 0)
+        test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(TypeError):
             test_apply(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_aggregate(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
         test_transform(ray_df, pandas_df)
@@ -855,8 +843,8 @@ def test_comparison_inter_ops(op):
     ray_df2 = rdf.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
     pandas_df2 = pd.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
 
-    ray_df_equals_pandas(getattr(ray_df, op)(ray_df2),
-                         getattr(pandas_df, op)(pandas_df2))
+    ray_df_equals_pandas(getattr(ray_df2, op)(ray_df2),
+                         getattr(pandas_df2, op)(pandas_df2))
 
 
 @pytest.fixture
