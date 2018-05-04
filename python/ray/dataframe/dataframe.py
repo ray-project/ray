@@ -1192,27 +1192,33 @@ class DataFrame(object):
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
 
-        # return pd.concat(ray.get(self._row_partitions), axis=0).corr(method,
-        #         min_periods)
-
         new_cols = self.dtypes[self.dtypes.apply(lambda x: is_numeric_dtype(x))].index
 
         # compute the means for each column
-        cols = pd.concat(ray.get(_map_partitions(lambda df:
-            df.select_dtypes([np.number]).sum(axis=0),
-            self._row_partitions)), axis=1)
-        means = cols.sum(axis=1) / len(self._row_metadata)
+        num_rows = len(self._row_metadata)
+        means = _map_partitions(lambda df: (df.select_dtypes([np.number]).sum(axis=0)/num_rows).values,
+                self._col_partitions)
+
+        @ray.remote
+        def func_helper(func, part1, part2):
+            return func(part1, part2)
+
+        def mapper(func, partitions1, partitions2):
+            return [func_helper.remote(func, p1, p2) for p1,p2 in
+                    zip(partitions1, partitions2)]
 
         # compute the standard deviations from each column
-        subtracted_means = _map_partitions(lambda df: df.select_dtypes([np.number]) - means,
-            self._row_partitions)
-        square_sums = pd.concat(ray.get(_map_partitions(lambda df: df.pow(2).sum(),
-            subtracted_means)), axis=1)
-        norm_square_sums = square_sums.sum(axis=1) / (len(self._row_metadata)-1)
-        stdevs = np.sqrt(norm_square_sums)
+        subtracted_means = _map_partitions(lambda df, means: np.subtract(df.select_dtypes([np.number]),means),
+            self._col_partitions, means)
+        stdevs = _map_partitions(lambda df: np.sqrt(df.pow(2).sum()/(num_rows-1)),
+            subtracted_means)
 
         # compute the sums for the covariance for each column
-        sum_min_cols = pd.concat(ray.get(subtracted_means), axis=0)
+        sum_min_cols = pd.concat(ray.get(subtracted_means), axis=1)
+        sum_min_cols.columns = new_cols
+        stdevs = pd.concat(ray.get(stdevs), axis=0)
+        stdevs.index = new_cols
+
 
         # populate the dataframe with the correlation values
         column_combos = list(combinations_with_replacement(stdevs.index,2))

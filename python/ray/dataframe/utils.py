@@ -146,14 +146,12 @@ def _map_partitions(func, partitions, *argslists):
         return None
 
     assert(callable(func))
+    print(argslists)
     if len(argslists) == 0:
         return [_deploy_func.remote(func, part) for part in partitions]
-    elif len(argslists) == 1:
-        return [_deploy_func.remote(func, part, argslists[0])
-                for part in partitions]
     else:
-        assert(all([len(args) == len(partitions) for args in argslists]))
-        return [_deploy_func.remote(func, part, *args)
+        assert(all([(len(args) == len(partitions)) for args in argslists]))
+        return [_deploy_func.remote(func, part, args)
                 for part, args in zip(partitions, *argslists)]
 
 
