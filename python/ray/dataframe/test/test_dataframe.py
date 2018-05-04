@@ -207,6 +207,8 @@ def test_int_dataframe():
 
     test_copy(ray_df)
     test_sum(ray_df, pandas_df)
+    test_prod(ray_df, pandas_df)
+    test_product(ray_df, pandas_df)
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
@@ -367,6 +369,8 @@ def test_float_dataframe():
 
     test_copy(ray_df)
     test_sum(ray_df, pandas_df)
+    test_prod(ray_df, pandas_df)
+    test_product(ray_df, pandas_df)
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
@@ -2149,9 +2153,11 @@ def test_nsmallest():
         ray_df.nsmallest(None, None)
 
 
-@pytest.fixture
-def test_nunique(ray_df, pandas_df):
-    assert(ray_df_equals_pandas(ray_df.nunique(), pandas_df.nunique()))
+def test_nunique():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.nunique()
 
 
 def test_pct_change():
@@ -2203,18 +2209,14 @@ def test_pow():
     test_inter_df_math("pow", simple=False)
 
 
+@pytest.fixture
 def test_prod(ray_df, pandas_df):
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.prod()
+    assert(ray_df_equals_pandas(ray_df.prod(), pandas_df.prod()))
 
 
+@pytest.fixture
 def test_product(ray_df, pandas_df):
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.product()
+    assert(ray_df_equals_pandas(ray_df.product(), pandas_df.product()))
 
 
 @pytest.fixture
@@ -2649,9 +2651,11 @@ def test_shift():
         ray_df.shift()
 
 
-@pytest.fixture
-def test_skew(ray_df, pandas_df):
-    assert(ray_df_equals_pandas(ray_df.skew(), pandas_df.skew()))
+def test_skew():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.skew()
 
 
 def test_slice_shift():
