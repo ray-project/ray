@@ -5,6 +5,7 @@ from __future__ import print_function
 import pandas as pd
 import numpy as np
 import ray
+from pandas.core.dtypes.common import is_list_like
 
 from . import get_npartitions
 
@@ -148,6 +149,9 @@ def _map_partitions(func, partitions, *argslists):
     assert(callable(func))
     if len(argslists) == 0:
         return [_deploy_func.remote(func, part) for part in partitions]
+    elif len(argslists) == 1 and not is_list_like(argslists[0]):
+        return [_deploy_func.remote(func, part, argslists[0])
+                for part in partitions]
     else:
         assert(all([(len(args) == len(partitions)) for args in argslists]))
         return [_deploy_func.remote(func, part, args)

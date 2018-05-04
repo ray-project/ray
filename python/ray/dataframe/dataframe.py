@@ -19,7 +19,6 @@ from pandas.core.dtypes.common import (
 from pandas.core.indexing import check_bool_indexer
 from pandas.errors import MergeError
 
-from itertools import combinations_with_replacement
 import warnings
 import numpy as np
 import ray
@@ -1213,8 +1212,8 @@ class DataFrame(object):
         # compute the mean for each numerical column in the DataFrame
         means = _map_partitions(
                 lambda df: (df.select_dtypes([np.number])
-                    .sum(axis=0)/num_rows).values,
-            self._col_partitions)
+                            .sum(axis=0)/num_rows).values,
+                self._col_partitions)
 
         # For each column, subtract the mean for the column from each value in
         # the column. This will be used in both the covariance and standard
@@ -1222,13 +1221,13 @@ class DataFrame(object):
         subtracted_means = _map_partitions(
                 lambda df, means: np.subtract(df.select_dtypes([np.number]),
                                               means),
-            self._col_partitions, means)
+                self._col_partitions, means)
 
         # compute the standard deviations for each column using the normalized
         # means
         stdevs = _map_partitions(
                 lambda df: np.sqrt(df.pow(2).sum()/(num_rows-1)),
-            subtracted_means)
+                subtracted_means)
 
         # get the norms and standard deviations to compute the correlations
         norms = pd.concat(ray.get(subtracted_means), axis=1)
@@ -1243,7 +1242,7 @@ class DataFrame(object):
             norm = norms[col]
             stdev = stdevs[col]
             data = [(norm*norms[col2]).sum()/((num_rows-1)*stdev*stdevs[col2])
-                    if stdev*stdevs[col2] != 0 else np.nan 
+                    if stdev*stdevs[col2] != 0 else np.nan
                     for col2 in new_cols]
             corr_dict[col] = data
 
@@ -1291,15 +1290,15 @@ class DataFrame(object):
         # compute the mean for each numerical column in the DataFrame
         means = _map_partitions(
                 lambda df: (df.select_dtypes([np.number])
-                    .sum(axis=0)/num_rows).values,
-            self._col_partitions)
+                              .sum(axis=0)/num_rows).values,
+                self._col_partitions)
 
         # For each column, subtract the mean for the column from each value in
         # the column. This will be used in the covariance
         subtracted_means = _map_partitions(
                 lambda df, means: np.subtract(df.select_dtypes([np.number]),
                                               means),
-            self._col_partitions, means)
+                self._col_partitions, means)
 
         norms = pd.concat(ray.get(subtracted_means), axis=1)
         norms.columns = new_cols
