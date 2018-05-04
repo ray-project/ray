@@ -1192,42 +1192,50 @@ class DataFrame(object):
                 "To contribute to Pandas on Ray, please visit "
                 "github.com/ray-project/ray.")
 
+        # the correlation is only calculated on numerical rows so we will
+        # ignore all other rows
         new_cols = self.dtypes[self.dtypes.apply(
             lambda x: is_numeric_dtype(x))].index
         num_rows = len(self._row_metadata)
 
-        # compute the means for each column
+        # compute the mean for each numerical column in the DataFrame
         means = _map_partitions(
                 lambda df: (df.select_dtypes([np.number])
                     .sum(axis=0)/num_rows).values,
             self._col_partitions)
 
+        # For each column, subtract the mean for the column from each value in
+        # the column. This will be used in both the covariance and standard
+        # deviation calculations
         subtracted_means = _map_partitions(
                 lambda df, means: np.subtract(df.select_dtypes([np.number]),
                                               means),
             self._col_partitions, means)
 
-        # compute the standard deviations from each column
+        # compute the standard deviations for each column using the normalized
+        # means
         stdevs = _map_partitions(
                 lambda df: np.sqrt(df.pow(2).sum()/(num_rows-1)),
             subtracted_means)
 
-        # compute the sums for the covariance for each column
+        # get the norms and standard deviations to compute the correlations
         norms = pd.concat(ray.get(subtracted_means), axis=1)
         norms.columns = new_cols
         stdevs = pd.concat(ray.get(stdevs), axis=0)
         stdevs.index = new_cols
 
-        data_dict = {}
+        # compute the correlation for each combination of columns and return
+        # such a DataFrame
+        corr_dict = {}
         for col in new_cols:
             norm = norms[col]
             stdev = stdevs[col]
             data = [(norm*norms[col2]).sum()/((num_rows-1)*stdev*stdevs[col2])
                     if stdev*stdevs[col2] != 0 else np.nan 
                     for col2 in new_cols]
-            data_dict[col] = data
+            corr_dict[col] = data
 
-        return DataFrame(data=data_dict, index=new_cols, columns=new_cols)
+        return DataFrame(data=corr_dict, index=new_cols, columns=new_cols)
 
     def corrwith(self, other, axis=0, drop=False):
         raise NotImplementedError(
