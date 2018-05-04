@@ -1140,6 +1140,7 @@ def test_describe(ray_df, pandas_df):
 def test_diff(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.diff(), pandas_df.diff()))
     assert(ray_df_equals_pandas(ray_df.diff(axis=1), pandas_df.diff(axis=1)))
+    assert(ray_df_equals_pandas(ray_df.diff(periods=1), pandas_df.diff(periods=1)))
 
 
 def test_div():
