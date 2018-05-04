@@ -2783,9 +2783,17 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def pipe(self, func, *args, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Apply func(self, *args, **kwargs)
+
+        Args:
+            func: function to apply to the df.
+            args: positional arguments passed into ``func``.
+            kwargs: a dictionary of keyword arguments passed into ``func``.
+
+        Returns:
+            object: the return type of ``func``.
+        """
+        return com._pipe(self, func, *args, **kwargs)
 
     def pivot(self, index=None, columns=None, values=None):
         raise NotImplementedError(
