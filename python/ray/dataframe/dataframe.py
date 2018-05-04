@@ -3111,7 +3111,7 @@ t
                     raise TypeError(e_msg)
         else:
             if all([dtype == np.dtype('O') or
-                    np.issubdtype(dtype, np.datetime64)
+                    is_timedelta64_dtype(dtype)
                     for dtype in self.dtypes]):
                 raise ValueError("need at least one array to concatenate")
 
@@ -3123,14 +3123,16 @@ t
             def quantile_helper(df):
                 # This if call prevents ValueErrors with object only partitions
                 if (numeric_only and
-                        all([(dtype == np.dtype('O') or
-                              np.issubdtype(dtype, np.datetime64))
+                        all([dtype == np.dtype('O') or
+                              is_timedelta64_dtype(dtype)
                             for dtype in df.dtypes])):
                     return pd.DataFrame()
                 else:
                     return df.quantile(q=q, axis=axis,
                                        numeric_only=numeric_only,
                                        interpolation=interpolation)
+
+            axis = pd.DataFrame()._get_axis_number(axis) 
 
             if axis == 0 or axis == 'index':
                 result = _map_partitions(quantile_helper,
@@ -3144,7 +3146,7 @@ t
                                  index=q_index,
                                  columns=new_cols)
 
-            if axis == 1 or axis == 'columns':
+            if axis == 1:
                 result = _map_partitions(quantile_helper,
                                          self._row_partitions)
                 q_index = pd.Float64Index(q)
