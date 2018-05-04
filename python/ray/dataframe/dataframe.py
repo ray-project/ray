@@ -1187,35 +1187,52 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def corr(self, method='pearson', min_periods=1):
-        # cols = pd.concat(ray.get(_map_partitions(lambda df: df.sum(axis=0),
-        #     self._row_partitions)), axis=1)
-        # means = cols.sum(axis=1) / len(self._row_metadata)
-        means = self.mean()
-        # square_sums = pd.concat(ray.get(_map_partitions(lambda df: df.pow(2).sum() - means.pow(2),
-        #     self._row_partitions)), axis=1)
-        # norm_square_sums = square_sums.sum(axis=1) / (len(self._row_metadata)-1)
-        # stdevs = np.sqrt(norm_square_sums)
-        stdevs = self.std()
-        # column_combos = list(combinations_with_replacement(stdevs.index,2))
-        column_combos = list(combinations_with_replacement([0,1,2,3,4],2))
-        sum_min_cols = pd.concat(ray.get(_map_partitions(lambda df: df - means,
+        if method != 'pearson':
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+
+        # return pd.concat(ray.get(self._row_partitions), axis=0).corr(method,
+        #         min_periods)
+
+        new_cols = self.dtypes[self.dtypes.apply(lambda x: is_numeric_dtype(x))].index
+
+        # compute the means for each column
+        cols = pd.concat(ray.get(_map_partitions(lambda df:
+            df.select_dtypes([np.number]).sum(axis=0),
+            self._row_partitions)), axis=1)
+        means = cols.sum(axis=1) / len(self._row_metadata)
+
+        # compute the standard deviations from each column
+        square_sums = pd.concat(ray.get(_map_partitions(lambda df:
+            (df.select_dtypes([np.number]) - means).pow(2).sum(),
+            self._row_partitions)), axis=1)
+        norm_square_sums = square_sums.sum(axis=1) / (len(self._row_metadata)-1)
+        stdevs = np.sqrt(norm_square_sums)
+
+        # compute the sums for the covariance for each column
+        column_combos = list(combinations_with_replacement(stdevs.index,2))
+        sum_min_cols = pd.concat(ray.get(_map_partitions(lambda df: df.select_dtypes([np.number]) - means,
             self._row_partitions)), axis=0)
+
+        # populate the dataframe with the correlation values
         new_df = pd.DataFrame(columns=stdevs.index, index=stdevs.index)
         for c1, c2 in column_combos:
-            if c1 == c2:
+            denom = stdevs[c1]*stdevs[c2]
+            if denom == 0:
+                # cannot divide by 0 so these must be NaN
+                new_df[c1][c2] = np.nan
+                new_df[c2][c1] = np.nan
+            elif c1 == c2:
+                # correlation of a variable with itself is always 1.0
                 new_df[c1][c2] = 1.0
-                continue
-
-            cov = sum(sum_min_cols[c1] * sum_min_cols[c2]) / (len(self._row_metadata)-1)
-            a = stdevs[c1]*stdevs[c2]
-            if a == 0:
-                new_df[c1][c2] = None
-                new_df[c2][c1] = None
             else:
-                new_df[c1][c2] = (cov / a)
-                new_df[c2][c1] = (cov / a)
-        new_df.columns = self.columns
-        new_df.index = self.columns
+                # compute the cov(x,y)/(std(x)*std(y))
+                cov = (sum_min_cols[c1] * sum_min_cols[c2]).sum() / (len(self._row_metadata)-1)
+                new_df[c1][c2] = (cov / denom)
+                new_df[c2][c1] = (cov / denom)
+        new_df.columns = new_cols
+        new_df.index = new_cols
         return new_df
             
 
