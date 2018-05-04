@@ -1254,6 +1254,14 @@ def test_drop_api_equivalence():
 
 
 def test_drop_duplicates():
+    test_drop_duplicates_single_column()
+    test_drop_duplicates_multi_column()
+    test_drop_duplicates_look_all()
+    test_drop_duplicates_integers()
+    test_drop_duplicates_pairs()
+
+
+def test_drop_duplicates_single_column():
     df = pd.DataFrame({'AAA': ['foo', 'bar', 'foo', 'bar',
                                'foo', 'bar', 'bar', 'foo'],
                        'B': ['one', 'one', 'two', 'two',
@@ -1262,7 +1270,6 @@ def test_drop_duplicates():
                        'D': range(8)})
     ray_df = rdf.DataFrame(df)
 
-    # single column
     result = ray_df.drop_duplicates('AAA')
     expected = rdf.DataFrame(df[:2])
     assert ray_df_equals(result, expected)
@@ -1276,7 +1283,16 @@ def test_drop_duplicates():
     assert ray_df_equals(result, expected)
     assert len(result) == 0
 
-    # multi column
+
+def test_drop_duplicates_multi_column():
+    df = pd.DataFrame({'AAA': ['foo', 'bar', 'foo', 'bar',
+                               'foo', 'bar', 'bar', 'foo'],
+                       'B': ['one', 'one', 'two', 'two',
+                             'two', 'two', 'one', 'two'],
+                       'C': [1, 1, 2, 2, 2, 2, 1, 2],
+                       'D': range(8)})
+    ray_df = rdf.DataFrame(df)
+
     expected = rdf.DataFrame(df.loc[[0, 1, 2, 3]])
     result = ray_df.drop_duplicates(np.array(['AAA', 'B']))
     assert ray_df_equals(result, expected)
@@ -1291,7 +1307,15 @@ def test_drop_duplicates():
     expected = rdf.DataFrame(df.loc[[0]])
     assert ray_df_equals(result, expected)
 
-    # consider everything
+
+def test_drop_duplicates_look_all():
+    df = pd.DataFrame({'AAA': ['foo', 'bar', 'foo', 'bar',
+                               'foo', 'bar', 'bar', 'foo'],
+                       'B': ['one', 'one', 'two', 'two',
+                             'two', 'two', 'one', 'two'],
+                       'C': [1, 1, 2, 2, 2, 2, 1, 2],
+                       'D': range(8)})
+
     df2 = df.loc[:, ['AAA', 'B', 'C']]
     ray_df2 = rdf.DataFrame(df2)
 
@@ -1308,7 +1332,16 @@ def test_drop_duplicates():
     expected = ray_df2.drop_duplicates(['AAA', 'B'], keep=False)
     assert ray_df_equals(result, expected)
 
-    # integers
+
+def test_drop_duplicates_integers():
+    df = pd.DataFrame({'AAA': ['foo', 'bar', 'foo', 'bar',
+                               'foo', 'bar', 'bar', 'foo'],
+                       'B': ['one', 'one', 'two', 'two',
+                             'two', 'two', 'one', 'two'],
+                       'C': [1, 1, 2, 2, 2, 2, 1, 2],
+                       'D': range(8)})
+    ray_df = rdf.DataFrame(df)
+
     result = ray_df.drop_duplicates('C')
     expected = rdf.DataFrame(df.iloc[[0, 2]])
     assert ray_df_equals(result, expected)
@@ -1325,7 +1358,8 @@ def test_drop_duplicates():
     expected = rdf.DataFrame(df.iloc[[-2, -1]])
     assert ray_df_equals(result, expected)
 
-    # GH 11376
+
+def test_drop_duplicates_pairs():
     df = pd.DataFrame({'x': [7, 6, 3, 3, 4, 8, 0],
                        'y': [0, 6, 5, 5, 9, 1, 2]})
     ray_df = rdf.DataFrame(df)
@@ -1345,7 +1379,6 @@ def test_drop_duplicates():
     df = rdf.DataFrame([[-x, x], [x, x + 4]])
     assert ray_df_equals(df.drop_duplicates(), df)
 
-    # GH 11864
     df = rdf.DataFrame([i] * 9 for i in range(16))
     df = df.append([[1] + [0] * 8], ignore_index=True)
 

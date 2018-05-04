@@ -190,6 +190,32 @@ class _IndexMetadata(object):
         return self[self._coord_df['partition'] == partition,
                     'index_within_partition']
 
+    def local_index_iterator(self, label=None):
+        if label is None:
+            label = self._coord_df.index
+        coords = self[label]
+        if isinstance(coords, pd.DataFrame):
+            partitions = list(coords['partition'])
+            indexes = list(coords['index_within_partition'])
+        else:
+            partitions, indexes = coords
+            partitions = [partitions]
+            indexes = [indexes]
+        return zip(partitions, indexes)
+
+    def local_index_dict(self, label=None):
+        if label is None:
+            label = self._coord_df.index
+        idx_dict = {}
+        for i in range(len(self._lengths)):
+            idx_dict[i] = []
+
+        # make idx_dict where k=partition #,
+        # v=list of local col idx values
+        for part, index in self.local_index_iterator(label):
+            idx_dict[part].append(index)
+        return idx_dict
+
     def __len__(self):
         return sum(self._lengths)
 
