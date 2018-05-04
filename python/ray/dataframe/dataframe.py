@@ -784,11 +784,9 @@ class DataFrame(object):
         inplace = validate_bool_kwarg(inplace, "inplace")
 
         if axis == 1 and subset is not None:
-            subset = self.index.isin(subset)
-            subset = [i for i in range(len(subset)) if subset[i]]
+            subset = [item for item in self.index if item in subset]
         elif subset is not None:
-            subset = self.columns.isin(subset)
-            subset = [i for i in range(len(subset)) if subset[i]]
+            subset = [item for item in self.columns if item in subset]
 
         def dropna_helper(df):
             new_df = df.dropna(axis=axis, how=how, thresh=thresh,
@@ -821,9 +819,7 @@ class DataFrame(object):
                                  columns=new_cols,
                                  index=self.index)
 
-            self._col_metadata = self._col_metadata[new_cols]
-            self.columns = new_cols
-            self._col_partitions = new_parts
+            self._update_inplace(col_partitions=new_parts, columns=new_cols)
 
         else:
             new_vals = [self._row_metadata.get_global_indices(i, vals)
@@ -838,9 +834,7 @@ class DataFrame(object):
                                  index=new_rows,
                                  columns=self.columns)
 
-            self._row_metadata = self._row_metadata[new_rows]
-            self.index = new_rows
-            self._row_partitions = new_parts
+            self._update_inplace(row_partitions=new_parts, index=new_rows)
 
     def add(self, other, axis='columns', level=None, fill_value=None):
         """Add this DataFrame to another or a scalar/list.
@@ -1849,8 +1843,6 @@ class DataFrame(object):
         Returns:
             A new dataframe with the filter applied.
         """
-        import re
-
         nkw = com._count_not_none(items, like, regex)
         if nkw > 1:
             raise TypeError('Keyword arguments `items`, `like`, or `regex` '
@@ -1866,7 +1858,7 @@ class DataFrame(object):
 
         if items is not None:
             bool_arr = labels.isin(items)
-        elif like:
+        elif like is not None:
             def f(x):
                 return like in to_str(x)
             bool_arr = labels.map(f).tolist()
@@ -4061,7 +4053,9 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-            indices_for_rows = [col for col in self.col if col in set(columns)]
+            indices_for_rows = \
+                [i for i, item in enumerate(self.columns)
+                 if item in set(columns)]
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
