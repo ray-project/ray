@@ -782,6 +782,7 @@ class DataFrame(object):
 
         axis = pd.DataFrame()._get_axis_number(axis)
         inplace = validate_bool_kwarg(inplace, "inplace")
+        subset = set(subset)
 
         if axis == 1 and subset is not None:
             subset = [item for item in self.index if item in subset]
