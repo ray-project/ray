@@ -3111,15 +3111,7 @@ class DataFrame(object):
                     raise TypeError(e_msg)
 
         # check that all qs are between 0 and 1
-        msg = ("percentiles should all be in the interval [0, 1]. "
-               "Try {0} instead.")
-
-        if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
-            if not all(0 <= qs <= 1 for qs in q):
-                raise ValueError(msg.format(np.asarray(q) / 100.0))
-        else:
-            if not (0 <= q <= 1):
-                raise ValueError(msg.format(q / 100.0))
+        pd.DataFrame()._check_percentile(q)
 
         if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
 
@@ -3152,6 +3144,8 @@ class DataFrame(object):
                     return df.quantile(q=q, axis=axis,
                                        numeric_only=numeric_only,
                                        interpolation=interpolation)
+                # This exception is thrown when there are only non-numeric columns
+                # in this partition
                 except ValueError:
                     return pd.Series()
 
@@ -3161,7 +3155,7 @@ class DataFrame(object):
                                        interpolation=interpolation)
             result = self._arithmetic_helper(remote_func, axis)
             result.name = q
-            return pd.Series(result)
+            return result
 
     def query(self, expr, inplace=False, **kwargs):
         """Queries the Dataframe with a boolean expression
