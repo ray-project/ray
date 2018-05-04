@@ -1204,18 +1204,18 @@ class DataFrame(object):
         means = cols.sum(axis=1) / len(self._row_metadata)
 
         # compute the standard deviations from each column
-        square_sums = pd.concat(ray.get(_map_partitions(lambda df:
-            (df.select_dtypes([np.number]) - means).pow(2).sum(),
-            self._row_partitions)), axis=1)
+        subtracted_means = _map_partitions(lambda df: df.select_dtypes([np.number]) - means,
+            self._row_partitions)
+        square_sums = pd.concat(ray.get(_map_partitions(lambda df: df.pow(2).sum(),
+            subtracted_means)), axis=1)
         norm_square_sums = square_sums.sum(axis=1) / (len(self._row_metadata)-1)
         stdevs = np.sqrt(norm_square_sums)
 
         # compute the sums for the covariance for each column
-        column_combos = list(combinations_with_replacement(stdevs.index,2))
-        sum_min_cols = pd.concat(ray.get(_map_partitions(lambda df: df.select_dtypes([np.number]) - means,
-            self._row_partitions)), axis=0)
+        sum_min_cols = pd.concat(ray.get(subtracted_means), axis=0)
 
         # populate the dataframe with the correlation values
+        column_combos = list(combinations_with_replacement(stdevs.index,2))
         new_df = pd.DataFrame(columns=stdevs.index, index=stdevs.index)
         for c1, c2 in column_combos:
             denom = stdevs[c1]*stdevs[c2]
@@ -1234,34 +1234,6 @@ class DataFrame(object):
         new_df.columns = new_cols
         new_df.index = new_cols
         return new_df
-            
-
-
-
-
-
-
-
-
-
-
-        ############old code
-        diag_blocks = _map_partitions(lambda df: df.corr(
-                                            method=method,
-                                            min_periods=min_periods),
-                                      self._col_partitions)
-        #take pairwise combos of partitions - (1,2), (2,3), (3,1)
-
-        if method == 'pearson':
-            # take the correlation of each row partition
-            # average all of those correlations together
-            row_corr = ray.get(_map_partitions(lambda df: df.corr(method='pearson',
-                                                          min_periods=min_periods),
-                                       self._row_partitions))
-            # print(row_corr)
-            return sum(row_corr) / len(row_corr)
-
-
 
     def corrwith(self, other, axis=0, drop=False):
         raise NotImplementedError(
