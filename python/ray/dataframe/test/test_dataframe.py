@@ -2384,6 +2384,7 @@ def test_radd():
 @pytest.fixture
 def test_rank(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.rank(), pandas_df.rank()))
+    assert(ray_df_equals_pandas(ray_df.rank(axis=1), pandas_df.rank(axis=1)))
 
 
 def test_rdiv():

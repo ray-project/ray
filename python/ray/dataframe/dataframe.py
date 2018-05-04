@@ -3166,24 +3166,23 @@ class DataFrame(object):
                            na_option=na_option,
                            ascending=ascending, pct=pct)
 
-        index = self.index
-
-        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
-            else 0
+        axis = pd.DataFrame()._get_axis_number(axis)
 
         if (axis == 1):
+            new_cols = self.dtypes[self.dtypes.apply(
+                                   lambda x: is_numeric_dtype(x))].index
             result = _map_partitions(rank_helper,
                                      self._row_partitions)
             return DataFrame(row_partitions=result,
-                             columns=self.columns,
-                             index=index)
+                             columns=new_cols,
+                             index=self.index)
 
         if (axis == 0):
             result = _map_partitions(rank_helper,
                                      self._col_partitions)
             return DataFrame(col_partitions=result,
                              columns=self.columns,
-                             index=index)
+                             index=self.index)
 
     def rdiv(self, other, axis='columns', level=None, fill_value=None):
         return self._single_df_op_helper(
