@@ -3090,7 +3090,7 @@ class DataFrame(object):
                         1 or 'columns' for column-wise
             interpolation: {'linear', 'lower', 'higher', 'midpoint', 'nearest'}
                 Specifies which interpolation method to use
-
+t
         Returns:
             quantiles : Series or DataFrame
                     If q is an array, a DataFrame will be returned where the
@@ -3109,29 +3109,44 @@ class DataFrame(object):
                 if t == np.dtype('O'):
                     e_msg = "Cannot call quantile on columns of type " + str(t)
                     raise TypeError(e_msg)
+        else:
+            if all([dtype == np.dtype('O') or
+                    np.issubdtype(dtype, np.datetime64)
+                    for dtype in self.dtypes]):
+                raise ValueError("need at least one array to concatenate")
 
         # check that all qs are between 0 and 1
         pd.DataFrame()._check_percentile(q)
 
         if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
 
+            def quantile_helper(df):
+                # This if call prevents ValueErrors with object only partitions
+                if (numeric_only and
+                        all([(dtype == np.dtype('O') or
+                              np.issubdtype(dtype, np.datetime64))
+                            for dtype in df.dtypes])):
+                    return pd.DataFrame()
+                else:
+                    return df.quantile(q=q, axis=axis,
+                                       numeric_only=numeric_only,
+                                       interpolation=interpolation)
+
             if axis == 0 or axis == 'index':
-                result = _map_partitions(
-                                        lambda df: df.quantile(
-                                                q, axis, numeric_only,
-                                                interpolation),
-                                        self._col_partitions)
+                result = _map_partitions(quantile_helper,
+                                         self._col_partitions)
                 q_index = pd.Float64Index(q)
+
+                # select only correct dtype columns
+                new_cols = self.dtypes[self.dtypes.apply(
+                                       lambda x: is_numeric_dtype(x))].index
                 return DataFrame(col_partitions=result,
                                  index=q_index,
-                                 columns=self.columns)
+                                 columns=new_cols)
 
             if axis == 1 or axis == 'columns':
-                result = _map_partitions(
-                                        lambda df: df.quantile(
-                                                q, axis, numeric_only,
-                                                interpolation),
-                                        self._row_partitions)
+                result = _map_partitions(quantile_helper,
+                                         self._row_partitions)
                 q_index = pd.Float64Index(q)
                 return DataFrame(col_partitions=result,
                                  index=q_index,
@@ -3139,21 +3154,20 @@ class DataFrame(object):
 
         # single q means we can use arithmetic helper
         else:
-            def quantile_helper(df, q, axis, numeric_only, interpolation):
-                try:
+
+            def quantile_helper(df):
+                # This if call prevents ValueErrors with object only partitions
+                if (numeric_only and
+                        all([(dtype == np.dtype('O') or
+                              np.issubdtype(dtype, np.datetime64))
+                            for dtype in df.dtypes])):
+                    return pd.Series()
+                else:
                     return df.quantile(q=q, axis=axis,
                                        numeric_only=numeric_only,
                                        interpolation=interpolation)
-                # This exception is thrown when there are only non-numeric columns
-                # in this partition
-                except ValueError:
-                    return pd.Series()
 
-            def remote_func(df):
-                return quantile_helper(df, q=q, axis=axis,
-                                       numeric_only=numeric_only,
-                                       interpolation=interpolation)
-            result = self._arithmetic_helper(remote_func, axis)
+            result = self._arithmetic_helper(quantile_helper, axis)
             result.name = q
             return result
 
