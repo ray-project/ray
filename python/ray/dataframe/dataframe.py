@@ -827,7 +827,9 @@ class DataFrame(object):
                                  columns=new_cols,
                                  index=self.index)
 
-            self._update_inplace(col_partitions=new_parts, columns=new_cols)
+            self._update_inplace(col_partitions=new_parts,
+                                 columns=new_cols,
+                                 index=self.index)
 
         else:
             new_vals = [self._row_metadata.get_global_indices(i, vals)
@@ -842,7 +844,9 @@ class DataFrame(object):
                                  index=new_rows,
                                  columns=self.columns)
 
-            self._update_inplace(row_partitions=new_parts, index=new_rows)
+            self._update_inplace(row_partitions=new_parts,
+                                 index=new_rows,
+                                 columns=self.columns)
 
     def add(self, other, axis='columns', level=None, fill_value=None):
         """Add this DataFrame to another or a scalar/list.
