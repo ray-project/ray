@@ -26,14 +26,14 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
             processed rewards."""
 
     traj = {}
-    trajsize = len(rollout.data["actions"])
-    for key in rollout.data:
-        traj[key] = np.stack(rollout.data[key])
+    trajsize = len(rollout["actions"])
+    for key in rollout:
+        traj[key] = np.stack(rollout[key])
 
     if use_gae:
-        assert "vf_preds" in rollout.data, "Values not found!"
+        assert "vf_preds" in rollout, "Values not found!"
         vpred_t = np.stack(
-            rollout.data["vf_preds"] + [np.array(rollout.last_r)]).squeeze()
+            rollout["vf_preds"] + [np.array(rollout.last_r)]).squeeze()
         delta_t = traj["rewards"] + gamma * vpred_t[1:] - vpred_t[:-1]
         # This formula for the advantage comes
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
@@ -41,7 +41,7 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
         traj["value_targets"] = traj["advantages"] + traj["vf_preds"]
     else:
         rewards_plus_v = np.stack(
-            rollout.data["rewards"] + [np.array(rollout.last_r)]).squeeze()
+            rollout["rewards"] + [np.array(rollout.last_r)]).squeeze()
         traj["advantages"] = discount(rewards_plus_v, gamma)[:-1]
 
     for i in range(traj["advantages"].shape[0]):
