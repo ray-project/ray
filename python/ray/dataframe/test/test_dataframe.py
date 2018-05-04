@@ -2211,12 +2211,12 @@ def test_pow():
 
 @pytest.fixture
 def test_prod(ray_df, pandas_df):
-    assert(ray_df_equals_pandas(ray_df.prod(), pandas_df.prod()))
+    assert(ray_df.prod().equals(pandas_df.prod()))
 
 
 @pytest.fixture
 def test_product(ray_df, pandas_df):
-    assert(ray_df_equals_pandas(ray_df.product(), pandas_df.product()))
+    assert(ray_df.product().equals(pandas_df.product()))
 
 
 @pytest.fixture
