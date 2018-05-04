@@ -3105,3 +3105,4 @@ def test__doc__():
             pd_obj = getattr(pd.DataFrame, attr, None)
             if callable(pd_obj) or isinstance(pd_obj, property):
                 assert obj.__doc__ == pd_obj.__doc__
+                
