@@ -2245,11 +2245,12 @@ def test_nsmallest():
         ray_df.nsmallest(None, None)
 
 
-def test_nunique():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.nunique()
+@pytest.fixture
+def test_nunique(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.nunique(),
+           pandas_df.nunique()))
+    assert(ray_df_equals_pandas(ray_df.nunique(axis=1),
+           pandas_df.nunique(axis=1)))
 
 
 def test_pct_change():
@@ -2770,11 +2771,12 @@ def test_shift():
         ray_df.shift()
 
 
-def test_skew():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.skew()
+@pytest.fixture
+def test_skew(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.skew(),
+           pandas_df.skew()))
+    assert(ray_df_equals_pandas(ray_df.skew(axis=1),
+           pandas_df.skew(axis=1)))
 
 
 def test_slice_shift():
