@@ -775,7 +775,11 @@ class DataFrame(object):
             If inplace is set to True, returns None, otherwise returns a new
             DataFrame with the dropna applied.
         """
+        inplace = validate_bool_kwarg(inplace, "inplace")
+
         if is_list_like(axis):
+            axis = [pd.DataFrame()._get_axis_number(ax) for ax in axis]
+
             result = self
             # TODO(kunalgosar): this builds an intermediate dataframe,
             # which does unnecessary computation
@@ -785,14 +789,13 @@ class DataFrame(object):
             if not inplace:
                 return result
 
-            return self._update_inplace(
-                block_partitions=result._block_partitions,
-                columns=result.columns,
-                index=result.index
-            )
+            self._update_inplace(block_partitions=result._block_partitions,
+                                 columns=result.columns,
+                                 index=result.index)
+
+            return None
 
         axis = pd.DataFrame()._get_axis_number(axis)
-        inplace = validate_bool_kwarg(inplace, "inplace")
 
         if how is not None and how not in ['any', 'all']:
             raise ValueError('invalid how option: %s' % how)
@@ -858,6 +861,8 @@ class DataFrame(object):
             self._update_inplace(row_partitions=new_parts,
                                  index=new_rows,
                                  columns=self.columns)
+            
+            return None
 
     def add(self, other, axis='columns', level=None, fill_value=None):
         """Add this DataFrame to another or a scalar/list.
