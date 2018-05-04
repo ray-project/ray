@@ -1187,6 +1187,18 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def corr(self, method='pearson', min_periods=1):
+        """Compute pairwise correlation of columns, excluding NA/null values.
+
+        Arguments:
+            method: {‘pearson’, ‘kendall’, ‘spearman’}
+            min_periods: Minimum number of observations required per pair of
+                columns to have a valid result. Currently only available for
+                pearson and spearman correlation
+
+        Returns:
+            DataFrame of correlations between each pair of columns.
+        """
+
         if method != 'pearson':
             raise NotImplementedError(
                 "To contribute to Pandas on Ray, please visit "
@@ -1260,9 +1272,46 @@ class DataFrame(object):
         return self._arithmetic_helper(remote_func, axis, level)
 
     def cov(self, min_periods=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Compute pairwise covariance of columns, excluding NA/null values.
+
+        Arguments:
+            min_periods: Minimum number of observations required per pair of
+                columns to have a valid result.
+
+        Returns:
+            DataFrame of covariances between each pair of columns.
+        """
+
+        # the covariance is only calculated on numerical rows so we will
+        # ignore all other rows
+        new_cols = self.dtypes[self.dtypes.apply(
+            lambda x: is_numeric_dtype(x))].index
+        num_rows = len(self._row_metadata)
+
+        # compute the mean for each numerical column in the DataFrame
+        means = _map_partitions(
+                lambda df: (df.select_dtypes([np.number])
+                    .sum(axis=0)/num_rows).values,
+            self._col_partitions)
+
+        # For each column, subtract the mean for the column from each value in
+        # the column. This will be used in the covariance
+        subtracted_means = _map_partitions(
+                lambda df, means: np.subtract(df.select_dtypes([np.number]),
+                                              means),
+            self._col_partitions, means)
+
+        norms = pd.concat(ray.get(subtracted_means), axis=1)
+        norms.columns = new_cols
+
+        cov_dict = {}
+        for col in new_cols:
+            norm = norms[col]
+            data = [(norm*norms[col2]).sum()/(num_rows-1)
+                    for col2 in new_cols]
+            cov_dict[col] = data
+
+        return DataFrame(data=cov_dict, index=new_cols, columns=new_cols)
 
     def _cumulative_helper(self, func, axis):
         axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
