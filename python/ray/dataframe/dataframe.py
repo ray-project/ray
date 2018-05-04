@@ -2896,9 +2896,20 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def nunique(self, axis=0, dropna=True):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Return Series with number of distinct
+           observations over requested axis.
+
+        Args:
+            axis : {0 or ‘index’, 1 or ‘columns’}, default 0
+            dropna : boolean, default True
+
+        Returns:
+            nunique : Series
+        """
+        def remote_func(df):
+            return df.nunique(axis=axis, dropna=dropna)
+
+        return self._arithmetic_helper(remote_func, axis)
 
     def pct_change(self, periods=1, fill_method='pad', limit=None, freq=None,
                    **kwargs):
@@ -3640,9 +3651,23 @@ class DataFrame(object):
 
     def skew(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Return unbiased skew over requested axis Normalized by N-1
+
+        Args:
+            axis : {index (0), columns (1)}
+            skipna : boolean, default True
+            Exclude NA/null values when computing the result.
+            level : int or level name, default None
+            numeric_only : boolean, default None
+
+        Returns:
+            skew : Series or DataFrame (if level specified)
+        """
+        def remote_func(df):
+            return df.skew(axis=axis, skipna=skipna, level=level,
+                           numeric_only=numeric_only, **kwargs)
+
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def slice_shift(self, periods=1, axis=0):
         raise NotImplementedError(
