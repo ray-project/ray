@@ -454,17 +454,9 @@ class StandardAutoscaler(object):
                 TAG_RAY_NODE_TYPE: "Worker",
                 TAG_RAY_NODE_STATUS: "Uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
-<<<<<<< Updated upstream
             }, count)
-        # TODO(ekl) be less conservative in this check
-        assert len(self.workers()) > num_before, \
-            "Num nodes failed to increase after creating a new node"
-=======
-            },
-            count)
         if len(self.workers()) <= num_before:
             print("Warning: Num nodes failed to increase after node creation")
->>>>>>> Stashed changes
 
     def workers(self):
         return self.provider.nodes(tag_filters={
