@@ -112,7 +112,6 @@ def to_pandas(df):
     else:
         pd_df = pd.concat(ray.get(df._col_partitions),
                           axis=1)
-    print(df.columns)
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
@@ -380,3 +379,14 @@ def _match_partitioning(column_partition, lengths, index):
 @ray.remote
 def _concat_index(*index_parts):
     return index_parts[0].append(index_parts[1:])
+
+
+@ray.remote
+def _correct_column_dtypes(*column):
+    """Corrects dtypes of a column by concatenating column partitions and
+    splitting the column back into partitions.
+
+    Args:
+    """
+    concat_column = pd.concat(column, copy=False)
+    return create_blocks_helper(concat_column, len(column), 1)
