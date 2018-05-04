@@ -9,7 +9,7 @@ from pandas.core.index import _ensure_index_from_sequences
 from pandas._libs import lib
 from pandas.core.dtypes.cast import maybe_upcast_putmask
 from pandas import compat
-from pandas.compat import lzip, string_types, cPickle as pkl
+from pandas.compat import lzip, to_str, string_types, cPickle as pkl
 import pandas.core.common as com
 from pandas.core.dtypes.common import (
     is_bool_dtype,
@@ -756,7 +756,8 @@ class DataFrame(object):
 
     T = property(transpose)
 
-    def dropna(self, axis, how, thresh=None, subset=[], inplace=False):
+    def dropna(self, axis=0, how='any', thresh=None, subset=None,
+               inplace=False):
         """Create a new DataFrame from the removed NA values from this one.
 
         Args:
@@ -774,7 +775,94 @@ class DataFrame(object):
             If inplace is set to True, returns None, otherwise returns a new
             DataFrame with the dropna applied.
         """
-        raise NotImplementedError("Not yet")
+        inplace = validate_bool_kwarg(inplace, "inplace")
+
+        if is_list_like(axis):
+            axis = [pd.DataFrame()._get_axis_number(ax) for ax in axis]
+
+            result = self
+            # TODO(kunalgosar): this builds an intermediate dataframe,
+            # which does unnecessary computation
+            for ax in axis:
+                result = result.dropna(
+                    axis=ax, how=how, thresh=thresh, subset=subset)
+            if not inplace:
+                return result
+
+            self._update_inplace(block_partitions=result._block_partitions,
+                                 columns=result.columns,
+                                 index=result.index)
+
+            return None
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        if how is not None and how not in ['any', 'all']:
+            raise ValueError('invalid how option: %s' % how)
+        if how is None and thresh is None:
+            raise TypeError('must specify how or thresh')
+
+        if subset is not None:
+            subset = set(subset)
+
+            if axis == 1:
+                subset = [item for item in self.index if item in subset]
+            else:
+                subset = [item for item in self.columns if item in subset]
+
+        def dropna_helper(df):
+            new_df = df.dropna(axis=axis, how=how, thresh=thresh,
+                               subset=subset, inplace=False)
+
+            if axis == 1:
+                new_index = new_df.columns
+                new_df.columns = pd.RangeIndex(0, len(new_df.columns))
+            else:
+                new_index = new_df.index
+                new_df.reset_index(drop=True, inplace=True)
+
+            return new_df, new_index
+
+        parts = self._col_partitions if axis == 1 else self._row_partitions
+        result = [_deploy_func._submit(args=(dropna_helper, df),
+                                       num_return_vals=2) for df in parts]
+        new_parts, new_vals = [list(t) for t in zip(*result)]
+
+        if axis == 1:
+            new_vals = [self._col_metadata.get_global_indices(i, vals)
+                        for i, vals in enumerate(ray.get(new_vals))]
+
+            # This flattens the 2d array to 1d
+            new_vals = [i for j in new_vals for i in j]
+            new_cols = self.columns[new_vals]
+
+            if not inplace:
+                return DataFrame(col_partitions=new_parts,
+                                 columns=new_cols,
+                                 index=self.index)
+
+            self._update_inplace(col_partitions=new_parts,
+                                 columns=new_cols,
+                                 index=self.index)
+
+        else:
+            new_vals = [self._row_metadata.get_global_indices(i, vals)
+                        for i, vals in enumerate(ray.get(new_vals))]
+
+            # This flattens the 2d array to 1d
+            new_vals = [i for j in new_vals for i in j]
+            new_rows = self.index[new_vals]
+
+            if not inplace:
+                return DataFrame(row_partitions=new_parts,
+                                 index=new_rows,
+                                 columns=self.columns)
+
+            self._update_inplace(row_partitions=new_parts,
+                                 index=new_rows,
+                                 columns=self.columns)
+
+            return None
 
     def add(self, other, axis='columns', level=None, fill_value=None):
         """Add this DataFrame to another or a scalar/list.
@@ -1797,9 +1885,45 @@ class DataFrame(object):
             return new_obj
 
     def filter(self, items=None, like=None, regex=None, axis=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Subset rows or columns based on their labels
+
+        Args:
+            items (list): list of labels to subset
+            like (string): retain labels where `arg in label == True`
+            regex (string): retain labels matching regex input
+            axis: axis to filter on
+
+        Returns:
+            A new dataframe with the filter applied.
+        """
+        nkw = com._count_not_none(items, like, regex)
+        if nkw > 1:
+            raise TypeError('Keyword arguments `items`, `like`, or `regex` '
+                            'are mutually exclusive')
+        if nkw == 0:
+            raise TypeError('Must pass either `items`, `like`, or `regex`')
+
+        if axis is None:
+            axis = 'columns'  # This is the default info axis for dataframes
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+        labels = self.columns if axis else self.index
+
+        if items is not None:
+            bool_arr = labels.isin(items)
+        elif like is not None:
+            def f(x):
+                return like in to_str(x)
+            bool_arr = labels.map(f).tolist()
+        else:
+            def f(x):
+                return matcher.search(to_str(x)) is not None
+            matcher = re.compile(regex)
+            bool_arr = labels.map(f).tolist()
+
+        if not axis:
+            return self[bool_arr]
+        return self[self.columns[bool_arr]]
 
     def first(self, offset):
         raise NotImplementedError(
@@ -3990,7 +4114,9 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-            indices_for_rows = [col for col in self.col if col in set(columns)]
+            indices_for_rows = \
+                [i for i, item in enumerate(self.columns)
+                 if item in set(columns)]
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
