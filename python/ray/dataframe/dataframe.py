@@ -2672,7 +2672,7 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def nunique(self, axis=0, dropna=True):
-        """Return Series with number of distinct 
+        """Return Series with number of distinct
            observations over requested axis.
 
         Args:
@@ -3427,13 +3427,13 @@ class DataFrame(object):
             Exclude NA/null values when computing the result.
             level : int or level name, default None
             numeric_only : boolean, default None
-            
+
         Returns:
             skew : Series or DataFrame (if level specified)
         """
         def remote_func(df):
             return df.skew(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only, **kwargs)
+                           numeric_only=numeric_only, **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
