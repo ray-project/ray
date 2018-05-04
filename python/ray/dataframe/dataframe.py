@@ -1365,20 +1365,19 @@ class DataFrame(object):
         Returns:
             DataFrame with the diff applied
         """
-        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
-            else 0
+        axis = pd.DataFrame()._get_axis_number(axis)
+        partitions = (self._col_partitions if
+                      axis == 0 else self._row_partitions)
+
+        result = _map_partitions(lambda df:
+                                 df.diff(axis=axis, periods=periods),
+                                 partitions)
 
         if (axis == 1):
-            result = _map_partitions(lambda df:
-                                     df.diff(axis=axis, periods=periods),
-                                     self._row_partitions)
             return DataFrame(row_partitions=result,
                              columns=self.columns,
                              index=self.index)
         if (axis == 0):
-            result = _map_partitions(lambda df:
-                                     df.diff(axis=axis, periods=periods),
-                                     self._col_partitions)
             return DataFrame(col_partitions=result,
                              columns=self.columns,
                              index=self.index)
