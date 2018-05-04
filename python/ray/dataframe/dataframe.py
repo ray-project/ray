@@ -776,9 +776,20 @@ class DataFrame(object):
             DataFrame with the dropna applied.
         """
         if is_list_like(axis):
-            raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
+            result = self
+            # TODO(kunalgosar): this builds an intermediate dataframe,
+            # which does unnecessary computation
+            for ax in axis:
+                result = result.dropna(
+                    axis=ax, how=how, thresh=thresh, subset=subset)
+            if not inplace:
+                return result
+
+            return self._update_inplace(
+                block_partitions=result._block_partitions,
+                columns=result.columns,
+                index=result.index
+            )
 
         axis = pd.DataFrame()._get_axis_number(axis)
         inplace = validate_bool_kwarg(inplace, "inplace")
