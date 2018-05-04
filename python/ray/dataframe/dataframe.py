@@ -45,7 +45,8 @@ from .utils import (
     _concat_index,
     _optimize_partitions,
     _explode_block_partitions,
-    _map_partitions_condense)
+    _map_partitions_condense,
+    _map_partitions_flex)
 from . import (get_npartitions, get_nrowpartitions, get_ncolpartitions)
 from .index_metadata import _IndexMetadata
 
@@ -56,7 +57,7 @@ class DataFrame(object):
     def __init__(self, data=None, index=None, columns=None, dtype=None,
                  copy=False, col_partitions=None, row_partitions=None,
                  block_partitions=None, row_metadata=None, col_metadata=None,
-                 nrows=None, ncols=None):
+                 nrows=None, ncols=None, est_size=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -83,6 +84,9 @@ class DataFrame(object):
                 The number of row partitions to generate
             ncols:
                 The number of col partitions to generate
+            est_size:
+                The estimated memory footprint of the data. For experimental
+                purposes only.
 
         """
 
@@ -164,6 +168,8 @@ class DataFrame(object):
         else:
             self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
                                                 index=columns, axis=1)
+
+        self.est_size = est_size
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -695,46 +701,31 @@ class DataFrame(object):
         # row_len, col_len = axis_dims = (len(self._row_metadata), len(self._col_metadata))
         axis_dims = (0, 0)
 
-        dsize = 2**28 * 2**3 # Hardcode dtype for now
+        dsize = self.est_size if self.est_size else len(self._row_metadata) * len(self._col_metadata) * 8
 
         (opt_rows, opt_cols), _ = _optimize_partitions(block_dims, axis_dims, dsize, "isna")
 
-        # Explode routine
-        row_explode_factor = max(opt_rows // curr_rows, 1)
-        col_explode_factor = max(opt_cols // curr_cols, 1)
-        curr_rows *= row_explode_factor
-        curr_cols *= col_explode_factor
-
-        block_parts = _explode_block_partitions(block_parts, 
-                                                (row_explode_factor,
-                                                 col_explode_factor))
-
-        # TODO: Possibly short-circuit for 1x1 factor
-        row_condense_factor = curr_rows // opt_rows
-        col_condense_factor = curr_cols // opt_cols
-
-        print(block_parts.shape, (row_condense_factor, col_condense_factor))
-
-        new_block_partitions = _map_partitions_condense(lambda df: df.isna(),
-                                                        (row_condense_factor,
-                                                         col_condense_factor),
-                                                        block_parts)
+        new_block_partitions, factors = _map_partitions_flex(lambda df: df.isna(),
+                                                             (opt_rows, opt_cols),
+                                                             block_parts)
 
         # Since we know that an axis will be (exploded XOR condensed XOR
         # unchanged), we can use if-else here, each fxn has a short circuit
-        if row_explode_factor > row_condense_factor:
-            new_row_metadata = self._row_metadata.explode(row_explode_factor)
+        row_factor, col_factor = factors
+        if row_factor > 0:
+            new_row_metadata = self._row_metadata.explode(row_factor)
         else:
-            new_row_metadata = self._row_metadata.condense(row_condense_factor)
+            new_row_metadata = self._row_metadata.condense(abs(row_factor))
 
-        if col_explode_factor > col_condense_factor:
-            new_col_metadata = self._col_metadata.explode(col_explode_factor)
+        if col_factor > 0:
+            new_col_metadata = self._col_metadata.explode(col_factor)
         else:
-            new_col_metadata = self._col_metadata.condense(col_condense_factor)
+            new_col_metadata = self._col_metadata.condense(abs(col_factor))
 
         return DataFrame(block_partitions=new_block_partitions,
                          row_metadata=new_row_metadata,
-                         col_metadata=new_col_metadata)
+                         col_metadata=new_col_metadata,
+                         est_size = dsize // 8)
 
     def isnull(self):
         """Fill a DataFrame with booleans for cells containing a null value.

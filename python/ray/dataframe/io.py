@@ -106,7 +106,7 @@ def _compute_offset(fn, npartitions):
         start = start + total_offset + 1
 
     bio.close()
-    return offsets
+    return offsets, total_bytes
 
 
 def _get_firstline(file_path):
@@ -116,8 +116,21 @@ def _get_firstline(file_path):
     return first
 
 
+def _get_firsttwolines(file_path):
+    bio = open(file_path, 'rb')
+    first = bio.readline()
+    second = bio.readline()
+    bio.close()
+    return first, second
+
+
 def _infer_column(first_line, kwargs={}):
     return pd.read_csv(BytesIO(first_line), **kwargs).columns
+
+
+def _infer_column_and_dtype(lines, kwargs={}):
+    df = pd.read_csv(BytesIO(lines), **kwargs)
+    return df.columns, df.dtypes
 
 
 @ray.remote
@@ -247,10 +260,10 @@ def read_csv(filepath,
         memory_map=memory_map,
         float_precision=float_precision)
 
-    offsets = _compute_offset(filepath, get_nrowpartitions())
+    offsets, total_bytes = _compute_offset(filepath, get_nrowpartitions())
 
-    first_line = _get_firstline(filepath)
-    columns = _infer_column(first_line, kwargs=kwargs)
+    first_line, second_line = _get_firsttwolines(filepath)
+    columns, dtypes = _infer_column_and_dtype(first_line + second_line, kwargs=kwargs)
 
     df_obj_ids = []
     for start, end in offsets:
@@ -262,7 +275,12 @@ def read_csv(filepath,
                 filepath, start, end, kwargs=kwargs)
         df_obj_ids.append(df)
 
-    return DataFrame(row_partitions=df_obj_ids, columns=columns)
+    # EXPERIMENTAL
+    est_lines = (total_bytes - len(first_line)) / len(second_line)
+    line_size = dtypes.apply(lambda x: x.itemsize).sum()
+    est_size = est_lines * line_size
+
+    return DataFrame(row_partitions=df_obj_ids, columns=columns, est_size=est_size)
 
 
 def read_json(path_or_buf=None,

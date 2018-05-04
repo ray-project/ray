@@ -455,6 +455,7 @@ def _explode_block_partitions(block_partitions, factors):
 
 @ray.remote
 def _explode_lengths(lengths, factor):
+    # FIXME: There might be a more "numpy-esque" way to do this
     def explode_length(length):
         # In the case that the size is not a multiple of the number of partitions,
         # we need to add one to each partition to avoid losing data off the end
@@ -465,14 +466,17 @@ def _explode_lengths(lengths, factor):
             new_lengths.append(length - sum(new_lengths))
         return new_lengths
 
-    return list(chain.from_iterable([explode_length(length)
-                                     for length in lengths]))
+    return np.fromiter(chain.from_iterable([explode_length(length)
+                                            for length in lengths]),
+                       lengths.dtype,
+                       count=factor * len(lengths))
 
 
 @ray.remote
 def _condense_lengths(lengths, factor):
-    return [sum(lengths[i*factor:(i+1)*factor])
-            for i in range(len(lengths) // factor)]
+    # FIXME: There might be a more "numpy-esque" way to do this
+    return np.array([sum(lengths[i*factor:(i+1)*factor])
+                     for i in range(len(lengths) // factor)])
 
 
 @ray.remote
@@ -538,9 +542,29 @@ def _map_partitions_condense(func, shape, block_partitions):
 
 
 @ray.remote
-def _deploy_func_explode(func, factor, sector, partition):
+def _deploy_func_explode(func, factor, sector, block_dims, *blocks):
+    nblock_rows, nblock_cols = block_dims
+    assert nblock_rows * nblock_cols == len(blocks)
+
+    if len(blocks) == 1:
+        partition = blocks[0]
+    else:
+        cc_kwargs = dict(copy=False, ignore_index=True)
+
+        if nblock_rows == 1 and nblock_cols == 1:
+            partition = blocks[0]
+        elif nblock_rows == 1:
+            partition = pd.concat([p.T for p in blocks], axis=0, **cc_kwargs).T
+        elif nblock_cols == 1:
+            partition = pd.concat(blocks, axis=0, **cc_kwargs)
+        else:
+            partition = pd.concat([pd.concat([df.T for df in blocks[i*nblock_cols:(i + 1)*nblock_cols]],
+                                             axis=0,
+                                             **cc_kwargs).T for i in range(nblock_rows)],
+                                   axis=0, **cc_kwargs)
+
     row_factor, col_factor = factor
-    i, j = sector // row_factor, sector % col_factor
+    i, j = sector
     nrows, ncols = partition.shape
 
     # In the case that the size is not a multiple of the number of partitions,
@@ -567,27 +591,45 @@ def _map_partitions_flex(func, opt_shape, block_partitions):
     block_rows, block_cols = block_partitions.shape
     opt_rows, opt_cols = opt_shape
 
+    # TODO: if opt_shape == block_partitions.shape, short-circuit map_partitions
+
     if opt_rows >= block_rows: # Explode rows
         row_explode_factor = opt_rows // block_rows
+        row_condense_factor = 1
+        row_factor = row_explode_factor
     else: # Condense rows
+        row_explode_factor = 1
         row_condense_factor = block_rows // opt_rows
+        row_factor = -row_condense_factor
 
     if opt_cols >= block_cols: # Explode cols
         col_explode_factor = opt_cols // block_cols
+        col_condense_factor = 1
+        col_factor = col_explode_factor
     else: # Condense cols
+        col_explode_factor = 1
         col_condense_factor = block_cols // opt_cols
+        col_factor = -col_condense_factor
 
     result = np.empty((opt_rows, opt_cols), dtype=object)
-    for i in range(block_rows):
-        for j in range(block_cols):
-            for k in range(row_explode_factor):
-                for l in range(col_explode_factor):
-                    result[i*k, j*l] = _deploy_func_explode.remote(func, 
-                                                                   (row_explode_factor, col_explode_factor),
-                                                                   k * row_explode_factor + l,
-                                                                   block_partitions[i, j])
 
-    return result
+    for i in range(opt_rows):
+        for j in range(opt_cols):
+            orig_row = i // row_explode_factor
+            orig_col = j // col_explode_factor
+            sector_row = i % row_explode_factor
+            sector_col = j % col_explode_factor
+            blocks = block_partitions[orig_row*row_condense_factor:(orig_row+1)*row_condense_factor,
+                                      orig_col*col_condense_factor:(orig_col+1)*col_condense_factor].flatten().tolist()
+            block_dims = (row_condense_factor, col_condense_factor)
+
+            result[i, j] = _deploy_func_explode.remote(func,
+                                                       (row_explode_factor, col_explode_factor),
+                                                       (sector_row, sector_col),
+                                                       block_dims,
+                                                       *blocks)
+
+    return result, (row_factor, col_factor)
 
 
 def _map_partitions_coalesce(func, block_partitions, axis):
@@ -633,13 +675,14 @@ params = {
 
 MAX_ZSCORE = 2
 
-out_dims = (get_nrowpartitions(), get_ncolpartitions())
+out_dims = (1, 4)
 
 def temp(ndims):
     global out_dims
     out_dims = ndims
 
 def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
+    return out_dims, 0
     in_rows, in_cols = in_dims
     row_len, col_len = shape
     in_nparts = in_rows * in_cols
@@ -786,7 +829,8 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
     return split, time
 
 
-def waitall(df):
+def waitall(df, wait_coords=False):
     parts = df._block_partitions.flatten().tolist()
     ray.wait(parts, len(parts))
-    df._row_metadata._coord_df, df._col_metadata._coord_df
+    if wait_coords:
+        df._row_metadata._coord_df, df._col_metadata._coord_df

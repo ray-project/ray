@@ -320,11 +320,8 @@ class _IndexMetadata(object):
         if not isinstance(self._lengths_cache, ray.local_scheduler.ObjectID):
             lengths_copy = self._lengths_cache.copy()
 
-        index_copy = self._index_cache
-        if self._index_cache is not None:
-            index_copy = self._index_cache.copy()
-
-        return _IndexMetadata(index=index_copy,
+        # Since indexes are defined as immutable, no need to copy
+        return _IndexMetadata(index=self._index_cache_validator,
                               coord_df_oid=coord_df_copy,
                               lengths_oid=lengths_copy)
 

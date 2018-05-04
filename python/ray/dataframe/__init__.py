@@ -63,8 +63,8 @@ __all__ = [
 try:
     if threading.current_thread().name == "MainThread":
         import ray
-        ray.init(num_cpus=8)
+        ray.init()
 except AssertionError:
     pass
 
-NWORKERS = 8 # psutil.cpu_count()
+NWORKERS = psutil.cpu_count()
