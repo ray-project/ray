@@ -2168,7 +2168,7 @@ def test_reindex():
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
-        ray_df.reindex(None)
+        ray_df.reindex()
 
 
 def test_reindex_axis():
