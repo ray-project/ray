@@ -360,9 +360,6 @@ class DataFrame(object):
             else 0
 
         ### EXPERIMENTAL ###
-        # new_blocks = _explode_block_partitions(self._block_partitions, (1, 8))
-        # self._col_metadata.explode(8)
-        # oid_series = ray.get(_map_partitions_coalesce(remote_func, new_blocks, axis))
 
         block_parts = self._block_partitions
         curr_rows, curr_cols = block_dims = block_parts.shape
@@ -373,7 +370,7 @@ class DataFrame(object):
 
         dsize = self.est_size if self.est_size else len(self._row_metadata) * len(self._col_metadata) * 8
 
-        (opt_rows, opt_cols), _ = _optimize_partitions(block_dims, axis_dims, dsize, "sum")
+        (opt_rows, opt_cols), _ = _optimize_partitions(block_dims, axis_dims, dsize, "sum", axis=axis)
 
         new_partitions, factors = _map_partitions_flex(remote_func,
                                                        (opt_rows, opt_cols),
@@ -381,9 +378,9 @@ class DataFrame(object):
 
         oid_series = ray.get(new_partitions.flatten().tolist())
 
+        # oid_series = ray.get(_map_partitions_coalesce(remote_func, block_parts, axis))
+
         # oid_series = ray.get(_map_partitions(remote_func,
-        #                                      (opt_rows, opt_cols),
-        #                                      block_parts)
         #                      self._col_partitions if axis == 0
         #                      else self._row_partitions))
 

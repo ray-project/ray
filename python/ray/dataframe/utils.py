@@ -660,14 +660,14 @@ def _map_partitions_coalesce(func, block_partitions, axis):
 
 
 flookup = { # Actual op_rate for isna is roughly 90ms for 2**24 * 2**3 versus 70 as presented
-    "isna": {"type": "applymap", "op_rate": 1100 / (2**28 * 2**3), "op_stdev": 150 / (2**28 * 2**3)},
-    "sum": {"type": "axis-reduce", "op_rate": 0, "op_stdev": 0}
+    "isna": {"type": "applymap", "op_rate": 615 / (2**28 * 2**3), "op_stdev": 0 / (2**28 * 2**3)},
+    "sum": {"type": "axis-reduce", "op_rate": 2500 / (2**27 * 2**3), "op_stdev": 0 / (2**27 * 2**3)}
 }
 
 
 params = {
-    "explode_no_cols": 350 / (2**20 * 2**8 * 2**3),
-    "explode_cols": 2000 / (2**20 * 2**8 * 2**3),
+    "explode_no_cols": 0,
+    "explode_cols": 0,
     "condense": 0,
     "flookup": flookup
 }
@@ -682,7 +682,8 @@ def temp(ndims):
     out_dims = ndims
 
 def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
-    return out_dims, 0
+    # print("spitting out with dims {}".format((in_dims[0], 1))) # split))
+    # return (in_dims[0], 1), 0
     in_rows, in_cols = in_dims
     row_len, col_len = shape
     in_nparts = in_rows * in_cols
@@ -702,11 +703,11 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
         x = # bytes per part in cluster
 
         returns the runtime for condensing on one task"""
-        return x * 11257 / (2**11 * 2**11 * 2**3) * nparts / 256
+        return (2100 / (2**28 * 2**3) * x) / 256 * nparts + 160
 
     def overhead_f(split):
         x_sp, y_sp = split
-        return 0 * x_sp * y_sp
+        return 20 * x_sp * y_sp
 
     def size_penalty_f(dsplit):
         if dsplit > 2**23 * 2**3:
@@ -800,7 +801,7 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
         # Var(x, y): StdDev for Summed Normal grows by O(sqrt(k))
         task_var = MAX_ZSCORE * op_stdev_f(dsplit) * np.sqrt(total_iters)
 
-        total_time = explode_time + task_time + task_overhead + task_var
+        total_time = task_time + task_overhead + task_var
         return total_time
 
     explode_no_cols_rate = params["explode_no_cols"]
@@ -835,10 +836,11 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
 
     candidate_splits = list(product(candidate_rows, candidate_cols))
     times = [(split, est_time(split)) for split in candidate_splits]
-    res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((len(candidate_rows), len(candidate_cols))),
-                          index=candidate_rows, columns=candidate_cols)
-    print(res_df)
+    # res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((len(candidate_rows), len(candidate_cols))),
+    #                       index=candidate_rows, columns=candidate_cols)
+    # print(res_df)
     split, time = min(times, key=lambda x: x[1])
+    print("spitting out with dims {}".format(split))
     return split, time
 
 

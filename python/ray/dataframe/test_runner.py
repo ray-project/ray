@@ -17,6 +17,7 @@ parser.add_argument('--niters', dest='niters', type=int, default=10)
 parser.add_argument('args', nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
+print(args.nrows, args.ncols, args.args)
 nrows = args.nrows.split(',')
 ncols = args.ncols.split(',')
 
@@ -34,7 +35,7 @@ for i, nrow in enumerate(nrows):
         extra_args = ['--nrows', nrow, '--ncols', ncol]
 
         for k in range(args.niters):
-            cp = subprocess.run(['python', 'ray_run.py', args.data, args.test_op] + args.args + extra_args,
+            cp = subprocess.run(['python', 'ray_run.py', args.data, args.test_op] + extra_args + args.args ,
                                 stderr=subprocess.DEVNULL, stdout=subprocess.PIPE)
             output = cp.stdout.decode('utf-8')
             print(output, end='')
