@@ -360,27 +360,48 @@ class DataFrame(object):
             else 0
 
         ### EXPERIMENTAL ###
-        new_blocks = _explode_block_partitions(self._block_partitions, (1, 8))
-        self._col_metadata.explode(8)
-        oid_series = ray.get(_map_partitions_coalesce(remote_func, new_blocks, axis))
+        # new_blocks = _explode_block_partitions(self._block_partitions, (1, 8))
+        # self._col_metadata.explode(8)
+        # oid_series = ray.get(_map_partitions_coalesce(remote_func, new_blocks, axis))
+
+        block_parts = self._block_partitions
+        curr_rows, curr_cols = block_dims = block_parts.shape
+
+        # TODO: might be a blocking call
+        # row_len, col_len = axis_dims = (len(self._row_metadata), len(self._col_metadata))
+        axis_dims = (0, 0)
+
+        dsize = self.est_size if self.est_size else len(self._row_metadata) * len(self._col_metadata) * 8
+
+        (opt_rows, opt_cols), _ = _optimize_partitions(block_dims, axis_dims, dsize, "sum")
+
+        new_partitions, factors = _map_partitions_flex(remote_func,
+                                                       (opt_rows, opt_cols),
+                                                       block_parts)
+
+        oid_series = ray.get(new_partitions.flatten().tolist())
 
         # oid_series = ray.get(_map_partitions(remote_func,
+        #                                      (opt_rows, opt_cols),
+        #                                      block_parts)
         #                      self._col_partitions if axis == 0
         #                      else self._row_partitions))
 
         if axis == 0:
-            # We use the index to get the internal index.
-            oid_series = [(oid_series[i], i) for i in range(len(oid_series))]
+            # # We use the index to get the internal index.
+            # oid_series = [(oid_series[i], i) for i in range(len(oid_series))]
 
-            if len(oid_series) > 1:
-                for df, partition in oid_series:
-                    this_partition = \
-                        self._col_metadata.partition_series(partition)
-                    df.index = \
-                        this_partition[this_partition.isin(df.index)].index
+            # if len(oid_series) > 1:
+            #     for df, partition in oid_series:
+            #         this_partition = \
+            #             self._col_metadata.partition_series(partition)
+            #         df.index = \
+            #             this_partition[this_partition.isin(df.index)].index
 
-            result_series = pd.concat([obj[0] for obj in oid_series],
-                                      axis=0, copy=False)
+            # result_series = pd.concat([obj[0] for obj in oid_series],
+            #                           axis=0, copy=False)
+            result_series = pd.concat(oid_series, axis=0, copy=False)
+            result_series.index = self.columns
         else:
             result_series = pd.concat(oid_series, axis=0, copy=False)
             result_series.index = self.index

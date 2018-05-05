@@ -808,23 +808,36 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
 
     condense_rate = params["condense"]
 
-    bigger_rows = (np.arange(get_nworkers() * 2) + 1) * in_rows
-    bigger_cols = (np.arange(get_nworkers() * 2) + 1) * in_cols
+    if ftype == "applymap":
+        bigger_rows = (np.arange(get_nworkers() * 2) + 1) * in_rows
+        bigger_cols = (np.arange(get_nworkers() * 2) + 1) * in_cols
 
-    smaller_rows = np.arange(1, in_rows)
-    smaller_cols = np.arange(1, in_cols)
+        smaller_rows = np.arange(1, in_rows)
+        smaller_cols = np.arange(1, in_cols)
 
-    candidate_rows = np.hstack((smaller_rows, bigger_rows)) # [unlim_rows < get_nworkers() * 2]
-    candidate_cols = np.hstack((smaller_cols, bigger_cols)) # [unlim_cols < get_nworkers() * 2]
+        candidate_rows = np.hstack((smaller_rows, bigger_rows)) # [unlim_rows < get_nworkers() * 2]
+        candidate_cols = np.hstack((smaller_cols, bigger_cols)) # [unlim_cols < get_nworkers() * 2]
+    elif ftype == "axis-reduce":
+        axis = kwargs["axis"]
+        candidate_rows = np.array(1)
+        candidate_cols = np.array(1)
+        if axis == 0:
+            bigger_cols = (np.arange(get_nworkers() * 2) + 1) * in_cols
+            smaller_cols = np.arange(1, in_cols)
+            candidate_cols = np.hstack((smaller_cols, bigger_cols)) # [unlim_cols < get_nworkers() * 2]
+        else:
+            bigger_rows = (np.arange(get_nworkers() * 2) + 1) * in_rows
+            smaller_rows = np.arange(1, in_rows)
+            candidate_rows = np.hstack((smaller_rows, bigger_rows)) # [unlim_rows < get_nworkers() * 2]
 
     candidate_rows = candidate_rows[np.logical_or((candidate_rows % in_rows == 0), (in_rows % candidate_rows == 0))]
     candidate_cols = candidate_cols[np.logical_or((candidate_cols % in_cols == 0), (in_cols % candidate_cols == 0))]
 
     candidate_splits = list(product(candidate_rows, candidate_cols))
     times = [(split, est_time(split)) for split in candidate_splits]
-    # res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((len(candidate_rows), len(candidate_cols))),
-    #                       index=candidate_rows, columns=candidate_cols)
-    # print(res_df)
+    res_df = pd.DataFrame(np.array(tuple(zip(*times))[1]).reshape((len(candidate_rows), len(candidate_cols))),
+                          index=candidate_rows, columns=candidate_cols)
+    print(res_df)
     split, time = min(times, key=lambda x: x[1])
     return split, time
 
