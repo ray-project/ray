@@ -1444,9 +1444,31 @@ class DataFrame(object):
         return result
 
     def diff(self, periods=1, axis=0):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Finds the difference between elements on the axis requested
+
+        Args:
+            periods: Periods to shift for forming difference
+            axis: Take difference over rows or columns
+
+        Returns:
+            DataFrame with the diff applied
+        """
+        axis = pd.DataFrame()._get_axis_number(axis)
+        partitions = (self._col_partitions if
+                      axis == 0 else self._row_partitions)
+
+        result = _map_partitions(lambda df:
+                                 df.diff(axis=axis, periods=periods),
+                                 partitions)
+
+        if (axis == 1):
+            return DataFrame(row_partitions=result,
+                             columns=self.columns,
+                             index=self.index)
+        if (axis == 0):
+            return DataFrame(col_partitions=result,
+                             columns=self.columns,
+                             index=self.index)
 
     def div(self, other, axis='columns', level=None, fill_value=None):
         """Divides this DataFrame against another DataFrame/Series/scalar.
@@ -1661,7 +1683,7 @@ class DataFrame(object):
             # TODO: group series here into full df partitions to reduce
             # the number of remote calls to helper
             other_series = other_df.iloc[idx['index_within_partition']]
-            curr_index = self._row_metadata._coord_df.iloc[i]
+            curr_index = self._row_metadata._coord_df.loc[i]
             curr_df = self._row_partitions[int(curr_index['partition'])]
             results.append(_deploy_func.remote(helper,
                                                curr_df,

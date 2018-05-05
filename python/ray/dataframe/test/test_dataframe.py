@@ -226,6 +226,7 @@ def test_int_dataframe():
     test_quantile(ray_df, pandas_df, .5)
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
+    test_diff(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -390,6 +391,7 @@ def test_float_dataframe():
     test_quantile(ray_df, pandas_df, .5)
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
+    test_diff(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -715,6 +717,7 @@ def test_nan_dataframe():
     test_quantile(ray_df, pandas_df, .5)
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
+    test_diff(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -1170,11 +1173,12 @@ def test_describe(ray_df, pandas_df):
     assert(ray_df.describe().equals(pandas_df.describe()))
 
 
-def test_diff():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.diff()
+@pytest.fixture
+def test_diff(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.diff(), pandas_df.diff()))
+    assert(ray_df_equals_pandas(ray_df.diff(axis=1), pandas_df.diff(axis=1)))
+    assert(ray_df_equals_pandas(ray_df.diff(periods=1),
+                                pandas_df.diff(periods=1)))
 
 
 def test_div():
