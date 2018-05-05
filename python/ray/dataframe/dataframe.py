@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
+import functools
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
@@ -2741,13 +2742,22 @@ class DataFrame(object):
         include, exclude = map(
             lambda x: set(map(_get_dtype_from_object, x)), sel)
 
-        dtypes = self.dtypes
-        indicate = [i for i in range(len(dtypes))
-                    if ((len(exclude) != 0 and any(map(
-                        lambda x: issubclass(dtypes[i].type, x), exclude)))
-                    or (len(include) != 0 and not any(map(
-                        lambda x: issubclass(dtypes[i].type, x), include))))]
+        include_these = pd.Series(not bool(include), index=self.columns)
+        exclude_these = pd.Series(not bool(exclude), index=self.columns)
 
+        def is_dtype_instance_mapper(column, dtype):
+            return column, functools.partial(issubclass, dtype.type)
+
+        for column, f in itertools.starmap(is_dtype_instance_mapper,
+                                           self.dtypes.iteritems()):
+            if include:  # checks for the case of empty include or exclude
+                include_these[column] = any(map(f, include))
+            if exclude:
+                exclude_these[column] = not any(map(f, exclude))
+
+        dtype_indexer = include_these & exclude_these
+        indicate = [i for i in range(len(dtype_indexer.values))
+                    if not dtype_indexer.values[i]]
         return self.drop(columns=self.columns[indicate], inplace=False)
 
     def sem(self, axis=None, skipna=None, level=None, ddof=1,
