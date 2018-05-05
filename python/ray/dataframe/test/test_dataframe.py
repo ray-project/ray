@@ -190,6 +190,11 @@ def test_int_dataframe():
             'col3',
             'col4']
 
+    filter_by = {'items': ['col1', 'col5'],
+                 'regex': '4$|3$',
+                 'like': 'col'}
+
+    test_filter(ray_df, pandas_df, filter_by)
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -221,6 +226,7 @@ def test_int_dataframe():
     test_quantile(ray_df, pandas_df, .5)
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
+    test_diff(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -262,6 +268,7 @@ def test_int_dataframe():
     test_cummin(ray_df, pandas_df)
     test_cumprod(ray_df, pandas_df)
     test_cumsum(ray_df, pandas_df)
+    test_pipe(ray_df, pandas_df)
 
     # test_loc(ray_df, pandas_df)
     # test_iloc(ray_df, pandas_df)
@@ -302,25 +309,22 @@ def test_int_dataframe():
             test_apply(ray_df, pandas_df, func, 1)
             test_aggregate(ray_df, pandas_df, func, 1)
         else:
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_agg(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_apply(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_aggregate(ray_df, pandas_df, func, 1)
 
         func = ['sum', lambda df: df.sum()]
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 0)
+        test_aggregate(ray_df, pandas_df, func, 0)
+        test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(TypeError):
             test_apply(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_aggregate(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
         test_transform(ray_df, pandas_df)
@@ -350,6 +354,11 @@ def test_float_dataframe():
             'col3',
             'col4']
 
+    filter_by = {'items': ['col1', 'col5'],
+                 'regex': '4$|3$',
+                 'like': 'col'}
+
+    test_filter(ray_df, pandas_df, filter_by)
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -382,6 +391,7 @@ def test_float_dataframe():
     test_quantile(ray_df, pandas_df, .5)
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
+    test_diff(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -408,6 +418,7 @@ def test_float_dataframe():
     test_cummin(ray_df, pandas_df)
     test_cumprod(ray_df, pandas_df)
     test_cumsum(ray_df, pandas_df)
+    test_pipe(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
@@ -464,25 +475,22 @@ def test_float_dataframe():
             test_apply(ray_df, pandas_df, func, 1)
             test_aggregate(ray_df, pandas_df, func, 1)
         else:
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_agg(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_apply(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_aggregate(ray_df, pandas_df, func, 1)
 
         func = ['sum', lambda df: df.sum()]
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 0)
+        test_aggregate(ray_df, pandas_df, func, 0)
+        test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(TypeError):
             test_apply(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_aggregate(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
         test_transform(ray_df, pandas_df)
@@ -510,6 +518,11 @@ def test_mixed_dtype_dataframe():
             'col3',
             'col4']
 
+    filter_by = {'items': ['col1', 'col5'],
+                 'regex': '4$|3$',
+                 'like': 'col'}
+
+    test_filter(ray_df, pandas_df, filter_by)
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -574,6 +587,7 @@ def test_mixed_dtype_dataframe():
     test_min(ray_df, pandas_df)
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
+    test_pipe(ray_df, pandas_df)
 
     # TODO Fix pandas so that the behavior is correct
     # We discovered a bug where argmax does not always give the same result
@@ -632,17 +646,14 @@ def test_mixed_dtype_dataframe():
         test_agg(ray_df, pandas_df, func, 0)
 
         func = ['sum', lambda df: df.sum()]
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 0)
+        test_aggregate(ray_df, pandas_df, func, 0)
+        test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(TypeError):
             test_apply(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_aggregate(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
         test_transform(ray_df, pandas_df)
@@ -670,6 +681,11 @@ def test_nan_dataframe():
             'col3',
             'col4']
 
+    filter_by = {'items': ['col1', 'col5'],
+                 'regex': '4$|3$',
+                 'like': 'col'}
+
+    test_filter(ray_df, pandas_df, filter_by)
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -701,6 +717,7 @@ def test_nan_dataframe():
     test_quantile(ray_df, pandas_df, .5)
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
+    test_diff(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -727,6 +744,7 @@ def test_nan_dataframe():
     test_cummin(ray_df, pandas_df)
     test_cumprod(ray_df, pandas_df)
     test_cumsum(ray_df, pandas_df)
+    test_pipe(ray_df, pandas_df)
 
     test___len__(ray_df, pandas_df)
     test_first_valid_index(ray_df, pandas_df)
@@ -782,28 +800,42 @@ def test_nan_dataframe():
             test_apply(ray_df, pandas_df, func, 1)
             test_aggregate(ray_df, pandas_df, func, 1)
         else:
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_agg(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_apply(ray_df, pandas_df, func, 1)
-            with pytest.raises(NotImplementedError):
+            with pytest.raises(TypeError):
                 test_aggregate(ray_df, pandas_df, func, 1)
 
         func = ['sum', lambda df: df.sum()]
-        with pytest.raises(NotImplementedError):
-            test_apply(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_aggregate(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
-            test_agg(ray_df, pandas_df, func, 0)
-        with pytest.raises(NotImplementedError):
+        test_apply(ray_df, pandas_df, func, 0)
+        test_aggregate(ray_df, pandas_df, func, 0)
+        test_agg(ray_df, pandas_df, func, 0)
+        with pytest.raises(TypeError):
             test_apply(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_aggregate(ray_df, pandas_df, func, 1)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
         test_transform(ray_df, pandas_df)
+
+
+def test_dense_nan_df():
+    ray_df = rdf.DataFrame([[np.nan, 2, np.nan, 0],
+                            [3, 4, np.nan, 1],
+                            [np.nan, np.nan, np.nan, 5]],
+                           columns=list('ABCD'))
+
+    pd_df = pd.DataFrame([[np.nan, 2, np.nan, 0],
+                          [3, 4, np.nan, 1],
+                          [np.nan, np.nan, np.nan, 5]],
+                         columns=list('ABCD'))
+
+    test_dropna(ray_df, pd_df)
+    test_dropna_inplace(ray_df, pd_df)
+    test_dropna_multiple_axes(ray_df, pd_df)
+    test_dropna_multiple_axes_inplace(ray_df, pd_df)
 
 
 @pytest.fixture
@@ -855,8 +887,8 @@ def test_comparison_inter_ops(op):
     ray_df2 = rdf.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
     pandas_df2 = pd.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
 
-    ray_df_equals_pandas(getattr(ray_df, op)(ray_df2),
-                         getattr(pandas_df, op)(pandas_df2))
+    ray_df_equals_pandas(getattr(ray_df2, op)(ray_df2),
+                         getattr(pandas_df2, op)(pandas_df2))
 
 
 @pytest.fixture
@@ -1141,11 +1173,12 @@ def test_describe(ray_df, pandas_df):
     assert(ray_df.describe().equals(pandas_df.describe()))
 
 
-def test_diff():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.diff()
+@pytest.fixture
+def test_diff(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.diff(), pandas_df.diff()))
+    assert(ray_df_equals_pandas(ray_df.diff(axis=1), pandas_df.diff(axis=1)))
+    assert(ray_df_equals_pandas(ray_df.diff(periods=1),
+                                pandas_df.diff(periods=1)))
 
 
 def test_div():
@@ -1258,6 +1291,68 @@ def test_drop_duplicates():
 
     with pytest.raises(NotImplementedError):
         ray_df.drop_duplicates()
+
+
+@pytest.fixture
+def test_dropna(ray_df, pd_df):
+    assert ray_df_equals_pandas(ray_df.dropna(axis=1, how='all'),
+                                pd_df.dropna(axis=1, how='all'))
+
+    assert ray_df_equals_pandas(ray_df.dropna(axis=1, how='any'),
+                                pd_df.dropna(axis=1, how='any'))
+
+    assert ray_df_equals_pandas(ray_df.dropna(axis=0, how='all'),
+                                pd_df.dropna(axis=0, how='all'))
+
+    assert ray_df_equals_pandas(ray_df.dropna(thresh=2),
+                                pd_df.dropna(thresh=2))
+
+
+@pytest.fixture
+def test_dropna_inplace(ray_df, pd_df):
+    ray_df = ray_df.copy()
+    pd_df = pd_df.copy()
+
+    ray_df.dropna(thresh=2, inplace=True)
+    pd_df.dropna(thresh=2, inplace=True)
+
+    assert ray_df_equals_pandas(ray_df, pd_df)
+
+    ray_df.dropna(axis=1, how='any', inplace=True)
+    pd_df.dropna(axis=1, how='any', inplace=True)
+
+    assert ray_df_equals_pandas(ray_df, pd_df)
+
+
+@pytest.fixture
+def test_dropna_multiple_axes(ray_df, pd_df):
+    assert ray_df_equals_pandas(
+        ray_df.dropna(how='all', axis=[0, 1]),
+        pd_df.dropna(how='all', axis=[0, 1])
+    )
+    assert ray_df_equals_pandas(
+        ray_df.dropna(how='all', axis=(0, 1)),
+        pd_df.dropna(how='all', axis=(0, 1))
+    )
+
+
+@pytest.fixture
+def test_dropna_multiple_axes_inplace(ray_df, pd_df):
+    ray_df_copy = ray_df.copy()
+    pd_df_copy = pd_df.copy()
+
+    ray_df_copy.dropna(how='all', axis=[0, 1], inplace=True)
+    pd_df_copy.dropna(how='all', axis=[0, 1], inplace=True)
+
+    assert ray_df_equals_pandas(ray_df_copy, pd_df_copy)
+
+    ray_df_copy = ray_df.copy()
+    pd_df_copy = pd_df.copy()
+
+    ray_df_copy.dropna(how='all', axis=(0, 1), inplace=True)
+    pd_df_copy.dropna(how='all', axis=(0, 1), inplace=True)
+
+    assert ray_df_equals_pandas(ray_df_copy, pd_df_copy)
 
 
 def test_duplicated():
@@ -1755,11 +1850,16 @@ def test_fillna_datetime_columns(num_partitions=2):
 """
 
 
-def test_filter():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_filter(ray_df, pandas_df, by):
+    ray_df_equals_pandas(ray_df.filter(items=by['items']),
+                         pandas_df.filter(items=by['items']))
 
-    with pytest.raises(NotImplementedError):
-        ray_df.filter()
+    ray_df_equals_pandas(ray_df.filter(regex=by['regex']),
+                         pandas_df.filter(regex=by['regex']))
+
+    ray_df_equals_pandas(ray_df.filter(like=by['like']),
+                         pandas_df.filter(like=by['like']))
 
 
 def test_first():
@@ -2149,11 +2249,12 @@ def test_nsmallest():
         ray_df.nsmallest(None, None)
 
 
-def test_nunique():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.nunique()
+@pytest.fixture
+def test_nunique(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.nunique(),
+           pandas_df.nunique()))
+    assert(ray_df_equals_pandas(ray_df.nunique(axis=1),
+           pandas_df.nunique(axis=1)))
 
 
 def test_pct_change():
@@ -2163,11 +2264,34 @@ def test_pct_change():
         ray_df.pct_change()
 
 
-def test_pipe():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_pipe(ray_df, pandas_df):
+    n = len(ray_df.index)
+    a, b, c = 2 % n, 0, 3 % n
+    col = ray_df.columns[3 % len(ray_df.columns)]
 
-    with pytest.raises(NotImplementedError):
-        ray_df.pipe(None)
+    def h(x):
+        return x.drop(columns=[col])
+
+    def g(x, arg1=0):
+        for _ in range(arg1):
+            x = x.append(x)
+        return x
+
+    def f(x, arg2=0, arg3=0):
+        return x.drop([arg2, arg3])
+
+    assert ray_df_equals(f(g(h(ray_df), arg1=a), arg2=b, arg3=c),
+                         (ray_df.pipe(h)
+                                .pipe(g, arg1=a)
+                                .pipe(f, arg2=b, arg3=c)))
+
+    assert ray_df_equals_pandas((ray_df.pipe(h)
+                                .pipe(g, arg1=a)
+                                .pipe(f, arg2=b, arg3=c)),
+                                (pandas_df.pipe(h)
+                                .pipe(g, arg1=a)
+                                .pipe(f, arg2=b, arg3=c)))
 
 
 def test_pivot():
@@ -2651,11 +2775,12 @@ def test_shift():
         ray_df.shift()
 
 
-def test_skew():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.skew()
+@pytest.fixture
+def test_skew(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.skew(),
+           pandas_df.skew()))
+    assert(ray_df_equals_pandas(ray_df.skew(axis=1),
+           pandas_df.skew(axis=1)))
 
 
 def test_slice_shift():

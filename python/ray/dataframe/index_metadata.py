@@ -271,6 +271,13 @@ class _IndexMetadata(object):
         # Return inserted coordinate for callee
         return coord_to_insert
 
+    def get_global_indices(self, partition, index_within_partition_list):
+        total = 0
+        for i in range(partition):
+            total += self._lengths[i]
+
+        return [total + i for i in index_within_partition_list]
+
     def squeeze(self, partition, index_within_partition):
         """Prepare a single coordinate for removal by "squeezing" the
         subsequent coordinates "up" one index within that partition. To be used
