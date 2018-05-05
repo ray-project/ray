@@ -36,7 +36,11 @@ else:
     import pandas as pd
     frame = "pandas"
 
-df = pd.read_csv(datafile)
+if datafile == "generate":
+    df = pd.DataFrame(np.random.randint(2**63, size=(2**20, 2**8)))
+else:
+    df = pd.read_csv(datafile)
+
 if args.is_ray:
     pd.utils.waitall(df, True)
 
