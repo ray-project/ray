@@ -397,6 +397,7 @@ class DataFrame(object):
 
             # result_series = pd.concat([obj[0] for obj in oid_series],
             #                           axis=0, copy=False)
+            # FIXME: This is a cheat since we only work with numerics in this branch
             result_series = pd.concat(oid_series, axis=0, copy=False)
             result_series.index = self.columns
         else:
@@ -1251,16 +1252,57 @@ class DataFrame(object):
         axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
             else 0
 
+        ### EXPERIMENTAL ###
+
+        block_parts = self._block_partitions
+        curr_rows, curr_cols = block_dims = block_parts.shape
+
+        # TODO: might be a blocking call
+        # row_len, col_len = axis_dims = (len(self._row_metadata), len(self._col_metadata))
+        axis_dims = (0, 0)
+
+        dsize = self.est_size if self.est_size else len(self._row_metadata) * len(self._col_metadata) * 8
+
+        (opt_rows, opt_cols), _ = _optimize_partitions(block_dims, axis_dims, dsize, "cumsum", axis=axis)
+
+        new_partitions, factors = _map_partitions_flex(remote_func,
+                                                       (opt_rows, opt_cols),
+                                                       block_parts)
+
+        # Since we know that an axis will be (exploded XOR condensed XOR
+        # unchanged), we can use if-else here, each fxn has a short circuit
+        row_factor, col_factor = factors
+
+        # TODO: Be smarter with regards to passing IndexMetadata's with row/col partitions
         if axis == 0:
-            new_cols = _map_partitions(func, self._col_partitions)
-            return DataFrame(col_partitions=new_cols,
-                             row_metadata=self._row_metadata,
-                             col_metadata=self._col_metadata)
+            if col_factor > 0:
+                new_col_metadata = self._col_metadata.explode(col_factor)
+            else:
+                new_col_metadata = self._col_metadata.condense(abs(col_factor))
+
+            return DataFrame(col_partitions=new_partitions,
+                             index=self.index
+                             col_metadata=new_col_metadata)
         else:
-            new_rows = _map_partitions(func, self._row_partitions)
-            return DataFrame(row_partitions=new_rows,
-                             row_metadata=self._row_metadata,
-                             col_metadata=self._col_metadata)
+            if row_factor > 0:
+                new_row_metadata = self._row_metadata.explode(row_factor)
+            else:
+                new_row_metadata = self._row_metadata.condense(abs(row_factor))
+
+            return DataFrame(row_partitions=new_partitions,
+                             row_metadata=new_row_metadata,
+                             columns=self.columns)
+
+        # if axis == 0:
+        #     new_cols = _map_partitions(func, self._col_partitions)
+        #     return DataFrame(col_partitions=new_cols,
+        #                      row_metadata=self._row_metadata,
+        #                      col_metadata=self._col_metadata)
+        # else:
+        #     new_rows = _map_partitions(func, self._row_partitions)
+        #     return DataFrame(row_partitions=new_rows,
+        #                      row_metadata=self._row_metadata,
+        #                      col_metadata=self._col_metadata)
 
     def cummax(self, axis=None, skipna=True, *args, **kwargs):
         """Perform a cumulative maximum across the DataFrame.

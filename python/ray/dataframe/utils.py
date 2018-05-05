@@ -694,6 +694,7 @@ def _map_partitions_coalesce(func, block_partitions, axis):
 flookup = { # Actual op_rate for isna is roughly 90ms for 2**24 * 2**3 versus 70 as presented
     "isna": {"type": "applymap", "op_rate": 615 / (2**28 * 2**3), "op_stdev": 0 / (2**28 * 2**3)},
     "sum": {"type": "axis-reduce", "op_rate": 2500 / (2**27 * 2**3), "op_stdev": 0 / (2**27 * 2**3)}
+    "cumsum": {"type": "cumulative", "op_rate": 0, "op_stdev": 0}
 }
 
 
@@ -817,7 +818,7 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
         if ftype == "applymap":
             dsplit = dsize / split_nparts
 
-        elif ftype == "axis-reduce":
+        elif ftype == "axis-reduce" or ftype == "cumulative":
             axis = kwargs["axis"]
             dsplit = dsize / (split_cols if axis == 0 else split_rows)
 
@@ -850,7 +851,7 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
 
         candidate_rows = np.hstack((smaller_rows, bigger_rows)) # [unlim_rows < get_nworkers() * 2]
         candidate_cols = np.hstack((smaller_cols, bigger_cols)) # [unlim_cols < get_nworkers() * 2]
-    elif ftype == "axis-reduce":
+    elif ftype == "axis-reduce" or ftype == "cumulative":
         axis = kwargs["axis"]
         candidate_rows = np.array(1)
         candidate_cols = np.array(1)
