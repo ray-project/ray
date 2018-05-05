@@ -534,7 +534,7 @@ def _map_partitions_condense(func, shape, block_partitions):
     result = np.empty((final_rows, final_cols), dtype=object)
     for i in range(final_rows):
         for j in range(final_cols):
-            result[i, j] = _deploy_func_condense.remote(func, shape, 
+            result[i, j] = _deploy_func_condense.remote(func, shape,
                 *block_partitions[i*stride_row:(i+1)*stride_row,
                                   j*stride_col:(j+1)*stride_col].flatten().tolist())
 
@@ -543,32 +543,46 @@ def _map_partitions_condense(func, shape, block_partitions):
 
 @ray.remote
 def _deploy_func_explode(func, factor, sector, block_dims, *blocks):
+    """Deploys a function for the _map_partitions_flex call.
+
+    Args:
+        func: Function to deploy to rebuilt partition.
+        factor:
+            Tuple of the explode `factor` for this function. Use in conjunction
+            with sector if applicable. A factor of 1 in each axis implies that
+            we aren't exploding that axis.
+        sector:
+            Tuple of the sector number to operate on after exploding the
+            partition. Use in conjunction with `factor` if applicable.
+        block_dims:
+            Tuple representing the shape of the `blocks` argument, to use when
+            rebuilding the 2d-array of blocks from the 1d-list of `blocks`. A
+            value of 1 on an axis implies we aren't condensing that axis.
+        blocks:
+            Varargs list of the partitions to operate on
+
+    Returns:
+        A futures object representing the return value of the function
+        provided.
+    """
     nblock_rows, nblock_cols = block_dims
-    assert nblock_rows * nblock_cols == len(blocks)
-
-    if len(blocks) == 1:
-        partition = blocks[0]
-    else:
-        cc_kwargs = dict(copy=False, ignore_index=True)
-
-        if nblock_rows == 1 and nblock_cols == 1:
-            partition = blocks[0]
-        elif nblock_rows == 1:
-            partition = pd.concat([p.T for p in blocks], axis=0, **cc_kwargs).T
-        elif nblock_cols == 1:
-            partition = pd.concat(blocks, axis=0, **cc_kwargs)
-        else:
-            partition = pd.concat([pd.concat([df.T for df in blocks[i*nblock_cols:(i + 1)*nblock_cols]],
-                                             axis=0,
-                                             **cc_kwargs).T for i in range(nblock_rows)],
-                                   axis=0, **cc_kwargs)
-
     row_factor, col_factor = factor
     i, j = sector
-    nrows, ncols = partition.shape
+
+    assert nblock_rows * nblock_cols == len(blocks)
+
+    # For now, assume that (nblock_<axis> == 1 or <axis>_factor == 1) == True
+    # since we can't explode and condense in the same axis
+    assert nblock_rows == 1 or row_factor == 1
+    assert nblock_cols == 1 or col_factor == 1
 
     # In the case that the size is not a multiple of the number of partitions,
-    # we need to add one to each partition to avoid losing data off the end
+    # we need to add one to each partition to avoid losing data off the end.
+
+    # We can always calculate the strides off of `blocks[0]` since the strides
+    # only don't make sense if `blocks` is representing a 2d-array, but we
+    # don't use the strides then anyways
+    nrows, ncols = blocks[0].shape
     row_stride = nrows // row_factor \
         if nrows % row_factor == 0 \
         else nrows // row_factor + 1
@@ -577,9 +591,27 @@ def _deploy_func_explode(func, factor, sector, block_dims, *blocks):
         if ncols % col_factor == 0 \
         else ncols // col_factor + 1
 
-    res_df = partition.iloc[i*row_stride:(i+1)*row_stride, j*col_stride:(j+1)*col_stride]
+    if len(blocks) == 1:
+        partition = blocks[0].iloc[i*row_stride:(i+1)*row_stride, j*col_stride:(j+1)*col_stride]
+    else:
+        cc_kwargs = dict(copy=False, ignore_index=True)
 
-    return func(res_df)
+        if nblock_rows == 1:
+            if row_factor > 1:
+                blocks = (p.iloc[i*row_stride:(i+1)*row_stride,:] for p in blocks)
+            partition = pd.concat([p.T for p in blocks], axis=0, **cc_kwargs).T
+        elif nblock_cols == 1:
+            if col_factor > 1:
+                blocks = [p.iloc[:,j*col_stride:(j+1)*col_stride] for p in blocks]
+            partition = pd.concat(blocks, axis=0, **cc_kwargs)
+        else:
+            # We're not exploding, so no need to filter out blocks
+            partition = pd.concat([pd.concat([df.T for df in blocks[i*nblock_cols:(i + 1)*nblock_cols]],
+                                             axis=0,
+                                             **cc_kwargs).T for i in range(nblock_rows)],
+                                   axis=0, **cc_kwargs)
+
+    return func(partition)
 
 
 def _map_partitions_flex(func, opt_shape, block_partitions):
