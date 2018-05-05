@@ -36,8 +36,9 @@ else:
     import pandas as pd
     frame = "pandas"
 
-if datafile == "generate":
-    df = pd.DataFrame(np.random.randint(2**63, size=(2**20, 2**8)))
+if datafile.startswith("gen:"):
+    init = datafile.split("gen:")[1]
+    df = eval(init)
 else:
     df = pd.read_csv(datafile)
 
