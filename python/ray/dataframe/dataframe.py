@@ -90,6 +90,8 @@ class DataFrame(object):
 
         """
 
+        self.est_size = est_size
+
         # Check type of data and use appropriate constructor
         if data is not None or (col_partitions is None and
                                 row_partitions is None and
@@ -97,6 +99,7 @@ class DataFrame(object):
 
             pd_df = pd.DataFrame(data=data, index=index, columns=columns,
                                  dtype=dtype, copy=copy)
+            self.est_size = len(pd_df) * pd_df.dtypes.apply(lambda x: x.itemsize).sum()
 
             if nrows is None:
                 nrows = get_nrowpartitions()
@@ -168,8 +171,6 @@ class DataFrame(object):
         else:
             self._col_metadata = _IndexMetadata(self._block_partitions[0, :],
                                                 index=columns, axis=1)
-
-        self.est_size = est_size
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -1265,7 +1266,7 @@ class DataFrame(object):
 
         (opt_rows, opt_cols), _ = _optimize_partitions(block_dims, axis_dims, dsize, "cumsum", axis=axis)
 
-        new_partitions, factors = _map_partitions_flex(remote_func,
+        new_partitions, factors = _map_partitions_flex(func,
                                                        (opt_rows, opt_cols),
                                                        block_parts)
 
@@ -1280,8 +1281,8 @@ class DataFrame(object):
             else:
                 new_col_metadata = self._col_metadata.condense(abs(col_factor))
 
-            return DataFrame(col_partitions=new_partitions,
-                             index=self.index
+            return DataFrame(col_partitions=new_partitions.flatten(),
+                             index=self.index,
                              col_metadata=new_col_metadata)
         else:
             if row_factor > 0:
@@ -1289,7 +1290,7 @@ class DataFrame(object):
             else:
                 new_row_metadata = self._row_metadata.condense(abs(row_factor))
 
-            return DataFrame(row_partitions=new_partitions,
+            return DataFrame(row_partitions=new_partitions.flatten(),
                              row_metadata=new_row_metadata,
                              columns=self.columns)
 

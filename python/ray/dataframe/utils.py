@@ -693,7 +693,7 @@ def _map_partitions_coalesce(func, block_partitions, axis):
 
 flookup = { # Actual op_rate for isna is roughly 90ms for 2**24 * 2**3 versus 70 as presented
     "isna": {"type": "applymap", "op_rate": 615 / (2**28 * 2**3), "op_stdev": 0 / (2**28 * 2**3)},
-    "sum": {"type": "axis-reduce", "op_rate": 2500 / (2**27 * 2**3), "op_stdev": 0 / (2**27 * 2**3)}
+    "sum": {"type": "axis-reduce", "op_rate": 2500 / (2**27 * 2**3), "op_stdev": 0 / (2**27 * 2**3)},
     "cumsum": {"type": "cumulative", "op_rate": 0, "op_stdev": 0}
 }
 
@@ -708,15 +708,18 @@ params = {
 
 MAX_ZSCORE = 2
 
-out_dims = (1, 4)
+out_dims = (get_nrowpartitions(), get_ncolpartitions())
+hardcode = False
 
-def temp(ndims):
+def set_dims(ndims):
     global out_dims
     out_dims = ndims
 
+def set_hardcode(hc):
+    global hardcode
+    hardcode = hc
+
 def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
-    # print("spitting out with dims {}".format((in_dims[0], 1))) # split))
-    # return (in_dims[0], 1), 0
     in_rows, in_cols = in_dims
     row_len, col_len = shape
     in_nparts = in_rows * in_cols
@@ -873,6 +876,10 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
     #                       index=candidate_rows, columns=candidate_cols)
     # print(res_df)
     split, time = min(times, key=lambda x: x[1])
+    if hardcode:
+        split = list(out_dims)
+        if ftype == "axis-reduce" or ftype == "cumulative":
+            split[axis] = 1
     print("spitting out with dims {}".format(split))
     return split, time
 
