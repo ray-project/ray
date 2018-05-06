@@ -3102,74 +3102,79 @@ t
                     are the quantiles.
         """
 
+        def check_bad_dtype(t):
+            return t == np.dtype('O') or is_timedelta64_dtype(dtype)
+
         # deal with error checking for bad dtyping when numeric_only is False
         if not numeric_only:
             # check if there are any object columns
-            for t in self.dtypes:
-                if t == np.dtype('O'):
-                    e_msg = "Cannot call quantile on columns of type " + str(t)
-                    raise TypeError(e_msg)
+            if all(check_bad_dtype(t) for t in self.dtypes):
+                raise TypeError("can't multiply sequence by non-int of type "
+                                "'float'")
+            else:
+                if next((True for t in self.dtypes if check_bad_dtype(t)),
+                        False):
+                    dtype = next(t for t in self.dtypes if check_bad_dtype(t))
+                    raise ValueError("Cannot compare type '{}' with type '{}'"
+                                     .format(type(dtype), float))
         else:
-            if all([dtype == np.dtype('O') or
-                    is_timedelta64_dtype(dtype)
-                    for dtype in self.dtypes]):
+            # Normally pandas returns this near the end of the quantile, but we
+            # can't afford the overhead of running the entire operation before
+            # we error.
+            if all(check_bad_dtype(t) for t in self.dtypes):
                 raise ValueError("need at least one array to concatenate")
 
         # check that all qs are between 0 and 1
         pd.DataFrame()._check_percentile(q)
 
+        def quantile_helper(df, base_object):
+            """Quantile to be run inside each partitoin.
+
+            Args:
+                df: The DataFrame composing the partition.
+                base_object: An empty pd.Series or pd.DataFrame depending on q.
+
+            Returns:
+                 A new Series or DataFrame depending on q.
+            """
+            # This if call prevents ValueErrors with object only partitions
+            if (numeric_only and
+                    all([dtype == np.dtype('O') or
+                         is_timedelta64_dtype(dtype)
+                         for dtype in df.dtypes])):
+                return base_object
+            else:
+                return df.quantile(q=q, axis=axis, numeric_only=numeric_only,
+                                   interpolation=interpolation)
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+
         if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
 
-            def quantile_helper(df):
-                # This if call prevents ValueErrors with object only partitions
-                if (numeric_only and
-                        all([dtype == np.dtype('O') or
-                              is_timedelta64_dtype(dtype)
-                            for dtype in df.dtypes])):
-                    return pd.DataFrame()
-                else:
-                    return df.quantile(q=q, axis=axis,
-                                       numeric_only=numeric_only,
-                                       interpolation=interpolation)
+            q_index = pd.Float64Index(q)
 
-            axis = pd.DataFrame()._get_axis_number(axis) 
-
-            if axis == 0 or axis == 'index':
-                result = _map_partitions(quantile_helper,
-                                         self._col_partitions)
-                q_index = pd.Float64Index(q)
+            if axis == 0:
+                new_partitions = _map_partitions(quantile_helper,
+                                                 self._col_partitions)
 
                 # select only correct dtype columns
-                new_cols = self.dtypes[self.dtypes.apply(
-                                       lambda x: is_numeric_dtype(x))].index
-                return DataFrame(col_partitions=result,
-                                 index=q_index,
-                                 columns=new_cols)
+                new_columns = self.dtypes[self.dtypes.apply(
+                                          lambda x: is_numeric_dtype(x))].index
 
-            if axis == 1:
-                result = _map_partitions(quantile_helper,
-                                         self._row_partitions)
-                q_index = pd.Float64Index(q)
-                return DataFrame(col_partitions=result,
-                                 index=q_index,
-                                 columns=self.index)
+            else:
+                new_partitions = _map_partitions(quantile_helper,
+                                                 self._row_partitions)
+                new_columns = self.index
 
-        # single q means we can use arithmetic helper
+            return DataFrame(col_partitions=new_partitions,
+                             index=q_index,
+                             columns=new_columns)
+
         else:
-
-            def quantile_helper(df):
-                # This if call prevents ValueErrors with object only partitions
-                if (numeric_only and
-                        all([(dtype == np.dtype('O') or
-                              np.issubdtype(dtype, np.datetime64))
-                            for dtype in df.dtypes])):
-                    return pd.Series()
-                else:
-                    return df.quantile(q=q, axis=axis,
-                                       numeric_only=numeric_only,
-                                       interpolation=interpolation)
-
-            result = self._arithmetic_helper(quantile_helper, axis)
+            # When q is a single float, we return a Series, so using
+            # arithmetic_helper works well here.
+            result = self._arithmetic_helper(
+                lambda df: quantile_helper(df, pd.Series), axis)
             result.name = q
             return result
 

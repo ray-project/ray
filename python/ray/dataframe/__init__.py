@@ -3,9 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
-from pandas import (eval, MultiIndex, CategoricalIndex, Series, Panel,
-                    unique, value_counts,
-                    date_range, Timedelta, Timestamp, to_datetime, NaT)
+from pandas import (eval, MultiIndex, CategoricalIndex, Series, Panel, unique,
+                    value_counts, date_range, Timedelta, Timestamp,
+                    to_datetime, NaT)
 import threading
 
 pd_version = pd.__version__
@@ -41,9 +41,9 @@ from .reshape import get_dummies  # noqa: 402
 
 __all__ = [
     "DataFrame", "Series", "read_csv", "read_parquet", "concat", "eval",
-    "Panel", "unique", "get_dummies", "value_counts",
-    "MultiIndex", "CategoricalIndex", 
-    "Timedelta", "Timestamp", "date_range", "to_datetime", "NaT"
+    "Panel", "unique", "get_dummies", "value_counts", "MultiIndex",
+    "CategoricalIndex", "Timedelta", "Timestamp", "date_range", "to_datetime",
+    "NaT"
 ]
 
 try:
