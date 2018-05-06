@@ -3378,8 +3378,6 @@ class DataFrame(object):
             for row, idx in index_builder:
                 row.index = [str(idx)]
 
-            # Put this here to match the by below.
-            by = [str(col) for col in by]
             broadcast_values = pd.concat([row for row, idx in index_builder])
 
         # We are converting the by to string here so that we don't have a
