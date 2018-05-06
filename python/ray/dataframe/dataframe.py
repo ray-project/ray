@@ -358,6 +358,7 @@ class DataFrame(object):
         oid_series = ray.get(_map_partitions(remote_func,
                              self._col_partitions if axis == 0
                              else self._row_partitions))
+
         if axis == 0:
             # We use the index to get the internal index.
             oid_series = [(oid_series[i], i) for i in range(len(oid_series))]
@@ -3105,7 +3106,6 @@ class DataFrame(object):
         def check_bad_dtype(t):
             return t == np.dtype('O') or is_timedelta64_dtype(t)
 
-        # deal with error checking for bad dtyping when numeric_only is False
         if not numeric_only:
             # check if there are any object columns
             if all(check_bad_dtype(t) for t in self.dtypes):
