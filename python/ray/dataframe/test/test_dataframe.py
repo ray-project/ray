@@ -229,6 +229,7 @@ def test_int_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
     test_diff(ray_df, pandas_df)
+    test_rank(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -396,6 +397,7 @@ def test_float_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
     test_diff(ray_df, pandas_df)
+    test_rank(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -564,6 +566,9 @@ def test_mixed_dtype_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
 
+    # TODO Reolve once Pandas-20962 is resolved.
+    # test_rank(ray_df, pandas_df)
+
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -722,6 +727,7 @@ def test_nan_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
     test_diff(ray_df, pandas_df)
+    test_rank(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -2377,11 +2383,10 @@ def test_radd():
     test_inter_df_math_right_ops("radd")
 
 
-def test_rank():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.rank()
+@pytest.fixture
+def test_rank(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.rank(), pandas_df.rank()))
+    assert(ray_df_equals_pandas(ray_df.rank(axis=1), pandas_df.rank(axis=1)))
 
 
 def test_rdiv():
