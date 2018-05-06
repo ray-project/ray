@@ -212,6 +212,8 @@ def test_int_dataframe():
 
     test_copy(ray_df)
     test_sum(ray_df, pandas_df)
+    test_prod(ray_df, pandas_df)
+    test_product(ray_df, pandas_df)
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
@@ -376,6 +378,8 @@ def test_float_dataframe():
 
     test_copy(ray_df)
     test_sum(ray_df, pandas_df)
+    test_prod(ray_df, pandas_df)
+    test_product(ray_df, pandas_df)
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
@@ -2347,18 +2351,14 @@ def test_pow():
     test_inter_df_math("pow", simple=False)
 
 
-def test_prod():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.prod(None)
+@pytest.fixture
+def test_prod(ray_df, pandas_df):
+    assert(ray_df.prod().equals(pandas_df.prod()))
 
 
-def test_product():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.product()
+@pytest.fixture
+def test_product(ray_df, pandas_df):
+    assert(ray_df.product().equals(pandas_df.product()))
 
 
 @pytest.fixture

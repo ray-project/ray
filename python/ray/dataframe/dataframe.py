@@ -646,7 +646,8 @@ class DataFrame(object):
         return DataFrameGroupBy(self, by, axis, level, as_index, sort,
                                 group_keys, squeeze, **kwargs)
 
-    def sum(self, axis=None, skipna=True, level=None, numeric_only=None):
+    def sum(self, axis=None, skipna=True, level=None, numeric_only=None,
+            min_count=1, **kwargs):
         """Perform a sum across the DataFrame.
 
         Args:
@@ -658,7 +659,8 @@ class DataFrame(object):
         """
         def remote_func(df):
             return df.sum(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only)
+                          numeric_only=numeric_only, min_count=min_count,
+                          **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -3040,16 +3042,43 @@ class DataFrame(object):
                                      fill_value)
 
     def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
-             min_count=0, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+             min_count=1, **kwargs):
+        """Return the product of the values for the requested axis
+
+        Args:
+            axis : {index (0), columns (1)}
+            skipna : boolean, default True
+            level : int or level name, default None
+            numeric_only : boolean, default None
+            min_count : int, default 1
+
+        Returns:
+            prod : Series or DataFrame (if level specified)
+        """
+        def remote_func(df):
+            return df.prod(axis=axis, skipna=skipna, level=level,
+                           numeric_only=numeric_only, min_count=min_count,
+                           **kwargs)
+
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def product(self, axis=None, skipna=None, level=None, numeric_only=None,
-                min_count=0, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+                min_count=1, **kwargs):
+        """Return the product of the values for the requested axis
+
+        Args:
+            axis : {index (0), columns (1)}
+            skipna : boolean, default True
+            level : int or level name, default None
+            numeric_only : boolean, default None
+            min_count : int, default 1
+
+        Returns:
+            product : Series or DataFrame (if level specified)
+        """
+        return self.prod(axis=axis, skipna=skipna, level=level,
+                         numeric_only=numeric_only, min_count=min_count,
+                         **kwargs)
 
     def quantile(self, q=0.5, axis=0, numeric_only=True,
                  interpolation='linear'):
