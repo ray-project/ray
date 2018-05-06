@@ -17,7 +17,7 @@ from ray.utils import (FunctionProperties, _random_string, is_cython,
 
 
 def compute_actor_handle_id(actor_handle_id, num_forks):
-    """Deterministically comopute an actor handle ID.
+    """Deterministically compute an actor handle ID.
 
     A new actor handle ID is generated when it is forked from another actor
     handle. The new handle ID is computed as hash(old_handle_id || num_forks).
@@ -526,325 +526,302 @@ class ActorHandleWrapper(object):
         self.actor_method_cpus = actor_method_cpus
 
 
-def wrap_actor_handle(actor_handle):
-    """Wrap the ActorHandle to store the fields.
+class ActorClass(object):
+    def __init__(self, modified_class, class_id, resources,
+                 checkpoint_interval, actor_creation_resources,
+                 actor_method_cpus):
+        self._modified_class = modified_class
+        self._class_id = class_id
+        self._class_name = modified_class.__name__.encode("ascii")
+        self._resources = resources
+        self._checkpoint_interval = checkpoint_interval
+        self._actor_creation_resources = actor_creation_resources  # TODO(rkn): Remove this.
+        self._actor_method_cpus = actor_method_cpus
+        self._exported = False
+        self._num_created = 0
 
-    Args:
-        actor_handle: The ActorHandle instance to wrap.
+    def remote(self, *args, **kwargs):
+        return self._submit(args=args, kwargs=kwargs)
 
-    Returns:
-        An ActorHandleWrapper instance that stores the ActorHandle's fields.
-    """
-    wrapper = ActorHandleWrapper(
-        actor_handle._ray_actor_id,
-        actor_handle._ray_class_id,
-        compute_actor_handle_id(actor_handle._ray_actor_handle_id,
-                                actor_handle._ray_actor_forks),
-        actor_handle._ray_actor_cursor,
-        0,  # Reset the actor counter.
-        actor_handle._ray_actor_method_names,
-        actor_handle._ray_actor_method_num_return_vals,
-        actor_handle._ray_method_signatures,
-        actor_handle._ray_checkpoint_interval,
-        actor_handle._ray_class_name,
-        actor_handle._ray_actor_creation_dummy_object_id,
-        actor_handle._ray_actor_creation_resources,
-        actor_handle._ray_actor_method_cpus)
-    actor_handle._ray_actor_forks += 1
-    return wrapper
+    def _submit(self, args, kwargs, num_cpus=None, num_gpus=None,
+                resources=None):
+        """TODO
+        """
+        if ray.worker.global_worker.mode is None:
+            raise Exception("Actors cannot be created before ray.init() "
+                            "has been called.")
 
+        actor_id = ray.local_scheduler.ObjectID(_random_string())
+        # The actor cursor is a dummy object representing the most recent
+        # actor method invocation. For each subsequent method invocation,
+        # the current cursor should be added as a dependency, and then
+        # updated to reflect the new invocation.
+        actor_cursor = None
+        # The number of actor method invocations that we've called so far.
+        actor_counter = 0
 
-def unwrap_actor_handle(worker, wrapper):
-    """Make an ActorHandle from the stored fields.
+        # Get the actor methods of the given class.
+        def pred(x):
+            return (inspect.isfunction(x) or inspect.ismethod(x)
+                    or is_cython(x))
 
-    Args:
-        worker: The worker that is unwrapping the actor handle.
-        wrapper: An ActorHandleWrapper instance to unwrap.
+        actor_methods = inspect.getmembers(self._modified_class, predicate=pred)
+        # Extract the signatures of each of the methods. This will be used
+        # to catch some errors if the methods are called with inappropriate
+        # arguments.
+        method_signatures = dict()
+        for k, v in actor_methods:
+            # Print a warning message if the method signature is not
+            # supported. We don't raise an exception because if the actor
+            # inherits from a class that has a method whose signature we
+            # don't support, there may not be much the user can do about it.
+            signature.check_signature_supported(v, warn=True)
+            method_signatures[k] = signature.extract_signature(
+                v, ignore_first=True)
 
-    Returns:
-        The unwrapped ActorHandle instance.
-    """
-    driver_id = worker.task_driver_id.id()
-    register_actor_signatures(
-        worker, driver_id, wrapper.class_id, wrapper.class_name,
-        wrapper.actor_method_names, wrapper.actor_method_num_return_vals,
-        wrapper.actor_creation_resources, wrapper.actor_method_cpus)
-
-    actor_handle_class = make_actor_handle_class(wrapper.class_name)
-    actor_object = actor_handle_class.__new__(actor_handle_class)
-    actor_object._manual_init(
-        wrapper.actor_id, wrapper.class_id, wrapper.actor_handle_id,
-        wrapper.actor_cursor, wrapper.actor_counter,
-        wrapper.actor_method_names, wrapper.actor_method_num_return_vals,
-        wrapper.method_signatures, wrapper.checkpoint_interval,
-        wrapper.actor_creation_dummy_object_id,
-        wrapper.actor_creation_resources, wrapper.actor_method_cpus)
-    return actor_object
-
-
-class ActorHandleParent(object):
-    """This is the parent class of all ActorHandle classes.
-
-    This enables us to identify actor handles by checking if an object obj
-    satisfies isinstance(obj, ActorHandleParent).
-    """
-    pass
-
-
-def make_actor_handle_class(class_name):
-    class ActorHandle(ActorHandleParent):
-        def __init__(self, *args, **kwargs):
-            raise Exception("Actor classes cannot be instantiated directly. "
-                            "Instead of running '{}()', try '{}.remote()'."
-                            .format(class_name, class_name))
-
-        @classmethod
-        def remote(cls, *args, **kwargs):
-            raise NotImplementedError("The classmethod remote() can only be "
-                                      "called on the original Class.")
-
-        def _manual_init(self, actor_id, class_id, actor_handle_id,
-                         actor_cursor, actor_counter, actor_method_names,
-                         actor_method_num_return_vals, method_signatures,
-                         checkpoint_interval, actor_creation_dummy_object_id,
-                         actor_creation_resources, actor_method_cpus):
-            self._ray_actor_id = actor_id
-            self._ray_class_id = class_id
-            self._ray_actor_handle_id = actor_handle_id
-            self._ray_actor_cursor = actor_cursor
-            self._ray_actor_counter = actor_counter
-            self._ray_actor_method_names = actor_method_names
-            self._ray_actor_method_num_return_vals = (
-                actor_method_num_return_vals)
-            self._ray_method_signatures = method_signatures
-            self._ray_checkpoint_interval = checkpoint_interval
-            self._ray_class_name = class_name
-            self._ray_actor_forks = 0
-            self._ray_actor_creation_dummy_object_id = (
-                actor_creation_dummy_object_id)
-            self._ray_actor_creation_resources = actor_creation_resources
-            self._ray_actor_method_cpus = actor_method_cpus
-
-        def _actor_method_call(self,
-                               method_name,
-                               args=None,
-                               kwargs=None,
-                               dependency=None):
-            """Method execution stub for an actor handle.
-
-            This is the function that executes when
-            `actor.method_name.remote(*args, **kwargs)` is called. Instead of
-            executing locally, the method is packaged as a task and scheduled
-            to the remote actor instance.
-
-            Args:
-                self: The local actor handle.
-                method_name: The name of the actor method to execute.
-                args: A list of arguments for the actor method.
-                kwargs: A dictionary of keyword arguments for the actor method.
-                dependency: The object ID that this method is dependent on.
-                    Defaults to None, for no dependencies. Most tasks should
-                    pass in the dummy object returned by the preceding task.
-                    Some tasks, such as checkpoint and terminate methods, have
-                    no dependencies.
-
-            Returns:
-                object_ids: A list of object IDs returned by the remote actor
-                    method.
-            """
-            ray.worker.check_connected()
-            ray.worker.check_main_thread()
-            function_signature = self._ray_method_signatures[method_name]
-            if args is None:
-                args = []
-            if kwargs is None:
-                kwargs = {}
-            args = signature.extend_args(function_signature, args, kwargs)
-
-            # Execute functions locally if Ray is run in PYTHON_MODE
-            # Copy args to prevent the function from mutating them.
-            if ray.worker.global_worker.mode == ray.PYTHON_MODE:
-                return getattr(
-                    ray.worker.global_worker.actors[self._ray_actor_id],
-                    method_name)(*copy.deepcopy(args))
-
-            # Add the execution dependency.
-            if dependency is None:
-                execution_dependencies = []
+        actor_method_names = [
+            method_name for method_name, _ in actor_methods
+        ]
+        actor_method_num_return_vals = []
+        for _, method in actor_methods:
+            if hasattr(method, "__ray_num_return_vals__"):
+                actor_method_num_return_vals.append(
+                    method.__ray_num_return_vals__)
             else:
-                execution_dependencies = [dependency]
+                actor_method_num_return_vals.append(1)
+        # Do not export the actor class or the actor if run in PYTHON_MODE
+        # Instead, instantiate the actor locally and add it to
+        # global_worker's dictionary
+        if ray.worker.global_worker.mode == ray.PYTHON_MODE:
+            ray.worker.global_worker.actors[actor_id] = (
+                self._modified_class.__new__(self._modified_class))
+        else:
+            # Export the actor.
+            if not self._exported:
+                export_actor_class(self._class_id, self._modified_class,
+                                   actor_method_names,
+                                   actor_method_num_return_vals,
+                                   self._checkpoint_interval,
+                                   ray.worker.global_worker)
+                self._exported = True
+            actor_cursor = export_actor(
+                actor_id, self._class_id, self._class_name,
+                actor_method_names, actor_method_num_return_vals,
+                self._actor_creation_resources,
+                self._actor_method_cpus,
+                ray.worker.global_worker)
+        # Increment the actor counter to account for the creation task.
+        actor_counter += 1
 
-            is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
+        actor_handle = ActorHandle(actor_id, self._class_name, actor_cursor,
+                                   actor_counter, actor_method_names,
+                                   actor_method_num_return_vals, method_signatures,
+                                   actor_cursor, self._actor_method_cpus,
+                                   self._num_created == 0)
 
-            function_id = compute_actor_method_function_id(
-                self._ray_class_name, method_name)
-            object_ids = ray.worker.global_worker.submit_task(
-                function_id,
-                args,
-                actor_id=self._ray_actor_id,
-                actor_handle_id=self._ray_actor_handle_id,
-                actor_counter=self._ray_actor_counter,
-                is_actor_checkpoint_method=is_actor_checkpoint_method,
-                actor_creation_dummy_object_id=(
-                    self._ray_actor_creation_dummy_object_id),
-                execution_dependencies=execution_dependencies)
-            # Update the actor counter and cursor to reflect the most recent
-            # invocation.
-            self._ray_actor_counter += 1
-            self._ray_actor_cursor = object_ids.pop()
+        self._num_created += 1
 
-            # The last object returned is the dummy object that should be
-            # passed in to the next actor method. Do not return it to the user.
-            if len(object_ids) == 1:
-                return object_ids[0]
-            elif len(object_ids) > 1:
-                return object_ids
+        # Call __init__ as a remote function.
+        if "__init__" in actor_handle._ray_actor_method_names:
+            actor_handle.__init__.remote(*args, **kwargs)
 
-        # Make tab completion work.
-        def __dir__(self):
-            return self._ray_actor_method_names
+        return actor_handle
 
-        def __getattribute__(self, attr):
-            try:
-                # Check whether this is an actor method.
-                actor_method_names = object.__getattribute__(
-                    self, "_ray_actor_method_names")
-                if attr in actor_method_names:
-                    # We create the ActorMethod on the fly here so that the
-                    # ActorHandle doesn't need a reference to the ActorMethod.
-                    # The ActorMethod has a reference to the ActorHandle and
-                    # this was causing cyclic references which were prevent
-                    # object deallocation from behaving in a predictable
-                    # manner.
-                    actor_method_cls = ActorMethod
-                    return actor_method_cls(self, attr)
-            except AttributeError:
-                pass
-
-            # If the requested attribute is not a registered method, fall back
-            # to default __getattribute__.
-            return object.__getattribute__(self, attr)
-
-        def __repr__(self):
-            return "Actor(" + self._ray_actor_id.hex() + ")"
-
-        def __reduce__(self):
-            raise Exception("Actor objects cannot be pickled.")
-
-        def __del__(self):
-            """Kill the worker that is running this actor."""
-            # TODO(swang): Also clean up forked actor handles.
-            # Kill the worker if this is the original actor handle, created
-            # with Class.remote().
-            if (ray.worker.global_worker.connected and
-                    self._ray_actor_handle_id.id() == ray.worker.NIL_ACTOR_ID):
-                # TODO(rkn): Should we be passing in the actor cursor as a
-                # dependency here?
-                self._actor_method_call(
-                    "__ray_terminate__", args=[self._ray_actor_id.id()])
-
-    return ActorHandle
+    @property
+    def class_id(self):
+        return self._class_id
 
 
-def actor_handle_from_class(Class, class_id, actor_creation_resources,
-                            checkpoint_interval, actor_method_cpus):
-    class_name = Class.__name__.encode("ascii")
-    actor_handle_class = make_actor_handle_class(class_name)
-    exported = []
+class ActorHandle(object):
+    def __init__(self, actor_id, class_name, actor_cursor, actor_counter,
+                 actor_method_names, actor_method_num_return_vals,
+                 method_signatures, actor_creation_dummy_object_id,
+                 actor_method_cpus, original_handle):
+        self._ray_actor_id = actor_id
+        if original_handle:
+            self._ray_actor_handle_id = ray.local_scheduler.ObjectID(
+                ray.worker.NIL_ACTOR_ID)  # TODO(rkn): Check this before merging.
+        else:
+            self._ray_actor_handle_id = ray.local_scheduler.ObjectID(
+                _random_string())  # TODO(rkn): Check this before merging.
+        self._ray_actor_cursor = actor_cursor
+        self._ray_actor_counter = actor_counter
+        self._ray_actor_method_names = actor_method_names
+        self._ray_actor_method_num_return_vals = actor_method_num_return_vals
+        self._ray_method_signatures = method_signatures
+        self._ray_class_name = class_name
+        # self._ray_actor_forks = 0
+        self._ray_actor_creation_dummy_object_id = actor_creation_dummy_object_id
+        self._ray_actor_method_cpus = actor_method_cpus
 
-    class ActorHandle(actor_handle_class):
-        @classmethod
-        def remote(cls, *args, **kwargs):
-            if ray.worker.global_worker.mode is None:
-                raise Exception("Actors cannot be created before ray.init() "
-                                "has been called.")
+        self._ray_original_handle = original_handle  # TODO(rkn): Do we really want this?
 
-            actor_id = ray.local_scheduler.ObjectID(_random_string())
-            # The ID for this instance of ActorHandle. These should be unique
-            # across instances with the same _ray_actor_id.
-            actor_handle_id = ray.local_scheduler.ObjectID(
-                ray.worker.NIL_ACTOR_ID)
-            # The actor cursor is a dummy object representing the most recent
-            # actor method invocation. For each subsequent method invocation,
-            # the current cursor should be added as a dependency, and then
-            # updated to reflect the new invocation.
-            actor_cursor = None
-            # The number of actor method invocations that we've called so far.
-            actor_counter = 0
 
-            # Get the actor methods of the given class.
-            def pred(x):
-                return (inspect.isfunction(x) or inspect.ismethod(x)
-                        or is_cython(x))
+    def _actor_method_call(self,
+                           method_name,
+                           args=None,
+                           kwargs=None,
+                           num_return_vals=None,
+                           dependency=None):
+        """Method execution stub for an actor handle.
 
-            actor_methods = inspect.getmembers(Class, predicate=pred)
-            # Extract the signatures of each of the methods. This will be used
-            # to catch some errors if the methods are called with inappropriate
-            # arguments.
-            method_signatures = dict()
-            for k, v in actor_methods:
-                # Print a warning message if the method signature is not
-                # supported. We don't raise an exception because if the actor
-                # inherits from a class that has a method whose signature we
-                # don't support, we there may not be much the user can do about
-                # it.
-                signature.check_signature_supported(v, warn=True)
-                method_signatures[k] = signature.extract_signature(
-                    v, ignore_first=True)
+        This is the function that executes when
+        `actor.method_name.remote(*args, **kwargs)` is called. Instead of
+        executing locally, the method is packaged as a task and scheduled
+        to the remote actor instance.
 
-            actor_method_names = [
-                method_name for method_name, _ in actor_methods
-            ]
-            actor_method_num_return_vals = []
-            for _, method in actor_methods:
-                if hasattr(method, "__ray_num_return_vals__"):
-                    actor_method_num_return_vals.append(
-                        method.__ray_num_return_vals__)
-                else:
-                    actor_method_num_return_vals.append(1)
-            # Do not export the actor class or the actor if run in PYTHON_MODE
-            # Instead, instantiate the actor locally and add it to
-            # global_worker's dictionary
-            if ray.worker.global_worker.mode == ray.PYTHON_MODE:
-                ray.worker.global_worker.actors[actor_id] = (
-                    Class.__new__(Class))
-            else:
-                # Export the actor.
-                if not exported:
-                    export_actor_class(class_id, Class, actor_method_names,
-                                       actor_method_num_return_vals,
-                                       checkpoint_interval,
-                                       ray.worker.global_worker)
-                    exported.append(0)
-                actor_cursor = export_actor(
-                    actor_id, class_id, class_name, actor_method_names,
-                    actor_method_num_return_vals, actor_creation_resources,
-                    actor_method_cpus, ray.worker.global_worker)
-            # Increment the actor counter to account for the creation task.
-            actor_counter += 1
+        Args:
+            method_name: The name of the actor method to execute.
+            args: A list of arguments for the actor method.
+            kwargs: A dictionary of keyword arguments for the actor method.
+            dependency: The object ID that this method is dependent on.
+                Defaults to None, for no dependencies. Most tasks should
+                pass in the dummy object returned by the preceding task.
+                Some tasks, such as checkpoint and terminate methods, have
+                no dependencies.
 
-            # Instantiate the actor handle.
-            actor_object = cls.__new__(cls)
-            actor_object._manual_init(
-                actor_id, class_id, actor_handle_id, actor_cursor,
-                actor_counter, actor_method_names,
-                actor_method_num_return_vals, method_signatures,
-                checkpoint_interval, actor_cursor, actor_creation_resources,
-                actor_method_cpus)
+        Returns:
+            object_ids: A list of object IDs returned by the remote actor
+                method.
+        """
+        ray.worker.check_connected()
+        ray.worker.check_main_thread()
+        function_signature = self._ray_method_signatures[method_name]
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
+        args = signature.extend_args(function_signature, args, kwargs)
 
-            # Call __init__ as a remote function.
-            if "__init__" in actor_object._ray_actor_method_names:
-                actor_object._actor_method_call(
-                    "__init__",
-                    args=args,
-                    kwargs=kwargs,
-                    dependency=actor_cursor)
-            else:
-                print("WARNING: this object has no __init__ method.")
+        # Execute functions locally if Ray is run in PYTHON_MODE
+        # Copy args to prevent the function from mutating them.
+        if ray.worker.global_worker.mode == ray.PYTHON_MODE:
+            return getattr(
+                ray.worker.global_worker.actors[self._ray_actor_id],
+                method_name)(*copy.deepcopy(args))
 
-            return actor_object
+        # Add the execution dependency.
+        if dependency is None:
+            execution_dependencies = []
+        else:
+            execution_dependencies = [dependency]
 
-    return ActorHandle
+        is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
+
+        function_id = compute_actor_method_function_id(
+            self._ray_class_name, method_name)
+        object_ids = ray.worker.global_worker.submit_task(
+            function_id,
+            args,
+            actor_id=self._ray_actor_id,
+            actor_handle_id=self._ray_actor_handle_id,
+            actor_counter=self._ray_actor_counter,
+            is_actor_checkpoint_method=is_actor_checkpoint_method,
+            actor_creation_dummy_object_id=(
+                self._ray_actor_creation_dummy_object_id),
+            execution_dependencies=execution_dependencies,
+            num_return_vals=num_return_vals)
+        # Update the actor counter and cursor to reflect the most recent
+        # invocation.
+        self._ray_actor_counter += 1
+        # The last object returned is the dummy object that should be
+        # passed in to the next actor method. Do not return it to the user.
+        self._ray_actor_cursor = object_ids.pop()
+
+        if len(object_ids) == 1:
+            object_ids = object_ids[0]
+        elif len(object_ids) == 0:
+            object_ids = None
+
+        return object_ids
+
+    # Make tab completion work.
+    def __dir__(self):
+        return self._ray_actor_method_names
+
+    def __getattribute__(self, attr):
+        try:
+            # Check whether this is an actor method.
+            actor_method_names = object.__getattribute__(
+                self, "_ray_actor_method_names")
+            if attr in actor_method_names:
+                # We create the ActorMethod on the fly here so that the
+                # ActorHandle doesn't need a reference to the ActorMethod.
+                # The ActorMethod has a reference to the ActorHandle and
+                # this was causing cyclic references which were prevent
+                # object deallocation from behaving in a predictable
+                # manner.
+                actor_method_cls = ActorMethod
+                return actor_method_cls(self, attr)
+        except AttributeError:
+            pass
+
+        # If the requested attribute is not a registered method, fall back
+        # to default __getattribute__.
+        return object.__getattribute__(self, attr)
+
+    def __repr__(self):
+        return "Actor(" + self._ray_actor_id.hex() + ")"
+
+    def __del__(self):
+        """Kill the worker that is running this actor."""
+        # TODO(swang): Also clean up forked actor handles.
+        # Kill the worker if this is the original actor handle, created
+        # with Class.remote(). TODO(rkn): Even without passing handles around,
+        # this is not the right policy. the actor should be alive as long as
+        # there are ANY handles in scope in the process that created the actor,
+        # not just the first one.
+        if ray.worker.global_worker.connected and self._ray_original_handle:
+            # TODO(rkn): Should we be passing in the actor cursor as a
+            # dependency here?
+            # self.__ray__terminate__.remote()
+            self._actor_method_call("__ray_terminate__")
+
+    @property
+    def actor_id(self):
+        return self._ray_actor_id
+
+    @property
+    def actor_handle_id(self):
+        return self._ray_actor_handle_id
+
+    def __getstate__(self):
+        return {
+            "actor_id": self._ray_actor_id.id(),
+            "class_name": self._ray_class_name,
+            "actor_cursor": self._ray_actor_cursor.id(),
+            "actor_counter": 0,  # Reset the actor counter.
+            "actor_method_names": self._ray_actor_method_names,
+            "actor_method_num_return_vals":
+                self._ray_actor_method_num_return_vals,
+            "method_signatures": self._ray_method_signatures,
+            "actor_creation_dummy_object_id":
+                self._ray_actor_creation_dummy_object_id.id(),
+            "actor_method_cpus": self._ray_actor_method_cpus,
+            "original_handle": False,
+        }
+
+    def __setstate__(self, state):
+        ray.worker.check_connected()
+        ray.worker.check_main_thread()
+
+        self.__init__(ray.local_scheduler.ObjectID(state["actor_id"]),
+                      state["class_name"],
+                      ray.local_scheduler.ObjectID(state["actor_cursor"]),
+                      state["actor_counter"],
+                      state["actor_method_names"],
+                      state["actor_method_num_return_vals"],
+                      state["method_signatures"],
+                      ray.local_scheduler.ObjectID(
+                          state["actor_creation_dummy_object_id"]),
+                      state["actor_method_cpus"], state["original_handle"])
+
+        driver_id = ray.worker.global_worker.task_driver_id.id()
+        register_actor_signatures(
+            ray.worker.global_worker, driver_id, None, self._ray_class_name,
+            self._ray_actor_method_names,
+            self._ray_actor_method_num_return_vals, None,
+            self._ray_actor_method_cpus)
 
 
 def make_actor(cls, resources, checkpoint_interval, actor_method_cpus):
@@ -854,12 +831,7 @@ def make_actor(cls, resources, checkpoint_interval, actor_method_cpus):
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
-        def __ray_terminate__(self, actor_id):
-            # Record that this actor has been removed so that if this node
-            # dies later, the actor won't be recreated. Alternatively, we could
-            # remove the actor key from Redis here.
-            ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
-                                                       "removed", True)
+        def __ray_terminate__(self):
             # Disconnect the worker from the local scheduler. The point of this
             # is so that when the worker kills itself below, the local
             # scheduler won't push an error message to the driver.
@@ -945,8 +917,8 @@ def make_actor(cls, resources, checkpoint_interval, actor_method_cpus):
 
     class_id = _random_string()
 
-    return actor_handle_from_class(Class, class_id, resources,
-                                   checkpoint_interval, actor_method_cpus)
+    return ActorClass(Class, class_id, resources, checkpoint_interval,
+                      resources, actor_method_cpus)
 
 
 ray.worker.global_worker.fetch_and_register_actor = fetch_and_register_actor

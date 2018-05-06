@@ -363,11 +363,6 @@ class Worker(object):
                             "do this, you can wrap the ObjectID in a list and "
                             "call 'put' on it (or return it).")
 
-        if isinstance(value, ray.actor.ActorHandleParent):
-            raise Exception("Calling 'put' on an actor handle is currently "
-                            "not allowed (similarly, returning an actor "
-                            "handle from a remote function is not allowed).")
-
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
@@ -579,9 +574,6 @@ class Worker(object):
             for arg in args:
                 if isinstance(arg, ray.local_scheduler.ObjectID):
                     args_for_local_scheduler.append(arg)
-                elif isinstance(arg, ray.actor.ActorHandleParent):
-                    args_for_local_scheduler.append(
-                        put(ray.actor.wrap_actor_handle(arg)))
                 elif ray.local_scheduler.check_simple_value(arg):
                     args_for_local_scheduler.append(arg)
                 else:
@@ -749,8 +741,6 @@ class Worker(object):
                     # created this object failed, and we should propagate the
                     # error message here.
                     raise RayGetArgumentError(function_name, i, arg, argument)
-                elif isinstance(argument, ray.actor.ActorHandleWrapper):
-                    argument = ray.actor.unwrap_actor_handle(self, argument)
             else:
                 # pass the argument by value
                 argument = arg
@@ -779,6 +769,10 @@ class Worker(object):
                 passed into this function.
         """
         for i in range(len(object_ids)):
+            if isinstance(outputs[i], ray.actor.ActorHandle):
+                raise Exception("Returning an actor handle from a remote "
+                                "function is not allowed).")
+
             self.put_object(object_ids[i], outputs[i])
 
     def _process_task(self, task):
@@ -1162,7 +1156,7 @@ def _initialize_serialization(worker=global_worker):
         # Tell Ray to serialize types with pickle.
         register_custom_serializer(type(int), use_pickle=True)
         # Ray can serialize actor handles that have been wrapped.
-        register_custom_serializer(ray.actor.ActorHandleWrapper, use_dict=True)
+        register_custom_serializer(ray.actor.ActorHandle, use_pickle=True)
         # Tell Ray to serialize FunctionSignatures as dictionaries. This is
         # used when passing around actor handles.
         register_custom_serializer(
