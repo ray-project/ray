@@ -1,11 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import six.moves.queue as queue
 import threading
 from collections import namedtuple
+
 import numpy as np
+import six.moves.queue as queue
 
 
 class PartialRollout(object):
@@ -23,9 +22,8 @@ class PartialRollout(object):
     fields = ["obs", "actions", "rewards", "new_obs", "dones", "features"]
 
     def __init__(self, extra_fields=None):
-        """Initializers internals. Maintains a `last_r` field
-        in support of partial rollouts, used in bootstrapping advantage
-        estimation.
+        """Initializers internals. Maintains a `last_r` field in support of
+        partial rollouts, used in bootstrapping advantage estimation.
 
         Args:
             extra_fields: Optional field for object to keep track.
@@ -40,8 +38,10 @@ class PartialRollout(object):
             self.data[k] += [v]
 
     def extend(self, other_rollout):
-        """Extends internal data structure. Assumes other_rollout contains
-        data that occured afterwards."""
+        """Extends internal data structure.
+
+        Assumes other_rollout contains data that occured afterwards.
+        """
 
         assert not self.is_terminal()
         assert all(k in other_rollout.fields for k in self.fields)
@@ -52,15 +52,13 @@ class PartialRollout(object):
     def is_terminal(self):
         """Check if terminal.
 
-        Returns:
-            terminal (bool): if rollout has terminated."""
+        Returns:     terminal (bool): if rollout has terminated.
+        """
         return self.data["dones"][-1]
 
     def __getitem__(self, key):
         return self.data[key]
 
-CompletedRollout = namedtuple(
-    "CompletedRollout", ["episode_length", "episode_reward"])
     def __setitem__(self, key, item):
         self.data[key] = item
 
@@ -80,6 +78,10 @@ CompletedRollout = namedtuple(
         return x in self.data
 
 
+CompletedRollout = namedtuple("CompletedRollout",
+                              ["episode_length", "episode_reward"])
+
+
 class SyncSampler(object):
     """This class interacts with the environment and tells it what to do.
 
@@ -87,19 +89,19 @@ class SyncSampler(object):
     accumulate and the gradient can be calculated on up to 5 batches.
 
     This class provides data on invocation, rather than on a separate
-    thread."""
+    thread.
+    """
     async = False
 
-    def __init__(self, env, policy, obs_filter,
-                 num_local_steps, horizon=None):
+    def __init__(self, env, policy, obs_filter, num_local_steps, horizon=None):
         self.num_local_steps = num_local_steps
         self.horizon = horizon
         self.env = env
         self.policy = policy
         self._obs_filter = obs_filter
-        self.rollout_provider = _env_runner(
-            self.env, self.policy, self.num_local_steps, self.horizon,
-            self._obs_filter)
+        self.rollout_provider = _env_runner(self.env, self.policy,
+                                            self.num_local_steps, self.horizon,
+                                            self._obs_filter)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -124,13 +126,14 @@ class AsyncSampler(threading.Thread):
     """This class interacts with the environment and tells it what to do.
 
     Note that batch_size is only a unit of measure here. Batches can
-    accumulate and the gradient can be calculated on up to 5 batches."""
+    accumulate and the gradient can be calculated on up to 5 batches.
+    """
     async = True
 
-    def __init__(self, env, policy, obs_filter,
-                 num_local_steps, horizon=None):
-        assert getattr(obs_filter, "is_concurrent", False), (
-            "Observation Filter must support concurrent updates.")
+    def __init__(self, env, policy, obs_filter, num_local_steps, horizon=None):
+        assert getattr(
+            obs_filter, "is_concurrent",
+            False), ("Observation Filter must support concurrent updates.")
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()
@@ -151,9 +154,9 @@ class AsyncSampler(threading.Thread):
             raise e
 
     def _run(self):
-        rollout_provider = _env_runner(
-            self.env, self.policy, self.num_local_steps,
-            self.horizon, self._obs_filter)
+        rollout_provider = _env_runner(self.env, self.policy,
+                                       self.num_local_steps, self.horizon,
+                                       self._obs_filter)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -167,8 +170,8 @@ class AsyncSampler(threading.Thread):
     def get_data(self):
         """Gets currently accumulated data.
 
-        Returns:
-            rollout (PartialRollout): trajectory data (unprocessed)
+        Returns:     rollout (PartialRollout): trajectory data
+        (unprocessed)
         """
         assert self.started, "Sampler never started running!"
         rollout = self.queue.get(timeout=600.0)
@@ -251,13 +254,14 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                 action = np.concatenate(action, axis=0).flatten()
 
             # Collect the experience.
-            rollout.add(obs=last_observation,
-                        actions=action,
-                        rewards=reward,
-                        dones=terminal,
-                        features=last_features,
-                        new_obs=observation,
-                        **pi_info)
+            rollout.add(
+                obs=last_observation,
+                actions=action,
+                rewards=reward,
+                dones=terminal,
+                features=last_features,
+                new_obs=observation,
+                **pi_info)
 
             last_observation = observation
             last_features = features
@@ -266,8 +270,8 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                 terminal_end = True
                 yield CompletedRollout(length, rewards)
 
-                if (length >= horizon or
-                        not env.metadata.get("semantics.autoreset")):
+                if (length >= horizon
+                        or not env.metadata.get("semantics.autoreset")):
                     last_observation = obs_filter(env.reset())
                     if hasattr(policy, "get_initial_features"):
                         last_features = policy.get_initial_features()
