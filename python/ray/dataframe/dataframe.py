@@ -1198,6 +1198,7 @@ class DataFrame(object):
         Returns:
             values: ndarray
         """
+        # TODO this is very inneficient, also see __array__
         return to_pandas(self).as_matrix(columns)
 
     def asfreq(self, freq, method=None, how=None, normalize=False,
@@ -4595,8 +4596,8 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __array__(self, dtype=None):
-        # TODO: This is very inefficient and needs fix
-        return np.array(to_pandas(self))
+        # TODO: This is very inefficient and needs fix, also see as_matrix
+        return to_pandas(self).__array__(dtype=dtype)
 
     def __array_wrap__(self, result, context=None):
         raise NotImplementedError(
