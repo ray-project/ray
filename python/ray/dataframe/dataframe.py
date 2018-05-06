@@ -3090,7 +3090,7 @@ class DataFrame(object):
                         1 or 'columns' for column-wise
             interpolation: {'linear', 'lower', 'higher', 'midpoint', 'nearest'}
                 Specifies which interpolation method to use
-t
+
         Returns:
             quantiles : Series or DataFrame
                     If q is an array, a DataFrame will be returned where the
@@ -3103,7 +3103,7 @@ t
         """
 
         def check_bad_dtype(t):
-            return t == np.dtype('O') or is_timedelta64_dtype(dtype)
+            return t == np.dtype('O') or is_timedelta64_dtype(t)
 
         # deal with error checking for bad dtyping when numeric_only is False
         if not numeric_only:
@@ -3154,16 +3154,18 @@ t
             q_index = pd.Float64Index(q)
 
             if axis == 0:
-                new_partitions = _map_partitions(quantile_helper,
-                                                 self._col_partitions)
+                new_partitions = _map_partitions(
+                    lambda df: quantile_helper(df, pd.DataFrame()),
+                    self._col_partitions)
 
                 # select only correct dtype columns
                 new_columns = self.dtypes[self.dtypes.apply(
                                           lambda x: is_numeric_dtype(x))].index
 
             else:
-                new_partitions = _map_partitions(quantile_helper,
-                                                 self._row_partitions)
+                new_partitions = _map_partitions(
+                    lambda df: quantile_helper(df, pd.DataFrame()),
+                    self._row_partitions)
                 new_columns = self.index
 
             return DataFrame(col_partitions=new_partitions,
@@ -3174,7 +3176,7 @@ t
             # When q is a single float, we return a Series, so using
             # arithmetic_helper works well here.
             result = self._arithmetic_helper(
-                lambda df: quantile_helper(df, pd.Series), axis)
+                lambda df: quantile_helper(df, pd.Series()), axis)
             result.name = q
             return result
 
