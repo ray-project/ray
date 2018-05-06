@@ -30,7 +30,8 @@ if args.is_ray:
     pd.set_nrowpartitions(int(args.nrows))
     pd.set_ncolpartitions(int(args.ncols))
     if args.is_static:
-        pd.utils.temp((int(args.nrows), int(args.ncols)))
+        pd.utils.set_dims((int(args.nrows), int(args.ncols)))
+        pd.utils.set_hardcode(True)
     frame = "ray"
 else:
     import pandas as pd
