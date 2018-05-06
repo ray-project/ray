@@ -212,6 +212,8 @@ def test_int_dataframe():
 
     test_copy(ray_df)
     test_sum(ray_df, pandas_df)
+    test_prod(ray_df, pandas_df)
+    test_product(ray_df, pandas_df)
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
@@ -376,6 +378,8 @@ def test_float_dataframe():
 
     test_copy(ray_df)
     test_sum(ray_df, pandas_df)
+    test_prod(ray_df, pandas_df)
+    test_product(ray_df, pandas_df)
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
@@ -1014,10 +1018,28 @@ def test_assign():
 
 
 def test_astype():
-    ray_df = create_test_dataframe()
+    td = TestData()
+    ray_df_frame = from_pandas(td.frame, 2)
+    our_df_casted = ray_df_frame.astype(np.int32)
+    expected_df_casted = pd.DataFrame(td.frame.values.astype(np.int32),
+                                      index=td.frame.index,
+                                      columns=td.frame.columns)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.astype(None)
+    assert(ray_df_equals_pandas(our_df_casted, expected_df_casted))
+
+    our_df_casted = ray_df_frame.astype(np.float64)
+    expected_df_casted = pd.DataFrame(td.frame.values.astype(np.float64),
+                                      index=td.frame.index,
+                                      columns=td.frame.columns)
+
+    assert(ray_df_equals_pandas(our_df_casted, expected_df_casted))
+
+    our_df_casted = ray_df_frame.astype(str)
+    expected_df_casted = pd.DataFrame(td.frame.values.astype(str),
+                                      index=td.frame.index,
+                                      columns=td.frame.columns)
+
+    assert(ray_df_equals_pandas(our_df_casted, expected_df_casted))
 
 
 def test_at_time():
@@ -2329,18 +2351,14 @@ def test_pow():
     test_inter_df_math("pow", simple=False)
 
 
-def test_prod():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.prod(None)
+@pytest.fixture
+def test_prod(ray_df, pandas_df):
+    assert(ray_df.prod().equals(pandas_df.prod()))
 
 
-def test_product():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.product()
+@pytest.fixture
+def test_product(ray_df, pandas_df):
+    assert(ray_df.product().equals(pandas_df.product()))
 
 
 @pytest.fixture
@@ -2729,10 +2747,25 @@ def test_select():
 
 
 def test_select_dtypes():
-    ray_df = create_test_dataframe()
+    df = pd.DataFrame({'test1': list('abc'),
+                       'test2': np.arange(3, 6).astype('u1'),
+                       'test3': np.arange(8.0, 11.0, dtype='float64'),
+                       'test4': [True, False, True],
+                       'test5': pd.date_range('now', periods=3).values,
+                       'test6': list(range(5, 8))})
+    include = np.float, 'integer'
+    exclude = np.bool_,
+    rd = from_pandas(df, 2)
+    r = rd.select_dtypes(include=include, exclude=exclude)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.select_dtypes()
+    e = df[["test2", "test3", "test6"]]
+    assert(ray_df_equals_pandas(r, e))
+
+    try:
+        rdf.DataFrame().select_dtypes()
+        assert(False)
+    except ValueError:
+        assert(True)
 
 
 def test_sem():

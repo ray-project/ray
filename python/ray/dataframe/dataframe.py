@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
+import functools
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
@@ -15,7 +16,8 @@ from pandas.core.dtypes.common import (
     is_bool_dtype,
     is_list_like,
     is_numeric_dtype,
-    is_timedelta64_dtype)
+    is_timedelta64_dtype,
+    _get_dtype_from_object)
 from pandas.core.indexing import check_bool_indexer
 from pandas.errors import MergeError
 
@@ -644,7 +646,8 @@ class DataFrame(object):
         return DataFrameGroupBy(self, by, axis, level, as_index, sort,
                                 group_keys, squeeze, **kwargs)
 
-    def sum(self, axis=None, skipna=True, level=None, numeric_only=None):
+    def sum(self, axis=None, skipna=True, level=None, numeric_only=None,
+            min_count=1, **kwargs):
         """Perform a sum across the DataFrame.
 
         Args:
@@ -656,7 +659,8 @@ class DataFrame(object):
         """
         def remote_func(df):
             return df.sum(axis=axis, skipna=skipna, level=level,
-                          numeric_only=numeric_only)
+                          numeric_only=numeric_only, min_count=min_count,
+                          **kwargs)
 
         return self._arithmetic_helper(remote_func, axis, level)
 
@@ -1206,9 +1210,42 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def astype(self, dtype, copy=True, errors='raise', **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if isinstance(dtype, dict):
+            if (not set(dtype.keys()).issubset(set(self.columns)) and
+                    errors == 'raise'):
+                raise KeyError(
+                    "Only a column name can be used for the key in"
+                    "a dtype mappings argument.")
+            columns = list(dtype.keys())
+            col_idx = [(self.columns.get_loc(columns[i]), columns[i])
+                       if columns[i] in self.columns
+                       else (columns[i], columns[i])
+                       for i in range(len(columns))]
+            new_dict = {}
+            for idx, key in col_idx:
+                new_dict[idx] = dtype[key]
+            new_rows = _map_partitions(lambda df, dt: df.astype(dtype=dt,
+                                                                copy=True,
+                                                                errors=errors,
+                                                                **kwargs),
+                                       self._row_partitions, new_dict)
+            if copy:
+                return DataFrame(row_partitions=new_rows,
+                                 columns=self.columns,
+                                 index=self.index)
+            self._row_partitions = new_rows
+        else:
+            new_blocks = [_map_partitions(lambda d: d.astype(dtype=dtype,
+                                                             copy=True,
+                                                             errors=errors,
+                                                             **kwargs),
+                                          block)
+                          for block in self._block_partitions]
+            if copy:
+                return DataFrame(block_partitions=new_blocks,
+                                 columns=self.columns,
+                                 index=self.index)
+            self._block_partitions = new_blocks
 
     def at_time(self, time, asof=False):
         raise NotImplementedError(
@@ -3005,16 +3042,43 @@ class DataFrame(object):
                                      fill_value)
 
     def prod(self, axis=None, skipna=None, level=None, numeric_only=None,
-             min_count=0, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+             min_count=1, **kwargs):
+        """Return the product of the values for the requested axis
+
+        Args:
+            axis : {index (0), columns (1)}
+            skipna : boolean, default True
+            level : int or level name, default None
+            numeric_only : boolean, default None
+            min_count : int, default 1
+
+        Returns:
+            prod : Series or DataFrame (if level specified)
+        """
+        def remote_func(df):
+            return df.prod(axis=axis, skipna=skipna, level=level,
+                           numeric_only=numeric_only, min_count=min_count,
+                           **kwargs)
+
+        return self._arithmetic_helper(remote_func, axis, level)
 
     def product(self, axis=None, skipna=None, level=None, numeric_only=None,
-                min_count=0, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+                min_count=1, **kwargs):
+        """Return the product of the values for the requested axis
+
+        Args:
+            axis : {index (0), columns (1)}
+            skipna : boolean, default True
+            level : int or level name, default None
+            numeric_only : boolean, default None
+            min_count : int, default 1
+
+        Returns:
+            product : Series or DataFrame (if level specified)
+        """
+        return self.prod(axis=axis, skipna=skipna, level=level,
+                         numeric_only=numeric_only, min_count=min_count,
+                         **kwargs)
 
     def quantile(self, q=0.5, axis=0, numeric_only=True,
                  interpolation='linear'):
@@ -3539,9 +3603,42 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def select_dtypes(self, include=None, exclude=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        # Validates arguments for whether both include and exclude are None or
+        # if they are disjoint. Also invalidates string dtypes.
+        pd.DataFrame().select_dtypes(include, exclude)
+
+        if include and not is_list_like(include):
+            include = [include]
+        elif not include:
+            include = []
+
+        if exclude and not is_list_like(exclude):
+            exclude = [exclude]
+        elif not exclude:
+            exclude = []
+
+        sel = tuple(map(set, (include, exclude)))
+
+        include, exclude = map(
+            lambda x: set(map(_get_dtype_from_object, x)), sel)
+
+        include_these = pd.Series(not bool(include), index=self.columns)
+        exclude_these = pd.Series(not bool(exclude), index=self.columns)
+
+        def is_dtype_instance_mapper(column, dtype):
+            return column, functools.partial(issubclass, dtype.type)
+
+        for column, f in itertools.starmap(is_dtype_instance_mapper,
+                                           self.dtypes.iteritems()):
+            if include:  # checks for the case of empty include or exclude
+                include_these[column] = any(map(f, include))
+            if exclude:
+                exclude_these[column] = not any(map(f, exclude))
+
+        dtype_indexer = include_these & exclude_these
+        indicate = [i for i in range(len(dtype_indexer.values))
+                    if not dtype_indexer.values[i]]
+        return self.drop(columns=self.columns[indicate], inplace=False)
 
     def sem(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
@@ -4211,9 +4308,16 @@ class DataFrame(object):
             raise e
 
     def __setitem__(self, key, value):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if not isinstance(key, str):
+            raise NotImplementedError(
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+        if key not in self.columns:
+            self.insert(loc=len(self.columns), column=key, value=value)
+        else:
+            loc = self.columns.get_loc(key)
+            self.__delitem__(key)
+            self.insert(loc=loc, column=key, value=value)
 
     def __len__(self):
         """Gets the length of the dataframe.
