@@ -3310,10 +3310,13 @@ class DataFrame(object):
             else:
                 df.columns = index
 
-            return df.sort_index(*args)
+            result = df.sort_index(*args)
+            df.reset_index(drop=True, inplace=True)
+            df.columns = pd.RangeIndex(len(df.columns))
+            return result
 
         if axis == 0:
-            index = (self.index)
+            index = self.index
             new_column_parts = _map_partitions(
                 lambda df: _sort_helper(df, index, axis, *args),
                 self._col_partitions)
@@ -3322,7 +3325,7 @@ class DataFrame(object):
             new_index = self.index.sort_values()
             new_row_parts = None
         else:
-            columns = (self.columns)
+            columns = self.columns
             new_row_parts = _map_partitions(
                 lambda df: _sort_helper(df, columns, axis, *args),
                 self._row_partitions)
