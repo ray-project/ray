@@ -538,7 +538,6 @@ class ActorClass(object):
         self._actor_creation_resources = actor_creation_resources  # TODO(rkn): Remove this.
         self._actor_method_cpus = actor_method_cpus
         self._exported = False
-        self._num_created = 0
 
     def remote(self, *args, **kwargs):
         return self._submit(args=args, kwargs=kwargs)
@@ -615,11 +614,9 @@ class ActorClass(object):
 
         actor_handle = ActorHandle(actor_id, self._class_name, actor_cursor,
                                    actor_counter, actor_method_names,
-                                   actor_method_num_return_vals, method_signatures,
-                                   actor_cursor, self._actor_method_cpus,
-                                   self._num_created == 0)
-
-        self._num_created += 1
+                                   actor_method_num_return_vals,
+                                   method_signatures, actor_cursor,
+                                   self._actor_method_cpus, True)
 
         # Call __init__ as a remote function.
         if "__init__" in actor_handle._ray_actor_method_names:
