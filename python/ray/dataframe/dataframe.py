@@ -4407,9 +4407,37 @@ class DataFrame(object):
 
     def update(self, other, join='left', overwrite=True, filter_func=None,
                raise_conflict=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Modify DataFrame in place using non-NA values from other.
+
+        Args:
+            other: DataFrame, or object coercible into a DataFrame
+            join: {'left'}, default 'left'
+            overwrite: If True then overwrite values for common keys in frame
+            filter_func: Can choose to replace values other than NA.
+            raise_conflict: If True, will raise an error if the DataFrame and
+                other both contain data in the same place.
+
+        Returns:
+            None
+        """
+        if raise_conflict:
+            raise NotImplementedError(
+                "raise_conflict parameter not yet supported. "
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+
+        if not isinstance(other, DataFrame):
+            other = DataFrame(other)
+
+        new_blocks = self._inter_df_op_helper(
+            lambda x, y: x.update(y, join, overwrite, filter_func, False),
+            other, join, 0, None)
+
+        self._update_inplace(
+            block_partitions=new_blocks,
+            index=self.index,
+            columns=self.columns
+        )
 
     def var(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
@@ -4963,13 +4991,13 @@ class DataFrame(object):
         if isinstance(other, DataFrame):
             return self._inter_df_op_helper(
                 lambda x, y: func(x, y, axis, level, *args),
-                other, axis, level)
+                other, "outer", axis, level)
         else:
             return self._single_df_op_helper(
                 lambda df: func(df, other, axis, level, *args),
                 other, axis, level)
 
-    def _inter_df_op_helper(self, func, other, axis, level):
+    def _inter_df_op_helper(self, func, other, how, axis, level):
         if level is not None:
             raise NotImplementedError("Mutlilevel index not yet supported "
                                       "in Pandas on Ray")
@@ -4977,8 +5005,8 @@ class DataFrame(object):
 
         # Adding two DataFrames causes an outer join.
         if isinstance(other, DataFrame):
-            new_column_index = self.columns.join(other.columns, how="outer")
-            new_index = self.index.join(other.index, how="outer")
+            new_column_index = self.columns.join(other.columns, how=how)
+            new_index = self.index.join(other.index, how=how)
             copartitions = self._copartition(other, new_index)
 
             new_blocks = \
