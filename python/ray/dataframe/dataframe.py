@@ -4433,9 +4433,8 @@ class DataFrame(object):
             x.update(y, join, overwrite, filter_func, False)
             return x
 
-        self._inter_df_op_helper(
-            lambda x, y: update_helper(x, y),
-            other, join, 0, None, inplace=True)
+        self._inter_df_op_helper(update_helper, other, join, 0, None,
+                                 inplace=True)
 
     def var(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
