@@ -17,7 +17,7 @@ from ray.rllib.utils.noise import OUNoise
 
 class DDPGEvaluator(PolicyEvaluator):
 
-    def __init__(self, registry, env_creator, config, worker_index):
+    def __init__(self, registry, env_creator, config, logdir, worker_index):
         env = ModelCatalog.get_preprocessor_as_wrapper(
             registry, env_creator(config["env_config"]), config["model"])
         self.env = env
@@ -30,7 +30,7 @@ class DDPGEvaluator(PolicyEvaluator):
 
         tf_config = tf.ConfigProto(**config["tf_session_args"])
         self.sess = tf.Session(config=tf_config)
-        self.ddpg_graph = models.DDPGGraph(registry, env, config)
+        self.ddpg_graph = models.DDPGGraph(registry, env, config, logdir)
 
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())

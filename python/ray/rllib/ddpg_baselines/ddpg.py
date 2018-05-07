@@ -93,7 +93,7 @@ class DDPGAgent(Agent):
 
     def _init(self):
         self.local_evaluator = DDPGEvaluator(
-            self.registry, self.env_creator, self.config, 0)
+            self.registry, self.env_creator, self.config, self.logdir, 0)
         remote_cls = ray.remote(
             num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
             DDPGEvaluator)

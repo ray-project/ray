@@ -61,7 +61,7 @@ def _build_actor_network(registry, inputs, ac_space, config):
 
 
 class DDPGGraph(object):
-    def __init__(self, registry, env, config):
+    def __init__(self, registry, env, config, logdir):
         self.env = env
         state_space = env.observation_space
         ac_space = env.action_space
