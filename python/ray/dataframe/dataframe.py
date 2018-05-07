@@ -4429,15 +4429,13 @@ class DataFrame(object):
         if not isinstance(other, DataFrame):
             other = DataFrame(other)
 
-        new_blocks = self._inter_df_op_helper(
-            lambda x, y: x.update(y, join, overwrite, filter_func, False),
-            other, join, 0, None)
+        def update_helper(x, y):
+            x.update(y, join, overwrite, filter_func, False)
+            return x
 
-        self._update_inplace(
-            block_partitions=new_blocks,
-            index=self.index,
-            columns=self.columns
-        )
+        self._inter_df_op_helper(
+            lambda x, y: update_helper(x, y),
+            other, join, 0, None, inplace=True)
 
     def var(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
@@ -4997,30 +4995,34 @@ class DataFrame(object):
                 lambda df: func(df, other, axis, level, *args),
                 other, axis, level)
 
-    def _inter_df_op_helper(self, func, other, how, axis, level):
+    def _inter_df_op_helper(self, func, other, how, axis, level,
+                            inplace=False):
         if level is not None:
             raise NotImplementedError("Mutlilevel index not yet supported "
                                       "in Pandas on Ray")
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        # Adding two DataFrames causes an outer join.
-        if isinstance(other, DataFrame):
-            new_column_index = self.columns.join(other.columns, how=how)
-            new_index = self.index.join(other.index, how=how)
-            copartitions = self._copartition(other, new_index)
+        new_column_index = self.columns.join(other.columns, how=how)
+        new_index = self.index.join(other.index, how=how)
+        copartitions = self._copartition(other, new_index)
 
-            new_blocks = \
-                np.array([_co_op_helper._submit(
-                    args=tuple([func, self.columns, other.columns,
-                                len(part[0]), None] +
-                          np.concatenate(part).tolist()),
-                    num_return_vals=len(part[0]))
-                    for part in copartitions])
+        new_blocks = \
+            np.array([_co_op_helper._submit(
+                args=tuple([func, self.columns, other.columns,
+                            len(part[0]), None] +
+                      np.concatenate(part).tolist()),
+                num_return_vals=len(part[0]))
+                for part in copartitions])
 
+        if not inplace:
             # TODO join the Index Metadata objects together for performance.
             return DataFrame(block_partitions=new_blocks,
                              columns=new_column_index,
                              index=new_index)
+        else:
+            self._update_inplace(block_partitions=new_blocks,
+                                 columns=new_column_index,
+                                 index=new_index)
 
     def _single_df_op_helper(self, func, other, axis, level):
         if level is not None:
