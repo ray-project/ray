@@ -15,7 +15,7 @@ from pandas.io.common import _infer_compression  # don't depend on internal API
 
 from .dataframe import ray, DataFrame
 from . import get_npartitions
-from .utils import from_pandas, _map_partitions
+from .utils import from_pandas
 
 
 # Parquet
@@ -84,21 +84,24 @@ def _split_df(pd_df, chunksize):
 
 
 # CSV
-def _compute_offset(fn, npartitions):
+def _compute_offset(fn, npartitions, ignore_first_line=False):
     """
     Calculate the currect bytes offsets for a csv file.
     Return a list of (start, end) tuple where the end == \n or EOF.
     """
     total_bytes = os.path.getsize(fn)
-    chunksize = total_bytes // npartitions
+    bio = open(fn, 'rb')
+    if ignore_first_line:
+        start = len(bio.readline())
+        chunksize = (total_bytes - start) // npartitions
+    else:
+        start = 0
+        chunksize = total_bytes // npartitions
     if chunksize == 0:
         chunksize = 1
 
-    bio = open(fn, 'rb')
-
     offsets = []
-    start = 0
-    while start <= total_bytes:
+    while start < total_bytes:
         bio.seek(chunksize, 1)  # Move forward {chunksize} bytes
         extend_line = bio.readline()  # Move after the next \n
         total_offset = chunksize + len(extend_line)
@@ -273,10 +276,17 @@ def read_csv(filepath_or_buffer,
 
     filepath = filepath_or_buffer
 
-    offsets = _compute_offset(filepath, get_npartitions())
-
+    # TODO: handle case where header is a list of lines
     first_line = _get_firstline(filepath)
     columns = _infer_column(first_line, kwargs=kwargs)
+    if header is None or (header == "infer" and names is not None):
+        first_line = b""
+        ignore_first_line = False
+    else:
+        ignore_first_line = True
+
+    offsets = _compute_offset(filepath, get_npartitions(),
+                              ignore_first_line=ignore_first_line)
 
     # Serialize objects to speed up later use in remote tasks
     first_line_id = ray.put(first_line)
@@ -296,9 +306,9 @@ def read_csv(filepath_or_buffer,
         df_obj_ids.append(df)
         index_obj_ids.append(index)
 
-    index_id = get_index.remote(*index_obj_ids)
+    index = get_index.remote(*index_obj_ids) if index_col is not None else None
 
-    return DataFrame(row_partitions=df_obj_ids, columns=columns, index=index_id)
+    return DataFrame(row_partitions=df_obj_ids, columns=columns, index=index)
 
 
 def read_json(path_or_buf=None,
