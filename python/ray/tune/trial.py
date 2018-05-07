@@ -182,8 +182,7 @@ class Trial(object):
             if self.runner:
                 stop_tasks = []
                 stop_tasks.append(self.runner.stop.remote())
-                stop_tasks.append(
-                    self.runner.__ray_terminate__.remote())
+                stop_tasks.append(self.runner.__ray_terminate__.remote())
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
                     stop_tasks, num_returns=2, timeout=250)

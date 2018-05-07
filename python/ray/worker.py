@@ -1131,18 +1131,39 @@ def _initialize_serialization(worker=global_worker):
     pyarrow.register_torch_serialization_handlers(worker.serialization_context)
 
     # Define a custom serializer and deserializer for handling Object IDs.
-    def objectid_custom_serializer(obj):
+    def object_id_custom_serializer(obj):
         return obj.id()
 
-    def objectid_custom_deserializer(serialized_obj):
+    def object_id_custom_deserializer(serialized_obj):
         return ray.local_scheduler.ObjectID(serialized_obj)
 
+    # We register this serializer on each worker instead of calling
+    # register_custom_serializer from the driver so that isinstance still
+    # works.
     worker.serialization_context.register_type(
         ray.local_scheduler.ObjectID,
         "ray.ObjectID",
         pickle=False,
-        custom_serializer=objectid_custom_serializer,
-        custom_deserializer=objectid_custom_deserializer)
+        custom_serializer=object_id_custom_serializer,
+        custom_deserializer=object_id_custom_deserializer)
+
+    def actor_handle_serializer(obj):
+        return obj._serialization_helper(True)
+
+    def actor_handle_deserializer(serialized_obj):
+        new_handle = ray.actor.ActorHandle.__new__(ray.actor.ActorHandle)
+        new_handle._deserialization_helper(serialized_obj, True)
+        return new_handle
+
+    # We register this serializer on each worker instead of calling
+    # register_custom_serializer from the driver so that isinstance still
+    # works.
+    worker.serialization_context.register_type(
+        ray.actor.ActorHandle,
+        "ray.ActorHandle",
+        pickle=False,
+        custom_serializer=actor_handle_serializer,
+        custom_deserializer=actor_handle_deserializer)
 
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # These should only be called on the driver because
@@ -1155,8 +1176,6 @@ def _initialize_serialization(worker=global_worker):
         register_custom_serializer(type(lambda: 0), use_pickle=True)
         # Tell Ray to serialize types with pickle.
         register_custom_serializer(type(int), use_pickle=True)
-        # Ray can serialize actor handles that have been wrapped.
-        register_custom_serializer(ray.actor.ActorHandle, use_pickle=True)
         # Tell Ray to serialize FunctionSignatures as dictionaries. This is
         # used when passing around actor handles.
         register_custom_serializer(

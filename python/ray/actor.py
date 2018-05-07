@@ -536,7 +536,11 @@ class ActorClass(object):
         """
         return self._submit(args=args, kwargs=kwargs)
 
-    def _submit(self, args, kwargs, num_cpus=None, num_gpus=None,
+    def _submit(self,
+                args,
+                kwargs,
+                num_cpus=None,
+                num_gpus=None,
                 resources=None):
         """Create an actor.
 
@@ -571,8 +575,8 @@ class ActorClass(object):
             return (inspect.isfunction(x) or inspect.ismethod(x)
                     or is_cython(x))
 
-        actor_methods = inspect.getmembers(self._modified_class,
-                                           predicate=pred)
+        actor_methods = inspect.getmembers(
+            self._modified_class, predicate=pred)
         # Extract the signatures of each of the methods. This will be used
         # to catch some errors if the methods are called with inappropriate
         # arguments.
@@ -586,9 +590,7 @@ class ActorClass(object):
             method_signatures[k] = signature.extract_signature(
                 v, ignore_first=True)
 
-        actor_method_names = [
-            method_name for method_name, _ in actor_methods
-        ]
+        actor_method_names = [method_name for method_name, _ in actor_methods]
         actor_method_num_return_vals = []
         for _, method in actor_methods:
             if hasattr(method, "__ray_num_return_vals__"):
@@ -605,27 +607,23 @@ class ActorClass(object):
         else:
             # Export the actor.
             if not self._exported:
-                export_actor_class(self._class_id, self._modified_class,
-                                   actor_method_names,
-                                   actor_method_num_return_vals,
-                                   self._checkpoint_interval,
-                                   ray.worker.global_worker)
+                export_actor_class(
+                    self._class_id, self._modified_class, actor_method_names,
+                    actor_method_num_return_vals, self._checkpoint_interval,
+                    ray.worker.global_worker)
                 self._exported = True
             actor_cursor = export_actor(
-                actor_id, self._class_id, self._class_name,
-                actor_method_names, actor_method_num_return_vals,
-                self._actor_creation_resources,
-                self._actor_method_cpus,
-                ray.worker.global_worker)
+                actor_id, self._class_id, self._class_name, actor_method_names,
+                actor_method_num_return_vals, self._actor_creation_resources,
+                self._actor_method_cpus, ray.worker.global_worker)
 
         # We initialize the actor counter at 1 to account for the actor
         # creation task.
         actor_counter = 1
-        actor_handle = ActorHandle(actor_id, self._class_name, actor_cursor,
-                                   actor_counter, actor_method_names,
-                                   actor_method_num_return_vals,
-                                   method_signatures, actor_cursor,
-                                   self._actor_method_cpus, True)
+        actor_handle = ActorHandle(
+            actor_id, self._class_name, actor_cursor, actor_counter,
+            actor_method_names, actor_method_num_return_vals,
+            method_signatures, actor_cursor, self._actor_method_cpus)
 
         # Call __init__ as a remote function.
         if "__init__" in actor_handle._ray_actor_method_names:
@@ -649,11 +647,21 @@ class ActorHandle(object):
     The fields in this class are prefixed with _ray_ to hide them from the user
     and to avoid collision with actor method names.
 
+    An ActorHandle can be created in three ways. First, by calling .remote() on
+    an ActorClass. Second, by passing an actor handle into a task (forking the
+    ActorHandle). Third, by directly serializing the ActorHandle (e.g., with
+    cloudpickle).
+
     Attributes:
         _ray_actor_id: The ID of the corresponding actor.
         _ray_actor_handle_id: The ID of this handle. If this is the "original"
             handle for an actor (as opposed to one created by passing another
-            handle into a task), then this ID must be NIL_ID.
+            handle into a task), then this ID must be NIL_ID. If this
+            ActorHandle was created by forking an existing ActorHandle, then
+            this ID must be computed deterministically via
+            compute_actor_handle_id. If this ActorHandle was created by an
+            out-of-band mechanism (e.g., pickling), then this must be generated
+            randomly.
         _ray_actor_cursor: The actor cursor is a dummy object representing the
             most recent actor method invocation. For each subsequent method
             invocation, the current cursor should be added as a dependency, and
@@ -665,6 +673,7 @@ class ActorHandle(object):
             actor method.
         _ray_method_signatures: The signatures of the actor methods.
         _ray_class_name: The name of the actor class.
+        _ray_actor_forks: The number of times this handle has been forked.
         _ray_actor_creation_dummy_object_id: The dummy object ID from the actor
             creation task.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
@@ -673,27 +682,34 @@ class ActorHandle(object):
             this handle goes out of scope.
     """
 
-    def __init__(self, actor_id, class_name, actor_cursor, actor_counter,
-                 actor_method_names, actor_method_num_return_vals,
-                 method_signatures, actor_creation_dummy_object_id,
-                 actor_method_cpus, original_handle):
+    def __init__(self,
+                 actor_id,
+                 class_name,
+                 actor_cursor,
+                 actor_counter,
+                 actor_method_names,
+                 actor_method_num_return_vals,
+                 method_signatures,
+                 actor_creation_dummy_object_id,
+                 actor_method_cpus,
+                 actor_handle_id=None):
         self._ray_actor_id = actor_id
-        if original_handle:
+        self._ray_original_handle = (actor_handle_id is None)
+        if self._ray_original_handle:
             self._ray_actor_handle_id = ray.local_scheduler.ObjectID(
-                ray.worker.NIL_ACTOR_ID)
+                ray.worker.NIL_ACTOR_HANDLE_ID)
         else:
-            self._ray_actor_handle_id = ray.local_scheduler.ObjectID(
-                _random_string())          # TODO(rkn): Check this before merging.
+            self._ray_actor_handle_id = actor_handle_id
         self._ray_actor_cursor = actor_cursor
         self._ray_actor_counter = actor_counter
         self._ray_actor_method_names = actor_method_names
         self._ray_actor_method_num_return_vals = actor_method_num_return_vals
         self._ray_method_signatures = method_signatures
         self._ray_class_name = class_name
+        self._ray_actor_forks = 0
         self._ray_actor_creation_dummy_object_id = (
             actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
-        self._ray_original_handle = original_handle
 
     def _actor_method_call(self,
                            method_name,
@@ -734,9 +750,8 @@ class ActorHandle(object):
         # Execute functions locally if Ray is run in PYTHON_MODE
         # Copy args to prevent the function from mutating them.
         if ray.worker.global_worker.mode == ray.PYTHON_MODE:
-            return getattr(
-                ray.worker.global_worker.actors[self._ray_actor_id],
-                method_name)(*copy.deepcopy(args))
+            return getattr(ray.worker.global_worker.actors[self._ray_actor_id],
+                           method_name)(*copy.deepcopy(args))
 
         # Add the execution dependency.
         if dependency is None:
@@ -746,8 +761,8 @@ class ActorHandle(object):
 
         is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
-        function_id = compute_actor_method_function_id(
-            self._ray_class_name, method_name)
+        function_id = compute_actor_method_function_id(self._ray_class_name,
+                                                       method_name)
         object_ids = ray.worker.global_worker.submit_task(
             function_id,
             args,
@@ -823,45 +838,89 @@ class ActorHandle(object):
     def actor_handle_id(self):
         return self._ray_actor_handle_id
 
-    def __getstate__(self):
-        """This is defined in order to make pickling work."""
-        return {
-            "actor_id": self._ray_actor_id.id(),
-            "class_name": self._ray_class_name,
-            "actor_cursor": self._ray_actor_cursor.id(),
-            "actor_counter": 0,  # Reset the actor counter.
-            "actor_method_names": self._ray_actor_method_names,
+    def _serialization_helper(self, ray_forking):
+        """This is defined in order to make pickling work.
+
+        Args:
+            ray_forking: True if this is being called because Ray is forking
+                the actor handle and false if it is being called by pickling.
+
+        Returns:
+            A dictionary of the information needed to reconstruct the object.
+        """
+        state = {
+            "actor_id":
+            self._ray_actor_id.id(),
+            "class_name":
+            self._ray_class_name,
+            "actor_forks":
+            self._ray_actor_forks,
+            "actor_cursor":
+            self._ray_actor_cursor.id(),
+            "actor_counter":
+            0,  # Reset the actor counter.
+            "actor_method_names":
+            self._ray_actor_method_names,
             "actor_method_num_return_vals":
-                self._ray_actor_method_num_return_vals,
-            "method_signatures": self._ray_method_signatures,
+            self._ray_actor_method_num_return_vals,
+            "method_signatures":
+            self._ray_method_signatures,
             "actor_creation_dummy_object_id":
-                self._ray_actor_creation_dummy_object_id.id(),
-            "actor_method_cpus": self._ray_actor_method_cpus,
-            "original_handle": False,
+            self._ray_actor_creation_dummy_object_id.id(),
+            "actor_method_cpus":
+            self._ray_actor_method_cpus,
         }
 
-    def __setstate__(self, state):
-        """This is defined in order to make pickling work."""
+        if ray_forking:
+            state["forked_actor_handle_id"] = compute_actor_handle_id(
+                self._ray_actor_handle_id, self._ray_actor_forks)
+            self._ray_actor_forks += 1
+
+        return state
+
+    def _deserialization_helper(self, state, ray_forking):
+        """This is defined in order to make pickling work.
+
+        Args:
+            state: The serialized state of the actor handle.
+            ray_forking: True if this is being called because Ray is forking
+                the actor handle and false if it is being called by pickling.
+        """
         ray.worker.check_connected()
         ray.worker.check_main_thread()
 
-        self.__init__(ray.local_scheduler.ObjectID(state["actor_id"]),
-                      state["class_name"],
-                      ray.local_scheduler.ObjectID(state["actor_cursor"]),
-                      state["actor_counter"],
-                      state["actor_method_names"],
-                      state["actor_method_num_return_vals"],
-                      state["method_signatures"],
-                      ray.local_scheduler.ObjectID(
-                          state["actor_creation_dummy_object_id"]),
-                      state["actor_method_cpus"], state["original_handle"])
+        if "forked_actor_handle_id" in state:
+            actor_handle_id = state["forked_actor_handle_id"]
+        else:
+            actor_handle_id = ray.local_scheduler.ObjectID(_random_string())
+
+        self.__init__(
+            ray.local_scheduler.ObjectID(state["actor_id"]),
+            state["class_name"],
+            ray.local_scheduler.ObjectID(state["actor_cursor"]),
+            state["actor_counter"],
+            state["actor_method_names"],
+            state["actor_method_num_return_vals"],
+            state["method_signatures"],
+            ray.local_scheduler.ObjectID(
+                state["actor_creation_dummy_object_id"]),
+            state["actor_method_cpus"],
+            actor_handle_id=actor_handle_id)
 
         driver_id = ray.worker.global_worker.task_driver_id.id()
-        register_actor_signatures(
-            ray.worker.global_worker, driver_id, None, self._ray_class_name,
-            self._ray_actor_method_names,
-            self._ray_actor_method_num_return_vals, None,
-            self._ray_actor_method_cpus)
+        register_actor_signatures(ray.worker.global_worker, driver_id, None,
+                                  self._ray_class_name,
+                                  self._ray_actor_method_names,
+                                  self._ray_actor_method_num_return_vals, None,
+                                  self._ray_actor_method_cpus)
+
+    def __getstate__(self):
+        """This code path is used by pickling but not by Ray forking."""
+        return self._serialization_helper(False)
+
+    def __setstate__(self, state):
+        """This code path is used by pickling but not by Ray forking."""
+        return self._deserialization_helper(state, False)
 
 
 def make_actor(cls, resources, checkpoint_interval, actor_method_cpus):
