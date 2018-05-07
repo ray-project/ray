@@ -2959,7 +2959,7 @@ class DataFrame(object):
            observations over requested axis.
 
         Args:
-            axis : {0 or ‘index’, 1 or ‘columns’}, default 0
+            axis : {0 or 'index', 1 or 'columns'}, default 0
             dropna : boolean, default True
 
         Returns:
@@ -3220,7 +3220,7 @@ class DataFrame(object):
         Args:
             axis (int): 0 or 'index' for row-wise,
                         1 or 'columns' for column-wise
-            interpolation: {‘average’, ‘min’, ‘max’, ‘first’, ‘dense’}
+            interpolation: {'average', 'min', 'max', 'first', 'dense'}
                 Specifies which method to use for equal vals
             numeric_only (boolean)
                 Include only float, int, boolean data.
@@ -3531,7 +3531,7 @@ class DataFrame(object):
                 Default = 1 if frac = None.
             frac: Fraction of axis items to return. Cannot be used with n.
             replace: Sample with or without replacement. Default = False.
-            weights: Default ‘None’ results in equal probability weighting.
+            weights: Default 'None' results in equal probability weighting.
                 If passed a Series, will align with target object on index.
                 Index values in weights not found in sampled object will be
                 ignored and index values in sampled object not in weights will
