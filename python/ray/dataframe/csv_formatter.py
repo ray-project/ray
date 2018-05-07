@@ -97,11 +97,7 @@ class CSVFormatter(object):
         self.cols = cols
 
         # preallocate data 2d list
-        """
-        self.blocks = self.obj._data.blocks
-        ncols = sum(b.shape[0] for b in self.blocks)
-        """
-        self.data = [None] * len(obj.columns) # ncols
+        self.data = [None] * len(obj.columns)
 
         if chunksize is None:
             chunksize = (100000 // (len(self.cols) or 1)) or 1
@@ -269,19 +265,18 @@ class CSVFormatter(object):
                 if start_i >= end_i:
                     break
 
-                self._save_chunk(df._data.blocks, self.data_index[index:index + len(df)],
+                self._save_chunk(df._data.blocks,
+                                 self.data_index[index:index + len(df)],
                                  start_i, end_i)
 
             index += len(df)
 
     def _save_chunk(self, blocks, data_index, start_i, end_i):
 
-        # data_index = self.data_index
-
         # create the data for a chunk
         slicer = slice(start_i, end_i)
         for i in range(len(blocks)):
-            b = blocks[i] # TODO: clean this up
+            b = blocks[i]   # TODO: clean this up
             d = b.to_native_types(slicer=slicer, na_rep=self.na_rep,
                                   float_format=self.float_format,
                                   decimal=self.decimal,
