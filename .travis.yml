@@ -144,7 +144,6 @@ script:
 
   # ray dataframe tests
   - python -m pytest python/ray/dataframe/test/test_dataframe.py
-  - python -m pytest python/ray/dataframe/test/test_series.py
   - python -m pytest python/ray/dataframe/test/test_concat.py
   - python -m pytest python/ray/dataframe/test/test_io.py
 
