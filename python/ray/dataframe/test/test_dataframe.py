@@ -998,10 +998,10 @@ def test_as_matrix():
     frame = rdf.DataFrame(test_data.frame)
     mat = frame.as_matrix()
 
-    frameCols = frame.columns
+    frame_columns = frame.columns
     for i, row in enumerate(mat):
         for j, value in enumerate(row):
-            col = frameCols[j]
+            col = frame_columns[j]
             if np.isnan(value):
                 assert np.isnan(frame[col][i])
             else:
