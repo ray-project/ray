@@ -1822,7 +1822,12 @@ class DistributedActorHandles(unittest.TestCase):
 
         @ray.remote
         class Counter(object):
-            pass
+            def __init__(self):
+                self.x = 0
+
+            def inc(self):
+                self.x += 1
+                return self.x
 
         @ray.remote
         def f():
@@ -1832,18 +1837,20 @@ class DistributedActorHandles(unittest.TestCase):
         def g():
             return [Counter.remote()]
 
-        with self.assertRaises(Exception):
-            ray.put(Counter.remote())
+        # Currently, calling ray.put on an actor handle is allowed, but is
+        # there a good use case?
+        counter = Counter.remote()
+        counter_id = ray.put(counter)
+        new_counter = ray.get(counter_id)
+        assert ray.get(new_counter.inc.remote()) == 1
+        assert ray.get(counter.inc.remote()) == 2
+        assert ray.get(new_counter.inc.remote()) == 3
 
         with self.assertRaises(Exception):
             ray.get(f.remote())
 
-        # The below test is commented out because it currently does not behave
-        # properly. The call to g.remote() does not raise an exception because
-        # even though the actor handle cannot be pickled, pyarrow attempts to
-        # serialize it as a dictionary of its fields which kind of works.
-        # self.assertRaises(Exception):
-        #     ray.get(g.remote())
+        # The below test works, but do we want to disallow this usage?
+        ray.get(g.remote())
 
 
 class ActorPlacementAndResources(unittest.TestCase):
