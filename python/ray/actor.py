@@ -623,7 +623,8 @@ class ActorClass(object):
         actor_handle = ActorHandle(
             actor_id, self._class_name, actor_cursor, actor_counter,
             actor_method_names, actor_method_num_return_vals,
-            method_signatures, actor_cursor, self._actor_method_cpus)
+            method_signatures, actor_cursor, self._actor_method_cpus,
+            ray.worker.global_worker.task_driver_id)
 
         # Call __init__ as a remote function.
         if "__init__" in actor_handle._ray_actor_method_names:
@@ -680,6 +681,9 @@ class ActorHandle(object):
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
             this handle goes out of scope.
+        _ray_actor_driver_id: The driver ID of the job that created the actor
+            (it is possible that this ActorHandle exists on a driver with a
+            different driver ID).
     """
 
     def __init__(self,
@@ -692,6 +696,7 @@ class ActorHandle(object):
                  method_signatures,
                  actor_creation_dummy_object_id,
                  actor_method_cpus,
+                 actor_driver_id,
                  actor_handle_id=None):
         self._ray_actor_id = actor_id
         self._ray_original_handle = (actor_handle_id is None)
@@ -710,6 +715,7 @@ class ActorHandle(object):
         self._ray_actor_creation_dummy_object_id = (
             actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
+        self._ray_actor_driver_id = actor_driver_id
 
     def _actor_method_call(self,
                            method_name,
@@ -773,7 +779,8 @@ class ActorHandle(object):
             actor_creation_dummy_object_id=(
                 self._ray_actor_creation_dummy_object_id),
             execution_dependencies=execution_dependencies,
-            num_return_vals=num_return_vals)
+            num_return_vals=num_return_vals,
+            driver_id=self._ray_actor_driver_id)
         # Update the actor counter and cursor to reflect the most recent
         # invocation.
         self._ray_actor_counter += 1
@@ -831,11 +838,11 @@ class ActorHandle(object):
             self._actor_method_call("__ray_terminate__")
 
     @property
-    def actor_id(self):
+    def _actor_id(self):
         return self._ray_actor_id
 
     @property
-    def actor_handle_id(self):
+    def _actor_handle_id(self):
         return self._ray_actor_handle_id
 
     def _serialization_helper(self, ray_forking):
@@ -869,6 +876,8 @@ class ActorHandle(object):
             self._ray_actor_creation_dummy_object_id.id(),
             "actor_method_cpus":
             self._ray_actor_method_cpus,
+            "actor_driver_id":
+            self._ray_actor_driver_id.id()
         }
 
         if ray_forking:
@@ -894,6 +903,11 @@ class ActorHandle(object):
         else:
             actor_handle_id = ray.local_scheduler.ObjectID(_random_string())
 
+        # This is the driver ID of the driver that owns the actor, not
+        # necessarily the driver that owns this actor handle.
+        actor_driver_id = ray.local_scheduler.ObjectID(
+            state["actor_driver_id"])
+
         self.__init__(
             ray.local_scheduler.ObjectID(state["actor_id"]),
             state["class_name"],
@@ -905,14 +919,14 @@ class ActorHandle(object):
             ray.local_scheduler.ObjectID(
                 state["actor_creation_dummy_object_id"]),
             state["actor_method_cpus"],
+            actor_driver_id,
             actor_handle_id=actor_handle_id)
 
-        driver_id = ray.worker.global_worker.task_driver_id.id()
-        register_actor_signatures(ray.worker.global_worker, driver_id, None,
-                                  self._ray_class_name,
-                                  self._ray_actor_method_names,
-                                  self._ray_actor_method_num_return_vals, None,
-                                  self._ray_actor_method_cpus)
+        register_actor_signatures(
+            ray.worker.global_worker, actor_driver_id.id(), None,
+            self._ray_class_name, self._ray_actor_method_names,
+            self._ray_actor_method_num_return_vals, None,
+            self._ray_actor_method_cpus)
 
     def __getstate__(self):
         """This code path is used by pickling but not by Ray forking."""

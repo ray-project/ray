@@ -520,7 +520,8 @@ class Worker(object):
                     num_return_vals=None,
                     num_cpus=None,
                     num_gpus=None,
-                    resources=None):
+                    resources=None,
+                    driver_id=None):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -547,6 +548,11 @@ class Worker(object):
             num_cpus: The number of CPUs required by this task.
             num_gpus: The number of GPUs required by this task.
             resources: The resource requirements for this task.
+            driver_id: The ID of the relevant driver. This is almost always the
+                driver ID of the driver that is currently running. However, in
+                the exceptional case that an actor task is being dispatched to
+                an actor created by a different driver, this should be the
+                driver ID of the driver that created the actor.
 
         Returns:
             The return object IDs for this task.
@@ -583,9 +589,12 @@ class Worker(object):
             if execution_dependencies is None:
                 execution_dependencies = []
 
+            if driver_id is None:
+                driver_id = self.task_driver_id
+
             # Look up the various function properties.
-            function_properties = self.function_properties[
-                self.task_driver_id.id()][function_id.id()]
+            function_properties = self.function_properties[driver_id.id()][
+                function_id.id()]
 
             if num_return_vals is None:
                 num_return_vals = function_properties.num_return_vals
@@ -602,8 +611,7 @@ class Worker(object):
 
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
-                self.task_driver_id,
-                ray.local_scheduler.ObjectID(
+                driver_id, ray.local_scheduler.ObjectID(
                     function_id.id()), args_for_local_scheduler,
                 num_return_vals, self.current_task_id, self.task_index,
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,

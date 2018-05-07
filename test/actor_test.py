@@ -1852,6 +1852,20 @@ class DistributedActorHandles(unittest.TestCase):
         # The below test works, but do we want to disallow this usage?
         ray.get(g.remote())
 
+    def testPicklingActorHandle(self):
+        ray.worker.init(num_workers=1)
+
+        @ray.remote
+        class Foo(object):
+            def method(self):
+                pass
+
+        f = Foo.remote()
+        new_f = ray.worker.pickle.loads(ray.worker.pickle.dumps(f))
+        # Verify that we can call a method on the unpickled handle. TODO(rkn):
+        # we should also test this from a different driver.
+        ray.get(new_f.method.remote())
+
 
 class ActorPlacementAndResources(unittest.TestCase):
     def tearDown(self):
