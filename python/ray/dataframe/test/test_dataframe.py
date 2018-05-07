@@ -994,10 +994,31 @@ def test_as_blocks():
 
 
 def test_as_matrix():
-    ray_df = create_test_dataframe()
+    test_data = TestData()
+    frame = rdf.DataFrame(test_data.frame)
+    mat = frame.as_matrix()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.as_matrix()
+    frame_columns = frame.columns
+    for i, row in enumerate(mat):
+        for j, value in enumerate(row):
+            col = frame_columns[j]
+            if np.isnan(value):
+                assert np.isnan(frame[col][i])
+            else:
+                assert value == frame[col][i]
+
+    # mixed type
+    mat = rdf.DataFrame(test_data.mixed_frame).as_matrix(['foo', 'A'])
+    assert mat[0, 0] == 'bar'
+
+    df = rdf.DataFrame({'real': [1, 2, 3], 'complex': [1j, 2j, 3j]})
+    mat = df.as_matrix()
+    assert mat[0, 0] == 1j
+
+    # single block corner case
+    mat = rdf.DataFrame(test_data.frame).as_matrix(['A', 'B'])
+    expected = test_data.frame.reindex(columns=['A', 'B']).values
+    tm.assert_almost_equal(mat, expected)
 
 
 def test_asfreq():

@@ -1189,9 +1189,17 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def as_matrix(self, columns=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Convert the frame to its Numpy-array representation.
+
+        Args:
+            columns: If None, return all columns, otherwise,
+                returns specified columns.
+
+        Returns:
+            values: ndarray
+        """
+        # TODO this is very inneficient, also see __array__
+        return to_pandas(self).as_matrix(columns)
 
     def asfreq(self, freq, method=None, how=None, normalize=False,
                fill_value=None):
@@ -4633,8 +4641,8 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __array__(self, dtype=None):
-        # TODO: This is very inefficient and needs fix
-        return np.array(to_pandas(self))
+        # TODO: This is very inefficient and needs fix, also see as_matrix
+        return to_pandas(self).__array__(dtype=dtype)
 
     def __array_wrap__(self, result, context=None):
         raise NotImplementedError(
