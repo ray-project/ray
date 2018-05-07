@@ -229,6 +229,7 @@ def test_int_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
     test_diff(ray_df, pandas_df)
+    test_rank(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -396,6 +397,7 @@ def test_float_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
     test_diff(ray_df, pandas_df)
+    test_rank(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -564,6 +566,9 @@ def test_mixed_dtype_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
 
+    # TODO Reolve once Pandas-20962 is resolved.
+    # test_rank(ray_df, pandas_df)
+
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
     test___getitem__(ray_df, pandas_df)
@@ -722,6 +727,7 @@ def test_nan_dataframe():
     test_quantile(ray_df, pandas_df, .75)
     test_describe(ray_df, pandas_df)
     test_diff(ray_df, pandas_df)
+    test_rank(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -963,8 +969,6 @@ def test_append():
 
     pandas_df2 = pd.DataFrame({"col5": [0], "col6": [1]})
 
-    print(ray_df.append(ray_df2))
-
     assert ray_df_equals_pandas(ray_df.append(ray_df2),
                                 pandas_df.append(pandas_df2))
 
@@ -990,10 +994,31 @@ def test_as_blocks():
 
 
 def test_as_matrix():
-    ray_df = create_test_dataframe()
+    test_data = TestData()
+    frame = rdf.DataFrame(test_data.frame)
+    mat = frame.as_matrix()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.as_matrix()
+    frame_columns = frame.columns
+    for i, row in enumerate(mat):
+        for j, value in enumerate(row):
+            col = frame_columns[j]
+            if np.isnan(value):
+                assert np.isnan(frame[col][i])
+            else:
+                assert value == frame[col][i]
+
+    # mixed type
+    mat = rdf.DataFrame(test_data.mixed_frame).as_matrix(['foo', 'A'])
+    assert mat[0, 0] == 'bar'
+
+    df = rdf.DataFrame({'real': [1, 2, 3], 'complex': [1j, 2j, 3j]})
+    mat = df.as_matrix()
+    assert mat[0, 0] == 1j
+
+    # single block corner case
+    mat = rdf.DataFrame(test_data.frame).as_matrix(['A', 'B'])
+    expected = test_data.frame.reindex(columns=['A', 'B']).values
+    tm.assert_almost_equal(mat, expected)
 
 
 def test_asfreq():
@@ -2377,11 +2402,10 @@ def test_radd():
     test_inter_df_math_right_ops("radd")
 
 
-def test_rank():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.rank()
+@pytest.fixture
+def test_rank(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.rank(), pandas_df.rank()))
+    assert(ray_df_equals_pandas(ray_df.rank(axis=1), pandas_df.rank(axis=1)))
 
 
 def test_rdiv():
@@ -2824,17 +2848,43 @@ def test_slice_shift():
 
 
 def test_sort_index():
-    ray_df = create_test_dataframe()
+    pandas_df = pd.DataFrame(np.random.randint(0, 100, size=(1000, 100)))
+    ray_df = rdf.DataFrame(pandas_df)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.sort_index()
+    pandas_result = pandas_df.sort_index()
+    ray_result = ray_df.sort_index()
+
+    ray_df_equals_pandas(ray_result, pandas_result)
+
+    pandas_result = pandas_df.sort_index(ascending=False)
+    ray_result = ray_df.sort_index(ascending=False)
+
+    ray_df_equals_pandas(ray_result, pandas_result)
 
 
 def test_sort_values():
-    ray_df = create_test_dataframe()
+    pandas_df = pd.DataFrame(np.random.randint(0, 100, size=(1000, 100)))
+    ray_df = rdf.DataFrame(pandas_df)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.sort_values(None)
+    pandas_result = pandas_df.sort_values(by=1)
+    ray_result = ray_df.sort_values(by=1)
+
+    ray_df_equals_pandas(ray_result, pandas_result)
+
+    pandas_result = pandas_df.sort_values(by=1, axis=1)
+    ray_result = ray_df.sort_values(by=1, axis=1)
+
+    ray_df_equals_pandas(ray_result, pandas_result)
+
+    pandas_result = pandas_df.sort_values(by=[1, 3])
+    ray_result = ray_df.sort_values(by=[1, 3])
+
+    ray_df_equals_pandas(ray_result, pandas_result)
+
+    pandas_result = pandas_df.sort_values(by=[1, 67], axis=1)
+    ray_result = ray_df.sort_values(by=[1, 67], axis=1)
+
+    ray_df_equals_pandas(ray_result, pandas_result)
 
 
 def test_sortlevel():

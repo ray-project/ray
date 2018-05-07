@@ -363,7 +363,7 @@ class DataFrame(object):
             # We use the index to get the internal index.
             oid_series = [(oid_series[i], i) for i in range(len(oid_series))]
 
-            if len(oid_series) > 1:
+            if len(oid_series) > 0:
                 for df, partition in oid_series:
                     this_partition = \
                         self._col_metadata.partition_series(partition)
@@ -1189,9 +1189,17 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def as_matrix(self, columns=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Convert the frame to its Numpy-array representation.
+
+        Args:
+            columns: If None, return all columns, otherwise,
+                returns specified columns.
+
+        Returns:
+            values: ndarray
+        """
+        # TODO this is very inneficient, also see __array__
+        return to_pandas(self).as_matrix(columns)
 
     def asfreq(self, freq, method=None, how=None, normalize=False,
                fill_value=None):
@@ -3103,35 +3111,80 @@ class DataFrame(object):
                     are the quantiles.
         """
 
-        def quantile_helper(df, q, axis, numeric_only, interpolation):
-            try:
+        def check_bad_dtype(t):
+            return t == np.dtype('O') or is_timedelta64_dtype(t)
+
+        if not numeric_only:
+            # check if there are any object columns
+            if all(check_bad_dtype(t) for t in self.dtypes):
+                raise TypeError("can't multiply sequence by non-int of type "
+                                "'float'")
+            else:
+                if next((True for t in self.dtypes if check_bad_dtype(t)),
+                        False):
+                    dtype = next(t for t in self.dtypes if check_bad_dtype(t))
+                    raise ValueError("Cannot compare type '{}' with type '{}'"
+                                     .format(type(dtype), float))
+        else:
+            # Normally pandas returns this near the end of the quantile, but we
+            # can't afford the overhead of running the entire operation before
+            # we error.
+            if all(check_bad_dtype(t) for t in self.dtypes):
+                raise ValueError("need at least one array to concatenate")
+
+        # check that all qs are between 0 and 1
+        pd.DataFrame()._check_percentile(q)
+
+        def quantile_helper(df, base_object):
+            """Quantile to be run inside each partitoin.
+
+            Args:
+                df: The DataFrame composing the partition.
+                base_object: An empty pd.Series or pd.DataFrame depending on q.
+
+            Returns:
+                 A new Series or DataFrame depending on q.
+            """
+            # This if call prevents ValueErrors with object only partitions
+            if (numeric_only and
+                    all([dtype == np.dtype('O') or
+                         is_timedelta64_dtype(dtype)
+                         for dtype in df.dtypes])):
+                return base_object
+            else:
                 return df.quantile(q=q, axis=axis, numeric_only=numeric_only,
                                    interpolation=interpolation)
-            except ValueError:
-                return pd.Series()
+
+        axis = pd.DataFrame()._get_axis_number(axis)
 
         if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
-            # In the case of a list, we build it one at a time.
-            # TODO Revisit for performance
-            quantiles = []
-            for q_i in q:
-                def remote_func(df):
-                    return quantile_helper(df, q=q_i, axis=axis,
-                                           numeric_only=numeric_only,
-                                           interpolation=interpolation)
 
-                result = self._arithmetic_helper(remote_func, axis)
-                result.name = q_i
-                quantiles.append(result)
+            q_index = pd.Float64Index(q)
 
-            return pd.concat(quantiles, axis=1).T
+            if axis == 0:
+                new_partitions = _map_partitions(
+                    lambda df: quantile_helper(df, pd.DataFrame()),
+                    self._col_partitions)
+
+                # select only correct dtype columns
+                new_columns = self.dtypes[self.dtypes.apply(
+                                          lambda x: is_numeric_dtype(x))].index
+
+            else:
+                new_partitions = _map_partitions(
+                    lambda df: quantile_helper(df, pd.DataFrame()),
+                    self._row_partitions)
+                new_columns = self.index
+
+            return DataFrame(col_partitions=new_partitions,
+                             index=q_index,
+                             columns=new_columns)
+
         else:
-            def remote_func(df):
-                return quantile_helper(df, q=q, axis=axis,
-                                       numeric_only=numeric_only,
-                                       interpolation=interpolation)
-
-            result = self._arithmetic_helper(remote_func, axis)
+            # When q is a single float, we return a Series, so using
+            # arithmetic_helper works well here.
+            result = self._arithmetic_helper(
+                lambda df: quantile_helper(df, pd.Series()), axis)
             result.name = q
             return result
 
@@ -3166,9 +3219,52 @@ class DataFrame(object):
 
     def rank(self, axis=0, method='average', numeric_only=None,
              na_option='keep', ascending=True, pct=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+
+        """
+        Compute numerical data ranks (1 through n) along axis.
+        Equal values are assigned a rank that is the [method] of
+        the ranks of those values.
+
+        Args:
+            axis (int): 0 or 'index' for row-wise,
+                        1 or 'columns' for column-wise
+            interpolation: {‘average’, ‘min’, ‘max’, ‘first’, ‘dense’}
+                Specifies which method to use for equal vals
+            numeric_only (boolean)
+                Include only float, int, boolean data.
+            na_option: {'keep', 'top', 'bottom'}
+                Specifies how to handle NA options
+            ascending (boolean):
+                Decedes ranking order
+            pct (boolean):
+                Computes percentage ranking of data
+        Returns:
+            A new DataFrame
+        """
+
+        def rank_helper(df):
+            return df.rank(axis=axis, method=method,
+                           numeric_only=numeric_only,
+                           na_option=na_option,
+                           ascending=ascending, pct=pct)
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        if (axis == 1):
+            new_cols = self.dtypes[self.dtypes.apply(
+                                   lambda x: is_numeric_dtype(x))].index
+            result = _map_partitions(rank_helper,
+                                     self._row_partitions)
+            return DataFrame(row_partitions=result,
+                             columns=new_cols,
+                             index=self.index)
+
+        if (axis == 0):
+            result = _map_partitions(rank_helper,
+                                     self._col_partitions)
+            return DataFrame(col_partitions=result,
+                             columns=self.columns,
+                             index=self.index)
 
     def rdiv(self, other, axis='columns', level=None, fill_value=None):
         return self._single_df_op_helper(
@@ -3796,15 +3892,175 @@ class DataFrame(object):
     def sort_index(self, axis=0, level=None, ascending=True, inplace=False,
                    kind='quicksort', na_position='last', sort_remaining=True,
                    by=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Sort a DataFrame by one of the indices (columns or index).
+
+        Args:
+            axis: The axis to sort over.
+            level: The MultiIndex level to sort over.
+            ascending: Ascending or descending
+            inplace: Whether or not to update this DataFrame inplace.
+            kind: How to perform the sort.
+            na_position: Where to position NA on the sort.
+            sort_remaining: On Multilevel Index sort based on all levels.
+            by: (Deprecated) argument to pass to sort_values.
+
+        Returns:
+            A sorted DataFrame
+        """
+        if level is not None:
+            raise NotImplementedError("Multilevel index not yet implemented.")
+
+        if by is not None:
+            warnings.warn("by argument to sort_index is deprecated, "
+                          "please use .sort_values(by=...)",
+                          FutureWarning, stacklevel=2)
+            if level is not None:
+                raise ValueError("unable to simultaneously sort by and level")
+            return self.sort_values(by, axis=axis, ascending=ascending,
+                                    inplace=inplace)
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        args = (axis, level, ascending, False, kind, na_position,
+                sort_remaining)
+
+        def _sort_helper(df, index, axis, *args):
+            if axis == 0:
+                df.index = index
+            else:
+                df.columns = index
+
+            result = df.sort_index(*args)
+            df.reset_index(drop=True, inplace=True)
+            df.columns = pd.RangeIndex(len(df.columns))
+            return result
+
+        if axis == 0:
+            index = self.index
+            new_column_parts = _map_partitions(
+                lambda df: _sort_helper(df, index, axis, *args),
+                self._col_partitions)
+
+            new_columns = self.columns
+            new_index = self.index.sort_values()
+            new_row_parts = None
+        else:
+            columns = self.columns
+            new_row_parts = _map_partitions(
+                lambda df: _sort_helper(df, columns, axis, *args),
+                self._row_partitions)
+
+            new_columns = self.columns.sort_values()
+            new_index = self.index
+            new_column_parts = None
+
+        if not inplace:
+            return DataFrame(col_partitions=new_column_parts,
+                             row_partitions=new_row_parts,
+                             index=new_index,
+                             columns=new_columns)
+        else:
+            self._update_inplace(row_partitions=new_row_parts,
+                                 col_partitions=new_column_parts,
+                                 columns=new_columns,
+                                 index=new_index)
 
     def sort_values(self, by, axis=0, ascending=True, inplace=False,
                     kind='quicksort', na_position='last'):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Sorts by a column/row or list of columns/rows.
+
+        Args:
+            by: A list of labels for the axis to sort over.
+            axis: The axis to sort.
+            ascending: Sort in ascending or descending order.
+            inplace: If true, do the operation inplace.
+            kind: How to sort.
+            na_position: Where to put np.nan values.
+
+        Returns:
+             A sorted DataFrame.
+        """
+
+        axis = pd.DataFrame()._get_axis_number(axis)
+
+        if not is_list_like(by):
+            by = [by]
+
+        if axis == 0:
+            broadcast_value_dict = {str(col): self[col] for col in by}
+            broadcast_values = pd.DataFrame(broadcast_value_dict)
+        else:
+            broadcast_value_list = [to_pandas(self[row::len(self.index)])
+                                    for row in by]
+
+            index_builder = list(zip(broadcast_value_list, by))
+
+            for row, idx in index_builder:
+                row.index = [str(idx)]
+
+            broadcast_values = pd.concat([row for row, idx in index_builder])
+
+        # We are converting the by to string here so that we don't have a
+        # collision with the RangeIndex on the inner frame. It is cheap and
+        # gaurantees that we sort by the correct column.
+        by = [str(col) for col in by]
+
+        args = (by, axis, ascending, False, kind, na_position)
+
+        def _sort_helper(df, broadcast_values, axis, *args):
+            """Sorts the data on a partition.
+
+            Args:
+                df: The DataFrame to sort.
+                broadcast_values: The by DataFrame to use for the sort.
+                axis: The axis to sort over.
+                args: The args for the sort.
+
+            Returns:
+                 A new sorted DataFrame.
+            """
+            if axis == 0:
+                broadcast_values.index = df.index
+                names = broadcast_values.columns
+            else:
+                broadcast_values.columns = df.columns
+                names = broadcast_values.index
+
+            return pd.concat([df, broadcast_values], axis=axis ^ 1,
+                             copy=False).sort_values(*args)\
+                .drop(names, axis=axis ^ 1)
+
+        if axis == 0:
+            new_column_partitions = _map_partitions(
+                lambda df: _sort_helper(df, broadcast_values, axis, *args),
+                self._col_partitions)
+
+            new_row_partitions = None
+            new_columns = self.columns
+
+            # This is important because it allows us to get the axis that we
+            # aren't sorting over. We need the order of the columns/rows and
+            # this will provide that in the return value.
+            new_index = broadcast_values.sort_values(*args).index
+        else:
+            new_row_partitions = _map_partitions(
+                lambda df: _sort_helper(df, broadcast_values, axis, *args),
+                self._row_partitions)
+
+            new_column_partitions = None
+            new_columns = broadcast_values.sort_values(*args).columns
+            new_index = self.index
+
+        if inplace:
+            self._update_inplace(row_partitions=new_row_partitions,
+                                 col_partitions=new_column_partitions,
+                                 columns=new_columns,
+                                 index=new_index)
+        else:
+            return DataFrame(row_partitions=new_row_partitions,
+                             col_partitions=new_column_partitions,
+                             columns=new_columns,
+                             index=new_index)
 
     def sortlevel(self, level=0, axis=0, ascending=True, inplace=False,
                   sort_remaining=True):
@@ -4385,8 +4641,8 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __array__(self, dtype=None):
-        # TODO: This is very inefficient and needs fix
-        return np.array(to_pandas(self))
+        # TODO: This is very inefficient and needs fix, also see as_matrix
+        return to_pandas(self).__array__(dtype=dtype)
 
     def __array_wrap__(self, result, context=None):
         raise NotImplementedError(

@@ -140,7 +140,7 @@ def _map_partitions(func, partitions, *argslists):
         partitions ([ObjectID]): The list of partitions to map func on.
 
     Returns:
-        A new Dataframe containing the result of the function
+        A list of partitions ([ObjectID]) with the result of the function
     """
     if partitions is None:
         return None
