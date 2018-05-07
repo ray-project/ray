@@ -4483,6 +4483,14 @@ class DataFrame(object):
         """
 
         inplace = validate_bool_kwarg(inplace, 'inplace')
+
+        if isinstance(other, pd.Series) and axis is None:
+            raise ValueError("Must specify axis=0 or 1")
+
+        if level is not None:
+            raise NotImplementedError("Multilevel Index not yet supported on "
+                                      "Pandas on Ray.")
+
         axis = pd.DataFrame()._get_axis_number(axis) if axis is not None else 0
 
         cond = cond(self) if callable(cond) else cond
@@ -4531,6 +4539,7 @@ class DataFrame(object):
         elif isinstance(other, pd.Series):
             if axis == 0:
                 other = other.reindex(self.index)
+                other.index = pd.RangeIndex(len(other))
 
                 other_builder = []
                 for length in self._row_metadata._lengths:
@@ -4539,7 +4548,8 @@ class DataFrame(object):
                     other.index = pd.RangeIndex(len(other))
 
                 other = (obj for obj in other_builder)
-                new_partitions = [where_helper.remote(k, v, next(other),
+
+                new_partitions = [where_helper.remote(k, v, next(other, pd.Series()),
                                                       *args)
                                   for k, v in zipped_partitions]
             else:
@@ -4557,9 +4567,12 @@ class DataFrame(object):
                                  row_metadata=self._row_metadata,
                                  col_metadata=self._col_metadata)
         else:
-            return DataFrame(row_partitions=new_partitions,
+            x =  DataFrame(row_partitions=new_partitions,
                              row_metadata=self._row_metadata,
                              col_metadata=self._col_metadata)
+
+            print(x)
+            return x
 
     def xs(self, key, axis=0, level=None, drop_level=True):
         raise NotImplementedError(
