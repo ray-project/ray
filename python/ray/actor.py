@@ -494,57 +494,66 @@ class ActorMethod(object):
             dependency=self._actor._ray_actor_cursor)
 
 
-class ActorHandleWrapper(object):
-    """A wrapper for the contents of an ActorHandle.
+class ActorClass(object):
+    """An actor class.
 
-    This is essentially just a dictionary, but it is used so that the recipient
-    can tell that an argument is an ActorHandle.
+    This is a decorated class. It can be used to create actors.
+
+    Attributes:
+        _modified_class: The original class that was decorated (with some
+            additional methods added like __ray_terminate__).
+        _class_id: The ID of this actor class.
+        _class_name: The name of this class.
+        _checkpoint_interval: The interval at which to checkpoint actor state.
+        _actor_creation_resources: The default resources required by the actor
+            creation task.
+        _actor_method_cpus: The number of CPUs required by actor method tasks.
+        _exported: True if the actor class has been exported and false
+            otherwise.
     """
 
-    def __init__(self, actor_id, class_id, actor_handle_id, actor_cursor,
-                 actor_counter, actor_method_names,
-                 actor_method_num_return_vals, method_signatures,
-                 checkpoint_interval, class_name,
-                 actor_creation_dummy_object_id, actor_creation_resources,
-                 actor_method_cpus):
-        # TODO(rkn): Some of these fields are probably not necessary. We should
-        # strip out the unnecessary fields to keep actor handles lightweight.
-        self.actor_id = actor_id
-        self.class_id = class_id
-        self.actor_handle_id = actor_handle_id
-        self.actor_cursor = actor_cursor
-        self.actor_counter = actor_counter
-        self.actor_method_names = actor_method_names
-        self.actor_method_num_return_vals = actor_method_num_return_vals
-        # TODO(swang): Fetch this information from Redis so that we don't have
-        # to fall back to pickle.
-        self.method_signatures = method_signatures
-        self.checkpoint_interval = checkpoint_interval
-        self.class_name = class_name
-        self.actor_creation_dummy_object_id = actor_creation_dummy_object_id
-        self.actor_creation_resources = actor_creation_resources
-        self.actor_method_cpus = actor_method_cpus
-
-
-class ActorClass(object):
-    def __init__(self, modified_class, class_id, resources,
-                 checkpoint_interval, actor_creation_resources,
-                 actor_method_cpus):
+    def __init__(self, modified_class, class_id, checkpoint_interval,
+                 actor_creation_resources, actor_method_cpus):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__.encode("ascii")
-        self._resources = resources
         self._checkpoint_interval = checkpoint_interval
-        self._actor_creation_resources = actor_creation_resources  # TODO(rkn): Remove this.
+        self._actor_creation_resources = actor_creation_resources
         self._actor_method_cpus = actor_method_cpus
         self._exported = False
 
     def remote(self, *args, **kwargs):
+        """Create an actor.
+
+        Args:
+            args: These arguments are forwarded directly to the actor
+                constructor.
+            kwargs: These arguments are forwarded directly to the actor
+                constructor.
+
+        Returns:
+            A handle to the newly created actor.
+        """
         return self._submit(args=args, kwargs=kwargs)
 
     def _submit(self, args, kwargs, num_cpus=None, num_gpus=None,
                 resources=None):
-        """TODO
+        """Create an actor.
+
+        This method allows more flexibility than the remote method because
+        resource requirements can be specified and override the defaults in the
+        decorator.
+
+        Args:
+            args: The arguments to forward to the actor constructor.
+            kwargs: The keyword arguments to forward to the actor constructor.
+            num_cpus: The number of CPUs required by the actor creation task.
+            num_gpus: The number of GPUs required by the actor creation task.
+            resources: The custom resources required by the actor creation
+                task.
+
+        Returns:
+            A handle to the newly created actor.
         """
         if ray.worker.global_worker.mode is None:
             raise Exception("Actors cannot be created before ray.init() "
@@ -556,15 +565,14 @@ class ActorClass(object):
         # the current cursor should be added as a dependency, and then
         # updated to reflect the new invocation.
         actor_cursor = None
-        # The number of actor method invocations that we've called so far.
-        actor_counter = 0
 
         # Get the actor methods of the given class.
         def pred(x):
             return (inspect.isfunction(x) or inspect.ismethod(x)
                     or is_cython(x))
 
-        actor_methods = inspect.getmembers(self._modified_class, predicate=pred)
+        actor_methods = inspect.getmembers(self._modified_class,
+                                           predicate=pred)
         # Extract the signatures of each of the methods. This will be used
         # to catch some errors if the methods are called with inappropriate
         # arguments.
@@ -609,9 +617,10 @@ class ActorClass(object):
                 self._actor_creation_resources,
                 self._actor_method_cpus,
                 ray.worker.global_worker)
-        # Increment the actor counter to account for the creation task.
-        actor_counter += 1
 
+        # We initialize the actor counter at 1 to account for the actor
+        # creation task.
+        actor_counter = 1
         actor_handle = ActorHandle(actor_id, self._class_name, actor_cursor,
                                    actor_counter, actor_method_names,
                                    actor_method_num_return_vals,
@@ -621,6 +630,11 @@ class ActorClass(object):
         # Call __init__ as a remote function.
         if "__init__" in actor_handle._ray_actor_method_names:
             actor_handle.__init__.remote(*args, **kwargs)
+        else:
+            if len(args) != 0 or len(kwargs) != 0:
+                raise Exception("Arguments cannot be passed to the actor "
+                                "constructor because this actor class has no "
+                                "__init__ method.")
 
         return actor_handle
 
@@ -630,6 +644,35 @@ class ActorClass(object):
 
 
 class ActorHandle(object):
+    """A handle to an actor.
+
+    The fields in this class are prefixed with _ray_ to hide them from the user
+    and to avoid collision with actor method names.
+
+    Attributes:
+        _ray_actor_id: The ID of the corresponding actor.
+        _ray_actor_handle_id: The ID of this handle. If this is the "original"
+            handle for an actor (as opposed to one created by passing another
+            handle into a task), then this ID must be NIL_ID.
+        _ray_actor_cursor: The actor cursor is a dummy object representing the
+            most recent actor method invocation. For each subsequent method
+            invocation, the current cursor should be added as a dependency, and
+            then updated to reflect the new invocation.
+        _ray_actor_counter: The number of actor method invocations that we've
+            called so far.
+        _ray_actor_method_names: The names of the actor methods.
+        _ray_actor_method_num_return_vals: The number of return values for each
+            actor method.
+        _ray_method_signatures: The signatures of the actor methods.
+        _ray_class_name: The name of the actor class.
+        _ray_actor_creation_dummy_object_id: The dummy object ID from the actor
+            creation task.
+        _ray_actor_method_cpus: The number of CPUs required by actor methods.
+        _ray_original_handle: True if this is the original actor handle for a
+            given actor. If this is true, then the actor will be destroyed when
+            this handle goes out of scope.
+    """
+
     def __init__(self, actor_id, class_name, actor_cursor, actor_counter,
                  actor_method_names, actor_method_num_return_vals,
                  method_signatures, actor_creation_dummy_object_id,
@@ -637,22 +680,20 @@ class ActorHandle(object):
         self._ray_actor_id = actor_id
         if original_handle:
             self._ray_actor_handle_id = ray.local_scheduler.ObjectID(
-                ray.worker.NIL_ACTOR_ID)  # TODO(rkn): Check this before merging.
+                ray.worker.NIL_ACTOR_ID)
         else:
             self._ray_actor_handle_id = ray.local_scheduler.ObjectID(
-                _random_string())  # TODO(rkn): Check this before merging.
+                _random_string())          # TODO(rkn): Check this before merging.
         self._ray_actor_cursor = actor_cursor
         self._ray_actor_counter = actor_counter
         self._ray_actor_method_names = actor_method_names
         self._ray_actor_method_num_return_vals = actor_method_num_return_vals
         self._ray_method_signatures = method_signatures
         self._ray_class_name = class_name
-        # self._ray_actor_forks = 0
-        self._ray_actor_creation_dummy_object_id = actor_creation_dummy_object_id
+        self._ray_actor_creation_dummy_object_id = (
+            actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
-
-        self._ray_original_handle = original_handle  # TODO(rkn): Do we really want this?
-
+        self._ray_original_handle = original_handle
 
     def _actor_method_call(self,
                            method_name,
@@ -783,6 +824,7 @@ class ActorHandle(object):
         return self._ray_actor_handle_id
 
     def __getstate__(self):
+        """This is defined in order to make pickling work."""
         return {
             "actor_id": self._ray_actor_id.id(),
             "class_name": self._ray_class_name,
@@ -799,6 +841,7 @@ class ActorHandle(object):
         }
 
     def __setstate__(self, state):
+        """This is defined in order to make pickling work."""
         ray.worker.check_connected()
         ray.worker.check_main_thread()
 
@@ -914,8 +957,8 @@ def make_actor(cls, resources, checkpoint_interval, actor_method_cpus):
 
     class_id = _random_string()
 
-    return ActorClass(Class, class_id, resources, checkpoint_interval,
-                      resources, actor_method_cpus)
+    return ActorClass(Class, class_id, checkpoint_interval, resources,
+                      actor_method_cpus)
 
 
 ray.worker.global_worker.fetch_and_register_actor = fetch_and_register_actor

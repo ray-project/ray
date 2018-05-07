@@ -267,7 +267,7 @@ class Worker(object):
         print any information about errors because some of the tests
         intentionally fail.
 
-        args:
+        Args:
             mode: One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, and
                 SILENT_MODE.
         """
