@@ -135,10 +135,19 @@ class NodeUpdater(object):
                 break
         assert ssh_ok, "Unable to SSH to node"
 
+        self.sync_files(self.file_mounts)
+
+        # Run init commands
+        self.provider.set_node_tags(self.node_id,
+                                    {TAG_RAY_NODE_STATUS: "SettingUp"})
+        for cmd in self.setup_cmds:
+            self.ssh_cmd(cmd, verbose=True)
+
+    def sync_files(self, file_mounts):
         # Rsync file mounts
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "SyncingFiles"})
-        for remote_path, local_path in self.file_mounts.items():
+        for remote_path, local_path in file_mounts.items():
             print(
                 "NodeUpdater: Syncing {} to {}...".format(
                     local_path, remote_path),
@@ -159,12 +168,6 @@ class NodeUpdater(object):
                 ],
                 stdout=self.stdout,
                 stderr=self.stderr)
-
-        # Run init commands
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "SettingUp"})
-        for cmd in self.setup_cmds:
-            self.ssh_cmd(cmd, verbose=True)
 
     def ssh_cmd(self, cmd, connect_timeout=120, redirect=None, verbose=False):
         if verbose:
