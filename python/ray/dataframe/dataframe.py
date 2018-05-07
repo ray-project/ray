@@ -1281,7 +1281,7 @@ class DataFrame(object):
             else:
                 new_col_metadata = self._col_metadata.condense(abs(col_factor))
 
-            return DataFrame(col_partitions=new_partitions.flatten(),
+            return DataFrame(block_partitions=new_partitions,
                              index=self.index,
                              col_metadata=new_col_metadata)
         else:
@@ -1290,7 +1290,7 @@ class DataFrame(object):
             else:
                 new_row_metadata = self._row_metadata.condense(abs(row_factor))
 
-            return DataFrame(row_partitions=new_partitions.flatten(),
+            return DataFrame(block_partitions=new_partitions,
                              row_metadata=new_row_metadata,
                              columns=self.columns)
 

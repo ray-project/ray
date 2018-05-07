@@ -692,8 +692,8 @@ def _map_partitions_coalesce(func, block_partitions, axis):
 
 
 flookup = { # Actual op_rate for isna is roughly 90ms for 2**24 * 2**3 versus 70 as presented
-    "isna": {"type": "applymap", "op_rate": 615 / (2**28 * 2**3), "op_stdev": 0 / (2**28 * 2**3)},
-    "sum": {"type": "axis-reduce", "op_rate": 2500 / (2**27 * 2**3), "op_stdev": 0 / (2**27 * 2**3)},
+    "isna": {"type": "applymap", "op_rate": 550 / (2**28 * 2**3), "op_stdev": 100 / (2**28 * 2**3)},
+    "sum": {"type": "axis-reduce", "op_rate": 2000 / (2**28 * 2**3), "op_stdev": 1000 / (2**28 * 2**3)},
     "cumsum": {"type": "cumulative", "op_rate": 0, "op_stdev": 0}
 }
 
@@ -739,11 +739,15 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
         x = # bytes per part in cluster
 
         returns the runtime for condensing on one task"""
-        return (2100 / (2**28 * 2**3) * x) / 256 * nparts + 160
+        return (nparts * x / (2**22 * 2**3) * 120) # / 256 * nparts + 160
 
-    def overhead_f(split):
+    def overhead_f(split, dsize):
         x_sp, y_sp = split
-        return 20 * x_sp * y_sp
+        return (5 * x_sp * y_sp) * dsize / (2**28 * 2**3)
+
+    def explode_f(dsize, row_parts, col_parts):
+        end_size = dsize / row_parts / col_parts
+        return np.sqrt(end_size) * np.log2(end_size) * 0.058 / 16384 / 28
 
     def size_penalty_f(dsplit):
         if dsplit > 2**23 * 2**3:
@@ -773,6 +777,13 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
 
         split_nparts = split_rows * split_cols
 
+        if ftype == "applymap":
+            dsplit = dsize / split_nparts
+
+        elif ftype == "axis-reduce" or ftype == "cumulative":
+            axis = kwargs["axis"]
+            dsplit = dsize / (split_cols if axis == 0 else split_rows)
+
         # Explode time. Add possible task overhead to explode?
         if split == in_dims:
             explode_time = 0
@@ -782,57 +793,44 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
             explode_rate = explode_no_cols_rate if split_cols <= in_cols else explode_cols_rate
             explode_iters = np.ceil((in_nparts) / get_nworkers())
 
+            explode_time = 0
+            condense_time_per_task = 0
             if split_rows > in_rows and split_cols > in_cols:
                 # Explode both dims
-                explode_time = explode_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
-                condense_time_per_task = 0
+                explode_time = explode_f(dsize, split_rows, split_cols)
             elif split_rows > in_rows and split_cols == in_cols:
                 # Explode rows
-                explode_time = explode_no_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
-                condense_time_per_task = 0
+                pass
             elif split_rows > in_rows and split_cols < in_cols:
                 # Explode rows, condense cols
-                explode_time = explode_no_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
                 condense_time_per_task = condense_f(in_cols // split_cols, dsize / (split_rows * in_cols))
 
             elif split_rows < in_rows and split_cols > in_cols:
                 # Explode cols, condense rows
-                explode_time = explode_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
+                explode_time = explode_f(dsize, split_rows, split_cols)
                 condense_time_per_task = condense_f(in_rows // split_rows, dsize / (split_cols * in_rows))
             elif split_rows < in_rows and split_cols == in_cols:
                 # Condense rows
-                explode_time = 0
                 condense_time_per_task = condense_f(in_rows // split_rows, dsize / (in_cols * in_rows))
             elif split_rows < in_rows and split_cols < in_cols:
                 # Condense both dims
-                explode_time = 0
                 condense_time_per_task = condense_f(in_rows // split_rows * in_cols // split_cols,
                                            dsize / (in_cols * in_rows))
-
             elif split_rows == in_rows and split_cols > in_cols:
                 # Explode columns
-                explode_time = explode_cols_rate * in_dsplit * explode_iters + overhead_f(in_dims)
-                condense_time_per_task = 0
+                explode_time = explode_f(dsize, split_rows, split_cols)
             elif split_rows == in_rows and split_cols < in_cols:
                 # Condense columns
-                explode_time = 0
                 condense_time_per_task = condense_f(in_cols // split_cols, dsize / (in_cols * in_rows))
 
-        if ftype == "applymap":
-            dsplit = dsize / split_nparts
-
-        elif ftype == "axis-reduce" or ftype == "cumulative":
-            axis = kwargs["axis"]
-            dsplit = dsize / (split_cols if axis == 0 else split_rows)
-
-        task_base_time = op_rate * dsplit + condense_time_per_task + 1
+        task_base_time = op_rate * dsplit + condense_time_per_task + explode_time + 1
         task_split_time = task_base_time # * (1 + wide_penalty_f(dsplit, row_len / split_rows, col_len / split_cols))
         total_iters = np.ceil((split_nparts) / get_nworkers())
 
         task_time = total_iters * task_split_time
 
         # \eps(x, y)
-        task_overhead = overhead_f(split)
+        task_overhead = overhead_f(split, dsize)
 
         # Var(x, y): StdDev for Summed Normal grows by O(sqrt(k))
         task_var = MAX_ZSCORE * op_stdev_f(dsplit) * np.sqrt(total_iters)
@@ -856,6 +854,9 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
         candidate_cols = np.hstack((smaller_cols, bigger_cols)) # [unlim_cols < get_nworkers() * 2]
     elif ftype == "axis-reduce" or ftype == "cumulative":
         axis = kwargs["axis"]
+        if ftype == "cumulative":
+            op_rate = (8400 if axis == 0 else 2360) / (2**28 * 2**3)
+
         candidate_rows = np.array(1)
         candidate_cols = np.array(1)
         if axis == 0:
@@ -880,7 +881,8 @@ def _optimize_partitions(in_dims, shape, dsize, fname='isna', **kwargs):
         split = list(out_dims)
         if ftype == "axis-reduce" or ftype == "cumulative":
             split[axis] = 1
-    print("spitting out with dims {}".format(split))
+        time = -1
+    print("spitting out with dims {}, est. time {}".format(split, time))
     return split, time
 
 
