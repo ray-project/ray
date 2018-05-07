@@ -1,15 +1,38 @@
 #include "ray/raylet/node_manager.h"
 
 #include "common_protocol.h"
+#include "local_scheduler/format/local_scheduler_generated.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace {
 
+#define RAY_CHECK_ENUM(x, y) \
+  static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
+
+// Check consistency between client and server protocol.
+RAY_CHECK_ENUM(protocol::MessageType_SubmitTask, MessageType_SubmitTask);
+RAY_CHECK_ENUM(protocol::MessageType_TaskDone, MessageType_TaskDone);
+RAY_CHECK_ENUM(protocol::MessageType_EventLogMessage, MessageType_EventLogMessage);
+RAY_CHECK_ENUM(protocol::MessageType_RegisterClientRequest,
+               MessageType_RegisterClientRequest);
+RAY_CHECK_ENUM(protocol::MessageType_RegisterClientReply,
+               MessageType_RegisterClientReply);
+RAY_CHECK_ENUM(protocol::MessageType_DisconnectClient, MessageType_DisconnectClient);
+RAY_CHECK_ENUM(protocol::MessageType_GetTask, MessageType_GetTask);
+RAY_CHECK_ENUM(protocol::MessageType_ExecuteTask, MessageType_ExecuteTask);
+RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject, MessageType_ReconstructObject);
+RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked, MessageType_NotifyUnblocked);
+RAY_CHECK_ENUM(protocol::MessageType_PutObject, MessageType_PutObject);
+RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierRequest,
+               MessageType_GetActorFrontierRequest);
+RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierReply,
+               MessageType_GetActorFrontierReply);
+RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier, MessageType_SetActorFrontier);
+
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
 bool CheckDuplicateActorTask(
-    const std::unordered_map<ActorID, ray::raylet::ActorRegistration, UniqueIDHasher>
-        &actor_registry,
+    const std::unordered_map<ActorID, ray::raylet::ActorRegistration> &actor_registry,
     const ray::raylet::TaskSpecification &spec) {
   auto actor_entry = actor_registry.find(spec.ActorId());
   RAY_CHECK(actor_entry != actor_registry.end());
@@ -238,7 +261,7 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   // Dequeue any methods that were submitted before the actor's location was
   // known.
   const auto &methods = local_queues_.GetUncreatedActorMethods();
-  std::unordered_set<TaskID, UniqueIDHasher> created_actor_method_ids;
+  std::unordered_set<TaskID> created_actor_method_ids;
   for (const auto &method : methods) {
     if (method.GetTaskSpecification().ActorId() == actor_id) {
       created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
@@ -259,6 +282,31 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
 void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
   // The new client is a worker, so begin listening for messages.
   client->ProcessMessages();
+}
+
+void NodeManager::DispatchTasks() {
+  // Work with a copy of scheduled tasks.
+  auto scheduled_tasks = local_queues_.GetScheduledTasks();
+  // Return if there are no tasks to schedule.
+  if (scheduled_tasks.empty()) {
+    return;
+  }
+  const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
+
+  for (const auto &task : scheduled_tasks) {
+    const auto &local_resources =
+        cluster_resource_map_[my_client_id].GetAvailableResources();
+    const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
+    if (!task_resources.IsSubset(local_resources)) {
+      // Not enough local resources for this task right now, skip this task.
+      continue;
+    }
+    // We have enough resources for this task. Assign task.
+    // TODO(atumanov): perform the task state/queue transition inside AssignTask.
+    auto dispatched_task =
+        local_queues_.RemoveTasks({task.GetTaskSpecification().TaskId()});
+    AssignTask(dispatched_task.front());
+  }
 }
 
 void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> client,
@@ -285,21 +333,9 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     }
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(worker);
-    // Check if there is a scheduled task that can now be assigned to the newly
-    // idle worker.
-    auto scheduled_tasks = local_queues_.GetScheduledTasks();
-    if (!scheduled_tasks.empty()) {
-      // Find a scheduled task that whose actor ID matches that of the newly
-      // idle worker.
-      auto worker_actor_id = worker->GetActorId();
-      for (const auto &task : scheduled_tasks) {
-        if (task.GetTaskSpecification().ActorId() == worker_actor_id) {
-          auto scheduled_tasks =
-              local_queues_.RemoveTasks({task.GetTaskSpecification().TaskId()});
-          AssignTask(scheduled_tasks.front());
-        }
-      }
-    }
+    // Call task dispatch to assign work to the new worker.
+    DispatchTasks();
+
   } break;
   case protocol::MessageType_DisconnectClient: {
     // Remove the dead worker from the pool and stop listening for messages.
@@ -331,6 +367,65 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     ObjectID object_id = from_flatbuf(*message->object_id());
     RAY_LOG(DEBUG) << "reconstructing object " << object_id;
     RAY_CHECK_OK(object_manager_.Pull(object_id));
+
+    // If the blocked client is a worker, and the worker isn't already blocked,
+    // then release any CPU resources that it acquired for its assigned task
+    // while it is blocked. The resources will be acquired again once the
+    // worker is unblocked.
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker && !worker->IsBlocked()) {
+      RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+      auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
+      const auto &task = tasks.front();
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus = 0;
+      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      const std::unordered_map<std::string, double> cpu_resources = {
+          {kCPU_ResourceLabel, required_cpus}};
+      // Release the CPU resources.
+      RAY_CHECK(
+          cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+              ResourceSet(cpu_resources)));
+      // Mark the task as blocked.
+      local_queues_.QueueBlockedTasks(tasks);
+      worker->MarkBlocked();
+
+      // Try to dispatch more tasks since the blocked worker released some
+      // resources.
+      DispatchTasks();
+    }
+  } break;
+  case protocol::MessageType_NotifyUnblocked: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    // Re-acquire the CPU resources for the task that was assigned to the
+    // unblocked worker.
+    if (worker) {
+      RAY_CHECK(worker->IsBlocked());
+      RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+
+      auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
+      const auto &task = tasks.front();
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus = 0;
+      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      const std::unordered_map<std::string, double> cpu_resources = {
+          {kCPU_ResourceLabel, required_cpus}};
+      // Acquire the CPU resources.
+      bool oversubscribed =
+          !cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+              ResourceSet(cpu_resources));
+      if (oversubscribed) {
+        const SchedulingResources &local_resources =
+            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()];
+        RAY_LOG(WARNING) << "Resources oversubscribed: "
+                         << local_resources.GetAvailableResources().ToString();
+      }
+      // Mark the task as running again.
+      local_queues_.QueueRunningTasks(tasks);
+      worker->MarkUnblocked();
+    }
   } break;
 
   default:
@@ -374,6 +469,7 @@ void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
 }
 
 void NodeManager::ScheduleTasks() {
+  // This method performs the transition of tasks from PENDING to SCHEDULED.
   auto policy_decision = scheduling_policy_.Schedule(
       cluster_resource_map_, gcs_client_->client_table().GetLocalClientId(),
       remote_clients_);
@@ -385,8 +481,8 @@ void NodeManager::ScheduleTasks() {
   }
 
   // Extract decision for this local scheduler.
-  std::unordered_set<TaskID, UniqueIDHasher> local_task_ids;
-  // Iterate over (taskid, clientid) pairs, extract tasks to run on the local client.
+  std::unordered_set<TaskID> local_task_ids;
+  // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
   for (const auto &task_schedule : policy_decision) {
     TaskID task_id = task_schedule.first;
     ClientID client_id = task_schedule.second;
@@ -402,11 +498,10 @@ void NodeManager::ScheduleTasks() {
     }
   }
 
-  // Assign the tasks to workers.
+  // Transition locally scheduled tasks to SCHEDULED and dispatch scheduled tasks.
   std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
-  for (auto &task : tasks) {
-    AssignTask(task);
-  }
+  local_queues_.QueueScheduledTasks(tasks);
+  DispatchTasks();
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage) {
@@ -481,11 +576,6 @@ void NodeManager::AssignTask(Task &task) {
     }
   }
 
-  // Resource accounting: acquire resources for the scheduled task.
-  const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
-  RAY_CHECK(
-      this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
-
   // Try to get an idle worker that can execute this task.
   std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec.ActorId());
   if (worker == nullptr) {
@@ -509,6 +599,11 @@ void NodeManager::AssignTask(Task &task) {
   auto status = worker->Connection()->WriteMessage(protocol::MessageType_ExecuteTask,
                                                    fbb.GetSize(), fbb.GetBufferPointer());
   if (status.ok()) {
+    // Resource accounting: acquire resources for the assigned task.
+    const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
+    RAY_CHECK(
+        this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
+
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
     // If the task was an actor task, then record this execution to guarantee
@@ -597,7 +692,8 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
 }
 
 ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) {
-  auto task_id = task.GetTaskSpecification().TaskId();
+  const auto &spec = task.GetTaskSpecification();
+  auto task_id = spec.TaskId();
 
   // Get and serialize the task's uncommitted lineage.
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
@@ -630,6 +726,25 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
+
+    // Preemptively push any local arguments to the receiving node. For now, we
+    // only do this with actor tasks, since actor tasks must be executed by a
+    // specific process and therefore have affinity to the receiving node.
+    if (spec.IsActorTask()) {
+      // Iterate through the object's arguments. NOTE(swang): We do not include
+      // the execution dependencies here since those cannot be transferred
+      // between nodes.
+      for (int i = 0; i < spec.NumArgs(); ++i) {
+        int count = spec.ArgIdCount(i);
+        for (int j = 0; j < count; j++) {
+          ObjectID argument_id = spec.ArgId(i, j);
+          // If the argument is local, then push it to the receiving node.
+          if (task_dependency_manager_.CheckObjectLocal(argument_id)) {
+            RAY_CHECK_OK(object_manager_.Push(argument_id, node_id));
+          }
+        }
+      }
+    }
   } else {
     // TODO(atumanov): caller must handle ForwardTask failure to ensure tasks are not
     // lost.

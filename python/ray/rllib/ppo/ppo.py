@@ -12,6 +12,7 @@ from tensorflow.python import debug as tf_debug
 
 import ray
 from ray.tune.result import TrainingResult
+from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
@@ -69,8 +70,10 @@ DEFAULT_CONFIG = {
     "min_steps_per_task": 200,
     # Number of actors used to collect the rollouts
     "num_workers": 5,
-    # Resource requirements for remote actors
-    "worker_resources": {"num_cpus": None},
+    # Whether to allocate GPUs for workers (if > 0).
+    "num_gpus_per_worker": 0,
+    # Whether to allocate CPUs for workers (if > 0).
+    "num_cpus_per_worker": 1,
     # Dump TensorFlow timeline after this many SGD minibatches
     "full_trace_nth_sgd_batch": -1,
     # Whether to profile data loading
@@ -89,9 +92,17 @@ DEFAULT_CONFIG = {
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
-    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config",
-                              "worker_resources"]
+    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
+
+    @classmethod
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        return Resources(
+            cpu=1,
+            gpu=len([d for d in cf["devices"] if "gpu" in d.lower()]),
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
         self.global_step = 0
@@ -99,7 +110,8 @@ class PPOAgent(Agent):
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
-            **self.config["worker_resources"])(PPOEvaluator)
+            num_cpus=self.config["num_cpus_per_worker"],
+            num_gpus=self.config["num_gpus_per_worker"])(PPOEvaluator)
         self.remote_evaluators = [
             RemotePPOEvaluator.remote(
                 self.registry, self.env_creator, self.config, self.logdir,

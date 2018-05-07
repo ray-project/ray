@@ -464,9 +464,11 @@ class Worker(object):
         final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
         # Construct a dictionary mapping object IDs that we haven't gotten yet
         # to their original index in the object_ids argument.
-        unready_ids = dict((plain_object_ids[i].binary(), i)
-                           for (i, val) in enumerate(final_results)
-                           if val is plasma.ObjectNotAvailable)
+        unready_ids = {
+            plain_object_ids[i].binary(): i
+            for (i, val) in enumerate(final_results)
+            if val is plasma.ObjectNotAvailable
+        }
         was_blocked = (len(unready_ids) > 0)
         # Try reconstructing any objects we haven't gotten yet. Try to get them
         # until at least get_timeout_milliseconds milliseconds passes, then
@@ -504,7 +506,7 @@ class Worker(object):
 
         # If there were objects that we weren't able to get locally, let the
         # local scheduler know that we're now unblocked.
-        if was_blocked and not self.use_raylet:
+        if was_blocked:
             self.local_scheduler_client.notify_unblocked()
 
         assert len(final_results) == len(object_ids)

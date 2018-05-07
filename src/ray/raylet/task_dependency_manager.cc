@@ -19,6 +19,10 @@ TaskDependencyManager::TaskDependencyManager(
   // TODO(swang): Subscribe to object removed notifications.
 }
 
+bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
+  return local_objects_.count(object_id) == 1;
+}
+
 bool TaskDependencyManager::argumentsReady(const std::vector<ObjectID> arguments) const {
   for (auto &argument : arguments) {
     // Check if any argument is missing.

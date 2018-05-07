@@ -9,6 +9,8 @@ from ray.rllib.optimizers import LocalSyncOptimizer
 from ray.rllib.pg.pg_evaluator import PGEvaluator
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
+from ray.tune.trial import Resources
+
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
@@ -40,6 +42,11 @@ class PGAgent(Agent):
 
     _agent_name = "PG"
     _default_config = DEFAULT_CONFIG
+
+    @classmethod
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
         self.optimizer = LocalSyncOptimizer.make(

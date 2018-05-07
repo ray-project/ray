@@ -31,7 +31,7 @@ ray::Status ObjectTable::Add(const ObjectID &object_id, const ClientID &client_i
                              const DoneCallback &done_callback) {
   if (client_lookup.count(object_id) == 0) {
     RAY_LOG(DEBUG) << "Add ObjectID set " << object_id;
-    client_lookup[object_id] = std::unordered_set<ClientID, UniqueIDHasher>();
+    client_lookup[object_id] = std::unordered_set<ClientID>();
   } else if (client_lookup[object_id].count(client_id) != 0) {
     return ray::Status::KeyError("ClientID already exists.");
   }

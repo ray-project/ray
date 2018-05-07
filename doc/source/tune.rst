@@ -1,44 +1,61 @@
 Ray Tune: Hyperparameter Optimization Framework
 ===============================================
 
-Ray Tune is a hyperparameter optimization framework for long-running tasks such as RL and deep learning training. Ray Tune makes it easy to go from running one or more experiments on a single machine to running on a large cluster with efficient search algorithms.
+Ray Tune is a scalable hyperparameter optimization framework for reinforcement learning and deep learning. Go from running one experiment on a single machine to running on a large cluster with efficient search algorithms without changing your code.
+
 
 Getting Started
 ---------------
 
-To use Ray Tune, add a two-line modification to a function:
+Installation
+~~~~~~~~~~~~
 
-.. code-block:: python
-   :emphasize-lines: 1,5
+You'll need to first `install ray <installation.html>`__ to import Ray Tune.
 
-    def my_func(config, reporter):  # add the reporter parameter
-        import time, numpy as np
-        i = 0
-        while True:
-            reporter(timesteps_total=i, mean_accuracy=i ** config["alpha"])
-            i += config["beta"]
-            time.sleep(.01)
-
-Then, kick off your experiment:
+Quick Start
+~~~~~~~~~~~
 
 .. code-block:: python
 
-    tune.register_trainable("my_func", my_func)
+    import ray
+    import ray.tune as tune
+
     ray.init()
+    tune.register_trainable("train_func", train_func)
 
     tune.run_experiments({
         "my_experiment": {
-            "run": "my_func",
-            "stop": { "mean_accuracy": 100 },
+            "run": "train_func",
+            "stop": {"mean_accuracy": 99}
             "config": {
-                "alpha": tune.grid_search([0.2, 0.4, 0.6]),
-                "beta": tune.grid_search([1, 2]),
+                "lr": tune.grid_search([0.2, 0.4, 0.6]),
+                "momentum": tune.grid_search([0.1, 0.2]),
             }
         }
     })
 
 
-This script runs a small grid search over the ``my_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 100`` is reached (for metrics like _loss_ that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
+For the function you wish to tune, add a two-line modification (note that we use PyTorch as an example but Ray Tune works with any deep learning framework):
+
+.. code-block:: python
+   :emphasize-lines: 1,14
+
+    def train_func(config, reporter):  # add a reporter arg
+        model = NeuralNet()
+        optimizer = torch.optim.SGD(
+            model.parameters(), lr=config["lr"], momentum=config["momentum"])
+        dataset = ( ... )
+
+        for idx, (data, target) in enumerate(dataset):
+            # ...
+            output = model(data)
+            loss = F.MSELoss(output, target)
+            loss.backward()
+            optimizer.step()
+            accuracy = eval_accuracy(...)
+            reporter(timesteps_total=idx, mean_accuracy=accuracy) # report metrics
+
+This PyTorch script runs a small grid search over the ``train_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached (for metrics like _loss_ that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
 
 ::
 
@@ -46,16 +63,17 @@ This script runs a small grid search over the ``my_func`` function using Ray Tun
     Using FIFO scheduling algorithm.
     Resources used: 4/8 CPUs, 0/0 GPUs
     Result logdir: ~/ray_results/my_experiment
-     - my_func_0_alpha=0.2,beta=1:  RUNNING [pid=6778], 209 s, 20604 ts, 7.29 acc
-     - my_func_1_alpha=0.4,beta=1:  RUNNING [pid=6780], 208 s, 20522 ts, 53.1 acc
-     - my_func_2_alpha=0.6,beta=1:  TERMINATED [pid=6789], 21 s, 2190 ts, 101 acc
-     - my_func_3_alpha=0.2,beta=2:  RUNNING [pid=6791], 208 s, 41004 ts, 8.37 acc
-     - my_func_4_alpha=0.4,beta=2:  RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
-     - my_func_5_alpha=0.6,beta=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
+     - train_func_0_lr=0.2,momentum=1:  RUNNING [pid=6778], 209 s, 20604 ts, 7.29 acc
+     - train_func_1_lr=0.4,momentum=1:  RUNNING [pid=6780], 208 s, 20522 ts, 53.1 acc
+     - train_func_2_lr=0.6,momentum=1:  TERMINATED [pid=6789], 21 s, 2190 ts, 100 acc
+     - train_func_3_lr=0.2,momentum=2:  RUNNING [pid=6791], 208 s, 41004 ts, 8.37 acc
+     - train_func_4_lr=0.4,momentum=2:  RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
+     - train_func_5_lr=0.6,momentum=2:  TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
+In order to report incremental progress, ``train_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be synced to local disk on the head node of the cluster.
 
 Learn more `about specifying experiments <tune-config.html>`__ .
+
 
 Features
 --------
@@ -94,17 +112,44 @@ You can find the code for Ray Tune `here on GitHub <https://github.com/ray-proje
 Trial Schedulers
 ----------------
 
-By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler`` class. However, you can also specify a custom scheduling algorithm that can early stop trials, perturb parameters, or incorporate suggestions from an external service. Currently implemented trial schedulers include `Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, Model-Based Optimization (HyperOpt), and `HyperBand <hyperband.html>`__.
+By default, Ray Tune schedules trials in serial order with the ``FIFOScheduler`` class. However, you can also specify a custom scheduling algorithm that can early stop trials, perturb parameters, or incorporate suggestions from an external service. Currently implemented trial schedulers include
+`Population Based Training (PBT) <pbt.html>`__, `Median Stopping Rule <hyperband.html#median-stopping-rule>`__, `Model Based Optimization (HyperOpt) <#hyperopt-integration>`__, and `HyperBand <hyperband.html>`__.
 
 .. code-block:: python
 
     run_experiments({...}, scheduler=AsyncHyperBandScheduler())
 
 
+Handling Large Datasets
+-----------------------
+
+You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial. Ray Tune provides a ``pin_in_object_store`` utility function that can be used to broadcast such large objects. Objects pinned in this way will never be evicted from the Ray object store while the driver process is running, and can be efficiently retrieved from any task via ``get_pinned_object``.
+
+.. code-block:: python
+
+    import ray
+    from ray.tune import register_trainable, run_experiments
+    from ray.tune.util import pin_in_object_store, get_pinned_object
+
+    import numpy as np
+
+    ray.init()
+
+    # X_id can be referenced in closures
+    X_id = pin_in_object_store(np.random.random(size=100000000))
+
+    def f(config, reporter):
+        X = get_pinned_object(X_id)
+        # use X
+
+    register_trainable("f", f)
+    run_experiments(...)
+
+
 HyperOpt Integration
 --------------------
 
-The``HyperOptScheduler`` is a Trial Scheduler that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
+The ``HyperOptScheduler`` is a Trial Scheduler that is backed by HyperOpt to perform sequential model-based hyperparameter optimization.
 In order to use this scheduler, you will need to install HyperOpt via the following command:
 
 .. code-block:: bash
@@ -221,3 +266,9 @@ Then, on the client side, you can use the following class. The server address de
 
 
 For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.
+
+
+Examples
+--------
+
+You can find a list of examples `using Ray Tune and its various features here <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples>`__.

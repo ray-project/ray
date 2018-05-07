@@ -51,10 +51,6 @@ if __name__ == "__main__":
                 "run": "PPO",
                 "env": "Humanoid-v1",
                 "repeat": 8,
-                "trial_resources": {
-                    "cpu": 4,
-                    "gpu": 1
-                },
                 "config": {
                     "kl_coeff":
                     1.0,

@@ -87,6 +87,9 @@ class NodeManager {
   /// Handler for a heartbeat notification from the GCS.
   void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
                       const HeartbeatTableDataT &data);
+  /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
+  /// "running" task state.
+  void DispatchTasks();
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
@@ -97,7 +100,7 @@ class NodeManager {
   /// The resources local to this node.
   const SchedulingResources local_resources_;
   // TODO(atumanov): Add resource information from other nodes.
-  std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher> cluster_resource_map_;
+  std::unordered_map<ClientID, SchedulingResources> cluster_resource_map_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// A set of queues to maintain tasks.
@@ -111,9 +114,8 @@ class NodeManager {
   /// The lineage cache for the GCS object and task tables.
   LineageCache lineage_cache_;
   std::vector<ClientID> remote_clients_;
-  std::unordered_map<ClientID, TcpServerConnection, UniqueIDHasher>
-      remote_server_connections_;
-  std::unordered_map<ActorID, ActorRegistration, UniqueIDHasher> actor_registry_;
+  std::unordered_map<ClientID, TcpServerConnection> remote_server_connections_;
+  std::unordered_map<ActorID, ActorRegistration> actor_registry_;
 };
 
 }  // namespace raylet

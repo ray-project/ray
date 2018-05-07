@@ -11,16 +11,13 @@ namespace ray {
 
 namespace raylet {
 
-Raylet::Raylet(boost::asio::io_service &main_service,
-               std::unique_ptr<boost::asio::io_service> object_manager_service,
-               const std::string &socket_name, const std::string &node_ip_address,
-               const std::string &redis_address, int redis_port,
-               const NodeManagerConfig &node_manager_config,
+Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
+               const std::string &node_ip_address, const std::string &redis_address,
+               int redis_port, const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
     : gcs_client_(gcs_client),
-      object_manager_(main_service, std::move(object_manager_service),
-                      object_manager_config, gcs_client),
+      object_manager_(main_service, object_manager_config, gcs_client),
       node_manager_(main_service, node_manager_config, object_manager_, gcs_client_),
       socket_name_(socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),

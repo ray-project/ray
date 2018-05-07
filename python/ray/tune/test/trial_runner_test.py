@@ -12,7 +12,7 @@ from ray.rllib import _register_all
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.registry import _default_registry, TRAINABLE_CLASS
-from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
 from ray.tune.util import pin_in_object_store, get_pinned_object
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, Resources
@@ -23,7 +23,7 @@ from ray.tune.variant_generator import generate_trials, grid_search, \
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=4, num_gpus=0)
 
     def tearDown(self):
         ray.worker.cleanup()
@@ -37,6 +37,25 @@ class TrainableFunctionApiTest(unittest.TestCase):
             return get_pinned_object(X)
 
         self.assertEqual(ray.get(f.remote()), "hello")
+
+    def testFetchPinned(self):
+        X = pin_in_object_store("hello")
+
+        def train(config, reporter):
+            get_pinned_object(X)
+            reporter(timesteps_total=100, done=True)
+
+        register_trainable("f1", train)
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }
+        })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result.timesteps_total, 100)
 
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
@@ -56,6 +75,46 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("foo", B)
         self.assertRaises(TypeError, lambda: register_trainable("foo", B()))
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
+
+    def testBuiltInTrainableResources(self):
+        class B(Trainable):
+            @classmethod
+            def default_resource_request(cls, config):
+                return Resources(cpu=config["cpu"], gpu=config["gpu"])
+
+            def _train(self):
+                return TrainingResult(timesteps_this_iter=1, done=True)
+
+        register_trainable("B", B)
+
+        def f(cpus, gpus, queue_trials):
+            return run_experiments(
+                {
+                    "foo": {
+                        "run": "B",
+                        "config": {
+                            "cpu": cpus,
+                            "gpu": gpus,
+                        },
+                    }
+                },
+                queue_trials=queue_trials)[0]
+
+        # Should all succeed
+        self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
+        self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
+        self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
+
+        # Infeasible even with queueing enabled (no gpus)
+        self.assertRaises(TuneError, lambda: f(1, 1, True))
+
+        # Too large resource request
+        self.assertRaises(TuneError, lambda: f(100, 100, False))
+        self.assertRaises(TuneError, lambda: f(0, 100, False))
+        self.assertRaises(TuneError, lambda: f(100, 0, False))
+
+        # TODO(ekl) how can we test this is queued (hangs)?
+        # f(100, 0, True)
 
     def testRewriteEnv(self):
         def train(config, reporter):
@@ -338,6 +397,13 @@ class RunExperimentTest(unittest.TestCase):
 
 
 class VariantGeneratorTest(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
+
     def testParseToTrials(self):
         trials = generate_trials({
             "run": "PPO",
@@ -512,7 +578,7 @@ class TrialRunnerTest(unittest.TestCase):
     def testTrialErrorOnStart(self):
         ray.init()
         _default_registry.register(TRAINABLE_CLASS, "asdf", None)
-        trial = Trial("asdf")
+        trial = Trial("asdf", resources=Resources(1, 0))
         try:
             trial.start()
         except Exception as e:

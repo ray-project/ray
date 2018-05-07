@@ -6,6 +6,7 @@ import random
 import unittest
 import numpy as np
 
+import ray
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.async_hyperband import AsyncHyperBandScheduler
 from ray.tune.pbt import PopulationBasedTraining, explore
@@ -24,6 +25,13 @@ def result(t, rew):
 
 
 class EarlyStoppingSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
+
     def basicSetup(self, rule):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
@@ -184,6 +192,13 @@ class _MockTrialRunner():
 
 
 class HyperbandSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
+
     def schedulerSetup(self, num_trials):
         """Setup a scheduler and Runner with max Iter = 9
 
@@ -538,6 +553,13 @@ class _MockTrial(Trial):
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
+
     def basicSetup(self, resample_prob=0.0, explore=None):
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -666,36 +688,36 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Categorical case
         assertProduces(
             lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            set([3, 8]))
+            {3, 8})
         assertProduces(
             lambda: explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            set([3, 4]))
+            {3, 4})
         assertProduces(
             lambda: explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            set([8, 10]))
+            {8, 10})
         assertProduces(
             lambda: explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            set([3, 4, 8, 10]))
+            {3, 4, 8, 10})
         assertProduces(
             lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
-            set([3, 4, 8, 10]))
+            {3, 4, 8, 10})
 
         # Continuous case
         assertProduces(
             lambda: explore(
                 {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0,
                 lambda x: x),
-            set([80, 120]))
+            {80, 120})
         assertProduces(
             lambda: explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0,
                 lambda x: x),
-            set([80.0, 120.0]))
+            {80.0, 120.0})
         assertProduces(
             lambda: explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0,
                 lambda x: x),
-            set([10.0, 100.0]))
+            {10.0, 100.0})
 
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()
@@ -751,6 +773,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
 
 class AsyncHyperBandSuite(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
+
     def basicSetup(self, scheduler):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
