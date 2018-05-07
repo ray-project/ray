@@ -206,6 +206,8 @@ def confirm(msg, yes):
 def file_sync(config_file):
     """Returns head node IP for given configuration file if exists."""
     config = yaml.load(open(config_file).read())
+    validate_config(config)
+    config = fillout_defaults(config)
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
         raise NotImplementedError("Unsupported provider {}".format(
