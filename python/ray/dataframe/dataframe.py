@@ -4533,23 +4533,32 @@ class DataFrame(object):
                                                             self.index))
 
             new_partitions = [where_helper.remote(k, v, next(other_zipped),
-                                                     *args)
+                                                  *args)
                               for k, v in zipped_partitions]
 
+        # Series has to be treated specially because we're operating on row
+        # partitions from here on.
         elif isinstance(other, pd.Series):
             if axis == 0:
+                # Pandas determines which index to use based on axis.
                 other = other.reindex(self.index)
                 other.index = pd.RangeIndex(len(other))
 
+                # Since we're working on row partitions, we have to partition
+                # the Series based on the partitioning of self (since both
+                # self and cond are co-partitioned by self.
                 other_builder = []
                 for length in self._row_metadata._lengths:
                     other_builder.append(other[:length])
                     other = other[length:]
+                    # Resetting the index here ensures that we apply each part
+                    # to the correct row within the partitions.
                     other.index = pd.RangeIndex(len(other))
 
                 other = (obj for obj in other_builder)
 
-                new_partitions = [where_helper.remote(k, v, next(other, pd.Series()),
+                new_partitions = [where_helper.remote(k, v, next(other,
+                                                                 pd.Series()),
                                                       *args)
                                   for k, v in zipped_partitions]
             else:
@@ -4567,12 +4576,9 @@ class DataFrame(object):
                                  row_metadata=self._row_metadata,
                                  col_metadata=self._col_metadata)
         else:
-            x =  DataFrame(row_partitions=new_partitions,
+            return DataFrame(row_partitions=new_partitions,
                              row_metadata=self._row_metadata,
                              col_metadata=self._col_metadata)
-
-            print(x)
-            return x
 
     def xs(self, key, axis=0, level=None, drop_level=True):
         raise NotImplementedError(
