@@ -60,7 +60,7 @@ def test(use_object_store, alg_name):
 
 if __name__ == "__main__":
     for use_object_store in [False, True]:
-        for name in ["ES", "DQN", "DDPG", "PPO", "A3C"]:
+        for name in ["ES", "DQN", "DDPG_baselines", "PPO", "A3C"]:
             test(use_object_store, name)
 
     print("All checkpoint restore tests passed!")
