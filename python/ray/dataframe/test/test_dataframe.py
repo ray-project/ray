@@ -3030,10 +3030,21 @@ def test_unstack():
 
 
 def test_update():
-    ray_df = create_test_dataframe()
+    df = rdf.DataFrame([[1.5, np.nan, 3.],
+                        [1.5, np.nan, 3.],
+                        [1.5, np.nan, 3],
+                        [1.5, np.nan, 3]])
 
-    with pytest.raises(NotImplementedError):
-        ray_df.update(None)
+    other = rdf.DataFrame([[3.6, 2., np.nan],
+                           [np.nan, np.nan, 7]], index=[1, 3])
+
+    df.update(other)
+
+    expected = rdf.DataFrame([[1.5, np.nan, 3],
+                              [3.6, 2, 3],
+                              [1.5, np.nan, 3],
+                              [1.5, np.nan, 7.]])
+    assert ray_df_equals(df, expected)
 
 
 @pytest.fixture
