@@ -232,7 +232,10 @@ class _IndexMetadata(object):
         # Determine which partition to place it in, and where in that partition
         if loc is not None:
             cum_lens = np.cumsum(self._lengths)
-            partition = np.digitize(loc, cum_lens[:-1])
+            if len(cum_lens) > 1:
+                partition = np.digitize(loc, cum_lens[:-1])
+            else:
+                partition = 0
             if partition >= len(cum_lens):
                 if loc > cum_lens[-1]:
                     raise IndexError("index {0} is out of bounds".format(loc))
