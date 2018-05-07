@@ -370,11 +370,10 @@ Status ReadGetRequest(uint8_t *data,
   return Status::OK();
 }
 
-Status SendGetReply(
-    int sock,
-    ObjectID object_ids[],
-    std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher> &plasma_objects,
-    int64_t num_objects) {
+Status SendGetReply(int sock,
+                    ObjectID object_ids[],
+                    std::unordered_map<ObjectID, PlasmaObject> &plasma_objects,
+                    int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb;
   std::vector<PlasmaObjectSpec> objects;
 

@@ -517,7 +517,7 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// The callback to call when a client is removed.
   ClientTableCallback client_removed_callback_;
   /// A cache for information about all clients.
-  std::unordered_map<ClientID, ClientTableDataT, UniqueIDHasher> client_cache_;
+  std::unordered_map<ClientID, ClientTableDataT> client_cache_;
 };
 
 }  // namespace gcs

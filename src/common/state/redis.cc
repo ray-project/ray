@@ -80,13 +80,13 @@ redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id) {
   /* NOTE: The hash function used here must match the one in
    * PyObjectID_redis_shard_hash in src/common/lib/python/common_extension.cc.
    * Changes to the hash function should only be made through
-   * UniqueIDHasher in src/common/common.h */
-  UniqueIDHasher index;
+   * std::hash in src/common/common.h */
+  std::hash<ray::UniqueID> index;
   return db->contexts[index(id) % db->contexts.size()];
 }
 
 redisAsyncContext *get_redis_subscribe_context(DBHandle *db, UniqueID id) {
-  UniqueIDHasher index;
+  std::hash<ray::UniqueID> index;
   return db->subscribe_contexts[index(id) % db->subscribe_contexts.size()];
 }
 
