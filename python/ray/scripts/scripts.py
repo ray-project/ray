@@ -8,7 +8,8 @@ import subprocess
 
 import ray.services as services
 from ray.autoscaler.commands import (create_or_update_cluster,
-                                     teardown_cluster, get_head_node_ip)
+                                     teardown_cluster, get_head_node_ip,
+                                     file_sync)
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -403,11 +404,19 @@ def get_head_ip(cluster_config_file):
     click.echo(get_head_node_ip(cluster_config_file))
 
 
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+def sync(cluster_config_file):
+    """Syncs files with head node."""
+    file_sync(cluster_config_file)
+
+
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(teardown)
 cli.add_command(get_head_ip)
+cli.add_command(sync)
 
 
 def main():
