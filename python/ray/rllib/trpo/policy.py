@@ -7,6 +7,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import distributions
+from torch.distributions import kl_divergence
+from torch.distributions.categorical import Categorical
 from torch.nn.utils.convert_parameters import (_check_param_device,
                                                parameters_to_vector,
                                                vector_to_parameters,)
@@ -90,14 +92,14 @@ class TRPOPolicy(SharedTorchPolicy):
         policy and self._model."""
         # TODO(alok): Handle continuous case since this assumes a
         # Categorical distribution.
-        new_p = self._model(self._states)[0].detach() + 1e-8
-        old_p = self._model(self._states)[0]
+        new_prob = F.softmax(
+            self._model(self._states)[0], dim=1).detach() + 1e-8
+        old_prob = F.softmax(self._model(self._states)[0], dim=1)
 
-        return distributions.kl.kl_divergence(
-            distributions.categorical.Categorical(new_p),
-            distributions.categorical.Categorical(old_p),
-        )
-        # return (old_p.dot((old_p / new_p).log())).mean()
+        new_prob, old_prob = Categorical(probs=new_prob), Categorical(
+            probs=old_prob)
+
+        return kl_divergence(new_prob, old_prob).mean()
 
     def HVP(self, v):
         """Returns the product of the Hessian of the KL divergence and the
