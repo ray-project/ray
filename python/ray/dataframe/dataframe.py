@@ -1377,7 +1377,6 @@ class DataFrame(object):
 
     def clip(self, lower=None, upper=None, axis=None, inplace=False, *args,
              **kwargs):
-        # TODO: throw any pandas errors by validating with a dummy dataframe
         if isinstance(self, ABCPanel):
             raise NotImplementedError("clip is not supported yet for panels")
 
@@ -1385,7 +1384,6 @@ class DataFrame(object):
 
         axis = nv.validate_clip_with_axis(axis, args, kwargs)
 
-        # GH 17276
         # numpy doesn't like NaN as a clip value
         # so ignore
         if np.any(pd.isnull(lower)):
@@ -1393,7 +1391,6 @@ class DataFrame(object):
         if np.any(pd.isnull(upper)):
             upper = None
 
-        # GH 2747 (arguments were reversed)
         if lower is not None and upper is not None:
             if is_scalar(lower) and is_scalar(upper):
                 lower, upper = min(lower, upper), max(lower, upper)
@@ -1404,6 +1401,7 @@ class DataFrame(object):
     def clip_lower(self, threshold, axis=None, inplace=False):
         if axis is not None:
             axis = pd.DataFrame()._get_axis_number(axis)
+        self._clip_validate(threshold, axis)
         return self._clip_list_like_helper(
             threshold,
             lambda _threshold, df: df.clip_lower(
@@ -1414,7 +1412,7 @@ class DataFrame(object):
     def clip_upper(self, threshold, axis=None, inplace=False):
         if axis is not None:
             axis = pd.DataFrame()._get_axis_number(axis)
-        # self._clip_validate(threshold, axis)
+        self._clip_validate(threshold, axis)
         return self._clip_list_like_helper(
             threshold,
             lambda _threshold, df: df.clip_upper(
@@ -1423,16 +1421,10 @@ class DataFrame(object):
         )
 
     def _clip_validate(self, threshold, axis):
-        if axis is None:
-            dummy_frame = pd.DataFrame(columns=self.columns)
-            dummy_frame.clip_lower(threshold, axis)
-            dummy_frame = pd.DataFrame(index=self.index)
-            dummy_frame.clip_lower(threshold, axis)
-
-        elif not is_scalar(threshold):
+        if not is_scalar(threshold):
             df_threshold = pd.DataFrame(threshold)
-            if df_threshold.shape[1] > 1:
-                if self.shape != df_threshold.shape:
+            if df_threshold.shape[1] > 1 and\
+               self.shape != df_threshold.shape:
                     msg = ("Unable to coerce to Data Frame, shape "
                            "must be {req_shape}: given {given_shape}"
                            ).format(
