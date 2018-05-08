@@ -6,7 +6,6 @@ from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.autograd import Variable
 from torch.nn.utils.convert_parameters import (_check_param_device,
                                                parameters_to_vector,
                                                vector_to_parameters,)
@@ -121,7 +120,7 @@ class TRPOPolicy(SharedTorchPolicy):
         rdotr = r.double().dot(r.double())
 
         for _ in range(cg_iters):
-            z = self.HVP(Variable(p)).squeeze(0)
+            z = self.HVP(p).squeeze(0)
             v = rdotr / p.double().dot(z.double())
             x += v * p.numpy()
             r -= v * z
@@ -165,12 +164,11 @@ class TRPOPolicy(SharedTorchPolicy):
             g = stepfrac * fullstep
 
             xnew = x.data.numpy() + g
-            newfval = self.surrogate_loss(Variable(torch.from_numpy(xnew)))
+            newfval = self.surrogate_loss(torch.from_numpy(xnew))
             actual_improve = fval - newfval
             expected_improve = expected_improve_rate * stepfrac
 
             if actual_improve / expected_improve > accept_ratio and actual_improve > 0:
-                # return Variable(torch.from_numpy(xnew))
                 return g
 
         # If no improvement could be obtained, return 0 gradient
@@ -207,7 +205,7 @@ class TRPOPolicy(SharedTorchPolicy):
             old_p = new_p.detach() + 1e-8
 
             prob_ratio = new_p / old_p
-            surrogate_loss = -torch.mean(prob_ratio * Variable(self._adv)) - (
+            surrogate_loss = -torch.mean(prob_ratio * self._adv) - (
                 self.config['ent_coeff'] * entropy)
 
             # Gradient wrt policy
@@ -220,7 +218,7 @@ class TRPOPolicy(SharedTorchPolicy):
 
             if g.nonzero().size()[0]:
                 step_dir = self.conjugate_gradient(-g)
-                _step_dir = Variable(torch.from_numpy(step_dir))
+                _step_dir = torch.from_numpy(step_dir)
 
                 # Do line search to determine the stepsize of params in the direction of step_dir
                 shs = step_dir.dot(self.HVP(self._kl, _step_dir).numpy().T) / 2
