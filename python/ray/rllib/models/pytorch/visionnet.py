@@ -41,7 +41,6 @@ class VisionNetwork(Model):
 
         self.logits = SlimFC(
             out_channels, num_outputs, initializer=nn.init.xavier_uniform)
-        self.probs = nn.Softmax()
         self.value_branch = SlimFC(
             out_channels, 1, initializer=normc_initializer())
 

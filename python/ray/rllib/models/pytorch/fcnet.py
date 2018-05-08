@@ -35,7 +35,6 @@ class FullyConnectedNetwork(Model):
             last_layer_size, num_outputs,
             initializer=normc_initializer(0.01),
             activation_fn=None)
-        self.probs = nn.Softmax(dim=1)
         self.value_branch = SlimFC(
             last_layer_size, 1,
             initializer=normc_initializer(1.0),

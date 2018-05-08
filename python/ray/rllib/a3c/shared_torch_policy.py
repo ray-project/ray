@@ -33,7 +33,7 @@ class SharedTorchPolicy(TorchPolicy):
         with self.lock:
             ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
             logits, values = self._model(ob)
-            samples = self._model.probs(logits).multinomial(num_samples=1).squeeze()
+            samples = F.softmax(logits, dim=1).multinomial(num_samples=1).squeeze()
             values = values.squeeze()
             return var_to_np(samples), {"vf_preds": var_to_np(values)}
 
@@ -55,7 +55,7 @@ class SharedTorchPolicy(TorchPolicy):
         """Passes in multiple obs."""
         logits, values = self._model(obs)
         log_probs = F.log_softmax(logits,dim=1)
-        probs = self._model.probs(logits)
+        probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
         entropy = -(log_probs * probs).sum(-1).sum()
         return values, action_log_probs, entropy
