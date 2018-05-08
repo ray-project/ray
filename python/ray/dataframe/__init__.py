@@ -3,18 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
-<<<<<<< HEAD
-from pandas import (eval, MultiIndex, CategoricalIndex, Series, Panel, unique,
-                    value_counts, date_range, Timedelta, Timestamp,
-                    to_datetime, NaT)
-=======
 # TODO: In the future `set_option` or similar needs to run on every node
 # in order to keep all pandas instances across nodes consistent
 from pandas import (eval, unique, value_counts, cut, to_numeric, factorize,
                     test, qcut, match, Panel, date_range, Index, MultiIndex,
-                    Series, bdate_range, DatetimeIndex, to_timedelta,
-                    set_eng_float_format, set_option)
->>>>>>> Add direct pandas imports for MVP
+                    CategoricalIndex, Series, bdate_range, DatetimeIndex,
+                    Timedelta, Timestamp, to_timedelta, set_eng_float_format,
+                    set_option, NaT)
 import threading
 
 pd_version = pd.__version__
@@ -50,16 +45,11 @@ from .reshape import get_dummies  # noqa: 402
 
 __all__ = [
     "DataFrame", "Series", "read_csv", "read_parquet", "concat", "eval",
-<<<<<<< HEAD
-    "Panel", "unique", "get_dummies", "value_counts", "MultiIndex",
-    "CategoricalIndex", "Timedelta", "Timestamp", "date_range", "to_datetime",
-    "NaT"
-=======
     "unique", "value_counts", "cut", "to_numeric", "factorize", "test", "qcut",
     "match", "to_datetime", "get_dummies", "Panel", "date_range", "Index",
     "MultiIndex", "Series", "bdate_range", "DatetimeIndex", "to_timedelta",
-    "set_eng_float_format", "set_option"
->>>>>>> Add direct pandas imports for MVP
+    "set_eng_float_format", "set_option", "CategoricalIndex", "Timedelta",
+    "Timestamp", "NaT"
 ]
 
 try:
