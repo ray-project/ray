@@ -4567,7 +4567,6 @@ class DataFrame(object):
                                   for k, v in zipped_partitions]
             else:
                 other = other.reindex(self.columns)
-                other.index = pd.RangeIndex(len(other))
                 new_partitions = [where_helper.remote(k, v, other,
                                                       self.columns,
                                                       cond.columns,
