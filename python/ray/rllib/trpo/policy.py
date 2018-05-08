@@ -6,6 +6,7 @@ from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch import distributions
 from torch.nn.utils.convert_parameters import (_check_param_device,
                                                parameters_to_vector,
                                                vector_to_parameters,)
@@ -61,7 +62,6 @@ def vector_to_gradient(v, parameters):
 
 
 class TRPOPolicy(SharedTorchPolicy):
-
     def __init__(
             self,
             registry,
@@ -85,21 +85,26 @@ class TRPOPolicy(SharedTorchPolicy):
         action_dists = F.softmax(logits, dim=1)
         return action_dists
 
-    def mean_kl(self, policy):
+    def mean_kl(self):
         """Returns an estimate of the average KL divergence between a given
         policy and self._model."""
         # TODO(alok): Handle continuous case since this assumes a
         # Categorical distribution.
-        new_p = policy(self._states).detach() + 1e-8
-        old_p = self._model(self._states)
+        new_p = self._model(self._states)[0].detach() + 1e-8
+        old_p = self._model(self._states)[0]
 
-        return (old_p.dot((old_p / new_p).log())).mean()
+        return distributions.kl.kl_divergence(
+            distributions.categorical.Categorical(new_p),
+            distributions.categorical.Categorical(old_p),
+        )
+        # return (old_p.dot((old_p / new_p).log())).mean()
 
     def HVP(self, v):
         """Returns the product of the Hessian of the KL divergence and the
         given vector."""
 
         self._model.zero_grad()
+        print(f'KL: {self._kl}')
 
         g_kl = torch.autograd.grad(
             self._kl, self._model.parameters(), create_graph=True)
@@ -141,10 +146,10 @@ class TRPOPolicy(SharedTorchPolicy):
 
         EPSILON = 1e-8
 
-        prob_new = new_policy(self._states).gather(1,
-                                                  torch.cat(self._actions)).data
-        prob_old = self._model(self._states).gather(1, torch.cat(
-            self._actions)).data + EPSILON
+        prob_new = new_policy(self._states)[0].gather(
+            1, self._actions.view(-1, 1)).data
+        prob_old = self._model(self._states)[0].gather(
+            1, self._actions.view(-1, 1)).data + EPSILON
 
         return -torch.mean((prob_new / prob_old) * self._adv)
 
@@ -184,8 +189,8 @@ class TRPOPolicy(SharedTorchPolicy):
 
         bs = self.config['batch_size']
 
-        num_batches = len(actions) // bs if len(
-            actions) % bs == 0 else (len(actions) // bs) + 1
+        num_batches = len(actions) // bs if len(actions) % bs == 0 else (
+            len(actions) // bs) + 1
 
         for batch_n in range(num_batches):
             _slice = slice(batch_n * bs, (batch_n + 1) * bs)
@@ -195,13 +200,12 @@ class TRPOPolicy(SharedTorchPolicy):
             self._action_dists = action_dists[_slice]
             self._adv = advs[_slice]
 
-            self._kl = self.mean_kl(self._states, self._model)
+            self._kl = self.mean_kl()
 
             # Calculate the surrogate loss as the element-wise product of the
             # advantage and the probability ratio of actions taken.
             # TODO(alok) Do we need log probs or the actual probabilities here?
-            new_p = torch.cat(self._action_dists).gather(
-                1, torch.cat(self._actions))
+            new_p = self._action_dists.gather(1, self._actions.view(-1, 1))
             old_p = new_p.detach() + 1e-8
 
             prob_ratio = new_p / old_p
