@@ -210,7 +210,7 @@ class TRPOPolicy(SharedTorchPolicy):
             new_prob = self._action_dists.gather(1, self._actions.view(-1, 1))
             old_prob = new_prob.detach() + 1e-8
 
-            prob_ratio = new_p / old_p
+            prob_ratio = new_prob / old_prob
             surrogate_loss = -torch.mean(prob_ratio * self._adv) - (
                 self.config['ent_coeff'] * entropy)
 
