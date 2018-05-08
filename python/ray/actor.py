@@ -28,11 +28,43 @@ def compute_actor_handle_id(actor_handle_id, num_forks):
                    forked so far.
 
     Returns:
-        An object ID for the new actor handle.
+        An ID for the new actor handle.
     """
     handle_id_hash = hashlib.sha1()
     handle_id_hash.update(actor_handle_id.id())
     handle_id_hash.update(str(num_forks).encode("ascii"))
+    handle_id = handle_id_hash.digest()
+    assert len(handle_id) == 20
+    return ray.local_scheduler.ObjectID(handle_id)
+
+
+def compute_actor_handle_id_non_forked(actor_id, actor_handle_id,
+                                       current_task_id):
+    """Deterministically compute an actor handle ID in the non-forked case.
+
+    This code path is used whenever an actor handle is pickled and unpickled
+    (for example, if a remote function closes over an actor handle). Then,
+    whenever the actor handle is used, a new actor handle ID will be generated
+    on the fly as a deterministic function of the actor ID, the previous actor
+    handle ID and the current task ID.
+
+    TODO(rkn): It may be possible to cause problems by closing over multiple
+    actor handles in a remote function, which then get unpickled and give rise
+    to the same actor handle IDs.
+
+    Args:
+        actor_id: The actor ID.
+        actor_handle_id: The original actor handle ID.
+        num_forks: The number of times the original actor handle has been
+           forked so far.
+
+    Returns:
+        An ID for the new actor handle.
+    """
+    handle_id_hash = hashlib.sha1()
+    handle_id_hash.update(actor_id.id())
+    handle_id_hash.update(actor_handle_id.id())
+    handle_id_hash.update(current_task_id.id())
     handle_id = handle_id_hash.digest()
     assert len(handle_id) == 20
     return ray.local_scheduler.ObjectID(handle_id)
@@ -661,8 +693,9 @@ class ActorHandle(object):
             ActorHandle was created by forking an existing ActorHandle, then
             this ID must be computed deterministically via
             compute_actor_handle_id. If this ActorHandle was created by an
-            out-of-band mechanism (e.g., pickling), then this must be generated
-            randomly.
+            out-of-band mechanism (e.g., pickling), then this must be None (in
+            this case, a new actor handle ID will be generated on the fly every
+            time a method is invoked).
         _ray_actor_cursor: The actor cursor is a dummy object representing the
             most recent actor method invocation. For each subsequent method
             invocation, the current cursor should be added as a dependency, and
@@ -684,6 +717,10 @@ class ActorHandle(object):
         _ray_actor_driver_id: The driver ID of the job that created the actor
             (it is possible that this ActorHandle exists on a driver with a
             different driver ID).
+        _ray_previous_actor_handle_id: If this actor handle is not an original
+            handle, (e.g., it was created by forking or pickling), then
+            this is the ID of the handle that this handle was created from.
+            Otherwise, this is None.
     """
 
     def __init__(self,
@@ -697,9 +734,13 @@ class ActorHandle(object):
                  actor_creation_dummy_object_id,
                  actor_method_cpus,
                  actor_driver_id,
-                 actor_handle_id=None):
+                 actor_handle_id=None,
+                 previous_actor_handle_id=None):
+        # False if this actor handle was created by forking or pickling. True
+        # if it was created by the _serialization_helper function.
+        self._ray_original_handle = previous_actor_handle_id is None
+
         self._ray_actor_id = actor_id
-        self._ray_original_handle = (actor_handle_id is None)
         if self._ray_original_handle:
             self._ray_actor_handle_id = ray.local_scheduler.ObjectID(
                 ray.worker.NIL_ACTOR_HANDLE_ID)
@@ -716,6 +757,7 @@ class ActorHandle(object):
             actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_actor_driver_id = actor_driver_id
+        self._ray_previous_actor_handle_id = previous_actor_handle_id
 
     def _actor_method_call(self,
                            method_name,
@@ -767,13 +809,20 @@ class ActorHandle(object):
 
         is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
+        if self._ray_actor_handle_id is None:
+            actor_handle_id = compute_actor_handle_id_non_forked(
+                self._ray_actor_id, self._ray_previous_actor_handle_id,
+                ray.worker.global_worker.current_task_id)
+        else:
+            actor_handle_id = self._ray_actor_handle_id
+
         function_id = compute_actor_method_function_id(self._ray_class_name,
                                                        method_name)
         object_ids = ray.worker.global_worker.submit_task(
             function_id,
             args,
             actor_id=self._ray_actor_id,
-            actor_handle_id=self._ray_actor_handle_id,
+            actor_handle_id=actor_handle_id,
             actor_counter=self._ray_actor_counter,
             is_actor_checkpoint_method=is_actor_checkpoint_method,
             actor_creation_dummy_object_id=(
@@ -877,12 +926,14 @@ class ActorHandle(object):
             "actor_method_cpus":
             self._ray_actor_method_cpus,
             "actor_driver_id":
-            self._ray_actor_driver_id.id()
+            self._ray_actor_driver_id.id(),
+            "previous_actor_handle_id":
+            self._ray_actor_handle_id.id(),
+            "ray_forking":
+            ray_forking
         }
 
         if ray_forking:
-            state["forked_actor_handle_id"] = compute_actor_handle_id(
-                self._ray_actor_handle_id, self._ray_actor_forks)
             self._ray_actor_forks += 1
 
         return state
@@ -898,10 +949,12 @@ class ActorHandle(object):
         ray.worker.check_connected()
         ray.worker.check_main_thread()
 
-        if "forked_actor_handle_id" in state:
-            actor_handle_id = state["forked_actor_handle_id"]
+        if state["ray_forking"]:
+            actor_handle_id = compute_actor_handle_id(
+                ray.local_scheduler.ObjectID(
+                    state["previous_actor_handle_id"]), state["actor_forks"])
         else:
-            actor_handle_id = ray.local_scheduler.ObjectID(_random_string())
+            actor_handle_id = None
 
         # This is the driver ID of the driver that owns the actor, not
         # necessarily the driver that owns this actor handle.
@@ -920,7 +973,9 @@ class ActorHandle(object):
                 state["actor_creation_dummy_object_id"]),
             state["actor_method_cpus"],
             actor_driver_id,
-            actor_handle_id=actor_handle_id)
+            actor_handle_id=actor_handle_id,
+            previous_actor_handle_id=ray.local_scheduler.ObjectID(
+                state["previous_actor_handle_id"]))
 
         register_actor_signatures(
             ray.worker.global_worker, actor_driver_id.id(), None,
