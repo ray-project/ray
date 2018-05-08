@@ -66,8 +66,6 @@ class SharedTorchPolicy(TorchPolicy):
 
         states, acs, advs, rs, _ = convert_batch(batch)
         values, ac_logprobs, entropy = self._evaluate(states, acs)
-        # TODO(alok): rm print
-        print(f's: {states.size()}, a:{acs.size()},adv: {advs.size()}, r: {rs.size()}, v: {values.size()},\n l: {ac_logprobs.size()}, e: {entropy}')
         pi_err = -(advs * ac_logprobs).sum()
         value_err = F.mse_loss(values, rs)
 
