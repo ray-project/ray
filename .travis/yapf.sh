@@ -4,7 +4,8 @@
 set -eo pipefail
 
 # should be $PROJECT_ROOT
-PROJECT_ROOT="$(dirname "$(dirname "${BASH_SOURCE:-$0}")")"
+builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$PROJECT_ROOT" && echo "Project Root: $PROJECT_ROOT"
 
 yapf \
