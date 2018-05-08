@@ -10,7 +10,6 @@ def env_integer(key, default):
         return int(os.environ(key))
     return default
 
-
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
 AUTOSCALER_MAX_NUM_FAILURES = env_integer("AUTOSCALER_MAX_NUM_FAILURES", 5)
