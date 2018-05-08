@@ -161,6 +161,26 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
 
+    def testLogdirStartingWithTilde(self):
+        local_dir = '~/ray_results/local_dir'
+
+        def train(config, reporter):
+            cwd = os.getcwd()
+            assert cwd.startswith(os.path.expanduser(local_dir)), cwd
+            assert not cwd.startswith('~'), cwd
+            reporter(timesteps_total=1)
+
+        register_trainable('f1', train)
+        run_experiments({
+            'foo': {
+                'run': 'f1',
+                'local_dir': local_dir,
+                'config': {
+                    'a': 'b'
+                },
+            }
+        })
+
     def testLongFilename(self):
         def train(config, reporter):
             assert "/tmp/logdir/foo" in os.getcwd(), os.getcwd()
