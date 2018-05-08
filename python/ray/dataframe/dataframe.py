@@ -19,7 +19,6 @@ from pandas.core.dtypes.common import (
     is_numeric_dtype,
     is_timedelta64_dtype,
     _get_dtype_from_object)
-    is_timedelta64_dtype)
 from pandas.core.dtypes.generic import ABCPanel
 from pandas.core.indexing import check_bool_indexer
 from pandas.errors import MergeError
