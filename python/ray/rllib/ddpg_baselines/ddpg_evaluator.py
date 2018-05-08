@@ -45,7 +45,7 @@ class DDPGEvaluator(PolicyEvaluator):
 
         # Note that this encompasses both the Q and target network
         self.variables = ray.experimental.TensorFlowVariables(tf.group(
-            self.ddpg_graph.td_error, self.ddpg_graph.action_lost), self.sess)
+            self.ddpg_graph.critic_loss, self.ddpg_graph.action_loss), self.sess)
         self.max_action = env.action_space.high
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]
@@ -76,21 +76,35 @@ class DDPGEvaluator(PolicyEvaluator):
             rewards.append(rew)
             new_obs.append(ob1)
             dones.append(done)
-
         batch = SampleBatch({
             "obs": obs, "actions": actions, "rewards": rewards,
-            "new_obs": new_obs, "dones": dones})
+            "new_obs": new_obs, "dones": dones, "weights": np.ones_like(rewards)})
         assert batch.count == self.config["sample_batch_size"]
+
+        # Prioritize on the worker side
+        if self.config["worker_side_prioritization"]:
+            td_errors = self.ddpg_graph.compute_td_error(
+                self.sess, obs, batch["actions"], batch["rewards"], new_obs,
+                batch["dones"], batch["weights"])
+            new_priorities = (
+                np.abs(td_errors) + self.config["prioritized_replay_eps"])
+            batch.data["weights"] = new_priorities
         return batch
 
     def compute_gradients(self, samples):
         grad = self.ddpg_graph.compute_gradients(
             self.sess, samples["obs"], samples["rewards"],
-            samples["new_obs"], samples["dones"])
+            samples["new_obs"], samples["dones"], samples["weights"])
         return grad, {}
 
     def apply_gradients(self, grads):
         self.ddpg_graph.apply_gradients(self.sess, grads)
+
+    def compute_apply(self, samples):
+        td_error = self.ddpg_graph.compute_apply(
+            self.sess, samples["obs"], samples["actions"], samples["rewards"],
+            samples["new_obs"], samples["dones"], samples["weights"])
+        return {"td_error": td_error}
 
     def get_weights(self):
         return self.variables.get_weights()

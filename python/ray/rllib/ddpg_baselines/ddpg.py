@@ -13,6 +13,12 @@ from ray.rllib import optimizers
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
+OPTIMIZER_SHARED_CONFIGS = [
+    "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
+    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
+    "train_batch_size", "learning_starts", "clip_rewards"
+]
+
 DEFAULT_CONFIG = dict(
     # === Model ===
 
@@ -42,6 +48,14 @@ DEFAULT_CONFIG = dict(
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     buffer_size=50000,
+    # If True prioritized replay buffer will be used.
+    prioritized_replay=True,
+    # Alpha parameter for prioritized replay buffer.
+    prioritized_replay_alpha=0.6,
+    # Beta parameter for sampling from prioritized replay buffer.
+    prioritized_replay_beta=0.4,
+    # Epsilon to add to the TD errors when updating priorities.
+    prioritized_replay_eps=1e-6,
 
     # === Optimization ===
     # soft update
@@ -80,9 +94,12 @@ DEFAULT_CONFIG = dict(
     # Whether to allocate GPUs for workers (if > 0).
     num_gpus_per_worker=0,
     # Optimizer class to use.
-    optimizer_class="LocalSyncOptimizer",
+    optimizer_class="LocalSyncReplayOptimizer",
     # Config to pass to the optimizer.
-    optimizer_config=dict())
+    optimizer_config=dict(),
+    # Whether to compute priorities on workers.
+    worker_side_prioritization=False
+)
 
 
 class DDPGAgent(Agent):

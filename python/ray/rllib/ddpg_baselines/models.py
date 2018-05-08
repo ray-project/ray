@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 from ray.rllib.models.catalog import ModelCatalog
 import tensorflow.contrib.slim as slim
@@ -71,6 +72,8 @@ class DDPGGraph(object):
         critic_optimizer = tf.train.AdamOptimizer(learning_rate=config["critic_lr"])
         self.config = config
         # Action inputs
+        self.act_t = tf.placeholder(
+            tf.float32, shape=(None, ) + env.action_space.shape, name="action")
         self.eps = tf.placeholder(tf.float32, (), name="eps")
         # Replay inputs
         self.obs_t = tf.placeholder(
@@ -90,8 +93,12 @@ class DDPGGraph(object):
             self.a_var_list = _scope_vars(scope.name)
 
         # critical network evaluation
-        with tf.variable_scope("evaluate_func_c")as scope:
-            self.q_t = _build_q_network(
+        with tf.variable_scope("evaluate_func_c"):
+            self.q_t_c = _build_q_network(
+                registry, self.obs_t, state_space, ac_space, self.act_t, config)
+
+        with tf.variable_scope("evaluate_func_c", reuse=True)as scope:
+            self.q_t_a = _build_q_network(
                 registry, self.obs_t, state_space, ac_space, self.a_t, config)
             self.c_var_list = _scope_vars(scope.name)
 
@@ -108,28 +115,32 @@ class DDPGGraph(object):
                 state_space, ac_space, self.a_tp1, config)
             self.ct_var_list = _scope_vars(scope.name)
 
-        y_i = self.rew_t + config["gamma"] * self.q_tp1
-
         # compute the  error
+        self.q_t_c = tf.squeeze(self.q_t_c, axis=len(self.q_t_c.shape) - 1)
 
-        self.td_error = tf.losses.mean_squared_error(
-            labels=y_i, predictions=self.q_t)
-        self.action_lost = - tf.reduce_mean(self.q_t)
+        self.q_tp1 = tf.squeeze(
+            input=self.q_tp1, axis=len(self.q_tp1.shape) - 1)
+        self.y_i = self.rew_t + config["gamma"] * (1.0 - self.done_mask) * self.q_tp1
+        self.td_error = tf.square(self.q_t_c - self.y_i)
+        self.critic_loss = tf.reduce_mean(self.importance_weights * self.td_error)
+        self.action_loss = - tf.reduce_mean(self.q_t_a)
 
         self.loss_inputs = [
             ("obs", self.obs_t),
+            ("actions", self.act_t),
             ("rewards", self.rew_t),
             ("new_obs", self.obs_tp1),
             ("dones", self.done_mask),
             ("weights", self.importance_weights),
         ]
-        self.a_grads = tf.gradients(self.action_lost, self.a_var_list)
+
+        self.a_grads = tf.gradients(self.action_loss, self.a_var_list)
         self.a_grads_and_vars = list(zip(self.a_grads, self.a_var_list))
         # self.c_grads = tf.gradients(self.td_error, self.c_var_list)
         # self.c_grads_and_vars = list(zip(self.c_grads, self.c_var_list))
 
         self.c_grads = critic_optimizer.minimize(
-            self.td_error, var_list=self.c_var_list)
+            self.critic_loss, var_list=self.c_var_list)
 
         self.train_expr = actor_optimizer.apply_gradients(self.a_grads_and_vars)
 
@@ -144,7 +155,6 @@ class DDPGGraph(object):
         self.update_target_expr = tf.group(*update_target_expr)
 
     def update_target(self, sess):
-
         return sess.run(self.update_target_expr)
 
     def copy_target(self, sess):
@@ -167,7 +177,8 @@ class DDPGGraph(object):
             })
 
     def compute_gradients(
-            self, sess, obs_t, rew_t, obs_tp1, done_mask):
+            self, sess, obs_t, rew_t, obs_tp1, done_mask,
+            importance_weights):
 
         self.a_grads = [g for g in self.a_grads if g is not None]
         grads, _ = sess.run(
@@ -178,6 +189,7 @@ class DDPGGraph(object):
                 self.rew_t: rew_t,
                 self.obs_tp1: obs_tp1,
                 self.done_mask: done_mask,
+                self.importance_weights: importance_weights
             })
         return grads
 
@@ -187,4 +199,30 @@ class DDPGGraph(object):
 
         sess.run(self.train_expr, feed_dict=feed_dict)
 
+    def compute_apply(self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,
+                      importance_weights):
+        td_err, _ = sess.run(
+            [self.td_error, self.train_expr],
+            feed_dict={
+                self.obs_t: [np.array(ob) for ob in obs_t],
+                self.act_t: act_t,
+                self.rew_t: rew_t,
+                self.obs_tp1:  [np.array(ob) for ob in obs_tp1],
+                self.done_mask: done_mask,
+                self.importance_weights: importance_weights
+            })
+        return td_err
 
+    def compute_td_error(self, sess, obs_t, act_t, rew_t, obs_tp1,
+                         done_mask, importance_weights):
+        td_err = sess.run(
+            self.td_error,
+            feed_dict={
+                self.obs_t: [np.array(ob) for ob in obs_t],
+                self.act_t: act_t,
+                self.rew_t: rew_t,
+                self.obs_tp1: [np.array(ob) for ob in obs_tp1],
+                self.done_mask: done_mask,
+                self.importance_weights: importance_weights
+            })
+        return td_err
