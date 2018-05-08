@@ -4507,7 +4507,8 @@ class DataFrame(object):
         args = (False, axis, level, errors, try_cast, raise_on_error)
 
         @ray.remote
-        def where_helper(left, cond, other, *args):
+        def where_helper(left, cond, other, left_columns, cond_columns,
+                         other_columns, *args):
 
             left = pd.concat(ray.get(left.tolist()), axis=1)
             # We have to reset the index and columns here because we are coming
@@ -4515,16 +4516,16 @@ class DataFrame(object):
             # already correctly copartitioned everything, so there's no
             # correctness problems with doing this.
             left.reset_index(inplace=True, drop=True)
-            left.columns = pd.RangeIndex(len(left.columns))
+            left.columns = left_columns
 
             cond = pd.concat(ray.get(cond.tolist()), axis=1)
             cond.reset_index(inplace=True, drop=True)
-            cond.columns = pd.RangeIndex(len(cond.columns))
+            cond.columns = cond_columns
 
             if isinstance(other, np.ndarray):
                 other = pd.concat(ray.get(other.tolist()), axis=1)
                 other.reset_index(inplace=True, drop=True)
-                other.columns = pd.RangeIndex(len(other.columns))
+                other.columns = other_columns
 
             return left.where(cond, other, *args)
 
@@ -4533,7 +4534,8 @@ class DataFrame(object):
                                                             self.index))
 
             new_partitions = [where_helper.remote(k, v, next(other_zipped),
-                                                  *args)
+                                                  self.columns, cond.columns,
+                                                  other.columns, *args)
                               for k, v in zipped_partitions]
 
         # Series has to be treated specially because we're operating on row
@@ -4559,16 +4561,22 @@ class DataFrame(object):
 
                 new_partitions = [where_helper.remote(k, v, next(other,
                                                                  pd.Series()),
-                                                      *args)
+                                                      self.columns,
+                                                      cond.columns,
+                                                      None, *args)
                                   for k, v in zipped_partitions]
             else:
                 other = other.reindex(self.columns)
                 other.index = pd.RangeIndex(len(other))
-                new_partitions = [where_helper.remote(k, v, other, *args)
+                new_partitions = [where_helper.remote(k, v, other,
+                                                      self.columns,
+                                                      cond.columns,
+                                                      None, *args)
                                   for k, v in zipped_partitions]
 
         else:
-            new_partitions = [where_helper.remote(k, v, other, *args)
+            new_partitions = [where_helper.remote(k, v, other, self.columns,
+                                                  cond.columns, None, *args)
                               for k, v in zipped_partitions]
 
         if inplace:
