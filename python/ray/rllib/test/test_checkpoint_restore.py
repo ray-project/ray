@@ -22,7 +22,7 @@ ray.init()
 CONFIGS = {
     "ES": {"episodes_per_batch": 10, "timesteps_per_batch": 100},
     "DQN": {},
-    "DDPG_baselines": {"noise_scale": 0.0},
+    "DDPG_baselines": {"exploration_noise": 0.1},
     "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000},
     "A3C": {"use_lstm": False},
 }
