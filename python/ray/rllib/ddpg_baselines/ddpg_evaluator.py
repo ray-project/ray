@@ -6,7 +6,7 @@ import numpy as np
 import ray
 import pickle
 import tensorflow as tf
-from gym.spaces import Discrete
+from gym.spaces import Box
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.ddpg_baselines import models
 from ray.rllib.models import ModelCatalog
@@ -23,7 +23,7 @@ class DDPGEvaluator(PolicyEvaluator):
         self.env = env
         self.config = config
 
-        if isinstance(env.action_space, Discrete):
+        if not isinstance(env.action_space, Box):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(
                     env.action_space))

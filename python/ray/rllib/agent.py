@@ -240,6 +240,9 @@ def get_agent_class(alg):
     elif alg == "APEX_DDPG":
         from ray.rllib import ddpg
         return ddpg.ApexDDPGAgent
+    elif alg == "DDPG_baselines":
+        from ray.rllib import ddpg_baselines
+        return ddpg_baselines.DDPGAgent
     elif alg == "PPO":
         from ray.rllib import ppo
         return ppo.PPOAgent
@@ -270,9 +273,7 @@ def get_agent_class(alg):
         return _SigmoidFakeData
     elif alg == "__parameter_tuning":
         return _ParameterTuningAgent
-    elif alg == "DDPG_baselines":
-        from ray.rllib import ddpg_baselines
-        return ddpg_baselines.DDPGAgent
+
     else:
         raise Exception(
             ("Unknown algorithm {}.").format(alg))
