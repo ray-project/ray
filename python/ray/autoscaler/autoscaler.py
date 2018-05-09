@@ -182,21 +182,21 @@ class LoadMetrics(object):
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
         return {
             "ResourceUsage":
-                ", ".join([
-                    "{}/{} {}".format(
-                        round(resources_used[rid], 2),
-                        round(resources_total[rid], 2), rid)
-                    for rid in sorted(resources_used)
-                ]),
+            ", ".join([
+                "{}/{} {}".format(
+                    round(resources_used[rid], 2),
+                    round(resources_total[rid], 2), rid)
+                for rid in sorted(resources_used)
+            ]),
             "NumNodesConnected":
-                len(self.static_resources_by_ip),
+            len(self.static_resources_by_ip),
             "NumNodesUsed":
-                round(nodes_used, 2),
+            round(nodes_used, 2),
             "NodeIdleSeconds":
-                "Min={} Mean={} Max={}".format(
-                    int(np.min(idle_times)) if idle_times else -1,
-                    int(np.mean(idle_times)) if idle_times else -1,
-                    int(np.max(idle_times)) if idle_times else -1),
+            "Min={} Mean={} Max={}".format(
+                int(np.min(idle_times)) if idle_times else -1,
+                int(np.mean(idle_times)) if idle_times else -1,
+                int(np.max(idle_times)) if idle_times else -1),
         }
 
 

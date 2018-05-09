@@ -207,7 +207,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testBadParams4(self):
         def f():
-            run_experiments({"foo": {"run": "asdf", }})
+            run_experiments({
+                "foo": {
+                    "run": "asdf",
+                }
+            })
 
         self.assertRaises(TuneError, f)
 
@@ -503,12 +507,12 @@ class VariantGeneratorTest(unittest.TestCase):
             "run": "PPO",
             "config": {
                 "x":
-                    grid_search([
-                        lambda spec: spec.config.y * 100,
-                        lambda spec: spec.config.y * 200
-                    ]),
+                grid_search([
+                    lambda spec: spec.config.y * 100,
+                    lambda spec: spec.config.y * 200
+                ]),
                 "y":
-                    lambda spec: 1,
+                lambda spec: 1,
             },
         })
         trials = list(trials)

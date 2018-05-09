@@ -815,10 +815,9 @@ class Worker(object):
                                               e, None)
             return
         except Exception as e:
-            self._handle_process_task_failure(function_id, return_object_ids,
-                                              e,
-                                              ray.utils.format_error_message(
-                                                  traceback.format_exc()))
+            self._handle_process_task_failure(
+                function_id, return_object_ids, e,
+                ray.utils.format_error_message(traceback.format_exc()))
             return
 
         # Execute the task.
@@ -851,10 +850,9 @@ class Worker(object):
                     outputs = (outputs, )
                 self._store_outputs_in_objstore(return_object_ids, outputs)
         except Exception as e:
-            self._handle_process_task_failure(function_id, return_object_ids,
-                                              e,
-                                              ray.utils.format_error_message(
-                                                  traceback.format_exc()))
+            self._handle_process_task_failure(
+                function_id, return_object_ids, e,
+                ray.utils.format_error_message(traceback.format_exc()))
 
     def _handle_process_task_failure(self, function_id, return_object_ids,
                                      error, backtrace):
@@ -1517,14 +1515,11 @@ def _init(address_info=None,
         driver_address_info = {}
     else:
         driver_address_info = {
-            "node_ip_address":
-                node_ip_address,
-            "redis_address":
-                address_info["redis_address"],
-            "store_socket_name": (
-                address_info["object_store_addresses"][0].name),
-            "webui_url":
-                address_info["webui_url"]
+            "node_ip_address": node_ip_address,
+            "redis_address": address_info["redis_address"],
+            "store_socket_name":
+            (address_info["object_store_addresses"][0].name),
+            "webui_url": address_info["webui_url"]
         }
         if not use_raylet:
             driver_address_info["manager_socket_name"] = (

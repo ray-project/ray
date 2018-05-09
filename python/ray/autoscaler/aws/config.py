@@ -78,13 +78,15 @@ def _configure_iam_role(config):
             iam.create_role(
                 RoleName=DEFAULT_RAY_IAM_ROLE,
                 AssumeRolePolicyDocument=json.dumps({
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "ec2.amazonaws.com"
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "ec2.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole",
                         },
-                        "Action": "sts:AssumeRole",
-                    }, ],
+                    ],
                 }))
             role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
             assert role is not None, "Failed to create role"
@@ -207,21 +209,22 @@ def _configure_security_group(config):
         assert security_group, "Failed to create security group"
 
     if not security_group.ip_permissions:
-        security_group.authorize_ingress(IpPermissions=[{
-            "FromPort": -1,
-            "ToPort": -1,
-            "IpProtocol": "-1",
-            "UserIdGroupPairs": [{
-                "GroupId": security_group.id
-            }]
-        }, {
-            "FromPort": 22,
-            "ToPort": 22,
-            "IpProtocol": "TCP",
-            "IpRanges": [{
-                "CidrIp": "0.0.0.0/0"
-            }]
-        }])
+        security_group.authorize_ingress(
+            IpPermissions=[{
+                "FromPort": -1,
+                "ToPort": -1,
+                "IpProtocol": "-1",
+                "UserIdGroupPairs": [{
+                    "GroupId": security_group.id
+                }]
+            }, {
+                "FromPort": 22,
+                "ToPort": 22,
+                "IpProtocol": "TCP",
+                "IpRanges": [{
+                    "CidrIp": "0.0.0.0/0"
+                }]
+            }])
 
     if "SecurityGroupIds" not in config["head_node"]:
         print("SecurityGroupIds not specified for head node, using {}".format(
