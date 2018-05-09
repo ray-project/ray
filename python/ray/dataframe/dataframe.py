@@ -4209,6 +4209,23 @@ class DataFrame(object):
                quotechar='"', line_terminator="\n", chunksize=None,
                tupleize_cols=None, date_format=None, doublequote=True,
                escapechar=None, decimal="."):
+
+        kwargs = dict( 
+                path_or_buf=path_or_buf, sep=sep, na_rep=na_rep,
+                float_format=float_format, columns=columns, header=header,
+                index=index, index_label=index_label, mode=mode,
+                encoding=encoding, compression=compression, quoting=quoting,
+                quotechar=quotechar, line_terminator=line_terminator,
+                chunksize=chunksize, tupleize_cols=tupelize_cols,
+                date_format=date_format, doublequote=doublequote,
+                escapechar=escapechar, decimal=decimal
+                )
+
+        if compression is not None:
+            warnings.warn("Defaulting to Pandas implementation",
+                          PendingDeprecationWarning)
+            return to_pandas(self).to_csv(**kwargs)
+
         if tupleize_cols is not None:
             warnings.warn("The 'tupleize_cols' parameter is deprecated and "
                           "will be removed in a future version",
@@ -4216,22 +4233,24 @@ class DataFrame(object):
         else:
             tupleize_cols = False
 
-        formatter = CSVFormatter(self, path_or_buf,
-                                 line_terminator=line_terminator, sep=sep,
-                                 encoding=encoding,
-                                 compression=compression, quoting=quoting,
-                                 na_rep=na_rep, float_format=float_format,
-                                 cols=columns, header=header, index=index,
-                                 index_label=index_label, mode=mode,
-                                 chunksize=chunksize, quotechar=quotechar,
-                                 tupleize_cols=tupleize_cols,
-                                 date_format=date_format,
-                                 doublequote=doublequote,
-                                 escapechar=escapechar, decimal=decimal)
-        formatter.save()
+        remote_kwargs_id = ray.put(dict(kwargs, path_or_buf=None))
+
+        csv_str_ids = _map_partitions(
+                lambda df: df.to_csv(**remote_kwargs_id),
+                self._col_partitions)
 
         if path_or_buf is None:
-            return formatter.path_or_buf.getvalue()
+            buf = io.StringIO
+        elif isinstance(path_or_buf, str):
+            buf = open(path_or_buf, mode)
+        else:
+            buf = path_or_buf
+
+        for csv_str_id in csv_str_ids:
+            buf.write(ray.get(csv_str_id))
+        
+        if isinstance(path_or_buf, str):
+            return buf.getvalue()
 
     def to_dense(self):
         raise NotImplementedError(
