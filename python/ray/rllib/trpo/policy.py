@@ -54,10 +54,10 @@ def vector_to_gradient(v, parameters):
         param_device = _check_param_device(param, param_device)
 
         # The length of the parameter
-        num_param = torch.prod(torch.LongTensor(list(param.grad.size())))
+        num_param = torch.prod(torch.LongTensor(list(param.grad.shape)))
         # Slice the vector, reshape it, and replace the old data of the parameter
         param.grad.data = v[pointer:pointer + num_param].view(
-            param.size()).detach()
+            param.shape).detach()
 
         # Increment the pointer
         pointer += num_param
@@ -222,7 +222,7 @@ class TRPOPolicy(SharedTorchPolicy):
             g = parameters_to_vector(
                 [v.grad for v in self._model.parameters()]).squeeze(0)
 
-            if g.nonzero().size()[0]:
+            if g.nonzero().shape[0]:
                 step_dir = self.conjugate_gradient(-g)
                 _step_dir = torch.from_numpy(step_dir)
 
