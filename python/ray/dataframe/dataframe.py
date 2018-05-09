@@ -4216,7 +4216,7 @@ class DataFrame(object):
                 index=index, index_label=index_label, mode=mode,
                 encoding=encoding, compression=compression, quoting=quoting,
                 quotechar=quotechar, line_terminator=line_terminator,
-                chunksize=chunksize, tupleize_cols=tupelize_cols,
+                chunksize=chunksize, tupleize_cols=tupleize_cols,
                 date_format=date_format, doublequote=doublequote,
                 escapechar=escapechar, decimal=decimal
                 )
@@ -4234,13 +4234,25 @@ class DataFrame(object):
             tupleize_cols = False
 
         remote_kwargs_id = ray.put(dict(kwargs, path_or_buf=None))
+        columns_id = ray.put(self.columns)
 
+        def get_csv_str(df, index, columns, header, kwargs):
+            df.index = index
+            df.columns = columns
+            kwargs["header"] = header
+            return df.to_csv(**kwargs)
+
+        idxs = [0] + np.cumsum(self._row_metadata._lengths).tolist()
+        idx_args = [self.index[idxs[i]:idxs[i+1]]
+                    for i in range(len(self._row_partitions))]
         csv_str_ids = _map_partitions(
-                lambda df: df.to_csv(**remote_kwargs_id),
-                self._col_partitions)
+                get_csv_str, self._row_partitions, idx_args,
+                [columns_id] * len(self._row_partitions),
+                [header] + [False]  * (len(self._row_partitions) - 1),
+                [remote_kwargs_id] * len(self._row_partitions))
 
         if path_or_buf is None:
-            buf = io.StringIO
+            buf = io.StringIO()
         elif isinstance(path_or_buf, str):
             buf = open(path_or_buf, mode)
         else:
@@ -4248,9 +4260,15 @@ class DataFrame(object):
 
         for csv_str_id in csv_str_ids:
             buf.write(ray.get(csv_str_id))
-        
-        if isinstance(path_or_buf, str):
-            return buf.getvalue()
+            buf.flush()
+
+        result = None
+        if path_or_buf is None:
+            result = buf.getvalue()
+            buf.close()
+        elif isinstance(path_or_buf, str):
+            buf.close()
+        return result
 
     def to_dense(self):
         raise NotImplementedError(
