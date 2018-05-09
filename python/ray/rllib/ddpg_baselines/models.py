@@ -46,11 +46,6 @@ def _build_q_network(
 
 
 def _build_actor_network(registry, inputs, ac_space, config):
-    # frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
-    # act = frontend.outputs
-    # a_bound = ac_space.high
-    # act = tf.multiply(act, a_bound, name='scaled_a')
-    # return act
     x = inputs
     x = slim.fully_connected(x, 64)
     x = tf.nn.relu(x)
