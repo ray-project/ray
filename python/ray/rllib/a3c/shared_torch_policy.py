@@ -57,6 +57,8 @@ class SharedTorchPolicy(TorchPolicy):
         log_probs = F.log_softmax(logits,dim=1)
         probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
+        # TODO(alok): set distribution based on action space and use its
+        # .entropy() method to calculate automatically
         entropy = -(log_probs * probs).sum(-1).sum()
         return values, action_log_probs, entropy
 
