@@ -13,7 +13,7 @@ def convert_batch(trajectory, has_features=False):
     acs = torch.from_numpy(trajectory["actions"])
     advs = torch.from_numpy(trajectory["advantages"].copy()).float().view(
         -1, 1)
-    rs = torch.from_numpy(trajectory["rewards"]).float().view(-1, 1)
+    rs = torch.from_numpy(trajectory["rewards"]).float().view(-1)
     if has_features:
         features = [torch.from_numpy(f) for f in trajectory["features"]]
     else:
