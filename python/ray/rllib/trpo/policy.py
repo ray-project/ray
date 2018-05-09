@@ -65,21 +65,8 @@ def vector_to_gradient(v, parameters):
 
 
 class TRPOPolicy(SharedTorchPolicy):
-    def __init__(
-            self,
-            registry,
-            ob_space,
-            ac_space,
-            config,
-            **kwargs,
-    ):
-        super().__init__(
-            registry,
-            ob_space,
-            ac_space,
-            config,
-            **kwargs,
-        )
+    def __init__(self, registry, ob_space, ac_space, config, **kwargs):
+        super().__init__(registry, ob_space, ac_space, config, **kwargs)
 
     def _evaluate_action_dists(self, obs, *args):
         logits, _ = self._model(obs)
