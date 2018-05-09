@@ -81,6 +81,7 @@ class PartialRollout(object):
 CompletedRollout = namedtuple(
     "CompletedRollout", ["episode_length", "episode_reward"])
 
+
 class SyncSampler(object):
     """This class interacts with the environment and tells it what to do.
 
