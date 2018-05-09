@@ -750,8 +750,8 @@ class GlobalState(object):
                         "name":
                         "SubmitTask",
                         "args": {},
-                        "id": (parent_info["worker_id"] +
-                               str(micros(min(parent_times))))
+                        "id": (parent_info["worker_id"] + str(
+                            micros(min(parent_times))))
                     }
                     full_trace.append(parent)
 
@@ -825,8 +825,8 @@ class GlobalState(object):
                         "name":
                         "SubmitTask",
                         "args": {},
-                        "id": (parent_info["worker_id"] +
-                               str(micros(min(parent_times))))
+                        "id": (parent_info["worker_id"] + str(
+                            micros(min(parent_times))))
                     }
                     full_trace.append(parent)
 

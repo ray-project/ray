@@ -56,6 +56,27 @@ class PartialRollout(object):
             terminal (bool): if rollout has terminated."""
         return self.data["dones"][-1]
 
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __setitem__(self, key, item):
+        self.data[key] = item
+
+    def keys(self):
+        return self.data.keys()
+
+    def items(self):
+        return self.data.items()
+
+    def __iter__(self):
+        return self.data.__iter__()
+
+    def __next__(self):
+        return self.data.__next__()
+
+    def __contains__(self, x):
+        return x in self.data
+
 
 CompletedRollout = namedtuple(
     "CompletedRollout", ["episode_length", "episode_reward"])
