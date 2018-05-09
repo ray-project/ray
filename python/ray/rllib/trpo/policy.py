@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function
 
 from copy import deepcopy
+from itertools import chain
 
 import numpy as np
 import torch
@@ -54,7 +55,7 @@ def vector_to_gradient(v, parameters):
         param_device = _check_param_device(param, param_device)
 
         # The length of the parameter
-        num_param = torch.prod(torch.LongTensor(list(param.grad.shape)))
+        num_param = np.prod(param.grad.shape)
         # Slice the vector, reshape it, and replace the old data of the parameter
         param.grad.data = v[pointer:pointer + num_param].view(
             param.shape).detach()
@@ -112,7 +113,16 @@ class TRPOPolicy(SharedTorchPolicy):
             self._kl, self._model.parameters(), create_graph=True)
         gvp = torch.cat([grad.view(-1) for grad in g_kl]).dot(v)
 
-        H = torch.autograd.grad(gvp, self._model.parameters())
+            outputs=self._kl,
+            inputs=chain(self._model.hidden_layers.parameters(),
+                         self._model.logits.parameters()),
+            create_graph=True,
+        H = torch.autograd.grad(
+            outputs=gvp,
+            inputs=chain(self._model.hidden_layers.parameters(),
+                         self._model.logits.parameters()),
+            create_graph=True,
+        )
         fisher_vector_product = torch.cat(
             [grad.contiguous().view(-1) for grad in H]).detach()
 
@@ -145,6 +155,11 @@ class TRPOPolicy(SharedTorchPolicy):
 
         new_policy = deepcopy(self._model)
         vector_to_parameters(params, new_policy.parameters())
+        # TODO adjust only action params
+        vector_to_parameters(
+            params,
+            chain(self._model.hidden_layers.parameters(),
+                  self._model.logits.parameters()))
 
         EPSILON = 1e-8
 
@@ -244,3 +259,20 @@ class TRPOPolicy(SharedTorchPolicy):
             # Also get gradient wrt value function
             value_err = F.mse_loss(values, rewards)
             value_err.backward()
+        g = parameters_to_vector([
+            p.grad for p in chain(self._model.hidden_layers.parameters(),
+                                  self._model.logits.parameters())
+        ]).squeeze(0)
+            grad = self.linesearch(
+                x=parameters_to_vector(
+                    chain(self._model.hidden_layers.parameters(),
+                          self._model.logits.parameters())),
+                fullstep=fullstep,
+                expected_improve_rate=g_step_dir / lm,
+            )
+            # Here we fill the gradient buffers
+            if not any(np.isnan(grad)):
+                vector_to_gradient(
+                    torch.from_numpy(grad),
+                    chain(self._model.hidden_layers.parameters(),
+                          self._model.logits.parameters()))
