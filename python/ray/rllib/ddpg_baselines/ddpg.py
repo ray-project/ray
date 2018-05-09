@@ -44,6 +44,9 @@ DEFAULT_CONFIG = dict(
     observation_filter="NoFilter",
     # Which reward filter to apply to the reward
     reward_filter="NoFilter",
+    # Whether to start with random actions instead of noops.
+    random_starts=True,
+
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
