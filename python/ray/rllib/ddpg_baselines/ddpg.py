@@ -155,7 +155,11 @@ class DDPGAgent(Agent):
             if not isinstance(stats, list):
                 stats = [stats]
 
-        test_stats = stats
+        if self.config["per_worker_exploration"]:
+            # Return stats from workers with the lowest 20% of exploration
+            test_stats = stats[-int(max(1, len(stats) * 0.2)):]
+        else:
+            test_stats = stats
 
         for s in test_stats:
             mean_100ep_reward += s["mean_100ep_reward"] / len(test_stats)

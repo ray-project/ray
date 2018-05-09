@@ -13,13 +13,14 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.noise import OUNoise
+from ray.rllib.dqn.common.wrappers import wrap_dqn
 
 
 class DDPGEvaluator(PolicyEvaluator):
 
     def __init__(self, registry, env_creator, config, logdir, worker_index):
-        env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]), config["model"])
+        env = env_creator(config["env_config"])
+        env = wrap_dqn(registry, env, config["model"], config["random_starts"])
         self.env = env
         self.config = config
 
