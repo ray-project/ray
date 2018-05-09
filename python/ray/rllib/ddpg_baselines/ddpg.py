@@ -101,7 +101,10 @@ DEFAULT_CONFIG = dict(
     # Config to pass to the optimizer.
     optimizer_config=dict(),
     # Whether to compute priorities on workers.
-    worker_side_prioritization=False
+    worker_side_prioritization=False,
+    # Whether to use a distribution of epsilons across workers for exploration.
+    per_worker_exploration=False,
+
 )
 
 
