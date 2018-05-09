@@ -12,6 +12,7 @@ from ray.dataframe.utils import (
     to_pandas)
 
 from pandas.tests.frame.common import TestData
+from pandas.compat import (zip, range)
 
 
 @pytest.fixture
@@ -2694,10 +2695,27 @@ def test_reorder_levels():
 
 
 def test_replace():
-    ray_df = create_test_dataframe()
+    test_data = TestData()
+    test_data.tsframe['A'][:5] = np.nan
+    test_data.tsframe['A'][-5:] = np.nan
+    tsframe = test_data.tsframe.copy()
+    ray_df = rdf.DataFrame(tsframe)
+    ray_df_expected = rdf.DataFrame(tsframe)
+    ray_df.replace(np.nan, 0, inplace=True)
+    ray_df_equals(ray_df, ray_df_expected.fillna(0))
 
-    with pytest.raises(NotImplementedError):
-        ray_df.replace()
+    pytest.raises(TypeError, ray_df.replace, np.nan, inplace=True)
+    pytest.raises(TypeError, ray_df.replace, np.nan)
+
+    ray_df = rdf.DataFrame(tsframe)
+    result = ray_df.replace(np.nan, 0)
+    expected = ray_df.fillna(value=0)
+    ray_df_equals(result, expected)
+
+    tsframe = test_data.tsframe.copy()
+    ray_df = rdf.DataFrame(tsframe)
+    ray_df.replace([np.nan], [0], inplace=True)
+    ray_df_equals(ray_df, ray_df.fillna(0))
 
 
 def test_resample():

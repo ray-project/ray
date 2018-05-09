@@ -6,7 +6,16 @@ import pandas as pd
 import numpy as np
 import ray
 
+from pandas.core.dtypes.common import (
+    is_datetimelike_v_numeric,
+    is_numeric_v_string_like
+)
 from . import get_npartitions
+
+
+def _are_compareable(item1, item2):
+    return not is_datetimelike_v_numeric(item1, item2)\
+           and not is_numeric_v_string_like(item1, item2)
 
 
 def _get_lengths(df):

@@ -43,7 +43,8 @@ from .utils import (
     _co_op_helper,
     _match_partitioning,
     _concat_index,
-    _correct_column_dtypes)
+    _correct_column_dtypes,
+    _are_compareable)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -3369,9 +3370,100 @@ class DataFrame(object):
 
     def replace(self, to_replace=None, value=None, inplace=False, limit=None,
                 regex=False, method='pad', axis=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Replace values given in 'to_replace' with 'value'.
+
+        Args:
+            to_replace: values to replace in df
+            value: value to use to fill holes (e.g. 0)
+            inplace: If True, in place.
+            limit: Maximum size gap to forward or backward fill
+            regex: Whether to interpret `to_replace` and/or `value` as regular
+                expressions.
+            method: The method to use when for replacement, when ``to_replace``
+                is a ``list``.
+
+        Returns:
+            filled: NDFrame
+        """
+        pd.DataFrame(index=self.index, columns=self.columns).replace(
+            to_replace=to_replace, value=value, inplace=inplace, limit=limit,
+            regex=regex, method=method, axis=axis
+        )
+
+        def _filter_replace_params(df, filtered_key, filtered_value):
+            """Filter keys and values given to match dtypes in df
+
+            Args:
+                df: pandas partition df to consider
+                filtered_key: the keys to filter
+                filtered_value: the values to filter
+
+            Returns:
+                tuple of (filtered_keys, filtered_values) that are filtered for
+                dtype of df
+            """
+            filtered_replace_pairs = pd.DataFrame(
+                data=[filtered_key, filtered_value],
+                index=['K', 'V'], columns=range(len(filtered_key))
+            ).T
+            col_arrays = [np.array(df.loc[:, col].tolist())
+                          for col in df.columns]
+            should_keep = [
+                i for i in range(len(filtered_replace_pairs.index))
+                if any([_are_compareable(filtered_replace_pairs.K[i],
+                                         col_array)
+                        for col_array in col_arrays])
+            ]
+            filtered_replace_pairs =\
+                filtered_replace_pairs.iloc[should_keep]
+            filtered_key = filtered_replace_pairs.iloc[:, 0].tolist()
+            filtered_value = filtered_replace_pairs.iloc[:, 1].tolist()
+            return filtered_key, filtered_value
+
+        def _replace(df):
+            """Performs a df.replace on the given pandas partition df
+
+            Args:
+                df: pandas partition df to consider
+
+            Returns:
+                df after running df.replace
+            """
+            filtered_to_replace = to_replace
+            filtered_value = value
+            filtered_regex = regex
+            if value is None and isinstance(filtered_to_replace, dict)\
+               and len(filtered_to_replace) > 0\
+               and not isinstance(next(iter(to_replace.values())), dict):
+                filtered_to_replace = [k for k in to_replace.keys()]
+                filtered_value = [v for v in to_replace.values()]
+            if isinstance(filtered_to_replace, list)\
+               and isinstance(filtered_value, list):
+                filtered_to_replace, filtered_value =\
+                    _filter_replace_params(
+                        df, filtered_to_replace, filtered_value)
+            if isinstance(filtered_regex, list)\
+               and isinstance(filtered_value, list):
+                filtered_regex, filtered_value =\
+                    _filter_replace_params(
+                        df, filtered_regex, filtered_value)
+            return df.replace(to_replace=filtered_to_replace,
+                              value=filtered_value, limit=limit,
+                              regex=filtered_regex, method=method, axis=None)
+
+        new_block_partitions = np.array([_map_partitions(
+            lambda df: _replace(df),
+            partitions=block
+        ) for block in self._block_partitions])
+
+        if inplace:
+            self._update_inplace(
+                block_partitions=new_block_partitions,
+                columns=self.columns, index=self.index)
+        else:
+            return DataFrame(
+                block_partitions=new_block_partitions,
+                columns=self.columns, index=self.index)
 
     def resample(self, rule, how=None, axis=0, fill_method=None, closed=None,
                  label=None, convention='start', kind=None, loffset=None,
