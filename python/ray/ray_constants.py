@@ -5,10 +5,12 @@ from __future__ import print_function
 
 import os
 
+
 def env_integer(key, default):
     if key in os.environ:
         return int(os.environ(key))
     return default
+
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
