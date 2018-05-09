@@ -799,12 +799,12 @@ class DataFrame(object):
 
             return None
 
+        axis = pd.DataFrame()._get_axis_number(axis)
+
         if how is not None and how not in ['any', 'all']:
             raise ValueError('invalid how option: %s' % how)
         if how is None and thresh is None:
             raise TypeError('must specify how or thresh')
-
-        axis = pd.DataFrame()._get_axis_number(axis)
 
         indices = None
         if subset is not None:
