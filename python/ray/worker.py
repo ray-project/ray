@@ -267,7 +267,7 @@ class Worker(object):
         print any information about errors because some of the tests
         intentionally fail.
 
-        args:
+        Args:
             mode: One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, and
                 SILENT_MODE.
         """
@@ -362,11 +362,6 @@ class Worker(object):
                             "function is not allowed). If you really want to "
                             "do this, you can wrap the ObjectID in a list and "
                             "call 'put' on it (or return it).")
-
-        if isinstance(value, ray.actor.ActorHandleParent):
-            raise Exception("Calling 'put' on an actor handle is currently "
-                            "not allowed (similarly, returning an actor "
-                            "handle from a remote function is not allowed).")
 
         # Serialize and put the object in the object store.
         try:
@@ -525,7 +520,8 @@ class Worker(object):
                     num_return_vals=None,
                     num_cpus=None,
                     num_gpus=None,
-                    resources=None):
+                    resources=None,
+                    driver_id=None):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -552,6 +548,11 @@ class Worker(object):
             num_cpus: The number of CPUs required by this task.
             num_gpus: The number of GPUs required by this task.
             resources: The resource requirements for this task.
+            driver_id: The ID of the relevant driver. This is almost always the
+                driver ID of the driver that is currently running. However, in
+                the exceptional case that an actor task is being dispatched to
+                an actor created by a different driver, this should be the
+                driver ID of the driver that created the actor.
 
         Returns:
             The return object IDs for this task.
@@ -579,9 +580,6 @@ class Worker(object):
             for arg in args:
                 if isinstance(arg, ray.local_scheduler.ObjectID):
                     args_for_local_scheduler.append(arg)
-                elif isinstance(arg, ray.actor.ActorHandleParent):
-                    args_for_local_scheduler.append(
-                        put(ray.actor.wrap_actor_handle(arg)))
                 elif ray.local_scheduler.check_simple_value(arg):
                     args_for_local_scheduler.append(arg)
                 else:
@@ -591,9 +589,12 @@ class Worker(object):
             if execution_dependencies is None:
                 execution_dependencies = []
 
+            if driver_id is None:
+                driver_id = self.task_driver_id
+
             # Look up the various function properties.
-            function_properties = self.function_properties[
-                self.task_driver_id.id()][function_id.id()]
+            function_properties = self.function_properties[driver_id.id()][
+                function_id.id()]
 
             if num_return_vals is None:
                 num_return_vals = function_properties.num_return_vals
@@ -610,8 +611,7 @@ class Worker(object):
 
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
-                self.task_driver_id,
-                ray.local_scheduler.ObjectID(
+                driver_id, ray.local_scheduler.ObjectID(
                     function_id.id()), args_for_local_scheduler,
                 num_return_vals, self.current_task_id, self.task_index,
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
@@ -749,8 +749,6 @@ class Worker(object):
                     # created this object failed, and we should propagate the
                     # error message here.
                     raise RayGetArgumentError(function_name, i, arg, argument)
-                elif isinstance(argument, ray.actor.ActorHandleWrapper):
-                    argument = ray.actor.unwrap_actor_handle(self, argument)
             else:
                 # pass the argument by value
                 argument = arg
@@ -779,6 +777,10 @@ class Worker(object):
                 passed into this function.
         """
         for i in range(len(object_ids)):
+            if isinstance(outputs[i], ray.actor.ActorHandle):
+                raise Exception("Returning an actor handle from a remote "
+                                "function is not allowed).")
+
             self.put_object(object_ids[i], outputs[i])
 
     def _process_task(self, task):
@@ -1137,18 +1139,39 @@ def _initialize_serialization(worker=global_worker):
     pyarrow.register_torch_serialization_handlers(worker.serialization_context)
 
     # Define a custom serializer and deserializer for handling Object IDs.
-    def objectid_custom_serializer(obj):
+    def object_id_custom_serializer(obj):
         return obj.id()
 
-    def objectid_custom_deserializer(serialized_obj):
+    def object_id_custom_deserializer(serialized_obj):
         return ray.local_scheduler.ObjectID(serialized_obj)
 
+    # We register this serializer on each worker instead of calling
+    # register_custom_serializer from the driver so that isinstance still
+    # works.
     worker.serialization_context.register_type(
         ray.local_scheduler.ObjectID,
         "ray.ObjectID",
         pickle=False,
-        custom_serializer=objectid_custom_serializer,
-        custom_deserializer=objectid_custom_deserializer)
+        custom_serializer=object_id_custom_serializer,
+        custom_deserializer=object_id_custom_deserializer)
+
+    def actor_handle_serializer(obj):
+        return obj._serialization_helper(True)
+
+    def actor_handle_deserializer(serialized_obj):
+        new_handle = ray.actor.ActorHandle.__new__(ray.actor.ActorHandle)
+        new_handle._deserialization_helper(serialized_obj, True)
+        return new_handle
+
+    # We register this serializer on each worker instead of calling
+    # register_custom_serializer from the driver so that isinstance still
+    # works.
+    worker.serialization_context.register_type(
+        ray.actor.ActorHandle,
+        "ray.ActorHandle",
+        pickle=False,
+        custom_serializer=actor_handle_serializer,
+        custom_deserializer=actor_handle_deserializer)
 
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # These should only be called on the driver because
@@ -1161,8 +1184,6 @@ def _initialize_serialization(worker=global_worker):
         register_custom_serializer(type(lambda: 0), use_pickle=True)
         # Tell Ray to serialize types with pickle.
         register_custom_serializer(type(int), use_pickle=True)
-        # Ray can serialize actor handles that have been wrapped.
-        register_custom_serializer(ray.actor.ActorHandleWrapper, use_dict=True)
         # Tell Ray to serialize FunctionSignatures as dictionaries. This is
         # used when passing around actor handles.
         register_custom_serializer(
