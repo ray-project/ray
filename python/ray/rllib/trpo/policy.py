@@ -91,14 +91,13 @@ class TRPOPolicy(SharedTorchPolicy):
     def mean_kl(self):
         """Returns an estimate of the average KL divergence between a given
         policy and self._model."""
-        # TODO(alok): Handle continuous case since this assumes a
-        # Categorical distribution.
         new_prob = F.softmax(
             self._model(self._states)[0], dim=1).detach() + 1e-8
         old_prob = F.softmax(self._model(self._states)[0], dim=1)
 
-        new_prob, old_prob = Categorical(probs=new_prob), Categorical(
-            probs=old_prob)
+        # TODO(alok): Handle continuous case since this assumes a
+        # Categorical distribution.
+        new_prob, old_prob = Categorical(new_prob), Categorical(old_prob)
 
         return kl_divergence(new_prob, old_prob).mean()
 
@@ -107,16 +106,16 @@ class TRPOPolicy(SharedTorchPolicy):
         given vector."""
 
         self._model.zero_grad()
-        print(f'KL: {self._kl}')
 
         g_kl = torch.autograd.grad(
-            self._kl, self._model.parameters(), create_graph=True)
-        gvp = torch.cat([grad.view(-1) for grad in g_kl]).dot(v)
-
             outputs=self._kl,
             inputs=chain(self._model.hidden_layers.parameters(),
                          self._model.logits.parameters()),
             create_graph=True,
+        )
+        flat_g = torch.cat([grad.reshape(-1) for grad in g_kl])
+        gvp = flat_g.dot(v)
+
         H = torch.autograd.grad(
             outputs=gvp,
             inputs=chain(self._model.hidden_layers.parameters(),
@@ -124,24 +123,26 @@ class TRPOPolicy(SharedTorchPolicy):
             create_graph=True,
         )
         fisher_vector_product = torch.cat(
-            [grad.contiguous().view(-1) for grad in H]).detach()
+            [grad.reshape(-1) for grad in H]).detach()
 
         return fisher_vector_product + (self.config['cg_damping'] * v.detach())
 
     def conjugate_gradient(self, b, cg_iters=10):
         """Returns F^(-1)b where F is the Hessian of the KL divergence."""
-        p = b.clone().detach()
-        r = b.clone().detach()
+        p, r = b.clone().detach(), b.clone().detach()
         x = np.zeros_like(b.numpy())
+        # x = torch.zeros_like(b)
 
-        rdotr = r.double().dot(r.double())
+        # all the float casts are to avoid mixing torch scalars and numpy
+        # arrays
+        rdotr = float(r.dot(r))
 
         for _ in range(cg_iters):
             z = self.HVP(p).squeeze(0)
-            v = rdotr / p.double().dot(z.double())
-            x += v * p.numpy()
+            v = rdotr / float(p.dot(z))
+            x += v * p
             r -= v * z
-            newrdotr = r.double().dot(r.double())
+            newrdotr = r.dot(r)
             mu = newrdotr / rdotr
             p = r + mu * p
             rdotr = newrdotr
@@ -154,7 +155,9 @@ class TRPOPolicy(SharedTorchPolicy):
         """Returns the surrogate loss wrt the given parameter vector params."""
 
         new_policy = deepcopy(self._model)
-        vector_to_parameters(params, new_policy.parameters())
+
+        h = deepcopy(new_policy.hidden_layers)  # TODO rm
+
         # TODO adjust only action params
         vector_to_parameters(
             params,
@@ -168,26 +171,25 @@ class TRPOPolicy(SharedTorchPolicy):
         prob_old = self._model(self._states)[0].gather(
             1, self._actions.view(-1, 1)).detach() + EPSILON
 
-        return -torch.mean((prob_new / prob_old) * self._adv)
+        return -torch.mean(self._adv * (prob_new / prob_old))
 
     def linesearch(self, x, fullstep, expected_improve_rate):
         """Returns the scaled gradient that would improve the loss.
 
-        Found via linesearch.
+        Found via backtracking linesearch.
         """
 
         accept_ratio = 0.1
         max_backtracks = 10
 
-        fval = self.surrogate_loss(x)
+        loss = self.surrogate_loss
 
         for stepfrac in .5**np.arange(max_backtracks):
 
             g = stepfrac * fullstep
 
-            xnew = x.numpy() + g
-            newfval = self.surrogate_loss(torch.from_numpy(xnew))
-            actual_improve = fval - newfval
+            actual_improve = loss(x) - loss(
+                torch.from_numpy(x.detach().numpy() + g))
             expected_improve = expected_improve_rate * stepfrac
 
             if actual_improve / expected_improve > accept_ratio and actual_improve > 0:
@@ -195,7 +197,7 @@ class TRPOPolicy(SharedTorchPolicy):
 
         # If no improvement could be obtained, return 0 gradient
         else:
-            return 0
+            return np.zeros_like(fullstep)
 
     def _backward(self, batch):
         """Fills gradient buffers up."""
@@ -204,65 +206,46 @@ class TRPOPolicy(SharedTorchPolicy):
         values, _, entropy = self._evaluate(states, actions)
         action_dists = self._evaluate_action_dists(states)
 
-        bs = self.config['batch_size']
+        # TODO find way to copy generator
+        # self._action_params = [ self._model.hidden_layers.parameters(), self._model.logits.parameters(), ]
 
-        num_batches = len(actions) // bs if len(actions) % bs == 0 else (
-            len(actions) // bs) + 1
+        self._states = states
+        self._actions = actions
+        self._action_dists = action_dists
+        self._adv = advs
 
-        for batch_n in range(num_batches):
-            _slice = slice(batch_n * bs, (batch_n + 1) * bs)
+        self._kl = self.mean_kl()
 
-            self._states = states[_slice]
-            self._actions = actions[_slice]
-            self._action_dists = action_dists[_slice]
-            self._adv = advs[_slice]
+        # Calculate the surrogate loss as the element-wise product of the
+        # advantage and the probability ratio of actions taken.
+        # TODO(alok): Do we need log probs or the actual probabilities here?
+        new_prob = self._action_dists.gather(1, self._actions.view(-1, 1))
+        old_prob = new_prob.detach() + 1e-8
+        prob_ratio = new_prob / old_prob
 
-            self._kl = self.mean_kl()
+        surrogate_loss = -torch.mean(prob_ratio * self._adv) - (
+            self.config['ent_coeff'] * entropy)
 
-            # Calculate the surrogate loss as the element-wise product of the
-            # advantage and the probability ratio of actions taken.
-            # TODO(alok) Do we need log probs or the actual probabilities here?
-            new_prob = self._action_dists.gather(1, self._actions.view(-1, 1))
-            old_prob = new_prob.detach() + 1e-8
+        # Gradient wrt policy
+        self._model.zero_grad()
 
-            prob_ratio = new_prob / old_prob
-            surrogate_loss = -torch.mean(prob_ratio * self._adv) - (
-                self.config['ent_coeff'] * entropy)
+        # TODO just turn this into a flat list and work with it directly
+        surrogate_loss.backward(retain_graph=True)
 
-            # Gradient wrt policy
-            self._model.zero_grad()
-
-            surrogate_loss.backward(retain_graph=True)
-
-            g = parameters_to_vector(
-                [v.grad for v in self._model.parameters()]).squeeze(0)
-
-            if g.nonzero().shape[0]:
-                step_dir = self.conjugate_gradient(-g)
-                _step_dir = torch.from_numpy(step_dir)
-
-                # Do line search to determine the stepsize of params in the direction of step_dir
-                shs = step_dir.dot(self.HVP(self._kl, _step_dir).numpy().T) / 2
-                lm = np.sqrt(shs / self.config['max_kl'])
-                fullstep = step_dir / lm
-                g_step_dir = -g.dot(_step_dir).detach()[0]
-                grad = self.linesearch(
-                    x=parameters_to_vector(self._model.parameters()),
-                    fullstep=fullstep,
-                    expected_improve_rate=g_step_dir / lm,
-                )
-
-                # Here we fill the gradient buffers
-                if not any(np.isnan(grad.numpy())):
-                    vector_to_gradient(grad, self._model.parameters())
-
-            # Also get gradient wrt value function
-            value_err = F.mse_loss(values, rewards)
-            value_err.backward()
         g = parameters_to_vector([
             p.grad for p in chain(self._model.hidden_layers.parameters(),
                                   self._model.logits.parameters())
         ]).squeeze(0)
+
+        if any(g):
+            step_dir = self.conjugate_gradient(-g)
+            _step_dir = torch.from_numpy(step_dir)
+
+            # Do line search to determine the stepsize of params in the direction of step_dir
+            shs = step_dir.dot(self.HVP(_step_dir).numpy().T) / 2
+            lm = np.sqrt(shs / self.config['max_kl'])
+            fullstep = step_dir / lm
+            g_step_dir = -g.dot(_step_dir).detach()[0]
             grad = self.linesearch(
                 x=parameters_to_vector(
                     chain(self._model.hidden_layers.parameters(),
@@ -270,9 +253,14 @@ class TRPOPolicy(SharedTorchPolicy):
                 fullstep=fullstep,
                 expected_improve_rate=g_step_dir / lm,
             )
+
             # Here we fill the gradient buffers
             if not any(np.isnan(grad)):
                 vector_to_gradient(
                     torch.from_numpy(grad),
                     chain(self._model.hidden_layers.parameters(),
                           self._model.logits.parameters()))
+
+        # Also get gradient wrt value function
+        value_err = F.mse_loss(values, rewards)
+        value_err.backward()
