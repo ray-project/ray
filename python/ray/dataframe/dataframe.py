@@ -15,6 +15,7 @@ import pandas.core.common as com
 from pandas.core.dtypes.common import (
     is_bool_dtype,
     is_list_like,
+    is_integer,
     is_numeric_dtype,
     is_timedelta64_dtype,
     _get_dtype_from_object)
@@ -166,6 +167,11 @@ class DataFrame(object):
 
         if self._dtypes_cache is None:
             self._correct_dtypes()
+
+        axes = ['index', 'columns']
+        self._AXIS_ALIASES = {'rows': 0}
+        self._AXIS_NUMBERS = {a: i for i, a in enumerate(axes)}
+        self._AXIS_NAMES = dict(enumerate(axes))
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -352,7 +358,7 @@ class DataFrame(object):
         if level is not None:
             raise NotImplementedError("Level not yet supported.")
 
-        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
+        axis = self._get_axis_number(axis) if axis is not None \
             else 0
 
         oid_series = ray.get(_map_partitions(remote_func,
@@ -394,6 +400,36 @@ class DataFrame(object):
         if isinstance(expr, str) and 'not' in expr:
             if 'parser' in kwargs and kwargs['parser'] == 'python':
                 raise NotImplementedError("'Not' nodes are not implemented.")
+
+    def _get_axis_number(self, axis):
+        axis = self._AXIS_ALIASES.get(axis, axis)
+        if is_integer(axis):
+            if axis in self._AXIS_NAMES:
+                return axis
+        else:
+            try:
+                return self._AXIS_NUMBERS[axis]
+            except KeyError:
+                pass
+        raise ValueError('No axis named {0} for object type {1}'
+                         .format(axis, type(self)))
+
+    def _get_axis_name(self, axis):
+        axis = self._AXIS_ALIASES.get(axis, axis)
+        if isinstance(axis, string_types):
+            if axis in self._AXIS_NUMBERS:
+                return axis
+        else:
+            try:
+                return self._AXIS_NAMES[axis]
+            except KeyError:
+                pass
+        raise ValueError('No axis named {0} for object type {1}'
+                         .format(axis, type(self)))
+
+    def _get_axis(self, axis):
+        name = self._get_axis_name(axis)
+        return getattr(self, name)
 
     @property
     def size(self):
@@ -628,7 +664,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame resulting from the groupby.
         """
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
         if callable(by):
             by = by(self.index)
         elif isinstance(by, compat.string_types):
@@ -782,7 +818,7 @@ class DataFrame(object):
         inplace = validate_bool_kwarg(inplace, "inplace")
 
         if is_list_like(axis):
-            axis = [pd.DataFrame()._get_axis_number(ax) for ax in axis]
+            axis = [self._get_axis_number(ax) for ax in axis]
 
             result = self
             # TODO(kunalgosar): this builds an intermediate dataframe,
@@ -799,7 +835,8 @@ class DataFrame(object):
 
             return None
 
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
+        agg_axis = 1 - axis
 
         if how is not None and how not in ['any', 'all']:
             raise ValueError('invalid how option: %s' % how)
@@ -808,16 +845,11 @@ class DataFrame(object):
 
         indices = None
         if subset is not None:
-            if axis == 1:
-                indices = self.index.get_indexer_for(subset)
-                check = indices == -1
-                if check.any():
-                    raise KeyError(list(np.compress(check, subset)))
-            else:
-                indices = self.columns.get_indexer_for(subset)
-                check = indices == -1
-                if check.any():
-                    raise KeyError(list(np.compress(check, subset)))
+            ax = self._get_axis(agg_axis)
+            indices = ax.get_indexer_for(subset)
+            check = indices == -1
+            if check.any():
+                raise KeyError(list(np.compress(check, subset)))
 
         def dropna_helper(df):
             new_df = df.dropna(axis=axis, how=how, thresh=thresh,
@@ -843,7 +875,7 @@ class DataFrame(object):
 
             # This flattens the 2d array to 1d
             new_vals = [i for j in new_vals for i in j]
-            new_cols = self.columns[new_vals]
+            new_cols = self._get_axis(axis)[new_vals]
 
             if not inplace:
                 return DataFrame(col_partitions=new_parts,
@@ -860,7 +892,7 @@ class DataFrame(object):
 
             # This flattens the 2d array to 1d
             new_vals = [i for j in new_vals for i in j]
-            new_rows = self.index[new_vals]
+            new_rows = self._get_axis(axis)[new_vals]
 
             if not inplace:
                 return DataFrame(row_partitions=new_parts,
@@ -893,7 +925,7 @@ class DataFrame(object):
         return self.aggregate(func, axis, *args, **kwargs)
 
     def aggregate(self, func, axis=0, *args, **kwargs):
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
 
         result = None
 
@@ -1012,7 +1044,7 @@ class DataFrame(object):
         is_series = ray.get(is_series)
         if all(is_series):
             new_series = pd.concat(ray.get(new_parts))
-            new_series.index = self.columns if axis == 0 else self.index
+            new_series.index = self._get_axis(1 - axis)
             return new_series
         # This error is thrown when some of the partitions return Series and
         # others return DataFrames. We do not allow mixed returns.
@@ -1133,7 +1165,7 @@ class DataFrame(object):
         Returns:
             Series or DataFrame, depending on func.
         """
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
 
         if isinstance(func, compat.string_types):
             if axis == 1:
@@ -1230,10 +1262,10 @@ class DataFrame(object):
                     "Only a column name can be used for the key in"
                     "a dtype mappings argument.")
             columns = list(dtype.keys())
-            col_idx = [(self.columns.get_loc(columns[i]), columns[i])
-                       if columns[i] in self.columns
-                       else (columns[i], columns[i])
-                       for i in range(len(columns))]
+
+            col_idx = self.columns.get_indexer_for(columns)
+            col_idx = zip(col_idx, columns)
+
             new_dict = {}
             for idx, key in col_idx:
                 new_dict[idx] = dtype[key]
@@ -1381,7 +1413,7 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def _cumulative_helper(self, func, axis):
-        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
+        axis = self._get_axis_number(axis) if axis is not None \
             else 0
 
         if axis == 0:
@@ -1503,7 +1535,7 @@ class DataFrame(object):
         Returns:
             DataFrame with the diff applied
         """
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
         partitions = (self._col_partitions if
                       axis == 0 else self._row_partitions)
 
@@ -1584,7 +1616,7 @@ class DataFrame(object):
             if index is not None or columns is not None:
                 raise ValueError("Cannot specify both 'labels' and "
                                  "'index'/'columns'")
-            axis = pd.DataFrame()._get_axis_name(axis)
+            axis = self._get_axis_name(axis)
             axes = {axis: labels}
         elif index is not None or columns is not None:
             axes, _ = pd.DataFrame()._construct_axes_from_arguments((index,
@@ -1882,7 +1914,7 @@ class DataFrame(object):
 
         inplace = validate_bool_kwarg(inplace, 'inplace')
 
-        axis = pd.DataFrame()._get_axis_number(axis) \
+        axis = self._get_axis_number(axis) \
             if axis is not None \
             else 0
 
@@ -1978,8 +2010,8 @@ class DataFrame(object):
         if axis is None:
             axis = 'columns'  # This is the default info axis for dataframes
 
-        axis = pd.DataFrame()._get_axis_number(axis)
-        labels = self.columns if axis else self.index
+        axis = self._get_axis_number(axis)
+        labels = self._get_axis(axis)
 
         if items is not None:
             bool_arr = labels.isin(items)
@@ -2850,7 +2882,7 @@ class DataFrame(object):
         Returns:
             DataFrame: The mode of the DataFrame.
         """
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
 
         def mode_helper(df):
             mode_df = df.mode(axis=axis, numeric_only=numeric_only)
@@ -3160,7 +3192,7 @@ class DataFrame(object):
                 return df.quantile(q=q, axis=axis, numeric_only=numeric_only,
                                    interpolation=interpolation)
 
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
 
         if isinstance(q, (pd.Series, np.ndarray, pd.Index, list)):
 
@@ -3253,7 +3285,7 @@ class DataFrame(object):
                            na_option=na_option,
                            ascending=ascending, pct=pct)
 
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
 
         if (axis == 1):
             new_cols = self.dtypes[self.dtypes.apply(
@@ -3562,7 +3594,7 @@ class DataFrame(object):
             A new Dataframe
         """
 
-        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
+        axis = self._get_axis_number(axis) if axis is not None \
             else 0
 
         if axis == 0:
@@ -3775,7 +3807,7 @@ class DataFrame(object):
                 FutureWarning, stacklevel=2)
             inplace = True
         if inplace:
-            setattr(self, pd.DataFrame()._get_axis_name(axis), labels)
+            setattr(self, self._get_axis_name(axis), labels)
         else:
             obj = self.copy()
             obj.set_axis(labels, axis=axis, inplace=True)
@@ -3924,7 +3956,7 @@ class DataFrame(object):
             return self.sort_values(by, axis=axis, ascending=ascending,
                                     inplace=inplace)
 
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
 
         args = (axis, level, ascending, False, kind, na_position,
                 sort_remaining)
@@ -3986,7 +4018,7 @@ class DataFrame(object):
              A sorted DataFrame.
         """
 
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
 
         if not is_list_like(by):
             by = [by]
@@ -4640,9 +4672,7 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-            indices_for_rows = \
-                [i for i, item in enumerate(self.columns)
-                 if item in set(columns)]
+            indices_for_rows = self.columns.get_indexer_for(columns)
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
@@ -5108,7 +5138,7 @@ class DataFrame(object):
         if level is not None:
             raise NotImplementedError("Mutlilevel index not yet supported "
                                       "in Pandas on Ray")
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
 
         new_column_index = self.columns.join(other.columns, how=how)
         new_index = self.index.join(other.index, how=how)
@@ -5136,7 +5166,7 @@ class DataFrame(object):
         if level is not None:
             raise NotImplementedError("Multilevel index not yet supported "
                                       "in Pandas on Ray")
-        axis = pd.DataFrame()._get_axis_number(axis)
+        axis = self._get_axis_number(axis)
 
         if is_list_like(other):
             new_index = self.index
