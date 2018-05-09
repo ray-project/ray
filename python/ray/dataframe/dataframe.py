@@ -4506,29 +4506,6 @@ class DataFrame(object):
         zipped_partitions = self._copartition(cond, self.index)
         args = (False, axis, level, errors, try_cast, raise_on_error)
 
-        @ray.remote
-        def where_helper(left, cond, other, left_columns, cond_columns,
-                         other_columns, *args):
-
-            left = pd.concat(ray.get(left.tolist()), axis=1)
-            # We have to reset the index and columns here because we are coming
-            # from blocks and the axes are set according to the blocks. We have
-            # already correctly copartitioned everything, so there's no
-            # correctness problems with doing this.
-            left.reset_index(inplace=True, drop=True)
-            left.columns = left_columns
-
-            cond = pd.concat(ray.get(cond.tolist()), axis=1)
-            cond.reset_index(inplace=True, drop=True)
-            cond.columns = cond_columns
-
-            if isinstance(other, np.ndarray):
-                other = pd.concat(ray.get(other.tolist()), axis=1)
-                other.reset_index(inplace=True, drop=True)
-                other.columns = other_columns
-
-            return left.where(cond, other, *args)
-
         if isinstance(other, DataFrame):
             other_zipped = (v for k, v in self._copartition(other,
                                                             self.index))
@@ -5212,3 +5189,27 @@ def _merge_columns(left_columns, right_columns, *args):
     return pd.DataFrame(columns=left_columns, index=[0], dtype='uint8').merge(
         pd.DataFrame(columns=right_columns, index=[0], dtype='uint8'),
         *args).columns
+
+
+@ray.remote
+def where_helper(left, cond, other, left_columns, cond_columns,
+                 other_columns, *args):
+
+    left = pd.concat(ray.get(left.tolist()), axis=1)
+    # We have to reset the index and columns here because we are coming
+    # from blocks and the axes are set according to the blocks. We have
+    # already correctly copartitioned everything, so there's no
+    # correctness problems with doing this.
+    left.reset_index(inplace=True, drop=True)
+    left.columns = left_columns
+
+    cond = pd.concat(ray.get(cond.tolist()), axis=1)
+    cond.reset_index(inplace=True, drop=True)
+    cond.columns = cond_columns
+
+    if isinstance(other, np.ndarray):
+        other = pd.concat(ray.get(other.tolist()), axis=1)
+        other.reset_index(inplace=True, drop=True)
+        other.columns = other_columns
+
+    return left.where(cond, other, *args)
