@@ -842,10 +842,15 @@ def test_dense_nan_df():
                           [np.nan, np.nan, np.nan, 5]],
                          columns=list('ABCD'))
 
+    column_subsets = [list('AD'), list('BC'), list('CD')]
+    row_subsets = [[0, 1], [0, 1, 2], [2, 0]]
+
     test_dropna(ray_df, pd_df)
     test_dropna_inplace(ray_df, pd_df)
     test_dropna_multiple_axes(ray_df, pd_df)
     test_dropna_multiple_axes_inplace(ray_df, pd_df)
+    test_dropna_subset(ray_df, pd_df, column_subsets, row_subsets)
+    test_dropna_subset_error(ray_df)
 
 
 @pytest.fixture
@@ -1400,6 +1405,40 @@ def test_dropna_multiple_axes_inplace(ray_df, pd_df):
     pd_df_copy.dropna(how='all', axis=(0, 1), inplace=True)
 
     assert ray_df_equals_pandas(ray_df_copy, pd_df_copy)
+
+
+@pytest.fixture
+def test_dropna_subset(ray_df, pd_df, column_subsets, row_subsets):
+    for subset in column_subsets:
+        assert ray_df_equals_pandas(
+            ray_df.dropna(how='all', subset=subset),
+            pd_df.dropna(how='all', subset=subset)
+        )
+
+        assert ray_df_equals_pandas(
+            ray_df.dropna(how='any', subset=subset),
+            pd_df.dropna(how='any', subset=subset)
+        )
+
+    for subset in row_subsets:
+        assert ray_df_equals_pandas(
+            ray_df.dropna(how='all', axis=1, subset=subset),
+            pd_df.dropna(how='all', axis=1, subset=subset)
+        )
+
+        assert ray_df_equals_pandas(
+            ray_df.dropna(how='any', axis=1, subset=subset),
+            pd_df.dropna(how='any', axis=1, subset=subset)
+        )
+
+
+@pytest.fixture
+def test_dropna_subset_error(ray_df):
+    with pytest.raises(KeyError):
+        ray_df.dropna(subset=list('EF'))
+
+    with pytest.raises(KeyError):
+        ray_df.dropna(axis=1, subset=[4, 5])
 
 
 def test_duplicated():
