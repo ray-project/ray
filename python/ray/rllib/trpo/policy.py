@@ -232,7 +232,7 @@ class TRPOPolicy(SharedTorchPolicy):
             shs = step_dir.dot(self.HVP(_step_dir).numpy().T) / 2
             lm = np.sqrt(shs / self.config['max_kl'])
             fullstep = step_dir / lm
-            g_step_dir = -g.dot(_step_dir).detach()[0]
+            g_step_dir = -g.dot(_step_dir).detach().item()
             grad = self.linesearch(
                 x=parameters_to_vector(
                     chain(self._model.hidden_layers.parameters(),
