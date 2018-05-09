@@ -14,10 +14,8 @@ agent = A3CAgent(config, 'CartPole-v0')
 
 SEP = 72 * '-'
 
-for i in range(2):
-    print(
-        i,
-        SEP,
-        sep='\n',
-    )
-    agent.train()
+for i in range(2000):
+    print(i, SEP, sep='\n')
+
+    res = agent.train()
+    print(res)
