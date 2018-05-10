@@ -56,7 +56,7 @@ class MockServer {
 
   void HandleAcceptObjectManager(const boost::system::error_code &error) {
     ClientHandler<boost::asio::ip::tcp> client_handler =
-        [this](std::shared_ptr<TcpClientConnection> client) {
+        [this](TcpClientConnection &client) {
           object_manager_.ProcessNewClient(client);
         };
     MessageHandler<boost::asio::ip::tcp> message_handler = [this](

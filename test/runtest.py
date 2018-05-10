@@ -2036,7 +2036,7 @@ class GlobalStateAPI(unittest.TestCase):
 
         @ray.remote
         def f():
-            return id(ray.worker.global_worker)
+            return id(ray.worker.global_worker), os.getpid()
 
         # Wait until all of the workers have started.
         worker_ids = set()

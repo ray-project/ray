@@ -60,7 +60,7 @@ class WorkerPool {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
   std::shared_ptr<Worker> GetRegisteredWorker(
-      std::shared_ptr<LocalClientConnection> connection) const;
+      const std::shared_ptr<LocalClientConnection> &connection) const;
 
   /// Disconnect a registered worker.
   ///
