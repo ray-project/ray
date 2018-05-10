@@ -240,7 +240,7 @@ void ClientTable::HandleNotification(AsyncGcsClient *client,
   }
 }
 
-void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT& data) {
+void ClientTable::HandleConnected(AsyncGcsClient *client, const ClientTableDataT &data) {
   auto connected_client_id = ClientID::from_binary(data.client_id);
   RAY_CHECK(client_id_ == connected_client_id) << connected_client_id << " "
                                                << client_id_;

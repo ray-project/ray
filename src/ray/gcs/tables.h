@@ -57,8 +57,8 @@ class Log : virtual public PubsubInterface<ID> {
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
-  using WriteCallback = 
-      std::function<void(AsyncGcsClient *client, const ID &id, const DataT& data)>;
+  using WriteCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;

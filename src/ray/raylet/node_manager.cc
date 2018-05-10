@@ -440,7 +440,7 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
   node_manager_client.ProcessMessages();
 }
 
-void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_client, 
+void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_client,
                                             int64_t message_type,
                                             const uint8_t *message_data) {
   switch (message_type) {

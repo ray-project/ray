@@ -74,7 +74,6 @@ void ConnectionPool::Add(SenderMapType &conn_map, const ClientID &client_id,
 
 void ConnectionPool::Remove(ReceiverMapType &conn_map, const ClientID &client_id,
                             std::shared_ptr<TcpClientConnection> &conn) {
-
   auto it = conn_map.find(client_id);
   if (it == conn_map.end()) {
     return;
