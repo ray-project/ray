@@ -69,20 +69,21 @@ bool TaskDependencyManager::SubscribeDependencies(
   auto &task_entry = task_dependencies_[task_id];
 
   // Add the task's dependencies to the table of subscribed tasks.
-  task_entry.object_dependencies.insert(task_entry.object_dependencies.end(),
-                                        required_objects.begin(), required_objects.end());
-  task_entry.num_missing_dependencies += required_objects.size();
-  // Record the task's dependencies in the corresponding object entries.
   for (const auto &object_id : required_objects) {
-    if (local_objects_.count(object_id) == 1) {
-      // The object is local.
-      task_entry.num_missing_dependencies--;
-    } else if (pending_tasks_.count(ComputeTaskId(object_id)) == 0) {
-      // If the object is not local and the task that creates the object is not
-      // pending on this node, then the object must be remote.
-      remote_objects.push_back(object_id);
+    auto inserted = task_entry.object_dependencies.insert(object_id);
+    if (inserted.second) {
+      // Record the task's dependency in the corresponding object entry.
+      if (local_objects_.count(object_id) == 0) {
+        // The object is not local.
+        task_entry.num_missing_dependencies++;
+        if (pending_tasks_.count(ComputeTaskId(object_id)) == 0) {
+          // If the object is not local and the task that creates the object is not
+          // pending on this node, then the object must be remote.
+          remote_objects.push_back(object_id);
+        }
+      }
+      remote_object_dependencies_[object_id].push_back(task_id);
     }
-    remote_object_dependencies_[object_id].push_back(task_id);
   }
 
   return (task_entry.num_missing_dependencies == 0);

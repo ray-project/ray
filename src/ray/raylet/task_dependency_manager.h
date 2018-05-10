@@ -38,6 +38,7 @@ class TaskDependencyManager {
   // UnsubscribeDependencies is called on the same task ID. If any dependencies
   // are missing, then when the last missing dependency later appears locally
   // via a call to HandleObjectLocal, the subscribed task will be returned.
+  // This method may be called multiple times per task.
   //
   // \param task_id The ID of the task whose dependencies to subscribe to.
   // \param required_objects The objects required by the task.
@@ -105,7 +106,7 @@ class TaskDependencyManager {
   struct TaskDependencies {
     /// The objects that the task is dependent on. These must be local before
     /// the task is ready to execute.
-    std::vector<ObjectID> object_dependencies;
+    std::unordered_set<ObjectID> object_dependencies;
     /// The number of object arguments that are not available locally. This
     /// must be zero before the task is ready to execute.
     int64_t num_missing_dependencies;
