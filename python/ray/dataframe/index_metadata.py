@@ -233,7 +233,7 @@ class _IndexMetadata(object):
         if loc is not None:
             cum_lens = np.cumsum(self._lengths)
             if len(cum_lens) > 1:
-                partition = np.digitize(loc, cum_lens[:-1])
+                partition = np.digitize(loc, cum_lens[:-1], right=True)
             else:
                 partition = 0
             if partition >= len(cum_lens):
