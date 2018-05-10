@@ -34,21 +34,23 @@ def _scope_vars(scope, trainable_only=False):
 
 def _build_q_network(
           registry, inputs, state_space, ac_space, act_t, config):
-    x = inputs
-    x = slim.fully_connected(x, 64)
-    x = tf.nn.relu(x)
+    x = ModelCatalog.get_model(registry, inputs, 64, config["model"])
+    x = x.last_layer
     x = tf.concat([x, act_t], axis=-1)
     x = slim.fully_connected(x, 64)
     x = tf.nn.relu(x)
-    frontend = ModelCatalog.get_model(registry, x, 1, config["model"])
-    x = frontend.outputs
+    x = slim.fully_connected(x, 1)
     return x
 
 
 def _build_actor_network(registry, inputs, ac_space, config):
-    x = inputs
-    x = slim.fully_connected(x, 64)
-    x = tf.nn.relu(x)
+    # frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
+    # act = frontend.outputs
+    # a_bound = ac_space.high
+    # act = tf.multiply(act, a_bound, name='scaled_a')
+    # return act
+    x = ModelCatalog.get_model(registry, inputs, 64, config["model"])
+    x = x.last_layer
     x = slim.fully_connected(x, 64)
     x = tf.nn.relu(x)
     x = slim.fully_connected(x, ac_space.shape[-1])
