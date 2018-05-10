@@ -50,7 +50,7 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
               "Obj as dicts not implemented. To contribute to "
               "Pandas on Ray, please visit github.com/ray-project/ray.")
 
-    axis = pandas.DataFrame()._get_axis_number(axis)
+    axis = DataFrame()._get_axis_number(axis)
 
     if join not in ['inner', 'outer']:
         raise ValueError("Only can inner (intersect) or outer (union) join the"
