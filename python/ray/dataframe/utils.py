@@ -692,9 +692,9 @@ def _map_partitions_coalesce(func, block_partitions, axis):
 
 
 flookup = { # Actual op_rate for isna is roughly 90ms for 2**24 * 2**3 versus 70 as presented
-    "isna": {"type": "applymap", "op_rate": 550 / (2**28 * 2**3), "op_stdev": 100 / (2**28 * 2**3)},
-    "sum": {"type": "axis-reduce", "op_rate": 2000 / (2**28 * 2**3), "op_stdev": 1000 / (2**28 * 2**3)},
-    "cumsum": {"type": "cumulative", "op_rate": 0, "op_stdev": 0}
+    "isna": {"type": "applymap", "op_rate": 550 / (2**28 * 2**3), "op_stdev": 1000 / (2**28 * 2**3)},
+    "sum": {"type": "axis-reduce", "op_rate": 2000 / (2**28 * 2**3), "op_stdev": 3000 / (2**28 * 2**3)},
+    "cumsum": {"type": "cumulative", "op_rate": 0, "op_stdev": 4000 / (2**28 * 2**3)}
 }
 
 
