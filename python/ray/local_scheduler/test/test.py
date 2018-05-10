@@ -43,10 +43,12 @@ class TestLocalSchedulerClient(unittest.TestCase):
         self.plasma_client = pa.plasma.connect(plasma_store_name, "", 0)
         # Start a local scheduler.
         scheduler_name, self.p2 = local_scheduler.start_local_scheduler(
-            plasma_store_name, use_valgrind=USE_VALGRIND)
+            plasma_store_name, use_valgrind=USE_VALGRIND
+        )
         # Connect to the scheduler.
         self.local_scheduler_client = local_scheduler.LocalSchedulerClient(
-            scheduler_name, NIL_WORKER_ID, False)
+            scheduler_name, NIL_WORKER_ID, False
+        )
 
     def tearDown(self):
         # Check that the processes are still alive.
@@ -73,29 +75,49 @@ class TestLocalSchedulerClient(unittest.TestCase):
             self.plasma_client.create(pa.plasma.ObjectID(object_id.id()), 0)
             self.plasma_client.seal(pa.plasma.ObjectID(object_id.id()))
         # Define some arguments to use for the tasks.
-        args_list = [[], [{}], [()], 1 * [1], 10 * [1], 100 * [1], 1000 * [1],
-                     1 * ["a"], 10 * ["a"], 100 * ["a"], 1000 * ["a"], [
-                         1, 1.3, 1 << 100, "hi", u"hi", [1, 2]
-                     ], object_ids[:1], object_ids[:2], object_ids[:3],
-                     object_ids[:4], object_ids[:5], object_ids[:10],
-                     object_ids[:100], object_ids[:256], [1, object_ids[0]], [
-                         object_ids[0], "a"
-                     ], [1, object_ids[0], "a"], [
-                         object_ids[0], 1, object_ids[1], "a"
-                     ], object_ids[:3] + [1, "hi", 2.3] + object_ids[:5],
-                     object_ids + 100 * ["a"] + object_ids]
+        args_list = [
+            [],
+            [{}],
+            [()],
+            1 * [1],
+            10 * [1],
+            100 * [1],
+            1000 * [1],
+            1 * ["a"],
+            10 * ["a"],
+            100 * ["a"],
+            1000 * ["a"],
+            [1, 1.3, 1 << 100, "hi", u"hi", [1, 2]],
+            object_ids[:1],
+            object_ids[:2],
+            object_ids[:3],
+            object_ids[:4],
+            object_ids[:5],
+            object_ids[:10],
+            object_ids[:100],
+            object_ids[:256],
+            [1, object_ids[0]],
+            [object_ids[0], "a"],
+            [1, object_ids[0], "a"],
+            [object_ids[0], 1, object_ids[1], "a"],
+            object_ids[:3] + [1, "hi", 2.3] + object_ids[:5],
+            object_ids + 100 * ["a"] + object_ids,
+        ]
 
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-                task = local_scheduler.Task(random_driver_id(), function_id,
-                                            args, num_return_vals,
-                                            random_task_id(), 0)
+                task = local_scheduler.Task(
+                    random_driver_id(), function_id, args, num_return_vals,
+                    random_task_id(), 0
+                )
                 # Submit a task.
                 self.local_scheduler_client.submit(task)
                 # Get the task.
                 new_task = self.local_scheduler_client.get_task()
-                self.assertEqual(task.function_id().id(),
-                                 new_task.function_id().id())
+                self.assertEqual(
+                    task.function_id().id(),
+                    new_task.function_id().id()
+                )
                 retrieved_args = new_task.arguments()
                 returns = new_task.returns()
                 self.assertEqual(len(args), len(retrieved_args))
@@ -109,9 +131,10 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Submit all of the tasks.
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-                task = local_scheduler.Task(random_driver_id(), function_id,
-                                            args, num_return_vals,
-                                            random_task_id(), 0)
+                task = local_scheduler.Task(
+                    random_driver_id(), function_id, args, num_return_vals,
+                    random_task_id(), 0
+                )
                 self.local_scheduler_client.submit(task)
         # Get all of the tasks.
         for args in args_list:
@@ -121,8 +144,10 @@ class TestLocalSchedulerClient(unittest.TestCase):
     def test_scheduling_when_objects_ready(self):
         # Create a task and submit it.
         object_id = random_object_id()
-        task = local_scheduler.Task(random_driver_id(), random_function_id(),
-                                    [object_id], 0, random_task_id(), 0)
+        task = local_scheduler.Task(
+            random_driver_id(), random_function_id(),
+            [object_id], 0, random_task_id(), 0
+        )
         self.local_scheduler_client.submit(task)
 
         # Launch a thread to get the task.
@@ -145,9 +170,10 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Create a task with two dependencies and submit it.
         object_id1 = random_object_id()
         object_id2 = random_object_id()
-        task = local_scheduler.Task(random_driver_id(), random_function_id(),
-                                    [object_id1, object_id2], 0,
-                                    random_task_id(), 0)
+        task = local_scheduler.Task(
+            random_driver_id(), random_function_id(),
+            [object_id1, object_id2], 0, random_task_id(), 0
+        )
         self.local_scheduler_client.submit(task)
 
         # Launch a thread to get the task.
@@ -172,7 +198,8 @@ class TestLocalSchedulerClient(unittest.TestCase):
         self.assertTrue(t.is_alive())
         # Check that the first object dependency was evicted.
         object1 = self.plasma_client.get_buffers(
-            [pa.plasma.ObjectID(object_id1.id())], timeout_ms=0)
+            [pa.plasma.ObjectID(object_id1.id())], timeout_ms=0
+        )
         self.assertEqual(object1, [None])
         # Check that the thread is still waiting for a task.
         time.sleep(0.1)

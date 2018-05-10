@@ -26,16 +26,18 @@ def pretty_cmd(cmd_str):
 class NodeUpdater(object):
     """A process for syncing files and running init commands on a node."""
 
-    def __init__(self,
-                 node_id,
-                 provider_config,
-                 auth_config,
-                 cluster_name,
-                 file_mounts,
-                 setup_cmds,
-                 runtime_hash,
-                 redirect_output=True,
-                 process_runner=subprocess):
+    def __init__(
+        self,
+        node_id,
+        provider_config,
+        auth_config,
+        cluster_name,
+        file_mounts,
+        setup_cmds,
+        runtime_hash,
+        redirect_output=True,
+        process_runner=subprocess,
+    ):
         self.daemon = True
         self.process_runner = process_runner
         self.provider = get_node_provider(provider_config, cluster_name)
@@ -48,7 +50,8 @@ class NodeUpdater(object):
         self.runtime_hash = runtime_hash
         if redirect_output:
             self.logfile = tempfile.NamedTemporaryFile(
-                mode="w", prefix="node-updater-", delete=False)
+                mode="w", prefix="node-updater-", delete=False
+            )
             self.output_name = self.logfile.name
             self.stdout = self.logfile
             self.stderr = self.logfile
@@ -59,39 +62,52 @@ class NodeUpdater(object):
             self.stderr = sys.stderr
 
     def run(self):
-        print("NodeUpdater: Updating {} to {}, logging to {}".format(
-            self.node_id, self.runtime_hash, self.output_name))
+        print(
+            "NodeUpdater: Updating {} to {}, logging to {}".format(
+                self.node_id, self.runtime_hash, self.output_name
+            )
+        )
         try:
             self.do_update()
         except Exception as e:
             error_str = str(e)
             if hasattr(e, "cmd"):
                 error_str = "(Exit Status {}) {}".format(
-                    e.returncode, pretty_cmd(" ".join(e.cmd)))
+                    e.returncode, pretty_cmd(" ".join(e.cmd))
+                )
             print(
                 "NodeUpdater: Error updating {}"
                 "See {} for remote logs.".format(error_str, self.output_name),
-                file=self.stdout)
-            self.provider.set_node_tags(self.node_id,
-                                        {TAG_RAY_NODE_STATUS: "UpdateFailed"})
+                file=self.stdout
+            )
+            self.provider.set_node_tags(
+                self.node_id, {TAG_RAY_NODE_STATUS: "UpdateFailed"}
+            )
             if self.logfile is not None:
-                print("----- BEGIN REMOTE LOGS -----\n" +
-                      open(self.logfile.name).read() +
-                      "\n----- END REMOTE LOGS -----")
+                print(
+                    "----- BEGIN REMOTE LOGS -----\n" +
+                    open(self.logfile.name).read() +
+                    "\n----- END REMOTE LOGS -----"
+                )
             raise e
         self.provider.set_node_tags(
-            self.node_id, {
+            self.node_id,
+            {
                 TAG_RAY_NODE_STATUS: "Up-to-date",
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
-            })
+            }
+        )
         print(
             "NodeUpdater: Applied config {} to node {}".format(
-                self.runtime_hash, self.node_id),
-            file=self.stdout)
+                self.runtime_hash, self.node_id
+            ),
+            file=self.stdout
+        )
 
     def do_update(self):
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "WaitingForSSH"})
+        self.provider.set_node_tags(
+            self.node_id, {TAG_RAY_NODE_STATUS: "WaitingForSSH"}
+        )
         deadline = time.time() + NODE_START_WAIT_S
 
         # Wait for external IP
@@ -99,7 +115,8 @@ class NodeUpdater(object):
                 not self.provider.is_terminated(self.node_id):
             print(
                 "NodeUpdater: Waiting for IP of {}...".format(self.node_id),
-                file=self.stdout)
+                file=self.stdout
+            )
             self.ssh_ip = self.provider.external_ip(self.node_id)
             if self.ssh_ip is not None:
                 break
@@ -113,36 +130,44 @@ class NodeUpdater(object):
             try:
                 print(
                     "NodeUpdater: Waiting for SSH to {}...".format(
-                        self.node_id),
-                    file=self.stdout)
+                        self.node_id
+                    ),
+                    file=self.stdout
+                )
                 if not self.provider.is_running(self.node_id):
                     raise Exception("Node not running yet...")
                 self.ssh_cmd(
                     "uptime",
                     connect_timeout=5,
-                    redirect=open("/dev/null", "w"))
+                    redirect=open("/dev/null", "w")
+                )
                 ssh_ok = True
             except Exception as e:
                 retry_str = str(e)
                 if hasattr(e, "cmd"):
                     retry_str = "(Exit Status {}): {}".format(
-                        e.returncode, pretty_cmd(" ".join(e.cmd)))
+                        e.returncode, pretty_cmd(" ".join(e.cmd))
+                    )
                 print(
                     "NodeUpdater: SSH not up, retrying: {}".format(retry_str),
-                    file=self.stdout)
+                    file=self.stdout
+                )
                 time.sleep(5)
             else:
                 break
         assert ssh_ok, "Unable to SSH to node"
 
         # Rsync file mounts
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "SyncingFiles"})
+        self.provider.set_node_tags(
+            self.node_id, {TAG_RAY_NODE_STATUS: "SyncingFiles"}
+        )
         for remote_path, local_path in self.file_mounts.items():
             print(
                 "NodeUpdater: Syncing {} to {}...".format(
-                    local_path, remote_path),
-                file=self.stdout)
+                    local_path, remote_path
+                ),
+                file=self.stdout
+            )
             assert os.path.exists(local_path)
             if os.path.isdir(local_path):
                 if not local_path.endswith("/"):
@@ -158,11 +183,13 @@ class NodeUpdater(object):
                     "{}@{}:{}".format(self.ssh_user, self.ssh_ip, remote_path)
                 ],
                 stdout=self.stdout,
-                stderr=self.stderr)
+                stderr=self.stderr
+            )
 
         # Run init commands
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "SettingUp"})
+        self.provider.set_node_tags(
+            self.node_id, {TAG_RAY_NODE_STATUS: "SettingUp"}
+        )
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 
@@ -170,19 +197,23 @@ class NodeUpdater(object):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
-                    pretty_cmd(cmd), self.ssh_ip),
-                file=self.stdout)
+                    pretty_cmd(cmd), self.ssh_ip
+                ),
+                file=self.stdout
+            )
         force_interactive = "set -i && source ~/.bashrc && "
         self.process_runner.check_call(
             [
-                "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
-                "-o", "StrictHostKeyChecking=no",
-                "-i", self.ssh_private_key, "{}@{}".format(
-                    self.ssh_user, self.ssh_ip), "bash --login -c {}".format(
-                        pipes.quote(force_interactive + cmd))
+                "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout), "-o",
+                "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
+                "{}@{}".format(self.ssh_user,
+                               self.ssh_ip), "bash --login -c {}".format(
+                                   pipes.quote(force_interactive + cmd)
+                               )
             ],
             stdout=redirect or self.stdout,
-            stderr=redirect or self.stderr)
+            stderr=redirect or self.stderr
+        )
 
 
 class NodeUpdaterProcess(NodeUpdater, Process):

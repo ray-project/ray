@@ -32,13 +32,15 @@ class MedianStoppingRule(FIFOScheduler):
             time a trial reports. Defaults to True.
     """
 
-    def __init__(self,
-                 time_attr="time_total_s",
-                 reward_attr="episode_reward_mean",
-                 grace_period=60.0,
-                 min_samples_required=3,
-                 hard_stop=True,
-                 verbose=True):
+    def __init__(
+        self,
+        time_attr="time_total_s",
+        reward_attr="episode_reward_mean",
+        grace_period=60.0,
+        min_samples_required=3,
+        hard_stop=True,
+        verbose=True
+    ):
         FIFOScheduler.__init__(self)
         self._stopped_trials = set()
         self._completed_trials = set()
@@ -67,8 +69,11 @@ class MedianStoppingRule(FIFOScheduler):
         median_result = self._get_median_result(time)
         best_result = self._best_result(trial)
         if self._verbose:
-            print("Trial {} best res={} vs median res={} at t={}".format(
-                trial, best_result, median_result, time))
+            print(
+                "Trial {} best res={} vs median res={} at t={}".format(
+                    trial, best_result, median_result, time
+                )
+            )
         if best_result < median_result and time > self._grace_period:
             if self._verbose:
                 print("MedianStoppingRule: early stopping {}".format(trial))
@@ -91,7 +96,8 @@ class MedianStoppingRule(FIFOScheduler):
 
     def debug_string(self):
         return "Using MedianStoppingRule: num_stopped={}.".format(
-            len(self._stopped_trials))
+            len(self._stopped_trials)
+        )
 
     def _get_median_result(self, time):
         scores = []
@@ -106,10 +112,13 @@ class MedianStoppingRule(FIFOScheduler):
         results = self._results[trial]
         # TODO(ekl) we could do interpolation to be more precise, but for now
         # assume len(results) is large and the time diffs are roughly equal
-        return np.mean([
-            getattr(r, self._reward_attr) for r in results
-            if getattr(r, self._time_attr) <= t_max
-        ])
+        return np.mean(
+            [
+                getattr(r, self._reward_attr)
+                for r in results
+                if getattr(r, self._time_attr) <= t_max
+            ]
+        )
 
     def _best_result(self, trial):
         results = self._results[trial]

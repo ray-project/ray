@@ -7,12 +7,14 @@ import subprocess
 import time
 
 
-def start_global_scheduler(redis_address,
-                           node_ip_address,
-                           use_valgrind=False,
-                           use_profiler=False,
-                           stdout_file=None,
-                           stderr_file=None):
+def start_global_scheduler(
+    redis_address,
+    node_ip_address,
+    use_valgrind=False,
+    use_profiler=False,
+    stdout_file=None,
+    stderr_file=None
+):
     """Start a global scheduler process.
 
     Args:
@@ -35,7 +37,8 @@ def start_global_scheduler(redis_address,
         raise Exception("Cannot use valgrind and profiler at the same time.")
     global_scheduler_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
-        "../core/src/global_scheduler/global_scheduler")
+        "../core/src/global_scheduler/global_scheduler"
+    )
     command = [
         global_scheduler_executable, "-r", redis_address, "-h", node_ip_address
     ]
@@ -47,13 +50,15 @@ def start_global_scheduler(redis_address,
                 "--error-exitcode=1"
             ] + command,
             stdout=stdout_file,
-            stderr=stderr_file)
+            stderr=stderr_file
+        )
         time.sleep(1.0)
     elif use_profiler:
         pid = subprocess.Popen(
             ["valgrind", "--tool=callgrind"] + command,
             stdout=stdout_file,
-            stderr=stderr_file)
+            stderr=stderr_file
+        )
         time.sleep(1.0)
     else:
         pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)

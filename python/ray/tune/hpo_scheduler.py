@@ -102,8 +102,10 @@ class HyperOptScheduler(FIFOScheduler):
             self._hpopt_trials.refresh()
 
             # Get new suggestion from
-            new_trials = self.algo(new_ids, self.domain, self._hpopt_trials,
-                                   self.rstate.randint(2**31 - 1))
+            new_trials = self.algo(
+                new_ids, self.domain, self._hpopt_trials,
+                self.rstate.randint(2**31 - 1)
+            )
             self._hpopt_trials.insert_trial_docs(new_trials)
             self._hpopt_trials.refresh()
             new_trial = new_trials[0]
@@ -111,11 +113,13 @@ class HyperOptScheduler(FIFOScheduler):
             suggested_config = hpo.base.spec_from_misc(new_trial["misc"])
             new_cfg.update(suggested_config)
 
-            kv_str = "_".join([
-                "{}={}".format(k,
-                               str(v)[:5])
-                for k, v in sorted(suggested_config.items())
-            ])
+            kv_str = "_".join(
+                [
+                    "{}={}".format(k,
+                                   str(v)[:5])
+                    for k, v in sorted(suggested_config.items())
+                ]
+            )
             experiment_tag = "{}_{}".format(new_trial_id, kv_str)
 
             # Keep this consistent with tune.variant_generator
@@ -129,7 +133,8 @@ class HyperOptScheduler(FIFOScheduler):
                 checkpoint_freq=self.args.checkpoint_freq,
                 restore_path=self.args.restore,
                 upload_dir=self.args.upload_dir,
-                max_failures=self.args.max_failures)
+                max_failures=self.args.max_failures
+            )
 
             self._tune_to_hp[trial] = new_trial_id
             self._num_trials_left -= 1

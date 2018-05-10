@@ -59,8 +59,7 @@ class TestGlobalScheduler(unittest.TestCase):
     def setUp(self):
         # Start one Redis server and N pairs of (plasma, local_scheduler)
         self.node_ip_address = "127.0.0.1"
-        redis_address, redis_shards = services.start_redis(
-            self.node_ip_address)
+        redis_address, redis_shards = services.start_redis(self.node_ip_address)
         redis_port = services.get_port(redis_address)
         time.sleep(0.1)
         # Create a client for the global state store.
@@ -69,7 +68,8 @@ class TestGlobalScheduler(unittest.TestCase):
 
         # Start one global scheduler.
         self.p1 = global_scheduler.start_global_scheduler(
-            redis_address, self.node_ip_address, use_valgrind=USE_VALGRIND)
+            redis_address, self.node_ip_address, use_valgrind=USE_VALGRIND
+        )
         self.plasma_store_pids = []
         self.plasma_manager_pids = []
         self.local_scheduler_pids = []
@@ -83,14 +83,17 @@ class TestGlobalScheduler(unittest.TestCase):
             # Start the Plasma manager.
             # Assumption: Plasma manager name and port are randomly generated
             # by the plasma module.
-            manager_info = plasma.start_plasma_manager(plasma_store_name,
-                                                       redis_address)
+            manager_info = plasma.start_plasma_manager(
+                plasma_store_name, redis_address
+            )
             plasma_manager_name, p3, plasma_manager_port = manager_info
             self.plasma_manager_pids.append(p3)
-            plasma_address = "{}:{}".format(self.node_ip_address,
-                                            plasma_manager_port)
-            plasma_client = pa.plasma.connect(plasma_store_name,
-                                              plasma_manager_name, 64)
+            plasma_address = "{}:{}".format(
+                self.node_ip_address, plasma_manager_port
+            )
+            plasma_client = pa.plasma.connect(
+                plasma_store_name, plasma_manager_name, 64
+            )
             self.plasma_clients.append(plasma_client)
             # Start the local scheduler.
             local_scheduler_name, p4 = local_scheduler.start_local_scheduler(
@@ -98,10 +101,12 @@ class TestGlobalScheduler(unittest.TestCase):
                 plasma_manager_name=plasma_manager_name,
                 plasma_address=plasma_address,
                 redis_address=redis_address,
-                static_resources={"CPU": 10})
+                static_resources={"CPU": 10}
+            )
             # Connect to the scheduler.
             local_scheduler_client = local_scheduler.LocalSchedulerClient(
-                local_scheduler_name, NIL_WORKER_ID, False)
+                local_scheduler_name, NIL_WORKER_ID, False
+            )
             self.local_scheduler_clients.append(local_scheduler_client)
             self.local_scheduler_pids.append(p4)
 
@@ -116,7 +121,8 @@ class TestGlobalScheduler(unittest.TestCase):
             self.assertEqual(p4.poll(), None)
 
         redis_processes = services.all_processes[
-            services.PROCESS_TYPE_REDIS_SERVER]
+            services.PROCESS_TYPE_REDIS_SERVER
+        ]
         for redis_process in redis_processes:
             self.assertEqual(redis_process.poll(), None)
 
@@ -165,7 +171,8 @@ class TestGlobalScheduler(unittest.TestCase):
     def test_task_default_resources(self):
         task1 = local_scheduler.Task(
             random_driver_id(), random_function_id(), [random_object_id()], 0,
-            random_task_id(), 0)
+            random_task_id(), 0
+        )
         self.assertEqual(task1.required_resources(), {"CPU": 1})
         task2 = local_scheduler.Task(
             random_driver_id(), random_function_id(), [random_object_id()], 0,
@@ -175,7 +182,8 @@ class TestGlobalScheduler(unittest.TestCase):
             local_scheduler.ObjectID(NIL_ACTOR_ID), 0, 0, [], {
                 "CPU": 1,
                 "GPU": 2
-            })
+            }
+        )
         self.assertEqual(task2.required_resources(), {"CPU": 1, "GPU": 2})
 
     def test_redis_only_single_task(self):
@@ -188,19 +196,22 @@ class TestGlobalScheduler(unittest.TestCase):
         # scheduler and one plasma per node.
         self.assertEqual(
             len(self.state.client_table()[self.node_ip_address]),
-            2 * NUM_CLUSTER_NODES + 1)
+            2 * NUM_CLUSTER_NODES + 1
+        )
         db_client_id = self.get_plasma_manager_id()
         assert (db_client_id is not None)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
-        "New GCS API doesn't have a Python API yet.")
+        "New GCS API doesn't have a Python API yet."
+    )
     def test_integration_single_task(self):
         # There should be three db clients, the global scheduler, the local
         # scheduler, and the plasma manager.
         self.assertEqual(
             len(self.state.client_table()[self.node_ip_address]),
-            2 * NUM_CLUSTER_NODES + 1)
+            2 * NUM_CLUSTER_NODES + 1
+        )
 
         num_return_vals = [0, 1, 2, 3, 5, 10]
         # Insert the object into Redis.
@@ -208,15 +219,17 @@ class TestGlobalScheduler(unittest.TestCase):
         metadata_size = 0x40
         plasma_client = self.plasma_clients[0]
         object_dep, memory_buffer, metadata = create_object(
-            plasma_client, data_size, metadata_size, seal=True)
+            plasma_client, data_size, metadata_size, seal=True
+        )
 
         # Sleep before submitting task to local scheduler.
         time.sleep(0.1)
         # Submit a task to Redis.
         task = local_scheduler.Task(
             random_driver_id(), random_function_id(),
-            [local_scheduler.ObjectID(object_dep.binary())],
-            num_return_vals[0], random_task_id(), 0)
+            [local_scheduler.ObjectID(object_dep.binary())], num_return_vals[0],
+            random_task_id(), 0
+        )
         self.local_scheduler_clients[0].submit(task)
         time.sleep(0.1)
         # There should now be a task in Redis, and it should get assigned to
@@ -228,10 +241,12 @@ class TestGlobalScheduler(unittest.TestCase):
             if len(task_entries) == 1:
                 task_id, task = task_entries.popitem()
                 task_status = task["State"]
-                self.assertTrue(task_status in [
-                    state.TASK_STATUS_WAITING, state.TASK_STATUS_SCHEDULED,
-                    state.TASK_STATUS_QUEUED
-                ])
+                self.assertTrue(
+                    task_status in [
+                        state.TASK_STATUS_WAITING, state.TASK_STATUS_SCHEDULED,
+                        state.TASK_STATUS_QUEUED
+                    ]
+                )
                 if task_status == state.TASK_STATUS_QUEUED:
                     break
                 else:
@@ -250,7 +265,8 @@ class TestGlobalScheduler(unittest.TestCase):
         # scheduler, and the plasma manager.
         self.assertEqual(
             len(self.state.client_table()[self.node_ip_address]),
-            2 * NUM_CLUSTER_NODES + 1)
+            2 * NUM_CLUSTER_NODES + 1
+        )
         num_return_vals = [0, 1, 2, 3, 5, 10]
 
         # Submit a bunch of tasks to Redis.
@@ -261,7 +277,8 @@ class TestGlobalScheduler(unittest.TestCase):
             metadata_size = np.random.randint(1 << 9)
             plasma_client = self.plasma_clients[0]
             object_dep, memory_buffer, metadata = create_object(
-                plasma_client, data_size, metadata_size, seal=True)
+                plasma_client, data_size, metadata_size, seal=True
+            )
             if timesync:
                 # Give 10ms for object info handler to fire (long enough to
                 # yield CPU).
@@ -269,7 +286,8 @@ class TestGlobalScheduler(unittest.TestCase):
             task = local_scheduler.Task(
                 random_driver_id(), random_function_id(),
                 [local_scheduler.ObjectID(object_dep.binary())],
-                num_return_vals[0], random_task_id(), 0)
+                num_return_vals[0], random_task_id(), 0
+            )
             self.local_scheduler_clients[0].submit(task)
         # Check that there are the correct number of tasks in Redis and that
         # they all get assigned to the local scheduler.
@@ -281,31 +299,40 @@ class TestGlobalScheduler(unittest.TestCase):
             # First, check if all tasks made it to Redis.
             if len(task_entries) == num_tasks:
                 task_statuses = [
-                    task_entry["State"]
-                    for task_entry in task_entries.values()
+                    task_entry["State"] for task_entry in task_entries.values()
                 ]
                 self.assertTrue(
-                    all([
-                        status in [
-                            state.TASK_STATUS_WAITING,
-                            state.TASK_STATUS_SCHEDULED,
-                            state.TASK_STATUS_QUEUED
-                        ] for status in task_statuses
-                    ]))
+                    all(
+                        [
+                            status in [
+                                state.TASK_STATUS_WAITING,
+                                state.TASK_STATUS_SCHEDULED,
+                                state.TASK_STATUS_QUEUED
+                            ] for status in task_statuses
+                        ]
+                    )
+                )
                 num_tasks_done = task_statuses.count(state.TASK_STATUS_QUEUED)
                 num_tasks_scheduled = task_statuses.count(
-                    state.TASK_STATUS_SCHEDULED)
+                    state.TASK_STATUS_SCHEDULED
+                )
                 num_tasks_waiting = task_statuses.count(
-                    state.TASK_STATUS_WAITING)
-                print("tasks in Redis = {}, tasks waiting = {}, "
-                      "tasks scheduled = {}, "
-                      "tasks queued = {}, retries left = {}".format(
-                          len(task_entries), num_tasks_waiting,
-                          num_tasks_scheduled, num_tasks_done, num_retries))
-                if all([
+                    state.TASK_STATUS_WAITING
+                )
+                print(
+                    "tasks in Redis = {}, tasks waiting = {}, "
+                    "tasks scheduled = {}, "
+                    "tasks queued = {}, retries left = {}".format(
+                        len(task_entries), num_tasks_waiting,
+                        num_tasks_scheduled, num_tasks_done, num_retries
+                    )
+                )
+                if all(
+                    [
                         status == state.TASK_STATUS_QUEUED
                         for status in task_statuses
-                ]):
+                    ]
+                ):
                     # We're done, so pass.
                     break
             num_retries -= 1
@@ -317,13 +344,15 @@ class TestGlobalScheduler(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
-        "New GCS API doesn't have a Python API yet.")
+        "New GCS API doesn't have a Python API yet."
+    )
     def test_integration_many_tasks_handler_sync(self):
         self.integration_many_tasks_helper(timesync=True)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
-        "New GCS API doesn't have a Python API yet.")
+        "New GCS API doesn't have a Python API yet."
+    )
     def test_integration_many_tasks(self):
         # More realistic case: should handle out of order object and task
         # notifications.

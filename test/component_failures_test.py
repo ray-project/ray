@@ -28,28 +28,34 @@ class ComponentFailureTest(unittest.TestCase):
             driver_mode=ray.SILENT_MODE,
             start_workers_from_local_scheduler=False,
             start_ray_local=True,
-            redirect_output=True)
+            redirect_output=True
+        )
 
         # Have the worker wait in a get call.
         f.remote()
 
         # Kill the worker.
         time.sleep(1)
-        (ray.services.all_processes[ray.services.PROCESS_TYPE_WORKER][0]
-         .terminate())
+        (
+            ray.services.all_processes[ray.services.PROCESS_TYPE_WORKER][0]
+            .terminate()
+        )
         time.sleep(0.1)
 
         # Seal the object so the store attempts to notify the worker that the
         # get has been fulfilled.
         ray.worker.global_worker.plasma_client.create(
-            pa.plasma.ObjectID(obj_id), 100)
+            pa.plasma.ObjectID(obj_id), 100
+        )
         ray.worker.global_worker.plasma_client.seal(pa.plasma.ObjectID(obj_id))
         time.sleep(0.1)
 
         # Make sure that nothing has died.
         self.assertTrue(
             ray.services.all_processes_alive(
-                exclude=[ray.services.PROCESS_TYPE_WORKER]))
+                exclude=[ray.services.PROCESS_TYPE_WORKER]
+            )
+        )
 
     # This test checks that when a worker dies in the middle of a wait, the
     # plasma store and manager will not die.
@@ -65,28 +71,34 @@ class ComponentFailureTest(unittest.TestCase):
             driver_mode=ray.SILENT_MODE,
             start_workers_from_local_scheduler=False,
             start_ray_local=True,
-            redirect_output=True)
+            redirect_output=True
+        )
 
         # Have the worker wait in a get call.
         f.remote()
 
         # Kill the worker.
         time.sleep(1)
-        (ray.services.all_processes[ray.services.PROCESS_TYPE_WORKER][0]
-         .terminate())
+        (
+            ray.services.all_processes[ray.services.PROCESS_TYPE_WORKER][0]
+            .terminate()
+        )
         time.sleep(0.1)
 
         # Seal the object so the store attempts to notify the worker that the
         # get has been fulfilled.
         ray.worker.global_worker.plasma_client.create(
-            pa.plasma.ObjectID(obj_id), 100)
+            pa.plasma.ObjectID(obj_id), 100
+        )
         ray.worker.global_worker.plasma_client.seal(pa.plasma.ObjectID(obj_id))
         time.sleep(0.1)
 
         # Make sure that nothing has died.
         self.assertTrue(
             ray.services.all_processes_alive(
-                exclude=[ray.services.PROCESS_TYPE_WORKER]))
+                exclude=[ray.services.PROCESS_TYPE_WORKER]
+            )
+        )
 
     def _testWorkerFailed(self, num_local_schedulers):
         @ray.remote
@@ -101,7 +113,8 @@ class ComponentFailureTest(unittest.TestCase):
             start_workers_from_local_scheduler=False,
             start_ray_local=True,
             num_cpus=[num_initial_workers] * num_local_schedulers,
-            redirect_output=True)
+            redirect_output=True
+        )
         # Submit more tasks than there are workers so that all workers and
         # cores are utilized.
         object_ids = [
@@ -113,7 +126,8 @@ class ComponentFailureTest(unittest.TestCase):
         time.sleep(0.1)
         # Kill the workers as the tasks execute.
         for worker in (
-                ray.services.all_processes[ray.services.PROCESS_TYPE_WORKER]):
+            ray.services.all_processes[ray.services.PROCESS_TYPE_WORKER]
+        ):
             worker.terminate()
             time.sleep(0.1)
         # Make sure that we can still get the objects after the executing tasks
@@ -142,7 +156,8 @@ class ComponentFailureTest(unittest.TestCase):
             num_local_schedulers=num_local_schedulers,
             start_ray_local=True,
             num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
-            redirect_output=True)
+            redirect_output=True
+        )
 
         # Submit more tasks than there are workers so that all workers and
         # cores are utilized.
@@ -170,7 +185,8 @@ class ComponentFailureTest(unittest.TestCase):
         # died.
         results = ray.get(object_ids)
         expected_results = 4 * list(
-            range(num_workers_per_scheduler * num_local_schedulers))
+            range(num_workers_per_scheduler * num_local_schedulers)
+        )
         self.assertEqual(results, expected_results)
 
     def check_components_alive(self, component_type, check_component_alive):
@@ -181,56 +197,81 @@ class ComponentFailureTest(unittest.TestCase):
             if check_component_alive:
                 self.assertTrue(component.poll() is None)
             else:
-                print("waiting for " + component_type + " with PID " +
-                      str(component.pid) + "to terminate")
+                print(
+                    "waiting for " + component_type + " with PID " +
+                    str(component.pid) + "to terminate"
+                )
                 component.wait()
-                print("done waiting for " + component_type + " with PID " +
-                      str(component.pid) + "to terminate")
+                print(
+                    "done waiting for " + component_type + " with PID " +
+                    str(component.pid) + "to terminate"
+                )
                 self.assertTrue(not component.poll() is None)
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API."
+    )
     def testLocalSchedulerFailed(self):
         # Kill all local schedulers on worker nodes.
         self._testComponentFailed(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER)
 
         # The plasma stores and plasma managers should still be alive on the
         # worker nodes.
-        self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE,
-                                    True)
-        self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER,
-                                    True)
-        self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
-                                    False)
+        self.check_components_alive(
+            ray.services.PROCESS_TYPE_PLASMA_STORE,
+            True,
+        )
+        self.check_components_alive(
+            ray.services.PROCESS_TYPE_PLASMA_MANAGER,
+            True,
+        )
+        self.check_components_alive(
+            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
+            False,
+        )
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API."
+    )
     def testPlasmaManagerFailed(self):
         # Kill all plasma managers on worker nodes.
         self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_MANAGER)
 
         # The plasma stores should still be alive (but unreachable) on the
         # worker nodes.
-        self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE,
-                                    True)
-        self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER,
-                                    False)
-        self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
-                                    False)
+        self.check_components_alive(
+            ray.services.PROCESS_TYPE_PLASMA_STORE,
+            True,
+        )
+        self.check_components_alive(
+            ray.services.PROCESS_TYPE_PLASMA_MANAGER,
+            False,
+        )
+        self.check_components_alive(
+            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
+            False,
+        )
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API."
+    )
     def testPlasmaStoreFailed(self):
         # Kill all plasma stores on worker nodes.
         self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_STORE)
 
         # No processes should be left alive on the worker nodes.
-        self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_STORE,
-                                    False)
-        self.check_components_alive(ray.services.PROCESS_TYPE_PLASMA_MANAGER,
-                                    False)
-        self.check_components_alive(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
-                                    False)
+        self.check_components_alive(
+            ray.services.PROCESS_TYPE_PLASMA_STORE,
+            False,
+        )
+        self.check_components_alive(
+            ray.services.PROCESS_TYPE_PLASMA_MANAGER,
+            False,
+        )
+        self.check_components_alive(
+            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER,
+            False,
+        )
 
     def testDriverLivesSequential(self):
         ray.worker.init(redirect_output=True)
@@ -239,7 +280,7 @@ class ComponentFailureTest(unittest.TestCase):
             all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
             all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
             all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
-            all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0]
+            all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0],
         ]
 
         # Kill all the components sequentially.
@@ -258,7 +299,7 @@ class ComponentFailureTest(unittest.TestCase):
             all_processes[ray.services.PROCESS_TYPE_PLASMA_STORE][0],
             all_processes[ray.services.PROCESS_TYPE_PLASMA_MANAGER][0],
             all_processes[ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][0],
-            all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0]
+            all_processes[ray.services.PROCESS_TYPE_GLOBAL_SCHEDULER][0],
         ]
 
         # Kill all the components in parallel.

@@ -7,10 +7,16 @@ import funcsigs
 
 from ray.utils import is_cython
 
-FunctionSignature = namedtuple("FunctionSignature", [
-    "arg_names", "arg_defaults", "arg_is_positionals", "keyword_names",
-    "function_name"
-])
+FunctionSignature = namedtuple(
+    "FunctionSignature",
+    [
+        "arg_names",
+        "arg_defaults",
+        "arg_is_positionals",
+        "keyword_names",
+        "function_name",
+    ],
+)
 """This class is used to represent a function signature.
 
 Attributes:
@@ -61,8 +67,9 @@ def get_signature_params(func):
             for attr in attrs:
                 setattr(func, attr, getattr(original_func, attr))
         else:
-            raise TypeError("{0!r} is not a Python function we can process"
-                            .format(func))
+            raise TypeError(
+                "{0!r} is not a Python function we can process".format(func)
+            )
 
     return list(funcsigs.signature(func).parameters.items())
 
@@ -97,8 +104,10 @@ def check_signature_supported(func, warn=False):
             has_keyword_arg = True
 
     if has_kwargs_param:
-        message = ("The function {} has a **kwargs argument, which is "
-                   "currently not supported.".format(function_name))
+        message = (
+            "The function {} has a **kwargs argument, which is "
+            "currently not supported.".format(function_name)
+        )
         if warn:
             print(message)
         else:
@@ -106,9 +115,10 @@ def check_signature_supported(func, warn=False):
     # Check if the user specified a variable number of arguments and any
     # keyword arguments.
     if has_vararg_param and has_keyword_arg:
-        message = ("Function {} has a *args argument as well as a keyword "
-                   "argument, which is currently not supported."
-                   .format(function_name))
+        message = (
+            "Function {} has a *args argument as well as a keyword "
+            "argument, which is currently not supported.".format(function_name)
+        )
         if warn:
             print(message)
         else:
@@ -131,9 +141,10 @@ def extract_signature(func, ignore_first=False):
 
     if ignore_first:
         if len(sig_params) == 0:
-            raise Exception("Methods must take a 'self' argument, but the "
-                            "method '{}' does not have one.".format(
-                                func.__name__))
+            raise Exception(
+                "Methods must take a 'self' argument, but the "
+                "method '{}' does not have one.".format(func.__name__)
+            )
         sig_params = sig_params[1:]
 
     # Extract the names of the keyword arguments.
@@ -151,8 +162,13 @@ def extract_signature(func, ignore_first=False):
         arg_defaults.append(parameter.default)
         arg_is_positionals.append(parameter.kind == parameter.VAR_POSITIONAL)
 
-    return FunctionSignature(arg_names, arg_defaults, arg_is_positionals,
-                             keyword_names, func.__name__)
+    return FunctionSignature(
+        arg_names,
+        arg_defaults,
+        arg_is_positionals,
+        keyword_names,
+        func.__name__,
+    )
 
 
 def extend_args(function_signature, args, kwargs):
@@ -184,9 +200,10 @@ def extend_args(function_signature, args, kwargs):
 
     for keyword_name in kwargs:
         if keyword_name not in keyword_names:
-            raise Exception("The name '{}' is not a valid keyword argument "
-                            "for the function '{}'.".format(
-                                keyword_name, function_name))
+            raise Exception(
+                "The name '{}' is not a valid keyword argument "
+                "for the function '{}'.".format(keyword_name, function_name)
+            )
 
     # Fill in the remaining arguments.
     zipped_info = list(zip(arg_names, arg_defaults,
@@ -202,14 +219,20 @@ def extend_args(function_signature, args, kwargs):
                 # the last argument and it is a *args argument in which case it
                 # can be omitted.
                 if not is_positional:
-                    raise Exception("No value was provided for the argument "
-                                    "'{}' for the function '{}'.".format(
-                                        keyword_name, function_name))
+                    raise Exception(
+                        "No value was provided for the argument "
+                        "'{}' for the function '{}'.".format(
+                            keyword_name, function_name
+                        )
+                    )
 
-    too_many_arguments = (len(args) > len(arg_names)
-                          and (len(arg_is_positionals) == 0
-                               or not arg_is_positionals[-1]))
+    too_many_arguments = (
+        len(args) > len(arg_names)
+        and (len(arg_is_positionals) == 0 or not arg_is_positionals[-1])
+    )
     if too_many_arguments:
-        raise Exception("Too many arguments were passed to the function '{}'"
-                        .format(function_name))
+        raise Exception(
+            "Too many arguments were passed to the function '{}'"
+            .format(function_name)
+        )
     return args

@@ -10,34 +10,44 @@ import ray.actor
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
-                 "to connect to."))
+                 "to connect to.")
+)
 parser.add_argument(
     "--node-ip-address",
     required=True,
     type=str,
-    help="the ip address of the worker's node")
+    help="the ip address of the worker's node",
+)
 parser.add_argument(
     "--redis-address",
     required=True,
     type=str,
-    help="the address to use for Redis")
+    help="the address to use for Redis",
+)
 parser.add_argument(
     "--object-store-name",
     required=True,
     type=str,
-    help="the object store's name")
+    help="the object store's name",
+)
 parser.add_argument(
     "--object-store-manager-name",
     required=False,
     type=str,
-    help="the object store manager's name")
+    help="the object store manager's name",
+)
 parser.add_argument(
     "--local-scheduler-name",
     required=False,
     type=str,
-    help="the local scheduler's name")
+    help="the local scheduler's name",
+)
 parser.add_argument(
-    "--raylet-name", required=False, type=str, help="the raylet's name")
+    "--raylet-name",
+    required=False,
+    type=str,
+    help="the raylet's name",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -52,7 +62,10 @@ if __name__ == "__main__":
     }
 
     ray.worker.connect(
-        info, mode=ray.WORKER_MODE, use_raylet=(args.raylet_name is not None))
+        info,
+        mode=ray.WORKER_MODE,
+        use_raylet=(args.raylet_name is not None),
+    )
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
@@ -72,7 +85,8 @@ if __name__ == "__main__":
         # Create a Redis client.
         redis_client = ray.services.create_redis_client(args.redis_address)
         ray.utils.push_error_to_driver(
-            redis_client, "worker_crash", traceback_str, driver_id=None)
+            redis_client, "worker_crash", traceback_str, driver_id=None
+        )
         # TODO(rkn): Note that if the worker was in the middle of executing
         # a task, then any worker or driver that is blocking in a get call
         # and waiting for the output of that task will hang. We need to

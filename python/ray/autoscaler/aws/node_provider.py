@@ -15,7 +15,8 @@ class AWSNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
         self.ec2 = boto3.resource(
-            "ec2", region_name=provider_config["region"], config=config)
+            "ec2", region_name=provider_config["region"], config=config
+        )
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -91,26 +92,31 @@ class AWSNodeProvider(NodeProvider):
 
     def create_node(self, node_config, tags, count):
         conf = node_config.copy()
-        tag_pairs = [{
-            "Key": TAG_RAY_CLUSTER_NAME,
-            "Value": self.cluster_name,
-        }]
+        tag_pairs = [
+            {
+                "Key": TAG_RAY_CLUSTER_NAME,
+                "Value": self.cluster_name,
+            }
+        ]
         for k, v in tags.items():
             tag_pairs.append({
                 "Key": k,
                 "Value": v,
             })
-        conf.update({
-            "MinCount":
-            1,
-            "MaxCount":
-            count,
-            "TagSpecifications":
-            conf.get("TagSpecifications", []) + [{
-                "ResourceType": "instance",
-                "Tags": tag_pairs,
-            }]
-        })
+        conf.update(
+            {
+                "MinCount":
+                1,
+                "MaxCount":
+                count,
+                "TagSpecifications":
+                conf.get("TagSpecifications", []) +
+                [{
+                    "ResourceType": "instance",
+                    "Tags": tag_pairs,
+                }]
+            }
+        )
         self.ec2.create_instances(**conf)
 
     def terminate_node(self, node_id):

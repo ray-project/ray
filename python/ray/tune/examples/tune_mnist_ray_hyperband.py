@@ -110,7 +110,8 @@ def conv2d(x, W):
 def max_pool_2x2(x):
     """max_pool_2x2 downsamples a feature map by 2X."""
     return tf.nn.max_pool(
-        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME'
+    )
 
 
 def weight_variable(shape):
@@ -137,7 +138,8 @@ class TrainMNIST(Trainable):
         for _ in range(10):
             try:
                 self.mnist = input_data.read_data_sets(
-                    "/tmp/mnist_ray_demo", one_hot=True)
+                    "/tmp/mnist_ray_demo", one_hot=True
+                )
                 break
             except Exception as e:
                 print("Error loading data, retrying", e)
@@ -155,18 +157,20 @@ class TrainMNIST(Trainable):
 
         with tf.name_scope('loss'):
             cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-                labels=self.y_, logits=y_conv)
+                labels=self.y_, logits=y_conv
+            )
         cross_entropy = tf.reduce_mean(cross_entropy)
 
         with tf.name_scope('adam_optimizer'):
-            train_step = tf.train.AdamOptimizer(
-                self.config['learning_rate']).minimize(cross_entropy)
+            train_step = tf.train.AdamOptimizer(self.config['learning_rate']
+                                                ).minimize(cross_entropy)
 
         self.train_step = train_step
 
         with tf.name_scope('accuracy'):
             correct_prediction = tf.equal(
-                tf.argmax(y_conv, 1), tf.argmax(self.y_, 1))
+                tf.argmax(y_conv, 1), tf.argmax(self.y_, 1)
+            )
             correct_prediction = tf.cast(correct_prediction, tf.float32)
         self.accuracy = tf.reduce_mean(correct_prediction)
 
@@ -184,7 +188,8 @@ class TrainMNIST(Trainable):
                     self.x: batch[0],
                     self.y_: batch[1],
                     self.keep_prob: 0.5
-                })
+                }
+            )
 
         batch = self.mnist.train.next_batch(50)
         train_accuracy = self.sess.run(
@@ -193,15 +198,18 @@ class TrainMNIST(Trainable):
                 self.x: batch[0],
                 self.y_: batch[1],
                 self.keep_prob: 1.0
-            })
+            }
+        )
 
         self.iterations += 1
         return TrainingResult(
-            timesteps_this_iter=10, mean_accuracy=train_accuracy)
+            timesteps_this_iter=10, mean_accuracy=train_accuracy
+        )
 
     def _save(self, checkpoint_dir):
         return self.saver.save(
-            self.sess, checkpoint_dir + "/save", global_step=self.iterations)
+            self.sess, checkpoint_dir + "/save", global_step=self.iterations
+        )
 
     def _restore(self, path):
         return self.saver.restore(self.sess, path)
@@ -211,7 +219,10 @@ class TrainMNIST(Trainable):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--smoke-test', action='store_true', help='Finish quickly for testing')
+        '--smoke-test',
+        action='store_true',
+        help='Finish quickly for testing',
+    )
     args, _ = parser.parse_known_args()
 
     register_trainable("my_class", TrainMNIST)
@@ -234,6 +245,7 @@ if __name__ == '__main__':
 
     ray.init()
     hyperband = HyperBandScheduler(
-        time_attr="timesteps_total", reward_attr="mean_accuracy", max_t=100)
+        time_attr="timesteps_total", reward_attr="mean_accuracy", max_t=100
+    )
 
     run_experiments({'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)

@@ -35,13 +35,15 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             halving rate, specified by the reduction factor.
     """
 
-    def __init__(self,
-                 time_attr='training_iteration',
-                 reward_attr='episode_reward_mean',
-                 max_t=100,
-                 grace_period=10,
-                 reduction_factor=3,
-                 brackets=3):
+    def __init__(
+        self,
+        time_attr='training_iteration',
+        reward_attr='episode_reward_mean',
+        max_t=100,
+        grace_period=10,
+        reduction_factor=3,
+        brackets=3
+    ):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert max_t >= grace_period, "grace_period must be <= max_t!"
         assert grace_period > 0, "grace_period must be positive!"
@@ -76,16 +78,20 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             action = TrialScheduler.STOP
         else:
             bracket = self._trial_info[trial.trial_id]
-            action = bracket.on_result(trial, getattr(result, self._time_attr),
-                                       getattr(result, self._reward_attr))
+            action = bracket.on_result(
+                trial, getattr(result, self._time_attr),
+                getattr(result, self._reward_attr)
+            )
         if action == TrialScheduler.STOP:
             self._num_stopped += 1
         return action
 
     def on_trial_complete(self, trial_runner, trial, result):
         bracket = self._trial_info[trial.trial_id]
-        bracket.on_result(trial, getattr(result, self._time_attr),
-                          getattr(result, self._reward_attr))
+        bracket.on_result(
+            trial, getattr(result, self._time_attr),
+            getattr(result, self._reward_attr)
+        )
         del self._trial_info[trial.trial_id]
 
     def on_trial_remove(self, trial_runner, trial):
@@ -115,8 +121,9 @@ class _Bracket():
     def __init__(self, min_t, max_t, reduction_factor, s):
         self.rf = reduction_factor
         MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
-        self._rungs = [(min_t * self.rf**(k + s), {})
-                       for k in reversed(range(MAX_RUNGS))]
+        self._rungs = [
+            (min_t * self.rf**(k + s), {}) for k in reversed(range(MAX_RUNGS))
+        ]
 
     def cutoff(self, recorded):
         if not recorded:
@@ -133,24 +140,29 @@ class _Bracket():
                 if cutoff is not None and cur_rew < cutoff:
                     action = TrialScheduler.STOP
                 if cur_rew is None:
-                    print("Reward attribute is None! Consider"
-                          " reporting using a different field.")
+                    print(
+                        "Reward attribute is None! Consider"
+                        " reporting using a different field."
+                    )
                 else:
                     recorded[trial.trial_id] = cur_rew
                 break
         return action
 
     def debug_str(self):
-        iters = " | ".join([
-            "Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))
-            for milestone, recorded in self._rungs
-        ])
+        iters = " | ".join(
+            [
+                "Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))
+                for milestone, recorded in self._rungs
+            ]
+        )
         return "Bracket: " + iters
 
 
 if __name__ == '__main__':
     sched = AsyncHyperBandScheduler(
-        grace_period=1, max_t=10, reduction_factor=2)
+        grace_period=1, max_t=10, reduction_factor=2
+    )
     print(sched.debug_string())
     bracket = sched._brackets[0]
     print(bracket.cutoff({str(i): i for i in range(20)}))

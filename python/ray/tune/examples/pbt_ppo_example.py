@@ -42,7 +42,8 @@ if __name__ == "__main__":
             "sgd_batchsize": lambda: random.randint(128, 16384),
             "timesteps_per_batch": lambda: random.randint(2000, 160000),
         },
-        custom_explore_fn=explore)
+        custom_explore_fn=explore
+    )
 
     ray.init()
     run_experiments(
@@ -73,8 +74,9 @@ if __name__ == "__main__":
                     "sgd_batchsize":
                     lambda spec: random.choice([128, 512, 2048]),
                     "timesteps_per_batch":
-                    lambda spec: random.choice([10000, 20000, 40000])
+                    lambda spec: random.choice([10000, 20000, 40000]),
                 },
             },
         },
-        scheduler=pbt)
+        scheduler=pbt
+    )

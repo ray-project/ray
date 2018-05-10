@@ -17,12 +17,14 @@ def f(config, reporter):
 if __name__ == "__main__":
     ray.init()
     register_trainable("my_class", f)
-    run_experiments({
-        "test": {
-            "run": "my_class",
-            "stop": {
-                "training_iteration": 1
+    run_experiments(
+        {
+            "test": {
+                "run": "my_class",
+                "stop": {
+                    "training_iteration": 1
+                }
             }
         }
-    })
+    )
     assert 'ray.rllib' not in sys.modules, "RLlib should not be imported"

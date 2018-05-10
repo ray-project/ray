@@ -23,21 +23,27 @@ def dockerize_if_needed(config):
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
     config["setup_commands"] = (
         docker_install_cmds() + docker_start_cmds(
-            config["auth"]["ssh_user"], docker_image, docker_mounts, cname) +
-        with_docker_exec(config["setup_commands"], container_name=cname))
+            config["auth"]["ssh_user"], docker_image, docker_mounts, cname
+        ) + with_docker_exec(config["setup_commands"], container_name=cname)
+    )
 
     config["head_setup_commands"] = with_docker_exec(
-        config["head_setup_commands"], container_name=cname)
+        config["head_setup_commands"], container_name=cname
+    )
     config["head_start_ray_commands"] = (
         docker_autoscaler_setup(cname) + with_docker_exec(
-            config["head_start_ray_commands"], container_name=cname))
+            config["head_start_ray_commands"], container_name=cname
+        )
+    )
 
     config["worker_setup_commands"] = with_docker_exec(
-        config["worker_setup_commands"], container_name=cname)
+        config["worker_setup_commands"], container_name=cname
+    )
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"],
         container_name=cname,
-        env_vars=["RAY_HEAD_IP"])
+        env_vars=["RAY_HEAD_IP"]
+    )
 
     return config
 
@@ -46,10 +52,12 @@ def with_docker_exec(cmds, container_name, env_vars=None):
     env_str = ""
     if env_vars:
         env_str = " ".join(
-            ["-e {env}=${env}".format(env=env) for env in env_vars])
+            ["-e {env}=${env}".format(env=env) for env in env_vars]
+        )
     return [
-        "docker exec {} {} /bin/sh -c {} ".format(env_str, container_name,
-                                                  quote(cmd)) for cmd in cmds
+        "docker exec {} {} /bin/sh -c {} ".format(
+            env_str, container_name, quote(cmd)
+        ) for cmd in cmds
     ]
 
 
@@ -61,10 +69,12 @@ def docker_install_cmds():
 
 
 def aptwait_cmd():
-    return ("while sudo fuser"
-            " /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock"
-            " >/dev/null 2>&1; "
-            "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
+    return (
+        "while sudo fuser"
+        " /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock"
+        " >/dev/null 2>&1; "
+        "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done"
+    )
 
 
 def docker_start_cmds(user, image, mount, cname):
@@ -77,17 +87,21 @@ def docker_start_cmds(user, image, mount, cname):
 
     # create flags
     # ports for the redis, object manager, and tune client
-    port_flags = " ".join([
-        "-p {port}:{port}".format(port=port)
-        for port in ["6379", "8076", "4321"]
-    ])
+    port_flags = " ".join(
+        [
+            "-p {port}:{port}".format(port=port)
+            for port in ["6379", "8076", "4321"]
+        ]
+    )
     mount_flags = " ".join(
-        ["-v {src}:{dest}".format(src=k, dest=v) for k, v in mount.items()])
+        ["-v {src}:{dest}".format(src=k, dest=v) for k, v in mount.items()]
+    )
 
     # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
     env_flags = " ".join(
-        ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
+        ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()]
+    )
 
     # docker run command
     docker_run = [
@@ -108,10 +122,15 @@ def docker_autoscaler_setup(cname):
     for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
         # needed because docker doesn't allow relative paths
         base_path = os.path.basename(path)
-        cmds.append("docker cp {path} {cname}:{dpath}".format(
-            path=path, dpath=base_path, cname=cname))
+        cmds.append(
+            "docker cp {path} {cname}:{dpath}".format(
+                path=path, dpath=base_path, cname=cname
+            )
+        )
         cmds.extend(
             with_docker_exec(
                 ["cp {} {}".format("/" + base_path, path)],
-                container_name=cname))
+                container_name=cname
+            )
+        )
     return cmds

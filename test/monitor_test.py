@@ -15,13 +15,15 @@ from ray.test.test_utils import run_and_get_output
 
 class MonitorTest(unittest.TestCase):
     def _testCleanupOnDriverExit(self, num_redis_shards):
-        stdout = run_and_get_output([
-            "ray",
-            "start",
-            "--head",
-            "--num-redis-shards",
-            str(num_redis_shards),
-        ])
+        stdout = run_and_get_output(
+            [
+                "ray",
+                "start",
+                "--head",
+                "--num-redis-shards",
+                str(num_redis_shards),
+            ]
+        )
         lines = [m.strip() for m in stdout.split("\n")]
         init_cmd = [m for m in lines if m.startswith("ray.init")]
         self.assertEqual(1, len(init_cmd))
@@ -86,13 +88,15 @@ class MonitorTest(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
-        "Failing with the new GCS API.")
+        "Failing with the new GCS API."
+    )
     def testCleanupOnDriverExitSingleRedisShard(self):
         self._testCleanupOnDriverExit(num_redis_shards=1)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
-        "Hanging with the new GCS API.")
+        "Hanging with the new GCS API."
+    )
     def testCleanupOnDriverExitManyRedisShards(self):
         self._testCleanupOnDriverExit(num_redis_shards=5)
         self._testCleanupOnDriverExit(num_redis_shards=31)

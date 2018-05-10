@@ -18,8 +18,10 @@ def make_linear_network(w_name=None, b_name=None):
     b = tf.Variable(tf.zeros([1]), name=b_name)
     y = w * x_data + b
     # Return the loss and weight initializer.
-    return (tf.reduce_mean(tf.square(y - y_data)),
-            tf.global_variables_initializer(), x_data, y_data)
+    return (
+        tf.reduce_mean(tf.square(y - y_data)),
+        tf.global_variables_initializer(), x_data, y_data
+    )
 
 
 class LossActor(object):
@@ -32,7 +34,10 @@ class LossActor(object):
             sess = tf.Session()
             # Additional code for setting and getting the weights.
             weights = ray.experimental.TensorFlowVariables(
-                loss if use_loss else None, sess, input_variables=var)
+                loss if use_loss else None,
+                sess,
+                input_variables=var,
+            )
         # Return all of the data needed to use the network.
         self.values = [weights, init, sess]
         sess.run(init)
@@ -78,7 +83,8 @@ class TrainActor(object):
             grads = optimizer.compute_gradients(loss)
             train = optimizer.apply_gradients(grads)
         self.values = [
-            loss, variables, init, sess, grads, train, [x_data, y_data]
+            loss, variables, init, sess, grads, train,
+            [x_data, y_data]
         ]
         sess.run(init)
 
@@ -87,7 +93,8 @@ class TrainActor(object):
         variables.set_weights(weights)
         return sess.run(
             [grad[0] for grad in grads],
-            feed_dict=dict(zip(placeholders, [[1] * 100, [2] * 100])))
+            feed_dict=dict(zip(placeholders, [[1] * 100, [2] * 100]))
+        )
 
     def get_weights(self):
         return self.values[1].get_weights()
@@ -213,7 +220,8 @@ class TensorFlowTest(unittest.TestCase):
         weights2 = ray.get(net2.get_weights.remote())
 
         new_weights2 = ray.get(
-            net2.set_and_get_weights.remote(net2.get_weights.remote()))
+            net2.set_and_get_weights.remote(net2.get_weights.remote())
+        )
         self.assertEqual(weights2, new_weights2)
 
     def testVariablesControlDependencies(self):
@@ -244,13 +252,16 @@ class TensorFlowTest(unittest.TestCase):
         loss, variables, _, sess, grads, train, placeholders = net_values
 
         before_acc = sess.run(
-            loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100])))
+            loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100]))
+        )
 
         for _ in range(3):
-            gradients_list = ray.get([
-                net.training_step.remote(variables.get_weights())
-                for _ in range(2)
-            ])
+            gradients_list = ray.get(
+                [
+                    net.training_step.remote(variables.get_weights())
+                    for _ in range(2)
+                ]
+            )
             mean_grads = [
                 sum([gradients[i]
                      for gradients in gradients_list]) / len(gradients_list)
@@ -262,7 +273,8 @@ class TensorFlowTest(unittest.TestCase):
             }
             sess.run(train, feed_dict=feed_dict)
         after_acc = sess.run(
-            loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100])))
+            loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100]))
+        )
         self.assertTrue(before_acc < after_acc)
 
 

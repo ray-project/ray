@@ -14,18 +14,20 @@ def random_name():
     return str(random.randint(0, 99999999))
 
 
-def start_local_scheduler(plasma_store_name,
-                          plasma_manager_name=None,
-                          worker_path=None,
-                          plasma_address=None,
-                          node_ip_address="127.0.0.1",
-                          redis_address=None,
-                          use_valgrind=False,
-                          use_profiler=False,
-                          stdout_file=None,
-                          stderr_file=None,
-                          static_resources=None,
-                          num_workers=0):
+def start_local_scheduler(
+    plasma_store_name,
+    plasma_manager_name=None,
+    worker_path=None,
+    plasma_address=None,
+    node_ip_address="127.0.0.1",
+    redis_address=None,
+    use_valgrind=False,
+    use_profiler=False,
+    stdout_file=None,
+    stderr_file=None,
+    static_resources=None,
+    num_workers=0
+):
     """Start a local scheduler process.
 
     Args:
@@ -63,14 +65,17 @@ def start_local_scheduler(plasma_store_name,
             the local scheduler process.
     """
     if (plasma_manager_name is None) != (redis_address is None):
-        raise Exception("If one of the plasma_manager_name and the "
-                        "redis_address is provided, then both must be "
-                        "provided.")
+        raise Exception(
+            "If one of the plasma_manager_name and the "
+            "redis_address is provided, then both must be "
+            "provided."
+        )
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
     local_scheduler_executable = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "../core/src/local_scheduler/local_scheduler")
+        "../core/src/local_scheduler/local_scheduler"
+    )
     local_scheduler_name = "/tmp/scheduler{}".format(random_name())
     command = [
         local_scheduler_executable, "-s", local_scheduler_name, "-p",
@@ -83,16 +88,17 @@ def start_local_scheduler(plasma_store_name,
         assert plasma_store_name is not None
         assert plasma_manager_name is not None
         assert redis_address is not None
-        start_worker_command = ("{} {} "
-                                "--node-ip-address={} "
-                                "--object-store-name={} "
-                                "--object-store-manager-name={} "
-                                "--local-scheduler-name={} "
-                                "--redis-address={}".format(
-                                    sys.executable, worker_path,
-                                    node_ip_address, plasma_store_name,
-                                    plasma_manager_name, local_scheduler_name,
-                                    redis_address))
+        start_worker_command = (
+            "{} {} "
+            "--node-ip-address={} "
+            "--object-store-name={} "
+            "--object-store-manager-name={} "
+            "--local-scheduler-name={} "
+            "--redis-address={}".format(
+                sys.executable, worker_path, node_ip_address, plasma_store_name,
+                plasma_manager_name, local_scheduler_name, redis_address
+            )
+        )
         command += ["-w", start_worker_command]
     if redis_address is not None:
         command += ["-r", redis_address]
@@ -101,12 +107,16 @@ def start_local_scheduler(plasma_store_name,
     if static_resources is not None:
         resource_argument = ""
         for resource_name, resource_quantity in static_resources.items():
-            assert (isinstance(resource_quantity, int)
-                    or isinstance(resource_quantity, float))
-        resource_argument = ",".join([
-            resource_name + "," + str(resource_quantity)
-            for resource_name, resource_quantity in static_resources.items()
-        ])
+            assert (
+                isinstance(resource_quantity, int)
+                or isinstance(resource_quantity, float)
+            )
+        resource_argument = ",".join(
+            [
+                resource_name + "," + str(resource_quantity)
+                for resource_name, resource_quantity in static_resources.items()
+            ]
+        )
     else:
         resource_argument = "CPU,{}".format(psutil.cpu_count())
     command += ["-c", resource_argument]
@@ -119,13 +129,15 @@ def start_local_scheduler(plasma_store_name,
                 "--error-exitcode=1"
             ] + command,
             stdout=stdout_file,
-            stderr=stderr_file)
+            stderr=stderr_file
+        )
         time.sleep(1.0)
     elif use_profiler:
         pid = subprocess.Popen(
             ["valgrind", "--tool=callgrind"] + command,
             stdout=stdout_file,
-            stderr=stderr_file)
+            stderr=stderr_file
+        )
         time.sleep(1.0)
     else:
         pid = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)

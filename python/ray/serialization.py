@@ -27,32 +27,40 @@ def check_serializable(cls):
         # This case works.
         return
     if not hasattr(cls, "__new__"):
-        print("The class {} does not have a '__new__' attribute and is "
-              "probably an old-stye class. Please make it a new-style class "
-              "by inheriting from 'object'.")
-        raise RayNotDictionarySerializable("The class {} does not have a "
-                                           "'__new__' attribute and is "
-                                           "probably an old-style class. We "
-                                           "do not support this. Please make "
-                                           "it a new-style class by "
-                                           "inheriting from 'object'."
-                                           .format(cls))
+        print(
+            "The class {} does not have a '__new__' attribute and is "
+            "probably an old-stye class. Please make it a new-style class "
+            "by inheriting from 'object'."
+        )
+        raise RayNotDictionarySerializable(
+            "The class {} does not have a "
+            "'__new__' attribute and is "
+            "probably an old-style class. We "
+            "do not support this. Please make "
+            "it a new-style class by "
+            "inheriting from 'object'.".format(cls)
+        )
     try:
         obj = cls.__new__(cls)
     except Exception:
-        raise RayNotDictionarySerializable("The class {} has overridden "
-                                           "'__new__', so Ray may not be able "
-                                           "to serialize it efficiently."
-                                           .format(cls))
+        raise RayNotDictionarySerializable(
+            "The class {} has overridden "
+            "'__new__', so Ray may not be able "
+            "to serialize it efficiently.".format(cls)
+        )
     if not hasattr(obj, "__dict__"):
-        raise RayNotDictionarySerializable("Objects of the class {} do not "
-                                           "have a '__dict__' attribute, so "
-                                           "Ray cannot serialize it "
-                                           "efficiently.".format(cls))
+        raise RayNotDictionarySerializable(
+            "Objects of the class {} do not "
+            "have a '__dict__' attribute, so "
+            "Ray cannot serialize it "
+            "efficiently.".format(cls)
+        )
     if hasattr(obj, "__slots__"):
-        raise RayNotDictionarySerializable("The class {} uses '__slots__', so "
-                                           "Ray may not be able to serialize "
-                                           "it efficiently.".format(cls))
+        raise RayNotDictionarySerializable(
+            "The class {} uses '__slots__', so "
+            "Ray may not be able to serialize "
+            "it efficiently.".format(cls)
+        )
 
 
 def is_named_tuple(cls):
