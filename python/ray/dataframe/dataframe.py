@@ -2359,18 +2359,17 @@ class DataFrame(object):
         Returns:
             A generator that iterates over the columns of the frame.
         """
-        iters = ray.get([_deploy_func.remote(
-            lambda df: list(df.items()), part)
-            for part in self._row_partitions])
+        def items_helper(part, i):
+            df = ray.get(part)
+            df.columns = self._col_metadata.partition_series(i).index
+            df.index = self.index
+            return df.items()
 
-        def concat_iters(iterables):
-            for partitions in enumerate(zip(*iterables)):
-                series = pd.concat([_series for _, _series in partitions[1]])
-                series.index = self.index
-                series.name = list(self.columns)[partitions[0]]
-                yield (series.name, series)
+        partition_iterator = PartitionIterator(self._col_partitions,
+                                               items_helper)
 
-        return concat_iters(iters)
+        for v in partition_iterator:
+            yield v
 
     def iteritems(self):
         """Iterator over (column name, Series) pairs.
@@ -2399,24 +2398,17 @@ class DataFrame(object):
         Returns:
             A tuple representing row data. See args for varying tuples.
         """
-        iters = ray.get([
-            _deploy_func.remote(
-                lambda df: list(df.itertuples(index=index, name=name)),
-                part) for part in self._row_partitions])
-        iters = itertools.chain.from_iterable(iters)
+        def itertuples_helper(part, i):
+            df = ray.get(part)
+            df.columns = self.columns
+            df.index = self._row_metadata.partition_series(i).index
+            return df.itertuples(index=index, name=name)
 
-        def _replace_index(row_tuple, idx):
-            # We need to use try-except here because
-            # isinstance(row_tuple, namedtuple) won't work.
-            try:
-                row_tuple = row_tuple._replace(Index=idx)
-            except AttributeError:  # Tuple not namedtuple
-                row_tuple = (idx,) + row_tuple[1:]
-            return row_tuple
+        partition_iterator = PartitionIterator(self._row_partitions,
+                                               itertuples_helper)
 
-        if index:
-            iters = itertools.starmap(_replace_index, zip(iters, self.index))
-        return iters
+        for v in partition_iterator:
+            yield v
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
