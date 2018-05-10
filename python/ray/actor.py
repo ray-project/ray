@@ -471,7 +471,6 @@ def export_actor(actor_id, class_id, class_name, actor_method_names,
             quantity of that resource required by the actor.
         actor_method_cpus: The number of CPUs required by actor methods.
     """
-    ray.worker.check_main_thread()
     if worker.mode is None:
         raise Exception("Actors cannot be created before Ray has been "
                         "started. You can start Ray with 'ray.init()'.")
@@ -787,7 +786,6 @@ class ActorHandle(object):
                 method.
         """
         ray.worker.check_connected()
-        ray.worker.check_main_thread()
         function_signature = self._ray_method_signatures[method_name]
         if args is None:
             args = []
@@ -947,7 +945,6 @@ class ActorHandle(object):
                 the actor handle and false if it is being called by pickling.
         """
         ray.worker.check_connected()
-        ray.worker.check_main_thread()
 
         if state["ray_forking"]:
             actor_handle_id = compute_actor_handle_id(
