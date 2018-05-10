@@ -44,7 +44,6 @@ from .utils import (
     _match_partitioning,
     _concat_index,
     _correct_column_dtypes)
-from .csv_formatter import CSVFormatter
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 
@@ -1847,7 +1846,8 @@ class DataFrame(object):
         columns = columns_copy.columns
 
         if inplace:
-            self._update_inplace(row_partitions=new_rows, columns=columns)
+            self._update_inplace(row_partitions=new_rows, columns=columns,
+                                 index=self.index)
         else:
             return DataFrame(columns=columns, row_partitions=new_rows)
 
@@ -2332,18 +2332,31 @@ class DataFrame(object):
         # Deploy insert function to specific column partition, and replace that
         # column
         def insert_col_part(df):
-            df.insert(index_within_partition, column, value, allow_duplicates)
+            if isinstance(value, pd.Series) and \
+                    isinstance(value.dtype,
+                               pd.core.dtypes.dtypes.DatetimeTZDtype):
+                # Need to set index to index of this dtype or inserted values
+                # become NaT
+                df.index = value
+                df.insert(index_within_partition, column,
+                          value, allow_duplicates)
+                df.index = pd.RangeIndex(0, len(df))
+            else:
+                df.insert(index_within_partition, column,
+                          value, allow_duplicates)
             return df
 
         new_obj = _deploy_func.remote(insert_col_part,
                                       self._col_partitions[partition])
+
         new_cols = [self._col_partitions[i]
                     if i != partition
                     else new_obj
                     for i in range(len(self._col_partitions))]
         new_col_names = self.columns.insert(loc, column)
 
-        self._update_inplace(col_partitions=new_cols, columns=new_col_names)
+        self._update_inplace(col_partitions=new_cols, columns=new_col_names,
+                             index=self.index)
 
     def interpolate(self, method='linear', axis=0, limit=None, inplace=False,
                     limit_direction='forward', downcast=None, **kwargs):
@@ -3244,7 +3257,7 @@ class DataFrame(object):
                                    self._row_partitions)
 
         if inplace:
-            self._update_inplace(row_partitions=new_rows)
+            self._update_inplace(row_partitions=new_rows, index=self.index)
         else:
             return DataFrame(row_partitions=new_rows,
                              col_metadata=self._col_metadata)
@@ -4210,7 +4223,7 @@ class DataFrame(object):
                tupleize_cols=None, date_format=None, doublequote=True,
                escapechar=None, decimal="."):
 
-        kwargs = dict( 
+        kwargs = dict(
                 path_or_buf=path_or_buf, sep=sep, na_rep=na_rep,
                 float_format=float_format, columns=columns, header=header,
                 index=index, index_label=index_label, mode=mode,
@@ -4248,7 +4261,7 @@ class DataFrame(object):
         csv_str_ids = _map_partitions(
                 get_csv_str, self._row_partitions, idx_args,
                 [columns_id] * len(self._row_partitions),
-                [header] + [False]  * (len(self._row_partitions) - 1),
+                [header] + [False] * (len(self._row_partitions) - 1),
                 [remote_kwargs_id] * len(self._row_partitions))
 
         if path_or_buf is None:
@@ -4719,9 +4732,13 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-            indices_for_rows = \
-                [i for i, item in enumerate(self.columns)
-                 if item in set(columns)]
+            column_indices = {item: i for i, item in enumerate(self.columns)}
+            indices_for_rows = [column_indices[column] for column in columns]
+
+            def get_columns_partition(df):
+                result = df.__getitem__(indices_for_rows),
+                result.columns = pd.RangeIndex(0, len(result.columns))
+                return result
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
