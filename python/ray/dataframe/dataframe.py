@@ -4528,7 +4528,7 @@ class DataFrame(object):
             raise NotImplementedError("Multilevel Index not yet supported on "
                                       "Pandas on Ray.")
 
-        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None else 0
+        axis = self._get_axis_number(axis) if axis is not None else 0
 
         cond = cond(self) if callable(cond) else cond
 
