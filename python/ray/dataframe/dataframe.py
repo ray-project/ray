@@ -46,6 +46,7 @@ from .utils import (
     _correct_column_dtypes)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
+from .iterator import PartitionIterator
 
 
 @_inherit_docstrings(pd.DataFrame)
@@ -2328,32 +2329,30 @@ class DataFrame(object):
         """Iterate over DataFrame rows as (index, Series) pairs.
 
         Note:
-            Generators can't be pickeled so from the remote function
+            Generators can't be pickled so from the remote function
             we expand the generator into a list before getting it.
             This is not that ideal.
 
         Returns:
             A generator that iterates over the rows of the frame.
         """
-        def update_iterrow(series, i):
-            """Helper function to correct the columns + name of the Series."""
-            series.index = self.columns
-            series.name = list(self.index)[i]
-            return series
+        def iterrow_helper(part, i):
+            df = ray.get(part)
+            df.columns = self.columns
+            df.index = self._row_metadata.partition_series(i).index
+            return df.iterrows()
 
-        iters = ray.get([_deploy_func.remote(
-            lambda df: list(df.iterrows()), part)
-            for part in self._row_partitions])
-        iters = itertools.chain.from_iterable(iters)
-        series = map(lambda s: update_iterrow(s[1][1], s[0]), enumerate(iters))
+        partition_iterator = PartitionIterator(self._row_partitions,
+                                               iterrow_helper)
 
-        return zip(self.index, series)
+        for v in partition_iterator:
+            yield v
 
     def items(self):
         """Iterator over (column name, Series) pairs.
 
         Note:
-            Generators can't be pickeled so from the remote function
+            Generators can't be pickled so from the remote function
             we expand the generator into a list before getting it.
             This is not that ideal.
 
@@ -2393,7 +2392,7 @@ class DataFrame(object):
             name (string, default "Pandas"): The name of the returned
             namedtuples or None to return regular tuples.
         Note:
-            Generators can't be pickeled so from the remote function
+            Generators can't be pickled so from the remote function
             we expand the generator into a list before getting it.
             This is not that ideal.
 
