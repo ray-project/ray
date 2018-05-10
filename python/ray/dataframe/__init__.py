@@ -10,7 +10,6 @@ from pandas import (eval, unique, value_counts, cut, to_numeric, factorize,
                     CategoricalIndex, Series, bdate_range, DatetimeIndex,
                     Timedelta, Timestamp, to_timedelta, set_eng_float_format,
                     set_option, NaT, PeriodIndex, Categorical)
-import sys
 import threading
 
 pd_version = pd.__version__
