@@ -1563,7 +1563,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the Divide applied.
         """
-        return self._operator_helper(pd.DataFrame.add, other, axis, level,
+        return self._operator_helper(pd.DataFrame.div, other, axis, level,
                                      fill_value)
 
     def divide(self, other, axis='columns', level=None, fill_value=None):
@@ -3991,7 +3991,7 @@ class DataFrame(object):
                 self._col_partitions)
 
             new_columns = self.columns
-            new_index = self.index.sort_values()
+            new_index = self.index.sort_values(ascending=ascending)
             new_row_parts = None
         else:
             columns = self.columns
@@ -3999,7 +3999,7 @@ class DataFrame(object):
                 lambda df: _sort_helper(df, columns, axis, *args),
                 self._row_partitions)
 
-            new_columns = self.columns.sort_values()
+            new_columns = self.columns.sort_values(ascending=ascending)
             new_index = self.index
             new_column_parts = None
 
