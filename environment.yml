@@ -2,40 +2,37 @@ name: ray
 channels:
   - defaults
 dependencies:
-  - bison=3.0.4=h4c80d45_1
-  - bzip2=1.0.6=hd86a083_4
-  - ca-certificates=2018.03.07=0
-  - certifi=2018.4.16=py36_0
-  - cmake=3.9.4=h30c3106_0
-  - curl=7.59.0=ha441bb4_0
-  - cython=0.28.2=py36h1de35cc_0
-  - expat=2.2.5=hb8e80ba_0
-  - flex=2.6.4=hb56bbfa_1
-  - libcurl=7.59.0=hf30b1f0_0
-  - libcxx=4.0.1=h579ed51_0
-  - libcxxabi=4.0.1=hebd6815_0
-  - libedit=3.1=hb4e282d_0
-  - libffi=3.2.1=h475c297_4
-  - libgcc=4.8.5=hdbeacc1_10
-  - libgfortran=3.0.1=h93005f0_2
-  - libiconv=1.15=hdd342a3_7
-  - libssh2=1.8.0=h322a93b_4
-  - libuv=1.20.0=h1de35cc_0
-  - m4=1.4.18=hc7d0c60_0
-  - ncurses=6.0=hd04f020_2
-  - openssl=1.0.2o=h26aff7b_0
-  - pip=10.0.1=py36_0
-  - python=3.6.5=hc167b69_1
-  - readline=7.0=hc1231fa_4
-  - rhash=1.3.5=h3aa0507_1
-  - setuptools=39.1.0=py36_0
-  - six=1.11.0=py36h0e22d5e_1
-  - sqlite=3.23.1=hf1716c9_0
-  - thrift=0.11.0=py36h0a44026_0
-  - tk=8.6.7=h35a86e2_3
-  - wheel=0.31.0=py36_0
-  - xz=5.2.3=h727817e_4
-  - zlib=1.2.11=hf3cbc9b_2
+  - bison=3.0.4
+  - bzip2=1.0.6
+  - ca-certificates
+  - certifi=2018.4.16
+  - cmake=3.9.4
+  - curl=7.59.0
+  - cython=0.28.2
+  - expat=2.2.5
+  - flex=2.6.4
+  - libcurl=7.59.0
+  - libedit=3.1
+  - libffi=3.2.1
+  - libgcc=4.8.5
+  - libiconv=1.15
+  - libssh2=1.8.0
+  - libuv=1.20.0
+  - m4=1.4.18
+  - ncurses=6.0
+  - openssl=1.0.2o
+  - pip=10.0.1
+  - python=3.6.5
+  - readline=7.0
+  - rhash=1.3.5
+  - setuptools=39.1.0
+  - six=1.11.0
+  - sqlite=3.23.1
+  - thrift=0.11.0
+  - tk=8.6.7
+  - wheel=0.31.0
+  - xz=5.2.3
+  - zlib=1.2.11
   - pip:
     - attrs==18.1.0
     - click==6.7
