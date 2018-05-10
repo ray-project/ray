@@ -1,4 +1,7 @@
-class PartitionIterator(object):
+import collections
+
+
+class PartitionIterator(collections.Iterator):
     def __init__(self, partitions, func):
         """PartitionIterator class to define a generator on partitioned data
 
