@@ -34,7 +34,7 @@ class DataFrameGroupBy(object):
             self._index_grouped = pd.Series(self._columns, index=self._index)\
                 .groupby(by=by, sort=sort)
 
-        self._keys_and_values = [(k, np.array(v))
+        self._keys_and_values = [(k, v)
                                  for k, v in self._index_grouped]
 
         self._grouped_partitions = \
@@ -44,7 +44,7 @@ class DataFrameGroupBy(object):
                                              as_index,
                                              sort,
                                              group_keys,
-                                             squeeze) + part,
+                                             squeeze) + tuple(part.tolist()),
                                        num_return_vals=len(self))
                        for part in partitions)))
 
