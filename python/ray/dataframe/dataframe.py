@@ -634,6 +634,9 @@ class DataFrame(object):
         elif isinstance(by, compat.string_types):
             by = self.__getitem__(by).values.tolist()
         elif is_list_like(by):
+            if isinstance(by, pd.Series):
+                by = by.values.tolist()
+
             mismatch = len(by) != len(self) if axis == 0 \
                 else len(by) != len(self.columns)
 
