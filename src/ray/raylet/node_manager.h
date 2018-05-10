@@ -72,10 +72,21 @@ class NodeManager {
   void FinishAssignedTask(std::shared_ptr<Worker> worker);
   /// Schedule tasks.
   void ScheduleTasks();
-  /// Handle a task whose local dependencies were missing and are now available.
-  void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
+  /// Handle a dependency required by a queued task that is missing locally.
+  /// The dependency is (1) on a remote node, (2) pending creation on a remote
+  /// node, or (3) missing from all nodes and requires reconstruction.
+  void HandleRemoteDependencyRequired(const ObjectID &dependency_id);
+  /// Handle a dependency that was previously required by a queued task that is
+  /// no longer required.
+  void HandleRemoteDependencyCanceled(const ObjectID &dependency_id);
+  /// Handle an object becoming local. This updates any local accounting, but
+  /// does not write to any global accounting in the GCS.
+  void HandleObjectLocal(const ObjectID &object_id);
+  /// Handle an object that is no longer local. This updates any local
+  /// accounting, but does not write to any global accounting in the GCS.
+  void HandleObjectMissing(const ObjectID &object_id);
   /// Forward a task to another node to execute. The task is assumed to not be
   /// queued in local_queues_.
   ray::Status ForwardTask(const Task &task, const ClientID &node_id);

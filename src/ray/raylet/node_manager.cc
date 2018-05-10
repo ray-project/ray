@@ -74,10 +74,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); }),
-      task_dependency_manager_(
-          object_manager,
-          // reconstruction_policy_,
-          [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
+      task_dependency_manager_(),
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
                      gcs_client->raylet_task_table(), gcs_client->raylet_task_table()),
       remote_clients_(),
@@ -88,6 +85,13 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
+
+  RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
+    ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+    HandleObjectLocal(object_id);
+  }));
+  RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
+      [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -461,13 +465,6 @@ void NodeManager::ProcessNodeManagerMessage(
   node_manager_client->ProcessMessages();
 }
 
-void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
-  auto ready_tasks = local_queues_.RemoveTasks({task_id});
-  local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
-  // Schedule the newly ready tasks if possible.
-  ScheduleTasks();
-}
-
 void NodeManager::ScheduleTasks() {
   // This method performs the transition of tasks from PENDING to SCHEDULED.
   auto policy_decision = scheduling_policy_.Schedule(
@@ -499,9 +496,11 @@ void NodeManager::ScheduleTasks() {
   }
 
   // Transition locally scheduled tasks to SCHEDULED and dispatch scheduled tasks.
-  std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
-  local_queues_.QueueScheduledTasks(tasks);
-  DispatchTasks();
+  if (local_task_ids.size() > 0) {
+    std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
+    local_queues_.QueueScheduledTasks(tasks);
+    DispatchTasks();
+  }
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage) {
@@ -554,14 +553,48 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 }
 
+void NodeManager::HandleRemoteDependencyRequired(const ObjectID &dependency_id) {
+  // Try to fetch the object from the object manager.
+  object_manager_.Pull(dependency_id);
+  // TODO(swang): Request reconstruction of the object, possibly after a
+  // timeout.
+}
+
+void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) {
+  // Cancel the fetch request from the object manager.
+  object_manager_.Cancel(dependency_id);
+  // TODO(swang): Cancel reconstruction of the object.
+}
+
 void NodeManager::QueueTask(const Task &task) {
-  // Queue the task depending on the availability of its arguments.
-  if (task_dependency_manager_.TaskReady(task)) {
-    local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+  // Mark the task as pending. Once the task has finished execution, or once it
+  // has been forwarded to another node, the task should be canceled in the
+  // TaskDependencyManager.
+  std::vector<ObjectID> objects_to_cancel;
+  task_dependency_manager_.TaskPending(task, objects_to_cancel);
+  // Cancel any remote dependencies that will be fulfilled by the queued task.
+  for (const auto &object_id : objects_to_cancel) {
+    HandleRemoteDependencyCanceled(object_id);
+  }
+
+  // Subscribe to the task's dependencies.
+  const auto dependencies = task.GetDependencies();
+  const auto task_id = task.GetTaskSpecification().TaskId();
+  std::vector<ObjectID> objects_to_request;
+  bool ready = task_dependency_manager_.SubscribeDependencies(task_id, dependencies,
+                                                              objects_to_request);
+  // Request any remote dependencies required by the queued task.
+  for (const auto &object_id : objects_to_request) {
+    HandleRemoteDependencyRequired(object_id);
+  }
+  // Queue the task. If all dependencies are available, then the task is queued
+  // in the READY state, else the WAITING.
+  if (ready) {
+    local_queues_.QueueReadyTasks({task});
+    // Try to schedule the newly ready task.
     ScheduleTasks();
   } else {
-    local_queues_.QueueWaitingTasks(std::vector<Task>({task}));
-    task_dependency_manager_.SubscribeTaskReady(task);
+    local_queues_.QueueWaitingTasks({task});
   }
 }
 
@@ -680,7 +713,7 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
   if (task.GetTaskSpecification().IsActorCreationTask() ||
       task.GetTaskSpecification().IsActorTask()) {
     auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
-    task_dependency_manager_.MarkDependencyReady(dummy_object);
+    HandleObjectLocal(dummy_object);
   }
 
   // Unset the worker's assigned task.
@@ -689,6 +722,38 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
+}
+
+void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
+  const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
+  if (ready_task_ids.size() > 0) {
+    std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
+                                                 ready_task_ids.end());
+    auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
+    local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
+    // Schedule the newly ready tasks if possible.
+    ScheduleTasks();
+  }
+  // The object is local, so we no longer require it to be fetched from a node
+  // or reconstructed.
+  HandleRemoteDependencyCanceled(object_id);
+}
+
+void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
+  // Get any tasks that were in the runnable state that are dependent on this object.
+  const auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(object_id);
+  if (!waiting_task_ids.empty()) {
+    // Transition the tasks back to the waiting state. They will be made
+    // runnable once the deleted object becomes available again.
+    std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
+                                                   waiting_task_ids.end());
+    auto waiting_tasks = local_queues_.RemoveTasks(waiting_task_id_set);
+    local_queues_.QueueWaitingTasks(std::vector<Task>(waiting_tasks));
+    // There were locally queued tasks that depended on the evicted object.
+    // Request that the dependency be fetched from a remote node or
+    // reconstructed.
+    HandleRemoteDependencyRequired(object_id);
+  }
 }
 
 ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) {
@@ -726,6 +791,18 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
+    // Tell the task dependency manager that we no longer need this task's
+    // object dependencies.
+    std::vector<ObjectID> objects_to_cancel;
+    task_dependency_manager_.UnsubscribeDependencies(task_id, objects_to_cancel);
+    for (const auto &object_id : objects_to_cancel) {
+      HandleRemoteDependencyCanceled(object_id);
+    }
+    std::vector<ObjectID> objects_to_request;
+    task_dependency_manager_.TaskCanceled(task_id, objects_to_request);
+    for (const auto &object_id : objects_to_request) {
+      HandleRemoteDependencyRequired(object_id);
+    }
 
     // Preemptively push any local arguments to the receiving node. For now, we
     // only do this with actor tasks, since actor tasks must be executed by a
