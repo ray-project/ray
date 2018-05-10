@@ -2218,6 +2218,16 @@ class GlobalStateAPI(unittest.TestCase):
         assert len(ray.global_state.object_table()) == 0
         assert len(ray.global_state.task_table()) == 0
 
+        # Run some more tasks.
+        ray.get([f.remote() for _ in range(10)])
+
+        while len(ray.global_state.task_table()) != 0:
+            ray.experimental.flush_finished_tasks_unsafe()
+
+        # Make sure that we can call this method (but it won't do anything in
+        # this test case).
+        ray.experimental.flush_evicted_objects_unsafe()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
