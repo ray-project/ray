@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas.core.groupby
-import numpy as np
 import pandas as pd
 from pandas.core.dtypes.common import is_list_like
 import ray
