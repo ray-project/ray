@@ -72,13 +72,18 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
   int i = 0;
   // For each argument except the last, tell the task dependency manager that
   // the argument is local.
+  std::vector<ObjectID> canceled_objects;
   for (; i < num_arguments - 1; i++) {
-    auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(arguments[i]);
+    auto ready_task_ids =
+        task_dependency_manager_.HandleObjectLocal(arguments[i], canceled_objects);
+    ASSERT_EQ(canceled_objects.size(), i + 1);
     ASSERT_TRUE(ready_task_ids.empty());
   }
   // Tell the task dependency manager that the last argument is local. Now the
   // task should be ready to run.
-  auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(arguments[i]);
+  auto ready_task_ids =
+      task_dependency_manager_.HandleObjectLocal(arguments[i], canceled_objects);
+  ASSERT_EQ(canceled_objects, arguments);
   ASSERT_EQ(ready_task_ids.size(), 1);
   ASSERT_EQ(ready_task_ids.front(), task_id);
 }
@@ -105,15 +110,20 @@ TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
   }
 
   int i = 0;
+  std::vector<ObjectID> canceled_objects;
   // For each argument except the last, tell the task dependency manager that
   // the argument is local.
   for (; i < num_arguments - 1; i++) {
-    auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(arguments[i]);
+    auto ready_task_ids =
+        task_dependency_manager_.HandleObjectLocal(arguments[i], canceled_objects);
+    ASSERT_EQ(canceled_objects.size(), i + 1);
     ASSERT_TRUE(ready_task_ids.empty());
   }
   // Tell the task dependency manager that the last argument is local. Now the
   // task should be ready to run.
-  auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(arguments[i]);
+  auto ready_task_ids =
+      task_dependency_manager_.HandleObjectLocal(arguments[i], canceled_objects);
+  ASSERT_EQ(canceled_objects, arguments);
   ASSERT_EQ(ready_task_ids.size(), 1);
   ASSERT_EQ(ready_task_ids.front(), task_id);
 }
@@ -135,7 +145,11 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
     ASSERT_EQ(remote_objects.front(), argument_id);
   }
   // Tell the task dependency manager that the object is local.
-  auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(argument_id);
+  std::vector<ObjectID> canceled_objects;
+  auto ready_task_ids =
+      task_dependency_manager_.HandleObjectLocal(argument_id, canceled_objects);
+  ASSERT_EQ(canceled_objects.size(), 1);
+  ASSERT_EQ(canceled_objects.front(), argument_id);
   // Check that all tasks are now ready to run.
   ASSERT_EQ(ready_task_ids.size(), dependent_tasks.size());
   for (const auto &task_id : ready_task_ids) {
@@ -188,16 +202,21 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
     task_dependency_manager_.UnsubscribeDependencies(task_id, canceled_objects);
     ASSERT_EQ(canceled_objects, task.GetDependencies());
     // Simulate the object notifications for the task's return values.
-    auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
+    canceled_objects.clear();
+    auto ready_tasks =
+        task_dependency_manager_.HandleObjectLocal(return_id, canceled_objects);
     if (tasks.empty()) {
       // If there are no more tasks, then there should be no more tasks that
       // become ready to run.
       ASSERT_TRUE(ready_tasks.empty());
+      ASSERT_TRUE(canceled_objects.empty());
     } else {
       // If there are more tasks to run, then the next task in the chain should
       // now be ready to run.
       ASSERT_EQ(ready_tasks.size(), 1);
       ASSERT_EQ(ready_tasks.front(), tasks.front().GetTaskSpecification().TaskId());
+      ASSERT_EQ(canceled_objects.size(), 1);
+      ASSERT_EQ(canceled_objects.front(), return_id);
     }
     // Simulate the task finishing execution.
     std::vector<ObjectID> remote_objects;
@@ -258,7 +277,11 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
 
   // Simulate the task executing on a remote node and its return value
   // appearing locally.
-  auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
+  canceled_objects.clear();
+  auto ready_tasks =
+      task_dependency_manager_.HandleObjectLocal(return_id, canceled_objects);
+  ASSERT_EQ(canceled_objects.size(), 1);
+  ASSERT_EQ(canceled_objects.front(), return_id);
   // Check that the task that we kept is now ready to run.
   ASSERT_EQ(ready_tasks.size(), 1);
   ASSERT_EQ(ready_tasks.front(), tasks.back().GetTaskSpecification().TaskId());
@@ -285,7 +308,8 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   // available.
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> ready_tasks;
-    ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i]);
+    std::vector<ObjectID> null;
+    ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i], null);
     if (i == arguments.size() - 1) {
       ASSERT_EQ(ready_tasks.size(), 1);
       ASSERT_EQ(ready_tasks.front(), task_id);
@@ -297,7 +321,9 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   // Simulate each of the arguments getting evicted.
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> waiting_tasks;
-    waiting_tasks = task_dependency_manager_.HandleObjectMissing(arguments[i]);
+    std::vector<ObjectID> remote_objects;
+    waiting_tasks =
+        task_dependency_manager_.HandleObjectMissing(arguments[i], remote_objects);
     if (i == 0) {
       // The first eviction should cause the task to go back to the waiting
       // state.
@@ -308,13 +334,16 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
       // the waiting state.
       ASSERT_TRUE(waiting_tasks.empty());
     }
+    ASSERT_EQ(remote_objects.size(), 1);
+    ASSERT_EQ(remote_objects.front(), arguments[i]);
   }
 
   // Tell the task dependency manager that each of the arguments is available
   // again.
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> ready_tasks;
-    ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i]);
+    std::vector<ObjectID> null;
+    ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i], null);
     if (i == arguments.size() - 1) {
       ASSERT_EQ(ready_tasks.size(), 1);
       ASSERT_EQ(ready_tasks.front(), task_id);

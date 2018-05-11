@@ -742,23 +742,33 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
 }
 
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
-  const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
+  // Notify the task dependency manager that this object is local.
+  std::vector<ObjectID> objects_to_cancel;
+  const auto ready_task_ids =
+      task_dependency_manager_.HandleObjectLocal(object_id, objects_to_cancel);
+  // Transition the tasks whose dependencies are now fulfilled to the ready
+  // state.
   if (ready_task_ids.size() > 0) {
     std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
                                                  ready_task_ids.end());
     auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
     local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
-    // Schedule the newly ready tasks if possible.
+    // Schedule the newly ready tasks.
     ScheduleTasks();
   }
-  // The object is local, so we no longer require it to be fetched from a node
-  // or reconstructed.
-  HandleRemoteDependencyCanceled(object_id);
+  // Cancel remote dependencies.
+  for (const auto &object_id : objects_to_cancel) {
+    HandleRemoteDependencyCanceled(object_id);
+  }
 }
 
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
-  // Get any tasks that were in the runnable state that are dependent on this object.
-  const auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(object_id);
+  // Notify the task dependency manager that this object is no longer local.
+  std::vector<ObjectID> objects_to_request;
+  const auto waiting_task_ids =
+      task_dependency_manager_.HandleObjectMissing(object_id, objects_to_request);
+  // Transition any tasks that were in the runnable state and are dependent on
+  // this object to the waiting state.
   if (!waiting_task_ids.empty()) {
     // Transition the tasks back to the waiting state. They will be made
     // runnable once the deleted object becomes available again.
@@ -766,9 +776,9 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
                                                    waiting_task_ids.end());
     auto waiting_tasks = local_queues_.RemoveTasks(waiting_task_id_set);
     local_queues_.QueueWaitingTasks(std::vector<Task>(waiting_tasks));
-    // There were locally queued tasks that depended on the evicted object.
-    // Request that the dependency be fetched from a remote node or
-    // reconstructed.
+  }
+  // Request any objects that are now necessary for the waiting tasks.
+  for (const auto &object_id : objects_to_request) {
     HandleRemoteDependencyRequired(object_id);
   }
 }

@@ -11,7 +11,7 @@ bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
 }
 
 std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
-    const ray::ObjectID &object_id) {
+    const ray::ObjectID &object_id, std::vector<ObjectID> &canceled_objects) {
   RAY_LOG(DEBUG) << "object ready " << object_id.hex();
   // Add the object to the table of locally available objects.
   auto inserted = local_objects_.insert(object_id);
@@ -32,6 +32,9 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
           ready_task_ids.push_back(dependent_task_id);
         }
       }
+      // The object was required by a subscribed task and is now local.  Notify
+      // the caller that the object is no longer remote.
+      canceled_objects.push_back(object_id);
     }
   }
 
@@ -39,14 +42,15 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
 }
 
 std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
-    const ray::ObjectID &object_id) {
+    const ray::ObjectID &object_id, std::vector<ObjectID> &remote_objects) {
   // Add the object to the table of locally available objects.
   auto erased = local_objects_.erase(object_id);
   RAY_CHECK(erased == 1);
 
   // Find any tasks that are dependent on the missing object.
   std::vector<TaskID> waiting_task_ids;
-  auto creating_task_entry = required_tasks_.find(ComputeTaskId(object_id));
+  TaskID creating_task_id = ComputeTaskId(object_id);
+  auto creating_task_entry = required_tasks_.find(creating_task_id);
   if (creating_task_entry != required_tasks_.end()) {
     auto object_entry = creating_task_entry->second.find(object_id);
     if (object_entry != creating_task_entry->second.end()) {
@@ -59,6 +63,12 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
           waiting_task_ids.push_back(dependent_task_id);
         }
         task_entry.num_missing_dependencies++;
+      }
+      // If the object is required by some task, is no longer local, and the
+      // task that creates it is not pending execution, then the object must be
+      // fetched from a remote node or reconstructed.
+      if (pending_tasks_.count(creating_task_id) == 0) {
+        remote_objects.push_back(object_id);
       }
     }
   }

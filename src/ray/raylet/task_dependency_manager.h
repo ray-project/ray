@@ -87,19 +87,27 @@ class TaskDependencyManager {
   ///
   /// \param object_id The object ID of the object to mark as locally
   /// available.
+  // \param canceled_objects A reference to the objects that are no longer
+  // needed. If the newly local object had a subscribed task that was dependent
+  // on it, then this method will append the object to canceled_objects.
   /// \return A list of task IDs. This contains all subscribed tasks that now
   /// have all of their dependencies fulfilled, once this object was made
   /// local.
-  std::vector<TaskID> HandleObjectLocal(const ray::ObjectID &object_id);
+  std::vector<TaskID> HandleObjectLocal(const ray::ObjectID &object_id,
+                                        std::vector<ObjectID> &canceled_objects);
 
   /// Handle an object that is no longer locally available.
   ///
   /// \param object_id The object ID of the object that was previously locally
   /// available.
+  // \param remote_objects A reference to the objects that are now remote. If
+  // the newly missing object had a subscribed task that was dependent on it,
+  // then this method will append the object to remote_objects.
   /// \return A list of task IDs. This contains all subscribed tasks that
   /// previously had all of their dependencies fulfilled, but are now missing
   /// this object dependency.
-  std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id);
+  std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id,
+                                          std::vector<ObjectID> &remote_objects);
 
  private:
   using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
