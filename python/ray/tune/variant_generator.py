@@ -67,8 +67,7 @@ def generate_trials(unresolved_spec, output_path=''):
                 checkpoint_freq=args.checkpoint_freq,
                 restore_path=spec.get("restore"),
                 upload_dir=args.upload_dir,
-                max_failures=args.max_failures
-            )
+                max_failures=args.max_failures)
 
 
 def generate_variants(unresolved_spec):
@@ -168,15 +167,12 @@ def _generate_variants(spec):
             for path, value in grid_vars:
                 resolved_vars[path] = _get_value(spec, path)
             for k, v in resolved.items():
-                if (
-                    k in resolved_vars and v != resolved_vars[k]
-                    and _is_resolved(resolved_vars[k])
-                ):
+                if (k in resolved_vars and v != resolved_vars[k]
+                        and _is_resolved(resolved_vars[k])):
                     raise ValueError(
                         "The variable `{}` could not be unambiguously "
                         "resolved to a single value. Consider simplifying "
-                        "your variable dependencies.".format(k)
-                    )
+                        "your variable dependencies.".format(k))
                 resolved_vars[k] = v
             yield resolved_vars, spec
 
@@ -259,9 +255,8 @@ def _try_resolve(v):
         grid_values = v["grid_search"]
         if not isinstance(grid_values, list):
             raise TuneError(
-                "Grid search expected list of values, got: {}".
-                format(grid_values)
-            )
+                "Grid search expected list of values, got: {}".format(
+                    grid_values))
         return False, grid_values
     return True, v
 
@@ -293,8 +288,7 @@ class _UnresolvedAccessGuard(dict):
         value = dict.__getattribute__(self, item)
         if not _is_resolved(value):
             raise RecursiveDependencyError(
-                "`{}` recursively depends on {}".format(item, value)
-            )
+                "`{}` recursively depends on {}".format(item, value))
         elif isinstance(value, dict):
             return _UnresolvedAccessGuard(value)
         else:

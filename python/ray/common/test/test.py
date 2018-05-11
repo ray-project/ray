@@ -47,10 +47,8 @@ LIST_SIMPLE_OBJECTS = [[obj] for obj in BASE_SIMPLE_OBJECTS]
 TUPLE_SIMPLE_OBJECTS = [(obj, ) for obj in BASE_SIMPLE_OBJECTS]
 DICT_SIMPLE_OBJECTS = [{(): obj} for obj in BASE_SIMPLE_OBJECTS]
 
-SIMPLE_OBJECTS = (
-    BASE_SIMPLE_OBJECTS + LIST_SIMPLE_OBJECTS + TUPLE_SIMPLE_OBJECTS +
-    DICT_SIMPLE_OBJECTS
-)
+SIMPLE_OBJECTS = (BASE_SIMPLE_OBJECTS + LIST_SIMPLE_OBJECTS +
+                  TUPLE_SIMPLE_OBJECTS + DICT_SIMPLE_OBJECTS)
 
 # Create some complex objects that cannot be serialized by value in tasks.
 
@@ -73,10 +71,8 @@ LIST_COMPLEX_OBJECTS = [[obj] for obj in BASE_COMPLEX_OBJECTS]
 TUPLE_COMPLEX_OBJECTS = [(obj, ) for obj in BASE_COMPLEX_OBJECTS]
 DICT_COMPLEX_OBJECTS = [{(): obj} for obj in BASE_COMPLEX_OBJECTS]
 
-COMPLEX_OBJECTS = (
-    BASE_COMPLEX_OBJECTS + LIST_COMPLEX_OBJECTS + TUPLE_COMPLEX_OBJECTS +
-    DICT_COMPLEX_OBJECTS
-)
+COMPLEX_OBJECTS = (BASE_COMPLEX_OBJECTS + LIST_COMPLEX_OBJECTS +
+                   TUPLE_COMPLEX_OBJECTS + DICT_COMPLEX_OBJECTS)
 
 
 class TestSerialization(unittest.TestCase):
@@ -159,37 +155,21 @@ class TestTask(unittest.TestCase):
         parent_id = random_task_id()
         function_id = random_function_id()
         object_ids = [random_object_id() for _ in range(256)]
-        args_list = [
-            [],
-            1 * [1],
-            10 * [1],
-            100 * [1],
-            1000 * [1],
-            1 * ["a"],
-            10 * ["a"],
-            100 * ["a"],
-            1000 * ["a"],
-            [1, 1.3, 2, 1 << 100, "hi", u"hi", [1, 2]],
-            object_ids[:1],
-            object_ids[:2],
-            object_ids[:3],
-            object_ids[:4],
-            object_ids[:5],
-            object_ids[:10],
-            object_ids[:100],
-            object_ids[:256],
-            [1, object_ids[0]],
-            [object_ids[0], "a"],
-            [1, object_ids[0], "a"],
-            [object_ids[0], 1, object_ids[1], "a"],
-            object_ids[:3] + [1, "hi", 2.3] + object_ids[:5],
-            object_ids + 100 * ["a"] + object_ids,
-        ]
+        args_list = [[], 1 * [1], 10 * [1], 100 * [1], 1000 * [1], 1 * ["a"],
+                     10 * ["a"], 100 * ["a"], 1000 * ["a"], [
+                         1, 1.3, 2, 1 << 100, "hi", u"hi", [1, 2]
+                     ], object_ids[:1], object_ids[:2], object_ids[:3],
+                     object_ids[:4], object_ids[:5], object_ids[:10],
+                     object_ids[:100], object_ids[:256], [1, object_ids[0]], [
+                         object_ids[0], "a"
+                     ], [1, object_ids[0], "a"], [
+                         object_ids[0], 1, object_ids[1], "a"
+                     ], object_ids[:3] + [1, "hi", 2.3] + object_ids[:5],
+                     object_ids + 100 * ["a"] + object_ids]
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-                task = local_scheduler.Task(
-                    driver_id, function_id, args, num_return_vals, parent_id, 0
-                )
+                task = local_scheduler.Task(driver_id, function_id, args,
+                                            num_return_vals, parent_id, 0)
                 self.check_task(task, function_id, num_return_vals, args)
                 data = local_scheduler.task_to_string(task)
                 task2 = local_scheduler.task_from_string(data)

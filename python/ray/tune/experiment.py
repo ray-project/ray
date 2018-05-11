@@ -36,19 +36,17 @@ class Experiment(object):
             checkpointing is enabled. Defaults to 3.
     """
 
-    def __init__(
-        self,
-        name,
-        run,
-        stop=None,
-        config=None,
-        trial_resources=None,
-        repeat=1,
-        local_dir=None,
-        upload_dir="",
-        checkpoint_freq=0,
-        max_failures=3
-    ):
+    def __init__(self,
+                 name,
+                 run,
+                 stop=None,
+                 config=None,
+                 trial_resources=None,
+                 repeat=1,
+                 local_dir=None,
+                 upload_dir="",
+                 checkpoint_freq=0,
+                 max_failures=3):
         spec = {
             "run": run,
             "stop": stop or {},

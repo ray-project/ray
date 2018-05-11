@@ -13,9 +13,7 @@ def easy_objective(config, reporter):
     reporter(
         timesteps_total=1,
         episode_reward_mean=-(
-            (config["height"] - 14)**2 + abs(config["width"] - 3)
-        )
-    )
+            (config["height"] - 14)**2 + abs(config["width"] - 3)))
     time.sleep(0.2)
 
 
@@ -25,10 +23,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help="Finish quickly for testing",
-    )
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     ray.init(redirect_output=True)
 

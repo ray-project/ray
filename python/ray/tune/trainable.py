@@ -81,9 +81,7 @@ class Trainable(object):
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             self.logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix,
-                dir=DEFAULT_RESULTS_DIR,
-            )
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(self.config, self.logdir, None)
 
         self._iteration = 0
@@ -122,8 +120,7 @@ class Trainable(object):
 
         if not self._initialize_ok:
             raise ValueError(
-                "Trainable initialization failed, see previous errors"
-            )
+                "Trainable initialization failed, see previous errors")
 
         start = time.time()
         result = self._train()
@@ -134,9 +131,8 @@ class Trainable(object):
             time_this_iter = time.time() - start
 
         if result.timesteps_this_iter is None:
-            raise TuneError(
-                "Must specify timesteps_this_iter in result", result
-            )
+            raise TuneError("Must specify timesteps_this_iter in result",
+                            result)
 
         self._time_total += time_this_iter
         self._timesteps_total += result.timesteps_this_iter
@@ -160,8 +156,7 @@ class Trainable(object):
             pid=os.getpid(),
             hostname=os.uname()[1],
             node_ip=self._local_ip,
-            config=self.config
-        )
+            config=self.config)
 
         self._result_logger.on_result(result)
 
@@ -181,12 +176,10 @@ class Trainable(object):
         """
 
         checkpoint_path = self._save(checkpoint_dir or self.logdir)
-        pickle.dump(
-            [
-                self._experiment_id, self._iteration, self._timesteps_total,
-                self._time_total
-            ], open(checkpoint_path + ".tune_metadata", "wb")
-        )
+        pickle.dump([
+            self._experiment_id, self._iteration, self._timesteps_total,
+            self._time_total
+        ], open(checkpoint_path + ".tune_metadata", "wb"))
         return checkpoint_path
 
     def save_to_object(self):
@@ -209,12 +202,12 @@ class Trainable(object):
 
         out = io.BytesIO()
         with gzip.GzipFile(fileobj=out, mode="wb") as f:
-            compressed = pickle.dumps(
-                {
-                    "checkpoint_name": os.path.basename(checkpoint_prefix),
-                    "data": data,
-                }
-            )
+            compressed = pickle.dumps({
+                "checkpoint_name":
+                os.path.basename(checkpoint_prefix),
+                "data":
+                data,
+            })
             if len(compressed) > 10e6:  # getting pretty large
                 print("Checkpoint size is {} bytes".format(len(compressed)))
             f.write(compressed)

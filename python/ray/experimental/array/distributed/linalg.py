@@ -28,15 +28,11 @@ def tsqr(a):
             - np.allclose(r, np.triu(r)) == True.
     """
     if len(a.shape) != 2:
-        raise Exception(
-            "tsqr requires len(a.shape) == 2, but a.shape is "
-            "{}".format(a.shape)
-        )
+        raise Exception("tsqr requires len(a.shape) == 2, but a.shape is "
+                        "{}".format(a.shape))
     if a.num_blocks[1] != 1:
-        raise Exception(
-            "tsqr requires a.num_blocks[1] == 1, but a.num_blocks "
-            "is {}".format(a.num_blocks)
-        )
+        raise Exception("tsqr requires a.num_blocks[1] == 1, but a.num_blocks "
+                        "is {}".format(a.num_blocks))
 
     num_blocks = a.num_blocks[0]
     K = int(np.ceil(np.log2(num_blocks))) + 1
@@ -82,8 +78,7 @@ def tsqr(a):
             ith_index //= 2
             q_block_current = ra.dot.remote(
                 q_block_current,
-                ra.subarray.remote(q_tree[ith_index, j], lower, upper)
-            )
+                ra.subarray.remote(q_tree[ith_index, j], lower, upper))
         q_result.objectids[i] = q_block_current
     r = current_rs[0]
     return q_result, ray.get(r)
@@ -119,9 +114,8 @@ def modified_lu(q):
         # Scale ith column of L by diagonal element.
         q_work[(i + 1):m, i] /= q_work[i, i]
         # Perform Schur complement update.
-        q_work[(i + 1):m, (i + 1):b] -= np.outer(
-            q_work[(i + 1):m, i], q_work[i, (i + 1):b]
-        )
+        q_work[(i + 1):m, (i + 1):b] -= np.outer(q_work[(i + 1):m, i],
+                                                 q_work[i, (i + 1):b])
 
     L = np.tril(q_work)
     for i in range(b):
@@ -152,9 +146,8 @@ def tsqr_hr(a):
     q, r_temp = tsqr.remote(a)
     y, u, s = modified_lu.remote(q)
     y_blocked = ray.get(y)
-    t, y_top = tsqr_hr_helper1.remote(
-        u, s, y_blocked.objectids[0, 0], a.shape[1]
-    )
+    t, y_top = tsqr_hr_helper1.remote(u, s, y_blocked.objectids[0, 0],
+                                      a.shape[1])
     r = tsqr_hr_helper2.remote(s, r_temp)
     return ray.get(y), ray.get(t), ray.get(y_top), ray.get(r)
 
@@ -194,9 +187,7 @@ def qr(a):
     # sense when a.num_blocks[1] > a.num_blocks[0].
     for i in range(min(a.num_blocks[0], a.num_blocks[1])):
         sub_dist_array = core.subblocks.remote(
-            a_work, list(range(i, a_work.num_blocks[0])),
-            [i]
-        )
+            a_work, list(range(i, a_work.num_blocks[0])), [i])
         y, t, _, R = tsqr_hr.remote(sub_dist_array)
         y_val = ray.get(y)
 
@@ -206,8 +197,7 @@ def qr(a):
             # in this case, R needs to be square
             R_shape = ray.get(ra.shape.remote(R))
             eye_temp = ra.eye.remote(
-                R_shape[1], R_shape[0], dtype_name=result_dtype
-            )
+                R_shape[1], R_shape[0], dtype_name=result_dtype)
             r_res.objectids[i, i] = ra.dot.remote(eye_temp, R)
         else:
             r_res.objectids[i, i] = R
@@ -235,9 +225,6 @@ def qr(a):
                 y_col_block,
                 core.dot.remote(
                     Ts[i],
-                    core.dot.remote(core.transpose.remote(y_col_block), q)
-                )
-            )
-        )
+                    core.dot.remote(core.transpose.remote(y_col_block), q))))
 
     return ray.get(q), r_res

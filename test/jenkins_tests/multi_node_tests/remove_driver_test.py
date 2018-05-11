@@ -6,10 +6,8 @@ import os
 import time
 
 import ray
-from ray.test.test_utils import (
-    _wait_for_nodes_to_join, _broadcast_event, _wait_for_event,
-    wait_for_pid_to_exit
-)
+from ray.test.test_utils import (_wait_for_nodes_to_join, _broadcast_event,
+                                 _wait_for_event, wait_for_pid_to_exit)
 
 # This test should be run with 5 nodes, which have 0, 1, 2, 3, and 4 GPUs for a
 # total of 10 GPUs. It should be run with 7 drivers. Drivers 2 through 6 must
@@ -31,8 +29,7 @@ def long_running_task(driver_index, task_index, redis_address):
     _broadcast_event(
         remote_function_event_name(driver_index, task_index),
         redis_address,
-        data=(ray.services.get_node_ip_address(), os.getpid())
-    )
+        data=(ray.services.get_node_ip_address(), os.getpid()))
     # Loop forever.
     while True:
         time.sleep(100)
@@ -47,8 +44,7 @@ class Actor0(object):
         _broadcast_event(
             actor_event_name(driver_index, actor_index),
             redis_address,
-            data=(ray.services.get_node_ip_address(), os.getpid())
-        )
+            data=(ray.services.get_node_ip_address(), os.getpid()))
         assert len(ray.get_gpu_ids()) == 0
 
     def check_ids(self):
@@ -66,8 +62,7 @@ class Actor1(object):
         _broadcast_event(
             actor_event_name(driver_index, actor_index),
             redis_address,
-            data=(ray.services.get_node_ip_address(), os.getpid())
-        )
+            data=(ray.services.get_node_ip_address(), os.getpid()))
         assert len(ray.get_gpu_ids()) == 1
 
     def check_ids(self):
@@ -85,8 +80,7 @@ class Actor2(object):
         _broadcast_event(
             actor_event_name(driver_index, actor_index),
             redis_address,
-            data=(ray.services.get_node_ip_address(), os.getpid())
-        )
+            data=(ray.services.get_node_ip_address(), os.getpid()))
         assert len(ray.get_gpu_ids()) == 2
 
     def check_ids(self):
@@ -196,15 +190,15 @@ def cleanup_driver(redis_address, driver_index):
     _wait_for_event("DRIVER_0_DONE", redis_address)
     _wait_for_event("DRIVER_1_DONE", redis_address)
 
-    def try_to_create_actor(actor_class, driver_index, actor_index, timeout=20):
+    def try_to_create_actor(actor_class, driver_index, actor_index,
+                            timeout=20):
         # Try to create an actor, but allow failures while we wait for the
         # monitor to release the resources for the removed drivers.
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                actor = actor_class.remote(
-                    driver_index, actor_index, redis_address
-                )
+                actor = actor_class.remote(driver_index, actor_index,
+                                           redis_address)
             except Exception as e:
                 time.sleep(0.1)
             else:
@@ -218,14 +212,12 @@ def cleanup_driver(redis_address, driver_index):
         actors_two_gpus = []
         for i in range(3):
             actors_two_gpus.append(
-                try_to_create_actor(Actor2, driver_index, 10 + i)
-            )
+                try_to_create_actor(Actor2, driver_index, 10 + i))
         # Create some actors that require one GPU.
         actors_one_gpu = []
         for i in range(4):
             actors_one_gpu.append(
-                try_to_create_actor(Actor1, driver_index, 10 + 3 + i)
-            )
+                try_to_create_actor(Actor1, driver_index, 10 + 3 + i))
 
     removed_workers = 0
 
@@ -233,15 +225,13 @@ def cleanup_driver(redis_address, driver_index):
     # driver 1 have been killed.
     for i in range(num_long_running_tasks_per_driver):
         node_ip_address, pid = _wait_for_event(
-            remote_function_event_name(0, i), redis_address
-        )
+            remote_function_event_name(0, i), redis_address)
         if node_ip_address == ray.services.get_node_ip_address():
             wait_for_pid_to_exit(pid)
             removed_workers += 1
     for i in range(num_long_running_tasks_per_driver):
         node_ip_address, pid = _wait_for_event(
-            remote_function_event_name(1, i), redis_address
-        )
+            remote_function_event_name(1, i), redis_address)
         if node_ip_address == ray.services.get_node_ip_address():
             wait_for_pid_to_exit(pid)
             removed_workers += 1
@@ -249,22 +239,19 @@ def cleanup_driver(redis_address, driver_index):
     # been killed.
     for i in range(10):
         node_ip_address, pid = _wait_for_event(
-            actor_event_name(0, i), redis_address
-        )
+            actor_event_name(0, i), redis_address)
         if node_ip_address == ray.services.get_node_ip_address():
             wait_for_pid_to_exit(pid)
             removed_workers += 1
     for i in range(9):
         node_ip_address, pid = _wait_for_event(
-            actor_event_name(1, i), redis_address
-        )
+            actor_event_name(1, i), redis_address)
         if node_ip_address == ray.services.get_node_ip_address():
             wait_for_pid_to_exit(pid)
             removed_workers += 1
 
-    print(
-        "{} workers/actors were removed on this node.".format(removed_workers)
-    )
+    print("{} workers/actors were removed on this node."
+          .format(removed_workers))
 
     # Only one of the cleanup drivers should create and use more actors.
     if driver_index == 2:

@@ -33,9 +33,8 @@ def register_trainable(name, trainable):
     if isinstance(trainable, FunctionType):
         trainable = wrap_function(trainable)
     if not issubclass(trainable, Trainable):
-        raise TypeError(
-            "Second argument must be convertable to Trainable", trainable
-        )
+        raise TypeError("Second argument must be convertable to Trainable",
+                        trainable)
     _default_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
@@ -85,11 +84,8 @@ class _Registry(object):
     def register(self, category, key, value):
         if category not in KNOWN_CATEGORIES:
             from ray.tune import TuneError
-            raise TuneError(
-                "Unknown category {} not among {}".format(
-                    category, KNOWN_CATEGORIES
-                )
-            )
+            raise TuneError("Unknown category {} not among {}".format(
+                category, KNOWN_CATEGORIES))
         self._all_objects[(category, key)] = value
 
     def contains(self, category, key):

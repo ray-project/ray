@@ -88,7 +88,6 @@ TrainingResult = namedtuple(
 
         # (Auto=filled) The current hyperparameter configuration.
         "config",
-    ]
-)
+    ])
 
 TrainingResult.__new__.__defaults__ = (None, ) * len(TrainingResult._fields)

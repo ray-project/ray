@@ -19,10 +19,8 @@ try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    print(
-        "Couldn't import `requests` library. Be sure to install it on"
-        " the client side."
-    )
+    print("Couldn't import `requests` library. Be sure to install it on"
+          " the client side.")
 
 
 class TuneClient(object):
@@ -45,32 +43,26 @@ class TuneClient(object):
 
     def get_trial(self, trial_id):
         """Returns the last result for queried trial."""
-        return self._get_response(
-            {
-                "command": TuneClient.GET_TRIAL,
-                "trial_id": trial_id
-            }
-        )
+        return self._get_response({
+            "command": TuneClient.GET_TRIAL,
+            "trial_id": trial_id
+        })
 
     def add_trial(self, name, trial_spec):
         """Adds a trial of `name` with configurations."""
         # TODO(rliaw): have better way of specifying a new trial
-        return self._get_response(
-            {
-                "command": TuneClient.ADD,
-                "name": name,
-                "spec": trial_spec
-            }
-        )
+        return self._get_response({
+            "command": TuneClient.ADD,
+            "name": name,
+            "spec": trial_spec
+        })
 
     def stop_trial(self, trial_id):
         """Requests to stop trial."""
-        return self._get_response(
-            {
-                "command": TuneClient.STOP,
-                "trial_id": trial_id
-            }
-        )
+        return self._get_response({
+            "command": TuneClient.STOP,
+            "trial_id": trial_id
+        })
 
     def _get_response(self, data):
         payload = json.dumps(data).encode()

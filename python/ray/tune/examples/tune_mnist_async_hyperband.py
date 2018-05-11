@@ -115,8 +115,7 @@ def conv2d(x, W):
 def max_pool_2x2(x):
     """max_pool_2x2 downsamples a feature map by 2X."""
     return tf.nn.max_pool(
-        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME'
-    )
+        x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
 
 def weight_variable(shape):
@@ -151,8 +150,7 @@ def main(_):
 
     with tf.name_scope('loss'):
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-            labels=y_, logits=y_conv
-        )
+            labels=y_, logits=y_conv)
     cross_entropy = tf.reduce_mean(cross_entropy)
 
     with tf.name_scope('adam_optimizer'):
@@ -173,38 +171,29 @@ def main(_):
         for i in range(20000):
             batch = mnist.train.next_batch(50)
             if i % 10 == 0:
-                train_accuracy = accuracy.eval(
-                    feed_dict={
-                        x: batch[0],
-                        y_: batch[1],
-                        keep_prob: 1.0
-                    }
-                )
+                train_accuracy = accuracy.eval(feed_dict={
+                    x: batch[0],
+                    y_: batch[1],
+                    keep_prob: 1.0
+                })
 
                 # !!! Report status to ray.tune !!!
                 if status_reporter:
                     status_reporter(
-                        timesteps_total=i, mean_accuracy=train_accuracy
-                    )
+                        timesteps_total=i, mean_accuracy=train_accuracy)
 
                 print('step %d, training accuracy %g' % (i, train_accuracy))
-            train_step.run(
-                feed_dict={
-                    x: batch[0],
-                    y_: batch[1],
-                    keep_prob: 0.5
-                }
-            )
+            train_step.run(feed_dict={
+                x: batch[0],
+                y_: batch[1],
+                keep_prob: 0.5
+            })
 
-        print(
-            'test accuracy %g' % accuracy.eval(
-                feed_dict={
-                    x: mnist.test.images,
-                    y_: mnist.test.labels,
-                    keep_prob: 1.0
-                }
-            )
-        )
+        print('test accuracy %g' % accuracy.eval(feed_dict={
+            x: mnist.test.images,
+            y_: mnist.test.labels,
+            keep_prob: 1.0
+        }))
 
 
 # !!! Entrypoint for ray.tune !!!
@@ -217,8 +206,7 @@ def train(config={'activation': 'relu'}, reporter=None):
         '--data_dir',
         type=str,
         default='/tmp/tensorflow/mnist/input_data',
-        help='Directory for storing input data'
-    )
+        help='Directory for storing input data')
     FLAGS, unparsed = parser.parse_known_args()
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
 
@@ -227,8 +215,7 @@ def train(config={'activation': 'relu'}, reporter=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--smoke-test', action='store_true', help='Finish quickly for testing'
-    )
+        '--smoke-test', action='store_true', help='Finish quickly for testing')
     args, _ = parser.parse_known_args()
 
     register_trainable('train_mnist', train)
@@ -259,5 +246,4 @@ if __name__ == '__main__':
             time_attr="timesteps_total",
             reward_attr="mean_accuracy",
             max_t=600,
-        )
-    )
+        ))

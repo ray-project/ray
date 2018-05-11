@@ -28,8 +28,7 @@ def date_str():
 
 
 class Resources(
-    namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"]),
-):
+        namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
     """Ray resources required to schedule a trial.
 
     Attributes:
@@ -43,19 +42,12 @@ class Resources(
     __slots__ = ()
 
     def __new__(cls, cpu, gpu, extra_cpu=0, extra_gpu=0):
-        return super(Resources, cls).__new__(
-            cls,
-            cpu,
-            gpu,
-            extra_cpu,
-            extra_gpu,
-        )
+        return super(Resources, cls).__new__(cls, cpu, gpu, extra_cpu,
+                                             extra_gpu)
 
     def summary_string(self):
-        return "{} CPUs, {} GPUs".format(
-            self.cpu + self.extra_cpu,
-            self.gpu + self.extra_gpu,
-        )
+        return "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
+                                         self.gpu + self.extra_gpu)
 
     def cpu_total(self):
         return self.cpu + self.extra_cpu
@@ -66,8 +58,7 @@ class Resources(
 
 def has_trainable(trainable_name):
     return ray.tune.registry._default_registry.contains(
-        ray.tune.registry.TRAINABLE_CLASS, trainable_name
-    )
+        ray.tune.registry.TRAINABLE_CLASS, trainable_name)
 
 
 class Trial(object):
@@ -86,19 +77,17 @@ class Trial(object):
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
 
-    def __init__(
-        self,
-        trainable_name,
-        config=None,
-        local_dir=DEFAULT_RESULTS_DIR,
-        experiment_tag="",
-        resources=None,
-        stopping_criterion=None,
-        checkpoint_freq=0,
-        restore_path=None,
-        upload_dir=None,
-        max_failures=0
-    ):
+    def __init__(self,
+                 trainable_name,
+                 config=None,
+                 local_dir=DEFAULT_RESULTS_DIR,
+                 experiment_tag="",
+                 resources=None,
+                 stopping_criterion=None,
+                 checkpoint_freq=0,
+                 restore_path=None,
+                 upload_dir=None,
+                 max_failures=0):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
@@ -116,9 +105,7 @@ class Trial(object):
                 if k not in TrainingResult._fields:
                     raise TuneError(
                         "Stopping condition key `{}` must be one of {}".format(
-                            k, TrainingResult._fields
-                        )
-                    )
+                            k, TrainingResult._fields))
 
         # Trial config
         self.trainable_name = trainable_name
@@ -127,8 +114,7 @@ class Trial(object):
         self.experiment_tag = experiment_tag
         self.resources = (
             resources
-            or self._get_trainable_cls().default_resource_request(self.config)
-        )
+            or self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
@@ -188,9 +174,8 @@ class Trial(object):
         try:
             if error_msg and self.logdir:
                 self.num_failures += 1
-                error_file = os.path.join(
-                    self.logdir, "error_{}.txt".format(date_str())
-                )
+                error_file = os.path.join(self.logdir,
+                                          "error_{}.txt".format(date_str()))
                 with open(error_file, "w") as f:
                     f.write(error_msg)
                 self.error_file = error_file
@@ -199,11 +184,10 @@ class Trial(object):
                 stop_tasks.append(self.runner.stop.remote())
                 stop_tasks.append(
                     self.runner.__ray_terminate__.remote(
-                        self.runner._ray_actor_id.id()
-                    )
-                )
+                        self.runner._ray_actor_id.id()))
                 # TODO(ekl)  seems like wait hangs when killing actors
-                _, unfinished = ray.wait(stop_tasks, num_returns=2, timeout=250)
+                _, unfinished = ray.wait(
+                    stop_tasks, num_returns=2, timeout=250)
         except Exception:
             print("Error stopping runner:", traceback.format_exc())
             self.status = Trial.ERROR
@@ -279,38 +263,31 @@ class Trial(object):
         pieces = [
             '{} [{}]'.format(
                 self._status_string(),
-                location_string(
-                    self.last_result.hostname, self.last_result.pid
-                )
-            ), '{} s'.format(int(self.last_result.time_total_s)),
-            '{} ts'.format(int(self.last_result.timesteps_total))
+                location_string(self.last_result.hostname,
+                                self.last_result.pid)),
+            '{} s'.format(int(self.last_result.time_total_s)), '{} ts'.format(
+                int(self.last_result.timesteps_total))
         ]
 
         if self.last_result.episode_reward_mean is not None:
-            pieces.append(
-                '{} rew'.format(
-                    format(self.last_result.episode_reward_mean, '.3g')
-                )
-            )
+            pieces.append('{} rew'.format(
+                format(self.last_result.episode_reward_mean, '.3g')))
 
         if self.last_result.mean_loss is not None:
-            pieces.append(
-                '{} loss'.format(format(self.last_result.mean_loss, '.3g'))
-            )
+            pieces.append('{} loss'.format(
+                format(self.last_result.mean_loss, '.3g')))
 
         if self.last_result.mean_accuracy is not None:
-            pieces.append(
-                '{} acc'.format(format(self.last_result.mean_accuracy, '.3g'))
-            )
+            pieces.append('{} acc'.format(
+                format(self.last_result.mean_accuracy, '.3g')))
 
         return ', '.join(pieces)
 
     def _status_string(self):
         return "{}{}".format(
-            self.status,
-            ", {} failures: {}".format(self.num_failures, self.error_file)
-            if self.error_file else ""
-        )
+            self.status, ", {} failures: {}".format(self.num_failures,
+                                                    self.error_file)
+            if self.error_file else "")
 
     def has_checkpoint(self):
         return self._checkpoint_path is not None or \
@@ -368,9 +345,8 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        if self.verbose and (
-            terminate or time.time() - self.last_debug > DEBUG_PRINT_INTERVAL
-        ):
+        if self.verbose and (terminate or time.time() - self.last_debug >
+                             DEBUG_PRINT_INTERVAL):
             print("TrainingResult for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
@@ -380,20 +356,17 @@ class Trial(object):
     def _setup_runner(self):
         self.status = Trial.RUNNING
         cls = ray.remote(
-            num_cpus=self.resources.cpu, num_gpus=self.resources.gpu
-        )(self._get_trainable_cls())
+            num_cpus=self.resources.cpu,
+            num_gpus=self.resources.gpu)(self._get_trainable_cls())
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
                 prefix="{}_{}".format(
-                    str(self)[:MAX_LEN_IDENTIFIER], date_str()
-                ),
-                dir=self.local_dir
-            )
-            self.result_logger = UnifiedLogger(
-                self.config, self.logdir, self.upload_dir
-            )
+                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
+                dir=self.local_dir)
+            self.result_logger = UnifiedLogger(self.config, self.logdir,
+                                               self.upload_dir)
         remote_logdir = self.logdir
 
         def logger_creator(config):
@@ -408,13 +381,11 @@ class Trial(object):
         self.runner = cls.remote(
             config=self.config,
             registry=ray.tune.registry.get_registry(),
-            logger_creator=logger_creator
-        )
+            logger_creator=logger_creator)
 
     def _get_trainable_cls(self):
         return ray.tune.registry.get_registry().get(
-            ray.tune.registry.TRAINABLE_CLASS, self.trainable_name
-        )
+            ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
 
     def set_verbose(self, verbose):
         self.verbose = verbose
@@ -428,7 +399,8 @@ class Trial(object):
     def __str__(self):
         """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
         if "env" in self.config:
-            identifier = "{}_{}".format(self.trainable_name, self.config["env"])
+            identifier = "{}_{}".format(self.trainable_name,
+                                        self.config["env"])
         else:
             identifier = self.trainable_name
         if self.experiment_tag:

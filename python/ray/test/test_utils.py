@@ -47,17 +47,15 @@ def _wait_for_nodes_to_join(num_nodes, timeout=20):
                 return
         if num_ready_nodes > num_nodes:
             # Too many nodes have joined. Something must be wrong.
-            raise Exception(
-                "{} nodes have joined the cluster, but we were "
-                "expecting {} nodes.".format(num_ready_nodes, num_nodes)
-            )
+            raise Exception("{} nodes have joined the cluster, but we were "
+                            "expecting {} nodes.".format(
+                                num_ready_nodes, num_nodes))
         time.sleep(0.1)
 
     # If we get here then we timed out.
-    raise Exception(
-        "Timed out while waiting for {} nodes to join. Only {} "
-        "nodes have joined so far.".format(num_ready_nodes, num_nodes)
-    )
+    raise Exception("Timed out while waiting for {} nodes to join. Only {} "
+                    "nodes have joined so far.".format(num_ready_nodes,
+                                                       num_nodes))
 
 
 def _broadcast_event(event_name, redis_address, data=None):
@@ -101,9 +99,8 @@ def _wait_for_event(event_name, redis_address, extra_buffer=0):
         for event_info in event_infos:
             name, data = json.loads(event_info)
             if name in events:
-                raise Exception(
-                    "The same event {} was broadcast twice.".format(name)
-                )
+                raise Exception("The same event {} was broadcast twice."
+                                .format(name))
             events[name] = data
         if event_name in events:
             # Potentially sleep a little longer and then return the event data.

@@ -29,8 +29,7 @@ class MyTrainableClass(Trainable):
         # Reward increase is parabolic as a function of factor_2, with a
         # maxima around factor_1=10.0.
         self.current_value += max(
-            0.0, random.gauss(5.0 - (self.config["factor_1"] - 10.0)**2, 2.0)
-        )
+            0.0, random.gauss(5.0 - (self.config["factor_1"] - 10.0)**2, 2.0))
 
         # Flat increase by factor_2
         self.current_value += random.gauss(self.config["factor_2"], 1.0)
@@ -38,20 +37,16 @@ class MyTrainableClass(Trainable):
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy (see tune/result.py).
         return TrainingResult(
-            episode_reward_mean=self.current_value, timesteps_this_iter=1
-        )
+            episode_reward_mean=self.current_value, timesteps_this_iter=1)
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         with open(path, "w") as f:
             f.write(
-                json.dumps(
-                    {
-                        "timestep": self.timestep,
-                        "value": self.current_value
-                    }
-                )
-            )
+                json.dumps({
+                    "timestep": self.timestep,
+                    "value": self.current_value
+                }))
         return path
 
     def _restore(self, checkpoint_path):
@@ -66,10 +61,7 @@ register_trainable("my_class", MyTrainableClass)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help="Finish quickly for testing",
-    )
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     ray.init()
 
@@ -83,8 +75,7 @@ if __name__ == "__main__":
             "factor_1": lambda: random.uniform(0.0, 20.0),
             # Allow perturbations within this set of categorical values.
             "factor_2": [1, 2],
-        },
-    )
+        })
 
     # Try to find the best factor 1 and factor 2
     run_experiments(
@@ -102,5 +93,4 @@ if __name__ == "__main__":
             }
         },
         scheduler=pbt,
-        verbose=False
-    )
+        verbose=False)

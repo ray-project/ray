@@ -52,8 +52,7 @@ register_trainable("my_class", MyTrainableClass)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing"
-    )
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
     ray.init()
 
@@ -64,8 +63,7 @@ if __name__ == "__main__":
         time_attr="timesteps_total",
         reward_attr="episode_reward_mean",
         grace_period=5,
-        max_t=100
-    )
+        max_t=100)
 
     run_experiments(
         {
@@ -77,13 +75,12 @@ if __name__ == "__main__":
                 "repeat": 20,
                 "trial_resources": {
                     "cpu": 1,
-                    "gpu": 0,
+                    "gpu": 0
                 },
                 "config": {
                     "width": lambda spec: 10 + int(90 * random.random()),
                     "height": lambda spec: int(100 * random.random()),
                 },
-            },
+            }
         },
-        scheduler=ahb
-    )
+        scheduler=ahb)

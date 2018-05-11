@@ -89,8 +89,7 @@ class TuneServerSuite(unittest.TestCase):
             runner.step()
         all_trials = client.get_all_trials()["trials"]
         self.assertEqual(
-            len([t for t in all_trials if t["status"] == Trial.RUNNING]), 1
-        )
+            len([t for t in all_trials if t["status"] == Trial.RUNNING]), 1)
 
         tid = [t for t in all_trials if t["status"] == Trial.RUNNING][0]["id"]
         client.stop_trial(tid)
@@ -98,8 +97,7 @@ class TuneServerSuite(unittest.TestCase):
 
         all_trials = client.get_all_trials()["trials"]
         self.assertEqual(
-            len([t for t in all_trials if t["status"] == Trial.RUNNING]), 0
-        )
+            len([t for t in all_trials if t["status"] == Trial.RUNNING]), 0)
 
 
 if __name__ == "__main__":

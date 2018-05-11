@@ -46,16 +46,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
             reporter(timesteps_total=100, done=True)
 
         register_trainable("f1", train)
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
-                }
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
             }
-        )
+        })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result.timesteps_total, 100)
 
@@ -100,8 +98,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                         },
                     }
                 },
-                queue_trials=queue_trials
-            )[0]
+                queue_trials=queue_trials)[0]
 
         # Should all succeed
         self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
@@ -125,14 +122,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         register_trainable("f1", train)
 
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "env": "CartPole-v0",
-                }
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "env": "CartPole-v0",
             }
-        )
+        })
         self.assertEqual(trial.config["env"], "CartPole-v0")
 
     def testConfigPurity(self):
@@ -156,17 +151,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
-        run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "local_dir": "/tmp/logdir",
-                    "config": {
-                        "a": "b"
-                    },
-                }
+        run_experiments({
+            "foo": {
+                "run": "f1",
+                "local_dir": "/tmp/logdir",
+                "config": {
+                    "a": "b"
+                },
             }
-        )
+        })
 
     def testLongFilename(self):
         def train(config, reporter):
@@ -174,18 +167,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
-        run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "local_dir": "/tmp/logdir",
-                    "config": {
-                        "a" * 50: lambda spec: 5.0 / 7,
-                        "b" * 50: lambda spec: "long" * 40
-                    },
-                }
+        run_experiments({
+            "foo": {
+                "run": "f1",
+                "local_dir": "/tmp/logdir",
+                "config": {
+                    "a" * 50: lambda spec: 5.0 / 7,
+                    "b" * 50: lambda spec: "long" * 40
+                },
             }
-        )
+        })
 
     def testBadParams(self):
         def f():
@@ -195,26 +186,22 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testBadParams2(self):
         def f():
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "asdf",
-                        "bah": "this param is not allowed",
-                    }
+            run_experiments({
+                "foo": {
+                    "run": "asdf",
+                    "bah": "this param is not allowed",
                 }
-            )
+            })
 
         self.assertRaises(TuneError, f)
 
     def testBadParams3(self):
         def f():
-            run_experiments(
-                {
-                    "foo": {
-                        "run": grid_search("invalid grid search"),
-                    }
+            run_experiments({
+                "foo": {
+                    "run": grid_search("invalid grid search"),
                 }
-            )
+            })
 
         self.assertRaises(TuneError, f)
 
@@ -236,16 +223,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testBadParams6(self):
         def f():
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "PPO",
-                        "trial_resources": {
-                            "asdf": 1
-                        }
+            run_experiments({
+                "foo": {
+                    "run": "PPO",
+                    "trial_resources": {
+                        "asdf": 1
                     }
                 }
-            )
+            })
 
         self.assertRaises(TuneError, f)
 
@@ -256,16 +241,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("f1", train)
 
         def f():
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "f1",
-                        "config": {
-                            "script_min_iter_time_s": 0,
-                        },
-                    }
+            run_experiments({
+                "foo": {
+                    "run": "f1",
+                    "config": {
+                        "script_min_iter_time_s": 0,
+                    },
                 }
-            )
+            })
 
         self.assertRaises(TuneError, f)
 
@@ -275,16 +258,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
             time.sleep(99999)
 
         register_trainable("f1", train)
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
-                }
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
             }
-        )
+        })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result.timesteps_total, 100)
 
@@ -293,16 +274,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
             reporter(timesteps_total=100)
 
         register_trainable("f1", train)
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
-                }
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
             }
-        )
+        })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result.timesteps_total, 100)
 
@@ -313,16 +292,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("f1", train)
 
         def f():
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "f1",
-                        "config": {
-                            "script_min_iter_time_s": 0,
-                        },
-                    }
+            run_experiments({
+                "foo": {
+                    "run": "f1",
+                    "config": {
+                        "script_min_iter_time_s": 0,
+                    },
                 }
-            )
+            })
 
         self.assertRaises(TuneError, f)
 
@@ -332,16 +309,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0,
-                    },
-                }
+        [trial] = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
             }
-        )
+        })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result.timesteps_total, 99)
 
@@ -360,22 +335,20 @@ class RunExperimentTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        trials = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0
-                    }
-                },
-                "bar": {
-                    "run": "f1",
-                    "config": {
-                        "script_min_iter_time_s": 0
-                    }
+        trials = run_experiments({
+            "foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
+            },
+            "bar": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
                 }
             }
-        )
+        })
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result.timesteps_total, 99)
@@ -386,15 +359,13 @@ class RunExperimentTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        exp1 = Experiment(
-            **{
-                "name": "foo",
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
+        exp1 = Experiment(**{
+            "name": "foo",
+            "run": "f1",
+            "config": {
+                "script_min_iter_time_s": 0
             }
-        )
+        })
         [trial] = run_experiments(exp1)
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result.timesteps_total, 99)
@@ -405,24 +376,20 @@ class RunExperimentTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        exp1 = Experiment(
-            **{
-                "name": "foo",
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
+        exp1 = Experiment(**{
+            "name": "foo",
+            "run": "f1",
+            "config": {
+                "script_min_iter_time_s": 0
             }
-        )
-        exp2 = Experiment(
-            **{
-                "name": "bar",
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
+        })
+        exp2 = Experiment(**{
+            "name": "bar",
+            "run": "f1",
+            "config": {
+                "script_min_iter_time_s": 0
             }
-        )
+        })
         trials = run_experiments([exp1, exp2])
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
@@ -438,17 +405,15 @@ class VariantGeneratorTest(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testParseToTrials(self):
-        trials = generate_trials(
-            {
-                "run": "PPO",
-                "repeat": 2,
-                "max_failures": 5,
-                "config": {
-                    "env": "Pong-v0",
-                    "foo": "bar"
-                },
-            }, "tune-pong"
-        )
+        trials = generate_trials({
+            "run": "PPO",
+            "repeat": 2,
+            "max_failures": 5,
+            "config": {
+                "env": "Pong-v0",
+                "foo": "bar"
+            },
+        }, "tune-pong")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
         self.assertEqual(str(trials[0]), "PPO_Pong-v0_0")
@@ -456,41 +421,36 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
         self.assertEqual(trials[0].max_failures, 5)
-        self.assertEqual(
-            trials[0].local_dir, os.path.join(DEFAULT_RESULTS_DIR, "tune-pong")
-        )
+        self.assertEqual(trials[0].local_dir,
+                         os.path.join(DEFAULT_RESULTS_DIR, "tune-pong"))
         self.assertEqual(trials[1].experiment_tag, "1")
 
     def testEval(self):
-        trials = generate_trials(
-            {
-                "run": "PPO",
-                "config": {
-                    "foo": {
-                        "eval": "2 + 2"
-                    },
+        trials = generate_trials({
+            "run": "PPO",
+            "config": {
+                "foo": {
+                    "eval": "2 + 2"
                 },
-            }
-        )
+            },
+        })
         trials = list(trials)
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"foo": 4})
         self.assertEqual(trials[0].experiment_tag, "0_foo=4")
 
     def testGridSearch(self):
-        trials = generate_trials(
-            {
-                "run": "PPO",
-                "config": {
-                    "bar": {
-                        "grid_search": [True, False]
-                    },
-                    "foo": {
-                        "grid_search": [1, 2, 3]
-                    },
+        trials = generate_trials({
+            "run": "PPO",
+            "config": {
+                "bar": {
+                    "grid_search": [True, False]
                 },
-            }
-        )
+                "foo": {
+                    "grid_search": [1, 2, 3]
+                },
+            },
+        })
         trials = list(trials)
         self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1})
@@ -503,68 +463,58 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[5].config, {"bar": False, "foo": 3})
 
     def testGridSearchAndEval(self):
-        trials = generate_trials(
-            {
-                "run": "PPO",
-                "config": {
-                    "qux": lambda spec: 2 + 2,
-                    "bar": grid_search([True, False]),
-                    "foo": grid_search([1, 2, 3]),
-                },
-            }
-        )
+        trials = generate_trials({
+            "run": "PPO",
+            "config": {
+                "qux": lambda spec: 2 + 2,
+                "bar": grid_search([True, False]),
+                "foo": grid_search([1, 2, 3]),
+            },
+        })
         trials = list(trials)
         self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1, "qux": 4})
         self.assertEqual(trials[0].experiment_tag, "0_bar=True,foo=1,qux=4")
 
     def testConditionResolution(self):
-        trials = generate_trials(
-            {
-                "run": "PPO",
-                "config": {
-                    "x": 1,
-                    "y": lambda spec: spec.config.x + 1,
-                    "z": lambda spec: spec.config.y + 1,
-                },
-            }
-        )
+        trials = generate_trials({
+            "run": "PPO",
+            "config": {
+                "x": 1,
+                "y": lambda spec: spec.config.x + 1,
+                "z": lambda spec: spec.config.y + 1,
+            },
+        })
         trials = list(trials)
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"x": 1, "y": 2, "z": 3})
 
     def testDependentLambda(self):
-        trials = generate_trials(
-            {
-                "run": "PPO",
-                "config": {
-                    "x": grid_search([1, 2]),
-                    "y": lambda spec: spec.config.x * 100,
-                },
-            }
-        )
+        trials = generate_trials({
+            "run": "PPO",
+            "config": {
+                "x": grid_search([1, 2]),
+                "y": lambda spec: spec.config.x * 100,
+            },
+        })
         trials = list(trials)
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 1, "y": 100})
         self.assertEqual(trials[1].config, {"x": 2, "y": 200})
 
     def testDependentGridSearch(self):
-        trials = generate_trials(
-            {
-                "run": "PPO",
-                "config": {
-                    "x":
-                    grid_search(
-                        [
-                            lambda spec: spec.config.y * 100,
-                            lambda spec: spec.config.y * 200
-                        ]
-                    ),
-                    "y":
-                    lambda spec: 1,
-                },
-            }
-        )
+        trials = generate_trials({
+            "run": "PPO",
+            "config": {
+                "x":
+                grid_search([
+                    lambda spec: spec.config.y * 100,
+                    lambda spec: spec.config.y * 200
+                ]),
+                "y":
+                lambda spec: 1,
+            },
+        })
         trials = list(trials)
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
@@ -573,15 +523,12 @@ class VariantGeneratorTest(unittest.TestCase):
     def testRecursiveDep(self):
         try:
             list(
-                generate_trials(
-                    {
-                        "run": "PPO",
-                        "config": {
-                            "foo": lambda spec: spec.config.foo,
-                        },
-                    }
-                )
-            )
+                generate_trials({
+                    "run": "PPO",
+                    "config": {
+                        "foo": lambda spec: spec.config.foo,
+                    },
+                }))
         except RecursiveDependencyError as e:
             assert "`foo` recursively depends on" in str(e), e
         else:

@@ -46,9 +46,11 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(
-    redis_client, error_type, message, driver_id=None, data=None
-):
+def push_error_to_driver(redis_client,
+                         error_type,
+                         message,
+                         driver_id=None,
+                         data=None):
     """Push an error message to the driver to be printed in the background.
 
     Args:
@@ -65,14 +67,11 @@ def push_error_to_driver(
         driver_id = DRIVER_ID_LENGTH * b"\x00"
     error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
-    redis_client.hmset(
-        error_key,
-        {
-            "type": error_type,
-            "message": message,
-            "data": data
-        }
-    )
+    redis_client.hmset(error_key, {
+        "type": error_type,
+        "message": message,
+        "data": data
+    })
     redis_client.rpush("ErrorKeys", error_key)
 
 
@@ -141,8 +140,7 @@ def hex_to_binary(hex_identifier):
 
 
 FunctionProperties = collections.namedtuple(
-    "FunctionProperties", ["num_return_vals", "resources", "max_calls"]
-)
+    "FunctionProperties", ["num_return_vals", "resources", "max_calls"])
 """FunctionProperties: A named tuple storing remote functions information."""
 
 
