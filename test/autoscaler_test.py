@@ -365,6 +365,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.assertRaises(Exception, autoscaler.update)
 
+
 # TODO(ekl) consider adding this check back if it proves useful. Currently it
 # poses a race condition with downscaling.
 #    def testAbortOnCreationFailures(self):
@@ -572,7 +573,6 @@ class AutoscalingTest(unittest.TestCase):
             ValueError,
             lambda: StandardAutoscaler(
                 invalid_provider, LoadMetrics(), update_interval_s=0))
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
