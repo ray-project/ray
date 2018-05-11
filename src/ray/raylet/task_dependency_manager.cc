@@ -66,24 +66,36 @@ bool TaskDependencyManager::SubscribeDependencies(
     std::vector<ObjectID> &remote_objects) {
   auto &task_entry = task_dependencies_[task_id];
 
-  // Add the task's dependencies to the table of subscribed tasks.
+  // Record the task's dependencies.
   for (const auto &object_id : required_objects) {
     auto inserted = task_entry.object_dependencies.insert(object_id);
     if (inserted.second) {
-      // Record the task's dependency in the corresponding object entry.
+      // Get the ID of the task that creates the dependency.
+      TaskID creating_task_id = ComputeTaskId(object_id);
+      // Determine whether the dependency can be fulfilled by the local node.
       if (local_objects_.count(object_id) == 0) {
         // The object is not local.
         task_entry.num_missing_dependencies++;
-        if (pending_tasks_.count(ComputeTaskId(object_id)) == 0) {
+        if (pending_tasks_.count(creating_task_id) == 0) {
           // If the object is not local and the task that creates the object is not
           // pending on this node, then the object must be remote.
           remote_objects.push_back(object_id);
         }
       }
-      remote_object_dependencies_[object_id].push_back(task_id);
+      // Add the subscribed task to the mapping from object ID to list of
+      // dependent tasks.
+      auto object_inserted = remote_object_dependencies_.insert({object_id, {}});
+      object_inserted.first->second.push_back(task_id);
+      if (object_inserted.second) {
+        // This is the first time that we've seen a dependency on this object.
+        // Add it to the mapping from remote task to objects created by the
+        // task that are required by a subscribed task.
+        remote_tasks_[creating_task_id].push_back(object_id);
+      }
     }
   }
 
+  // Return whether all dependencies are local.
   return (task_entry.num_missing_dependencies == 0);
 }
 
@@ -95,7 +107,7 @@ void TaskDependencyManager::UnsubscribeDependencies(
   const TaskDependencies task_entry = std::move(it->second);
   task_dependencies_.erase(it);
 
-  // Remove the task from the table of objects to dependent tasks.
+  // Remove the task's dependencies.
   for (const auto &object_id : task_entry.object_dependencies) {
     // Remove the task from the list of tasks that are dependent on this
     // object.
@@ -108,8 +120,27 @@ void TaskDependencyManager::UnsubscribeDependencies(
         break;
       }
     }
+    // If the unsubscribed task was the only task dependent on the object, then
+    // erase the object entry.
     if (dependent_tasks.empty()) {
       remote_object_dependencies_.erase(object_entry);
+      auto creating_task_entry = remote_tasks_.find(ComputeTaskId(object_id));
+      RAY_CHECK(creating_task_entry != remote_tasks_.end());
+      // Remove the object from the list of objects created by the same task.
+      for (auto it = creating_task_entry->second.begin();
+           it != creating_task_entry->second.end(); it++) {
+        if (*it == object_id) {
+          it = creating_task_entry->second.erase(it);
+          break;
+        }
+      }
+      // Remove the task that creates this object if there are no more object
+      // dependencies created by the task.
+      if (creating_task_entry->second.empty()) {
+        remote_tasks_.erase(creating_task_entry);
+      }
+      // There are no more tasks dependent on this object, so we no longer need
+      // to fetch it from a remote node or reconstruct it.
       canceled_objects.push_back(object_id);
     }
   }
@@ -119,25 +150,36 @@ void TaskDependencyManager::TaskPending(const Task &task,
                                         std::vector<ObjectID> &canceled_objects) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
 
-  // Record that the results of this task are pending creation.
+  // Record that the task is pending execution.
   pending_tasks_.insert(task_id);
-
-  for (const auto &object_entry : remote_object_dependencies_) {
-    if (ComputeTaskId(object_entry.first) == task_id) {
-      canceled_objects.push_back(object_entry.first);
+  // Find any subscribed tasks that are dependent on objects created by the
+  // pending task.
+  auto remote_task_entry = remote_tasks_.find(task_id);
+  if (remote_task_entry != remote_tasks_.end()) {
+    for (const auto &object_id : remote_task_entry->second) {
+      // This object will appear locally once the pending task completes
+      // execution, so notify the caller that the object is no longer remote.
+      canceled_objects.push_back(object_id);
     }
   }
 }
 
 void TaskDependencyManager::TaskCanceled(const TaskID &task_id,
                                          std::vector<ObjectID> &remote_objects) {
-  for (const auto &object_entry : remote_object_dependencies_) {
-    if (ComputeTaskId(object_entry.first) == task_id &&
-        local_objects_.count(object_entry.first) == 0) {
-      remote_objects.push_back(object_entry.first);
+  // Find any subscribed tasks that are dependent on objects created by the
+  // canceled task.
+  auto remote_task_entry = remote_tasks_.find(task_id);
+  if (remote_task_entry != remote_tasks_.end()) {
+    for (const auto &object_id : remote_task_entry->second) {
+      // The task that creates this object has been canceled. If the object
+      // isn't already local, then it must be fetched from a remote node or
+      // reconstructed.
+      if (local_objects_.count(object_id) == 0) {
+        remote_objects.push_back(object_id);
+      }
     }
   }
-
+  // Record that the task is no longer pending execution.
   pending_tasks_.erase(task_id);
 }
 

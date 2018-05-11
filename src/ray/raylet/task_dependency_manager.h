@@ -116,8 +116,13 @@ class TaskDependencyManager {
   /// dependencies.
   std::unordered_map<ray::TaskID, TaskDependencies> task_dependencies_;
   /// A mapping from object ID of each object that is not locally available to
-  /// the list of subscribed tasks that are dependent on it.
+  /// the list of subscribed tasks that are dependent on it. This map comprises
+  /// all object_dependencies stored in task_dependencies_.
   std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>> remote_object_dependencies_;
+  /// A mapping from task ID to the objects that it creates, by return value or
+  /// by `ray.put`. This map comprises all objects in
+  /// remote_object_dependencies_.
+  std::unordered_map<ray::TaskID, std::vector<ray::ObjectID>> remote_tasks_;
   /// The set of locally available objects.
   std::unordered_set<ray::ObjectID> local_objects_;
   /// The set of tasks that are pending execution. Any objects created by these

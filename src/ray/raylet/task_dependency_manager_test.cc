@@ -206,6 +206,27 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
   }
 }
 
+TEST_F(TaskDependencyManagerTest, TestDependentPut) {
+  // Create a task with 3 arguments.
+  auto task1 = ExampleTask({}, 0);
+  ObjectID put_id = ComputePutId(task1.GetTaskSpecification().TaskId(), 1);
+  std::vector<ObjectID> arguments = {put_id};
+  auto task2 = ExampleTask(arguments, 0);
+
+  // Subscribe to the task's dependencies.
+  std::vector<ObjectID> remote_objects;
+  bool ready = task_dependency_manager_.SubscribeDependencies(
+      task2.GetTaskSpecification().TaskId(), arguments, remote_objects);
+  ASSERT_FALSE(ready);
+  // No objects have been registered in the task dependency manager, so all
+  // arguments should be remote.
+  ASSERT_EQ(remote_objects, arguments);
+
+  std::vector<ObjectID> canceled_objects;
+  task_dependency_manager_.TaskPending(task1, canceled_objects);
+  ASSERT_EQ(canceled_objects, arguments);
+}
+
 TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   // Create 2 tasks, one dependent on the other. The first has no arguments.
   int num_tasks = 2;
