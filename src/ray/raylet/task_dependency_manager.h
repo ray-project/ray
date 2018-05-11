@@ -102,6 +102,8 @@ class TaskDependencyManager {
   std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id);
 
  private:
+  using ObjectDependencyMap = std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>>;
+
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
     /// The objects that the task is dependent on. These must be local before
@@ -115,14 +117,11 @@ class TaskDependencyManager {
   /// A mapping from task ID of each subscribed task to its list of object
   /// dependencies.
   std::unordered_map<ray::TaskID, TaskDependencies> task_dependencies_;
-  /// A mapping from object ID of each object that is not locally available to
-  /// the list of subscribed tasks that are dependent on it. This map comprises
-  /// all object_dependencies stored in task_dependencies_.
-  std::unordered_map<ray::ObjectID, std::vector<ray::TaskID>> remote_object_dependencies_;
-  /// A mapping from task ID to the objects that it creates, by return value or
-  /// by `ray.put`. This map comprises all objects in
-  /// remote_object_dependencies_.
-  std::unordered_map<ray::TaskID, std::vector<ray::ObjectID>> remote_tasks_;
+  /// All tasks whose outputs are required by subscribed tasks. This is a
+  /// mapping from task ID to information about the objects that the task
+  /// creates, either by return value or by `ray.put`. For each object, we
+  /// store the IDs of the subscribed tasks that are dependent on the object.
+  std::unordered_map<ray::TaskID, ObjectDependencyMap> required_tasks_;
   /// The set of locally available objects.
   std::unordered_set<ray::ObjectID> local_objects_;
   /// The set of tasks that are pending execution. Any objects created by these
