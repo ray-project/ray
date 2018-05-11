@@ -292,11 +292,11 @@ def _get_key(key_name, config):
 
 
 def _client(name, config):
-    boto_config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
+    boto_config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
     return boto3.client(name, config["provider"]["region"], config=boto_config)
 
 
 def _resource(name, config):
-    boto_config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
+    boto_config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
     return boto3.resource(
         name, config["provider"]["region"], config=boto_config)

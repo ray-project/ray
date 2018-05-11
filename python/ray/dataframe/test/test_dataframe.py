@@ -1783,7 +1783,7 @@ def test_fillna_dtype_conversion(num_partitions=2):
     )
 
     # equiv of replace
-    df = pd.DataFrame(dict(A=[1, np.nan], B=[1., 2.]))
+    df = pd.DataFrame({'A': [1, np.nan], 'B': [1., 2.]})
     ray_df = from_pandas(df, num_partitions)
     for v in ['', 1, np.nan, 1.0]:
         assert ray_df_equals_pandas(

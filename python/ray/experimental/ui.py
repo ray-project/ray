@@ -581,7 +581,7 @@ def cpu_usage():
 
         # Create the data source that the plot will pull from
         time_series_source = ColumnDataSource(
-            data=dict(left=[], right=[], top=[]))
+            data={'left': [], 'right': [], 'top': []})
 
         # Plot the rectangles representing the distribution
         time_series_fig.quad(
