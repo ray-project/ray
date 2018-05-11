@@ -64,9 +64,10 @@ class TRPOAgent(Agent):
             self.config,
         )
 
-        # TODO set weights fails for remote evaluators
+        RemoteTRPOEvaluator = ray.remote(TRPOEvaluator)
+
         self.remote_evaluators = [
-            ray.remote(TRPOEvaluator).remote(
+            RemoteTRPOEvaluator.remote(
                 self.registry,
                 self.env_creator,
                 self.config,
