@@ -69,12 +69,12 @@ class SharedTorchPolicy(TorchPolicy):
         states, acs, advs, rs, _ = convert_batch(batch)
         values, ac_logprobs, entropy = self._evaluate(states, acs)
         pi_err = -(advs * ac_logprobs).sum()
-        value_err = 0.5 * (values - rs).pow(2).sum()
+        value_err = F.mse_loss(values, rs)
 
         self.optimizer.zero_grad()
         overall_err = (pi_err +
                        value_err * self.config["vf_loss_coeff"] +
                        entropy * self.config["entropy_coeff"])
         overall_err.backward()
-        torch.nn.utils.clip_grad_norm(
+        torch.nn.utils.clip_grad_norm_(
             self._model.parameters(), self.config["grad_clip"])

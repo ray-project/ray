@@ -39,7 +39,7 @@ class SlimConv2d(nn.Module):
         conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
         if initializer:
             initializer(conv.weight)
-        nn.init.constant(conv.bias, bias_init)
+        nn.init.constant_(conv.bias, bias_init)
 
         layers.append(conv)
         if activation_fn:
@@ -60,7 +60,7 @@ class SlimFC(nn.Module):
         linear = nn.Linear(in_size, size)
         if initializer:
             initializer(linear.weight)
-        nn.init.constant(linear.bias, bias_init)
+        nn.init.constant_(linear.bias, bias_init)
         layers.append(linear)
         if activation_fn:
             layers.append(activation_fn())
