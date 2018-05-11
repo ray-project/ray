@@ -97,7 +97,7 @@ class Monitor(object):
         self.dead_plasma_managers = set()
         # Keep a mapping from local scheduler client ID to IP address to use
         # for updating the load metrics.
-        self.local_scheduler_id_to_ip_map = dict()
+        self.local_scheduler_id_to_ip_map = {}
         self.load_metrics = LoadMetrics()
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,

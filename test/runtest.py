@@ -1859,7 +1859,7 @@ class GlobalStateAPI(unittest.TestCase):
         resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
         assert ray.global_state.cluster_resources() == resources
 
-        self.assertEqual(ray.global_state.object_table(), dict())
+        self.assertEqual(ray.global_state.object_table(), {})
 
         ID_SIZE = 20
 

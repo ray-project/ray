@@ -731,7 +731,7 @@ def cluster_usage():
         earliest = time.time()
         latest = 0
 
-        node_to_tasks = dict()
+        node_to_tasks = {}
         # Determine which task has the earlest start time out of the ones
         # passed into the update function
         for task_id, data in tasks.items():

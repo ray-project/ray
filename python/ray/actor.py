@@ -612,7 +612,7 @@ class ActorClass(object):
         # Extract the signatures of each of the methods. This will be used
         # to catch some errors if the methods are called with inappropriate
         # arguments.
-        method_signatures = dict()
+        method_signatures = {}
         for k, v in actor_methods:
             # Print a warning message if the method signature is not
             # supported. We don't raise an exception because if the actor

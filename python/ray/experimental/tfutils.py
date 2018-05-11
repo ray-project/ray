@@ -84,8 +84,8 @@ class TensorFlowVariables(object):
         for v in variable_list:
             self.variables[v.op.node_def.name] = v
 
-        self.placeholders = dict()
-        self.assignment_nodes = dict()
+        self.placeholders = {}
+        self.assignment_nodes = {}
 
         # Create new placeholders to put in custom weights.
         for k, var in self.variables.items():
