@@ -495,6 +495,21 @@ void NodeManager::ScheduleTasks() {
       // TODO(swang): Handle forward task failure.
       // TODO(swang): Unsubscribe this task in the task dependency manager.
       RAY_CHECK_OK(ForwardTask(task, client_id));
+
+      // Tell the task dependency manager that we no longer need this task's
+      // object dependencies.
+      std::vector<ObjectID> objects_to_cancel;
+      task_dependency_manager_.UnsubscribeDependencies(task_id, objects_to_cancel);
+      for (const auto &object_id : objects_to_cancel) {
+        HandleRemoteDependencyCanceled(object_id);
+      }
+      // Tell the task dependency manager that we are no longer responsible for
+      // executing this task.
+      std::vector<ObjectID> objects_to_request;
+      task_dependency_manager_.TaskCanceled(task_id, objects_to_request);
+      for (const auto &object_id : objects_to_request) {
+        HandleRemoteDependencyRequired(object_id);
+      }
     }
   }
 
@@ -818,19 +833,6 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
-    // Tell the task dependency manager that we no longer need this task's
-    // object dependencies.
-    std::vector<ObjectID> objects_to_cancel;
-    task_dependency_manager_.UnsubscribeDependencies(task_id, objects_to_cancel);
-    for (const auto &object_id : objects_to_cancel) {
-      HandleRemoteDependencyCanceled(object_id);
-    }
-    std::vector<ObjectID> objects_to_request;
-    task_dependency_manager_.TaskCanceled(task_id, objects_to_request);
-    for (const auto &object_id : objects_to_request) {
-      HandleRemoteDependencyRequired(object_id);
-    }
-
     // Preemptively push any local arguments to the receiving node. For now, we
     // only do this with actor tasks, since actor tasks must be executed by a
     // specific process and therefore have affinity to the receiving node.
