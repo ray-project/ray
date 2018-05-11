@@ -18,8 +18,8 @@ class SharedTorchPolicy(TorchPolicy):
     is_recurrent = False
 
     def __init__(self, registry, ob_space, ac_space, config, **kwargs):
-        super(SharedTorchPolicy, self).__init__(
-            registry, ob_space, ac_space, config, **kwargs)
+        super(SharedTorchPolicy, self).__init__(registry, ob_space, ac_space,
+                                                config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         _, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
@@ -33,7 +33,7 @@ class SharedTorchPolicy(TorchPolicy):
         with self.lock:
             ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
             logits, values = self._model(ob)
-            samples = F.softmax(logits, dim=1).multinomial().squeeze()
+            samples = F.softmax(logits, dim=1).multinomial(1).squeeze()
             values = values.squeeze()
             return var_to_np(samples), {"vf_preds": var_to_np(values)}
 
@@ -66,15 +66,19 @@ class SharedTorchPolicy(TorchPolicy):
         """Loss is encoded in here. Defining a new loss function
         would start by rewriting this function"""
 
-        states, acs, advs, rs, _ = convert_batch(batch)
-        values, ac_logprobs, entropy = self._evaluate(states, acs)
-        pi_err = -(advs * ac_logprobs).sum()
+        states, actions, advs, rs, _ = convert_batch(batch)
+        values, action_log_probs, entropy = self._evaluate(states, actions)
+        pi_err = -advs.dot(action_log_probs.reshape(-1))
         value_err = F.mse_loss(values, rs)
 
         self.optimizer.zero_grad()
-        overall_err = (pi_err +
-                       value_err * self.config["vf_loss_coeff"] +
-                       entropy * self.config["entropy_coeff"])
+
+        overall_err = sum([
+            pi_err,
+            self.config["vf_loss_coeff"] * value_err,
+            self.config["entropy_coeff"] * entropy,
+        ])
+
         overall_err.backward()
-        torch.nn.utils.clip_grad_norm_(
-            self._model.parameters(), self.config["grad_clip"])
+        torch.nn.utils.clip_grad_norm_(self._model.parameters(),
+                                       self.config["grad_clip"])
