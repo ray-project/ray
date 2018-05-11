@@ -1017,14 +1017,14 @@ class ActorsWithGPUs(unittest.TestCase):
         def locations_to_intervals_for_many_tasks():
             # Launch a bunch of GPU tasks.
             locations_ids_and_intervals = ray.get([
-                f1.remote() for _ in range(5 * num_local_schedulers *
-                                           num_gpus_per_scheduler)
+                f1.remote() for _ in range(
+                    5 * num_local_schedulers * num_gpus_per_scheduler)
             ] + [
-                f2.remote() for _ in range(5 * num_local_schedulers *
-                                           num_gpus_per_scheduler)
+                f2.remote() for _ in range(
+                    5 * num_local_schedulers * num_gpus_per_scheduler)
             ] + [
-                f1.remote() for _ in range(5 * num_local_schedulers *
-                                           num_gpus_per_scheduler)
+                f1.remote() for _ in range(
+                    5 * num_local_schedulers * num_gpus_per_scheduler)
             ])
 
             locations_to_intervals = collections.defaultdict(lambda: [])
@@ -1087,9 +1087,8 @@ class ActorsWithGPUs(unittest.TestCase):
 
         # Create more actors to fill up all the GPUs.
         more_actors = [
-            Actor1.remote()
-            for _ in range(num_local_schedulers * num_gpus_per_scheduler - 1 -
-                           3)
+            Actor1.remote() for _ in range(
+                num_local_schedulers * num_gpus_per_scheduler - 1 - 3)
         ]
         # Wait for the actors to finish being created.
         ray.get([actor.get_location_and_ids.remote() for actor in more_actors])
@@ -1823,7 +1822,12 @@ class DistributedActorHandles(unittest.TestCase):
 
         @ray.remote
         class Counter(object):
-            pass
+            def __init__(self):
+                self.x = 0
+
+            def inc(self):
+                self.x += 1
+                return self.x
 
         @ray.remote
         def f():
@@ -1833,18 +1837,34 @@ class DistributedActorHandles(unittest.TestCase):
         def g():
             return [Counter.remote()]
 
-        with self.assertRaises(Exception):
-            ray.put(Counter.remote())
+        # Currently, calling ray.put on an actor handle is allowed, but is
+        # there a good use case?
+        counter = Counter.remote()
+        counter_id = ray.put(counter)
+        new_counter = ray.get(counter_id)
+        assert ray.get(new_counter.inc.remote()) == 1
+        assert ray.get(counter.inc.remote()) == 2
+        assert ray.get(new_counter.inc.remote()) == 3
 
         with self.assertRaises(Exception):
             ray.get(f.remote())
 
-        # The below test is commented out because it currently does not behave
-        # properly. The call to g.remote() does not raise an exception because
-        # even though the actor handle cannot be pickled, pyarrow attempts to
-        # serialize it as a dictionary of its fields which kind of works.
-        # self.assertRaises(Exception):
-        #     ray.get(g.remote())
+        # The below test works, but do we want to disallow this usage?
+        ray.get(g.remote())
+
+    def testPicklingActorHandle(self):
+        ray.worker.init(num_workers=1)
+
+        @ray.remote
+        class Foo(object):
+            def method(self):
+                pass
+
+        f = Foo.remote()
+        new_f = ray.worker.pickle.loads(ray.worker.pickle.dumps(f))
+        # Verify that we can call a method on the unpickled handle. TODO(rkn):
+        # we should also test this from a different driver.
+        ray.get(new_f.method.remote())
 
 
 class ActorPlacementAndResources(unittest.TestCase):
