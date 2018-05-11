@@ -1,5 +1,6 @@
 #include "ray/id.h"
 
+#include <limits.h>
 #include <random>
 
 #include "ray/constants.h"
@@ -83,7 +84,8 @@ bool UniqueID::operator==(const UniqueID &rhs) const {
 
 size_t UniqueID::hash() const {
   size_t result;
-  std::memcpy(&result, id_, sizeof(size_t));
+  // Skip the bytes for the object prefix.
+  std::memcpy(&result, id_ + (kObjectIdIndexSize / CHAR_BIT), sizeof(size_t));
   return result;
 }
 
