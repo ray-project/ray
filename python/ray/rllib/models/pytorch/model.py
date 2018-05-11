@@ -53,11 +53,11 @@ class SlimConv2d(nn.Module):
 class SlimFC(nn.Module):
     """Simple PyTorch of `linear` function"""
 
-    def __init__(self, in_size, size, initializer=None,
+    def __init__(self, in_size, out_size, initializer=None,
                  activation_fn=None, bias_init=0):
         super(SlimFC, self).__init__()
         layers = []
-        linear = nn.Linear(in_size, size)
+        linear = nn.Linear(in_size, out_size)
         if initializer:
             initializer(linear.weight)
         nn.init.constant_(linear.bias, bias_init)

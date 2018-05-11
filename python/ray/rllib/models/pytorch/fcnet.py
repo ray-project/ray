@@ -24,7 +24,7 @@ class FullyConnectedNetwork(Model):
         last_layer_size = inputs
         for size in hiddens:
             layers.append(SlimFC(
-                last_layer_size, size,
+                in_size=last_layer_size, out_size=size,
                 initializer=normc_initializer(1.0),
                 activation_fn=activation))
             last_layer_size = size
@@ -32,11 +32,11 @@ class FullyConnectedNetwork(Model):
         self.hidden_layers = nn.Sequential(*layers)
 
         self.logits = SlimFC(
-            last_layer_size, num_outputs,
+            in_size=last_layer_size, out_size=num_outputs,
             initializer=normc_initializer(0.01),
             activation_fn=None)
         self.value_branch = SlimFC(
-            last_layer_size, 1,
+            in_size=last_layer_size, out_size=1,
             initializer=normc_initializer(1.0),
             activation_fn=None)
 
