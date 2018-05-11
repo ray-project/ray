@@ -143,9 +143,7 @@ class TRPOPolicy(SharedTorchPolicy):
 
         new_policy = deepcopy(self._model)
 
-        h = deepcopy(new_policy.hidden_layers)  # TODO rm
-
-        # TODO adjust only action params
+        # only adjust parameters of action head and hidden layers
         vector_to_parameters(
             params,
             chain(self._model.hidden_layers.parameters(),
