@@ -33,8 +33,8 @@ class SharedTorchPolicy(TorchPolicy):
         with self.lock:
             ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
             logits, values = self._model(ob)
-            samples = self._model.probs(logits).multinomial().squeeze()
-            values = values.squeeze(0)
+            samples = F.softmax(logits, dim=1).multinomial().squeeze()
+            values = values.squeeze()
             return var_to_np(samples), {"vf_preds": var_to_np(values)}
 
     def compute_logits(self, ob, *args):
@@ -48,15 +48,17 @@ class SharedTorchPolicy(TorchPolicy):
             ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
             res = self._model.hidden_layers(ob)
             res = self._model.value_branch(res)
-            res = res.squeeze(0)
+            res = res.squeeze()
             return var_to_np(res)
 
     def _evaluate(self, obs, actions):
         """Passes in multiple obs."""
         logits, values = self._model(obs)
-        log_probs = F.log_softmax(logits)
-        probs = self._model.probs(logits)
+        log_probs = F.log_softmax(logits, dim=1)
+        probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
+        # TODO(alok): set distribution based on action space and use its
+        # `.entropy()` method to calculate automatically
         entropy = -(log_probs * probs).sum(-1).sum()
         return values, action_log_probs, entropy
 
