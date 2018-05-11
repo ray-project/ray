@@ -18,8 +18,8 @@ class SharedTorchPolicy(TorchPolicy):
     is_recurrent = False
 
     def __init__(self, registry, ob_space, ac_space, config, **kwargs):
-        super(SharedTorchPolicy, self).__init__(
-            registry, ob_space, ac_space, config, **kwargs)
+        super(SharedTorchPolicy, self).__init__(registry, ob_space, ac_space,
+                                                config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         _, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
@@ -33,7 +33,8 @@ class SharedTorchPolicy(TorchPolicy):
         with self.lock:
             ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
             logits, values = self._model(ob)
-            samples = F.softmax(logits, dim=1).multinomial(num_samples=1).squeeze()
+            samples = F.softmax(
+                logits, dim=1).multinomial(num_samples=1).squeeze()
             values = values.squeeze()
             return var_to_np(samples), {"vf_preds": var_to_np(values)}
 
@@ -54,7 +55,7 @@ class SharedTorchPolicy(TorchPolicy):
     def _evaluate(self, obs, actions):
         """Passes in multiple obs."""
         logits, values = self._model(obs)
-        log_probs = F.log_softmax(logits,dim=1)
+        log_probs = F.log_softmax(logits, dim=1)
         probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
         # TODO(alok): set distribution based on action space and use its
@@ -72,9 +73,8 @@ class SharedTorchPolicy(TorchPolicy):
         value_err = F.mse_loss(values, rs)
 
         self.optimizer.zero_grad()
-        overall_err = (pi_err +
-                       value_err * self.config["vf_loss_coeff"] +
+        overall_err = (pi_err + value_err * self.config["vf_loss_coeff"] +
                        entropy * self.config["entropy_coeff"])
         overall_err.backward()
-        torch.nn.utils.clip_grad_norm(
-            self._model.parameters(), self.config["grad_clip"])
+        torch.nn.utils.clip_grad_norm_(self._model.parameters(),
+                                       self.config["grad_clip"])

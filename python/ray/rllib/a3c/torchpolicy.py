@@ -27,7 +27,7 @@ class TorchPolicy(Policy):
         self.lock = Lock()
 
     def apply_gradients(self, grads):
-        grads = deepcopy(grads) # to prevent zero_grad from clearing grads since they may share memory with the policy's .grad tensors
+        grads = deepcopy(grads)  # to prevent zero_grad from clearing grads since they may share memory with the policy's .grad tensors
         self.optimizer.zero_grad()
         for g, p in zip(grads, self._model.parameters()):
             p.grad = Variable(torch.from_numpy(g))
