@@ -60,8 +60,8 @@ class GenericPolicy(object):
             model.outputs, self.sess)
 
         self.num_params = sum(np.prod(variable.shape.as_list())
-                               for _, variable
-                               in self.variables.variables.items())
+                              for _, variable
+                              in self.variables.variables.items())
         self.sess.run(tf.global_variables_initializer())
 
     def compute(self, observation, add_noise=False, update=True):
