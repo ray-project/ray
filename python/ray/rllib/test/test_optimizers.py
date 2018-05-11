@@ -33,11 +33,11 @@ class SampleBatchTest(unittest.TestCase):
         b2 = SampleBatch({"a": np.array([1]), "b": np.array([4])})
         b3 = SampleBatch({"a": np.array([1]), "b": np.array([5])})
         b12 = b1.concat(b2)
-        self.assertEqual(b12["a"].tolist(), [1, 2, 3, 1])
-        self.assertEqual(b12["b"].tolist(), [4, 5, 6, 4])
+        self.assertEqual(b12.data["a"].tolist(), [1, 2, 3, 1])
+        self.assertEqual(b12.data["b"].tolist(), [4, 5, 6, 4])
         b = SampleBatch.concat_samples([b1, b2, b3])
-        self.assertEqual(b["a"].tolist(), [1, 2, 3, 1, 1])
-        self.assertEqual(b["b"].tolist(), [4, 5, 6, 4, 5])
+        self.assertEqual(b.data["a"].tolist(), [1, 2, 3, 1, 1])
+        self.assertEqual(b.data["b"].tolist(), [4, 5, 6, 4, 5])
 
 
 if __name__ == '__main__':
