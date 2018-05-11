@@ -662,6 +662,13 @@ void NodeManager::AssignTask(Task &task) {
     }
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
+    // Notify the task dependency manager that we no longer need the
+    // dependencies for this task.
+    std::vector<ObjectID> objects_to_cancel;
+    task_dependency_manager_.UnsubscribeDependencies(spec.TaskId(), objects_to_cancel);
+    for (const auto &object_id : objects_to_cancel) {
+      HandleRemoteDependencyCanceled(object_id);
+    }
     // Mark the task as running.
     local_queues_.QueueRunningTasks(std::vector<Task>({task}));
   } else {
@@ -717,6 +724,13 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
       task.GetTaskSpecification().IsActorTask()) {
     auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
     HandleObjectLocal(dummy_object);
+  }
+
+  // Notify the task dependency manager that this task has finished execution.
+  std::vector<ObjectID> objects_to_request;
+  task_dependency_manager_.TaskCanceled(task_id, objects_to_request);
+  for (const auto &object_id : objects_to_request) {
+    HandleRemoteDependencyRequired(object_id);
   }
 
   // Unset the worker's assigned task.
