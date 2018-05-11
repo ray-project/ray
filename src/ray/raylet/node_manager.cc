@@ -370,6 +370,9 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     auto message = flatbuffers::GetRoot<protocol::ReconstructObject>(message_data);
     ObjectID object_id = from_flatbuf(*message->object_id());
     RAY_LOG(DEBUG) << "reconstructing object " << object_id;
+    // TODO(swang): Instead of calling Pull on the object directly, record the
+    // fact that the blocked task is dependent on this object_id in the task
+    // dependency manager.
     RAY_CHECK_OK(object_manager_.Pull(object_id));
 
     // If the blocked client is a worker, and the worker isn't already blocked,

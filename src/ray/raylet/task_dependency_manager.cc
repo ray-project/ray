@@ -58,8 +58,6 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
   }
   // Process callbacks for all of the tasks dependent on the object that are
   // now ready to run.
-  // TODO(swang): We should not call this for tasks that have already started
-  // executing.
   return waiting_task_ids;
 }
 
