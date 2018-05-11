@@ -634,6 +634,9 @@ class DataFrame(object):
         elif isinstance(by, compat.string_types):
             by = self.__getitem__(by).values.tolist()
         elif is_list_like(by):
+            if isinstance(by, pd.Series):
+                by = by.values.tolist()
+
             mismatch = len(by) != len(self) if axis == 0 \
                 else len(by) != len(self.columns)
 
@@ -806,17 +809,22 @@ class DataFrame(object):
         if how is None and thresh is None:
             raise TypeError('must specify how or thresh')
 
+        indices = None
         if subset is not None:
-            subset = set(subset)
-
             if axis == 1:
-                subset = [item for item in self.index if item in subset]
+                indices = self.index.get_indexer_for(subset)
+                check = indices == -1
+                if check.any():
+                    raise KeyError(list(np.compress(check, subset)))
             else:
-                subset = [item for item in self.columns if item in subset]
+                indices = self.columns.get_indexer_for(subset)
+                check = indices == -1
+                if check.any():
+                    raise KeyError(list(np.compress(check, subset)))
 
         def dropna_helper(df):
             new_df = df.dropna(axis=axis, how=how, thresh=thresh,
-                               subset=subset, inplace=False)
+                               subset=indices, inplace=False)
 
             if axis == 1:
                 new_index = new_df.columns
