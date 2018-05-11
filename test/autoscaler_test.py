@@ -563,5 +563,6 @@ class AutoscalingTest(unittest.TestCase):
             lambda: StandardAutoscaler(
                 invalid_provider, LoadMetrics(), update_interval_s=0))
 
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
