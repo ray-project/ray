@@ -19,6 +19,8 @@ from ray.core.generated.TaskReply import TaskReply
 from ray.core.generated.ResultTableReply import ResultTableReply
 from ray.core.generated.TaskExecutionDependencies import \
     TaskExecutionDependencies
+from ray.core.generated.ObjectTableData import ObjectTableData
+from ray.core.generated.TaskTableData import TaskTableData
 
 # These prefixes must be kept up-to-date with the definitions in
 # ray_redis_module.cc.
@@ -29,6 +31,12 @@ OBJECT_SUBSCRIBE_PREFIX = "OS:"
 TASK_PREFIX = "TT:"
 FUNCTION_PREFIX = "RemoteFunction:"
 OBJECT_CHANNEL_PREFIX = "OC:"
+
+# These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
+TablePrefix_TASK = 1
+TablePrefix_TASK_string = "TASK"
+TablePrefix_OBJECT = 4
+TablePrefix_OBJECT_string = "OBJECT"
 
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
@@ -67,6 +75,8 @@ class GlobalState(object):
         self.redis_client = None
         # A list of redis shards, storing the object table & task table.
         self.redis_clients = None
+        # True if we are using the raylet code path and false otherwise.
+        self.use_raylet = None
 
     def _check_connected(self):
         """Check that the object has been initialized before it is used.
@@ -102,6 +112,8 @@ class GlobalState(object):
         """
         self.redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port)
+
+        self.use_raylet = int(self.redis_client.get("UseRaylet")) == 1
 
         start_time = time.time()
 
@@ -188,28 +200,43 @@ class GlobalState(object):
             object_id = ray.local_scheduler.ObjectID(hex_to_binary(object_id))
 
         # Return information about a single object ID.
-        object_locations = self._execute_command(object_id,
-                                                 "RAY.OBJECT_TABLE_LOOKUP",
-                                                 object_id.id())
-        if object_locations is not None:
-            manager_ids = [
-                binary_to_hex(manager_id) for manager_id in object_locations
-            ]
+
+        if not self.use_raylet:
+            # Use the non-raylet code path.
+            object_locations = self._execute_command(object_id,
+                                                     "RAY.OBJECT_TABLE_LOOKUP",
+                                                     object_id.id())
+            if object_locations is not None:
+                manager_ids = [
+                    binary_to_hex(manager_id) for manager_id in object_locations
+                ]
+            else:
+                manager_ids = None
+
+            result_table_response = self._execute_command(
+                object_id, "RAY.RESULT_TABLE_LOOKUP", object_id.id())
+            result_table_message = ResultTableReply.GetRootAsResultTableReply(
+                result_table_response, 0)
+
+            result = {
+                "ManagerIDs": manager_ids,
+                "TaskID": binary_to_hex(result_table_message.TaskId()),
+                "IsPut": bool(result_table_message.IsPut()),
+                "DataSize": result_table_message.DataSize(),
+                "Hash": binary_to_hex(result_table_message.Hash())
+            }
+
         else:
-            manager_ids = None
-
-        result_table_response = self._execute_command(
-            object_id, "RAY.RESULT_TABLE_LOOKUP", object_id.id())
-        result_table_message = ResultTableReply.GetRootAsResultTableReply(
-            result_table_response, 0)
-
-        result = {
-            "ManagerIDs": manager_ids,
-            "TaskID": binary_to_hex(result_table_message.TaskId()),
-            "IsPut": bool(result_table_message.IsPut()),
-            "DataSize": result_table_message.DataSize(),
-            "Hash": binary_to_hex(result_table_message.Hash())
-        }
+            # Use the raylet code path.
+            message = self.redis_client.execute_command("RAY.TABLE_LOOKUP",
+                                                        TablePrefix_OBJECT,
+                                                        "", object_id.id())
+            result = []
+            log_info = ObjectTableData.GetRootAsObjectTableData(message, 0)
+            result.append({"DataSize": log_info.ObjectSize(),
+                           "Manager": log_info.Manager(),
+                           "IsEviction": log_info.IsEviction(),
+                           "NumEvictions": log_info.NumEvictions()})
 
         return result
 
@@ -220,7 +247,6 @@ class GlobalState(object):
             object_id: An object ID to fetch information about. If this is
                 None, then the entire object table is fetched.
 
-
         Returns:
             Information from the object table.
         """
@@ -230,13 +256,20 @@ class GlobalState(object):
             return self._object_table(object_id)
         else:
             # Return the entire object table.
-            object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
-            object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
-            object_ids_binary = set(
-                [key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys] + [
-                    key[len(OBJECT_LOCATION_PREFIX):]
-                    for key in object_location_keys
-                ])
+            if not self.use_raylet:
+                object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
+                object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
+                object_ids_binary = set(
+                    [key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys] + [
+                        key[len(OBJECT_LOCATION_PREFIX):]
+                        for key in object_location_keys
+                    ])
+            else:
+                object_keys = self.redis_client.keys(
+                    TablePrefix_OBJECT_string + ":*")
+                object_ids_binary = set(
+                    [key[len(TablePrefix_OBJECT_string + ":"):]
+                     for key in object_keys])
             results = {}
             for object_id_binary in object_ids_binary:
                 results[binary_to_object_id(object_id_binary)] = (
@@ -255,72 +288,96 @@ class GlobalState(object):
                 TASK_STATUS_MAPPING should be used to parse the "State" field
                 into a human-readable string.
         """
-        task_table_response = self._execute_command(task_id,
-                                                    "RAY.TASK_TABLE_GET",
-                                                    task_id.id())
-        if task_table_response is None:
-            raise Exception("There is no entry for task ID {} in the task "
-                            "table.".format(binary_to_hex(task_id.id())))
-        task_table_message = TaskReply.GetRootAsTaskReply(
-            task_table_response, 0)
-        task_spec = task_table_message.TaskSpec()
-        task_spec = ray.local_scheduler.task_from_string(task_spec)
+        if not self.use_raylet:
+            # Use the non-raylet code path.
+            task_table_response = self._execute_command(task_id,
+                                                        "RAY.TASK_TABLE_GET",
+                                                        task_id.id())
+            if task_table_response is None:
+                raise Exception("There is no entry for task ID {} in the task "
+                                "table.".format(binary_to_hex(task_id.id())))
+            task_table_message = TaskReply.GetRootAsTaskReply(
+                task_table_response, 0)
+            task_spec = task_table_message.TaskSpec()
+            task_spec = ray.local_scheduler.task_from_string(task_spec)
 
-        task_spec_info = {
-            "DriverID":
-            binary_to_hex(task_spec.driver_id().id()),
-            "TaskID":
-            binary_to_hex(task_spec.task_id().id()),
-            "ParentTaskID":
-            binary_to_hex(task_spec.parent_task_id().id()),
-            "ParentCounter":
-            task_spec.parent_counter(),
-            "ActorID":
-            binary_to_hex(task_spec.actor_id().id()),
-            "ActorCreationID":
-            binary_to_hex(task_spec.actor_creation_id().id()),
-            "ActorCreationDummyObjectID":
-            binary_to_hex(task_spec.actor_creation_dummy_object_id().id()),
-            "ActorCounter":
-            task_spec.actor_counter(),
-            "FunctionID":
-            binary_to_hex(task_spec.function_id().id()),
-            "Args":
-            task_spec.arguments(),
-            "ReturnObjectIDs":
-            task_spec.returns(),
-            "RequiredResources":
-            task_spec.required_resources()
-        }
+            task_spec_info = {
+                "DriverID":
+                binary_to_hex(task_spec.driver_id().id()),
+                "TaskID":
+                binary_to_hex(task_spec.task_id().id()),
+                "ParentTaskID":
+                binary_to_hex(task_spec.parent_task_id().id()),
+                "ParentCounter":
+                task_spec.parent_counter(),
+                "ActorID":
+                binary_to_hex(task_spec.actor_id().id()),
+                "ActorCreationID":
+                binary_to_hex(task_spec.actor_creation_id().id()),
+                "ActorCreationDummyObjectID":
+                binary_to_hex(task_spec.actor_creation_dummy_object_id().id()),
+                "ActorCounter":
+                task_spec.actor_counter(),
+                "FunctionID":
+                binary_to_hex(task_spec.function_id().id()),
+                "Args":
+                task_spec.arguments(),
+                "ReturnObjectIDs":
+                task_spec.returns(),
+                "RequiredResources":
+                task_spec.required_resources()
+            }
 
-        execution_dependencies_message = (
-            TaskExecutionDependencies.GetRootAsTaskExecutionDependencies(
-                task_table_message.ExecutionDependencies(), 0))
-        execution_dependencies = [
-            ray.local_scheduler.ObjectID(
-                execution_dependencies_message.ExecutionDependencies(i))
-            for i in range(
-                execution_dependencies_message.ExecutionDependenciesLength())
-        ]
+            execution_dependencies_message = (
+                TaskExecutionDependencies.GetRootAsTaskExecutionDependencies(
+                    task_table_message.ExecutionDependencies(), 0))
+            execution_dependencies = [
+                ray.local_scheduler.ObjectID(
+                    execution_dependencies_message.ExecutionDependencies(i))
+                for i in range(
+                    execution_dependencies_message.ExecutionDependenciesLength())
+            ]
 
-        # TODO(rkn): The return fields ExecutionDependenciesString and
-        # ExecutionDependencies are redundant, so we should remove
-        # ExecutionDependencies. However, it is currently used in monitor.py.
+            # TODO(rkn): The return fields ExecutionDependenciesString and
+            # ExecutionDependencies are redundant, so we should remove
+            # ExecutionDependencies. However, it is currently used in monitor.py.
 
-        return {
-            "State":
-            task_table_message.State(),
-            "LocalSchedulerID":
-            binary_to_hex(task_table_message.LocalSchedulerId()),
-            "ExecutionDependenciesString":
-            task_table_message.ExecutionDependencies(),
-            "ExecutionDependencies":
-            execution_dependencies,
-            "SpillbackCount":
-            task_table_message.SpillbackCount(),
-            "TaskSpec":
-            task_spec_info
-        }
+            return {
+                "State":
+                task_table_message.State(),
+                "LocalSchedulerID":
+                binary_to_hex(task_table_message.LocalSchedulerId()),
+                "ExecutionDependenciesString":
+                task_table_message.ExecutionDependencies(),
+                "ExecutionDependencies":
+                execution_dependencies,
+                "SpillbackCount":
+                task_table_message.SpillbackCount(),
+                "TaskSpec":
+                task_spec_info
+            }
+
+        else:
+            # Use the raylet code path.
+            message = self.redis_client.execute_command("RAY.TABLE_LOOKUP",
+                                                        TablePrefix_TASK, "",
+                                                        task_id.id())
+            task_table_message = TaskTableData.GetRootAsTaskTableData(message,
+                                                                      0)
+            return {
+                "SchedulingState":
+                task_table_message.SchedulingState(),
+                "LocalSchedulerID":
+                task_table_message.SchedulerId(),
+                "ExecutionDependencies":
+                task_table_message.ExecutionDependencies(),
+                "SpillbackCount":
+                task_table_message.SpillbackCount(),
+                "TaskInfo":
+                task_table_message.TaskInfo(),
+                "Updated":
+                task_table_message.Updated()
+            }
 
     def task_table(self, task_id=None):
         """Fetch and parse the task table information for one or more task IDs.
@@ -328,7 +385,6 @@ class GlobalState(object):
         Args:
             task_id: A hex string of the task ID to fetch information about. If
                 this is None, then the task object table is fetched.
-
 
         Returns:
             Information from the task table.
@@ -338,10 +394,17 @@ class GlobalState(object):
             task_id = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
             return self._task_table(task_id)
         else:
-            task_table_keys = self._keys(TASK_PREFIX + "*")
+            if not self.use_raylet:
+                task_table_keys = self._keys(TASK_PREFIX + "*")
+                task_ids_binary = [key[len(TASK_PREFIX):]
+                                   for key in task_table_keys]
+            else:
+                task_table_keys = self.redis_client.keys(
+                    TablePrefix_TASK_string + ":*")
+                task_ids_binary = [key[len(TablePrefix_TASK_string + ":"):]
+                                   for key in task_table_keys]
             results = {}
-            for key in task_table_keys:
-                task_id_binary = key[len(TASK_PREFIX):]
+            for task_id_binary in task_ids_binary:
                 results[binary_to_hex(task_id_binary)] = self._task_table(
                     ray.local_scheduler.ObjectID(task_id_binary))
             return results
@@ -465,7 +528,7 @@ class GlobalState(object):
         # The heap is used to maintain the set of x tasks that occurred the
         # most recently across all of the workers, where x is defined as the
         # function parameter num. The key is the start time of the "get_task"
-        # component of each task. Calling heappop will result in the taks with
+        # component of each task. Calling heappop will result in the task with
         # the earliest "get_task_start" to be removed from the heap.
         heap = []
         heapq.heapify(heap)
