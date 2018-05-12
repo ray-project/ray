@@ -38,7 +38,7 @@ class BCPolicy(Policy):
                                           tf.get_variable_scope().name)
 
     def setup_loss(self, action_space):
-        self.ac = tf.placeholder(tf.int64, [None], name="ac")
+        self.ac = tf.placeholder(tf.float32, [None] + list(action_space.shape), name="ac")
         log_prob = self.curr_dist.logp(self.ac)
         self.pi_loss = - tf.reduce_sum(log_prob)
         self.loss = self.pi_loss
