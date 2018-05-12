@@ -401,7 +401,7 @@ def start_redis(node_ip_address,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True,
-                use_credis=False):
+                use_credis=("RAY_USE_NEW_GCS" in os.environ)):
     """Start the Redis global state store.
 
     Args:
@@ -425,8 +425,9 @@ def start_redis(node_ip_address,
             then all Redis processes started by this method will be killed by
             services.cleanup() when the Python process that imported services
             exits.
-        use_credis (bool): defaults to False.  If True, additionally load the
-            chain-replicated libraries into the redis servers.
+        use_credis (bool): If True, additionally load the chain-replicated
+            libraries into the redis servers.  Controlled by the presence of
+            "RAY_USE_NEW_GCS" in os.environ.
 
     Returns:
         A tuple of the address for the primary Redis shard and a list of
@@ -442,7 +443,7 @@ def start_redis(node_ip_address,
                         "number of Redis shards.")
 
     if not use_credis:
-        assigned_port, _ = start_redis_instance(
+        assigned_port, _ = _start_redis_instance(
             node_ip_address=node_ip_address,
             port=port,
             redis_max_clients=redis_max_clients,
@@ -450,7 +451,7 @@ def start_redis(node_ip_address,
             stderr_file=redis_stderr_file,
             cleanup=cleanup)
     else:
-        assigned_port, _ = start_redis_instance(
+        assigned_port, _ = _start_redis_instance(
             node_ip_address=node_ip_address,
             port=port,
             redis_max_clients=redis_max_clients,
@@ -487,7 +488,7 @@ def start_redis(node_ip_address,
         redis_stdout_file, redis_stderr_file = new_log_files(
             "redis-{}".format(i), redirect_output)
         if not use_credis:
-            redis_shard_port, _ = start_redis_instance(
+            redis_shard_port, _ = _start_redis_instance(
                 node_ip_address=node_ip_address,
                 port=redis_shard_ports[i],
                 redis_max_clients=redis_max_clients,
@@ -498,7 +499,7 @@ def start_redis(node_ip_address,
             assert num_redis_shards == 1, \
                 "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "\
                 "supports 1-node chain for that shard only."
-            redis_shard_port, _ = start_redis_instance(
+            redis_shard_port, _ = _start_redis_instance(
                 node_ip_address=node_ip_address,
                 port=redis_shard_ports[i],
                 redis_max_clients=redis_max_clients,
@@ -530,15 +531,15 @@ def start_redis(node_ip_address,
     return redis_address, redis_shards
 
 
-def start_redis_instance(node_ip_address="127.0.0.1",
-                         port=None,
-                         redis_max_clients=None,
-                         num_retries=20,
-                         stdout_file=None,
-                         stderr_file=None,
-                         cleanup=True,
-                         executable=REDIS_EXECUTABLE,
-                         modules=[REDIS_MODULE]):
+def _start_redis_instance(node_ip_address="127.0.0.1",
+                          port=None,
+                          redis_max_clients=None,
+                          num_retries=20,
+                          stdout_file=None,
+                          stderr_file=None,
+                          cleanup=True,
+                          executable=REDIS_EXECUTABLE,
+                          modules=[REDIS_MODULE]):
     """Start a single Redis server.
 
     Args:
@@ -1299,7 +1300,6 @@ def start_ray_processes(address_info=None,
     redis_address = address_info.get("redis_address")
     redis_shards = address_info.get("redis_shards", [])
     if redis_address is None:
-        use_credis = ("RAY_USE_NEW_GCS" in os.environ)
         redis_address, redis_shards = start_redis(
             node_ip_address,
             port=redis_port,
@@ -1308,8 +1308,7 @@ def start_ray_processes(address_info=None,
             redis_max_clients=redis_max_clients,
             redirect_output=True,
             redirect_worker_output=redirect_worker_output,
-            cleanup=cleanup,
-            use_credis=use_credis)
+            cleanup=cleanup)
         address_info["redis_address"] = redis_address
         time.sleep(0.1)
 
