@@ -18,6 +18,8 @@ class ActorAPI(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(os.environ.get("RAY_USE_XRAY") == "1",
+                     "This test does not work with xray yet.")
     def testKeywordArgs(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
