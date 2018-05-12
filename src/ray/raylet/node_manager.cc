@@ -1,15 +1,38 @@
 #include "ray/raylet/node_manager.h"
 
 #include "common_protocol.h"
+#include "local_scheduler/format/local_scheduler_generated.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace {
 
+#define RAY_CHECK_ENUM(x, y) \
+  static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
+
+// Check consistency between client and server protocol.
+RAY_CHECK_ENUM(protocol::MessageType_SubmitTask, MessageType_SubmitTask);
+RAY_CHECK_ENUM(protocol::MessageType_TaskDone, MessageType_TaskDone);
+RAY_CHECK_ENUM(protocol::MessageType_EventLogMessage, MessageType_EventLogMessage);
+RAY_CHECK_ENUM(protocol::MessageType_RegisterClientRequest,
+               MessageType_RegisterClientRequest);
+RAY_CHECK_ENUM(protocol::MessageType_RegisterClientReply,
+               MessageType_RegisterClientReply);
+RAY_CHECK_ENUM(protocol::MessageType_DisconnectClient, MessageType_DisconnectClient);
+RAY_CHECK_ENUM(protocol::MessageType_GetTask, MessageType_GetTask);
+RAY_CHECK_ENUM(protocol::MessageType_ExecuteTask, MessageType_ExecuteTask);
+RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject, MessageType_ReconstructObject);
+RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked, MessageType_NotifyUnblocked);
+RAY_CHECK_ENUM(protocol::MessageType_PutObject, MessageType_PutObject);
+RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierRequest,
+               MessageType_GetActorFrontierRequest);
+RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierReply,
+               MessageType_GetActorFrontierReply);
+RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier, MessageType_SetActorFrontier);
+
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
 bool CheckDuplicateActorTask(
-    const std::unordered_map<ActorID, ray::raylet::ActorRegistration, UniqueIDHasher>
-        &actor_registry,
+    const std::unordered_map<ActorID, ray::raylet::ActorRegistration> &actor_registry,
     const ray::raylet::TaskSpecification &spec) {
   auto actor_entry = actor_registry.find(spec.ActorId());
   RAY_CHECK(actor_entry != actor_registry.end());
@@ -238,7 +261,7 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
   // Dequeue any methods that were submitted before the actor's location was
   // known.
   const auto &methods = local_queues_.GetUncreatedActorMethods();
-  std::unordered_set<TaskID, UniqueIDHasher> created_actor_method_ids;
+  std::unordered_set<TaskID> created_actor_method_ids;
   for (const auto &method : methods) {
     if (method.GetTaskSpecification().ActorId() == actor_id) {
       created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
@@ -458,7 +481,7 @@ void NodeManager::ScheduleTasks() {
   }
 
   // Extract decision for this local scheduler.
-  std::unordered_set<TaskID, UniqueIDHasher> local_task_ids;
+  std::unordered_set<TaskID> local_task_ids;
   // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
   for (const auto &task_schedule : policy_decision) {
     TaskID task_id = task_schedule.first;

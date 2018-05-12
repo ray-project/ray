@@ -9,12 +9,11 @@ namespace raylet {
 SchedulingPolicy::SchedulingPolicy(const SchedulingQueue &scheduling_queue)
     : scheduling_queue_(scheduling_queue), gen_(rd_()) {}
 
-std::unordered_map<TaskID, ClientID, UniqueIDHasher> SchedulingPolicy::Schedule(
-    const std::unordered_map<ClientID, SchedulingResources, UniqueIDHasher>
-        &cluster_resources,
+std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
+    const std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
     const ClientID &local_client_id, const std::vector<ClientID> &others) {
   // The policy decision to be returned.
-  std::unordered_map<TaskID, ClientID, UniqueIDHasher> decision;
+  std::unordered_map<TaskID, ClientID> decision;
   // TODO(atumanov): protect DEBUG code blocks with ifdef DEBUG
   RAY_LOG(DEBUG) << "[Schedule] cluster resource map: ";
   for (const auto &client_resource_pair : cluster_resources) {

@@ -7,19 +7,19 @@ You can find the code for RLlib `here on GitHub <https://github.com/ray-project/
 
 RLlib's policy optimizers serve as the basis for RLlib's reference algorithms, which include:
 
--  `Proximal Policy Optimization (PPO) <https://arxiv.org/abs/1707.06347>`__ which
-   is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
+- Proximal Policy Optimization (`PPO <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ppo>`__) which is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
 
--  `The Asynchronous Advantage Actor-Critic (A3C) <https://arxiv.org/abs/1602.01783>`__.
+- Policy Gradients (`PG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/pg>`__).
 
-- `Deep Q Networks (DQN) <https://arxiv.org/abs/1312.5602>`__.
+- Asynchronous Advantage Actor-Critic (`A3C <https://github.com/ray-project/ray/tree/master/python/ray/rllib/a3c>`__).
 
-- `Ape-X Distributed Prioritized Experience Replay <https://arxiv.org/abs/1803.00933>`__.
+- Deep Q Networks (`DQN <https://github.com/ray-project/ray/tree/master/python/ray/rllib/dqn>`__).
 
--  Evolution Strategies, as described in `this
-   paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
-   is adapted from
-   `here <https://github.com/openai/evolution-strategies-starter>`__.
+- Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__, `DDPG2 <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg2>`__).
+
+- Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__ variants.
+
+- Evolution Strategies (`ES <https://github.com/ray-project/ray/tree/master/python/ray/rllib/es>`__), as described in `this paper <https://arxiv.org/abs/1703.03864>`__.
 
 These algorithms can be run on any `OpenAI Gym MDP <https://github.com/openai/gym>`__,
 including custom ones written and registered by the user.
@@ -76,7 +76,7 @@ The ``train.py`` script has a number of options you can show by running
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``A3C``, ``ES``, ``DQN`` and ``APEX``).
+(available options are ``PPO``, ``PG``, ``A3C``, ``ES``, ``DDPG``, ``DDPG2``, ``DQN``, ``APEX``, and ``APEX_DDPG2``).
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
@@ -84,10 +84,14 @@ Specifying Parameters
 Each algorithm has specific hyperparameters that can be set with ``--config`` - see the
 ``DEFAULT_CONFIG`` variable in
 `PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ppo/ppo.py>`__,
+`PG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/pg/pg.py>`__,
 `A3C <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c.py>`__,
 `ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__,
-`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__ and
-`APEX <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__.
+`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__,
+`DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/ddpg.py>`__,
+`DDPG2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg2/ddpg.py>`__,
+`APEX <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__, and
+`APEX_DDPG2 <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg2/apex.py>`__.
 
 In an example below, we train A3C by specifying 8 workers through the config flag.
 function that creates the env to refer to it by name. The contents of the env_config agent config field will be passed to that function to allow the environment to be configured. The return type should be an OpenAI gym.Env. For example:

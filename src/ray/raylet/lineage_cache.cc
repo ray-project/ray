@@ -27,9 +27,8 @@ const TaskID LineageEntry::GetEntryId() const {
   return task_.GetTaskSpecification().TaskId();
 }
 
-const std::unordered_set<UniqueID, UniqueIDHasher> LineageEntry::GetParentTaskIds()
-    const {
-  std::unordered_set<UniqueID, UniqueIDHasher> parent_ids;
+const std::unordered_set<UniqueID> LineageEntry::GetParentTaskIds() const {
+  std::unordered_set<UniqueID> parent_ids;
   // A task's parents are the tasks that created its arguments.
   auto dependencies = task_.GetDependencies();
   for (auto &dependency : dependencies) {
@@ -104,8 +103,7 @@ boost::optional<LineageEntry> Lineage::PopEntry(const UniqueID &task_id) {
   }
 }
 
-const std::unordered_map<const UniqueID, LineageEntry, UniqueIDHasher>
-    &Lineage::GetEntries() const {
+const std::unordered_map<const UniqueID, LineageEntry> &Lineage::GetEntries() const {
   return entries_;
 }
 

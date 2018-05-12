@@ -53,6 +53,8 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   popd
 
   pushd python
+    # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
+    $PIP_CMD install --upgrade setuptools
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
     $PIP_CMD install -q setuptools_scm

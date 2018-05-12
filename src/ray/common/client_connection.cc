@@ -28,14 +28,46 @@ ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&sock
 template <class T>
 void ServerConnection<T>::WriteBuffer(
     const std::vector<boost::asio::const_buffer> &buffer, boost::system::error_code &ec) {
-  boost::asio::write(socket_, buffer, ec);
+  // Loop until all bytes are written while handling interrupts.
+  // When profiling with pprof, unhandled interrupts were being sent by the profiler to
+  // the raylet process, which was causing synchronous reads and writes to fail.
+  for (const auto &b : buffer) {
+    uint64_t bytes_remaining = boost::asio::buffer_size(b);
+    uint64_t position = 0;
+    while (bytes_remaining != 0) {
+      size_t bytes_written =
+          socket_.write_some(boost::asio::buffer(b + position, bytes_remaining), ec);
+      position += bytes_written;
+      bytes_remaining -= bytes_written;
+      if (ec.value() == EINTR) {
+        continue;
+      } else if (ec.value() != boost::system::errc::errc_t::success) {
+        return;
+      }
+    }
+  }
 }
 
 template <class T>
 void ServerConnection<T>::ReadBuffer(
     const std::vector<boost::asio::mutable_buffer> &buffer,
     boost::system::error_code &ec) {
-  boost::asio::read(socket_, buffer, ec);
+  // Loop until all bytes are read while handling interrupts.
+  for (const auto &b : buffer) {
+    uint64_t bytes_remaining = boost::asio::buffer_size(b);
+    uint64_t position = 0;
+    while (bytes_remaining != 0) {
+      size_t bytes_read =
+          socket_.read_some(boost::asio::buffer(b + position, bytes_remaining), ec);
+      position += bytes_read;
+      bytes_remaining -= bytes_read;
+      if (ec.value() == EINTR) {
+        continue;
+      } else if (ec.value() != boost::system::errc::errc_t::success) {
+        return;
+      }
+    }
+  }
 }
 
 template <class T>
@@ -50,7 +82,7 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   // Write the message and then wait for more messages.
   // TODO(swang): Does this need to be an async write?
   boost::system::error_code error;
-  boost::asio::write(socket_, message_buffers, error);
+  WriteBuffer(message_buffers, error);
   if (error) {
     return ray::Status::IOError(error.message());
   } else {
