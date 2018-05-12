@@ -29,6 +29,7 @@ class TorchPolicy(Policy):
     def apply_gradients(self, grads):
         # TODO(alok): see how A3C fills gradient buffers so that they don't get
         # cleared by zero_grad
+        grads = deepcopy(grads)  # TODO rm
         self.optimizer.zero_grad()
         for g, p in zip(grads, self._model.parameters()):
             p.grad = Variable(torch.from_numpy(g))
