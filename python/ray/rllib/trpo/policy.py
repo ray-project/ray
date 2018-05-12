@@ -117,22 +117,21 @@ class TRPOPolicy(SharedTorchPolicy):
     def conjugate_gradient(self, b, cg_iters=10):
         """Returns F^(-1)b where F is the Hessian of the KL divergence."""
         p, r = b.clone().detach(), b.clone().detach()
-        x = np.zeros_like(b.numpy())
-        # x = torch.zeros_like(b)
+        x = torch.zeros_like(b)
 
         # all the float casts are to avoid mixing torch scalars and numpy
         # arrays
-        rdotr = float(r.dot(r))
+        rdotr = r.dot(r)
 
         for _ in range(cg_iters):
-            z = self.HVP(p).squeeze(0)
-            v = rdotr / float(p.dot(z))
+            z = self.HVP(p)
+            v = rdotr / p.dot(z)
             x += v * p
             r -= v * z
-            newrdotr = r.dot(r)
-            mu = newrdotr / rdotr
+            new_rdotr = r.dot(r)
+            mu = new_rdotr / rdotr
             p = r + mu * p
-            rdotr = newrdotr
+            rdotr = new_rdotr
 
             if rdotr < self.config['residual_tol']:
                 break
@@ -173,8 +172,7 @@ class TRPOPolicy(SharedTorchPolicy):
 
             g = stepfrac * fullstep
 
-            actual_improve = loss(x) - loss(
-                torch.from_numpy(x.detach().numpy() + g))
+            actual_improve = loss(x) - loss(x.detach() + g)
             expected_improve = expected_improve_rate * stepfrac
 
             if actual_improve / expected_improve > accept_ratio and actual_improve > 0:
@@ -182,7 +180,7 @@ class TRPOPolicy(SharedTorchPolicy):
 
         # If no improvement could be obtained, return 0 gradient
         else:
-            return np.zeros_like(fullstep)
+            return torch.zeros_like(fullstep)
 
     def _backward(self, batch):
         """Fills gradient buffers up."""
@@ -220,17 +218,17 @@ class TRPOPolicy(SharedTorchPolicy):
         g = parameters_to_vector([
             p.grad for p in chain(self._model.hidden_layers.parameters(),
                                   self._model.logits.parameters())
-        ]).squeeze(0)
+        ])
 
+        # check that gradient is not 0
         if any(g):
             step_dir = self.conjugate_gradient(-g)
-            _step_dir = torch.from_numpy(step_dir)
 
             # Do line search to determine the stepsize of params in the direction of step_dir
-            shs = step_dir.dot(self.HVP(_step_dir).numpy().T) / 2
-            lm = np.sqrt(shs / self.config['max_kl'])
+            shs = step_dir.dot(self.HVP(step_dir)) / 2
+            lm = torch.sqrt(shs / self.config['max_kl'])
             fullstep = step_dir / lm
-            g_step_dir = -g.dot(_step_dir).detach().item()
+            g_step_dir = -g.dot(step_dir).detach().item()
             grad = self.linesearch(
                 x=parameters_to_vector(
                     chain(self._model.hidden_layers.parameters(),
@@ -240,9 +238,10 @@ class TRPOPolicy(SharedTorchPolicy):
             )
 
             # Here we fill the gradient buffers
+            # TODO why does torch.isnan not seem to work?
             if not any(np.isnan(grad)):
                 vector_to_gradient(
-                    torch.from_numpy(grad),
+                    grad,
                     chain(self._model.hidden_layers.parameters(),
                           self._model.logits.parameters()))
 
