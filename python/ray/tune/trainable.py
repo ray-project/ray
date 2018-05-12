@@ -112,7 +112,7 @@ class Trainable(object):
 
         Subclasses should override ``_train()`` instead to return results.
         This method auto-fills many fields, so only ``timesteps_this_iter``
-        is requied to be present.
+        is required to be present.
 
         Returns:
             A TrainingResult that describes training progress.
