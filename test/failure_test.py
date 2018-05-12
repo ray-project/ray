@@ -257,8 +257,9 @@ class WorkerDeath(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
-    @unittest.skipIf(os.environ.get("RAY_USE_XRAY") == "1",
-                     "This test does not work with xray yet.")
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testWorkerRaisingException(self):
         ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
 
@@ -274,8 +275,9 @@ class WorkerDeath(unittest.TestCase):
         wait_for_errors(b"worker_died", 1)
         self.assertEqual(len(ray.error_info()), 2)
 
-    @unittest.skipIf(os.environ.get("RAY_USE_XRAY") == "1",
-                     "This test does not work with xray yet.")
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -292,8 +294,9 @@ class WorkerDeath(unittest.TestCase):
         self.assertIn("died or was killed while executing the task",
                       ray.error_info()[0][b"message"].decode("ascii"))
 
-    @unittest.skipIf(os.environ.get("RAY_USE_XRAY") == "1",
-                     "This test does not work with xray yet.")
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -312,8 +315,9 @@ class WorkerDeath(unittest.TestCase):
         self.assertRaises(Exception, lambda: ray.get(consume.remote(obj)))
         wait_for_errors(b"worker_died", 1)
 
-    @unittest.skipIf(os.environ.get("RAY_USE_XRAY") == "1",
-                     "This test does not work with xray yet.")
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorWorkerDyingFutureTasks(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -336,8 +340,9 @@ class WorkerDeath(unittest.TestCase):
 
         wait_for_errors(b"worker_died", 1)
 
-    @unittest.skipIf(os.environ.get("RAY_USE_XRAY") == "1",
-                     "This test does not work with xray yet.")
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorWorkerDyingNothingInProgress(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
