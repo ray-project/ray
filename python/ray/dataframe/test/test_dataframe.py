@@ -223,6 +223,8 @@ def test_int_dataframe():
     test_mean(ray_df, pandas_df)
     test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
+    test_corr(ray_df, pandas_df)
+    test_cov(ray_df, pandas_df)
     test_median(ray_df, pandas_df)
     test_quantile(ray_df, pandas_df, .25)
     test_quantile(ray_df, pandas_df, .5)
@@ -391,6 +393,8 @@ def test_float_dataframe():
     # TODO Clear floating point error.
     # test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
+    test_corr(ray_df, pandas_df)
+    test_cov(ray_df, pandas_df)
     test_median(ray_df, pandas_df)
     test_quantile(ray_df, pandas_df, .25)
     test_quantile(ray_df, pandas_df, .5)
@@ -560,6 +564,8 @@ def test_mixed_dtype_dataframe():
     # TODO Clear floating point error.
     # test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
+    test_corr(ray_df, pandas_df)
+    test_cov(ray_df, pandas_df)
     test_median(ray_df, pandas_df)
     test_quantile(ray_df, pandas_df, .25)
     test_quantile(ray_df, pandas_df, .5)
@@ -721,6 +727,8 @@ def test_nan_dataframe():
     test_mean(ray_df, pandas_df)
     test_var(ray_df, pandas_df)
     test_std(ray_df, pandas_df)
+    test_corr(ray_df, pandas_df)
+    test_cov(ray_df, pandas_df)
     test_median(ray_df, pandas_df)
     test_quantile(ray_df, pandas_df, .25)
     test_quantile(ray_df, pandas_df, .5)
@@ -1173,11 +1181,12 @@ def test_convert_objects():
         ray_df.convert_objects()
 
 
-def test_corr():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.corr()
+@pytest.fixture
+def test_corr(ray_df, pandas_df):
+    a = ray_df.corr()
+    b = pandas_df.corr()
+    # just a sanity check since there is rounding error
+    a.shape == b.shape
 
 
 def test_corrwith():
@@ -1193,11 +1202,12 @@ def test_count(ray_df, pd_df):
     assert ray_df.count(axis=1).equals(pd_df.count(axis=1))
 
 
-def test_cov():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.cov()
+@pytest.fixture
+def test_cov(ray_df, pandas_df):
+    a = ray_df.cov()
+    b = pandas_df.cov()
+    # just a sanity check since there is rounding error
+    a.shape == b.shape
 
 
 @pytest.fixture
