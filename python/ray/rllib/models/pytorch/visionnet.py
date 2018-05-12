@@ -40,7 +40,7 @@ class VisionNetwork(Model):
         self._convs = nn.Sequential(*layers)
 
         self.logits = SlimFC(
-            out_channels, num_outputs, initializer=nn.init.xavier_uniform)
+            out_channels, num_outputs, initializer=nn.init.xavier_uniform_)
         self.value_branch = SlimFC(
             out_channels, 1, initializer=normc_initializer())
 
