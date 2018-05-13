@@ -930,7 +930,7 @@ class Worker(object):
             time.sleep(0.001)
 
         with self.lock:
-            self.fetch_and_register_actor(key, task.required_resources(), self)
+            self.fetch_and_register_actor(key, self)
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.

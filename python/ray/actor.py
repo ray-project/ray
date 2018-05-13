@@ -258,7 +258,7 @@ def make_actor_method_executor(worker, method_name, method, actor_imported):
     return actor_method_executor
 
 
-def fetch_and_register_actor(actor_class_key, resources, worker):
+def fetch_and_register_actor(actor_class_key, worker):
     """Import an actor.
 
     This will be called by the worker's import thread when the worker receives
@@ -267,7 +267,6 @@ def fetch_and_register_actor(actor_class_key, resources, worker):
 
     Args:
         actor_class_key: The key in Redis to use to fetch the actor.
-        resources: The resources required for this actor's lifetime.
         worker: The worker to use.
     """
     actor_id_str = worker.actor_id
@@ -296,9 +295,6 @@ def fetch_and_register_actor(actor_class_key, resources, worker):
         raise Exception("The actor with name {} failed to be imported, and so "
                         "cannot execute this method".format(class_name))
 
-    # Register the actor method signatures.
-    register_actor_signatures(worker, driver_id, class_id, class_name,
-                              actor_method_names)
     # Register the actor method executors.
     for actor_method_name in actor_method_names:
         function_id = compute_actor_method_function_id(class_name,
@@ -353,44 +349,6 @@ def fetch_and_register_actor(actor_class_key, resources, worker):
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
-
-
-def register_actor_signatures(worker,
-                              driver_id,
-                              class_id,
-                              class_name,
-                              actor_method_names):
-    """Register an actor's method signatures in the worker.
-
-    Args:
-        worker: The worker to register the signatures on.
-        driver_id: The ID of the driver that this actor is associated with.
-        class_id: The ID of the actor class.
-        class_name: The name of the actor class.
-        actor_method_names: The names of the methods to register.
-    """
-    for actor_method_name in actor_method_names:
-        # TODO(rkn): When we create a second actor, we are probably overwriting
-        # the values from the first actor here. This may or may not be a
-        # problem.
-        function_id = compute_actor_method_function_id(
-            class_name, actor_method_name).id()
-        # worker.function_properties[driver_id][function_id] = (
-        #     # The extra return value is an actor dummy object.
-        #     # In the cases where actor_method_cpus is None, that value should
-        #     # never be used.
-        #     FunctionProperties(
-        #         num_return_vals=num_return_vals + 1,
-        #         max_calls=0))
-
-    # if actor_creation_resources is not None:
-    #     # Also register the actor creation task.
-    #     function_id = compute_actor_creation_function_id(class_id)
-    #     worker.function_properties[driver_id][function_id.id()] = (
-    #         # The extra return value is an actor dummy object.
-    #         FunctionProperties(
-    #             num_return_vals=0 + 1,
-    #             max_calls=0))
 
 
 def publish_actor_class_to_key(key, actor_class_info, worker):
@@ -604,16 +562,6 @@ class ActorClass(object):
                     self._class_id, self._modified_class, actor_method_names,
                     self._checkpoint_interval, self._worker)
                 self._exported = True
-
-
-
-
-            register_actor_signatures(
-                self._worker,
-                self._worker.task_driver_id.id(),
-                self._class_id,
-                self._class_name,
-                actor_method_names)
 
             resources = ray.utils.resources_from_resource_arguments(
                 self._num_cpus, self._num_gpus, self._resources, num_cpus,
@@ -947,10 +895,6 @@ class ActorHandle(object):
             actor_handle_id=actor_handle_id,
             previous_actor_handle_id=ray.local_scheduler.ObjectID(
                 state["previous_actor_handle_id"]))
-
-        register_actor_signatures(
-            ray.worker.global_worker, actor_driver_id.id(), None,
-            self._ray_class_name, self._ray_actor_method_names)
 
     def __getstate__(self):
         """This code path is used by pickling but not by Ray forking."""
