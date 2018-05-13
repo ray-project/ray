@@ -417,9 +417,10 @@ def method(*args, **kwargs):
 # Create objects to wrap method invocations. This is done so that we can
 # invoke methods with actor.method.remote() instead of actor.method().
 class ActorMethod(object):
-    def __init__(self, actor, method_name):
+    def __init__(self, actor, method_name, num_return_vals):
         self._actor = actor
         self._method_name = method_name
+        self._num_return_vals = num_return_vals
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actor methods cannot be called directly. Instead "
@@ -432,7 +433,7 @@ class ActorMethod(object):
 
     def _submit(self, args, kwargs, num_return_vals=None):
         if num_return_vals is None:
-            num_return_vals = DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS
+            num_return_vals = self._num_return_vals
 
         return self._actor._actor_method_call(
             self._method_name,
@@ -461,6 +462,12 @@ class ActorClass(object):
         _actor_method_cpus: The number of CPUs required by actor method tasks.
         _exported: True if the actor class has been exported and false
             otherwise.
+        _worker: A handle to the global worker.
+        _actor_methods: The actor methods.
+        _method_signatures: The signatures of the methods.
+        _actor_method_names: The names of the actor methods.
+        _actor_method_num_return_vals: The default number of return values for
+            each actor method.
     """
 
     def __init__(self, modified_class, class_id, checkpoint_interval, num_cpus,
@@ -475,6 +482,39 @@ class ActorClass(object):
         self._actor_method_cpus = actor_method_cpus
         self._exported = False
         self._worker = ray.worker.global_worker
+
+        # Get the actor methods of the given class.
+        def pred(x):
+            return (inspect.isfunction(x) or inspect.ismethod(x)
+                    or is_cython(x))
+
+        self._actor_methods = inspect.getmembers(
+            self._modified_class, predicate=pred)
+        # Extract the signatures of each of the methods. This will be used
+        # to catch some errors if the methods are called with inappropriate
+        # arguments.
+        self._method_signatures = dict()
+        self._actor_method_num_return_vals = dict()
+        for method_name, method in self._actor_methods:
+            # Print a warning message if the method signature is not
+            # supported. We don't raise an exception because if the actor
+            # inherits from a class that has a method whose signature we
+            # don't support, there may not be much the user can do about it.
+            signature.check_signature_supported(method, warn=True)
+            self._method_signatures[method_name] = signature.extract_signature(
+                method, ignore_first=True)
+
+            # Set the default number of return values for this method.
+            if hasattr(method, "__ray_num_return_vals__"):
+                self._actor_method_num_return_vals[method_name] = (
+                    method.__ray_num_return_vals__)
+            else:
+                self._actor_method_num_return_vals[method_name] = (
+                    DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
+
+        self._actor_method_names = [
+            method_name for method_name, _ in self._actor_methods
+        ]
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actors methods cannot be instantiated directly. "
@@ -530,27 +570,6 @@ class ActorClass(object):
         # updated to reflect the new invocation.
         actor_cursor = None
 
-        # Get the actor methods of the given class.
-        def pred(x):
-            return (inspect.isfunction(x) or inspect.ismethod(x)
-                    or is_cython(x))
-
-        actor_methods = inspect.getmembers(
-            self._modified_class, predicate=pred)
-        # Extract the signatures of each of the methods. This will be used
-        # to catch some errors if the methods are called with inappropriate
-        # arguments.
-        method_signatures = dict()
-        for k, v in actor_methods:
-            # Print a warning message if the method signature is not
-            # supported. We don't raise an exception because if the actor
-            # inherits from a class that has a method whose signature we
-            # don't support, there may not be much the user can do about it.
-            signature.check_signature_supported(v, warn=True)
-            method_signatures[k] = signature.extract_signature(
-                v, ignore_first=True)
-
-        actor_method_names = [method_name for method_name, _ in actor_methods]
         # Do not export the actor class or the actor if run in PYTHON_MODE
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
@@ -561,7 +580,7 @@ class ActorClass(object):
             # Export the actor.
             if not self._exported:
                 export_actor_class(self._class_id, self._modified_class,
-                                   actor_method_names,
+                                   self._actor_method_names,
                                    self._checkpoint_interval, self._worker)
                 self._exported = True
 
@@ -583,7 +602,8 @@ class ActorClass(object):
         actor_counter = 1
         actor_handle = ActorHandle(
             actor_id, self._class_name, actor_cursor, actor_counter,
-            actor_method_names, method_signatures, actor_cursor,
+            self._actor_method_names, self._method_signatures,
+            self._actor_method_num_return_vals, actor_cursor,
             self._actor_method_cpus, self._worker.task_driver_id)
 
         # Call __init__ as a remote function.
@@ -632,6 +652,8 @@ class ActorHandle(object):
             called so far.
         _ray_actor_method_names: The names of the actor methods.
         _ray_method_signatures: The signatures of the actor methods.
+        _ray_method_num_return_vals: The default number of return values for
+            each method.
         _ray_class_name: The name of the actor class.
         _ray_actor_forks: The number of times this handle has been forked.
         _ray_actor_creation_dummy_object_id: The dummy object ID from the actor
@@ -656,6 +678,7 @@ class ActorHandle(object):
                  actor_counter,
                  actor_method_names,
                  method_signatures,
+                 method_num_return_vals,
                  actor_creation_dummy_object_id,
                  actor_method_cpus,
                  actor_driver_id,
@@ -675,6 +698,7 @@ class ActorHandle(object):
         self._ray_actor_counter = actor_counter
         self._ray_actor_method_names = actor_method_names
         self._ray_method_signatures = method_signatures
+        self._ray_method_num_return_vals = method_num_return_vals
         self._ray_class_name = class_name
         self._ray_actor_forks = 0
         self._ray_actor_creation_dummy_object_id = (
@@ -787,7 +811,8 @@ class ActorHandle(object):
                 # this was causing cyclic references which were prevent
                 # object deallocation from behaving in a predictable
                 # manner.
-                return ActorMethod(self, attr)
+                return ActorMethod(self, attr,
+                                   self._ray_method_num_return_vals[attr])
         except AttributeError:
             pass
 
@@ -844,6 +869,8 @@ class ActorHandle(object):
             self._ray_actor_method_names,
             "method_signatures":
             self._ray_method_signatures,
+            "method_num_return_vals":
+            self._ray_method_num_return_vals,
             "actor_creation_dummy_object_id":
             self._ray_actor_creation_dummy_object_id.id(),
             "actor_method_cpus":
@@ -891,6 +918,7 @@ class ActorHandle(object):
             state["actor_counter"],
             state["actor_method_names"],
             state["method_signatures"],
+            state["method_num_return_vals"],
             ray.local_scheduler.ObjectID(
                 state["actor_creation_dummy_object_id"]),
             state["actor_method_cpus"],
