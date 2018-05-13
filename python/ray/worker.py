@@ -62,8 +62,6 @@ PUT_RECONSTRUCTION_ERROR_TYPE = b"put_reconstruction"
 # This must be kept in sync with the `scheduling_state` enum in common/task.h.
 TASK_STATUS_RUNNING = 8
 
-# # Default resource requirements for remote functions.
-# DEFAULT_REMOTE_FUNCTION_CPUS = 1
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE = 1
@@ -1805,9 +1803,6 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     function_id = ray.local_scheduler.ObjectID(function_id_str)
     function_name = function_name.decode("ascii")
     max_calls = int(max_calls)
-    # function_properties = FunctionProperties(
-    #     num_return_vals=int(num_return_vals),
-    #     max_calls=int(max_calls))
     module = module.decode("ascii")
 
     # This is a placeholder in case the function can't be unpickled. This will
@@ -1815,7 +1810,6 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     def f():
         raise Exception("This function was not imported properly.")
 
-    # remote_f_placeholder = remote(function_id=function_id)(lambda *xs: f())
     worker.function_execution_info[driver_id][function_id.id()] = (
         FunctionExecutionInfo(function=f, function_name=function_name,
                               max_calls=max_calls))
@@ -2214,11 +2208,7 @@ def connect(info,
         # Export cached remote functions to the workers.
         for cached_type, info in worker.cached_remote_functions_and_actors:
             if cached_type == "remote_function":
-                # (function_id, func_name, func, func_invoker,
-                #  function_properties) = info
                 info._export()
-                # self.export_remote_function(function_id, func_name, func,
-                #                             func_invoker, function_properties)
             elif cached_type == "actor":
                 (key, actor_class_info) = info
                 ray.actor.publish_actor_class_to_key(key, actor_class_info,
@@ -2621,9 +2611,6 @@ def make_decorator(num_return_vals=None,
                 raise Exception("The keyword 'checkpoint_interval' is not "
                                 "allowed for remote functions.")
 
-            # cpus_to_use = (DEFAULT_REMOTE_FUNCTION_CPUS
-            #                if num_cpus is None else num_cpus)
-
             return ray.remote_function.RemoteFunction(
                 function_or_class, num_cpus, num_gpus, resources,
                 num_return_vals, max_calls)
@@ -2705,119 +2692,3 @@ def remote(*args, **kwargs):
                           max_calls=max_calls,
                           checkpoint_interval=checkpoint_interval,
                           worker=worker)
-
-
-# def remote(*args, **kwargs):
-#     """This decorator is used to define remote functions and to define actors.
-#
-#     Args:
-#         num_return_vals (int): The number of object IDs that a call to this
-#             function should return.
-#         num_cpus (int): The number of CPUs needed to execute this function.
-#         num_gpus (int): The number of GPUs needed to execute this function.
-#         resources: A dictionary mapping resource name to the required quantity
-#             of that resource.
-#         max_calls (int): The maximum number of tasks of this kind that can be
-#             run on a worker before the worker needs to be restarted.
-#         checkpoint_interval (int): The number of tasks to run between
-#             checkpoints of the actor state.
-#     """
-#     worker = global_worker
-#
-#     def make_remote_decorator(num_return_vals,
-#                               num_cpus,
-#                               num_gpus,
-#                               resources,
-#                               max_calls,
-#                               checkpoint_interval,
-#                               func_id=None):
-#         def remote_decorator(func_or_class):
-#             if inspect.isfunction(func_or_class) or is_cython(func_or_class):
-#                 # Set the remote function default resources.
-#                 resources["CPU"] = (DEFAULT_REMOTE_FUNCTION_CPUS
-#                                     if num_cpus is None else num_cpus)
-#                 resources["GPU"] = (DEFAULT_REMOTE_FUNCTION_GPUS
-#                                     if num_gpus is None else num_gpus)
-#
-#                 function_properties = FunctionProperties(
-#                     num_return_vals=num_return_vals,
-#                     resources=resources,
-#                     max_calls=max_calls)
-#                 return make_remote_function(func_or_class, function_properties,
-#                                             func_id=func_id, worker=worker)
-#             if inspect.isclass(func_or_class):
-#                 # Set the actor default resources.
-#                 if num_cpus is None and num_gpus is None and resources == {}:
-#                     # In the default case, actors acquire no resources for
-#                     # their lifetime, and actor methods will require 1 CPU.
-#                     resources["CPU"] = DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE
-#                     actor_method_cpus = DEFAULT_ACTOR_METHOD_CPUS_SIMPLE_CASE
-#                 else:
-#                     # If any resources are specified, then all resources are
-#                     # acquired for the actor's lifetime and no resources are
-#                     # associated with methods.
-#                     resources["CPU"] = (
-#                         DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE
-#                         if num_cpus is None else num_cpus)
-#                     resources["GPU"] = (
-#                         DEFAULT_ACTOR_CREATION_GPUS_SPECIFIED_CASE
-#                         if num_gpus is None else num_gpus)
-#                     actor_method_cpus = (
-#                         DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE)
-#
-#                 return worker.make_actor(func_or_class, resources,
-#                                          checkpoint_interval,
-#                                          actor_method_cpus)
-#             raise Exception("The @ray.remote decorator must be applied to "
-#                             "either a function or to a class.")
-#
-#         return remote_decorator
-#
-#     # Handle resource arguments
-#     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
-#     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
-#     resources = kwargs.get("resources", {})
-#     if not isinstance(resources, dict):
-#         raise Exception("The 'resources' keyword argument must be a "
-#                         "dictionary, but received type {}.".format(
-#                             type(resources)))
-#     assert "CPU" not in resources, "Use the 'num_cpus' argument."
-#     assert "GPU" not in resources, "Use the 'num_gpus' argument."
-#     # Handle other arguments.
-#     num_return_vals = (kwargs["num_return_vals"]
-#                        if "num_return_vals" in kwargs else 1)
-#     max_calls = kwargs["max_calls"] if "max_calls" in kwargs else 0
-#     checkpoint_interval = (kwargs["checkpoint_interval"]
-#                            if "checkpoint_interval" in kwargs else -1)
-#
-#     if _mode() == WORKER_MODE:
-#         if "function_id" in kwargs:
-#             function_id = kwargs["function_id"]
-#             return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-#                                          resources, max_calls,
-#                                          checkpoint_interval, function_id)
-#
-#     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-#         # This is the case where the decorator is just @ray.remote.
-#         return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-#                                      resources, max_calls,
-#                                      checkpoint_interval)(args[0])
-#     else:
-#         # This is the case where the decorator is something like
-#         # @ray.remote(num_return_vals=2).
-#         error_string = ("The @ray.remote decorator must be applied either "
-#                         "with no arguments and no parentheses, for example "
-#                         "'@ray.remote', or it must be applied using some of "
-#                         "the arguments 'num_return_vals', 'resources', "
-#                         "or 'max_calls', like "
-#                         "'@ray.remote(num_return_vals=2, "
-#                         "resources={\"GPU\": 1})'.")
-#         assert len(args) == 0 and len(kwargs) > 0, error_string
-#         for key in kwargs:
-#             assert key in [
-#                 "num_return_vals", "num_cpus", "num_gpus", "resources",
-#                 "max_calls", "checkpoint_interval"
-#             ], error_string
-#         assert "function_id" not in kwargs
-#         return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-#                                      resources, max_calls, checkpoint_interval)

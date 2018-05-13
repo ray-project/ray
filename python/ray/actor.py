@@ -804,9 +804,7 @@ class ActorHandle(object):
         if ray.worker.global_worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
             # dependency here?
-            # self.__ray__terminate__.remote()
             self.__ray_terminate__.remote()
-            # self._actor_method_call("__ray_terminate__", num_return_vals=0)
 
     @property
     def _actor_id(self):

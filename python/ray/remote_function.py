@@ -53,7 +53,25 @@ def compute_function_id(function):
 
 
 class RemoteFunction(object):
-    """
+    """A remote function.
+
+    This is a decorated function. It can be used to spawn tasks.
+
+    Attributes:
+        _function: The original function.
+        _function_id: The ID of the function.
+        _function_name: The module and function name.
+        _num_cpus: The default number of CPUs to use for invocations of this
+            remote function.
+        _num_gpus: The default number of GPUs to use for invocations of this
+            remote function.
+        _resources: The default custom resource requirements for invocations of
+            this remote function.
+        _num_return_vals: The default number of return values for invocations
+            of this remote function.
+        _max_calls: The number of times a worker can execute this function
+            before executing.
+        _function_signature: The function signature.
     """
 
     def __init__(self,
@@ -81,7 +99,7 @@ class RemoteFunction(object):
                            if max_calls is None else max_calls)
 
         ray.signature.check_signature_supported(self._function)
-        self.function_signature = ray.signature.extract_signature(
+        self._function_signature = ray.signature.extract_signature(
             self._function)
 
         # # Export the function.
@@ -113,7 +131,8 @@ class RemoteFunction(object):
         worker.check_connected()
         ray.worker.check_main_thread()
         kwargs = {} if kwargs is None else kwargs
-        args = ray.signature.extend_args(self.function_signature, args, kwargs)
+        args = ray.signature.extend_args(self._function_signature, args,
+                                         kwargs)
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
