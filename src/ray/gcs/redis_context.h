@@ -38,7 +38,7 @@ class RedisCallbackManager {
   void remove(int64_t callback_index);
 
  private:
-  RedisCallbackManager() : num_callbacks(0){};
+  RedisCallbackManager() : num_callbacks_(0){};
 
   ~RedisCallbackManager() { printf("shut down callback manager\n"); }
 
