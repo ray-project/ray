@@ -74,27 +74,21 @@ class RemoteFunction(object):
         _function_signature: The function signature.
     """
 
-    def __init__(self,
-                 function,
-                 num_cpus,
-                 num_gpus,
-                 resources,
-                 num_return_vals,
-                 max_calls):
+    def __init__(self, function, num_cpus, num_gpus, resources,
+                 num_return_vals, max_calls):
         self._function = function
         # TODO(rkn): We store the function ID as a string, so that
         # RemoteFunction objects can be pickled. We should undo this when
         # we allow ObjectIDs to be pickled.
         self._function_id = compute_function_id(self._function).id()
-        self._function_name = (self._function.__module__ + '.' +
-                               self._function.__name__)
+        self._function_name = (
+            self._function.__module__ + '.' + self._function.__name__)
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
         self._num_gpus = num_gpus
         self._resources = resources
-        self._num_return_vals = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS
-                                 if num_return_vals is None
-                                 else num_return_vals)
+        self._num_return_vals = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS if
+                                 num_return_vals is None else num_return_vals)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
                            if max_calls is None else max_calls)
 
@@ -112,8 +106,8 @@ class RemoteFunction(object):
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
-                        "of running '{}()', try '{}.remote()'."
-                        .format(self._function_name, self._function_name))
+                        "of running '{}()', try '{}.remote()'.".format(
+                            self._function_name, self._function_name))
 
     def remote(self, *args, **kwargs):
         """This runs immediately when a remote function is called."""

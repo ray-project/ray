@@ -305,9 +305,10 @@ def fetch_and_register_actor(actor_class_key, worker):
             temporary_actor_method,
             actor_imported=False)
         worker.function_execution_info[driver_id][function_id] = (
-            ray.worker.FunctionExecutionInfo(function=temporary_executor,
-                                             function_name=actor_method_name,
-                                             max_calls=0))
+            ray.worker.FunctionExecutionInfo(
+                function=temporary_executor,
+                function_name=actor_method_name,
+                max_calls=0))
         worker.num_task_executions[driver_id][function_id] = 0
 
     try:
@@ -344,7 +345,8 @@ def fetch_and_register_actor(actor_class_key, worker):
                 worker, actor_method_name, actor_method, actor_imported=True)
             worker.function_execution_info[driver_id][function_id] = (
                 ray.worker.FunctionExecutionInfo(
-                    function=executor, function_name=actor_method_name,
+                    function=executor,
+                    function_name=actor_method_name,
                     max_calls=0))
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
@@ -461,8 +463,8 @@ class ActorClass(object):
             otherwise.
     """
 
-    def __init__(self, modified_class, class_id, checkpoint_interval,
-                 num_cpus, num_gpus, resources, actor_method_cpus):
+    def __init__(self, modified_class, class_id, checkpoint_interval, num_cpus,
+                 num_gpus, resources, actor_method_cpus):
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
@@ -476,8 +478,8 @@ class ActorClass(object):
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actors methods cannot be instantiated directly. "
-                        "Instead of running '{}()', try '{}.remote()'."
-                        .format(self._class_name, self._class_name))
+                        "Instead of running '{}()', try '{}.remote()'.".format(
+                            self._class_name, self._class_name))
 
     def remote(self, *args, **kwargs):
         """Create an actor.
@@ -553,14 +555,14 @@ class ActorClass(object):
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
         if self._worker.mode == ray.PYTHON_MODE:
-            self._worker.actors[actor_id] = (
-                self._modified_class.__new__(self._modified_class))
+            self._worker.actors[actor_id] = (self._modified_class.__new__(
+                self._modified_class))
         else:
             # Export the actor.
             if not self._exported:
-                export_actor_class(
-                    self._class_id, self._modified_class, actor_method_names,
-                    self._checkpoint_interval, self._worker)
+                export_actor_class(self._class_id, self._modified_class,
+                                   actor_method_names,
+                                   self._checkpoint_interval, self._worker)
                 self._exported = True
 
             resources = ray.utils.resources_from_resource_arguments(
@@ -570,8 +572,11 @@ class ActorClass(object):
             creation_args = [self._class_id]
             function_id = compute_actor_creation_function_id(self._class_id)
             [actor_cursor] = self._worker.submit_task(
-                function_id, creation_args, actor_creation_id=actor_id,
-                num_return_vals=1, resources=resources)
+                function_id,
+                creation_args,
+                actor_creation_id=actor_id,
+                num_return_vals=1,
+                resources=resources)
 
         # We initialize the actor counter at 1 to account for the actor
         # creation task.

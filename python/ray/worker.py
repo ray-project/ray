@@ -723,7 +723,8 @@ class Worker(object):
         while True:
             with self.lock:
                 if (self.actor_id == NIL_ACTOR_ID
-                        and (function_id.id() in self.function_execution_info[driver_id])):
+                        and (function_id.id() in
+                             self.function_execution_info[driver_id])):
                     break
                 elif self.actor_id != NIL_ACTOR_ID and (
                         self.actor_id in self.actors):
@@ -832,8 +833,10 @@ class Worker(object):
         return_object_ids = task.returns()
         if task.actor_id().id() != NIL_ACTOR_ID:
             dummy_return_id = return_object_ids.pop()
-        function_executor = self.function_execution_info[self.task_driver_id.id()][function_id.id()].function
-        function_name = self.function_execution_info[self.task_driver_id.id()][function_id.id()].function_name
+        function_executor = self.function_execution_info[
+            self.task_driver_id.id()][function_id.id()].function
+        function_name = self.function_execution_info[self.task_driver_id.id()][
+            function_id.id()].function_name
 
         # Get task arguments from the object store.
         try:
@@ -960,8 +963,8 @@ class Worker(object):
         with self.lock:
             log(event_type="ray:acquire_lock", kind=LOG_SPAN_END, worker=self)
 
-            function_name = (
-                self.function_execution_info[task.driver_id().id()][function_id.id()]).function_name
+            function_name = (self.function_execution_info[
+                task.driver_id().id()][function_id.id()]).function_name
             contents = {
                 "function_name": function_name,
                 "task_id": task.task_id().hex(),
@@ -978,8 +981,8 @@ class Worker(object):
          ) += 1
 
         reached_max_executions = (self.num_task_executions[task.driver_id().id(
-        )][function_id.id()] == self.function_execution_info[task.driver_id().id()]
-                                  [function_id.id()].max_calls)
+        )][function_id.id()] == self.function_execution_info[
+            task.driver_id().id()][function_id.id()].max_calls)
         if reached_max_executions:
             ray.worker.global_worker.local_scheduler_client.disconnect()
             os._exit(0)
@@ -1811,8 +1814,8 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         raise Exception("This function was not imported properly.")
 
     worker.function_execution_info[driver_id][function_id.id()] = (
-        FunctionExecutionInfo(function=f, function_name=function_name,
-                              max_calls=max_calls))
+        FunctionExecutionInfo(
+            function=f, function_name=function_name, max_calls=max_calls))
     worker.num_task_executions[driver_id][function_id.id()] = 0
 
     try:
@@ -1835,9 +1838,10 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         # TODO(rkn): Why is the below line necessary?
         function.__module__ = module
         worker.function_execution_info[driver_id][function_id.id()] = (
-            FunctionExecutionInfo(function=function,
-                                  function_name=function_name,
-                                  max_calls=max_calls))
+            FunctionExecutionInfo(
+                function=function,
+                function_name=function_name,
+                max_calls=max_calls))
         # Add the function to the function table.
         worker.redis_client.rpush(b"FunctionTable:" + function_id.id(),
                                   worker.worker_id)
@@ -2604,8 +2608,8 @@ def make_decorator(num_return_vals=None,
                    checkpoint_interval=None,
                    worker=None):
     def decorator(function_or_class):
-        if (inspect.isfunction(function_or_class) or
-                is_cython(function_or_class)):
+        if (inspect.isfunction(function_or_class)
+                or is_cython(function_or_class)):
             # Set the remote function default resources.
             if checkpoint_interval is not None:
                 raise Exception("The keyword 'checkpoint_interval' is not "
@@ -2685,10 +2689,11 @@ def remote(*args, **kwargs):
     max_calls = kwargs.get("max_calls")
     checkpoint_interval = kwargs.get("checkpoint_interval")
 
-    return make_decorator(num_return_vals=num_return_vals,
-                          num_cpus=num_cpus,
-                          num_gpus=num_gpus,
-                          resources=resources,
-                          max_calls=max_calls,
-                          checkpoint_interval=checkpoint_interval,
-                          worker=worker)
+    return make_decorator(
+        num_return_vals=num_return_vals,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        resources=resources,
+        max_calls=max_calls,
+        checkpoint_interval=checkpoint_interval,
+        worker=worker)

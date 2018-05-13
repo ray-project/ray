@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
-import collections
 import hashlib
 import numpy as np
 import os
@@ -200,8 +199,8 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
                          "contain the key 'CPU' or 'GPU'")
 
     assert default_num_cpus is not None
-    resources["CPU"] = (default_num_cpus if runtime_num_cpus is None
-                        else runtime_num_cpus)
+    resources["CPU"] = (default_num_cpus
+                        if runtime_num_cpus is None else runtime_num_cpus)
 
     if runtime_num_gpus is not None:
         resources["GPU"] = runtime_num_gpus
