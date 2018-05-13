@@ -791,6 +791,9 @@ class APITest(unittest.TestCase):
         with self.assertRaises(TypeError):
             ray.wait([1])
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
         # launched in this experiment can run at the same time.
