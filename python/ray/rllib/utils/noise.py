@@ -1,5 +1,6 @@
 # --------------------------------------
-# Reference: https://github.com/rllab/rllab/blob/master/rllab/exploration_strategies/ou_strategy.py
+# Reference: https://github.com/rllab/
+# rllab/blob/master/rllab/exploration_strategies/ou_strategy.py
 # --------------------------------------
 
 import numpy as np
@@ -17,20 +18,24 @@ class OUNoise:
         self.reset()
 
     def noise(self):
-        x = self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt + self.sigma * np.sqrt(
-            self.dt) * np.random.normal(size=self.mu.shape)
+        x = self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt +\
+            self.sigma * np.sqrt(self.dt) * \
+            np.random.normal(size=self.mu.shape)
         self.x_prev = x
         return x
 
     def reset(self):
-        self.x_prev = self.x0 if self.x0 is not None else np.zeros_like(self.mu)
+        self.x_prev = self.x0 \
+            if self.x0 is not None else np.zeros_like(self.mu)
 
     def __repr__(self):
-        return 'OrnsteinUhlenbeckActionNoise(mu={}, sigma={})'.format(self.mu, self.sigma)
+        return 'OrnsteinUhlenbeckActionNoise(mu={}, sigma={})'.\
+            format(self.mu, self.sigma)
 
 
 class AdaptiveParamNoiseSpec(object):
-    def __init__(self, initial_stddev=0.1, desired_action_stddev=0.1, adoption_coefficient=1.01):
+    def __init__(self, initial_stddev=0.1,
+                 desired_action_stddev=0.1, adoption_coefficient=1.01):
         self.initial_stddev = initial_stddev
         self.desired_action_stddev = desired_action_stddev
         self.adoption_coefficient = adoption_coefficient
@@ -52,5 +57,8 @@ class AdaptiveParamNoiseSpec(object):
         return stats
 
     def __repr__(self):
-        fmt = 'AdaptiveParamNoiseSpec(initial_stddev={}, desired_action_stddev={}, adoption_coefficient={})'
-        return fmt.format(self.initial_stddev, self.desired_action_stddev, self.adoption_coefficient)
+        fmt = 'AdaptiveParamNoiseSpec(initial_stddev={},' \
+              ' desired_action_stddev={}, adoption_coefficient={})'
+        return fmt.format(self.initial_stddev,
+                          self.desired_action_stddev,
+                          self.adoption_coefficient)

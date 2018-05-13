@@ -44,11 +44,6 @@ def _build_q_network(
 
 
 def _build_actor_network(registry, inputs, ac_space, config):
-    # frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
-    # act = frontend.outputs
-    # a_bound = ac_space.high
-    # act = tf.multiply(act, a_bound, name='scaled_a')
-    # return act
     x = ModelCatalog.get_model(registry, inputs, 64, config["model"])
     x = x.last_layer
     x = slim.fully_connected(x, 64)
@@ -65,8 +60,10 @@ class DDPGGraph(object):
         ac_space = env.action_space
         # num_actions = env.action_space.shape[0]
         # num_states = env.observation_space.shape[0]
-        actor_optimizer = tf.train.AdamOptimizer(learning_rate=config["actor_lr"])
-        critic_optimizer = tf.train.AdamOptimizer(learning_rate=config["critic_lr"])
+        actor_optimizer = \
+            tf.train.AdamOptimizer(learning_rate=config["actor_lr"])
+        critic_optimizer = \
+            tf.train.AdamOptimizer(learning_rate=config["critic_lr"])
         self.config = config
         # Action inputs
         self.act_t = tf.placeholder(
@@ -92,7 +89,8 @@ class DDPGGraph(object):
         # critical network evaluation
         with tf.variable_scope("evaluate_func_c"):
             self.q_t_c = _build_q_network(
-                registry, self.obs_t, state_space, ac_space, self.act_t, config)
+                registry, self.obs_t, state_space, ac_space,
+                self.act_t, config)
 
         with tf.variable_scope("evaluate_func_c", reuse=True)as scope:
             self.q_t_a = _build_q_network(
@@ -117,9 +115,11 @@ class DDPGGraph(object):
 
         self.q_tp1 = tf.squeeze(
             input=self.q_tp1, axis=len(self.q_tp1.shape) - 1)
-        self.y_i = self.rew_t + config["gamma"] * (1.0 - self.done_mask) * self.q_tp1
+        self.y_i = \
+            self.rew_t + config["gamma"] * (1.0 - self.done_mask) * self.q_tp1
         self.td_error = tf.square(self.q_t_c - self.y_i)
-        self.critic_loss = tf.reduce_mean(self.importance_weights * self.td_error)
+        self.critic_loss =\
+            tf.reduce_mean(self.importance_weights * self.td_error)
         self.action_loss = - tf.reduce_mean(self.q_t_a)
 
         self.loss_inputs = [
@@ -139,7 +139,8 @@ class DDPGGraph(object):
         self.c_grads = critic_optimizer.minimize(
             self.critic_loss, var_list=self.c_var_list)
 
-        self.train_expr = actor_optimizer.apply_gradients(self.a_grads_and_vars)
+        self.train_expr = \
+            actor_optimizer.apply_gradients(self.a_grads_and_vars)
 
         update_target_expr = []
         for ta, ea, tc, ec in zip(

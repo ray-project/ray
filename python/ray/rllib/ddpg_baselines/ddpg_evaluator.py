@@ -9,7 +9,6 @@ import tensorflow as tf
 from gym.spaces import Box
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.ddpg_baselines import models
-from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.noise import OUNoise
@@ -46,7 +45,8 @@ class DDPGEvaluator(PolicyEvaluator):
 
         # Note that this encompasses both the Q and target network
         self.variables = ray.experimental.TensorFlowVariables(tf.group(
-            self.ddpg_graph.critic_loss, self.ddpg_graph.action_loss), self.sess)
+            self.ddpg_graph.critic_loss,
+            self.ddpg_graph.action_loss), self.sess)
         self.max_action = env.action_space.high
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]
@@ -79,7 +79,8 @@ class DDPGEvaluator(PolicyEvaluator):
             dones.append(done)
         batch = SampleBatch({
             "obs": obs, "actions": actions, "rewards": rewards,
-            "new_obs": new_obs, "dones": dones, "weights": np.ones_like(rewards)})
+            "new_obs": new_obs, "dones": dones,
+            "weights": np.ones_like(rewards)})
         assert batch.count == self.config["sample_batch_size"]
 
         # Prioritize on the worker side
