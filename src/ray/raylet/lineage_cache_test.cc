@@ -23,7 +23,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
   }
 
   Status Add(const JobID &job_id, const TaskID &task_id,
-             std::shared_ptr<protocol::TaskT> task_data,
+             std::shared_ptr<protocol::TaskT> &task_data,
              const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
     task_table_[task_id] = task_data;
     callbacks_.push_back(
@@ -38,7 +38,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     bool send_notification = (subscribed_tasks_.count(task_id) == 1);
     auto callback = [this, send_notification](ray::gcs::AsyncGcsClient *client,
                                               const TaskID &task_id,
-                                              std::shared_ptr<protocol::TaskT> data) {
+                                              const protocol::TaskT &data) {
       if (send_notification) {
         notification_callback_(client, task_id, data);
       }
@@ -63,7 +63,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
 
   void Flush() {
     for (const auto &callback : callbacks_) {
-      callback.first(NULL, callback.second, task_table_[callback.second]);
+      callback.first(NULL, callback.second, *task_table_[callback.second]);
     }
     callbacks_.clear();
   }
@@ -86,7 +86,7 @@ class LineageCacheTest : public ::testing::Test {
   LineageCacheTest()
       : mock_gcs_(), lineage_cache_(ClientID::from_random(), mock_gcs_, mock_gcs_) {
     mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-                               std::shared_ptr<ray::protocol::TaskT> data) {
+                               const ray::protocol::TaskT &data) {
       lineage_cache_.HandleEntryCommitted(task_id);
     });
   }

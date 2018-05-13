@@ -57,8 +57,8 @@ class Log : virtual public PubsubInterface<ID> {
   using Callback = std::function<void(AsyncGcsClient *client, const ID &id,
                                       const std::vector<DataT> &data)>;
   /// The callback to call when a write to a key succeeds.
-  using WriteCallback = std::function<void(AsyncGcsClient *client, const ID &id,
-                                           std::shared_ptr<DataT> data)>;
+  using WriteCallback =
+      std::function<void(AsyncGcsClient *client, const ID &id, const DataT &data)>;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
   /// request and receive notifications.
   using SubscriptionCallback = std::function<void(AsyncGcsClient *client)>;
@@ -89,7 +89,7 @@ class Log : virtual public PubsubInterface<ID> {
   /// \param done Callback that is called once the data has been written to the
   ///        GCS.
   /// \return Status
-  Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+  Status Append(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
                 const WriteCallback &done);
 
   /// Append a log entry to a key if and only if the log has the given number
@@ -105,7 +105,7 @@ class Log : virtual public PubsubInterface<ID> {
   /// \param log_length The number of entries that the log must have for the
   ///        append to succeed.
   /// \return Status
-  Status AppendAt(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+  Status AppendAt(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
                   const WriteCallback &done, const WriteCallback &failure,
                   int log_length);
 
@@ -187,7 +187,7 @@ class TableInterface {
  public:
   using DataT = typename Data::NativeTableType;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<DataT> data,
+  virtual Status Add(const JobID &job_id, const ID &task_id, std::shared_ptr<DataT> &data,
                      const WriteCallback &done) = 0;
   virtual ~TableInterface(){};
 };
@@ -212,17 +212,6 @@ class Table : private Log<ID, Data>,
   /// request and receive notifications.
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
 
-  struct CallbackData {
-    ID id;
-    std::shared_ptr<DataT> data;
-    Callback callback;
-    // An optional callback to call for subscription operations, where the
-    // first message is a notification of subscription success.
-    SubscriptionCallback subscription_callback;
-    Log<ID, Data> *log;
-    AsyncGcsClient *client;
-  };
-
   Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Log<ID, Data>(context, client) {}
 
@@ -237,7 +226,7 @@ class Table : private Log<ID, Data>,
   /// \param done Callback that is called once the data has been written to the
   ///        GCS.
   /// \return Status
-  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> data,
+  Status Add(const JobID &job_id, const ID &id, std::shared_ptr<DataT> &data,
              const WriteCallback &done);
 
   /// Lookup an entry asynchronously.
@@ -358,19 +347,18 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   Status TestAndUpdate(const JobID &job_id, const TaskID &id,
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
-    int64_t callback_index = RedisCallbackManager::instance().add(
-        [this, callback, id](const std::string &data) {
-          auto result = std::make_shared<TaskTableDataT>();
-          auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
-          root->UnPackTo(result.get());
-          callback(client_, id, *result, root->updated());
-          return true;
-        });
+    auto redisCallback = [this, callback, id](const std::string &data) {
+      auto result = std::make_shared<TaskTableDataT>();
+      auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
+      root->UnPackTo(result.get());
+      callback(client_, id, *result, root->updated());
+      return true;
+    };
     flatbuffers::FlatBufferBuilder fbb;
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_TEST_AND_UPDATE", id,
                                          fbb.GetBufferPointer(), fbb.GetSize(), prefix_,
-                                         pubsub_channel_, callback_index));
+                                         pubsub_channel_, redisCallback));
     return Status::OK();
   }
 
@@ -499,8 +487,7 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
   /// Handle a client table notification.
   void HandleNotification(AsyncGcsClient *client, const ClientTableDataT &notifications);
   /// Handle this client's successful connection to the GCS.
-  void HandleConnected(AsyncGcsClient *client,
-                       const std::shared_ptr<ClientTableDataT> client_data);
+  void HandleConnected(AsyncGcsClient *client, const ClientTableDataT &client_data);
 
   /// The key at which the log of client information is stored. This key must
   /// be kept the same across all instances of the ClientTable, so that all
