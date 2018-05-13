@@ -71,6 +71,9 @@ class ActorAPI(unittest.TestCase):
         with self.assertRaises(Exception):
             ray.get(actor.get_values.remote())
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testVariableNumberOfArgs(self):
         ray.init(num_workers=0)
 
