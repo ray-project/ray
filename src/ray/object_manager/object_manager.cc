@@ -131,8 +131,8 @@ void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
     pull_requests_.emplace(std::make_pair(
         ObjectID(object_id),
         std::pair<std::shared_ptr<boost::asio::deadline_timer>, int>(
-            std::shared_ptr<boost::asio::deadline_timer>(new asio::deadline_timer(
-                *main_service_, boost::posix_time::milliseconds(wait_ms))),
+            std::make_shared<boost::asio::deadline_timer>(
+                *main_service_, boost::posix_time::milliseconds(wait_ms)),
             0)));
     RAY_LOG(DEBUG) << object_id << " creating scheduler";
   }
@@ -241,7 +241,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
 }
 
 ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
-                                           std::shared_ptr<SenderConnection> conn) {
+                                           std::shared_ptr<SenderConnection> &conn) {
   if (ObjectInTransitOrLocal(object_id)) {
     // Do nothing if the object is already being received.
     // We check here too just in case the object ends up in transit
@@ -335,7 +335,7 @@ void ObjectManager::ExecuteSendObject(const ClientID &client_id,
 ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
                                              uint64_t data_size, uint64_t metadata_size,
                                              uint64_t chunk_index,
-                                             std::shared_ptr<SenderConnection> conn) {
+                                             std::shared_ptr<SenderConnection> &conn) {
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
@@ -360,7 +360,7 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
 
 ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
                                           const ObjectBufferPool::ChunkInfo &chunk_info,
-                                          std::shared_ptr<SenderConnection> conn) {
+                                          std::shared_ptr<SenderConnection> &conn) {
   boost::system::error_code ec;
   std::vector<asio::const_buffer> buffer;
   buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
@@ -413,11 +413,11 @@ std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
   return conn;
 }
 
-void ObjectManager::ProcessNewClient(std::shared_ptr<TcpClientConnection> conn) {
-  conn->ProcessMessages();
+void ObjectManager::ProcessNewClient(TcpClientConnection &conn) {
+  conn.ProcessMessages();
 }
 
-void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> conn,
+void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                                          int64_t message_type, const uint8_t *message) {
   switch (message_type) {
   case object_manager_protocol::MessageType_PushRequest: {
@@ -474,7 +474,7 @@ void ObjectManager::ReceivePullRequest(std::shared_ptr<TcpClientConnection> &con
   conn->ProcessMessages();
 }
 
-void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn,
+void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> &conn,
                                        const uint8_t *message) {
   // Serialize.
   auto object_header =
@@ -490,14 +490,14 @@ void ObjectManager::ReceivePushRequest(std::shared_ptr<TcpClientConnection> conn
   }
   receive_service_.post([this, object_id, data_size, metadata_size, chunk_index, conn]() {
     ExecuteReceiveObject(conn->GetClientID(), object_id, data_size, metadata_size,
-                         chunk_index, conn);
+                         chunk_index, *conn);
   });
 }
 
 void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
                                          const ObjectID &object_id, uint64_t data_size,
                                          uint64_t metadata_size, uint64_t chunk_index,
-                                         std::shared_ptr<TcpClientConnection> conn) {
+                                         TcpClientConnection &conn) {
   RAY_LOG(DEBUG) << "ExecuteReceiveObject " << client_id << " " << object_id << " "
                  << chunk_index;
 
@@ -509,7 +509,7 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(chunk_info.data, chunk_info.buffer_length));
     boost::system::error_code ec;
-    conn->ReadBuffer(buffer, ec);
+    conn.ReadBuffer(buffer, ec);
     if (ec.value() == 0) {
       buffer_pool_.SealChunk(object_id, chunk_index);
     } else {
@@ -526,13 +526,13 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
     std::vector<boost::asio::mutable_buffer> buffer;
     buffer.push_back(asio::buffer(mutable_vec, buffer_length));
     boost::system::error_code ec;
-    conn->ReadBuffer(buffer, ec);
+    conn.ReadBuffer(buffer, ec);
     if (ec.value() != 0) {
       RAY_LOG(ERROR) << ec.message();
     }
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
-  conn->ProcessMessages();
+  conn.ProcessMessages();
   RAY_LOG(DEBUG) << "ReceiveCompleted " << client_id_ << " " << object_id << " "
                  << "/" << config_.max_receives;
 }
