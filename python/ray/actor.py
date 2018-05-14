@@ -462,7 +462,6 @@ class ActorClass(object):
         _actor_method_cpus: The number of CPUs required by actor method tasks.
         _exported: True if the actor class has been exported and false
             otherwise.
-        _worker: A handle to the global worker.
         _actor_methods: The actor methods.
         _method_signatures: The signatures of the methods.
         _actor_method_names: The names of the actor methods.
@@ -481,7 +480,6 @@ class ActorClass(object):
         self._resources = resources
         self._actor_method_cpus = actor_method_cpus
         self._exported = False
-        self._worker = ray.worker.global_worker
 
         # Get the actor methods of the given class.
         def pred(x):
@@ -559,7 +557,7 @@ class ActorClass(object):
             A handle to the newly created actor.
         """
         ray.worker.check_main_thread()
-        if self._worker.mode is None:
+        if ray.worker.global_worker.mode is None:
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
@@ -573,15 +571,16 @@ class ActorClass(object):
         # Do not export the actor class or the actor if run in PYTHON_MODE
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
-        if self._worker.mode == ray.PYTHON_MODE:
-            self._worker.actors[actor_id] = (self._modified_class.__new__(
-                self._modified_class))
+        if ray.worker.global_worker.mode == ray.PYTHON_MODE:
+            ray.worker.global_worker.actors[actor_id] = (
+                self._modified_class.__new__(self._modified_class))
         else:
             # Export the actor.
             if not self._exported:
                 export_actor_class(self._class_id, self._modified_class,
                                    self._actor_method_names,
-                                   self._checkpoint_interval, self._worker)
+                                   self._checkpoint_interval,
+                                   ray.worker.global_worker)
                 self._exported = True
 
             resources = ray.utils.resources_from_resource_arguments(
@@ -590,7 +589,7 @@ class ActorClass(object):
 
             creation_args = [self._class_id]
             function_id = compute_actor_creation_function_id(self._class_id)
-            [actor_cursor] = self._worker.submit_task(
+            [actor_cursor] = ray.worker.global_worker.submit_task(
                 function_id,
                 creation_args,
                 actor_creation_id=actor_id,
@@ -604,7 +603,7 @@ class ActorClass(object):
             actor_id, self._class_name, actor_cursor, actor_counter,
             self._actor_method_names, self._method_signatures,
             self._actor_method_num_return_vals, actor_cursor,
-            self._actor_method_cpus, self._worker.task_driver_id)
+            self._actor_method_cpus, ray.worker.global_worker.task_driver_id)
 
         # Call __init__ as a remote function.
         if "__init__" in actor_handle._ray_actor_method_names:
