@@ -58,7 +58,7 @@ ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
 };
 
 ray::Status ObjectDirectory::ExecuteGetLocations(const ObjectID &object_id) {
-  JobID job_id = JobID::from_random();
+  JobID job_id = JobID::nil();
   // Note: Lookup must be synchronous for thread-safe access.
   // For now, this is only accessed by the main thread.
   ray::Status status = gcs_client_->object_table().Lookup(
