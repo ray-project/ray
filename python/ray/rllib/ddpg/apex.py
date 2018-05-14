@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.ddpg.ddpg import DDPGAgent, DEFAULT_CONFIG as DDPG_CONFIG
 
 def merge_dicts(d1, d2):
     """Merge two dicts and return a new dict that's their union."""
