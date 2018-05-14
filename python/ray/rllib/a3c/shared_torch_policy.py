@@ -31,7 +31,7 @@ class SharedTorchPolicy(TorchPolicy):
     def compute(self, ob, *args):
         """Should take in a SINGLE ob"""
         with self.lock:
-            ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+            ob = torch.from_numpy(ob).float().unsqueeze(0)
             logits, values = self._model(ob)
             samples = F.softmax(logits, dim=1).multinomial(1).squeeze()
             values = values.squeeze()
