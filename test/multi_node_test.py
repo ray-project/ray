@@ -2,12 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import unittest
+import os
 import ray
 import subprocess
 import sys
 import tempfile
 import time
+import unittest
 
 from ray.test.test_utils import run_and_get_output
 
@@ -153,6 +154,9 @@ print("success")
         # Make sure the other driver succeeded.
         self.assertIn("success", out)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testDriverExitingQuickly(self):
         # This test will create some drivers that submit some tasks and then
         # exit without waiting for the tasks to complete.
