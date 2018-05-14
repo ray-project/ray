@@ -556,8 +556,9 @@ class ActorClass(object):
         Returns:
             A handle to the newly created actor.
         """
+        worker = ray.worker.get_global_worker()
         ray.worker.check_main_thread()
-        if ray.worker.global_worker.mode is None:
+        if worker.mode is None:
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
@@ -571,16 +572,15 @@ class ActorClass(object):
         # Do not export the actor class or the actor if run in PYTHON_MODE
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
-        if ray.worker.global_worker.mode == ray.PYTHON_MODE:
-            ray.worker.global_worker.actors[actor_id] = (
-                self._modified_class.__new__(self._modified_class))
+        if worker.mode == ray.PYTHON_MODE:
+            worker.actors[actor_id] = self._modified_class.__new__(
+                self._modified_class)
         else:
             # Export the actor.
             if not self._exported:
                 export_actor_class(self._class_id, self._modified_class,
                                    self._actor_method_names,
-                                   self._checkpoint_interval,
-                                   ray.worker.global_worker)
+                                   self._checkpoint_interval, worker)
                 self._exported = True
 
             resources = ray.utils.resources_from_resource_arguments(
@@ -589,7 +589,7 @@ class ActorClass(object):
 
             creation_args = [self._class_id]
             function_id = compute_actor_creation_function_id(self._class_id)
-            [actor_cursor] = ray.worker.global_worker.submit_task(
+            [actor_cursor] = worker.submit_task(
                 function_id,
                 creation_args,
                 actor_creation_id=actor_id,
@@ -603,7 +603,7 @@ class ActorClass(object):
             actor_id, self._class_name, actor_cursor, actor_counter,
             self._actor_method_names, self._method_signatures,
             self._actor_method_num_return_vals, actor_cursor,
-            self._actor_method_cpus, ray.worker.global_worker.task_driver_id)
+            self._actor_method_cpus, worker.task_driver_id)
 
         # Call __init__ as a remote function.
         if "__init__" in actor_handle._ray_actor_method_names:
@@ -733,7 +733,9 @@ class ActorHandle(object):
             object_ids: A list of object IDs returned by the remote actor
                 method.
         """
-        ray.worker.global_worker.check_connected()
+        worker = ray.worker.get_global_worker()
+
+        worker.check_connected()
         ray.worker.check_main_thread()
 
         function_signature = self._ray_method_signatures[method_name]
@@ -745,8 +747,8 @@ class ActorHandle(object):
 
         # Execute functions locally if Ray is run in PYTHON_MODE
         # Copy args to prevent the function from mutating them.
-        if ray.worker.global_worker.mode == ray.PYTHON_MODE:
-            return getattr(ray.worker.global_worker.actors[self._ray_actor_id],
+        if worker.mode == ray.PYTHON_MODE:
+            return getattr(worker.actors[self._ray_actor_id],
                            method_name)(*copy.deepcopy(args))
 
         # Add the execution dependency.
@@ -760,13 +762,13 @@ class ActorHandle(object):
         if self._ray_actor_handle_id is None:
             actor_handle_id = compute_actor_handle_id_non_forked(
                 self._ray_actor_id, self._ray_previous_actor_handle_id,
-                ray.worker.global_worker.current_task_id)
+                worker.current_task_id)
         else:
             actor_handle_id = self._ray_actor_handle_id
 
         function_id = compute_actor_method_function_id(self._ray_class_name,
                                                        method_name)
-        object_ids = ray.worker.global_worker.submit_task(
+        object_ids = worker.submit_task(
             function_id,
             args,
             actor_id=self._ray_actor_id,
@@ -830,7 +832,8 @@ class ActorHandle(object):
         # this is not the right policy. the actor should be alive as long as
         # there are ANY handles in scope in the process that created the actor,
         # not just the first one.
-        if ray.worker.global_worker.connected and self._ray_original_handle:
+        worker = ray.worker.get_global_worker()
+        if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
             # dependency here?
             self.__ray_terminate__.remote()
@@ -895,7 +898,8 @@ class ActorHandle(object):
             ray_forking: True if this is being called because Ray is forking
                 the actor handle and false if it is being called by pickling.
         """
-        ray.worker.global_worker.check_connected()
+        worker = ray.worker.get_global_worker()
+        worker.check_connected()
         ray.worker.check_main_thread()
 
         if state["ray_forking"]:
@@ -945,11 +949,12 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
     # terminating the worker.
     class Class(cls):
         def __ray_terminate__(self):
-            if ray.worker.global_worker.mode != ray.PYTHON_MODE:
+            worker = ray.worker.get_global_worker()
+            if worker.mode != ray.PYTHON_MODE:
                 # Disconnect the worker from the local scheduler. The point of
                 # this is so that when the worker kills itself below, the local
                 # scheduler won't push an error message to the driver.
-                ray.worker.global_worker.local_scheduler_client.disconnect()
+                worker.local_scheduler_client.disconnect()
                 import os
                 os._exit(0)
 

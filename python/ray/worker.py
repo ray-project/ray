@@ -980,7 +980,7 @@ class Worker(object):
             self.num_task_executions[driver_id][function_id.id()] == self.
             function_execution_info[driver_id][function_id.id()].max_calls)
         if reached_max_executions:
-            ray.worker.global_worker.local_scheduler_client.disconnect()
+            self.local_scheduler_client.disconnect()
             os._exit(0)
 
     def _get_next_task_from_local_scheduler(self):
@@ -2642,7 +2642,7 @@ def make_decorator(num_return_vals=None,
 
 
 def remote(*args, **kwargs):
-    worker = ray.worker.global_worker
+    worker = get_global_worker()
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
