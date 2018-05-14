@@ -133,7 +133,11 @@ void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client
                                         const ray::ObjectID &object_id) {
   RAY_CHECK(!client_ids.empty());
   ClientID client_id = client_ids.front();
-  ray::Status status_code = Pull(object_id, client_id);
+  ray::Status status = Pull(object_id, client_id);
+  if (!status.ok()) {
+    // A failed pull request is not fatal.
+    RAY_LOG(ERROR) << status.message();
+  }
 }
 
 void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
@@ -157,13 +161,9 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
   // TODO(hme): There is no cap on the number of pull request connections.
   status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id,
                                       &conn);
-  if (!status.ok()) {
-    // TODO(hme): Keep track of retries,
-    // and only retry on object not local
-    // for now.
-    SchedulePull(object_id, config_.pull_timeout_ms);
-    return status;
-  }
+  // Currently, acquiring a connection should not fail.
+  RAY_CHECK_OK(status);
+
   if (conn == nullptr) {
     status = object_directory_->GetInformation(
         client_id,
@@ -172,13 +172,16 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
               ConnectionPool::ConnectionType::MESSAGE, connection_info);
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
-          RAY_CHECK_OK(PullSendRequest(object_id, async_conn));
+          Status pull_send_status = PullSendRequest(object_id, async_conn);
+          if (!pull_send_status.ok()) {
+            RAY_LOG(ERROR) << pull_send_status.message();
+          }
         },
         [this, object_id](const Status &status) {
           SchedulePull(object_id, config_.pull_timeout_ms);
         });
   } else {
-    RAY_CHECK_OK(PullSendRequest(object_id, conn));
+    status = PullSendRequest(object_id, conn);
   }
   return status;
 }
@@ -256,10 +259,9 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
       buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
 
-  // If status is not okay, then return immediately because
-  // plasma_client.Get failed.
-  // No reference is acquired for this chunk, so no need to release the chunk.
-  RAY_RETURN_NOT_OK(chunk_status.second);
+  // Fail on status not okay. The object is local, and there is
+  // no other anticipated error here.
+  RAY_CHECK_OK(chunk_status.second);
 
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
@@ -427,7 +429,8 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
-    RAY_LOG(ERROR) << "Buffer Create Failed: " << chunk_status.second.message();
+    RAY_LOG(ERROR) << "Create Chunk Failed index=" << chunk_index << ": "
+                   << chunk_status.second.message();
     // Read object into empty buffer.
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
     std::vector<uint8_t> mutable_vec;
