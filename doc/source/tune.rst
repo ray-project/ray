@@ -26,7 +26,7 @@ Quick Start
     tune.run_experiments({
         "my_experiment": {
             "run": "train_func",
-            "stop": {"mean_accuracy": 99}
+            "stop": {"mean_accuracy": 99},
             "config": {
                 "lr": tune.grid_search([0.2, 0.4, 0.6]),
                 "momentum": tune.grid_search([0.1, 0.2]),
