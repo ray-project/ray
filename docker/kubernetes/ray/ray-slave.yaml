@@ -1,0 +1,23 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: redis-slave
+  namespace: ray-cluster
+  labels:
+    name: ray-slave
+spec:
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: ray-cluster
+        ray-master: "true"
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: ray-slave
+        image: ray
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: HEAD
+          value: "false"
