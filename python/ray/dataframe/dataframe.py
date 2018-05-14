@@ -634,6 +634,9 @@ class DataFrame(object):
         elif isinstance(by, compat.string_types):
             by = self.__getitem__(by).values.tolist()
         elif is_list_like(by):
+            if isinstance(by, pd.Series):
+                by = by.values.tolist()
+
             mismatch = len(by) != len(self) if axis == 0 \
                 else len(by) != len(self.columns)
 
@@ -806,17 +809,22 @@ class DataFrame(object):
         if how is None and thresh is None:
             raise TypeError('must specify how or thresh')
 
+        indices = None
         if subset is not None:
-            subset = set(subset)
-
             if axis == 1:
-                subset = [item for item in self.index if item in subset]
+                indices = self.index.get_indexer_for(subset)
+                check = indices == -1
+                if check.any():
+                    raise KeyError(list(np.compress(check, subset)))
             else:
-                subset = [item for item in self.columns if item in subset]
+                indices = self.columns.get_indexer_for(subset)
+                check = indices == -1
+                if check.any():
+                    raise KeyError(list(np.compress(check, subset)))
 
         def dropna_helper(df):
             new_df = df.dropna(axis=axis, how=how, thresh=thresh,
-                               subset=subset, inplace=False)
+                               subset=indices, inplace=False)
 
             if axis == 1:
                 new_index = new_df.columns
@@ -1189,9 +1197,17 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def as_matrix(self, columns=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Convert the frame to its Numpy-array representation.
+
+        Args:
+            columns: If None, return all columns, otherwise,
+                returns specified columns.
+
+        Returns:
+            values: ndarray
+        """
+        # TODO this is very inneficient, also see __array__
+        return to_pandas(self).as_matrix(columns)
 
     def asfreq(self, freq, method=None, how=None, normalize=False,
                fill_value=None):
@@ -2959,7 +2975,7 @@ class DataFrame(object):
            observations over requested axis.
 
         Args:
-            axis : {0 or ‘index’, 1 or ‘columns’}, default 0
+            axis : {0 or 'index', 1 or 'columns'}, default 0
             dropna : boolean, default True
 
         Returns:
@@ -3220,7 +3236,7 @@ class DataFrame(object):
         Args:
             axis (int): 0 or 'index' for row-wise,
                         1 or 'columns' for column-wise
-            interpolation: {‘average’, ‘min’, ‘max’, ‘first’, ‘dense’}
+            interpolation: {'average', 'min', 'max', 'first', 'dense'}
                 Specifies which method to use for equal vals
             numeric_only (boolean)
                 Include only float, int, boolean data.
@@ -3531,7 +3547,7 @@ class DataFrame(object):
                 Default = 1 if frac = None.
             frac: Fraction of axis items to return. Cannot be used with n.
             replace: Sample with or without replacement. Default = False.
-            weights: Default ‘None’ results in equal probability weighting.
+            weights: Default 'None' results in equal probability weighting.
                 If passed a Series, will align with target object on index.
                 Index values in weights not found in sampled object will be
                 ignored and index values in sampled object not in weights will
@@ -4407,9 +4423,34 @@ class DataFrame(object):
 
     def update(self, other, join='left', overwrite=True, filter_func=None,
                raise_conflict=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Modify DataFrame in place using non-NA values from other.
+
+        Args:
+            other: DataFrame, or object coercible into a DataFrame
+            join: {'left'}, default 'left'
+            overwrite: If True then overwrite values for common keys in frame
+            filter_func: Can choose to replace values other than NA.
+            raise_conflict: If True, will raise an error if the DataFrame and
+                other both contain data in the same place.
+
+        Returns:
+            None
+        """
+        if raise_conflict:
+            raise NotImplementedError(
+                "raise_conflict parameter not yet supported. "
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+
+        if not isinstance(other, DataFrame):
+            other = DataFrame(other)
+
+        def update_helper(x, y):
+            x.update(y, join, overwrite, filter_func, False)
+            return x
+
+        self._inter_df_op_helper(update_helper, other, join, 0, None,
+                                 inplace=True)
 
     def var(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
@@ -4431,9 +4472,105 @@ class DataFrame(object):
 
     def where(self, cond, other=np.nan, inplace=False, axis=None, level=None,
               errors='raise', try_cast=False, raise_on_error=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Replaces values not meeting condition with values in other.
+
+        Args:
+            cond: A condition to be met, can be callable, array-like or a
+                DataFrame.
+            other: A value or DataFrame of values to use for setting this.
+            inplace: Whether or not to operate inplace.
+            axis: The axis to apply over. Only valid when a Series is passed
+                as other.
+            level: The MultiLevel index level to apply over.
+            errors: Whether or not to raise errors. Does nothing in Pandas.
+            try_cast: Try to cast the result back to the input type.
+            raise_on_error: Whether to raise invalid datatypes (deprecated).
+
+        Returns:
+            A new DataFrame with the replaced values.
+        """
+
+        inplace = validate_bool_kwarg(inplace, 'inplace')
+
+        if isinstance(other, pd.Series) and axis is None:
+            raise ValueError("Must specify axis=0 or 1")
+
+        if level is not None:
+            raise NotImplementedError("Multilevel Index not yet supported on "
+                                      "Pandas on Ray.")
+
+        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None else 0
+
+        cond = cond(self) if callable(cond) else cond
+
+        if not isinstance(cond, DataFrame):
+            if not hasattr(cond, 'shape'):
+                cond = np.asanyarray(cond)
+            if cond.shape != self.shape:
+                raise ValueError("Array conditional must be same shape as "
+                                 "self")
+            cond = DataFrame(cond, index=self.index, columns=self.columns)
+
+        zipped_partitions = self._copartition(cond, self.index)
+        args = (False, axis, level, errors, try_cast, raise_on_error)
+
+        if isinstance(other, DataFrame):
+            other_zipped = (v for k, v in self._copartition(other,
+                                                            self.index))
+
+            new_partitions = [_where_helper.remote(k, v, next(other_zipped),
+                                                   self.columns, cond.columns,
+                                                   other.columns, *args)
+                              for k, v in zipped_partitions]
+
+        # Series has to be treated specially because we're operating on row
+        # partitions from here on.
+        elif isinstance(other, pd.Series):
+            if axis == 0:
+                # Pandas determines which index to use based on axis.
+                other = other.reindex(self.index)
+                other.index = pd.RangeIndex(len(other))
+
+                # Since we're working on row partitions, we have to partition
+                # the Series based on the partitioning of self (since both
+                # self and cond are co-partitioned by self.
+                other_builder = []
+                for length in self._row_metadata._lengths:
+                    other_builder.append(other[:length])
+                    other = other[length:]
+                    # Resetting the index here ensures that we apply each part
+                    # to the correct row within the partitions.
+                    other.index = pd.RangeIndex(len(other))
+
+                other = (obj for obj in other_builder)
+
+                new_partitions = [_where_helper.remote(k, v, next(other,
+                                                                  pd.Series()),
+                                                       self.columns,
+                                                       cond.columns,
+                                                       None, *args)
+                                  for k, v in zipped_partitions]
+            else:
+                other = other.reindex(self.columns)
+                new_partitions = [_where_helper.remote(k, v, other,
+                                                       self.columns,
+                                                       cond.columns,
+                                                       None, *args)
+                                  for k, v in zipped_partitions]
+
+        else:
+            new_partitions = [_where_helper.remote(k, v, other, self.columns,
+                                                   cond.columns, None, *args)
+                              for k, v in zipped_partitions]
+
+        if inplace:
+            self._update_inplace(row_partitions=new_partitions,
+                                 row_metadata=self._row_metadata,
+                                 col_metadata=self._col_metadata)
+        else:
+            return DataFrame(row_partitions=new_partitions,
+                             row_metadata=self._row_metadata,
+                             col_metadata=self._col_metadata)
 
     def xs(self, key, axis=0, level=None, drop_level=True):
         raise NotImplementedError(
@@ -4633,8 +4770,8 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def __array__(self, dtype=None):
-        # TODO: This is very inefficient and needs fix
-        return np.array(to_pandas(self))
+        # TODO: This is very inefficient and needs fix, also see as_matrix
+        return to_pandas(self).__array__(dtype=dtype)
 
     def __array_wrap__(self, result, context=None):
         raise NotImplementedError(
@@ -4963,36 +5100,40 @@ class DataFrame(object):
         if isinstance(other, DataFrame):
             return self._inter_df_op_helper(
                 lambda x, y: func(x, y, axis, level, *args),
-                other, axis, level)
+                other, "outer", axis, level)
         else:
             return self._single_df_op_helper(
                 lambda df: func(df, other, axis, level, *args),
                 other, axis, level)
 
-    def _inter_df_op_helper(self, func, other, axis, level):
+    def _inter_df_op_helper(self, func, other, how, axis, level,
+                            inplace=False):
         if level is not None:
             raise NotImplementedError("Mutlilevel index not yet supported "
                                       "in Pandas on Ray")
         axis = pd.DataFrame()._get_axis_number(axis)
 
-        # Adding two DataFrames causes an outer join.
-        if isinstance(other, DataFrame):
-            new_column_index = self.columns.join(other.columns, how="outer")
-            new_index = self.index.join(other.index, how="outer")
-            copartitions = self._copartition(other, new_index)
+        new_column_index = self.columns.join(other.columns, how=how)
+        new_index = self.index.join(other.index, how=how)
+        copartitions = self._copartition(other, new_index)
 
-            new_blocks = \
-                np.array([_co_op_helper._submit(
-                    args=tuple([func, self.columns, other.columns,
-                                len(part[0]), None] +
-                          np.concatenate(part).tolist()),
-                    num_return_vals=len(part[0]))
-                    for part in copartitions])
+        new_blocks = \
+            np.array([_co_op_helper._submit(
+                args=tuple([func, self.columns, other.columns,
+                            len(part[0]), None] +
+                      np.concatenate(part).tolist()),
+                num_return_vals=len(part[0]))
+                for part in copartitions])
 
+        if not inplace:
             # TODO join the Index Metadata objects together for performance.
             return DataFrame(block_partitions=new_blocks,
                              columns=new_column_index,
                              index=new_index)
+        else:
+            self._update_inplace(block_partitions=new_blocks,
+                                 columns=new_column_index,
+                                 index=new_index)
 
     def _single_df_op_helper(self, func, other, axis, level):
         if level is not None:
@@ -5056,3 +5197,27 @@ def _merge_columns(left_columns, right_columns, *args):
     return pd.DataFrame(columns=left_columns, index=[0], dtype='uint8').merge(
         pd.DataFrame(columns=right_columns, index=[0], dtype='uint8'),
         *args).columns
+
+
+@ray.remote
+def _where_helper(left, cond, other, left_columns, cond_columns,
+                  other_columns, *args):
+
+    left = pd.concat(ray.get(left.tolist()), axis=1)
+    # We have to reset the index and columns here because we are coming
+    # from blocks and the axes are set according to the blocks. We have
+    # already correctly copartitioned everything, so there's no
+    # correctness problems with doing this.
+    left.reset_index(inplace=True, drop=True)
+    left.columns = left_columns
+
+    cond = pd.concat(ray.get(cond.tolist()), axis=1)
+    cond.reset_index(inplace=True, drop=True)
+    cond.columns = cond_columns
+
+    if isinstance(other, np.ndarray):
+        other = pd.concat(ray.get(other.tolist()), axis=1)
+        other.reset_index(inplace=True, drop=True)
+        other.columns = other_columns
+
+    return left.where(cond, other, *args)

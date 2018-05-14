@@ -107,11 +107,7 @@ def to_pandas(df):
     Returns:
         A new pandas DataFrame.
     """
-    if df._row_partitions is not None:
-        pd_df = pd.concat(ray.get(df._row_partitions))
-    else:
-        pd_df = pd.concat(ray.get(df._col_partitions),
-                          axis=1)
+    pd_df = pd.concat(ray.get(df._row_partitions), copy=False)
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df

@@ -110,7 +110,7 @@ class Trial(object):
         # Trial config
         self.trainable_name = trainable_name
         self.config = config or {}
-        self.local_dir = local_dir
+        self.local_dir = os.path.expanduser(local_dir)
         self.experiment_tag = experiment_tag
         self.resources = (
             resources
@@ -182,9 +182,7 @@ class Trial(object):
             if self.runner:
                 stop_tasks = []
                 stop_tasks.append(self.runner.stop.remote())
-                stop_tasks.append(
-                    self.runner.__ray_terminate__.remote(
-                        self.runner._ray_actor_id.id()))
+                stop_tasks.append(self.runner.__ray_terminate__.remote())
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
                     stop_tasks, num_returns=2, timeout=250)
