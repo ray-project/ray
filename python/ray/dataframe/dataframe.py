@@ -459,7 +459,7 @@ class DataFrame(object):
 
         if isinstance(self._dtypes_cache, list) and \
                 isinstance(self._dtypes_cache[0],
-                           ray.local_scheduler.ObjectID):
+                           ray.ObjectID):
             self._dtypes_cache = pd.concat(ray.get(self._dtypes_cache))
             self._dtypes_cache.index = self.columns
 
