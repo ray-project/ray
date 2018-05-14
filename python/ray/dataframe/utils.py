@@ -226,8 +226,8 @@ def _map_partitions(func, partitions, *argslists):
                 for part in partitions]
     else:
         assert(all([len(args) == len(partitions) for args in argslists]))
-        return [_deploy_func.remote(func, part, *args)
-                for part, *args in zip(partitions, *argslists)]
+        return [_deploy_func.remote(func, *args)
+                for args in zip(partitions, *argslists)]
 
 
 @ray.remote
