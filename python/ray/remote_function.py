@@ -47,7 +47,7 @@ def compute_function_id(function):
     # Compute the function ID.
     function_id = function_id_hash.digest()
     assert len(function_id) == 20
-    function_id = ray.local_scheduler.ObjectID(function_id)
+    function_id = ray.ObjectID(function_id)
 
     return function_id
 
@@ -142,7 +142,7 @@ class RemoteFunction(object):
             result = self._function(*copy.deepcopy(args))
             return result
         object_ids = worker.submit_task(
-            ray.local_scheduler.ObjectID(self._function_id),
+            ray.ObjectID(self._function_id),
             args,
             num_return_vals=num_return_vals,
             resources=resources)
@@ -154,5 +154,5 @@ class RemoteFunction(object):
     def _export(self):
         worker = ray.worker.get_global_worker()
         worker.export_remote_function(
-            ray.local_scheduler.ObjectID(self._function_id),
-            self._function_name, self._function, self._max_calls, self)
+            ray.ObjectID(self._function_id), self._function_name,
+            self._function, self._max_calls, self)

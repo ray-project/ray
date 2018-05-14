@@ -351,7 +351,7 @@ class Worker(object):
                 full.
         """
         # Make sure that the value is not an object ID.
-        if isinstance(value, ray.local_scheduler.ObjectID):
+        if isinstance(value, ray.ObjectID):
             raise Exception("Calling 'put' on an ObjectID is not allowed "
                             "(similarly, returning an ObjectID from a remote "
                             "function is not allowed). If you really want to "
@@ -433,7 +433,7 @@ class Worker(object):
         """
         # Make sure that the values are object IDs.
         for object_id in object_ids:
-            if not isinstance(object_id, ray.local_scheduler.ObjectID):
+            if not isinstance(object_id, ray.ObjectID):
                 raise Exception("Attempting to call `get` on the value {}, "
                                 "which is not an ObjectID.".format(object_id))
         # Do an initial fetch for remote objects. We divide the fetch into
@@ -552,24 +552,22 @@ class Worker(object):
             check_main_thread()
             if actor_id is None:
                 assert actor_handle_id is None
-                actor_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
-                actor_handle_id = ray.local_scheduler.ObjectID(
-                    NIL_ACTOR_HANDLE_ID)
+                actor_id = ray.ObjectID(NIL_ACTOR_ID)
+                actor_handle_id = ray.ObjectID(NIL_ACTOR_HANDLE_ID)
             else:
                 assert actor_handle_id is not None
 
             if actor_creation_id is None:
-                actor_creation_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+                actor_creation_id = ray.ObjectID(NIL_ACTOR_ID)
 
             if actor_creation_dummy_object_id is None:
-                actor_creation_dummy_object_id = (
-                    ray.local_scheduler.ObjectID(NIL_ID))
+                actor_creation_dummy_object_id = (ray.ObjectID(NIL_ID))
 
             # Put large or complex arguments that are passed by value in the
             # object store first.
             args_for_local_scheduler = []
             for arg in args:
-                if isinstance(arg, ray.local_scheduler.ObjectID):
+                if isinstance(arg, ray.ObjectID):
                     args_for_local_scheduler.append(arg)
                 elif ray.local_scheduler.check_simple_value(arg):
                     args_for_local_scheduler.append(arg)
@@ -588,7 +586,7 @@ class Worker(object):
 
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
-                driver_id, ray.local_scheduler.ObjectID(
+                driver_id, ray.ObjectID(
                     function_id.id()), args_for_local_scheduler,
                 num_return_vals, self.current_task_id, self.task_index,
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
@@ -768,7 +766,7 @@ class Worker(object):
         """
         arguments = []
         for (i, arg) in enumerate(serialized_args):
-            if isinstance(arg, ray.local_scheduler.ObjectID):
+            if isinstance(arg, ray.ObjectID):
                 # get the object from the local object store
                 argument = self.get_object([arg])[0]
                 if isinstance(argument, RayTaskError):
@@ -943,8 +941,7 @@ class Worker(object):
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
-        if (task.actor_creation_id() !=
-                ray.local_scheduler.ObjectID(NIL_ACTOR_ID)):
+        if (task.actor_creation_id() != ray.ObjectID(NIL_ACTOR_ID)):
             self._become_actor(task)
             return
 
@@ -1160,13 +1157,13 @@ def _initialize_serialization(worker=global_worker):
         return obj.id()
 
     def object_id_custom_deserializer(serialized_obj):
-        return ray.local_scheduler.ObjectID(serialized_obj)
+        return ray.ObjectID(serialized_obj)
 
     # We register this serializer on each worker instead of calling
     # register_custom_serializer from the driver so that isinstance still
     # works.
     worker.serialization_context.register_type(
-        ray.local_scheduler.ObjectID,
+        ray.ObjectID,
         "ray.ObjectID",
         pickle=False,
         custom_serializer=object_id_custom_serializer,
@@ -1803,7 +1800,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
          "driver_id", "function_id", "name", "function", "num_return_vals",
          "module", "resources", "max_calls"
      ])
-    function_id = ray.local_scheduler.ObjectID(function_id_str)
+    function_id = ray.ObjectID(function_id_str)
     function_name = function_name.decode("ascii")
     max_calls = int(max_calls)
     module = module.decode("ascii")
@@ -1994,7 +1991,7 @@ def connect(info,
     # responsible for the task so that error messages will be propagated to
     # the correct driver.
     if mode != WORKER_MODE:
-        worker.task_driver_id = ray.local_scheduler.ObjectID(worker.worker_id)
+        worker.task_driver_id = ray.ObjectID(worker.worker_id)
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -2125,8 +2122,7 @@ def connect(info,
         else:
             # Try to use true randomness.
             np.random.seed(None)
-        worker.current_task_id = ray.local_scheduler.ObjectID(
-            np.random.bytes(20))
+        worker.current_task_id = ray.ObjectID(np.random.bytes(20))
         # Reset the state of the numpy random number generator.
         np.random.set_state(numpy_state)
         # Set other fields needed for computing task IDs.
@@ -2142,14 +2138,11 @@ def connect(info,
         nil_actor_counter = 0
 
         driver_task = ray.local_scheduler.Task(
-            worker.task_driver_id,
-            ray.local_scheduler.ObjectID(NIL_FUNCTION_ID), [], 0,
+            worker.task_driver_id, ray.ObjectID(NIL_FUNCTION_ID), [], 0,
             worker.current_task_id, worker.task_index,
-            ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
-            ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
-            ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
-            ray.local_scheduler.ObjectID(NIL_ACTOR_ID), nil_actor_counter,
-            False, [], {"CPU": 0}, worker.use_raylet)
+            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
+            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
+            nil_actor_counter, False, [], {"CPU": 0}, worker.use_raylet)
         global_state._execute_command(
             driver_task.task_id(), "RAY.TASK_TABLE_ADD",
             driver_task.task_id().id(),
@@ -2538,7 +2531,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         print("plasma_client.wait has not been implemented yet")
         return
 
-    if isinstance(object_ids, ray.local_scheduler.ObjectID):
+    if isinstance(object_ids, ray.ObjectID):
         raise TypeError(
             "wait() expected a list of ObjectID, got a single ObjectID")
 
@@ -2548,7 +2541,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
     if worker.mode != PYTHON_MODE:
         for object_id in object_ids:
-            if not isinstance(object_id, ray.local_scheduler.ObjectID):
+            if not isinstance(object_id, ray.ObjectID):
                 raise TypeError("wait() expected a list of ObjectID, "
                                 "got list containing {}".format(
                                     type(object_id)))
@@ -2575,12 +2568,10 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         ready_ids, remaining_ids = worker.plasma_client.wait(
             object_id_strs, timeout, num_returns)
         ready_ids = [
-            ray.local_scheduler.ObjectID(object_id.binary())
-            for object_id in ready_ids
+            ray.ObjectID(object_id.binary()) for object_id in ready_ids
         ]
         remaining_ids = [
-            ray.local_scheduler.ObjectID(object_id.binary())
-            for object_id in remaining_ids
+            ray.ObjectID(object_id.binary()) for object_id in remaining_ids
         ]
         return ready_ids, remaining_ids
 

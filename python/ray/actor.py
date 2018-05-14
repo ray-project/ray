@@ -36,7 +36,7 @@ def compute_actor_handle_id(actor_handle_id, num_forks):
     handle_id_hash.update(str(num_forks).encode("ascii"))
     handle_id = handle_id_hash.digest()
     assert len(handle_id) == 20
-    return ray.local_scheduler.ObjectID(handle_id)
+    return ray.ObjectID(handle_id)
 
 
 def compute_actor_handle_id_non_forked(actor_id, actor_handle_id,
@@ -68,7 +68,7 @@ def compute_actor_handle_id_non_forked(actor_id, actor_handle_id,
     handle_id_hash.update(current_task_id.id())
     handle_id = handle_id_hash.digest()
     assert len(handle_id) == 20
-    return ray.local_scheduler.ObjectID(handle_id)
+    return ray.ObjectID(handle_id)
 
 
 def compute_actor_creation_function_id(class_id):
@@ -80,7 +80,7 @@ def compute_actor_creation_function_id(class_id):
     Returns:
         The function ID of the actor creation event.
     """
-    return ray.local_scheduler.ObjectID(class_id)
+    return ray.ObjectID(class_id)
 
 
 def compute_actor_method_function_id(class_name, attr):
@@ -98,7 +98,7 @@ def compute_actor_method_function_id(class_name, attr):
     function_id_hash.update(attr.encode("ascii"))
     function_id = function_id_hash.digest()
     assert len(function_id) == 20
-    return ray.local_scheduler.ObjectID(function_id)
+    return ray.ObjectID(function_id)
 
 
 def set_actor_checkpoint(worker, actor_id, checkpoint_index, checkpoint,
@@ -561,7 +561,7 @@ class ActorClass(object):
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
-        actor_id = ray.local_scheduler.ObjectID(_random_string())
+        actor_id = ray.ObjectID(_random_string())
         # The actor cursor is a dummy object representing the most recent
         # actor method invocation. For each subsequent method invocation,
         # the current cursor should be added as a dependency, and then
@@ -689,7 +689,7 @@ class ActorHandle(object):
 
         self._ray_actor_id = actor_id
         if self._ray_original_handle:
-            self._ray_actor_handle_id = ray.local_scheduler.ObjectID(
+            self._ray_actor_handle_id = ray.ObjectID(
                 ray.worker.NIL_ACTOR_HANDLE_ID)
         else:
             self._ray_actor_handle_id = actor_handle_id
@@ -900,30 +900,28 @@ class ActorHandle(object):
 
         if state["ray_forking"]:
             actor_handle_id = compute_actor_handle_id(
-                ray.local_scheduler.ObjectID(
-                    state["previous_actor_handle_id"]), state["actor_forks"])
+                ray.ObjectID(state["previous_actor_handle_id"]),
+                state["actor_forks"])
         else:
             actor_handle_id = None
 
         # This is the driver ID of the driver that owns the actor, not
         # necessarily the driver that owns this actor handle.
-        actor_driver_id = ray.local_scheduler.ObjectID(
-            state["actor_driver_id"])
+        actor_driver_id = ray.ObjectID(state["actor_driver_id"])
 
         self.__init__(
-            ray.local_scheduler.ObjectID(state["actor_id"]),
+            ray.ObjectID(state["actor_id"]),
             state["class_name"],
-            ray.local_scheduler.ObjectID(state["actor_cursor"]),
+            ray.ObjectID(state["actor_cursor"]),
             state["actor_counter"],
             state["actor_method_names"],
             state["method_signatures"],
             state["method_num_return_vals"],
-            ray.local_scheduler.ObjectID(
-                state["actor_creation_dummy_object_id"]),
+            ray.ObjectID(state["actor_creation_dummy_object_id"]),
             state["actor_method_cpus"],
             actor_driver_id,
             actor_handle_id=actor_handle_id,
-            previous_actor_handle_id=ray.local_scheduler.ObjectID(
+            previous_actor_handle_id=ray.ObjectID(
                 state["previous_actor_handle_id"]))
 
     def __getstate__(self):
@@ -991,7 +989,7 @@ def make_actor(cls, num_cpus, num_gpus, resources, actor_method_cpus,
             # scheduler has seen. Handle IDs for which no task has yet reached
             # the local scheduler will not be included, and may not be runnable
             # on checkpoint resumption.
-            actor_id = ray.local_scheduler.ObjectID(worker.actor_id)
+            actor_id = ray.ObjectID(worker.actor_id)
             frontier = worker.local_scheduler_client.get_actor_frontier(
                 actor_id)
             # Save the checkpoint in Redis. TODO(rkn): Checkpoints
