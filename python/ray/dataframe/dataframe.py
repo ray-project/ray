@@ -3155,9 +3155,9 @@ class DataFrame(object):
             """
             # This if call prevents ValueErrors with object only partitions
             if (numeric_only and
-                    all([dtype == np.dtype('O') or
-                         is_timedelta64_dtype(dtype)
-                         for dtype in df.dtypes])):
+                    all(dtype == np.dtype('O') or
+                        is_timedelta64_dtype(dtype)
+                        for dtype in df.dtypes)):
                 return base_object
             else:
                 return df.quantile(q=q, axis=axis, numeric_only=numeric_only,
