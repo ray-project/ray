@@ -823,7 +823,6 @@ class Worker(object):
         # message to the correct driver.
         self.task_driver_id = task.driver_id()
         self.current_task_id = task.task_id()
-        self.current_function_id = task.function_id().id()
         self.task_index = 0
         self.put_index = 1
         function_id = task.function_id()
@@ -938,6 +937,7 @@ class Worker(object):
             task: The task to execute.
         """
         function_id = task.function_id()
+        driver_id = task.driver_id().id()
 
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
@@ -949,7 +949,7 @@ class Worker(object):
         # on this worker. We will push warnings to the user if we spend too
         # long in this loop.
         with log_span("ray:wait_for_function", worker=self):
-            self._wait_for_function(function_id, task.driver_id().id())
+            self._wait_for_function(function_id, driver_id)
 
         # Execute the task.
         # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
@@ -960,8 +960,8 @@ class Worker(object):
         with self.lock:
             log(event_type="ray:acquire_lock", kind=LOG_SPAN_END, worker=self)
 
-            function_name = (self.function_execution_info[
-                task.driver_id().id()][function_id.id()]).function_name
+            function_name = (self.function_execution_info[driver_id][
+                function_id.id()]).function_name
             contents = {
                 "function_name": function_name,
                 "task_id": task.task_id().hex(),
@@ -974,12 +974,11 @@ class Worker(object):
         flush_log()
 
         # Increase the task execution counter.
-        (self.num_task_executions[task.driver_id().id()][function_id.id()]
-         ) += 1
+        self.num_task_executions[driver_id][function_id.id()] += 1
 
-        reached_max_executions = (self.num_task_executions[task.driver_id().id(
-        )][function_id.id()] == self.function_execution_info[
-            task.driver_id().id()][function_id.id()].max_calls)
+        reached_max_executions = (
+            self.num_task_executions[driver_id][function_id.id()] == self.
+            function_execution_info[driver_id][function_id.id()].max_calls)
         if reached_max_executions:
             ray.worker.global_worker.local_scheduler_client.disconnect()
             os._exit(0)
