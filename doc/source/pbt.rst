@@ -17,7 +17,7 @@ Ray Tune's PBT scheduler can be plugged in on top of an existing grid or random 
             time_attr='time_total_s',
             reward_attr='mean_accuracy',
             perturbation_interval=600.0,
-            hyperparameter_mutations={
+            hyperparam_mutations={
                 "lr": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
                 "alpha": lambda: random.uniform(0.0, 1.0),
                 ...

@@ -156,7 +156,7 @@ void NodeManager::Heartbeat() {
   ray::Status status = heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
       [](ray::gcs::AsyncGcsClient *client, const ClientID &id,
-         std::shared_ptr<HeartbeatTableDataT> data) {
+         const HeartbeatTableDataT &data) {
         RAY_LOG(DEBUG) << "[HEARTBEAT] heartbeat sent callback";
       });
 
@@ -251,37 +251,45 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
 
   // Register the new actor.
   ActorRegistration actor_registration(data.back());
+  ClientID received_node_manager_id = actor_registration.GetNodeManagerId();
   // Extend the frontier to include the actor creation task. NOTE(swang): The
   // creator of the actor is always assigned nil as the actor handle ID.
   actor_registration.ExtendFrontier(ActorHandleID::nil(),
                                     actor_registration.GetActorCreationDependency());
   auto inserted = actor_registry_.emplace(actor_id, std::move(actor_registration));
-  RAY_CHECK(inserted.second);
-
-  // Dequeue any methods that were submitted before the actor's location was
-  // known.
-  const auto &methods = local_queues_.GetUncreatedActorMethods();
-  std::unordered_set<TaskID> created_actor_method_ids;
-  for (const auto &method : methods) {
-    if (method.GetTaskSpecification().ActorId() == actor_id) {
-      created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
+  if (!inserted.second) {
+    // If we weren't able to insert the actor's location, check that the
+    // existing entry is the same as the new one.
+    // TODO(swang): This is not true in the case of failures.
+    RAY_CHECK(received_node_manager_id == inserted.first->second.GetNodeManagerId())
+        << "Actor scheduled on " << inserted.first->second.GetNodeManagerId()
+        << ", but received notification for " << received_node_manager_id;
+  } else {
+    // The actor's location is now known. Dequeue any methods that were
+    // submitted before the actor's location was known.
+    const auto &methods = local_queues_.GetUncreatedActorMethods();
+    std::unordered_set<TaskID> created_actor_method_ids;
+    for (const auto &method : methods) {
+      if (method.GetTaskSpecification().ActorId() == actor_id) {
+        created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
+      }
     }
-  }
-  // Resubmit the methods that were submitted before the actor's location was
-  // known.
-  auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
-  for (const auto &method : created_actor_methods) {
-    lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId());
-    // The task's uncommitted lineage was already added to the local lineage
-    // cache upon the initial submission, so it's okay to resubmit it with an
-    // empty lineage this time.
-    SubmitTask(method, Lineage());
+    // Resubmit the methods that were submitted before the actor's location was
+    // known.
+    auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
+    for (const auto &method : created_actor_methods) {
+      lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId());
+      // The task's uncommitted lineage was already added to the local lineage
+      // cache upon the initial submission, so it's okay to resubmit it with an
+      // empty lineage this time.
+      SubmitTask(method, Lineage());
+    }
   }
 }
 
-void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
+void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   // The new client is a worker, so begin listening for messages.
-  client->ProcessMessages();
+  client.ProcessMessages();
 }
 
 void NodeManager::DispatchTasks() {
@@ -309,9 +317,9 @@ void NodeManager::DispatchTasks() {
   }
 }
 
-void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> client,
-                                       int64_t message_type,
-                                       const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(
+    const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
+    const uint8_t *message_data) {
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (message_type) {
@@ -319,7 +327,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     if (message->is_worker()) {
       // Create a new worker from the registration request.
-      std::shared_ptr<Worker> worker(new Worker(message->worker_pid(), client));
+      auto worker = std::make_shared<Worker>(message->worker_pid(), client);
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
     }
@@ -329,10 +337,10 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     RAY_CHECK(worker);
     // If the worker was assigned a task, mark it as finished.
     if (!worker->GetAssignedTaskId().is_nil()) {
-      FinishAssignedTask(worker);
+      FinishAssignedTask(*worker);
     }
     // Return the worker to the idle pool.
-    worker_pool_.PushWorker(worker);
+    worker_pool_.PushWorker(std::move(worker));
     // Call task dispatch to assign work to the new worker.
     DispatchTasks();
 
@@ -436,14 +444,13 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
   client->ProcessMessages();
 }
 
-void NodeManager::ProcessNewNodeManager(
-    std::shared_ptr<TcpClientConnection> node_manager_client) {
-  node_manager_client->ProcessMessages();
+void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client) {
+  node_manager_client.ProcessMessages();
 }
 
-void NodeManager::ProcessNodeManagerMessage(
-    std::shared_ptr<TcpClientConnection> node_manager_client, int64_t message_type,
-    const uint8_t *message_data) {
+void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_client,
+                                            int64_t message_type,
+                                            const uint8_t *message_data) {
   switch (message_type) {
   case protocol::MessageType_ForwardTaskRequest: {
     auto message = flatbuffers::GetRoot<protocol::ForwardTaskRequest>(message_data);
@@ -458,7 +465,7 @@ void NodeManager::ProcessNodeManagerMessage(
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
-  node_manager_client->ProcessMessages();
+  node_manager_client.ProcessMessages();
 }
 
 void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
@@ -639,8 +646,8 @@ void NodeManager::AssignTask(Task &task) {
   }
 }
 
-void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
-  TaskID task_id = worker->GetAssignedTaskId();
+void NodeManager::FinishAssignedTask(Worker &worker) {
+  TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
   auto tasks = local_queues_.RemoveTasks({task_id});
   auto task = *tasks.begin();
@@ -648,7 +655,7 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
   if (task.GetTaskSpecification().IsActorCreationTask()) {
     // If this was an actor creation task, then convert the worker to an actor.
     auto actor_id = task.GetTaskSpecification().ActorCreationId();
-    worker->AssignActorId(actor_id);
+    worker.AssignActorId(actor_id);
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
@@ -684,7 +691,7 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
   }
 
   // Unset the worker's assigned task.
-  worker->AssignTaskId(TaskID::nil());
+  worker.AssignTaskId(TaskID::nil());
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {

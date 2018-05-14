@@ -227,7 +227,7 @@ lists is equal to the list passed in to ``ray.wait`` (up to ordering).
   ready_ids, remaining_ids = ray.wait(results, num_returns=2)
 
   # Start 5 tasks with different durations.
-  results = [f.remote(i) for i in range(3)]
+  results = [f.remote(i) for i in range(5)]
   # Block until 4 of them have finished or 2.5 seconds pass.
   ready_ids, remaining_ids = ray.wait(results, num_returns=4, timeout=2500)
 
