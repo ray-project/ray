@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import torch
-from torch.autograd import Variable
 import torch.nn.functional as F
 
 from ray.rllib.a3c.torchpolicy import TorchPolicy
@@ -39,13 +38,13 @@ class SharedTorchPolicy(TorchPolicy):
 
     def compute_logits(self, ob, *args):
         with self.lock:
-            ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+            ob = torch.from_numpy(ob).float().unsqueeze(0)
             res = self._model.hidden_layers(ob)
             return var_to_np(self._model.logits(res))
 
     def value(self, ob, *args):
         with self.lock:
-            ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+            ob = torch.from_numpy(ob).float().unsqueeze(0)
             res = self._model.hidden_layers(ob)
             res = self._model.value_branch(res)
             res = res.squeeze()

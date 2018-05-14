@@ -41,7 +41,7 @@ class FullyConnectedNetwork(Model):
             activation_fn=None)
 
     def forward(self, obs):
-        """ Internal method - pass in Variables, not numpy arrays
+        """ Internal method - pass in torch tensors, not numpy arrays
 
         Args:
             obs: observations and features

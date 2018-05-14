@@ -45,7 +45,7 @@ class VisionNetwork(Model):
             out_channels, 1, initializer=normc_initializer())
 
     def hidden_layers(self, obs):
-        """ Internal method - pass in Variables, not numpy arrays
+        """ Internal method - pass in torch tensors, not numpy arrays
 
         args:
             obs: observations and features"""
