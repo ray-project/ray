@@ -132,6 +132,7 @@ def to_pandas(df):
     Returns:
         A new pandas DataFrame.
     """
+    pd_df = pd.concat(ray.get(df._row_partitions), copy=False)
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
