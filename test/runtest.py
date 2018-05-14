@@ -1724,7 +1724,7 @@ class WorkerPoolTests(unittest.TestCase):
         os.environ.get("RAY_USE_XRAY") == "1",
         "This test does not work with xray yet.")
     def testBlockingTasks(self):
-        ray.init(num_workers=1)
+        ray.init(num_cpus=1)
 
         @ray.remote
         def f(i, j):
@@ -1734,20 +1734,20 @@ class WorkerPoolTests(unittest.TestCase):
         def g(i):
             # Each instance of g submits and blocks on the result of another
             # remote task.
-            object_ids = [f.remote(i, j) for j in range(10)]
+            object_ids = [f.remote(i, j) for j in range(2)]
             return ray.get(object_ids)
 
-        ray.get([g.remote(i) for i in range(100)])
+        ray.get([g.remote(i) for i in range(4)])
 
         @ray.remote
         def _sleep(i):
-            time.sleep(1)
+            time.sleep(0.01)
             return (i)
 
         @ray.remote
         def sleep():
             # Each instance of sleep submits and blocks on the result of
-            # another remote task, which takes one second to execute.
+            # another remote task, which takes some time to execute.
             ray.get([_sleep.remote(i) for i in range(10)])
 
         ray.get(sleep.remote())
