@@ -7,7 +7,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import queue
 import random
 import time
 import threading
@@ -21,6 +20,11 @@ from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
+
+try:
+    import queue
+except ImportError:
+    import Queue as queue  # python 2
 
 SAMPLE_QUEUE_DEPTH = 2
 REPLAY_QUEUE_DEPTH = 4
