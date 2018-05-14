@@ -1440,6 +1440,11 @@ def _init(address_info=None,
         raise Exception("Driver_mode must be in [ray.SCRIPT_MODE, "
                         "ray.PYTHON_MODE, ray.SILENT_MODE].")
 
+    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
+        # This environment variable is used in our testing setup.
+        print("Detected environment variable 'RAY_USE_XRAY'.")
+        use_raylet = True
+
     # Get addresses of existing services.
     if address_info is None:
         address_info = {}
@@ -1580,7 +1585,7 @@ def init(redis_address=None,
          huge_pages=False,
          include_webui=True,
          object_store_memory=None,
-         use_raylet=False):
+         use_raylet=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1635,6 +1640,11 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
+        # This environment variable is used in our testing setup.
+        print("Detected environment variable 'RAY_USE_XRAY'.")
+        use_raylet = True
+
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
