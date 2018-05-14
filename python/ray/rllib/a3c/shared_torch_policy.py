@@ -68,7 +68,7 @@ class SharedTorchPolicy(TorchPolicy):
         states, actions, advs, rs, _ = convert_batch(batch)
         values, action_log_probs, entropy = self._evaluate(states, actions)
         pi_err = -advs.dot(action_log_probs.reshape(-1))
-        value_err = F.mse_loss(values, rs)
+        value_err = F.mse_loss(values.reshape(-1), rs)
 
         self.optimizer.zero_grad()
 
