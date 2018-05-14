@@ -226,15 +226,15 @@ class TRPOPolicy(SharedTorchPolicy):
 
             # Do line search to determine the stepsize of params in the direction of step_dir
             shs = step_dir.dot(self.HVP(step_dir)) / 2
-            lm = torch.sqrt(shs / self.config['max_kl'])
-            fullstep = step_dir / lm
+            lagrange_mult = torch.sqrt(shs / self.config['max_kl'])
+            fullstep = step_dir / lagrange_mult
             g_step_dir = -g.dot(step_dir).detach().item()
             grad = self.linesearch(
                 x=parameters_to_vector(
                     chain(self._model.hidden_layers.parameters(),
                           self._model.logits.parameters())),
                 fullstep=fullstep,
-                expected_improve_rate=g_step_dir / lm,
+                expected_improve_rate=g_step_dir / lagrange_mult,
             )
 
             # Here we fill the gradient buffers
