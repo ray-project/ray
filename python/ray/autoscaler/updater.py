@@ -17,7 +17,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
-
+SSH_CHECK_INTERVAL = 5
 
 def pretty_cmd(cmd_str):
     return "\n\n\t{}\n\n".format(cmd_str)
@@ -130,7 +130,7 @@ class NodeUpdater(object):
                 print(
                     "NodeUpdater: SSH not up, retrying: {}".format(retry_str),
                     file=self.stdout)
-                time.sleep(5)
+                time.sleep(SSH_CHECK_INTERVAL)
             else:
                 break
         assert ssh_ok, "Unable to SSH to node"
@@ -175,11 +175,13 @@ class NodeUpdater(object):
         force_interactive = "set -i && source ~/.bashrc && "
         self.process_runner.check_call(
             [
-                "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
+                "ssh",
+                "-o", "ConnectTimeout={}s".format(connect_timeout),
                 "-o", "StrictHostKeyChecking=no",
-                "-i", self.ssh_private_key, "{}@{}".format(
-                    self.ssh_user, self.ssh_ip), "bash --login -c {}".format(
-                        pipes.quote(force_interactive + cmd))
+                "-i", self.ssh_private_key,
+                "{}@{}".format(self.ssh_user, self.ssh_ip),
+                "bash --login -c '{}'".format(
+                    force_interactive + cmd)
             ],
             stdout=redirect or self.stdout,
             stderr=redirect or self.stderr)
