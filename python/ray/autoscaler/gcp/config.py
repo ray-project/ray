@@ -27,6 +27,10 @@ SERVICE_ACCOUNT_EMAIL_TEMPLATE = (
 DEFAULT_SERVICE_ACCOUNT_CONFIG = {
     'displayName': 'Ray Autoscaler Service Account ({})'.format(VERSION),
 }
+DEFAULT_SERVICE_ACCOUNT_ROLES = (
+    'roles/storage.objectAdmin',
+    'roles/compute.admin'
+)
 FIREWALL_NAME_TEMPLATE = RAY + "-{}"
 
 DEFAULT_PROJECT_ID = 'ray-autoscaler-' + VERSION
@@ -101,10 +105,12 @@ def _configure_project(config):
 
 
 def _configure_iam_role(config):
-    """Setup an IAM role that allows instances control compute/storage
+    """Setup a gcp service account with IAM roles.
 
-    Specifically, the head node needs to have an IAM role that allows it to
-    create further gce instances.
+    Creates a gcp service acconut and binds IAM roles which allow it to control
+    control storage/compute services. Specifically, the head node needs to have
+    an IAM role that allows it to create further gce instances and store items
+    in google cloud storage.
 
     TODO: Allow the name/id of the service account to be configured
     """
@@ -123,8 +129,15 @@ def _configure_iam_role(config):
 
     assert service_account is not None, "Failed to create service account"
 
+    policy = _add_iam_policy_binding(
+        service_account, DEFAULT_SERVICE_ACCOUNT_ROLES)
+
     config['head_node']['serviceAccounts'] = [{
         'email': service_account['email'],
+        # NOTE: The amount of access is determined by the scope + IAM
+        # role of the service account. Even if the cloud-platform scope
+        # gives (scope) access to whole, cloud-platform, the service
+        # account is limited by the IAM rights specified in config.py
         'scopes': [ 'https://www.googleapis.com/auth/cloud-platform' ]
     }]
 
@@ -239,6 +252,7 @@ def _get_service_account(account, config):
 
     return service_account
 
+
 def _create_service_account(account_id, account_config, config):
     project_id = config['provider']['project_id']
 
@@ -251,3 +265,45 @@ def _create_service_account(account_id, account_config, config):
     ).execute()
 
     return service_account
+
+
+def _add_iam_policy_binding(service_account, roles):
+    """Add new IAM roles for the service account
+
+    TODO: is there a way to directly patch the roles instead of first having
+    to pull and then manually combine them?
+    """
+    project_id = service_account['projectId']
+    email = service_account['email']
+    member_id = 'serviceAccount:' + email
+
+    policy = crm.projects().getIamPolicy(
+        resource=project_id
+    ).execute()
+
+    for role in roles:
+        role_exists = False
+        for binding in policy['bindings']:
+            if binding['role'] == role:
+                if member_id not in binding['members']:
+                    binding['members'].append(member_id)
+                role_exists = True
+
+        if not role_exists:
+            policy['bindings'].append(
+                {
+                    'members': [member_id],
+                    'role': role,
+                }
+            )
+
+    result = crm.projects().setIamPolicy(
+        resource=project_id,
+        body={
+            'policy': policy,
+        }
+    ).execute()
+
+    return result
+
+
