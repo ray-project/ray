@@ -39,7 +39,6 @@ matrix:
         - cd doc
         - pip install -q -r requirements-doc.txt
         - pip install yapf
-        - pip install flake8 flake8-comprehensions
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting.
