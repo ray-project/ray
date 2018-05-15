@@ -65,6 +65,25 @@ def key_pair_name(i, region):
             os.path.expanduser("~/.ssh/{}_gcp_{}_{}.pem".format(RAY, i, region)))
 
 
+def generate_rsa_key_pair():
+    """Create public and private ssh-keys."""
+
+    key = rsa.generate_private_key(
+        backend=default_backend(), public_exponent=65537, key_size=2048)
+
+    public_key = key.public_key().public_bytes(
+        serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH
+    ).decode('utf-8')
+
+    pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption()
+    ).decode('utf-8')
+
+    return public_key, pem
+
+
 def bootstrap_gcp(config):
     config = _configure_project(config)
     config = _configure_iam_role(config)
@@ -199,8 +218,7 @@ def _configure_key_pair(config):
         # Create a key since it doesn't exist locally or in GCP
         if not key_found and not os.path.exists(key_path):
             print("Creating new key pair {}".format(key_name))
-            # TODO.gcp: how to generate ssh-keys?
-            public_key, private_key = 'test', 'todo'
+            public_key, private_key = generate_rsa_key_pair()
 
             email = SERVICE_ACCOUNT_EMAIL_TEMPLATE.format(
                 account_id=DEFAULT_SERVICE_ACCOUNT_ID,
