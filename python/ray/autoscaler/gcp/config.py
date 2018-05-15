@@ -21,8 +21,12 @@ compute = discovery.build('compute', 'v1')
 VERSION = 'v1'
 
 RAY = "ray-autoscaler"
-DEFAULT_RAY_INSTANCE_PROFILE = RAY + VERSION
-DEFAULT_RAY_IAM_ROLE = RAY + VERSION
+DEFAULT_SERVICE_ACCOUNT_ID = RAY + '-sa-' + VERSION
+SERVICE_ACCOUNT_EMAIL_TEMPLATE = (
+    '{account_id}@{project_id}.iam.gserviceaccount.com')
+DEFAULT_SERVICE_ACCOUNT_CONFIG = {
+    'displayName': 'Ray Autoscaler Service Account ({})'.format(VERSION),
+}
 FIREWALL_NAME_TEMPLATE = RAY + "-{}"
 
 DEFAULT_PROJECT_ID = 'ray-autoscaler-' + VERSION
@@ -101,9 +105,29 @@ def _configure_iam_role(config):
 
     Specifically, the head node needs to have an IAM role that allows it to
     create further gce instances.
-    """
 
-    raise NotImplementedError('_configure_iam_role')
+    TODO: Allow the name/id of the service account to be configured
+    """
+    email = SERVICE_ACCOUNT_EMAIL_TEMPLATE.format(
+        account_id=DEFAULT_SERVICE_ACCOUNT_ID,
+        project_id=config['provider']['project_id'])
+    service_account = _get_service_account(email, config)
+
+    if service_account is None:
+        print('Creating new service account {}'.format(
+            DEFAULT_SERVICE_ACCOUNT_ID))
+
+        #  TODO: Allow service account parameters to be configured?
+        service_account = _create_service_account(
+            DEFAULT_SERVICE_ACCOUNT_ID, DEFAULT_SERVICE_ACCOUNT_CONFIG, config)
+
+    assert service_account is not None, "Failed to create service account"
+
+    config['head_node']['serviceAccounts'] = [{
+        'email': service_account['email'],
+        'scopes': [ 'https://www.googleapis.com/auth/cloud-platform' ]
+    }]
+
     return config
 
 
@@ -199,3 +223,31 @@ def _create_project(project_id):
     result = wait_for_operation(operation)
 
     return result
+
+
+def _get_service_account(account, config):
+    project_id = config['provider']['project_id']
+    full_name = ('projects/{project_id}/serviceAccounts/{account}'
+                 ''.format(project_id=project_id, account=account))
+    try:
+        service_account = iam.projects().serviceAccounts().get(
+            name=full_name
+        ).execute()
+    except errors.HttpError as e:
+        if e.resp.status != 404: raise
+        service_account = None
+
+    return service_account
+
+def _create_service_account(account_id, account_config, config):
+    project_id = config['provider']['project_id']
+
+    service_account = iam.projects().serviceAccounts().create(
+        name='projects/{project_id}'.format(project_id=project_id),
+        body={
+            'accountId': account_id,
+            'serviceAccount': account_config,
+        }
+    ).execute()
+
+    return service_account
