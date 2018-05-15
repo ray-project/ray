@@ -57,16 +57,38 @@ class GCPNodeProvider(NodeProvider):
 
     def node_tags(self, node_id):
         node = self._node(node_id)
-        raise NotImplementedError('GCPNodeProvider.node_tags')
-        # TODO.gcp: tags = node...
-        return tags
+        labels = node.get('labels', {})
+        return labels
+
+    def set_node_tags(self, node_id, labels):
+        project_id = self.provider_config['project_id']
+        availability_zone = self.provider_config['availability_zone']
+
+        node = self._node(node_id)
+        operation = compute.instances().setLabels(
+            project=project_id,
+            zone=availability_zone,
+            instance=node_id,
+            body={
+                'labels': dict(node['labels'], **labels),
+                'labelFingerprint': node['labelFingerprint']
+            }
+        ).execute()
+
+        result = wait_for_compute_zone_operation(
+            project_id, operation, availability_zone)
+
+        return result
 
     def external_ip(self, node_id):
         if node_id in self.external_ip_cache:
             return self.external_ip_cache[node_id]
         node = self._node(node_id)
-        raise NotImplementedError('GCPNodeProvider.external_ip')
-        # TODO.gcp: ip = node.public_ip_address
+        # TODO: Isn't there better and more reliable way to do this?
+        ip = (node
+              .get('networkInterfaces', [{}])[0]
+              .get('accessConfigs', [{}])[0]
+              .get('natIP', None))
         if ip:
             self.external_ip_cache[node_id] = ip
         return ip
@@ -75,16 +97,11 @@ class GCPNodeProvider(NodeProvider):
         if node_id in self.internal_ip_cache:
             return self.internal_ip_cache[node_id]
         node = self._node(node_id)
-        raise NotImplementedError('GCPNodeProvider.internal_ip')
-        # TODO.gcp: ip = node.private_ip_address
+        ip = node.get('networkInterfaces', {}).get('networkIP')
         if ip:
             self.internal_ip_cache[node_id] = ip
         return ip
 
-    def set_node_tags(self, node_id, tags):
-        node = self._node(node_id)
-        raise NotImplementedError('GCPNodeProvider.set_node_tags')
-        # TODO.gcp: node.set_tags(tags)
 
     def create_node(self, base_config, labels, count):
         # NOTE: gcp uses 'labels' instead of aws 'tags'
