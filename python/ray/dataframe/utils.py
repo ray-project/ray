@@ -9,6 +9,29 @@ import ray
 from . import get_npartitions
 
 
+_NAN_BLOCKS = dict()
+
+
+def _get_nan_block_id(n_row=1, n_col=1, transpose=False):
+    """A memory efficent way to get a block of NaNs.
+
+    Args:
+        n_rows(int): number of rows
+        n_col(int): number of columns
+        transpose(bool): if true, swap rows and columns
+    Returns:
+        ObjectID of the NaN block
+    """
+    global _NAN_BLOCKS
+    if transpose:
+        n_row, n_col = n_col, n_row
+    shape = (n_row, n_col)
+    if shape not in _NAN_BLOCKS:
+        arr = np.tile(np.array(np.NaN), shape)
+        _NAN_BLOCKS[shape] = ray.put(pd.DataFrame(data=arr))
+    return _NAN_BLOCKS[shape]
+
+
 def _get_lengths(df):
     """Gets the length of the dataframe.
     Args:
@@ -72,9 +95,11 @@ def _partition_pandas_dataframe(df, num_partitions=None, row_chunksize=None):
         row_partitions.append(top)
         temp_df = temp_df[row_chunksize:]
     else:
-        if len(df) > row_chunksize:
-            temp_df.reset_index(drop=True, inplace=True)
-            temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
+        # Handle the last chunk correctly.
+        # This call is necessary to prevent modifying original df
+        temp_df = temp_df[:]
+        temp_df.reset_index(drop=True, inplace=True)
+        temp_df.columns = pd.RangeIndex(0, len(temp_df.columns))
         row_partitions.append(ray.put(temp_df))
 
     return row_partitions
@@ -111,6 +136,58 @@ def to_pandas(df):
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
+
+
+@ray.remote
+def extractor(df_chunk, row_loc, col_loc):
+    """Retrieve an item from remote block
+    """
+    # We currently have to do the writable flag trick because a pandas bug
+    # https://github.com/pandas-dev/pandas/issues/17192
+    try:
+        row_loc.flags.writeable = True
+        col_loc.flags.writeable = True
+    except AttributeError:
+        # Locators might be scaler or python list
+        pass
+    return df_chunk.iloc[row_loc, col_loc]
+
+
+@ray.remote
+def writer(df_chunk, row_loc, col_loc, item):
+    """Make a copy of the block and write new item to it
+    """
+    df_chunk = df_chunk.copy()
+    df_chunk.iloc[row_loc, col_loc] = item
+    return df_chunk
+
+
+def _mask_block_partitions(blk_partitions, row_metadata, col_metadata):
+    """Return the squeezed/expanded block partitions as defined by
+    row_metadata and col_metadata.
+
+    Note:
+        Very naive implementation. Extract one scaler at a time in a double
+        for loop.
+    """
+    col_df = col_metadata._coord_df
+    row_df = row_metadata._coord_df
+
+    result_oids = []
+    shape = (len(row_df.index), len(col_df.index))
+
+    for _, row_partition_data in row_df.iterrows():
+        for _, col_partition_data in col_df.iterrows():
+            row_part = row_partition_data.partition
+            col_part = col_partition_data.partition
+            block_oid = blk_partitions[row_part, col_part]
+
+            row_idx = row_partition_data['index_within_partition']
+            col_idx = col_partition_data['index_within_partition']
+
+            result_oid = extractor.remote(block_oid, [row_idx], [col_idx])
+            result_oids.append(result_oid)
+    return np.array(result_oids).reshape(shape)
 
 
 @ray.remote
@@ -227,8 +304,11 @@ def create_blocks_helper(df, npartitions, axis):
 
 @ray.remote
 def _blocks_to_col(*partition):
-    return pd.concat(partition, axis=0, copy=False)\
-        .reset_index(drop=True)
+    if len(partition):
+        return pd.concat(partition, axis=0, copy=False)\
+            .reset_index(drop=True)
+    else:
+        return pd.Series()
 
 
 @ray.remote
