@@ -250,7 +250,34 @@ def _configure_key_pair(config):
 def _configure_subnet(config):
     """Pick a reasonable subnet if not specified by the config."""
 
-    raise NotImplementedError('_configure_subnet')
+    subnets = _list_subnets(config)
+
+    if not subnets:
+        raise NotImplementedError("Should be able to create subnet.")
+
+    # TODO: make sure that we have usable subnet. Maybe call
+    # compute.subnetworks().listUsable? For some reason it didn't
+    # work out-of-the-box
+    default_subnet = subnets[0]
+
+    if 'networkInterfaces' not in config['head_node']:
+        config['head_node']['networkInterfaces'] = [{
+            'subnetwork': default_subnet['selfLink'],
+            'accessConfigs': [{
+                "name": "External NAT",
+                "type": "ONE_TO_ONE_NAT",
+            }],
+        }]
+
+    if 'networkInterfaces' not in config['worker_nodes']:
+        config['worker_nodes']['networkInterfaces'] = [{
+            'subnetwork': default_subnet['selfLink'],
+            'accessConfigs': [{
+                "name": "External NAT",
+                "type": "ONE_TO_ONE_NAT",
+            }],
+        }]
+
     return config
 
 
@@ -265,9 +292,23 @@ def _configure_firewall_rules(config):
     return config
 
 
-def _get_subnet(config, subnet_id):
-    raise NotImplementedError('_get_subnet')
+def _list_subnets(config):
+    response = compute.subnetworks().list(
+        project=config['provider']['project_id'],
+        region=config['provider']['region']
+    ).execute()
 
+    return response['items']
+
+
+def _get_subnet(config, subnet_id):
+    subnet = compute.subnetworks().get(
+        project=config['provider']['project_id'],
+        region=config['provider']['region'],
+        subnetwork=subnet_id,
+    ).execute()
+
+    return subnet
 
 
 
