@@ -21,7 +21,6 @@ TERMINATED_STATES = (
 class GCPNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
