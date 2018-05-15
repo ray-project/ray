@@ -2,7 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# TODO.gcp: import google cloud sdks
+from googleapiclient import discovery
+compute = discovery.build('compute', 'v1')
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
@@ -22,12 +23,21 @@ class GCPNodeProvider(NodeProvider):
         self.internal_ip_cache = {}
         self.external_ip_cache = {}
 
-    def nodes(self, tag_filters):
-        """Return list of nodes matching general ray filter and tag_filters"""
-        raise NotImplementedError('GCPNodeProvider.nodes')
-        instances = None
-        self.cached_nodes = {i.id: i for i in instances}
-        return [i.id for i in instances]
+    def nodes(self, label_filters):
+        # TODO: Add filters
+        filter_expr = ''
+
+        response = compute.instances().list(
+            project=self.provider_config['project_id'],
+            zone=self.provider_config['availability_zone'],
+            filter=filter_expr,
+        ).execute()
+
+        instances = response.get('items', [])
+        # Note: All the operations use 'name' as the unique instance identifier
+        self.cached_nodes = {i['name']: i for i in instances}
+
+        return [i['name'] for i in instances]
 
     def is_running(self, node_id):
         node = self._node(node_id)
