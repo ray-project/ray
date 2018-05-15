@@ -6,8 +6,8 @@ import torch
 import torch.nn.functional as F
 
 from ray.rllib.a3c.torchpolicy import TorchPolicy
-from ray.rllib.models.pytorch.misc import var_to_np, convert_batch
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.pytorch.misc import convert_batch, var_to_np
 
 
 class SharedTorchPolicy(TorchPolicy):
@@ -28,7 +28,7 @@ class SharedTorchPolicy(TorchPolicy):
             self._model.parameters(), lr=self.config["lr"])
 
     def compute(self, ob, *args):
-        """Should take in a SINGLE ob"""
+        """Should take in a SINGLE ob."""
         with self.lock:
             ob = torch.from_numpy(ob).float().unsqueeze(0)
             logits, values = self._model(ob)
@@ -62,8 +62,11 @@ class SharedTorchPolicy(TorchPolicy):
         return values, action_log_probs, entropy
 
     def _backward(self, batch):
-        """Loss is encoded in here. Defining a new loss function
-        would start by rewriting this function"""
+        """Loss is encoded in here.
+
+        Defining a new loss function would start by rewriting this
+        function
+        """
 
         states, actions, advs, rs, _ = convert_batch(batch)
         values, action_log_probs, entropy = self._evaluate(states, actions)

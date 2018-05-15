@@ -20,14 +20,6 @@ from ray.rllib.models.pytorch.misc import convert_batch
 from ray.rllib.utils.process_rollout import discount
 
 
-def explained_variance_1d(ypred, y):
-    """
-    Var[ypred - y] / var[y].
-    https://www.quora.com/What-is-the-meaning-proportion-of-variance-explained-in-linear-regression
-    """
-    assert y.ndim == 1 and ypred.ndim == 1
-    vary = np.var(y)
-    return np.nan if vary == 0 else 1 - np.var(y - ypred) / vary
 
 
 def vector_to_gradient(v, parameters):
@@ -237,8 +229,7 @@ class TRPOPolicy(SharedTorchPolicy):
             )
 
             # Here we fill the gradient buffers
-            # TODO why does torch.isnan not seem to work?
-            if not any(np.isnan(grad)):
+            if not any(torch.isnan(grad)):
                 vector_to_gradient(
                     grad,
                     chain(self._model.hidden_layers.parameters(),
