@@ -38,7 +38,7 @@ MAX_POLLS = 12
 POLL_INTERVAL = 5
 
 
-def wait_for_operation(operation):
+def wait_for_crm_operation(operation):
     print("Waiting for operation {} to finish...".format(operation))
 
     for _ in range(MAX_POLLS):
@@ -47,6 +47,25 @@ def wait_for_operation(operation):
             raise Exception(result['error'])
 
         if 'done' in result and result['done']:
+            print("Done.")
+            break
+
+        time.sleep(POLL_INTERVAL)
+
+    return result
+
+def wait_for_compute_operation(project_name, operation):
+    print('Waiting for operation {} to finish...'.format(operation['name']))
+
+    for _ in range(MAX_POLLS):
+        result = compute.globalOperations().get(
+            project=project_name,
+            operation=operation['name'],
+        ).execute()
+        if 'error' in result:
+            raise Exception(result['error'])
+
+        if result['status'] == 'DONE':
             print("Done.")
             break
 
@@ -418,7 +437,7 @@ def _create_project_ssh_key_pair(project, key_name, public_key, email):
         body=common_instance_metadata
     ).execute()
 
-    response = wait_for_compute_global_operation(
+    response = wait_for_compute_operation(
         project['name'], operation)
 
     return response
