@@ -1,0 +1,31 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: minimal
+
+# The maximum number of workers nodes to launch in addition to the head
+# node. This takes precedence over min_workers. min_workers default to 0.
+max_workers: 1
+
+# Cloud-provider specific configuration.
+provider:
+    type: gcp
+    region: us-west1
+    availability_zone: us-west1-a
+    project_id: ray-autoscaler-v1
+
+head_node:
+    machineType: n1-standard-2
+    disks:
+      - boot: true
+        autoDelete: true
+        type: PERSISTENT
+        initializeParams:
+          diskSizeGb: 50
+          # See https://cloud.google.com/compute/docs/images for more images
+          sourceImage: global/images/family/ubuntu-1804-lts  # Ubuntu
+
+    # TODO.gcp: Additional options in docs.
+
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: 'ubuntu'
