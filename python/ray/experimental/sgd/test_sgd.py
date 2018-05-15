@@ -16,7 +16,7 @@ if __name__ == "__main__":
     ray.init()
     
     model_creator = (
-        lambda i, j: TFBenchModel(batch=1, use_cpus=True))
+        lambda worker_idx, device_idx: TFBenchModel(batch=1, use_cpus=True))
 
     sgd = DistributedSGD(
         model_creator, num_workers=2, devices_per_worker=2, use_cpus=True)
