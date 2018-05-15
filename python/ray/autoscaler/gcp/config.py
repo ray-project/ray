@@ -76,7 +76,7 @@ def bootstrap_gcp(config):
 
 
 def _configure_project(config):
-    """Setup a gcp project
+    """Setup a Google Cloud Platform Project.
 
     Google Compute Platform organizes all the resources, such as storage
     buckets, users, and instances under projects. This is different from
@@ -145,40 +145,86 @@ def _configure_iam_role(config):
 
 
 def _configure_key_pair(config):
-    """Configure SSH access, using an existing key pair if possible."""
+    """Configure SSH access, using an existing key pair if possible.
 
-    if "ssh_private_key" in config["auth"]:
-        assert "KeyName" in config["head_node"]
-        assert "KeyName" in config["worker_nodes"]
+    Creates a project-wide ssh key that can be used to access all the instances
+    unless explicitly prohibited by instance config.
+
+    TODO.gcp: It seems weird how complicated this is compared to, for example,
+    aws. Figure out if there's a better way to do this.
+    """
+
+    # NOTE: https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys
+    if 'ssh_private_key' in config['auth']:
         return config
 
+    project = compute.projects().get(
+        project=config['provider']['project_id']
+    ).execute()
+
+    # Key pairs associated with project meta data. The key pairs are general,
+    # and not just ssh keys.
+    ssh_keys = next((
+        item for item
+        in project['commonInstanceMetadata'].get('items', [])
+        if item['key'] == 'ssh-keys'
+    ), {}).get('value', None)
+
+    if ssh_keys is None:
+        ssh_keys = []
+    else:
+        ssh_keys = ssh_keys.split('\n')
+
     # Try a few times to get or create a good key pair.
+    key_found = False
     for i in range(10):
-        key_name, key_path = key_pair(i, config["provider"]["region"])
-        key = _get_key(key_name, config)
+        key_name, key_path = key_pair_name(i, config["provider"]["region"])
 
-        # Found a good key.
-        if key and os.path.exists(key_path):
-            break
+        for ssh_key in ssh_keys:
+            key_parts = ssh_key.split(' ')
+            if len(key_parts) != 3:
+                continue
 
-        # We can safely create a new key.
-        if not key and not os.path.exists(key_path):
+            title_parts = key_parts[0].split(':')
+            if len(title_parts) != 2:
+                continue
+
+            username = title_parts[0]
+
+            if username == key_name and os.path.exists(key_path):
+                # Found a key
+                key_found = True
+                break
+
+        # Create a key since it doesn't exist locally or in GCP
+        if not key_found and not os.path.exists(key_path):
             print("Creating new key pair {}".format(key_name))
-            raise NotImplementedError('create key pair')
+            # TODO.gcp: how to generate ssh-keys?
+            public_key, private_key = 'test', 'todo'
+
+            email = SERVICE_ACCOUNT_EMAIL_TEMPLATE.format(
+                account_id=DEFAULT_SERVICE_ACCOUNT_ID,
+                project_id=config['provider']['project_id'])
+            _create_project_ssh_key_pair(project, key_name, public_key, email)
+
             with open(key_path, "w") as f:
-                f.write(key.key_material)
+                f.write(private_key)
             os.chmod(key_path, 0o600)
+
+            key_found = True
+
             break
 
-    assert key, "GCP keypair {} not found for {}".format(key_name, key_path)
-    assert os.path.exists(key_path), \
-        "Private key file {} not found for {}".format(key_path, key_name)
+        if key_found:
+            break
+
+    assert key_found, "SSH keypair {} not found for {}".format(key_name, key_path)
+    assert os.path.exists(key_path), (
+        "Private key file {} not found for {}".format(key_path, key_name))
 
     print("KeyName not specified for nodes, using {}".format(key_name))
 
     config["auth"]["ssh_private_key"] = key_path
-    config["head_node"]["KeyName"] = key_name
-    config["worker_nodes"]["KeyName"] = key_name
 
     return config
 
@@ -205,14 +251,8 @@ def _get_subnet(config, subnet_id):
     raise NotImplementedError('_get_subnet')
 
 
-def _get_role(role_name, config):
-    """Return a gcp iam role"""
-    raise NotImplementedError('_get_role')
 
 
-def _get_key(key_name, config):
-    """Return a gcp ssh key that matches key_name"""
-    raise NotImplementedError('_get_key')
 
 
 def _get_project(project_id):
@@ -307,3 +347,35 @@ def _add_iam_policy_binding(service_account, roles):
     return result
 
 
+def _create_project_ssh_key_pair(project, key_name, public_key, email):
+    """Inserts an ssh-key into project commonInstanceMetadata"""
+
+    key_parts = public_key.split(' ')
+    title = '{key_name}:{title}'.format(
+        key_name=key_name, title=key_parts[0])
+
+    common_instance_metadata = project['commonInstanceMetadata']
+    items = common_instance_metadata.get('items', [])
+
+    for item in items:
+        if item['key'] != 'ssh-keys': continue
+
+        item['value'] += '\n{title} {key_value} {email}'.format(
+            title=title,
+            key_value=key_parts[1],
+            email=email
+        )
+
+        break
+
+    common_instance_metadata['items'] = items
+
+    operation = compute.projects().setCommonInstanceMetadata(
+        project=project['name'],
+        body=common_instance_metadata
+    ).execute()
+
+    response = wait_for_compute_global_operation(
+        project['name'], operation)
+
+    return response
