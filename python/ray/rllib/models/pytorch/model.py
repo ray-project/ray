@@ -30,7 +30,7 @@ class SlimConv2d(nn.Module):
     """Simple mock of tf.slim Conv2d"""
 
     def __init__(self, in_channels, out_channels, kernel, stride, padding,
-                 initializer=nn.init.xavier_uniform,
+                 initializer=nn.init.xavier_uniform_,
                  activation_fn=nn.ReLU, bias_init=0):
         super(SlimConv2d, self).__init__()
         layers = []
@@ -39,7 +39,7 @@ class SlimConv2d(nn.Module):
         conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
         if initializer:
             initializer(conv.weight)
-        nn.init.constant(conv.bias, bias_init)
+        nn.init.constant_(conv.bias, bias_init)
 
         layers.append(conv)
         if activation_fn:

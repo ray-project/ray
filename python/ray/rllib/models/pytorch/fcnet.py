@@ -24,7 +24,7 @@ class FullyConnectedNetwork(Model):
         last_layer_size = inputs
         for size in hiddens:
             layers.append(SlimFC(
-                last_layer_size, size,
+                in_size=last_layer_size, out_size=size,
                 initializer=normc_initializer(1.0),
                 activation_fn=activation))
             last_layer_size = size
@@ -41,7 +41,7 @@ class FullyConnectedNetwork(Model):
             activation_fn=None)
 
     def forward(self, obs):
-        """ Internal method - pass in Variables, not numpy arrays
+        """ Internal method - pass in torch tensors, not numpy arrays
 
         Args:
             obs: observations and features

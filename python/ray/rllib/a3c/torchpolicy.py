@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from copy import deepcopy
 import torch
-from torch.autograd import Variable
 
 from ray.rllib.a3c.policy import Policy
 from threading import Lock
@@ -32,7 +31,7 @@ class TorchPolicy(Policy):
         grads = deepcopy(grads)  # TODO rm
         self.optimizer.zero_grad()
         for g, p in zip(grads, self._model.parameters()):
-            p.grad = Variable(torch.from_numpy(g))
+            p.grad = torch.from_numpy(g)
         self.optimizer.step()
 
     def get_weights(self):
@@ -73,7 +72,7 @@ class TorchPolicy(Policy):
 
     def _backward(self, batch):
         """Implements the loss function and calculates the gradient.
-        Pytorch automatically generates a backward trace for each variable.
+        Pytorch automatically generates a backward trace for each tensor.
         Assumption right now is that variables are moved, so the backward
         trace is lost.
 

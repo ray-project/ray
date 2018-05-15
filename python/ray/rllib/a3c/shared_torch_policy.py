@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import torch
-from torch.autograd import Variable
 import torch.nn.functional as F
 
 from ray.rllib.a3c.torchpolicy import TorchPolicy
@@ -31,22 +30,21 @@ class SharedTorchPolicy(TorchPolicy):
     def compute(self, ob, *args):
         """Should take in a SINGLE ob"""
         with self.lock:
-            ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+            ob = torch.from_numpy(ob).float().unsqueeze(0)
             logits, values = self._model(ob)
-            samples = F.softmax(
-                logits, dim=1).multinomial(num_samples=1).squeeze()
+            samples = F.softmax(logits, dim=1).multinomial(1).squeeze()
             values = values.squeeze()
             return var_to_np(samples), {"vf_preds": var_to_np(values)}
 
     def compute_logits(self, ob, *args):
         with self.lock:
-            ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+            ob = torch.from_numpy(ob).float().unsqueeze(0)
             res = self._model.hidden_layers(ob)
             return var_to_np(self._model.logits(res))
 
     def value(self, ob, *args):
         with self.lock:
-            ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+            ob = torch.from_numpy(ob).float().unsqueeze(0)
             res = self._model.hidden_layers(ob)
             res = self._model.value_branch(res)
             res = res.squeeze()
@@ -59,7 +57,7 @@ class SharedTorchPolicy(TorchPolicy):
         probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
         # TODO(alok): set distribution based on action space and use its
-        # .entropy() method to calculate automatically
+        # `.entropy()` method to calculate automatically
         entropy = -(log_probs * probs).sum(-1).sum()
         return values, action_log_probs, entropy
 
@@ -67,14 +65,18 @@ class SharedTorchPolicy(TorchPolicy):
         """Loss is encoded in here. Defining a new loss function
         would start by rewriting this function"""
 
-        states, acs, advs, rs, _ = convert_batch(batch)
-        values, ac_logprobs, entropy = self._evaluate(states, acs)
-        pi_err = -(advs * ac_logprobs).sum()
-        value_err = F.mse_loss(values, rs)
+        states, actions, advs, rs, _ = convert_batch(batch)
+        values, action_log_probs, entropy = self._evaluate(states, actions)
+        pi_err = -advs.dot(action_log_probs.reshape(-1))
+        value_err = F.mse_loss(values.reshape(-1), rs)
 
         self.optimizer.zero_grad()
-        overall_err = (pi_err + value_err * self.config["vf_loss_coeff"] +
-                       entropy * self.config["entropy_coeff"])
+        overall_err = sum([
+            pi_err,
+            self.config["vf_loss_coeff"] * value_err,
+            self.config["entropy_coeff"] * entropy,
+        ])
+
         overall_err.backward()
         torch.nn.utils.clip_grad_norm_(self._model.parameters(),
                                        self.config["grad_clip"])

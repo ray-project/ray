@@ -21,7 +21,7 @@ class VisionNetwork(Model):
         filters = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [4, 4], 2],
-            [512, [10, 10], 1]
+            [512, [10, 1], 1],
         ])
         layers = []
         in_channels, in_size = inputs[0], inputs[1:]
@@ -36,16 +36,16 @@ class VisionNetwork(Model):
 
         out_channels, kernel, stride = filters[-1]
         layers.append(SlimConv2d(
-                in_channels, out_channels, kernel, stride, None))
+            in_channels, out_channels, kernel, stride, None))
         self._convs = nn.Sequential(*layers)
 
         self.logits = SlimFC(
-            out_channels, num_outputs, initializer=nn.init.xavier_uniform)
+            out_channels, num_outputs, initializer=nn.init.xavier_uniform_)
         self.value_branch = SlimFC(
             out_channels, 1, initializer=normc_initializer())
 
     def hidden_layers(self, obs):
-        """ Internal method - pass in Variables, not numpy arrays
+        """ Internal method - pass in torch tensors, not numpy arrays
 
         args:
             obs: observations and features"""

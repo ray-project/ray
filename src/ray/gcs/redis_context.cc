@@ -100,15 +100,13 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
 
 int64_t RedisCallbackManager::add(const RedisCallback &function) {
   num_callbacks += 1;
-  callbacks_.emplace(num_callbacks, std::unique_ptr<RedisCallback>(
-                                        new RedisCallback(function)));
+  callbacks_.emplace(num_callbacks, function);
   return num_callbacks;
 }
 
-RedisCallbackManager::RedisCallback &RedisCallbackManager::get(
-    int64_t callback_index) {
+RedisCallback &RedisCallbackManager::get(int64_t callback_index) {
   RAY_CHECK(callbacks_.find(callback_index) != callbacks_.end());
-  return *callbacks_[callback_index];
+  return callbacks_[callback_index];
 }
 
 void RedisCallbackManager::remove(int64_t callback_index) {
@@ -185,7 +183,9 @@ Status RedisContext::AttachToEventLoop(aeEventLoop *loop) {
 Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
                               const uint8_t *data, int64_t length,
                               const TablePrefix prefix, const TablePubsub pubsub_channel,
-                              int64_t callback_index, int log_length) {
+                              RedisCallback redisCallback, int log_length) {
+  int64_t callback_index =
+      redisCallback != nullptr ? RedisCallbackManager::instance().add(redisCallback) : -1;
   if (length > 0) {
     if (log_length >= 0) {
       std::string redis_command = command + " %d %d %b %b %d";
@@ -222,10 +222,11 @@ Status RedisContext::RunAsync(const std::string &command, const UniqueID &id,
 
 Status RedisContext::SubscribeAsync(const ClientID &client_id,
                                     const TablePubsub pubsub_channel,
-                                    int64_t callback_index) {
+                                    const RedisCallback &redisCallback) {
   RAY_CHECK(pubsub_channel != TablePubsub_NO_PUBLISH)
       << "Client requested subscribe on a table that does not support pubsub";
 
+  int64_t callback_index = RedisCallbackManager::instance().add(redisCallback);
   int status = 0;
   if (client_id.is_nil()) {
     // Subscribe to all messages.

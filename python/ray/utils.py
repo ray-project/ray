@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
-import collections
 import hashlib
 import numpy as np
 import os
@@ -125,7 +124,7 @@ def decode(byte_str):
 
 
 def binary_to_object_id(binary_object_id):
-    return ray.local_scheduler.ObjectID(binary_object_id)
+    return ray.ObjectID(binary_object_id)
 
 
 def binary_to_hex(identifier):
@@ -137,11 +136,6 @@ def binary_to_hex(identifier):
 
 def hex_to_binary(hex_identifier):
     return binascii.unhexlify(hex_identifier)
-
-
-FunctionProperties = collections.namedtuple(
-    "FunctionProperties", ["num_return_vals", "resources", "max_calls"])
-"""FunctionProperties: A named tuple storing remote functions information."""
 
 
 def get_cuda_visible_devices():
@@ -169,3 +163,48 @@ def set_cuda_visible_devices(gpu_ids):
         gpu_ids: This is a list of integers representing GPU IDs.
     """
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
+
+
+def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
+                                      default_resources, runtime_num_cpus,
+                                      runtime_num_gpus, runtime_resources):
+    """Determine a task's resource requirements.
+
+    Args:
+        default_num_cpus: The default number of CPUs required by this function
+            or actor method.
+        default_num_gpus: The default number of GPUs required by this function
+            or actor method.
+        default_resources: The default custom resources required by this
+            function or actor method.
+        runtime_num_cpus: The number of CPUs requested when the task was
+            invoked.
+        runtime_num_gpus: The number of GPUs requested when the task was
+            invoked.
+        runtime_resources: The custom resources requested when the task was
+            invoked.
+
+    Returns:
+        A dictionary of the resource requirements for the task.
+    """
+    if runtime_resources is not None:
+        resources = runtime_resources.copy()
+    elif default_resources is not None:
+        resources = default_resources.copy()
+    else:
+        resources = {}
+
+    if "CPU" in resources or "GPU" in resources:
+        raise ValueError("The resources dictionary must not "
+                         "contain the key 'CPU' or 'GPU'")
+
+    assert default_num_cpus is not None
+    resources["CPU"] = (default_num_cpus
+                        if runtime_num_cpus is None else runtime_num_cpus)
+
+    if runtime_num_gpus is not None:
+        resources["GPU"] = runtime_num_gpus
+    elif default_num_gpus is not None:
+        resources["GPU"] = default_num_gpus
+
+    return resources
