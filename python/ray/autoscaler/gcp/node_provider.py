@@ -31,8 +31,32 @@ class GCPNodeProvider(NodeProvider):
         self.external_ip_cache = {}
 
     def nodes(self, label_filters):
-        # TODO: Add filters
-        filter_expr = ''
+        if label_filters:
+            label_filter_expr = '(' + ' AND '.join([
+                '(labels.{key} = {value})'.format(key=key, value=value)
+                for key, value in label_filters.items()
+            ]) + ')'
+        else:
+            label_filter_expr = ''
+
+        instance_state_filter_expr = '(' + ' OR '.join([
+            '(status = {status})'.format(status=status)
+            for status in ['PROVISIONING', 'STAGING', 'RUNNING']
+        ]) + ')'
+
+        cluster_name_filter_expr = (
+            '(labels.{key} = {value})'
+            ''.format(key=TAG_RAY_CLUSTER_NAME, value=self.cluster_name))
+
+        not_empty_filters = [
+            f for f in [
+                    label_filter_expr,
+                    instance_state_filter_expr,
+                    cluster_name_filter_expr,
+            ] if f
+        ]
+
+        filter_expr = ' AND '.join(not_empty_filters)
 
         response = compute.instances().list(
             project=self.provider_config['project_id'],
