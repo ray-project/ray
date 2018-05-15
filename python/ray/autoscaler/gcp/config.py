@@ -282,13 +282,52 @@ def _configure_subnet(config):
 
 
 def _configure_firewall_rules(config):
-    """Configure firewall rules to allow needed traffic to/from the nodes
+    """TODO: we probably don't need to set these.
 
-    Nodes should allow traffic within the worker group, and also SSH access
-    from outside.
+    The default configs seem to define the needed rules.
+    But we should still verify that that's the case.
     """
+    if ('SecurityGroupIds' in config['head_node']
+        and 'SecurityGroupIds' in config['worker_nodes']):
+        return config  # have user-defined groups
 
-    raise NotImplementedError('_configure_firewall_rules')
+    firewall_name = FIREWALL_NAME_TEMPLATE.format(config['cluster_name'])
+    subnet = _get_subnet(config, config['worker_nodes']['SubnetId'])
+    firewall = _get_firewall(config, firewall_name)
+
+    if firewall is None:
+        print("Creating new firewall rule {}".format(firewall_name))
+        firewall = _create_firewall(config, subnet, firewall_name)
+        assert firewall, "Failed to create security group"
+
+    if not firewall.ip_permissions:
+        firewall.authorize_ingress(
+            IpPermissions=[{
+                "FromPort": -1,
+                "ToPort": -1,
+                "IpProtocol": "-1",
+                "UserIdGroupPairs": [{
+                    "GroupId": firewall.id
+                }]
+            }, {
+                "FromPort": 22,
+                "ToPort": 22,
+                "IpProtocol": "TCP",
+                "IpRanges": [{
+                    "CidrIp": "0.0.0.0/0"
+                }]
+            }])
+
+    if "SecurityGroupIds" not in config["head_node"]:
+        print("SecurityGroupIds not specified for head node, using {}".format(
+            firewall.group_name))
+        config["head_node"]["SecurityGroupIds"] = [firewall.id]
+
+    if "SecurityGroupIds" not in config["worker_nodes"]:
+        print("SecurityGroupIds not specified for workers, using {}".format(
+            firewall.group_name))
+        config["worker_nodes"]["SecurityGroupIds"] = [firewall.id]
+
     return config
 
 
@@ -311,7 +350,34 @@ def _get_subnet(config, subnet_id):
     return subnet
 
 
+def _get_firewall(config, firewall_name):
+    try:
+        firewall = compute.firewalls().get(
+            project=config['provider']['project_id'],
+            firewall=firewall_name,
+        ).execute()
+    except errors.HttpError as e:
+        if e.resp.status != 404: raise
+        firewall = None
 
+    return firewall
+
+def _create_firewall(config, subnet, firewall_name):
+    operation = compute.firewalls().insert(
+        project=config['provider']['project_id'],
+        body={
+            'name': firewall_name,
+            'description': "Auto-created security group for Ray workers",
+            'network': subnet['network'],
+            # 'priority': 1000,
+            'sourceRanges': None, # TODO
+            'sourceTags': None, # TODO: we probably want to use tags over range
+            'direction': 'INGRESS',
+        }
+    ).execute()
+
+    response = wait_for_compute_global_operation(
+        config['provider']['project_id'], operation)
 
 
 def _get_project(project_id):
