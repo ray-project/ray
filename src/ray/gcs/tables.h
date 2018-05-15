@@ -288,7 +288,7 @@ class ActorTable : public Log<ActorID, ActorTableData> {
   ActorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Log(context, client) {
     pubsub_channel_ = TablePubsub_ACTOR;
-    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+    prefix_ = TablePrefix_ACTOR;
   }
 };
 
@@ -297,8 +297,7 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
   TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
                         AsyncGcsClient *client)
       : Log(context, client) {
-    pubsub_channel_ = TablePubsub_ACTOR;
-    prefix_ = TablePrefix_ACTOR;
+    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
   }
 };
 
