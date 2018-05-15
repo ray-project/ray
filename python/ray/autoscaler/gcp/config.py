@@ -54,13 +54,35 @@ def wait_for_crm_operation(operation):
 
     return result
 
-def wait_for_compute_operation(project_name, operation):
+def wait_for_compute_global_operation(project_name, operation):
     print('Waiting for operation {} to finish...'.format(operation['name']))
 
     for _ in range(MAX_POLLS):
         result = compute.globalOperations().get(
             project=project_name,
             operation=operation['name'],
+        ).execute()
+        if 'error' in result:
+            raise Exception(result['error'])
+
+        if result['status'] == 'DONE':
+            print("Done.")
+            break
+
+        time.sleep(POLL_INTERVAL)
+
+    return result
+
+
+def wait_for_compute_zone_operation(project_name, operation, zone):
+    """TODO: This seems unnecessary. Figure out if we can get rid of this"""
+    print('Waiting for operation {} to finish...'.format(operation['name']))
+
+    for _ in range(MAX_POLLS):
+        result = compute.zoneOperations().get(
+            project=project_name,
+            operation=operation['name'],
+            zone=zone
         ).execute()
         if 'error' in result:
             raise Exception(result['error'])
@@ -437,7 +459,7 @@ def _create_project_ssh_key_pair(project, key_name, public_key, email):
         body=common_instance_metadata
     ).execute()
 
-    response = wait_for_compute_operation(
+    response = wait_for_compute_global_operation(
         project['name'], operation)
 
     return response

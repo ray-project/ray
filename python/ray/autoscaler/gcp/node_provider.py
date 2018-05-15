@@ -6,7 +6,8 @@ from googleapiclient import discovery
 compute = discovery.build('compute', 'v1')
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_NAME
+from ray.autoscaler.gcp.config import wait_for_compute_zone_operation
 from ray.ray_constants import BOTO_MAX_RETRIES
 
 
@@ -82,10 +83,36 @@ class GCPNodeProvider(NodeProvider):
         raise NotImplementedError('GCPNodeProvider.set_node_tags')
         # TODO.gcp: node.set_tags(tags)
 
-    def create_node(self, node_config, tags, count):
-        conf = node_config.copy()
-        raise NotImplementedError('GCPNodeProvider.create_node')
-        # TODO.gcp: create nodes with tags
+    def create_node(self, base_config, labels, count):
+        # NOTE: gcp uses 'labels' instead of aws 'tags'
+        # https://cloud.google.com/compute/docs/instances/create-start-instance#startinginstancwithimage
+        project_id = self.provider_config['project_id']
+        availability_zone = self.provider_config['availability_zone']
+
+        config = base_config.copy()
+        config['name'] = labels[TAG_NAME]
+        config['machineType'] = (
+            'zones/{zone}/machineTypes/{machine_type}'
+            ''.format(zone=availability_zone,
+                      machine_type=base_config['machineType']))
+
+        config['labels'] = dict(
+            config.get('labels', {}),
+            **labels,
+            **{TAG_RAY_CLUSTER_NAME: self.cluster_name})
+
+        if count != 1: raise NotImplementedError(count)
+
+        operation = compute.instances().insert(
+            project=project_id,
+            zone=availability_zone,
+            body=config
+        ).execute()
+
+        result = wait_for_compute_zone_operation(
+            project_id, operation, availability_zone)
+
+        return result
 
     def terminate_node(self, node_id):
         node = self._node(node_id)
