@@ -17,8 +17,7 @@ from torch.nn.utils.convert_parameters import (_check_param_device,
 import ray
 from ray.rllib.a3c.shared_torch_policy import SharedTorchPolicy
 from ray.rllib.models.pytorch.misc import convert_batch
-# TODO(alok): use `process_rollout`
-from ray.rllib.utils.process_rollout import discount, process_rollout
+from ray.rllib.utils.process_rollout import discount
 
 
 def explained_variance_1d(ypred, y):
