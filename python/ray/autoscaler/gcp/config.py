@@ -2,20 +2,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from distutils.version import StrictVersion
 import json
 import logging
 import os
 import time
 
-# TODO.gcp: import google cloud sdks
+from googleapiclient import discovery, errors
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 
+crm = discovery.build('cloudresourcemanager', 'v1')
+iam = discovery.build('iam', 'v1')
+compute = discovery.build('compute', 'v1')
+
+
+# https://cloud.google.com/docs/compare/aws/
+
+VERSION = 'v1'
+
 RAY = "ray-autoscaler"
-DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
-DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
-SECURITY_GROUP_TEMPLATE = RAY + "-{}"
+DEFAULT_RAY_INSTANCE_PROFILE = RAY + VERSION
+DEFAULT_RAY_IAM_ROLE = RAY + VERSION
+FIREWALL_NAME_TEMPLATE = RAY + "-{}"
+
+DEFAULT_PROJECT_ID = 'ray-autoscaler-' + VERSION
 
 
 def key_pair(i, region):
