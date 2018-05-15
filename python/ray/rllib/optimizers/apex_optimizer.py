@@ -12,6 +12,7 @@ import time
 import threading
 
 import numpy as np
+from six.moves import queue
 
 import ray
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -21,10 +22,6 @@ from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
-try:
-    import queue
-except ImportError:
-    import Queue as queue  # python 2
 
 SAMPLE_QUEUE_DEPTH = 2
 REPLAY_QUEUE_DEPTH = 4
