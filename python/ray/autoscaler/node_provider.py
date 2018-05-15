@@ -26,9 +26,7 @@ def load_aws_example_config():
 
 def load_gcp_example_config():
     import ray.autoscaler.gcp as ray_gcp
-    # TODO.gcp: example-full.yaml?
-    return os.path.join(
-        os.path.dirname(ray_gcp.__file__), "example-minimal.yaml")
+    return os.path.join(os.path.dirname(ray_gcp.__file__), "example-full.yaml")
 
 
 def import_external():
