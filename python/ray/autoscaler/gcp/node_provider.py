@@ -10,6 +10,13 @@ from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_NAME
 from ray.autoscaler.gcp.config import wait_for_compute_zone_operation
 from ray.ray_constants import BOTO_MAX_RETRIES
 
+TERMINATED_STATES = (
+    'STOPPING',
+    'STOPPED',
+    'SUSPENDING',
+    'SUSPENDED',
+    'TERMINATED',
+)
 
 class GCPNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
@@ -42,15 +49,11 @@ class GCPNodeProvider(NodeProvider):
 
     def is_running(self, node_id):
         node = self._node(node_id)
-        raise NotImplementedError('GCPNodeProvider.is_terminated')
-        # TODO.gcp: return node.state == running
-        return False
+        return node['status'] == 'RUNNING'
 
     def is_terminated(self, node_id):
         node = self._node(node_id)
-        raise NotImplementedError('GCPNodeProvider.is_terminated')
-        # TODO.gcp: state = node...
-        return state not in ["running", "pending"]
+        return node['status'] in TERMINATED_STATES
 
     def node_tags(self, node_id):
         node = self._node(node_id)
@@ -122,6 +125,11 @@ class GCPNodeProvider(NodeProvider):
     def _node(self, node_id):
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
-        raise NotImplementedError('GCPNodeProvider.terminate_node')
-        # TODO.gcp: instance = ...
-        return None
+
+        instance = compute.instances().get(
+            project=self.provider_config['project_id'],
+            zone=self.provider_config['availability_zone'],
+            instance=node_id,
+        ).execute()
+
+        return instance
