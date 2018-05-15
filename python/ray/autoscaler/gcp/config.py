@@ -27,6 +27,26 @@ FIREWALL_NAME_TEMPLATE = RAY + "-{}"
 
 DEFAULT_PROJECT_ID = 'ray-autoscaler-' + VERSION
 
+MAX_POLLS = 12
+POLL_INTERVAL = 5
+
+
+def wait_for_operation(operation):
+    print("Waiting for operation {} to finish...".format(operation))
+
+    for _ in range(MAX_POLLS):
+        result = crm.operations().get(name=operation['name']).execute()
+        if 'error' in result:
+            raise Exception(result['error'])
+
+        if 'done' in result and result['done']:
+            print("Done.")
+            break
+
+        time.sleep(POLL_INTERVAL)
+
+    return result
+
 
 def key_pair_name(i, region):
     """Returns the ith default (gcp_key_pair_name, key_pair_path)."""
@@ -54,8 +74,24 @@ def _configure_project(config):
     buckets, users, and instances under projects. This is different from
     aws ec2 where everything is global.
     """
+    if 'project_id' not in config['provider']:
+        print("config.provider.project_id not defined."
+              " Using default project_id: {}".format(DEFAULT_PROJECT_ID))
 
-    raise NotImplementedError('_configure_project')
+    project_id = config['provider'].get('project_id', DEFAULT_PROJECT_ID)
+    project = _get_project(project_id)
+
+    if project is None:
+        #  Project not found, try creating it
+        project = _create_project(project_id)
+
+    assert project is not None, "Failed to create project"
+    assert project['lifecycleState'] == 'ACTIVE', (
+        "Project status needs to be ACTIVE, got {}"
+        .format(project['lifecycleState']))
+
+    config['provider']['project_id'] = project['projectId']
+
     return config
 
 
@@ -139,3 +175,26 @@ def _get_role(role_name, config):
 def _get_key(key_name, config):
     """Return a gcp ssh key that matches key_name"""
     raise NotImplementedError('_get_key')
+
+
+def _get_project(project_id):
+    try:
+        project = crm.projects().get(projectId=project_id).execute()
+    except errors.HttpError as e:
+        if e.resp.status != 403: raise
+        project = None
+
+    return project
+
+
+def _create_project(project_id):
+    operation = crm.projects().create(
+        body={
+            'projectId': project_id,
+            'name': project_id
+        }
+    ).execute()
+
+    result = wait_for_operation(operation)
+
+    return result
