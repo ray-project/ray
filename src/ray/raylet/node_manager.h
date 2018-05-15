@@ -37,7 +37,7 @@ class NodeManager {
               std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
 
   /// Process a new client connection.
-  void ProcessNewClient(std::shared_ptr<LocalClientConnection> client);
+  void ProcessNewClient(LocalClientConnection &client);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -46,12 +46,12 @@ class NodeManager {
   /// \param client The client that sent the message.
   /// \param message_type The message type (e.g., a flatbuffer enum).
   /// \param message A pointer to the message data.
-  void ProcessClientMessage(std::shared_ptr<LocalClientConnection> client,
+  void ProcessClientMessage(const std::shared_ptr<LocalClientConnection> &client,
                             int64_t message_type, const uint8_t *message);
 
-  void ProcessNewNodeManager(std::shared_ptr<TcpClientConnection> node_manager_client);
+  void ProcessNewNodeManager(TcpClientConnection &node_manager_client);
 
-  void ProcessNodeManagerMessage(std::shared_ptr<TcpClientConnection> node_manager_client,
+  void ProcessNodeManagerMessage(TcpClientConnection &node_manager_client,
                                  int64_t message_type, const uint8_t *message);
 
   ray::Status RegisterGcs();
@@ -74,7 +74,7 @@ class NodeManager {
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   void AssignTask(Task &task);
   /// Handle a worker finishing its assigned task.
-  void FinishAssignedTask(std::shared_ptr<Worker> worker);
+  void FinishAssignedTask(Worker &worker);
   /// Schedule tasks.
   void ScheduleTasks();
   /// Resubmit a task whose return value needs to be reconstructed.

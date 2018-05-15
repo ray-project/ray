@@ -55,9 +55,9 @@ class _IndexMetadata(object):
         self._cached_index = False
 
     def _get__lengths(self):
-        if isinstance(self._lengths_cache, ray.local_scheduler.ObjectID) or \
+        if isinstance(self._lengths_cache, ray.ObjectID) or \
             (isinstance(self._lengths_cache, list) and
-             isinstance(self._lengths_cache[0], ray.local_scheduler.ObjectID)):
+             isinstance(self._lengths_cache[0], ray.ObjectID)):
             self._lengths_cache = ray.get(self._lengths_cache)
         return self._lengths_cache
 
@@ -72,7 +72,7 @@ class _IndexMetadata(object):
         Since we may have had an index set before our coord_df was
         materialized, we'll have to apply it to the newly materialized df
         """
-        if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
+        if isinstance(self._coord_df_cache, ray.ObjectID):
             self._coord_df_cache = ray.get(self._coord_df_cache)
         if self._cached_index:
             self._coord_df_cache.index = self._index_cache
@@ -89,7 +89,7 @@ class _IndexMetadata(object):
         If the set _IndexMetadata is an OID instead (due to a copy or whatever
         reason), we fall back relying on `_index_cache`.
         """
-        if not isinstance(coord_df, ray.local_scheduler.ObjectID):
+        if not isinstance(coord_df, ray.ObjectID):
             self._index_cache = coord_df.index
         self._coord_df_cache = coord_df
 
@@ -102,7 +102,7 @@ class _IndexMetadata(object):
         _IndexMetadata object without a specified `index` parameter (See the
         _IndexMetadata constructor for more details)
         """
-        if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
+        if isinstance(self._coord_df_cache, ray.ObjectID):
             return self._index_cache
         else:
             return self._coord_df_cache.index
@@ -119,7 +119,7 @@ class _IndexMetadata(object):
         assert len(new_index) == len(self)
 
         self._index_cache = new_index
-        if isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
+        if isinstance(self._coord_df_cache, ray.ObjectID):
             self._cached_index = True
         else:
             self._coord_df_cache.index = new_index
@@ -140,7 +140,7 @@ class _IndexMetadata(object):
         if self._index_cache_validator is None:
             self._index_cache_validator = pd.RangeIndex(len(self))
         elif isinstance(self._index_cache_validator,
-                        ray.local_scheduler.ObjectID):
+                        ray.ObjectID):
             self._index_cache_validator = ray.get(self._index_cache_validator)
 
         return self._index_cache_validator
@@ -296,11 +296,11 @@ class _IndexMetadata(object):
     def copy(self):
         # TODO: Investigate copy-on-write wrapper for metadata objects
         coord_df_copy = self._coord_df_cache
-        if not isinstance(self._coord_df_cache, ray.local_scheduler.ObjectID):
+        if not isinstance(self._coord_df_cache, ray.ObjectID):
             coord_df_copy = self._coord_df_cache.copy()
 
         lengths_copy = self._lengths_cache
-        if not isinstance(self._lengths_cache, ray.local_scheduler.ObjectID):
+        if not isinstance(self._lengths_cache, ray.ObjectID):
             lengths_copy = self._lengths_cache.copy()
 
         index_copy = self._index_cache
@@ -382,3 +382,13 @@ class _IndexMetadata(object):
             key: slice to convert and check
         """
         return convert_to_index_sliceable(self._coord_df, key)
+
+    def get_partition(self, partition_id):
+        """Return a view of coord_df where partition = partition_id
+        """
+        return self._coord_df[self._coord_df.partition == partition_id]
+
+    def sorted_index(self):
+        return (self._coord_df
+                    .sort_values(['partition', 'index_within_partition'])
+                    .index)
