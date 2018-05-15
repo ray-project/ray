@@ -28,13 +28,13 @@ FIREWALL_NAME_TEMPLATE = RAY + "-{}"
 DEFAULT_PROJECT_ID = 'ray-autoscaler-' + VERSION
 
 
-def key_pair(i, region):
+def key_pair_name(i, region):
     """Returns the ith default (gcp_key_pair_name, key_pair_path)."""
     if i == 0:
-        return ("{}_{}".format(RAY, region),
-                os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, region)))
-    return ("{}_{}_{}".format(RAY, i, region),
-            os.path.expanduser("~/.ssh/{}_{}_{}.pem".format(RAY, i, region)))
+        return ("{}_gcp_{}".format(RAY, region),
+                os.path.expanduser("~/.ssh/{}_gcp_{}.pem".format(RAY, region)))
+    return ("{}_gcp_{}_{}".format(RAY, i, region),
+            os.path.expanduser("~/.ssh/{}_gcp_{}_{}.pem".format(RAY, i, region)))
 
 
 def bootstrap_gcp(config):
