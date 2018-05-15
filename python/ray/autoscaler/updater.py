@@ -180,8 +180,8 @@ class NodeUpdater(object):
                 "-o", "StrictHostKeyChecking=no",
                 "-i", self.ssh_private_key,
                 "{}@{}".format(self.ssh_user, self.ssh_ip),
-                "bash --login -c '{}'".format(
-                    force_interactive + cmd)
+                "bash --login -c {}".format(
+                    pipes.quote(force_interactive + cmd))
             ],
             stdout=redirect or self.stdout,
             stderr=redirect or self.stderr)
