@@ -18,6 +18,9 @@ class ActorAPI(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testKeywordArgs(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -68,6 +71,9 @@ class ActorAPI(unittest.TestCase):
         with self.assertRaises(Exception):
             ray.get(actor.get_values.remote())
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testVariableNumberOfArgs(self):
         ray.init(num_workers=0)
 
@@ -234,6 +240,9 @@ class ActorAPI(unittest.TestCase):
             def __init__(self):
                 pass
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testRandomIDGeneration(self):
         ray.init(num_workers=0)
 
@@ -327,6 +336,9 @@ class ActorMethods(unittest.TestCase):
         with self.assertRaises(Exception):
             t.f(1)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorDeletion(self):
         ray.init(num_workers=0)
 
@@ -359,6 +371,9 @@ class ActorMethods(unittest.TestCase):
         # called.
         self.assertEqual(ray.get(Actor.remote().method.remote()), 1)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorDeletionWithGPUs(self):
         ray.init(num_workers=0, num_gpus=1)
 
@@ -549,6 +564,9 @@ class ActorNesting(unittest.TestCase):
         actor2 = Actor2.remote(3, 4)
         self.assertEqual(ray.get(actor2.get_values.remote(5)), (3, 4))
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testDefineActorWithinRemoteFunction(self):
         # Make sure we can define and actors within remote funtions.
         ray.init(num_cpus=10)
@@ -684,6 +702,9 @@ class ActorsOnMultipleNodes(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorsOnNodesWithNoCPUs(self):
         ray.init(num_cpus=0)
 
@@ -1098,6 +1119,9 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, remaining_ids = ray.wait(results, timeout=1000)
         self.assertEqual(len(ready_ids), 0)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorsAndTasksWithGPUsVersionTwo(self):
         # Create tasks and actors that both use GPUs and make sure that they
         # are given different GPUs
@@ -1170,6 +1194,9 @@ class ActorsWithGPUs(unittest.TestCase):
             self.assertLess(interval1[1], interval2[0])
             self.assertLess(interval2[0], interval2[1])
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testBlockingActorTask(self):
         ray.init(num_cpus=1, num_gpus=1)
 
@@ -1763,6 +1790,9 @@ class DistributedActorHandles(unittest.TestCase):
 
         return Queue.remote()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testFork(self):
         queue = self.setup_queue_actor()
 
@@ -1778,6 +1808,9 @@ class DistributedActorHandles(unittest.TestCase):
             filtered_items = [item[1] for item in items if item[0] == i]
             self.assertEqual(filtered_items, list(range(1)))
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testForkConsistency(self):
         queue = self.setup_queue_actor()
 
@@ -1871,6 +1904,9 @@ class ActorPlacementAndResources(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testLifetimeAndTransientResources(self):
         ray.init(num_cpus=1)
 
@@ -1928,6 +1964,9 @@ class ActorPlacementAndResources(unittest.TestCase):
         for location in locations2:
             self.assertNotEqual(location, local_plasma)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testCreatingMoreActorsThanResources(self):
         ray.init(
             num_workers=0,

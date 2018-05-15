@@ -689,6 +689,9 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(k2.remote(1)), 2)
         self.assertEqual(ray.get(m.remote(1)), 2)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testSubmitAPI(self):
         self.init_ray(num_gpus=1, resources={"Custom": 1}, num_workers=1)
 
@@ -720,6 +723,9 @@ class APITest(unittest.TestCase):
         results = ray.get([object_ids[i] for i in indices])
         self.assertEqual(results, indices)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testWait(self):
         self.init_ray(num_cpus=1)
 
@@ -785,10 +791,13 @@ class APITest(unittest.TestCase):
         with self.assertRaises(TypeError):
             ray.wait([1])
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
         # launched in this experiment can run at the same time.
-        self.init_ray()
+        self.init_ray(num_cpus=3)
 
         @ray.remote
         def f(delay):
@@ -887,6 +896,9 @@ class APITest(unittest.TestCase):
 
         self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testLoggingAPI(self):
         self.init_ray(driver_mode=ray.SILENT_MODE)
 
@@ -1033,6 +1045,9 @@ class PythonModeTest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testPythonMode(self):
         reload(test_functions)
         ray.init(driver_mode=ray.PYTHON_MODE)
@@ -1229,6 +1244,9 @@ class ResourcesTest(unittest.TestCase):
         self.assertLess(duration, 1 + time_buffer)
         self.assertGreater(duration, 1)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testGPUIDs(self):
         num_gpus = 10
         ray.init(num_cpus=10, num_gpus=num_gpus)
@@ -1659,6 +1677,9 @@ class CudaVisibleDevicesTest(unittest.TestCase):
         else:
             del os.environ["CUDA_VISIBLE_DEVICES"]
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testSpecificGPUs(self):
         allowed_gpu_ids = [4, 5, 6]
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
@@ -1699,8 +1720,11 @@ class WorkerPoolTests(unittest.TestCase):
 
         ray.get([f.remote() for _ in range(100)])
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testBlockingTasks(self):
-        ray.init(num_workers=1)
+        ray.init(num_cpus=1)
 
         @ray.remote
         def f(i, j):
@@ -1710,24 +1734,27 @@ class WorkerPoolTests(unittest.TestCase):
         def g(i):
             # Each instance of g submits and blocks on the result of another
             # remote task.
-            object_ids = [f.remote(i, j) for j in range(10)]
+            object_ids = [f.remote(i, j) for j in range(2)]
             return ray.get(object_ids)
 
-        ray.get([g.remote(i) for i in range(100)])
+        ray.get([g.remote(i) for i in range(4)])
 
         @ray.remote
         def _sleep(i):
-            time.sleep(1)
+            time.sleep(0.01)
             return (i)
 
         @ray.remote
         def sleep():
             # Each instance of sleep submits and blocks on the result of
-            # another remote task, which takes one second to execute.
+            # another remote task, which takes some time to execute.
             ray.get([_sleep.remote(i) for i in range(10)])
 
         ray.get(sleep.remote())
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testMaxCallTasks(self):
         ray.init(num_cpus=1)
 
@@ -1838,6 +1865,9 @@ class GlobalStateAPI(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testGlobalStateAPI(self):
         with self.assertRaises(Exception):
             ray.global_state.object_table()
@@ -1995,6 +2025,9 @@ class GlobalStateAPI(unittest.TestCase):
 
         self.assertEqual(found_message, True)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testTaskProfileAPI(self):
         ray.init(redirect_output=True)
 
@@ -2036,7 +2069,7 @@ class GlobalStateAPI(unittest.TestCase):
 
         @ray.remote
         def f():
-            return id(ray.worker.global_worker)
+            return id(ray.worker.global_worker), os.getpid()
 
         # Wait until all of the workers have started.
         worker_ids = set()
@@ -2053,6 +2086,9 @@ class GlobalStateAPI(unittest.TestCase):
             self.assertIn("stderr_file", info)
             self.assertIn("stdout_file", info)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testDumpTraceFile(self):
         ray.init(redirect_output=True)
 
@@ -2091,6 +2127,9 @@ class GlobalStateAPI(unittest.TestCase):
         # the visualization actually renders (e.g., the context of the dumped
         # trace could be malformed).
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testFlushAPI(self):
         ray.init(num_cpus=1)
 
