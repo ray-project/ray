@@ -4,14 +4,64 @@ namespace ray {
 
 namespace raylet {
 
-TaskDependencyManager::TaskDependencyManager() {}
+TaskDependencyManager::TaskDependencyManager(ObjectManagerInterface &object_manager)
+    : object_manager_(object_manager) {}
 
 bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
   return local_objects_.count(object_id) == 1;
 }
 
+bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id) const {
+  const TaskID task_id = ComputeTaskId(object_id);
+  auto task_entry = required_tasks_.find(task_id);
+  // If there are no subscribed tasks that are dependent on the object, then do
+  // nothing.
+  if (task_entry == required_tasks_.end()) {
+    return false;
+  }
+  if (task_entry->second.count(object_id) == 0) {
+    return false;
+  }
+  // If the object is already local, then the dependency is fulfilled. Do
+  // nothing.
+  if (local_objects_.count(object_id) == 1) {
+    return false;
+  }
+  // If the task that creates the object is pending execution, then the
+  // dependency will be fulfilled locally. Do nothing.
+  if (pending_tasks_.count(task_id) == 1) {
+    return false;
+  }
+  return true;
+}
+
+void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &object_id) {
+  bool required = CheckObjectRequired(object_id);
+  // If the object is required, then try to make the object available locally.
+  if (required) {
+    auto inserted = required_objects_.insert(object_id);
+    if (inserted.second) {
+      // If we haven't already, request the object manager to pull it from a
+      // remote node.
+      object_manager_.Pull(object_id);
+    }
+  }
+}
+
+void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &object_id) {
+  bool required = CheckObjectRequired(object_id);
+  // If the object is no longer required, then cancel the object.
+  if (!required) {
+    auto it = required_objects_.find(object_id);
+    if (it != required_objects_.end()) {
+      object_manager_.Cancel(object_id);
+      required_objects_.erase(it);
+    }
+  }
+}
+
 std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
-    const ray::ObjectID &object_id, std::vector<ObjectID> &canceled_objects) {
+    const ray::ObjectID &object_id) {
   RAY_LOG(DEBUG) << "object ready " << object_id.hex();
   // Add the object to the table of locally available objects.
   auto inserted = local_objects_.insert(object_id);
@@ -32,17 +82,18 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectLocal(
           ready_task_ids.push_back(dependent_task_id);
         }
       }
-      // The object was required by a subscribed task and is now local.  Notify
-      // the caller that the object is no longer remote.
-      canceled_objects.push_back(object_id);
     }
   }
+
+  // The object is now local, so cancel any in-progress operations to make the
+  // object local.
+  HandleRemoteDependencyCanceled(object_id);
 
   return ready_task_ids;
 }
 
 std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
-    const ray::ObjectID &object_id, std::vector<ObjectID> &remote_objects) {
+    const ray::ObjectID &object_id) {
   // Add the object to the table of locally available objects.
   auto erased = local_objects_.erase(object_id);
   RAY_CHECK(erased == 1);
@@ -64,22 +115,17 @@ std::vector<TaskID> TaskDependencyManager::HandleObjectMissing(
         }
         task_entry.num_missing_dependencies++;
       }
-      // If the object is required by some task, is no longer local, and the
-      // task that creates it is not pending execution, then the object must be
-      // fetched from a remote node or reconstructed.
-      if (pending_tasks_.count(creating_task_id) == 0) {
-        remote_objects.push_back(object_id);
-      }
     }
   }
+  // The object is no longer local. Try to make the object local if necessary.
+  HandleRemoteDependencyRequired(object_id);
   // Process callbacks for all of the tasks dependent on the object that are
   // now ready to run.
   return waiting_task_ids;
 }
 
 bool TaskDependencyManager::SubscribeDependencies(
-    const TaskID &task_id, const std::vector<ObjectID> &required_objects,
-    std::vector<ObjectID> &remote_objects) {
+    const TaskID &task_id, const std::vector<ObjectID> &required_objects) {
   auto &task_entry = task_dependencies_[task_id];
 
   // Record the task's dependencies.
@@ -92,11 +138,6 @@ bool TaskDependencyManager::SubscribeDependencies(
       if (local_objects_.count(object_id) == 0) {
         // The object is not local.
         task_entry.num_missing_dependencies++;
-        if (pending_tasks_.count(creating_task_id) == 0) {
-          // If the object is not local and the task that creates the object is not
-          // pending on this node, then the object must be remote.
-          remote_objects.push_back(object_id);
-        }
       }
       // Add the subscribed task to the mapping from object ID to list of
       // dependent tasks.
@@ -104,12 +145,17 @@ bool TaskDependencyManager::SubscribeDependencies(
     }
   }
 
+  // These dependencies are required by the given task. Try to make them local
+  // if necessary.
+  for (const auto &object_id : required_objects) {
+    HandleRemoteDependencyRequired(object_id);
+  }
+
   // Return whether all dependencies are local.
   return (task_entry.num_missing_dependencies == 0);
 }
 
-void TaskDependencyManager::UnsubscribeDependencies(
-    const TaskID &task_id, std::vector<ObjectID> &canceled_objects) {
+void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   RAY_CHECK(it != task_dependencies_.end());
@@ -136,15 +182,17 @@ void TaskDependencyManager::UnsubscribeDependencies(
       if (creating_task_entry->second.empty()) {
         required_tasks_.erase(creating_task_entry);
       }
-      // There are no more tasks dependent on this object, so we no longer need
-      // to fetch it from a remote node or reconstruct it.
-      canceled_objects.push_back(object_id);
     }
+  }
+
+  // These dependencies are no longer required by the given task. Cancel any
+  // in-progress operations to make them local.
+  for (const auto &object_id : task_entry.object_dependencies) {
+    HandleRemoteDependencyCanceled(object_id);
   }
 }
 
-void TaskDependencyManager::TaskPending(const Task &task,
-                                        std::vector<ObjectID> &canceled_objects) {
+void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
 
   // Record that the task is pending execution.
@@ -154,30 +202,27 @@ void TaskDependencyManager::TaskPending(const Task &task,
   auto remote_task_entry = required_tasks_.find(task_id);
   if (remote_task_entry != required_tasks_.end()) {
     for (const auto &object_entry : remote_task_entry->second) {
-      // This object will appear locally once the pending task completes
-      // execution, so notify the caller that the object is no longer remote.
-      canceled_objects.push_back(object_entry.first);
+      // This object created by the pending task will appear locally once the
+      // task completes execution. Cancel any in-progress operations to make
+      // the object local.
+      HandleRemoteDependencyCanceled(object_entry.first);
     }
   }
 }
 
-void TaskDependencyManager::TaskCanceled(const TaskID &task_id,
-                                         std::vector<ObjectID> &remote_objects) {
+void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
+  // Record that the task is no longer pending execution.
+  pending_tasks_.erase(task_id);
   // Find any subscribed tasks that are dependent on objects created by the
   // canceled task.
   auto remote_task_entry = required_tasks_.find(task_id);
   if (remote_task_entry != required_tasks_.end()) {
     for (const auto &object_entry : remote_task_entry->second) {
-      // The task that creates this object has been canceled. If the object
-      // isn't already local, then it must be fetched from a remote node or
-      // reconstructed.
-      if (local_objects_.count(object_entry.first) == 0) {
-        remote_objects.push_back(object_entry.first);
-      }
+      // This object created by the task will no longer appear locally since
+      // the task is canceled.  Try to make the object local if necessary.
+      HandleRemoteDependencyRequired(object_entry.first);
     }
   }
-  // Record that the task is no longer pending execution.
-  pending_tasks_.erase(task_id);
 }
 
 }  // namespace raylet

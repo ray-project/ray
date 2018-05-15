@@ -11,11 +11,21 @@ namespace ray {
 
 namespace raylet {
 
+using ::testing::_;
+
+class MockObjectManager : public ObjectManagerInterface {
+ public:
+  MOCK_METHOD1(Pull, ray::Status(const ObjectID &object_id));
+  MOCK_METHOD1(Cancel, ray::Status(const ObjectID &object_id));
+};
+
 class TaskDependencyManagerTest : public ::testing::Test {
  public:
-  TaskDependencyManagerTest() : task_dependency_manager_() {}
+  TaskDependencyManagerTest()
+      : object_manager_mock_(), task_dependency_manager_(object_manager_mock_) {}
 
  protected:
+  MockObjectManager object_manager_mock_;
   TaskDependencyManager task_dependency_manager_;
 };
 
@@ -60,30 +70,29 @@ TEST_F(TaskDependencyManagerTest, TestSimpleTask) {
     arguments.push_back(ObjectID::from_random());
   }
   TaskID task_id = TaskID::from_random();
-  // Subscribe to the task's dependencies.
-  std::vector<ObjectID> remote_objects;
-  bool ready =
-      task_dependency_manager_.SubscribeDependencies(task_id, arguments, remote_objects);
-  ASSERT_FALSE(ready);
   // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
-  ASSERT_EQ(remote_objects, arguments);
+  for (const auto &argument_id : arguments) {
+    EXPECT_CALL(object_manager_mock_, Pull(argument_id));
+  }
+  // Subscribe to the task's dependencies.
+  bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments);
+  ASSERT_FALSE(ready);
 
-  int i = 0;
+  // All arguments should be canceled as they become available locally.
+  for (const auto &argument_id : arguments) {
+    EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+  }
   // For each argument except the last, tell the task dependency manager that
   // the argument is local.
-  std::vector<ObjectID> canceled_objects;
+  int i = 0;
   for (; i < num_arguments - 1; i++) {
-    auto ready_task_ids =
-        task_dependency_manager_.HandleObjectLocal(arguments[i], canceled_objects);
-    ASSERT_EQ(canceled_objects.size(), i + 1);
+    auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(arguments[i]);
     ASSERT_TRUE(ready_task_ids.empty());
   }
   // Tell the task dependency manager that the last argument is local. Now the
   // task should be ready to run.
-  auto ready_task_ids =
-      task_dependency_manager_.HandleObjectLocal(arguments[i], canceled_objects);
-  ASSERT_EQ(canceled_objects, arguments);
+  auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(arguments[i]);
   ASSERT_EQ(ready_task_ids.size(), 1);
   ASSERT_EQ(ready_task_ids.front(), task_id);
 }
@@ -98,32 +107,27 @@ TEST_F(TaskDependencyManagerTest, TestDuplicateSubscribe) {
     ObjectID argument_id = ObjectID::from_random();
     arguments.push_back(argument_id);
     // Subscribe to the task's dependencies. All arguments except the last are
-    // duplicates of previous subscription calls.
-    std::vector<ObjectID> remote_objects;
-    bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments,
-                                                                remote_objects);
+    // duplicates of previous subscription calls. Each argument should only be
+    // requested from the node manager once.
+    EXPECT_CALL(object_manager_mock_, Pull(argument_id));
+    bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments);
     ASSERT_FALSE(ready);
-    // No objects have been registered in the task dependency manager, so all
-    // arguments should be remote.
-    ASSERT_EQ(remote_objects.size(), 1);
-    ASSERT_EQ(remote_objects.front(), argument_id);
   }
 
-  int i = 0;
-  std::vector<ObjectID> canceled_objects;
+  // All arguments should be canceled as they become available locally.
+  for (const auto &argument_id : arguments) {
+    EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+  }
   // For each argument except the last, tell the task dependency manager that
   // the argument is local.
+  int i = 0;
   for (; i < num_arguments - 1; i++) {
-    auto ready_task_ids =
-        task_dependency_manager_.HandleObjectLocal(arguments[i], canceled_objects);
-    ASSERT_EQ(canceled_objects.size(), i + 1);
+    auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(arguments[i]);
     ASSERT_TRUE(ready_task_ids.empty());
   }
   // Tell the task dependency manager that the last argument is local. Now the
   // task should be ready to run.
-  auto ready_task_ids =
-      task_dependency_manager_.HandleObjectLocal(arguments[i], canceled_objects);
-  ASSERT_EQ(canceled_objects, arguments);
+  auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(arguments[i]);
   ASSERT_EQ(ready_task_ids.size(), 1);
   ASSERT_EQ(ready_task_ids.front(), task_id);
 }
@@ -133,23 +137,20 @@ TEST_F(TaskDependencyManagerTest, TestMultipleTasks) {
   ObjectID argument_id = ObjectID::from_random();
   std::vector<TaskID> dependent_tasks;
   int num_dependent_tasks = 3;
+  // The object should only be requested from the object manager once for all
+  // three tasks.
+  EXPECT_CALL(object_manager_mock_, Pull(argument_id));
   for (int i = 0; i < num_dependent_tasks; i++) {
     TaskID task_id = TaskID::from_random();
     dependent_tasks.push_back(task_id);
     // Subscribe to each of the task's dependencies.
-    std::vector<ObjectID> remote_objects;
-    bool ready = task_dependency_manager_.SubscribeDependencies(task_id, {argument_id},
-                                                                remote_objects);
+    bool ready = task_dependency_manager_.SubscribeDependencies(task_id, {argument_id});
     ASSERT_FALSE(ready);
-    ASSERT_EQ(remote_objects.size(), 1);
-    ASSERT_EQ(remote_objects.front(), argument_id);
   }
+
   // Tell the task dependency manager that the object is local.
-  std::vector<ObjectID> canceled_objects;
-  auto ready_task_ids =
-      task_dependency_manager_.HandleObjectLocal(argument_id, canceled_objects);
-  ASSERT_EQ(canceled_objects.size(), 1);
-  ASSERT_EQ(canceled_objects.front(), argument_id);
+  EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+  auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(argument_id);
   // Check that all tasks are now ready to run.
   ASSERT_EQ(ready_task_ids.size(), dependent_tasks.size());
   for (const auto &task_id : ready_task_ids) {
@@ -165,12 +166,15 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
   auto tasks = MakeTaskChain(num_tasks, {}, 1);
   int num_ready_tasks = 1;
   int i = 0;
+  // No objects should be remote or canceled since each task depends on a
+  // locally queued task.
+  EXPECT_CALL(object_manager_mock_, Pull(_)).Times(0);
+  EXPECT_CALL(object_manager_mock_, Cancel(_)).Times(0);
   for (const auto &task : tasks) {
     // Subscribe to each of the tasks' arguments.
-    std::vector<ObjectID> remote_objects;
     auto arguments = task.GetDependencies();
     bool ready = task_dependency_manager_.SubscribeDependencies(
-        task.GetTaskSpecification().TaskId(), arguments, remote_objects);
+        task.GetTaskSpecification().TaskId(), arguments);
     if (i < num_ready_tasks) {
       // The first task should be ready to run since it has no arguments.
       ASSERT_TRUE(ready);
@@ -178,14 +182,9 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
       // All remaining tasks depend on the previous task.
       ASSERT_FALSE(ready);
     }
-    // No objects should be remote since each task depends on a locally queued
-    // task.
-    ASSERT_TRUE(remote_objects.empty());
 
     // Mark each task as pending.
-    std::vector<ObjectID> canceled_objects;
-    task_dependency_manager_.TaskPending(task, canceled_objects);
-    ASSERT_TRUE(canceled_objects.empty());
+    task_dependency_manager_.TaskPending(task);
 
     i++;
   }
@@ -198,30 +197,21 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
     TaskID task_id = task.GetTaskSpecification().TaskId();
     auto return_id = task.GetTaskSpecification().ReturnId(0);
 
-    std::vector<ObjectID> canceled_objects;
-    task_dependency_manager_.UnsubscribeDependencies(task_id, canceled_objects);
-    ASSERT_EQ(canceled_objects, task.GetDependencies());
+    task_dependency_manager_.UnsubscribeDependencies(task_id);
     // Simulate the object notifications for the task's return values.
-    canceled_objects.clear();
-    auto ready_tasks =
-        task_dependency_manager_.HandleObjectLocal(return_id, canceled_objects);
+    auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
     if (tasks.empty()) {
       // If there are no more tasks, then there should be no more tasks that
       // become ready to run.
       ASSERT_TRUE(ready_tasks.empty());
-      ASSERT_TRUE(canceled_objects.empty());
     } else {
       // If there are more tasks to run, then the next task in the chain should
       // now be ready to run.
       ASSERT_EQ(ready_tasks.size(), 1);
       ASSERT_EQ(ready_tasks.front(), tasks.front().GetTaskSpecification().TaskId());
-      ASSERT_EQ(canceled_objects.size(), 1);
-      ASSERT_EQ(canceled_objects.front(), return_id);
     }
     // Simulate the task finishing execution.
-    std::vector<ObjectID> remote_objects;
-    task_dependency_manager_.TaskCanceled(task_id, remote_objects);
-    ASSERT_TRUE(remote_objects.empty());
+    task_dependency_manager_.TaskCanceled(task_id);
   }
 }
 
@@ -229,21 +219,20 @@ TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // Create a task with 3 arguments.
   auto task1 = ExampleTask({}, 0);
   ObjectID put_id = ComputePutId(task1.GetTaskSpecification().TaskId(), 1);
-  std::vector<ObjectID> arguments = {put_id};
-  auto task2 = ExampleTask(arguments, 0);
+  auto task2 = ExampleTask({put_id}, 0);
 
+  // No objects have been registered in the task dependency manager, so the put
+  // object should be remote.
+  EXPECT_CALL(object_manager_mock_, Pull(put_id));
   // Subscribe to the task's dependencies.
-  std::vector<ObjectID> remote_objects;
   bool ready = task_dependency_manager_.SubscribeDependencies(
-      task2.GetTaskSpecification().TaskId(), arguments, remote_objects);
+      task2.GetTaskSpecification().TaskId(), {put_id});
   ASSERT_FALSE(ready);
-  // No objects have been registered in the task dependency manager, so all
-  // arguments should be remote.
-  ASSERT_EQ(remote_objects, arguments);
 
-  std::vector<ObjectID> canceled_objects;
-  task_dependency_manager_.TaskPending(task1, canceled_objects);
-  ASSERT_EQ(canceled_objects, arguments);
+  // The put object should be considered local as soon as the task that creates
+  // it is pending execution.
+  EXPECT_CALL(object_manager_mock_, Cancel(put_id));
+  task_dependency_manager_.TaskPending(task1);
 }
 
 TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
@@ -252,11 +241,10 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   auto tasks = MakeTaskChain(num_tasks, {}, 1);
   for (const auto &task : tasks) {
     // Subscribe to each of the tasks' arguments.
-    std::vector<ObjectID> null;
     auto arguments = task.GetDependencies();
     (void)task_dependency_manager_.SubscribeDependencies(
-        task.GetTaskSpecification().TaskId(), arguments, null);
-    task_dependency_manager_.TaskPending(task, null);
+        task.GetTaskSpecification().TaskId(), arguments);
+    task_dependency_manager_.TaskPending(task);
   }
 
   // Get the first task.
@@ -264,24 +252,16 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
   ObjectID return_id = task.GetTaskSpecification().ReturnId(0);
   // Simulate forwarding the first task to a remote node.
-  std::vector<ObjectID> canceled_objects;
-  task_dependency_manager_.UnsubscribeDependencies(task_id, canceled_objects);
-  ASSERT_EQ(canceled_objects, task.GetDependencies());
-  std::vector<ObjectID> remote_objects;
-  task_dependency_manager_.TaskCanceled(task_id, remote_objects);
-  // The object returned by the first task should now be considered remote,
-  // since we forwarded the first task and the second task in the chain depends
-  // on it.
-  ASSERT_EQ(remote_objects.size(), 1);
-  ASSERT_EQ(remote_objects.front(), return_id);
+  task_dependency_manager_.UnsubscribeDependencies(task_id);
+  // The object returned by the first task should be considered remote once we
+  // cancel the forwarded task, since the second task depends on it.
+  EXPECT_CALL(object_manager_mock_, Pull(return_id));
+  task_dependency_manager_.TaskCanceled(task_id);
 
   // Simulate the task executing on a remote node and its return value
   // appearing locally.
-  canceled_objects.clear();
-  auto ready_tasks =
-      task_dependency_manager_.HandleObjectLocal(return_id, canceled_objects);
-  ASSERT_EQ(canceled_objects.size(), 1);
-  ASSERT_EQ(canceled_objects.front(), return_id);
+  EXPECT_CALL(object_manager_mock_, Cancel(return_id));
+  auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
   // Check that the task that we kept is now ready to run.
   ASSERT_EQ(ready_tasks.size(), 1);
   ASSERT_EQ(ready_tasks.front(), tasks.back().GetTaskSpecification().TaskId());
@@ -295,21 +275,24 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
     arguments.push_back(ObjectID::from_random());
   }
   TaskID task_id = TaskID::from_random();
-  // Subscribe to the task's dependencies.
-  std::vector<ObjectID> remote_objects;
-  bool ready =
-      task_dependency_manager_.SubscribeDependencies(task_id, arguments, remote_objects);
-  ASSERT_FALSE(ready);
-  // No objects have been registered in the task dependency manager, so the all
+  // No objects have been registered in the task dependency manager, so all
   // arguments should be remote.
-  ASSERT_EQ(remote_objects, arguments);
+  for (const auto &argument_id : arguments) {
+    EXPECT_CALL(object_manager_mock_, Pull(argument_id));
+  }
+  // Subscribe to the task's dependencies.
+  bool ready = task_dependency_manager_.SubscribeDependencies(task_id, arguments);
+  ASSERT_FALSE(ready);
 
   // Tell the task dependency manager that each of the arguments is now
   // available.
+  for (const auto &argument_id : arguments) {
+    EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+  }
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> ready_tasks;
     std::vector<ObjectID> null;
-    ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i], null);
+    ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i]);
     if (i == arguments.size() - 1) {
       ASSERT_EQ(ready_tasks.size(), 1);
       ASSERT_EQ(ready_tasks.front(), task_id);
@@ -318,12 +301,14 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
     }
   }
 
-  // Simulate each of the arguments getting evicted.
+  // Simulate each of the arguments getting evicted. Each object should now be
+  // considered remote.
+  for (const auto &argument_id : arguments) {
+    EXPECT_CALL(object_manager_mock_, Pull(argument_id));
+  }
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> waiting_tasks;
-    std::vector<ObjectID> remote_objects;
-    waiting_tasks =
-        task_dependency_manager_.HandleObjectMissing(arguments[i], remote_objects);
+    waiting_tasks = task_dependency_manager_.HandleObjectMissing(arguments[i]);
     if (i == 0) {
       // The first eviction should cause the task to go back to the waiting
       // state.
@@ -334,16 +319,17 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
       // the waiting state.
       ASSERT_TRUE(waiting_tasks.empty());
     }
-    ASSERT_EQ(remote_objects.size(), 1);
-    ASSERT_EQ(remote_objects.front(), arguments[i]);
   }
 
   // Tell the task dependency manager that each of the arguments is available
   // again.
+  for (const auto &argument_id : arguments) {
+    EXPECT_CALL(object_manager_mock_, Cancel(argument_id));
+  }
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> ready_tasks;
     std::vector<ObjectID> null;
-    ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i], null);
+    ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i]);
     if (i == arguments.size() - 1) {
       ASSERT_EQ(ready_tasks.size(), 1);
       ASSERT_EQ(ready_tasks.front(), task_id);
