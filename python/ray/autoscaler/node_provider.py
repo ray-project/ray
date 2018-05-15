@@ -13,9 +13,22 @@ def import_aws():
     return bootstrap_aws, AWSNodeProvider
 
 
-def load_aws_config():
+def import_gcp():
+    from ray.autoscaler.gcp.config import bootstrap_gcp
+    from ray.autoscaler.gcp.node_provider import GCPNodeProvider
+    return bootstrap_gcp, GCPNodeProvider
+
+
+def load_aws_example_config():
     import ray.autoscaler.aws as ray_aws
     return os.path.join(os.path.dirname(ray_aws.__file__), "example-full.yaml")
+
+
+def load_gcp_example_config():
+    import ray.autoscaler.gcp as ray_gcp
+    # TODO.gcp: example-full.yaml?
+    return os.path.join(
+        os.path.dirname(ray_gcp.__file__), "example-minimal.yaml")
 
 
 def import_external():
@@ -29,8 +42,8 @@ def import_external():
 
 NODE_PROVIDERS = {
     "aws": import_aws,
-    "gce": None,  # TODO: support more node providers
-    "azure": None,
+    "gcp": import_gcp,
+    "azure": None,  # TODO: support more node providers
     "kubernetes": None,
     "docker": None,
     "local_cluster": None,
@@ -38,9 +51,9 @@ NODE_PROVIDERS = {
 }
 
 DEFAULT_CONFIGS = {
-    "aws": load_aws_config,
-    "gce": None,  # TODO: support more node providers
-    "azure": None,
+    "aws": load_aws_example_config,
+    "gcp": load_gcp_example_config,
+    "azure": None,  # TODO: support more node providers
     "kubernetes": None,
     "docker": None,
     "local_cluster": None,
