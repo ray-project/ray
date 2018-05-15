@@ -83,7 +83,8 @@ def _configure_project(config):
 
     if project is None:
         #  Project not found, try creating it
-        project = _create_project(project_id)
+        result = _create_project(project_id)
+        project = _get_project(project_id)
 
     assert project is not None, "Failed to create project"
     assert project['lifecycleState'] == 'ACTIVE', (
