@@ -73,7 +73,7 @@ class NodeUpdater(object):
                 "See {} for remote logs.".format(error_str, self.output_name),
                 file=self.stdout)
             self.provider.set_node_tags(self.node_id,
-                                        {TAG_RAY_NODE_STATUS: "UpdateFailed"})
+                                        {TAG_RAY_NODE_STATUS: "update-failed"})
             if self.logfile is not None:
                 print("----- BEGIN REMOTE LOGS -----\n" +
                       open(self.logfile.name).read() +
@@ -81,7 +81,7 @@ class NodeUpdater(object):
             raise e
         self.provider.set_node_tags(
             self.node_id, {
-                TAG_RAY_NODE_STATUS: "Up-to-date",
+                TAG_RAY_NODE_STATUS: "up-to-date",
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
         print(
@@ -91,7 +91,7 @@ class NodeUpdater(object):
 
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "WaitingForSSH"})
+                                    {TAG_RAY_NODE_STATUS: "waiting-for-ssh"})
         deadline = time.time() + NODE_START_WAIT_S
 
         # Wait for external IP
@@ -137,7 +137,7 @@ class NodeUpdater(object):
 
         # Rsync file mounts
         self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "SyncingFiles"})
+                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
         for remote_path, local_path in self.file_mounts.items():
             print(
                 "NodeUpdater: Syncing {} to {}...".format(
@@ -162,7 +162,7 @@ class NodeUpdater(object):
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "SettingUp"})
+                                    {TAG_RAY_NODE_STATUS: "setting-up"})
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 
