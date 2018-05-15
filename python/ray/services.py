@@ -401,7 +401,7 @@ def start_redis(node_ip_address,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True,
-                use_credis=("RAY_USE_NEW_GCS" in os.environ)):
+                use_credis=None):
     """Start the Redis global state store.
 
     Args:
@@ -425,9 +425,9 @@ def start_redis(node_ip_address,
             then all Redis processes started by this method will be killed by
             services.cleanup() when the Python process that imported services
             exits.
-        use_credis (bool): If True, additionally load the chain-replicated
-            libraries into the redis servers.  Controlled by the presence of
-            "RAY_USE_NEW_GCS" in os.environ.
+        use_credis: If True, additionally load the chain-replicated libraries
+            into the redis servers.  Defaults to None, which means its value is
+            set by the presence of "RAY_USE_NEW_GCS" in os.environ.
 
     Returns:
         A tuple of the address for the primary Redis shard and a list of
@@ -442,6 +442,8 @@ def start_redis(node_ip_address,
         raise Exception("The number of Redis shard ports does not match the "
                         "number of Redis shards.")
 
+    if use_credis is None:
+        use_credis = ("RAY_USE_NEW_GCS" in os.environ)
     if not use_credis:
         assigned_port, _ = _start_redis_instance(
             node_ip_address=node_ip_address,

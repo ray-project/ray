@@ -8,7 +8,7 @@ import redis
 import ray
 
 
-def ParseClient(addr_port_str):
+def parse_client(addr_port_str):
     redis_address, redis_port = addr_port_str.split(":")
     return redis.StrictRedis(host=redis_address, port=redis_port)
 
@@ -24,7 +24,7 @@ class CredisTest(unittest.TestCase):
 
     def test_credis_started(self):
         assert "redis_address" in self.config
-        primary = ParseClient(self.config['redis_address'])
+        primary = parse_client(self.config['redis_address'])
         assert primary.ping() is True
 
         # Check that primary has loaded credis' master module.
@@ -34,7 +34,7 @@ class CredisTest(unittest.TestCase):
         # Check that the shard has loaded credis' member module.
         member = primary.lrange('RedisShards', 0, -1)[0]
         assert chain[0] == member
-        shard = ParseClient(member.decode())
+        shard = parse_client(member.decode())
         assert shard.execute_command('MEMBER.SN') == -1
 
 
