@@ -43,8 +43,15 @@ struct ObjectManagerConfig {
   std::string store_socket_name;
 };
 
+class ObjectManagerInterface {
+ public:
+  virtual ray::Status Pull(const ObjectID &object_id) = 0;
+  virtual ray::Status Cancel(const ObjectID &object_id) = 0;
+  virtual ~ObjectManagerInterface(){};
+};
+
 // TODO(hme): Add success/failure callbacks for push and pull.
-class ObjectManager {
+class ObjectManager : public ObjectManagerInterface {
  public:
   /// Implicitly instantiates Ray implementation of ObjectDirectory.
   ///
