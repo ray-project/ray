@@ -21,11 +21,11 @@ head_node:
         initializeParams:
           diskSizeGb: 50
           # See https://cloud.google.com/compute/docs/images for more images
-          sourceImage: global/images/family/ubuntu-1804-lts  # Ubuntu
+          sourceImage: https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1804-lts  # Ubuntu
 
     # TODO.gcp: Additional options in docs.
 
 
 # How Ray will authenticate with newly launched nodes.
 auth:
-    ssh_user: 'ubuntu'
+    ssh_user: 'TODO:This should be empty or service account id or gcp user account id'
