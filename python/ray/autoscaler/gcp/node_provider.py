@@ -118,9 +118,21 @@ class GCPNodeProvider(NodeProvider):
         return result
 
     def terminate_node(self, node_id):
-        node = self._node(node_id)
-        raise NotImplementedError('GCPNodeProvider.terminate_node')
-        # TODO.gcp: node.terminate
+        project_id = self.provider_config['project_id']
+        availability_zone = self.provider_config['availability_zone']
+
+        operation = compute.instances().delete(
+            project=project_id,
+            zone=availability_zone,
+            instance=node_id,
+        ).execute()
+
+        result = wait_for_compute_zone_operation(
+            project_id,
+            operation,
+            availability_zone)
+
+        return result
 
     def _node(self, node_id):
         if node_id in self.cached_nodes:
