@@ -35,12 +35,14 @@ class TaskDependencyManager {
   /// \return Whether the object is local.
   bool CheckObjectLocal(const ObjectID &object_id) const;
 
-  /// Subscribe to object depedencies required by the task and check whether all
-  /// dependencies are fulfilled. This will track this task's dependencies until
-  /// UnsubscribeDependencies is called on the same task ID. If any dependencies
-  /// are remote, then they will be requested when the last remote dependency
-  /// later appears locally via a call to HandleObjectLocal, the subscribed task
-  /// will be returned.  This method may be called multiple times per task.
+  /// Subscribe to object depedencies required by the task and check whether
+  /// all dependencies are fulfilled. This will track this task's dependencies
+  /// until UnsubscribeDependencies is called on the same task ID. If any
+  /// dependencies are remote, then they will be requested. When the last
+  /// remote dependency later appears locally via a call to HandleObjectLocal,
+  /// the subscribed task will be returned by the HandleObjectLocal call,
+  /// signifying that it is ready to run. This method may be called multiple
+  /// times per task.
   ///
   /// \param task_id The ID of the task whose dependencies to subscribe to.
   /// \param required_objects The objects required by the task.

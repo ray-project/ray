@@ -242,8 +242,8 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   for (const auto &task : tasks) {
     // Subscribe to each of the tasks' arguments.
     auto arguments = task.GetDependencies();
-    (void)task_dependency_manager_.SubscribeDependencies(
-        task.GetTaskSpecification().TaskId(), arguments);
+    static_cast<void>(task_dependency_manager_.SubscribeDependencies(
+        task.GetTaskSpecification().TaskId(), arguments));
     task_dependency_manager_.TaskPending(task);
   }
 

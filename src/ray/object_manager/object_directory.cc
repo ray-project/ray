@@ -10,7 +10,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
                                                const ClientID &client_id,
                                                const ObjectInfoT &object_info) {
   // Append the addition entry to the object table.
-  JobID job_id = JobID::from_random();
+  JobID job_id = JobID::nil();
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = false;
