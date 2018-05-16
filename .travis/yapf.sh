@@ -12,6 +12,8 @@ builtin cd "$ROOT"
 yapf \
     --style "$ROOT/.style.yapf" \
     --in-place --recursive --parallel \
+    --exclude 'python/ray/dataframe/' \
+    --exclude 'python/ray/rllib/' \
     --exclude 'python/ray/cloudpickle/' \
     -- \
     'test/' 'python/'

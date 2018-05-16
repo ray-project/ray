@@ -230,7 +230,7 @@ def train():
                 # testing task with the current weights every 200 steps.
                 acc = ray.get(acc_id)
                 acc_id = test_actor.accuracy.remote(weight_id, step)
-                print("Step {0}: {1:.6f}".format(step - 200, acc))
+                print("Step {}: {:.6f}".format(step - 200, acc))
     except KeyboardInterrupt:
         pass
 

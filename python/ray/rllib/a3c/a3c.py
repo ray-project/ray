@@ -126,7 +126,7 @@ class A3CAgent(Agent):
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote(ev._ray_actor_id.id())
+            ev.__ray_terminate__.remote()
 
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(

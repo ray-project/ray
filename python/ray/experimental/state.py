@@ -184,8 +184,8 @@ class GlobalState(object):
             A dictionary with information about the object ID in question.
         """
         # Allow the argument to be either an ObjectID or a hex string.
-        if not isinstance(object_id, ray.local_scheduler.ObjectID):
-            object_id = ray.local_scheduler.ObjectID(hex_to_binary(object_id))
+        if not isinstance(object_id, ray.ObjectID):
+            object_id = ray.ObjectID(hex_to_binary(object_id))
 
         # Return information about a single object ID.
         object_locations = self._execute_command(object_id,
@@ -297,7 +297,7 @@ class GlobalState(object):
             TaskExecutionDependencies.GetRootAsTaskExecutionDependencies(
                 task_table_message.ExecutionDependencies(), 0))
         execution_dependencies = [
-            ray.local_scheduler.ObjectID(
+            ray.ObjectID(
                 execution_dependencies_message.ExecutionDependencies(i))
             for i in range(
                 execution_dependencies_message.ExecutionDependenciesLength())
@@ -335,7 +335,7 @@ class GlobalState(object):
         """
         self._check_connected()
         if task_id is not None:
-            task_id = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
+            task_id = ray.ObjectID(hex_to_binary(task_id))
             return self._task_table(task_id)
         else:
             task_table_keys = self._keys(TASK_PREFIX + "*")
@@ -343,7 +343,7 @@ class GlobalState(object):
             for key in task_table_keys:
                 task_id_binary = key[len(TASK_PREFIX):]
                 results[binary_to_hex(task_id_binary)] = self._task_table(
-                    ray.local_scheduler.ObjectID(task_id_binary))
+                    ray.ObjectID(task_id_binary))
             return results
 
     def function_table(self, function_id=None):
@@ -628,8 +628,7 @@ class GlobalState(object):
             # modify it in place since we will use the original values later.
             total_info = copy.copy(task_table[task_id]["TaskSpec"])
             total_info["Args"] = [
-                oid.hex()
-                if isinstance(oid, ray.local_scheduler.ObjectID) else oid
+                oid.hex() if isinstance(oid, ray.ObjectID) else oid
                 for oid in task_t_info["TaskSpec"]["Args"]
             ]
             total_info["ReturnObjectIDs"] = [
@@ -750,8 +749,8 @@ class GlobalState(object):
                         "name":
                         "SubmitTask",
                         "args": {},
-                        "id": (parent_info["worker_id"] + str(
-                            micros(min(parent_times))))
+                        "id": (parent_info["worker_id"] +
+                               str(micros(min(parent_times))))
                     }
                     full_trace.append(parent)
 
@@ -825,8 +824,8 @@ class GlobalState(object):
                         "name":
                         "SubmitTask",
                         "args": {},
-                        "id": (parent_info["worker_id"] + str(
-                            micros(min(parent_times))))
+                        "id": (parent_info["worker_id"] +
+                               str(micros(min(parent_times))))
                     }
                     full_trace.append(parent)
 
@@ -855,7 +854,7 @@ class GlobalState(object):
                 args = task_table[task_id]["TaskSpec"]["Args"]
                 for arg in args:
                     # Don't visualize arguments that are not object IDs.
-                    if isinstance(arg, ray.local_scheduler.ObjectID):
+                    if isinstance(arg, ray.ObjectID):
                         object_info = self._object_table(arg)
                         # Don't visualize objects that were created by calls to
                         # put.
