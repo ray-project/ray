@@ -271,7 +271,16 @@ def _create_block_partitions(partitions, axis=0, length=None):
 
     # In the case that axis is 1 we have to transpose because we build the
     # columns into rows. Fortunately numpy is efficient at this.
-    return np.array(x) if axis == 0 else np.array(x).T
+    blocks = np.array(x) if axis == 0 else np.array(x).T
+
+    # Sometimes we only get a single column or row, which is
+    # problematic for building blocks from the partitions, so we
+    # add whatever dimension we're missing from the input.
+    if blocks.ndim < 2:
+        blocks = np.expand_dims(blocks, axis=axis ^ 1)
+    assert blocks.ndim == 2, "Block Partitions must be 2D."
+
+    return blocks
 
 
 @ray.remote

@@ -9,6 +9,8 @@ import ray
 
 from .utils import _map_partitions
 from .utils import _inherit_docstrings
+from .dataframe import DataFrame
+from .concat import concat
 
 
 @_inherit_docstrings(pandas.core.groupby.DataFrameGroupBy,
@@ -80,7 +82,7 @@ class DataFrameGroupBy(object):
         return self._apply_agg_function(lambda df: df.skew(**kwargs))
 
     def ffill(self, limit=None):
-        return self._apply_agg_function(lambda df: df.ffill(limit=limit))
+        return self._apply_df_function(lambda df: df.ffill(limit=limit))
 
     def sem(self, ddof=1):
         return self._apply_agg_function(lambda df: df.sem(ddof=ddof))
@@ -338,9 +340,9 @@ class DataFrameGroupBy(object):
     def _apply_agg_function(self, f):
         assert callable(f), "\'{0}\' object is not callable".format(type(f))
 
-        result = [pd.DataFrame(f(v)).T for k, v in self._iter]
+        result = [DataFrame(f(v)).T for k, v in self._iter]
 
-        new_df = pd.concat(result)
+        new_df = concat(result)
         if self._axis == 0:
             new_df.columns = self._columns
             new_df.index = [k for k, v in self._iter]
@@ -354,8 +356,6 @@ class DataFrameGroupBy(object):
         assert callable(f), "\'{0}\' object is not callable".format(type(f))
 
         result = [f(v) for k, v in self._iter]
-
-        from .concat import concat
 
         new_df = concat(result)
         return new_df

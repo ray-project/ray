@@ -29,7 +29,6 @@ import io
 import sys
 import re
 
-from .groupby import DataFrameGroupBy
 from .utils import (
     _deploy_func,
     _map_partitions,
@@ -143,15 +142,6 @@ class DataFrame(object):
                 self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
                                              length=axis_length)
-
-        # Sometimes we only get a single column or row, which is
-        # problematic for building blocks from the partitions, so we
-        # add whatever dimension we're missing from the input.
-        if self._block_partitions.ndim < 2:
-            self._block_partitions = np.expand_dims(self._block_partitions,
-                                                    axis=axis ^ 1)
-
-        assert self._block_partitions.ndim == 2, "Block Partitions must be 2D."
 
         # Create the row and column index objects for using our partitioning.
         # If the objects haven't been inherited, then generate them
@@ -656,6 +646,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame resulting from the groupby.
         """
+        from .groupby import DataFrameGroupBy
+
         axis = pd.DataFrame()._get_axis_number(axis)
         if callable(by):
             by = by(self.index)
