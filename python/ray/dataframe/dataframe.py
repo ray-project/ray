@@ -2336,10 +2336,13 @@ class DataFrame(object):
         Returns:
             A generator that iterates over the rows of the frame.
         """
-        def iterrow_helper(part, i):
+        index_iter = iter([self._row_metadata.partition_series(i).index
+                           for i in range(len(self._row_partitions))])
+
+        def iterrow_helper(part):
             df = ray.get(part)
             df.columns = self.columns
-            df.index = self._row_metadata.partition_series(i).index
+            df.index = next(index_iter)
             return df.iterrows()
 
         partition_iterator = PartitionIterator(self._row_partitions,
@@ -2359,9 +2362,12 @@ class DataFrame(object):
         Returns:
             A generator that iterates over the columns of the frame.
         """
-        def items_helper(part, i):
+        col_iter = iter([self._col_metadata.partition_series(i).index
+                         for i in range(len(self._col_partitions))])
+
+        def items_helper(part):
             df = ray.get(part)
-            df.columns = self._col_metadata.partition_series(i).index
+            df.columns = next(col_iter)
             df.index = self.index
             return df.items()
 
@@ -2398,10 +2404,13 @@ class DataFrame(object):
         Returns:
             A tuple representing row data. See args for varying tuples.
         """
-        def itertuples_helper(part, i):
+        index_iter = iter([self._row_metadata.partition_series(i).index
+                           for i in range(len(self._row_partitions))])
+
+        def itertuples_helper(part):
             df = ray.get(part)
             df.columns = self.columns
-            df.index = self._row_metadata.partition_series(i).index
+            df.index = next(index_iter)
             return df.itertuples(index=index, name=name)
 
         partition_iterator = PartitionIterator(self._row_partitions,

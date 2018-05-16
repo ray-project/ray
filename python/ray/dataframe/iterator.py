@@ -1,7 +1,7 @@
-import collections
+from collections import Iterator
 
 
-class PartitionIterator(collections.Iterator):
+class PartitionIterator(Iterator):
     def __init__(self, partitions, func):
         """PartitionIterator class to define a generator on partitioned data
 
@@ -10,8 +10,7 @@ class PartitionIterator(collections.Iterator):
             func (callable): The function to get inner iterables from
                 each partition
         """
-        self.partitions = partitions
-        self.curr_partition = -1
+        self.partitions = iter(partitions)
         self.func = func
         self.iter_cache = iter([])
 
@@ -23,14 +22,8 @@ class PartitionIterator(collections.Iterator):
 
     def next(self):
         try:
-            n = next(self.iter_cache)
-            return n
+            return next(self.iter_cache)
         except StopIteration:
-            self.curr_partition += 1
-            if self.curr_partition < len(self.partitions):
-                next_partition = self.partitions[self.curr_partition]
-            else:
-                raise StopIteration()
-
-            self.iter_cache = self.func(next_partition, self.curr_partition)
+            next_partition = next(self.partitions)
+            self.iter_cache = self.func(next_partition)
             return self.next()
