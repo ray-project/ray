@@ -13,7 +13,6 @@ from multiprocessing import Process
 from threading import Thread
 
 from ray.autoscaler.node_provider import get_node_provider
-from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
@@ -72,8 +71,9 @@ class NodeUpdater(object):
                 "NodeUpdater: Error updating {}"
                 "See {} for remote logs.".format(error_str, self.output_name),
                 file=self.stdout)
-            self.provider.set_node_tags(self.node_id,
-                                        {TAG_RAY_NODE_STATUS: "UpdateFailed"})
+            self.provider.set_node_tags(
+                self.node_id,
+                {self.provider.tag_keys['node-status']: self.provider.tag_values['update-failed']})
             if self.logfile is not None:
                 print("----- BEGIN REMOTE LOGS -----\n" +
                       open(self.logfile.name).read() +
@@ -81,8 +81,8 @@ class NodeUpdater(object):
             raise e
         self.provider.set_node_tags(
             self.node_id, {
-                TAG_RAY_NODE_STATUS: "Up-to-date",
-                TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
+                self.provider.tag_keys['node-status']: self.provider.tag_values['up-to-date'],
+                self.provider.tag_keys['runtime-config']: self.runtime_hash
             })
         print(
             "NodeUpdater: Applied config {} to node {}".format(
@@ -90,8 +90,12 @@ class NodeUpdater(object):
             file=self.stdout)
 
     def do_update(self):
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "WaitingForSSH"})
+        self.provider.set_node_tags(
+            self.node_id,
+            {
+                self.provider.tag_keys['node-status']:
+                self.provider.tag_values['waiting-for-ssh']
+            })
         deadline = time.time() + NODE_START_WAIT_S
 
         # Wait for external IP
@@ -136,8 +140,12 @@ class NodeUpdater(object):
         assert ssh_ok, "Unable to SSH to node"
 
         # Rsync file mounts
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "SyncingFiles"})
+        self.provider.set_node_tags(
+            self.node_id,
+            {
+                self.provider.tag_keys['node-status']:
+                self.provider.tag_values['syncing-files']
+            })
         for remote_path, local_path in self.file_mounts.items():
             print(
                 "NodeUpdater: Syncing {} to {}...".format(
@@ -161,8 +169,11 @@ class NodeUpdater(object):
                 stderr=self.stderr)
 
         # Run init commands
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "SettingUp"})
+        self.provider.set_node_tags(
+            self.node_id,
+            {self.provider.tag_keys['node-status']:
+             self.provider.tag_values['setting-up']}
+        )
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 

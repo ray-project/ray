@@ -6,8 +6,8 @@ from googleapiclient import discovery
 compute = discovery.build('compute', 'v1')
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_NAME
 from ray.autoscaler.gcp.config import wait_for_compute_zone_operation
+from ray.autoscaler.gcp.tags import TAG_KEYS, TAG_VALUES
 from ray.ray_constants import BOTO_MAX_RETRIES
 
 TERMINATED_STATES = (
@@ -21,6 +21,9 @@ TERMINATED_STATES = (
 class GCPNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
+
+        self.tag_keys = TAG_KEYS.copy()
+        self.tag_values = TAG_VALUES.copy()
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -46,7 +49,8 @@ class GCPNodeProvider(NodeProvider):
 
         cluster_name_filter_expr = (
             '(labels.{key} = {value})'
-            ''.format(key=TAG_RAY_CLUSTER_NAME, value=self.cluster_name))
+            ''.format(key=self.tag_keys['cluster-name'],
+                      value=self.cluster_name))
 
         not_empty_filters = [
             f for f in [
@@ -133,7 +137,7 @@ class GCPNodeProvider(NodeProvider):
         availability_zone = self.provider_config['availability_zone']
 
         config = base_config.copy()
-        config['name'] = labels[TAG_NAME]
+        config['name'] = labels[self.tag_keys['node-name']]
         config['machineType'] = (
             'zones/{zone}/machineTypes/{machine_type}'
             ''.format(zone=availability_zone,
@@ -142,7 +146,7 @@ class GCPNodeProvider(NodeProvider):
         config['labels'] = dict(
             config.get('labels', {}),
             **labels,
-            **{TAG_RAY_CLUSTER_NAME: self.cluster_name})
+            **{self.tag_keys['cluster-name']: self.cluster_name})
 
         if count != 1: raise NotImplementedError(count)
 

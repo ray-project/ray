@@ -18,8 +18,6 @@ except ImportError:  # py2
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
     hash_launch_conf, fillout_defaults
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_NAME
 from ray.autoscaler.updater import NodeUpdaterProcess
 
 
@@ -57,7 +55,7 @@ def teardown_cluster(config_file, yes):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
+        provider.tag_keys['node-type']: provider.tag_values['head'],
     }
     for node in provider.nodes(head_node_tags):
         print("Terminating head node {}".format(node))
@@ -76,7 +74,7 @@ def get_or_create_head_node(config, no_restart, yes):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
+        provider.tag_keys['node-type']: provider.tag_values['head'],
     }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
@@ -91,14 +89,16 @@ def get_or_create_head_node(config, no_restart, yes):
 
     launch_hash = hash_launch_conf(config["head_node"], config["auth"])
     if head_node is None or provider.node_tags(head_node).get(
-            TAG_RAY_LAUNCH_CONFIG) != launch_hash:
+            provider.tag_keys['launch-config']) != launch_hash:
         if head_node is not None:
             confirm("Head node config out-of-date. It will be terminated", yes)
             print("Terminating outdated head node {}".format(head_node))
             provider.terminate_node(head_node)
         print("Launching new head node...")
-        head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
-        head_node_tags[TAG_NAME] = "ray-{}-head".format(config["cluster_name"])
+        head_node_tags.update({
+            provider.tag_keys['launch-config']: launch_hash,
+            provider.tag_keys['node-name']: "ray-{}-head".format(config["cluster_name"])
+        })
         provider.create_node(config["head_node"], head_node_tags, 1)
 
     nodes = provider.nodes(head_node_tags)
@@ -187,7 +187,7 @@ def get_head_node_ip(config_file):
     config = yaml.load(open(config_file).read())
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
+        provider.tag_keys['node-type']: provider.tag_values['head'],
     }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
