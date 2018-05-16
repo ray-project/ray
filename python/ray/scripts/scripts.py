@@ -4,12 +4,12 @@ from __future__ import print_function
 
 import click
 import json
-import os
 import subprocess
 
 import ray.services as services
 from ray.autoscaler.commands import (create_or_update_cluster,
-                                     teardown_cluster, get_head_node_ip)
+                                     teardown_cluster, get_head_node_ip,
+                                     file_sync)
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -145,7 +145,7 @@ def cli():
 @click.option(
     "--use-raylet",
     is_flag=True,
-    default=None,
+    default=False,
     help="use the raylet code path, this is not supported yet")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, redis_shard_ports, object_manager_port,
@@ -157,11 +157,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         node_ip_address = services.address_to_ip(node_ip_address)
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
-
-    if use_raylet is None and os.environ.get("RAY_USE_XRAY") == "1":
-        # This environment variable is used in our testing setup.
-        print("Detected environment variable 'RAY_USE_XRAY'.")
-        use_raylet = True
 
     try:
         resources = json.loads(resources)
@@ -409,11 +404,19 @@ def get_head_ip(cluster_config_file):
     click.echo(get_head_node_ip(cluster_config_file))
 
 
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+def sync(cluster_config_file):
+    """Syncs files with head node."""
+    file_sync(cluster_config_file)
+
+
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(teardown)
 cli.add_command(get_head_ip)
+cli.add_command(sync)
 
 
 def main():

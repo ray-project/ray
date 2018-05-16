@@ -201,3 +201,42 @@ def get_head_node_ip(config_file):
 
 def confirm(msg, yes):
     return None if yes else click.confirm(msg, abort=True)
+
+
+def file_sync(config_file):
+    """Returns head node IP for given configuration file if exists."""
+    config = yaml.load(open(config_file).read())
+    validate_config(config)
+    config = fillout_defaults(config)
+    importer = NODE_PROVIDERS.get(config["provider"]["type"])
+    if not importer:
+        raise NotImplementedError("Unsupported provider {}".format(
+            config["provider"]))
+
+    bootstrap_config, provider_cls = importer()
+    config = bootstrap_config(config)
+
+    provider = provider_cls(config["provider"], config["cluster_name"])
+    head_node_tags = {
+        TAG_RAY_NODE_TYPE: "Head",
+    }
+    nodes = provider.nodes(head_node_tags)
+    if len(nodes) > 0:
+        head_node = nodes[0]
+    else:
+        print("Head node of cluster ({}) not found!".format(
+            config["cluster_name"]))
+        sys.exit(1)
+
+    runtime_hash = hash_runtime_conf(config["file_mounts"], config)
+
+    updater = NodeUpdaterProcess(
+        head_node,
+        config["provider"],
+        config["auth"],
+        config["cluster_name"],
+        config["file_mounts"],
+        [],
+        runtime_hash,
+        redirect_output=False)
+    updater.sync_files(config["file_mounts"])
