@@ -37,13 +37,23 @@ class AnnealedGaussianProcess(RandomProcess):
 # Based on
 # http://math.stackexchange.com/questions/1287634/implementing-ornstein-uhlenbeck-in-matlab
 class OrnsteinUhlenbeckProcess(AnnealedGaussianProcess):
-    def __init__(self, theta, mu=0., sigma=1., dt=1e-2,
-                 x0=None, size=1, sigma_min=None, n_steps_annealing=1000):
+    def __init__(
+        self,
+        theta,
+        mu=0.,
+        sigma=1.,
+        dt=1e-2,
+        x0=None,
+        size=1,
+        sigma_min=None,
+        n_steps_annealing=1000
+    ):
         super(OrnsteinUhlenbeckProcess, self).__init__(
             mu=mu,
             sigma=sigma,
             sigma_min=sigma_min,
-            n_steps_annealing=n_steps_annealing)
+            n_steps_annealing=n_steps_annealing
+        )
         self.theta = theta
         self.mu = mu
         self.dt = dt

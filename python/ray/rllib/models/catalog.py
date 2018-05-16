@@ -11,12 +11,12 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _default_registry
 
 from ray.rllib.models.action_dist import (
-    Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
+    Categorical, Deterministic, DiagGaussian, MultiActionDistribution
+)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
-
 
 MODEL_CONFIGS = [
     # === Built-in options ===
@@ -81,12 +81,15 @@ class ModelCatalog(object):
                 dist, action_size = ModelCatalog.get_action_dist(action)
                 child_dist.append(dist)
                 size += action_size
-            return partial(MultiActionDistribution,
-                           child_distributions=child_dist,
-                           action_space=action_space), size
+            return partial(
+                MultiActionDistribution,
+                child_distributions=child_dist,
+                action_space=action_space
+            ), size
 
         raise NotImplementedError(
-            "Unsupported args: {} {}".format(action_space, dist_type))
+            "Unsupported args: {} {}".format(action_space, dist_type)
+        )
 
     @staticmethod
     def get_action_placeholder(action_space):
@@ -104,9 +107,10 @@ class ModelCatalog(object):
 
         if isinstance(action_space, gym.spaces.Box):
             return tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]))
+                tf.float32, shape=(None, action_space.shape[0])
+            )
         elif isinstance(action_space, gym.spaces.Discrete):
-            return tf.placeholder(tf.int64, shape=(None,))
+            return tf.placeholder(tf.int64, shape=(None, ))
         elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
             all_discrete = True
@@ -117,10 +121,13 @@ class ModelCatalog(object):
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
             return tf.placeholder(
-                tf.int64 if all_discrete else tf.float32, shape=(None, size))
+                tf.int64 if all_discrete else tf.float32, shape=(None, size)
+            )
         else:
-            raise NotImplementedError("action space {}"
-                                      " not supported".format(action_space))
+            raise NotImplementedError(
+                "action space {}"
+                " not supported".format(action_space)
+            )
 
     @staticmethod
     def get_model(registry, inputs, num_outputs, options=dict()):
@@ -139,16 +146,17 @@ class ModelCatalog(object):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom model {}".format(model))
-            return registry.get(RLLIB_MODEL, model)(
-                inputs, num_outputs, options)
+            return registry.get(RLLIB_MODEL,
+                                model)(inputs, num_outputs, options)
 
         obs_rank = len(inputs.shape) - 1
 
         # num_outputs > 1 used to avoid hitting this with the value function
-        if isinstance(options.get("custom_options", {}).get(
-          "multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
-            return MultiAgentFullyConnectedNetwork(inputs,
-                                                   num_outputs, options)
+        if isinstance(
+            options.get("custom_options",
+                        {}).get("multiagent_fcnet_hiddens", 1), list
+        ) and num_outputs > 1:
+            return MultiAgentFullyConnectedNetwork(inputs, num_outputs, options)
 
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)
@@ -170,15 +178,17 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
         from ray.rllib.models.pytorch.fcnet import (
-            FullyConnectedNetwork as PyTorchFCNet)
+            FullyConnectedNetwork as PyTorchFCNet
+        )
         from ray.rllib.models.pytorch.visionnet import (
-            VisionNetwork as PyTorchVisionNet)
+            VisionNetwork as PyTorchVisionNet
+        )
 
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom torch model {}".format(model))
-            return registry.get(RLLIB_MODEL, model)(
-                input_shape, num_outputs, options)
+            return registry.get(RLLIB_MODEL,
+                                model)(input_shape, num_outputs, options)
 
         obs_rank = len(input_shape) - 1
 
@@ -203,13 +213,15 @@ class ModelCatalog(object):
             if k not in MODEL_CONFIGS:
                 raise Exception(
                     "Unknown config key `{}`, all keys: {}".format(
-                        k, MODEL_CONFIGS))
+                        k, MODEL_CONFIGS
+                    )
+                )
 
         if "custom_preprocessor" in options:
             preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
-            return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
-                env.observation_space, options)
+            return registry.get(RLLIB_PREPROCESSOR,
+                                preprocessor)(env.observation_space, options)
 
         preprocessor = get_preprocessor(env.observation_space)
         return preprocessor(env.observation_space, options)
@@ -242,7 +254,8 @@ class ModelCatalog(object):
             preprocessor_class (type): Python class of the preprocessor.
         """
         _default_registry.register(
-            RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class)
+            RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class
+        )
 
     @staticmethod
     def register_custom_model(model_name, model_class):
@@ -267,7 +280,8 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
 
         from gym.spaces.box import Box
         self.observation_space = Box(
-            -1.0, 1.0, preprocessor.shape, dtype=np.float32)
+            -1.0, 1.0, preprocessor.shape, dtype=np.float32
+        )
 
     def observation(self, observation):
         return self.preprocessor.transform(observation)

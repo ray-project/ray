@@ -18,7 +18,8 @@ class TaskTests(unittest.TestCase):
                     start_ray_local=True,
                     num_workers=num_workers,
                     num_local_schedulers=num_local_schedulers,
-                    num_cpus=100)
+                    num_cpus=100
+                )
 
                 @ray.remote
                 def f(x):
@@ -47,7 +48,8 @@ class TaskTests(unittest.TestCase):
                     start_ray_local=True,
                     num_workers=num_workers,
                     num_local_schedulers=num_local_schedulers,
-                    num_cpus=100)
+                    num_cpus=100
+                )
 
                 @ray.remote
                 def f(x):
@@ -126,7 +128,8 @@ class TaskTests(unittest.TestCase):
                     start_ray_local=True,
                     num_workers=num_workers,
                     num_local_schedulers=num_local_schedulers,
-                    num_cpus=100)
+                    num_cpus=100
+                )
 
                 @ray.remote
                 def f(x):
@@ -169,13 +172,15 @@ class ReconstructionTests(unittest.TestCase):
         self.plasma_store_memory = 10**9
         plasma_addresses = []
         objstore_memory = (
-            self.plasma_store_memory // self.num_local_schedulers)
+            self.plasma_store_memory // self.num_local_schedulers
+        )
         for i in range(self.num_local_schedulers):
             store_stdout_file, store_stderr_file = ray.services.new_log_files(
-                "plasma_store_{}".format(i), True)
+                "plasma_store_{}".format(i), True
+            )
             manager_stdout_file, manager_stderr_file = (
-                ray.services.new_log_files("plasma_manager_{}".format(i),
-                                           True))
+                ray.services.new_log_files("plasma_manager_{}".format(i), True)
+            )
             plasma_addresses.append(
                 ray.services.start_objstore(
                     node_ip_address,
@@ -184,7 +189,9 @@ class ReconstructionTests(unittest.TestCase):
                     store_stdout_file=store_stdout_file,
                     store_stderr_file=store_stderr_file,
                     manager_stdout_file=manager_stdout_file,
-                    manager_stderr_file=manager_stderr_file))
+                    manager_stderr_file=manager_stderr_file
+                )
+            )
 
         # Start the rest of the services in the Ray cluster.
         address_info = {
@@ -199,7 +206,8 @@ class ReconstructionTests(unittest.TestCase):
             num_local_schedulers=self.num_local_schedulers,
             num_cpus=[1] * self.num_local_schedulers,
             redirect_output=True,
-            driver_mode=ray.SILENT_MODE)
+            driver_mode=ray.SILENT_MODE
+        )
 
     def tearDown(self):
         self.assertTrue(ray.services.all_processes_alive())
@@ -211,7 +219,8 @@ class ReconstructionTests(unittest.TestCase):
         if os.environ.get('RAY_USE_NEW_GCS', False):
             tasks = state.task_table()
             local_scheduler_ids = set(
-                task["LocalSchedulerID"] for task in tasks.values())
+                task["LocalSchedulerID"] for task in tasks.values()
+            )
 
         # Make sure that all nodes in the cluster were used by checking that
         # the set of local scheduler IDs that had a task scheduled or submitted
@@ -222,14 +231,16 @@ class ReconstructionTests(unittest.TestCase):
         # scheduler.
         if os.environ.get('RAY_USE_NEW_GCS', False):
             self.assertEqual(
-                len(local_scheduler_ids), self.num_local_schedulers + 1)
+                len(local_scheduler_ids), self.num_local_schedulers + 1
+            )
 
         # Clean up the Ray cluster.
         ray.worker.cleanup()
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
-        "Failing with new GCS API on Linux.")
+        "Failing with new GCS API on Linux."
+    )
     def testSimple(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -267,7 +278,8 @@ class ReconstructionTests(unittest.TestCase):
             del values
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Failing with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Failing with new GCS API."
+    )
     def testRecursive(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -320,7 +332,8 @@ class ReconstructionTests(unittest.TestCase):
             del values
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Failing with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Failing with new GCS API."
+    )
     def testMultipleRecursive(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -386,7 +399,8 @@ class ReconstructionTests(unittest.TestCase):
         return errors
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API."
+    )
     def testNondeterministicTask(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -446,10 +460,12 @@ class ReconstructionTests(unittest.TestCase):
         errors = self.wait_for_errors(error_check)
         # Make sure all the errors have the correct type.
         self.assertTrue(
-            all(error[b"type"] == b"object_hash_mismatch" for error in errors))
+            all(error[b"type"] == b"object_hash_mismatch" for error in errors)
+        )
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API."
+    )
     def testDriverPutErrors(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -485,14 +501,16 @@ class ReconstructionTests(unittest.TestCase):
         # for-loop should hang on its first iteration and push an error to the
         # driver.
         ray.worker.global_worker.local_scheduler_client.reconstruct_object(
-            args[0].id())
+            args[0].id()
+        )
 
         def error_check(errors):
             return len(errors) > 1
 
         errors = self.wait_for_errors(error_check)
         self.assertTrue(
-            all(error[b"type"] == b"put_reconstruction" for error in errors))
+            all(error[b"type"] == b"put_reconstruction" for error in errors)
+        )
 
 
 class ReconstructionTestsMultinode(ReconstructionTests):

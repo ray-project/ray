@@ -92,7 +92,8 @@ class TensorFlowVariables(object):
             self.placeholders[k] = tf.placeholder(
                 var.value().dtype,
                 var.get_shape().as_list(),
-                name="Placeholder_" + k)
+                name="Placeholder_" + k
+            )
             self.assignment_nodes[k] = var.assign(self.placeholders[k])
 
     def set_session(self, sess):
@@ -115,10 +116,12 @@ class TensorFlowVariables(object):
 
     def _check_sess(self):
         """Checks if the session is set, and if not throw an error message."""
-        assert self.sess is not None, ("The session is not set. Set the "
-                                       "session either by passing it into the "
-                                       "TensorFlowVariables constructor or by "
-                                       "calling set_session(sess).")
+        assert self.sess is not None, (
+            "The session is not set. Set the "
+            "session either by passing it into the "
+            "TensorFlowVariables constructor or by "
+            "calling set_session(sess)."
+        )
 
     def get_flat(self):
         """Gets the weights and returns them as a flat array.
@@ -128,8 +131,7 @@ class TensorFlowVariables(object):
         """
         self._check_sess()
         return np.concatenate([
-            v.eval(session=self.sess).flatten()
-            for v in self.variables.values()
+            v.eval(session=self.sess).flatten() for v in self.variables.values()
         ])
 
     def set_flat(self, new_weights):
@@ -145,12 +147,11 @@ class TensorFlowVariables(object):
         self._check_sess()
         shapes = [v.get_shape().as_list() for v in self.variables.values()]
         arrays = unflatten(new_weights, shapes)
-        placeholders = [
-            self.placeholders[k] for k, v in self.variables.items()
-        ]
+        placeholders = [self.placeholders[k] for k, v in self.variables.items()]
         self.sess.run(
             list(self.assignment_nodes.values()),
-            feed_dict=dict(zip(placeholders, arrays)))
+            feed_dict=dict(zip(placeholders, arrays))
+        )
 
     def get_weights(self):
         """Returns a dictionary containing the weights of the network.
@@ -159,10 +160,7 @@ class TensorFlowVariables(object):
             Dictionary mapping variable names to their weights.
         """
         self._check_sess()
-        return {
-            k: v.eval(session=self.sess)
-            for k, v in self.variables.items()
-        }
+        return {k: v.eval(session=self.sess) for k, v in self.variables.items()}
 
     def set_weights(self, new_weights):
         """Sets the weights to new_weights.
@@ -177,18 +175,22 @@ class TensorFlowVariables(object):
         """
         self._check_sess()
         assign_list = [
-            self.assignment_nodes[name] for name in new_weights.keys()
+            self.assignment_nodes[name]
+            for name in new_weights.keys()
             if name in self.assignment_nodes
         ]
-        assert assign_list, ("No variables in the input matched those in the "
-                             "network. Possible cause: Two networks were "
-                             "defined in the same TensorFlow graph. To fix "
-                             "this, place each network definition in its own "
-                             "tf.Graph.")
+        assert assign_list, (
+            "No variables in the input matched those in the "
+            "network. Possible cause: Two networks were "
+            "defined in the same TensorFlow graph. To fix "
+            "this, place each network definition in its own "
+            "tf.Graph."
+        )
         self.sess.run(
             assign_list,
             feed_dict={
                 self.placeholders[name]: value
                 for (name, value) in new_weights.items()
                 if name in self.placeholders
-            })
+            }
+        )

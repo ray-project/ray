@@ -15,6 +15,7 @@ def normal(shape):
     objectids = np.empty(num_blocks, dtype=object)
     for index in np.ndindex(*num_blocks):
         objectids[index] = ra.random.normal.remote(
-            DistArray.compute_block_shape(index, shape))
+            DistArray.compute_block_shape(index, shape)
+        )
     result = DistArray(shape, objectids)
     return result

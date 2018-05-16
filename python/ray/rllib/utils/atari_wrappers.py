@@ -24,8 +24,7 @@ class NoopResetEnv(gym.Wrapper):
         if self.override_num_noops is not None:
             noops = self.override_num_noops
         else:
-            noops = self.unwrapped.np_random.randint(
-                1, self.noop_max + 1)
+            noops = self.unwrapped.np_random.randint(1, self.noop_max + 1)
         assert noops > 0
         obs = None
         for _ in range(noops):
@@ -116,8 +115,8 @@ class MaxAndSkipEnv(gym.Wrapper):
         """Return only every `skip`-th frame"""
         gym.Wrapper.__init__(self, env)
         # most recent raw observations (for max pooling across time steps)
-        self._obs_buffer = np.zeros(
-            (2,)+env.observation_space.shape, dtype=np.uint8)
+        self._obs_buffer = np.zeros((2, ) + env.observation_space.shape,
+                                    dtype=np.uint8)
         self._skip = skip
 
     def step(self, action):
@@ -150,12 +149,14 @@ class WarpFrame(gym.ObservationWrapper):
         self.width = dim  # in rllib we use 80
         self.height = dim
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(self.height, self.width, 1))
+            low=0, high=255, shape=(self.height, self.width, 1)
+        )
 
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         frame = cv2.resize(
-            frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+            frame, (self.width, self.height), interpolation=cv2.INTER_AREA
+        )
         return frame[:, :, None]
 
 
@@ -167,7 +168,8 @@ class FrameStack(gym.Wrapper):
         self.frames = deque([], maxlen=k)
         shp = env.observation_space.shape
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(shp[0], shp[1], shp[2] * k))
+            low=0, high=255, shape=(shp[0], shp[1], shp[2] * k)
+        )
 
     def reset(self):
         ob = self.env.reset()

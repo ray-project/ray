@@ -22,8 +22,8 @@ class SharedModelLSTM(TFPolicy):
     is_recurrent = True
 
     def __init__(self, registry, ob_space, ac_space, config, **kwargs):
-        super(SharedModelLSTM, self).__init__(
-            registry, ob_space, ac_space, config, **kwargs)
+        super(SharedModelLSTM,
+              self).__init__(registry, ob_space, ac_space, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
@@ -38,16 +38,22 @@ class SharedModelLSTM(TFPolicy):
         self.curr_dist = dist_class(self.logits)
         # with tf.variable_scope("vf"):
         #     vf_model = ModelCatalog.get_model(self.x, 1)
-        self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
-                                    normc_initializer(1.0)), [-1])
+        self.vf = tf.reshape(
+            linear(self._model.last_layer, 1, "value", normc_initializer(1.0)),
+            [-1]
+        )
 
         self.sample = self.curr_dist.sample()
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
+        self.var_list = tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES,
+            tf.get_variable_scope().name
+        )
         self.global_step = tf.get_variable(
-            "global_step", [], tf.int32,
+            "global_step", [],
+            tf.int32,
             initializer=tf.constant_initializer(0, dtype=tf.int32),
-            trainable=False)
+            trainable=False
+        )
 
     def compute_gradients(self, samples):
         """Computing the gradient is actually model-dependent.
@@ -75,15 +81,23 @@ class SharedModelLSTM(TFPolicy):
         return grad, info
 
     def compute(self, ob, c, h):
-        action, vf, c, h = self.sess.run(
-            [self.sample, self.vf] + self.state_out,
-            {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})
+        action, vf, c, h = self.sess.run([self.sample, self.vf] + self.state_out,
+                                         {
+                                             self.x: [ob],
+                                             self.state_in[0]: c,
+                                             self.state_in[1]: h
+                                         })
         return action[0], {"vf_preds": vf[0], "features": (c, h)}
 
     def value(self, ob, c, h):
-        vf = self.sess.run(self.vf, {self.x: [ob],
-                                     self.state_in[0]: c,
-                                     self.state_in[1]: h})
+        vf = self.sess.run(
+            self.vf,
+            {
+                self.x: [ob],
+                self.state_in[0]: c,
+                self.state_in[1]: h
+            }
+        )
         return vf[0]
 
     def get_initial_features(self):

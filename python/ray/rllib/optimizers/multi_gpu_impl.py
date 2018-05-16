@@ -8,7 +8,6 @@ import os
 from tensorflow.python.client import timeline
 import tensorflow as tf
 
-
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"
 
@@ -48,9 +47,16 @@ class LocalSyncParallelOptimizer(object):
         grad_norm_clipping: None or int stdev to clip grad norms by
     """
 
-    def __init__(self, optimizer, devices, input_placeholders,
-                 per_device_batch_size, build_loss, logdir,
-                 grad_norm_clipping=None):
+    def __init__(
+        self,
+        optimizer,
+        devices,
+        input_placeholders,
+        per_device_batch_size,
+        build_loss,
+        logdir,
+        grad_norm_clipping=None
+    ):
         self.optimizer = optimizer
         self.devices = devices
         self.batch_size = per_device_batch_size * len(devices)
@@ -69,12 +75,12 @@ class LocalSyncParallelOptimizer(object):
         # Split on the CPU in case the data doesn't fit in GPU memory.
         with tf.device("/cpu:0"):
             data_splits = zip(
-                *[tf.split(ph, len(devices)) for ph in input_placeholders])
+                *[tf.split(ph, len(devices)) for ph in input_placeholders]
+            )
 
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
-            self._towers.append(self._setup_device(device,
-                                                   device_placeholders))
+            self._towers.append(self._setup_device(device, device_placeholders))
 
         avg = average_gradients([t.grads for t in self._towers])
         if grad_norm_clipping:
@@ -115,15 +121,15 @@ class LocalSyncParallelOptimizer(object):
             run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
         run_metadata = tf.RunMetadata()
 
-        sess.run(
-            [t.init_op for t in self._towers],
-            feed_dict=feed_dict,
-            options=run_options,
-            run_metadata=run_metadata)
+        sess.run([t.init_op for t in self._towers],
+                 feed_dict=feed_dict,
+                 options=run_options,
+                 run_metadata=run_metadata)
         if full_trace:
             trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            trace_file = open(os.path.join(self.logdir, "timeline-load.json"),
-                              "w")
+            trace_file = open(
+                os.path.join(self.logdir, "timeline-load.json"), "w"
+            )
             trace_file.write(trace.generate_chrome_trace_format())
 
         tuples_per_device = truncated_len / len(self.devices)
@@ -135,8 +141,14 @@ class LocalSyncParallelOptimizer(object):
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
 
-    def optimize(self, sess, batch_index, extra_ops=[], extra_feed_dict={},
-                 file_writer=None):
+    def optimize(
+        self,
+        sess,
+        batch_index,
+        extra_ops=[],
+        extra_feed_dict={},
+        file_writer=None
+    ):
         """Run a single step of SGD.
 
         Runs a SGD step over a slice of the preloaded batch with size given by
@@ -168,19 +180,20 @@ class LocalSyncParallelOptimizer(object):
 
         feed_dict = {self._batch_index: batch_index}
         feed_dict.update(extra_feed_dict)
-        outs = sess.run(
-            [self._train_op] + extra_ops,
-            feed_dict=feed_dict,
-            options=run_options,
-            run_metadata=run_metadata)
+        outs = sess.run([self._train_op] + extra_ops,
+                        feed_dict=feed_dict,
+                        options=run_options,
+                        run_metadata=run_metadata)
 
         if file_writer:
             trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            trace_file = open(os.path.join(self.logdir, "timeline-sgd.json"),
-                              "w")
+            trace_file = open(
+                os.path.join(self.logdir, "timeline-sgd.json"), "w"
+            )
             trace_file.write(trace.generate_chrome_trace_format())
             file_writer.add_run_metadata(
-                run_metadata, "sgd_train_{}".format(batch_index))
+                run_metadata, "sgd_train_{}".format(batch_index)
+            )
 
         return outs[1:]
 
@@ -197,24 +210,29 @@ class LocalSyncParallelOptimizer(object):
                 device_input_slices = []
                 for ph in device_input_placeholders:
                     current_batch = tf.Variable(
-                        ph, trainable=False, validate_shape=False,
-                        collections=[])
+                        ph,
+                        trainable=False,
+                        validate_shape=False,
+                        collections=[]
+                    )
                     device_input_batches.append(current_batch)
                     current_slice = tf.slice(
                         current_batch,
                         [self._batch_index] + [0] * len(ph.shape[1:]),
-                        ([self.per_device_batch_size] + [-1] *
-                         len(ph.shape[1:])))
+                        ([self.per_device_batch_size] +
+                         [-1] * len(ph.shape[1:]))
+                    )
                     current_slice.set_shape(ph.shape)
                     device_input_slices.append(current_slice)
                 device_loss_obj = self.build_loss(*device_input_slices)
                 device_grads = self.optimizer.compute_gradients(
-                    device_loss_obj.loss, colocate_gradients_with_ops=True)
+                    device_loss_obj.loss, colocate_gradients_with_ops=True
+                )
             return Tower(
-                tf.group(*[batch.initializer
-                           for batch in device_input_batches]),
-                device_grads,
-                device_loss_obj)
+                tf.
+                group(*[batch.initializer for batch in device_input_batches]),
+                device_grads, device_loss_obj
+            )
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.

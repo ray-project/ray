@@ -15,7 +15,6 @@ from ray.rllib.a3c.a3c_evaluator import A3CEvaluator, RemoteA3CEvaluator, \
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
-
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     "num_workers": 4,
@@ -73,53 +72,67 @@ class A3CAgent(Agent):
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         return Resources(
-            cpu=1, gpu=0,
+            cpu=1,
+            gpu=0,
             extra_cpu=cf["num_workers"],
-            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
+            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0
+        )
 
     def _init(self):
         self.local_evaluator = A3CEvaluator(
-            self.registry, self.env_creator, self.config, self.logdir,
-            start_sampler=False)
+            self.registry,
+            self.env_creator,
+            self.config,
+            self.logdir,
+            start_sampler=False
+        )
         if self.config["use_gpu_for_workers"]:
             remote_cls = GPURemoteA3CEvaluator
         else:
             remote_cls = RemoteA3CEvaluator
         self.remote_evaluators = [
             remote_cls.remote(
-                self.registry, self.env_creator, self.config, self.logdir)
-            for i in range(self.config["num_workers"])]
+                self.registry, self.env_creator, self.config, self.logdir
+            ) for i in range(self.config["num_workers"])
+        ]
         self.optimizer = AsyncOptimizer(
             self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+            self.remote_evaluators
+        )
 
     def _train(self):
         self.optimizer.step()
         FilterManager.synchronize(
-            self.local_evaluator.filters, self.remote_evaluators)
+            self.local_evaluator.filters, self.remote_evaluators
+        )
         res = self._fetch_metrics_from_remote_evaluators()
         return res
 
     def _fetch_metrics_from_remote_evaluators(self):
         episode_rewards = []
         episode_lengths = []
-        metric_lists = [a.get_completed_rollout_metrics.remote()
-                        for a in self.remote_evaluators]
+        metric_lists = [
+            a.get_completed_rollout_metrics.remote()
+            for a in self.remote_evaluators
+        ]
         for metrics in metric_lists:
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
                 episode_rewards.append(episode.episode_reward)
         avg_reward = (
-            np.mean(episode_rewards) if episode_rewards else float('nan'))
+            np.mean(episode_rewards) if episode_rewards else float('nan')
+        )
         avg_length = (
-            np.mean(episode_lengths) if episode_lengths else float('nan'))
+            np.mean(episode_lengths) if episode_lengths else float('nan')
+        )
         timesteps = np.sum(episode_lengths) if episode_lengths else 0
 
         result = TrainingResult(
             episode_reward_mean=avg_reward,
             episode_len_mean=avg_length,
             timesteps_this_iter=timesteps,
-            info={})
+            info={}
+        )
 
         return result
 
@@ -130,20 +143,22 @@ class A3CAgent(Agent):
 
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration))
-        agent_state = ray.get(
-            [a.save.remote() for a in self.remote_evaluators])
+            checkpoint_dir, "checkpoint-{}".format(self.iteration)
+        )
+        agent_state = ray.get([a.save.remote() for a in self.remote_evaluators])
         extra_data = {
             "remote_state": agent_state,
-            "local_state": self.local_evaluator.save()}
+            "local_state": self.local_evaluator.save()
+        }
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        ray.get(
-            [a.restore.remote(o) for a, o in zip(
-                self.remote_evaluators, extra_data["remote_state"])])
+        ray.get([
+            a.restore.remote(o)
+            for a, o in zip(self.remote_evaluators, extra_data["remote_state"])
+        ])
         self.local_evaluator.restore(extra_data["local_state"])
 
     def compute_action(self, observation):

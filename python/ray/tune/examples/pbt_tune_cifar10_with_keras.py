@@ -57,14 +57,20 @@ class Cifar10Model(Trainable):
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal"
+        )(
+            y
+        )
         y = Convolution2D(
             filters=64,
             kernel_size=3,
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal"
+        )(
+            y
+        )
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
         y = Convolution2D(
@@ -73,14 +79,20 @@ class Cifar10Model(Trainable):
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal"
+        )(
+            y
+        )
         y = Convolution2D(
             filters=128,
             kernel_size=3,
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal"
+        )(
+            y
+        )
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
         y = Convolution2D(
@@ -89,20 +101,29 @@ class Cifar10Model(Trainable):
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal"
+        )(
+            y
+        )
         y = Convolution2D(
             filters=256,
             kernel_size=3,
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal"
+        )(
+            y
+        )
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
         y = Flatten()(y)
         y = Dropout(self.config["dropout"])(y)
         y = Dense(
-            units=10, activation="softmax", kernel_initializer="he_normal")(y)
+            units=10, activation="softmax", kernel_initializer="he_normal"
+        )(
+            y
+        )
 
         model = Model(inputs=x, outputs=y, name="model1")
         return model
@@ -116,7 +137,8 @@ class Cifar10Model(Trainable):
         model.compile(
             loss="categorical_crossentropy",
             optimizer=opt,
-            metrics=["accuracy"])
+            metrics=["accuracy"]
+        )
         self.model = model
 
     def _train(self):
@@ -148,12 +170,14 @@ class Cifar10Model(Trainable):
 
         aug_gen.fit(x_train)
         gen = aug_gen.flow(
-            x_train, y_train, batch_size=self.config["batch_size"])
+            x_train, y_train, batch_size=self.config["batch_size"]
+        )
         self.model.fit_generator(
             generator=gen,
             steps_per_epoch=50000 // self.config["batch_size"],
             epochs=self.config["epochs"],
-            validation_data=None)
+            validation_data=None
+        )
 
         # loss, accuracy
         _, accuracy = self.model.evaluate(x_test, y_test, verbose=0)
@@ -177,7 +201,8 @@ class Cifar10Model(Trainable):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     args, _ = parser.parse_known_args()
 
     register_trainable("train_cifar10", Cifar10Model)
@@ -213,6 +238,7 @@ if __name__ == "__main__":
         perturbation_interval=10,
         hyperparam_mutations={
             "dropout": lambda _: np.random.uniform(0, 1),
-        })
+        }
+    )
 
     run_experiments({"pbt_cifar10": train_spec}, scheduler=pbt)

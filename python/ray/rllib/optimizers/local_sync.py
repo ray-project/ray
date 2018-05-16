@@ -34,8 +34,8 @@ class LocalSyncOptimizer(PolicyOptimizer):
         with self.sample_timer:
             if self.remote_evaluators:
                 samples = SampleBatch.concat_samples(
-                    ray.get(
-                        [e.sample.remote() for e in self.remote_evaluators]))
+                    ray.get([e.sample.remote() for e in self.remote_evaluators])
+                )
             else:
                 samples = self.local_evaluator.sample()
 
@@ -48,10 +48,14 @@ class LocalSyncOptimizer(PolicyOptimizer):
         self.num_steps_trained += samples.count
 
     def stats(self):
-        return dict(PolicyOptimizer.stats(self), **{
-            "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
-            "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
-            "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
-            "opt_samples": round(self.grad_timer.mean_units_processed, 3),
-        })
+        return dict(
+            PolicyOptimizer.stats(self), **{
+                "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
+                "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
+                "update_time_ms":
+                round(1000 * self.update_weights_timer.mean, 3),
+                "opt_peak_throughput":
+                round(self.grad_timer.mean_throughput, 3),
+                "opt_samples": round(self.grad_timer.mean_units_processed, 3),
+            }
+        )

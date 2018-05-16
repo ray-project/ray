@@ -14,9 +14,9 @@ from .utils import _inherit_docstrings
 
 @_inherit_docstrings(pandas.core.groupby.DataFrameGroupBy)
 class DataFrameGroupBy(object):
-
-    def __init__(self, df, by, axis, level, as_index, sort, group_keys,
-                 squeeze, **kwargs):
+    def __init__(
+        self, df, by, axis, level, as_index, sort, group_keys, squeeze, **kwargs
+    ):
 
         self._columns = df.columns
         self._index = df.index
@@ -53,23 +53,29 @@ class DataFrameGroupBy(object):
         from .dataframe import DataFrame
 
         if self._axis == 0:
-            return [(self._keys_and_values[i][0],
-                     DataFrame(col_partitions=part,
-                               columns=self._columns,
-                               index=self._keys_and_values[i][1].index,
-                               row_metadata=self._row_metadata[
-                                   self._keys_and_values[i][1].index],
-                               col_metadata=self._col_metadata))
-                    for i, part in enumerate(self._grouped_partitions)]
+            return [(
+                self._keys_and_values[i][0],
+                DataFrame(
+                    col_partitions=part,
+                    columns=self._columns,
+                    index=self._keys_and_values[i][1].index,
+                    row_metadata=self._row_metadata[self._keys_and_values[i][1]
+                                                    .index],
+                    col_metadata=self._col_metadata
+                )
+            ) for i, part in enumerate(self._grouped_partitions)]
         else:
-            return [(self._keys_and_values[i][0],
-                     DataFrame(row_partitions=part,
-                               columns=self._keys_and_values[i][1].index,
-                               index=self._index,
-                               row_metadata=self._row_metadata,
-                               col_metadata=self._col_metadata[
-                                   self._keys_and_values[i][1].index]))
-                    for i, part in enumerate(self._grouped_partitions)]
+            return [(
+                self._keys_and_values[i][0],
+                DataFrame(
+                    row_partitions=part,
+                    columns=self._keys_and_values[i][1].index,
+                    index=self._index,
+                    row_metadata=self._row_metadata,
+                    col_metadata=self._col_metadata[self._keys_and_values[i][1]
+                                                    .index]
+                )
+            ) for i, part in enumerate(self._grouped_partitions)]
 
     @property
     def ngroups(self):
@@ -125,9 +131,9 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def cumsum(self, axis=0, *args, **kwargs):
-        return self._apply_agg_function(lambda df: df.cumsum(axis,
-                                                             *args,
-                                                             **kwargs))
+        return self._apply_agg_function(
+            lambda df: df.cumsum(axis, *args, **kwargs)
+        )
 
     @property
     def indices(self):
@@ -140,8 +146,9 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def cummax(self, axis=0, **kwargs):
-        return self._apply_agg_function(lambda df: df.cummax(axis=axis,
-                                                             **kwargs))
+        return self._apply_agg_function(
+            lambda df: df.cummax(axis=axis, **kwargs)
+        )
 
     def apply(self, func, *args, **kwargs):
         return self._apply_df_function(lambda df: df.apply(func,
@@ -157,8 +164,7 @@ class DataFrameGroupBy(object):
         return self._apply_agg_function(lambda df: df.dtypes)
 
     def first(self, **kwargs):
-        return self._apply_agg_function(lambda df: df.first(offset=0,
-                                                            **kwargs))
+        return self._apply_agg_function(lambda df: df.first(offset=0, **kwargs))
 
     def backfill(self, limit=None):
         return self.bfill(limit)
@@ -168,8 +174,9 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def cummin(self, axis=0, **kwargs):
-        return self._apply_agg_function(lambda df: df.cummin(axis=axis,
-                                                             **kwargs))
+        return self._apply_agg_function(
+            lambda df: df.cummin(axis=axis, **kwargs)
+        )
 
     def bfill(self, limit=None):
         return self._apply_agg_function(lambda df: df.bfill(limit=limit))
@@ -181,8 +188,9 @@ class DataFrameGroupBy(object):
         return self._apply_agg_function(lambda df: df.prod(**kwargs))
 
     def std(self, ddof=1, *args, **kwargs):
-        return self._apply_agg_function(lambda df: df.std(ddof=ddof,
-                                                          *args, **kwargs))
+        return self._apply_agg_function(
+            lambda df: df.std(ddof=ddof, *args, **kwargs)
+        )
 
     def aggregate(self, arg, *args, **kwargs):
         return self._apply_df_function(lambda df: df.agg(arg,
@@ -213,9 +221,9 @@ class DataFrameGroupBy(object):
         return self._apply_agg_function(lambda df: df.max(**kwargs))
 
     def var(self, ddof=1, *args, **kwargs):
-        return self._apply_agg_function(lambda df: df.var(ddof,
-                                                          *args,
-                                                          **kwargs))
+        return self._apply_agg_function(
+            lambda df: df.var(ddof, *args, **kwargs)
+        )
 
     def get_group(self, name, obj=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -230,8 +238,9 @@ class DataFrameGroupBy(object):
         return self._apply_agg_function(lambda df: df.size)
 
     def sum(self, **kwargs):
-        return self._apply_agg_function(lambda df:
-                                        df.sum(axis=self._axis, **kwargs))
+        return self._apply_agg_function(
+            lambda df: df.sum(axis=self._axis, **kwargs)
+        )
 
     def __unicode__(self):
         raise NotImplementedError("Not Yet implemented.")
@@ -239,8 +248,19 @@ class DataFrameGroupBy(object):
     def describe(self, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
-    def boxplot(self, grouped, subplots=True, column=None, fontsize=None,
-                rot=0, grid=True, ax=None, figsize=None, layout=None, **kwds):
+    def boxplot(
+        self,
+        grouped,
+        subplots=True,
+        column=None,
+        fontsize=None,
+        rot=0,
+        grid=True,
+        ax=None,
+        figsize=None,
+        layout=None,
+        **kwds
+    ):
         raise NotImplementedError("Not Yet implemented.")
 
     def ngroup(self, ascending=True):
@@ -259,9 +279,9 @@ class DataFrameGroupBy(object):
         return self._apply_df_function(lambda df: df.head(n))
 
     def cumprod(self, axis=0, *args, **kwargs):
-        return self._apply_df_function(lambda df: df.cumprod(axis,
-                                                             *args,
-                                                             **kwargs))
+        return self._apply_df_function(
+            lambda df: df.cumprod(axis, *args, **kwargs)
+        )
 
     def __iter__(self):
         return self._iter.__iter__()
@@ -272,8 +292,10 @@ class DataFrameGroupBy(object):
                 return pd.DataFrame(df).T
             else:
                 return df
-        x = [v.agg(arg, axis=self._axis, *args, **kwargs)
-             for k, v in self._iter]
+
+        x = [
+            v.agg(arg, axis=self._axis, *args, **kwargs) for k, v in self._iter
+        ]
 
         new_parts = _map_partitions(lambda df: agg_help(df), x)
 
@@ -288,8 +310,9 @@ class DataFrameGroupBy(object):
     def transform(self, func, *args, **kwargs):
         from .concat import concat
 
-        new_parts = concat([v.transform(func, *args, **kwargs)
-                            for k, v in self._iter])
+        new_parts = concat([
+            v.transform(func, *args, **kwargs) for k, v in self._iter
+        ])
         return new_parts
 
     def corr(self, **kwargs):
@@ -302,9 +325,9 @@ class DataFrameGroupBy(object):
         return self._apply_agg_function(lambda df: df.count(**kwargs))
 
     def pipe(self, func, *args, **kwargs):
-        return self._apply_df_function(lambda df: df.pipe(func,
-                                                          *args,
-                                                          **kwargs))
+        return self._apply_df_function(
+            lambda df: df.pipe(func, *args, **kwargs)
+        )
 
     def cumcount(self, ascending=True):
         raise NotImplementedError("Not Yet implemented.")
@@ -365,10 +388,14 @@ def groupby(by, axis, level, as_index, sort, group_keys, squeeze, *df):
 
     df = pd.concat(df, axis=axis)
 
-    return [v for k, v in df.groupby(by=by,
-                                     axis=axis,
-                                     level=level,
-                                     as_index=as_index,
-                                     sort=sort,
-                                     group_keys=group_keys,
-                                     squeeze=squeeze)]
+    return [
+        v for k, v in df.groupby(
+            by=by,
+            axis=axis,
+            level=level,
+            as_index=as_index,
+            sort=sort,
+            group_keys=group_keys,
+            squeeze=squeeze
+        )
+    ]

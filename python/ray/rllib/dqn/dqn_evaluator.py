@@ -34,7 +34,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
             continue  # episode end
         for j in range(1, n_step):
             new_obs[i] = new_obs[i + j]
-            rewards[i] += gamma ** j * rewards[i + j]
+            rewards[i] += gamma**j * rewards[i + j]
             if dones[i + j]:
                 break  # episode end
     # truncate ends of the trajectory
@@ -57,7 +57,9 @@ class DQNEvaluator(PolicyEvaluator):
         if not isinstance(env.action_space, Discrete):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DQN.".format(
-                    env.action_space))
+                    env.action_space
+                )
+            )
 
         tf_config = tf.ConfigProto(**config["tf_session_args"])
         self.sess = tf.Session(config=tf_config)
@@ -67,15 +69,17 @@ class DQNEvaluator(PolicyEvaluator):
         if config["per_worker_exploration"]:
             assert config["num_workers"] > 1, "This requires multiple workers"
             self.exploration = ConstantSchedule(
-                0.4 ** (
-                    1 + worker_index / float(config["num_workers"] - 1) * 7))
+                0.4**(1 + worker_index / float(config["num_workers"] - 1) * 7)
+            )
         else:
             self.exploration = LinearSchedule(
                 schedule_timesteps=int(
                     config["exploration_fraction"] *
-                    config["schedule_max_timesteps"]),
+                    config["schedule_max_timesteps"]
+                ),
                 initial_p=1.0,
-                final_p=config["exploration_final_eps"])
+                final_p=config["exploration_final_eps"]
+            )
 
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())
@@ -85,7 +89,8 @@ class DQNEvaluator(PolicyEvaluator):
 
         # Note that this encompasses both the Q and target network
         self.variables = ray.experimental.TensorFlowVariables(
-            tf.group(self.dqn_graph.q_t, self.dqn_graph.q_tp1), self.sess)
+            tf.group(self.dqn_graph.q_t, self.dqn_graph.q_tp1), self.sess
+        )
 
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]
@@ -102,7 +107,8 @@ class DQNEvaluator(PolicyEvaluator):
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
         for _ in range(
-                self.config["sample_batch_size"] + self.config["n_step"] - 1):
+            self.config["sample_batch_size"] + self.config["n_step"] - 1
+        ):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
             obs.append(ob)
             actions.append(act)
@@ -115,23 +121,29 @@ class DQNEvaluator(PolicyEvaluator):
             # Adjust for steps lost from truncation
             self.local_timestep -= (self.config["n_step"] - 1)
             adjust_nstep(
-                self.config["n_step"], self.config["gamma"],
-                obs, actions, rewards, new_obs, dones)
+                self.config["n_step"], self.config["gamma"], obs, actions,
+                rewards, new_obs, dones
+            )
 
         batch = SampleBatch({
-            "obs": [pack(np.array(o)) for o in obs], "actions": actions,
+            "obs": [pack(np.array(o)) for o in obs],
+            "actions": actions,
             "rewards": rewards,
-            "new_obs": [pack(np.array(o)) for o in new_obs], "dones": dones,
-            "weights": np.ones_like(rewards)})
+            "new_obs": [pack(np.array(o)) for o in new_obs],
+            "dones": dones,
+            "weights": np.ones_like(rewards)
+        })
         assert (batch.count == self.config["sample_batch_size"])
 
         # Prioritize on the worker side
         if self.config["worker_side_prioritization"]:
             td_errors = self.dqn_graph.compute_td_error(
-                self.sess, obs, batch["actions"], batch["rewards"],
-                new_obs, batch["dones"], batch["weights"])
+                self.sess, obs, batch["actions"], batch["rewards"], new_obs,
+                batch["dones"], batch["weights"]
+            )
             new_priorities = (
-                np.abs(td_errors) + self.config["prioritized_replay_eps"])
+                np.abs(td_errors) + self.config["prioritized_replay_eps"]
+            )
             batch.data["weights"] = new_priorities
 
         return batch
@@ -139,7 +151,8 @@ class DQNEvaluator(PolicyEvaluator):
     def compute_gradients(self, samples):
         td_err, grads = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
+            samples["new_obs"], samples["dones"], samples["weights"]
+        )
         return grads, {"td_error": td_err}
 
     def apply_gradients(self, grads):
@@ -148,7 +161,8 @@ class DQNEvaluator(PolicyEvaluator):
     def compute_apply(self, samples):
         td_error = self.dqn_graph.compute_apply(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
+            samples["new_obs"], samples["dones"], samples["weights"]
+        )
         return {"td_error": td_error}
 
     def get_weights(self):
@@ -160,8 +174,9 @@ class DQNEvaluator(PolicyEvaluator):
     def _step(self, global_timestep):
         """Takes a single step, and returns the result of the step."""
         action = self.dqn_graph.act(
-            self.sess, np.array(self.obs)[None],
-            self.exploration.value(global_timestep))[0]
+            self.sess,
+            np.array(self.obs)[None], self.exploration.value(global_timestep)
+        )[0]
         new_obs, rew, done, _ = self.env.step(action)
         ret = (self.obs, action, rew, new_obs, float(done))
         self.obs = new_obs
@@ -189,13 +204,10 @@ class DQNEvaluator(PolicyEvaluator):
 
     def save(self):
         return [
-            self.exploration,
-            self.episode_rewards,
-            self.episode_lengths,
-            self.saved_mean_reward,
-            self.obs,
-            self.global_timestep,
-            self.local_timestep]
+            self.exploration, self.episode_rewards, self.episode_lengths,
+            self.saved_mean_reward, self.obs, self.global_timestep,
+            self.local_timestep
+        ]
 
     def restore(self, data):
         self.exploration = data[0]

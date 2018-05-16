@@ -9,8 +9,15 @@ from ray.rllib.models.catalog import ModelCatalog
 
 
 class BCPolicy(Policy):
-    def __init__(self, registry, ob_space, action_space, config, name="local",
-                 summarize=True):
+    def __init__(
+        self,
+        registry,
+        ob_space,
+        action_space,
+        config,
+        name="local",
+        summarize=True
+    ):
         super(BCPolicy, self).__init__(ob_space, action_space, name, summarize)
         self.registry = registry
         self.local_steps = 0
@@ -30,17 +37,20 @@ class BCPolicy(Policy):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = ModelCatalog.get_model(
-            self.registry, self.x, self.logit_dim, self.config["model"])
+            self.registry, self.x, self.logit_dim, self.config["model"]
+        )
         self.logits = self._model.outputs
         self.curr_dist = dist_class(self.logits)
         self.sample = self.curr_dist.sample()
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
+        self.var_list = tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES,
+            tf.get_variable_scope().name
+        )
 
     def setup_loss(self, action_space):
         self.ac = tf.placeholder(tf.int64, [None], name="ac")
         log_prob = self.curr_dist.logp(self.ac)
-        self.pi_loss = - tf.reduce_sum(log_prob)
+        self.pi_loss = -tf.reduce_sum(log_prob)
         self.loss = self.pi_loss
 
     def setup_gradients(self):
@@ -59,11 +69,17 @@ class BCPolicy(Policy):
             self.summary_op = tf.summary.merge_all()
 
         # TODO(rliaw): Can consider exposing these parameters
-        self.sess = tf.Session(graph=self.g, config=tf.ConfigProto(
-            intra_op_parallelism_threads=1, inter_op_parallelism_threads=2,
-            gpu_options=tf.GPUOptions(allow_growth=True)))
-        self.variables = ray.experimental.TensorFlowVariables(self.loss,
-                                                              self.sess)
+        self.sess = tf.Session(
+            graph=self.g,
+            config=tf.ConfigProto(
+                intra_op_parallelism_threads=1,
+                inter_op_parallelism_threads=2,
+                gpu_options=tf.GPUOptions(allow_growth=True)
+            )
+        )
+        self.variables = ray.experimental.TensorFlowVariables(
+            self.loss, self.sess
+        )
         self.sess.run(tf.global_variables_initializer())
 
     def compute_gradients(self, samples):
@@ -75,8 +91,10 @@ class BCPolicy(Policy):
         self.grads = [g for g in self.grads if g is not None]
         self.local_steps += 1
         if self.summarize:
-            loss, grad, summ = self.sess.run(
-                [self.loss, self.grads, self.summary_op], feed_dict=feed_dict)
+            loss, grad, summ = self.sess.run([
+                self.loss, self.grads, self.summary_op
+            ],
+                                             feed_dict=feed_dict)
             info["summary"] = summ
         else:
             loss, grad = self.sess.run([self.loss, self.grads],
@@ -86,8 +104,7 @@ class BCPolicy(Policy):
         return grad, info
 
     def apply_gradients(self, grads):
-        feed_dict = {self.grads[i]: grads[i]
-                     for i in range(len(grads))}
+        feed_dict = {self.grads[i]: grads[i] for i in range(len(grads))}
         self.sess.run(self._apply_gradients, feed_dict=feed_dict)
 
     def get_weights(self):

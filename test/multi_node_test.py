@@ -35,7 +35,8 @@ class MultiNodeTest(unittest.TestCase):
         # Get the redis address from the output.
         redis_substring_prefix = "redis_address=\""
         redis_address_location = (
-            out.find(redis_substring_prefix) + len(redis_substring_prefix))
+            out.find(redis_substring_prefix) + len(redis_substring_prefix)
+        )
         redis_address = out[redis_address_location:]
         self.redis_address = redis_address.split("\"")[0]
 
@@ -69,8 +70,10 @@ class MultiNodeTest(unittest.TestCase):
 
         # Make sure we got the error.
         self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn(error_string1,
-                      ray.error_info()[0][b"message"].decode("ascii"))
+        self.assertIn(
+            error_string1,
+            ray.error_info()[0][b"message"].decode("ascii")
+        )
 
         # Start another driver and make sure that it does not receive this
         # error. Make the other driver throw an error, and make sure it
@@ -110,8 +113,10 @@ print("success")
         # Make sure that the other error message doesn't show up for this
         # driver.
         self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn(error_string1,
-                      ray.error_info()[0][b"message"].decode("ascii"))
+        self.assertIn(
+            error_string1,
+            ray.error_info()[0][b"message"].decode("ascii")
+        )
 
     def testRemoteFunctionIsolation(self):
         # This test will run multiple remote functions with the same names in
@@ -218,13 +223,15 @@ class StartRayScriptTest(unittest.TestCase):
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with a node IP address specified.
-        run_and_get_output(
-            ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
+        run_and_get_output([
+            "ray", "start", "--head", "--node-ip-address", "127.0.0.1"
+        ])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with an object manager port specified.
-        run_and_get_output(
-            ["ray", "start", "--head", "--object-manager-port", "12345"])
+        run_and_get_output([
+            "ray", "start", "--head", "--object-manager-port", "12345"
+        ])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with the number of CPUs specified.
@@ -236,17 +243,17 @@ class StartRayScriptTest(unittest.TestCase):
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with the max redis clients specified.
-        run_and_get_output(
-            ["ray", "start", "--head", "--redis-max-clients", "100"])
+        run_and_get_output([
+            "ray", "start", "--head", "--redis-max-clients", "100"
+        ])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with all arguments specified.
         run_and_get_output([
             "ray", "start", "--head", "--num-workers", "20", "--redis-port",
             "6379", "--redis-shard-ports", "6380,6381,6382",
-            "--object-manager-port", "12345", "--num-cpus", "100",
-            "--num-gpus", "0", "--redis-max-clients", "100", "--resources",
-            "{\"Custom\": 1}"
+            "--object-manager-port", "12345", "--num-cpus", "100", "--num-gpus",
+            "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
         ])
         subprocess.Popen(["ray", "stop"]).wait()
 

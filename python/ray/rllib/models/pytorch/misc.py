@@ -10,19 +10,16 @@ from torch.autograd import Variable
 
 def convert_batch(trajectory, has_features=False):
     """Convert trajectory from numpy to PT variable"""
-    states = Variable(torch.from_numpy(
-        trajectory["observations"]).float())
-    acs = Variable(torch.from_numpy(
-        trajectory["actions"]))
-    advs = Variable(torch.from_numpy(
-        trajectory["advantages"].copy()).float())
+    states = Variable(torch.from_numpy(trajectory["observations"]).float())
+    acs = Variable(torch.from_numpy(trajectory["actions"]))
+    advs = Variable(torch.from_numpy(trajectory["advantages"].copy()).float())
     advs = advs.view(-1, 1)
-    rs = Variable(torch.from_numpy(
-        trajectory["value_targets"]).float())
+    rs = Variable(torch.from_numpy(trajectory["value_targets"]).float())
     rs = rs.view(-1, 1)
     if has_features:
-        features = [Variable(torch.from_numpy(f))
-                    for f in trajectory["features"]]
+        features = [
+            Variable(torch.from_numpy(f)) for f in trajectory["features"]
+        ]
     else:
         features = trajectory["features"]
     return states, acs, advs, rs, features
@@ -35,8 +32,8 @@ def var_to_np(var):
 def normc_initializer(std=1.0):
     def initializer(tensor):
         tensor.data.normal_(0, 1)
-        tensor.data *= std / torch.sqrt(
-            tensor.data.pow(2).sum(1, keepdim=True))
+        tensor.data *= std / torch.sqrt(tensor.data.pow(2).sum(1, keepdim=True))
+
     return initializer
 
 
@@ -61,9 +58,11 @@ def valid_padding(in_size, filter_size, stride_size):
     out_width = np.ceil(float(in_width) / float(stride_width))
 
     pad_along_height = int(
-        ((out_height - 1) * stride_height + filter_height - in_height))
+        ((out_height - 1) * stride_height + filter_height - in_height)
+    )
     pad_along_width = int(
-        ((out_width - 1) * stride_width + filter_width - in_width))
+        ((out_width - 1) * stride_width + filter_width - in_width)
+    )
     pad_top = pad_along_height // 2
     pad_bottom = pad_along_height - pad_top
     pad_left = pad_along_width // 2

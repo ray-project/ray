@@ -42,8 +42,9 @@ class TaskStatusTest(unittest.TestCase):
         wait_for_errors(b"task", 2)
         self.assertEqual(len(relevant_errors(b"task")), 2)
         for task in relevant_errors(b"task"):
-            self.assertIn(b"Test function 1 intentionally failed.",
-                          task.get(b"message"))
+            self.assertIn(
+                b"Test function 1 intentionally failed.", task.get(b"message")
+            )
 
         x = test_functions.throw_exception_fct2.remote()
         try:
@@ -113,10 +114,14 @@ def temporary_helper_function():
         wait_for_errors(b"function_to_run", 2)
         # Check that the error message is in the task info.
         self.assertEqual(len(ray.error_info()), 2)
-        self.assertIn(b"Function to run failed.",
-                      ray.error_info()[0][b"message"])
-        self.assertIn(b"Function to run failed.",
-                      ray.error_info()[1][b"message"])
+        self.assertIn(
+            b"Function to run failed.",
+            ray.error_info()[0][b"message"]
+        )
+        self.assertIn(
+            b"Function to run failed.",
+            ray.error_info()[1][b"message"]
+        )
 
     def testFailImportingActor(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
@@ -160,7 +165,8 @@ def temporary_helper_function():
         wait_for_errors(b"task", 1)
         self.assertIn(
             b"failed to be imported, and so cannot execute this method",
-            ray.error_info()[1][b"message"])
+            ray.error_info()[1][b"message"]
+        )
 
         # Check that if we try to get the function it throws an exception and
         # does not hang.
@@ -171,7 +177,8 @@ def temporary_helper_function():
         wait_for_errors(b"task", 2)
         self.assertIn(
             b"failed to be imported, and so cannot execute this method",
-            ray.error_info()[2][b"message"])
+            ray.error_info()[2][b"message"]
+        )
 
         f.close()
 
@@ -205,15 +212,19 @@ class ActorTest(unittest.TestCase):
         # Make sure that we get errors from a failed constructor.
         wait_for_errors(b"task", 1)
         self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn(error_message1,
-                      ray.error_info()[0][b"message"].decode("ascii"))
+        self.assertIn(
+            error_message1,
+            ray.error_info()[0][b"message"].decode("ascii")
+        )
 
         # Make sure that we get errors from a failed method.
         a.fail_method.remote()
         wait_for_errors(b"task", 2)
         self.assertEqual(len(ray.error_info()), 2)
-        self.assertIn(error_message2,
-                      ray.error_info()[1][b"message"].decode("ascii"))
+        self.assertIn(
+            error_message2,
+            ray.error_info()[1][b"message"].decode("ascii")
+        )
 
     def testIncorrectMethodCalls(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -285,8 +296,10 @@ class WorkerDeath(unittest.TestCase):
         wait_for_errors(b"worker_died", 1)
 
         self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn("died or was killed while executing the task",
-                      ray.error_info()[0][b"message"].decode("ascii"))
+        self.assertIn(
+            "died or was killed while executing the task",
+            ray.error_info()[0][b"message"].decode("ascii")
+        )
 
     def testActorWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -353,7 +366,8 @@ class PutErrorTest(unittest.TestCase):
         ray.worker._init(
             start_ray_local=True,
             driver_mode=ray.SILENT_MODE,
-            object_store_memory=store_size)
+            object_store_memory=store_size
+        )
 
         num_objects = 3
         object_size = 4 * 10**5
@@ -373,7 +387,8 @@ class PutErrorTest(unittest.TestCase):
             # evicted.
             args = []
             arg = single_dependency.remote(
-                0, np.zeros(object_size, dtype=np.uint8))
+                0, np.zeros(object_size, dtype=np.uint8)
+            )
             for i in range(num_objects):
                 arg = single_dependency.remote(i, arg)
                 args.append(arg)
@@ -400,7 +415,8 @@ class PutErrorTest(unittest.TestCase):
         ray.worker._init(
             start_ray_local=True,
             driver_mode=ray.SILENT_MODE,
-            object_store_memory=store_size)
+            object_store_memory=store_size
+        )
 
         num_objects = 3
         object_size = 4 * 10**5

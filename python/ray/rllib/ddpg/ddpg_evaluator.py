@@ -31,7 +31,9 @@ class DDPGEvaluator(PolicyEvaluator):
         if not isinstance(env.action_space, Box):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(
-                    env.action_space))
+                    env.action_space
+                )
+            )
 
         tf_config = tf.ConfigProto(**config["tf_session_args"])
         self.sess = tf.Session(config=tf_config)
@@ -41,15 +43,18 @@ class DDPGEvaluator(PolicyEvaluator):
         if config["per_worker_exploration"]:
             assert config["num_workers"] > 1, "This requires multiple workers"
             self.exploration = ConstantSchedule(
-                config["noise_scale"] * 0.4 **
-                (1 + worker_index / float(config["num_workers"] - 1) * 7))
+                config["noise_scale"] * 0.4**
+                (1 + worker_index / float(config["num_workers"] - 1) * 7)
+            )
         else:
             self.exploration = LinearSchedule(
-                schedule_timesteps=int(config["exploration_fraction"] *
-                                       config["schedule_max_timesteps"]),
+                schedule_timesteps=int(
+                    config["exploration_fraction"] *
+                    config["schedule_max_timesteps"]
+                ),
                 initial_p=config["noise_scale"] * 1.0,
-                final_p=config["noise_scale"] *
-                config["exploration_final_eps"])
+                final_p=config["noise_scale"] * config["exploration_final_eps"]
+            )
 
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())
@@ -61,7 +66,8 @@ class DDPGEvaluator(PolicyEvaluator):
         # Note that this encompasses both the policy and Q-value networks and
         # their corresponding target networks
         self.variables = ray.experimental.TensorFlowVariables(
-            tf.group(self.ddpg_graph.q_tp0, self.ddpg_graph.q_tp1), self.sess)
+            tf.group(self.ddpg_graph.q_tp0, self.ddpg_graph.q_tp1), self.sess
+        )
 
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]
@@ -78,7 +84,8 @@ class DDPGEvaluator(PolicyEvaluator):
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
         for _ in range(
-                self.config["sample_batch_size"] + self.config["n_step"] - 1):
+            self.config["sample_batch_size"] + self.config["n_step"] - 1
+        ):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
             obs.append(ob)
             actions.append(act)
@@ -90,8 +97,10 @@ class DDPGEvaluator(PolicyEvaluator):
         if self.config["n_step"] > 1:
             # Adjust for steps lost from truncation
             self.local_timestep -= (self.config["n_step"] - 1)
-            adjust_nstep(self.config["n_step"], self.config["gamma"], obs,
-                         actions, rewards, new_obs, dones)
+            adjust_nstep(
+                self.config["n_step"], self.config["gamma"], obs, actions,
+                rewards, new_obs, dones
+            )
 
         batch = SampleBatch({
             "obs": [pack(np.array(o)) for o in obs],
@@ -107,9 +116,11 @@ class DDPGEvaluator(PolicyEvaluator):
         if self.config["worker_side_prioritization"]:
             td_errors = self.ddpg_graph.compute_td_error(
                 self.sess, obs, batch["actions"], batch["rewards"], new_obs,
-                batch["dones"], batch["weights"])
+                batch["dones"], batch["weights"]
+            )
             new_priorities = (
-                np.abs(td_errors) + self.config["prioritized_replay_eps"])
+                np.abs(td_errors) + self.config["prioritized_replay_eps"]
+            )
             batch.data["weights"] = new_priorities
 
         return batch
@@ -117,7 +128,8 @@ class DDPGEvaluator(PolicyEvaluator):
     def compute_gradients(self, samples):
         td_err, grads = self.ddpg_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
+            samples["new_obs"], samples["dones"], samples["weights"]
+        )
         return grads, {"td_error": td_err}
 
     def apply_gradients(self, grads):
@@ -126,7 +138,8 @@ class DDPGEvaluator(PolicyEvaluator):
     def compute_apply(self, samples):
         td_error = self.ddpg_graph.compute_apply(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
+            samples["new_obs"], samples["dones"], samples["weights"]
+        )
         return {"td_error": td_error}
 
     def get_weights(self):
@@ -139,8 +152,8 @@ class DDPGEvaluator(PolicyEvaluator):
         """Takes a single step, and returns the result of the step."""
         action = self.ddpg_graph.act(
             self.sess,
-            np.array(self.obs)[None],
-            self.exploration.value(global_timestep))[0]
+            np.array(self.obs)[None], self.exploration.value(global_timestep)
+        )[0]
         new_obs, rew, done, _ = self.env.step(action)
         ret = (self.obs, action, rew, new_obs, float(done))
         self.obs = new_obs

@@ -112,7 +112,9 @@ def to_tf_values(result, path):
             if type(value) in [int, float]:
                 values.append(
                     tf.Summary.Value(
-                        tag="/".join(path + [attr]), simple_value=value))
+                        tag="/".join(path + [attr]), simple_value=value
+                    )
+                )
             elif type(value) is dict:
                 values.extend(to_tf_values(value, path + [attr]))
     return values
@@ -125,7 +127,7 @@ class _TFLogger(Logger):
     def on_result(self, result):
         tmp = result._asdict()
         for k in [
-                "config", "pid", "timestamp", "time_total_s", "timesteps_total"
+            "config", "pid", "timestamp", "time_total_s", "timesteps_total"
         ]:
             del tmp[k]  # not useful to tf log these
         values = to_tf_values(tmp, ["ray", "tune"])
@@ -167,7 +169,8 @@ class _CustomEncoder(json.JSONEncoder):
         _iterencode = json.encoder._make_iterencode(
             None, self.default, _encoder, self.indent, floatstr,
             self.key_separator, self.item_separator, self.sort_keys,
-            self.skipkeys, _one_shot)
+            self.skipkeys, _one_shot
+        )
         return _iterencode(o, 0)
 
     def default(self, value):

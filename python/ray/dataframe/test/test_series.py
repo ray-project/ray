@@ -1352,9 +1352,11 @@ def test_plot():
     ray_series = create_test_series()
 
     with pytest.raises(NotImplementedError):
-        ray_series.plot(None, None, None, None, None, None, None, None, None,
-                        None, None, None, None, None, None, None, None, None,
-                        None, None, None, None, None)
+        ray_series.plot(
+            None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None,
+            None
+        )
 
 
 def test_pop():
@@ -1501,8 +1503,10 @@ def test_resample():
     ray_series = create_test_series()
 
     with pytest.raises(NotImplementedError):
-        ray_series.resample(None, None, None, None, None, None, None, None,
-                            None, None, None, None)
+        ray_series.resample(
+            None, None, None, None, None, None, None, None, None, None, None,
+            None
+        )
 
 
 def test_reset_index():
@@ -1754,8 +1758,9 @@ def test_to_csv():
     ray_series = create_test_series()
 
     with pytest.raises(NotImplementedError):
-        ray_series.to_csv(None, None, None, None, None, None, None, None,
-                          None, None)
+        ray_series.to_csv(
+            None, None, None, None, None, None, None, None, None, None
+        )
 
 
 def test_to_dense():
@@ -1776,8 +1781,10 @@ def test_to_excel():
     ray_series = create_test_series()
 
     with pytest.raises(NotImplementedError):
-        ray_series.to_excel(None, None, None, None, None, None, None, None,
-                            None, None, None, None, None, None)
+        ray_series.to_excel(
+            None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None
+        )
 
 
 def test_to_frame():
@@ -1805,9 +1812,10 @@ def test_to_latex():
     ray_series = create_test_series()
 
     with pytest.raises(NotImplementedError):
-        ray_series.to_latex(None, None, None, None, None, None, None, None,
-                            None, None, None, None, None, None, None, None,
-                            None, None)
+        ray_series.to_latex(
+            None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None
+        )
 
 
 def test_to_msgpack():

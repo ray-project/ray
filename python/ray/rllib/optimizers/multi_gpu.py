@@ -53,12 +53,10 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         tf.get_variable_scope().reuse_variables()
 
         self.par_opt = LocalSyncParallelOptimizer(
-            tf.train.AdamOptimizer(self.sgd_stepsize),
-            self.devices,
-            [ph for _, ph in self.loss_inputs],
-            self.per_device_batch_size,
-            lambda *ph: self.local_evaluator.build_tf_loss(ph),
-            os.getcwd())
+            tf.train.AdamOptimizer(self.sgd_stepsize), self.devices,
+            [ph for _, ph in self.loss_inputs], self.per_device_batch_size,
+            lambda *ph: self.local_evaluator.build_tf_loss(ph), os.getcwd()
+        )
 
         self.sess = self.local_evaluator.sess
         self.sess.run(tf.global_variables_initializer())
@@ -73,8 +71,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         with self.sample_timer:
             if self.remote_evaluators:
                 samples = SampleBatch.concat_samples(
-                    ray.get(
-                        [e.sample.remote() for e in self.remote_evaluators]))
+                    ray.get([e.sample.remote() for e in self.remote_evaluators])
+                )
             else:
                 samples = self.local_evaluator.sample()
             assert isinstance(samples, SampleBatch)
@@ -82,29 +80,35 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         with self.load_timer:
             tuples_per_device = self.par_opt.load_data(
                 self.local_evaluator.sess,
-                samples.columns([key for key, _ in self.loss_inputs]))
+                samples.columns([key for key, _ in self.loss_inputs])
+            )
 
         with self.grad_timer:
             for i in range(self.num_sgd_iter):
                 batch_index = 0
                 num_batches = (
-                    int(tuples_per_device) // int(self.per_device_batch_size))
+                    int(tuples_per_device) // int(self.per_device_batch_size)
+                )
                 permutation = np.random.permutation(num_batches)
                 while batch_index < num_batches:
                     # TODO(ekl) support ppo's debugging features, e.g.
                     # printing the current loss and tracing
                     self.par_opt.optimize(
                         self.sess,
-                        permutation[batch_index] * self.per_device_batch_size)
+                        permutation[batch_index] * self.per_device_batch_size
+                    )
                     batch_index += 1
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
 
     def stats(self):
-        return dict(PolicyOptimizer.stats(), **{
-            "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
-            "load_time_ms": round(1000 * self.load_timer.mean, 3),
-            "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
-        })
+        return dict(
+            PolicyOptimizer.stats(), **{
+                "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
+                "load_time_ms": round(1000 * self.load_timer.mean, 3),
+                "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
+                "update_time_ms":
+                round(1000 * self.update_weights_timer.mean, 3),
+            }
+        )

@@ -129,7 +129,8 @@ DEFAULT_CONFIG = dict(
     # Whether to use a distribution of epsilons across workers for exploration.
     per_worker_exploration=False,
     # Whether to compute priorities on workers.
-    worker_side_prioritization=False)
+    worker_side_prioritization=False
+)
 
 
 class DDPGAgent(Agent):
@@ -140,15 +141,18 @@ class DDPGAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
-        self.local_evaluator = DDPGEvaluator(self.registry, self.env_creator,
-                                             self.config, self.logdir, 0)
+        self.local_evaluator = DDPGEvaluator(
+            self.registry, self.env_creator, self.config, self.logdir, 0
+        )
         remote_cls = ray.remote(
-            num_cpus=1,
-            num_gpus=self.config["num_gpus_per_worker"])(DDPGEvaluator)
+            num_cpus=1, num_gpus=self.config["num_gpus_per_worker"]
+        )(
+            DDPGEvaluator
+        )
         self.remote_evaluators = [
-            remote_cls.remote(self.registry, self.env_creator, self.config,
-                              self.logdir, i)
-            for i in range(self.config["num_workers"])
+            remote_cls.remote(
+                self.registry, self.env_creator, self.config, self.logdir, i
+            ) for i in range(self.config["num_workers"])
         ]
 
         for k in OPTIMIZER_SHARED_CONFIGS:
@@ -157,7 +161,8 @@ class DDPGAgent(Agent):
 
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.config["optimizer_config"], self.local_evaluator,
-            self.remote_evaluators)
+            self.remote_evaluators
+        )
 
         self.saver = tf.train.Saver(max_to_keep=None)
         self.last_target_update_ts = 0
@@ -177,8 +182,10 @@ class DDPGAgent(Agent):
     def _train(self):
         start_timestep = self.global_timestep
 
-        while (self.global_timestep - start_timestep <
-               self.config["timesteps_per_iteration"]):
+        while (
+            self.global_timestep - start_timestep <
+            self.config["timesteps_per_iteration"]
+        ):
 
             self.optimizer.step()
             self.update_target_if_needed()
@@ -227,7 +234,8 @@ class DDPGAgent(Agent):
                 "min_exploration": min(explorations),
                 "max_exploration": max(explorations),
                 "num_target_updates": self.num_target_updates,
-            }, **opt_stats))
+            }, **opt_stats)
+        )
 
         return result
 
@@ -240,7 +248,8 @@ class DDPGAgent(Agent):
         checkpoint_path = self.saver.save(
             self.local_evaluator.sess,
             os.path.join(checkpoint_dir, "checkpoint"),
-            global_step=self.iteration)
+            global_step=self.iteration
+        )
         extra_data = [
             self.local_evaluator.save(),
             ray.get([e.save.remote() for e in self.remote_evaluators]),
@@ -263,6 +272,7 @@ class DDPGAgent(Agent):
         self.last_target_update_ts = extra_data[4]
 
     def compute_action(self, observation):
-        return self.local_evaluator.ddpg_graph.act(self.local_evaluator.sess,
-                                                   np.array(observation)[None],
-                                                   0.0)[0]
+        return self.local_evaluator.ddpg_graph.act(
+            self.local_evaluator.sess,
+            np.array(observation)[None], 0.0
+        )[0]

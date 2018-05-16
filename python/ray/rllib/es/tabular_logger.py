@@ -25,18 +25,23 @@ DISABLED = 50
 
 class TbWriter(object):
     """Based on SummaryWriter, but changed to allow for a different prefix."""
+
     def __init__(self, dir, prefix):
         self.dir = dir
         # Start at 1, because EvWriter automatically generates an object with
         # step = 0.
         self.step = 1
         self.evwriter = pywrap_tensorflow.EventsWriter(
-            compat.as_bytes(os.path.join(dir, prefix)))
+            compat.as_bytes(os.path.join(dir, prefix))
+        )
 
     def write_values(self, key2val):
-        summary = tf.Summary(value=[tf.Summary.Value(tag=k,
-                                                     simple_value=float(v))
-                                    for (k, v) in key2val.items()])
+        summary = tf.Summary(
+            value=[
+                tf.Summary.Value(tag=k, simple_value=float(v))
+                for (k, v) in key2val.items()
+            ]
+        )
         event = event_pb2.Event(wall_time=time.time(), summary=summary)
         event.step = self.step
         self.evwriter.WriteEvent(event)
@@ -46,22 +51,27 @@ class TbWriter(object):
     def close(self):
         self.evwriter.Close()
 
+
 # API
 
 
 def start(dir):
     if _Logger.CURRENT is not _Logger.DEFAULT:
-        sys.stderr.write("WARNING: You asked to start logging (dir=%s), but "
-                         "you never stopped the previous logger (dir=%s)."
-                         "\n" % (dir, _Logger.CURRENT.dir))
+        sys.stderr.write(
+            "WARNING: You asked to start logging (dir=%s), but "
+            "you never stopped the previous logger (dir=%s)."
+            "\n" % (dir, _Logger.CURRENT.dir)
+        )
     _Logger.CURRENT = _Logger(dir=dir)
 
 
 def stop():
     if _Logger.CURRENT is _Logger.DEFAULT:
-        sys.stderr.write("WARNING: You asked to stop logging, but you never "
-                         "started any previous logger."
-                         "\n" % (dir, _Logger.CURRENT.dir))
+        sys.stderr.write(
+            "WARNING: You asked to stop logging, but you never "
+            "started any previous logger."
+            "\n" % (dir, _Logger.CURRENT.dir)
+        )
         return
     _Logger.CURRENT.close()
     _Logger.CURRENT = _Logger.DEFAULT
@@ -126,6 +136,7 @@ def get_expt_dir():
     sys.stderr.write("get_expt_dir() is Deprecated. Switch to get_dir()\n")
     return get_dir()
 
+
 # Backend
 
 
@@ -167,8 +178,10 @@ class _Logger(object):
         # Write to all text outputs
         self._write_text("-" * (keywidth + valwidth + 7), "\n")
         for (key, val) in key2str.items():
-            self._write_text("| ", key, " " * (keywidth - len(key)),
-                             " | ", val, " " * (valwidth - len(val)), " |\n")
+            self._write_text(
+                "| ", key, " " * (keywidth - len(key)), " | ", val,
+                " " * (valwidth - len(val)), " |\n"
+            )
         self._write_text("-" * (keywidth + valwidth + 7), "\n")
         for f in self.text_outputs:
             try:
@@ -202,7 +215,7 @@ class _Logger(object):
     # Misc
 
     def _do_log(self, *args):
-        self._write_text(*args + ('\n',))
+        self._write_text(*args + ('\n', ))
         for f in self.text_outputs:
             try:
                 f.flush()

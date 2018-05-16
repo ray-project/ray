@@ -7,8 +7,8 @@ from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator, \
     TFMultiGPUSupport
 
-
 __all__ = [
     "ApexOptimizer", "AsyncOptimizer", "LocalSyncOptimizer",
     "LocalSyncReplayOptimizer", "LocalMultiGPUOptimizer", "SampleBatch",
-    "PolicyEvaluator", "TFMultiGPUSupport"]
+    "PolicyEvaluator", "TFMultiGPUSupport"
+]

@@ -16,7 +16,7 @@ def flatten(weights, start=0, stop=2):
         stop: The ending index.
     """
     for key, val in weights.items():
-        new_shape = val.shape[0:start] + (-1,) + val.shape[stop:]
+        new_shape = val.shape[0:start] + (-1, ) + val.shape[stop:]
         weights[key] = val.reshape(new_shape)
     return weights
 

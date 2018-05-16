@@ -57,29 +57,35 @@ class BCAgent(Agent):
         else:
             num_gpus_per_worker = 0
         return Resources(
-            cpu=1, gpu=cf["gpu"] and 1 or 0,
+            cpu=1,
+            gpu=cf["gpu"] and 1 or 0,
             extra_cpu=cf["num_workers"],
-            extra_gpu=num_gpus_per_worker * cf["num_workers"])
+            extra_gpu=num_gpus_per_worker * cf["num_workers"]
+        )
 
     def _init(self):
         self.local_evaluator = BCEvaluator(
-            self.registry, self.env_creator, self.config, self.logdir)
+            self.registry, self.env_creator, self.config, self.logdir
+        )
         if self.config["use_gpu_for_workers"]:
             remote_cls = GPURemoteBCEvaluator
         else:
             remote_cls = RemoteBCEvaluator
         self.remote_evaluators = [
             remote_cls.remote(
-                self.registry, self.env_creator, self.config, self.logdir)
-            for _ in range(self.config["num_workers"])]
+                self.registry, self.env_creator, self.config, self.logdir
+            ) for _ in range(self.config["num_workers"])
+        ]
         self.optimizer = AsyncOptimizer(
             self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+            self.remote_evaluators
+        )
 
     def _train(self):
         self.optimizer.step()
-        metric_lists = [re.get_metrics.remote() for re in
-                        self.remote_evaluators]
+        metric_lists = [
+            re.get_metrics.remote() for re in self.remote_evaluators
+        ]
         total_samples = 0
         total_loss = 0
         for metrics in metric_lists:
