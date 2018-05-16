@@ -374,7 +374,7 @@ void NodeManager::ProcessClientMessage(
     auto message = flatbuffers::GetRoot<protocol::ReconstructObject>(message_data);
     ObjectID object_id = from_flatbuf(*message->object_id());
     RAY_LOG(DEBUG) << "reconstructing object " << object_id;
-    if (!task_dependency_manager_.CheckObjectLocal(object_id)){
+    if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
       RAY_CHECK_OK(object_manager_.Pull(object_id));
     }
 
