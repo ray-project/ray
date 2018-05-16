@@ -19,8 +19,10 @@ try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    print("Couldn't import `requests` library. Be sure to install it on"
-          " the client side.")
+    print(
+        "Couldn't import `requests` library. Be sure to install it on"
+        " the client side."
+    )
 
 
 class TuneClient(object):

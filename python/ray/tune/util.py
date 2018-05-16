@@ -24,8 +24,10 @@ def pin_in_object_store(obj):
 
     obj_id = ray.put(_to_pinnable(obj))
     _pinned_objects.append(ray.get(obj_id))
-    return "{}{}".format(PINNED_OBJECT_PREFIX,
-                         base64.b64encode(obj_id.id()).decode("utf-8"))
+    return "{}{}".format(
+        PINNED_OBJECT_PREFIX,
+        base64.b64encode(obj_id.id()).decode("utf-8")
+    )
 
 
 def get_pinned_object(pinned_id):
@@ -41,7 +43,9 @@ def get_pinned_object(pinned_id):
 
     return _from_pinnable(
         ray.get(
-            ObjectID(base64.b64decode(pinned_id[len(PINNED_OBJECT_PREFIX):]))))
+            ObjectID(base64.b64decode(pinned_id[len(PINNED_OBJECT_PREFIX):]))
+        )
+    )
 
 
 def _serve_get_pin_requests():

@@ -25,10 +25,14 @@ assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
 def key_pair(i, region):
     """Returns the ith default (aws_key_pair_name, key_pair_path)."""
     if i == 0:
-        return ("{}_{}".format(RAY, region),
-                os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, region)))
-    return ("{}_{}_{}".format(RAY, i, region),
-            os.path.expanduser("~/.ssh/{}_{}_{}.pem".format(RAY, i, region)))
+        return (
+            "{}_{}".format(RAY, region),
+            os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, region))
+        )
+    return (
+        "{}_{}_{}".format(RAY, i, region),
+        os.path.expanduser("~/.ssh/{}_{}_{}.pem".format(RAY, i, region))
+    )
 
 
 # Suppress excessive connection dropped logs from boto
@@ -60,11 +64,14 @@ def _configure_iam_role(config):
     profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
 
     if profile is None:
-        print("Creating new instance profile {}".format(
-            DEFAULT_RAY_INSTANCE_PROFILE))
+        print(
+            "Creating new instance profile {}".
+            format(DEFAULT_RAY_INSTANCE_PROFILE)
+        )
         client = _client("iam", config)
         client.create_instance_profile(
-            InstanceProfileName=DEFAULT_RAY_INSTANCE_PROFILE)
+            InstanceProfileName=DEFAULT_RAY_INSTANCE_PROFILE
+        )
         profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
         time.sleep(15)  # wait for propagation
 
@@ -87,13 +94,16 @@ def _configure_iam_role(config):
                             "Action": "sts:AssumeRole",
                         },
                     ],
-                }))
+                })
+            )
             role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
             assert role is not None, "Failed to create role"
         role.attach_policy(
-            PolicyArn="arn:aws:iam::aws:policy/AmazonEC2FullAccess")
+            PolicyArn="arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+        )
         role.attach_policy(
-            PolicyArn="arn:aws:iam::aws:policy/AmazonS3FullAccess")
+            PolicyArn="arn:aws:iam::aws:policy/AmazonS3FullAccess"
+        )
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
 
@@ -150,25 +160,28 @@ def _configure_subnet(config):
             if s.state == "available" and s.map_public_ip_on_launch
         ],
         reverse=True,  # sort from Z-A
-        key=lambda subnet: subnet.availability_zone)
+        key=lambda subnet: subnet.availability_zone
+    )
     if not subnets:
         raise Exception(
             "No usable subnets found, try manually creating an instance in "
             "your specified region to populate the list of subnets "
             "and trying this again. Note that the subnet must map public IPs "
-            "on instance launch.")
+            "on instance launch."
+        )
     if "availability_zone" in config["provider"]:
         default_subnet = next((
             s for s in subnets
-            if s.availability_zone == config["provider"]["availability_zone"]),
-                              None)
+            if s.availability_zone == config["provider"]["availability_zone"]
+        ), None)
         if not default_subnet:
             raise Exception(
                 "No usable subnets matching availability zone {} "
                 "found. Choose a different availability zone or try "
                 "manually creating an instance in your specified region "
                 "to populate the list of subnets and trying this again."
-                .format(config["provider"]["availability_zone"]))
+                .format(config["provider"]["availability_zone"])
+            )
     else:
         default_subnet = subnets[0]
 
@@ -176,15 +189,21 @@ def _configure_subnet(config):
         assert default_subnet.map_public_ip_on_launch, \
             "The chosen subnet must map nodes with public IPs on launch"
         config["head_node"]["SubnetId"] = default_subnet.id
-        print("SubnetId not specified for head node, using {} in {}".format(
-            default_subnet.id, default_subnet.availability_zone))
+        print(
+            "SubnetId not specified for head node, using {} in {}".format(
+                default_subnet.id, default_subnet.availability_zone
+            )
+        )
 
     if "SubnetId" not in config["worker_nodes"]:
         assert default_subnet.map_public_ip_on_launch, \
             "The chosen subnet must map nodes with public IPs on launch"
         config["worker_nodes"]["SubnetId"] = default_subnet.id
-        print("SubnetId not specified for workers, using {} in {}".format(
-            default_subnet.id, default_subnet.availability_zone))
+        print(
+            "SubnetId not specified for workers, using {} in {}".format(
+                default_subnet.id, default_subnet.availability_zone
+            )
+        )
 
     return config
 
@@ -204,7 +223,8 @@ def _configure_security_group(config):
         client.create_security_group(
             Description="Auto-created security group for Ray workers",
             GroupName=group_name,
-            VpcId=subnet.vpc_id)
+            VpcId=subnet.vpc_id
+        )
         security_group = _get_security_group(config, subnet.vpc_id, group_name)
         assert security_group, "Failed to create security group"
 
@@ -224,16 +244,23 @@ def _configure_security_group(config):
                 "IpRanges": [{
                     "CidrIp": "0.0.0.0/0"
                 }]
-            }])
+            }]
+        )
 
     if "SecurityGroupIds" not in config["head_node"]:
-        print("SecurityGroupIds not specified for head node, using {}".format(
-            security_group.group_name))
+        print(
+            "SecurityGroupIds not specified for head node, using {}".format(
+                security_group.group_name
+            )
+        )
         config["head_node"]["SecurityGroupIds"] = [security_group.id]
 
     if "SecurityGroupIds" not in config["worker_nodes"]:
-        print("SecurityGroupIds not specified for workers, using {}".format(
-            security_group.group_name))
+        print(
+            "SecurityGroupIds not specified for workers, using {}".format(
+                security_group.group_name
+            )
+        )
         config["worker_nodes"]["SecurityGroupIds"] = [security_group.id]
 
     return config
@@ -242,10 +269,13 @@ def _configure_security_group(config):
 def _get_subnet_or_die(config, subnet_id):
     ec2 = _resource("ec2", config)
     subnet = list(
-        ec2.subnets.filter(Filters=[{
-            "Name": "subnet-id",
-            "Values": [subnet_id]
-        }]))
+        ec2.subnets.filter(
+            Filters=[{
+                "Name": "subnet-id",
+                "Values": [subnet_id]
+            }]
+        )
+    )
     assert len(subnet) == 1, "Subnet not found"
     subnet = subnet[0]
     return subnet
@@ -254,10 +284,13 @@ def _get_subnet_or_die(config, subnet_id):
 def _get_security_group(config, vpc_id, group_name):
     ec2 = _resource("ec2", config)
     existing_groups = list(
-        ec2.security_groups.filter(Filters=[{
-            "Name": "vpc-id",
-            "Values": [vpc_id]
-        }]))
+        ec2.security_groups.filter(
+            Filters=[{
+                "Name": "vpc-id",
+                "Values": [vpc_id]
+            }]
+        )
+    )
     for sg in existing_groups:
         if sg.group_name == group_name:
             return sg
@@ -285,10 +318,12 @@ def _get_instance_profile(profile_name, config):
 
 def _get_key(key_name, config):
     ec2 = _resource("ec2", config)
-    for key in ec2.key_pairs.filter(Filters=[{
+    for key in ec2.key_pairs.filter(
+        Filters=[{
             "Name": "key-name",
             "Values": [key_name]
-    }]):
+        }]
+    ):
         if key.name == key_name:
             return key
 
@@ -301,4 +336,5 @@ def _client(name, config):
 def _resource(name, config):
     boto_config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
     return boto3.resource(
-        name, config["provider"]["region"], config=boto_config)
+        name, config["provider"]["region"], config=boto_config
+    )

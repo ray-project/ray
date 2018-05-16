@@ -15,11 +15,11 @@ from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
-
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
     "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts", "clip_rewards"]
+    "train_batch_size", "learning_starts", "clip_rewards"
+]
 
 DEFAULT_CONFIG = dict(
     # === Model ===
@@ -90,7 +90,9 @@ DEFAULT_CONFIG = dict(
     # === Tensorflow ===
     # Arguments to pass to tensorflow
     tf_session_args={
-        "device_count": {"CPU": 2},
+        "device_count": {
+            "CPU": 2
+        },
         "log_device_placement": False,
         "allow_soft_placement": True,
         "gpu_options": {
@@ -118,35 +120,40 @@ DEFAULT_CONFIG = dict(
     # Whether to use a distribution of epsilons across workers for exploration.
     per_worker_exploration=False,
     # Whether to compute priorities on workers.
-    worker_side_prioritization=False)
+    worker_side_prioritization=False
+)
 
 
 class DQNAgent(Agent):
     _agent_name = "DQN"
     _allow_unknown_subkeys = [
-        "model", "optimizer", "tf_session_args", "env_config"]
+        "model", "optimizer", "tf_session_args", "env_config"
+    ]
     _default_config = DEFAULT_CONFIG
 
     @classmethod
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         return Resources(
-            cpu=1, gpu=cf["gpu"] and 1 or 0,
+            cpu=1,
+            gpu=cf["gpu"] and 1 or 0,
             extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"]
+        )
 
     def _init(self):
         self.local_evaluator = DQNEvaluator(
-            self.registry, self.env_creator, self.config, self.logdir, 0)
+            self.registry, self.env_creator, self.config, self.logdir, 0
+        )
         remote_cls = ray.remote(
             num_cpus=self.config["num_cpus_per_worker"],
-            num_gpus=self.config["num_gpus_per_worker"])(
-            DQNEvaluator)
+            num_gpus=self.config["num_gpus_per_worker"]
+        )(DQNEvaluator)
         self.remote_evaluators = [
             remote_cls.remote(
-                self.registry, self.env_creator, self.config, self.logdir,
-                i)
-            for i in range(self.config["num_workers"])]
+                self.registry, self.env_creator, self.config, self.logdir, i
+            ) for i in range(self.config["num_workers"])
+        ]
 
         for k in OPTIMIZER_SHARED_CONFIGS:
             if k not in self.config["optimizer_config"]:
@@ -154,7 +161,8 @@ class DQNAgent(Agent):
 
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
             self.config["optimizer_config"], self.local_evaluator,
-            self.remote_evaluators)
+            self.remote_evaluators
+        )
 
         self.saver = tf.train.Saver(max_to_keep=None)
         self.last_target_update_ts = 0
@@ -174,8 +182,10 @@ class DQNAgent(Agent):
     def _train(self):
         start_timestep = self.global_timestep
 
-        while (self.global_timestep - start_timestep <
-               self.config["timesteps_per_iteration"]):
+        while (
+            self.global_timestep - start_timestep <
+            self.config["timesteps_per_iteration"]
+        ):
 
             self.optimizer.step()
             self.update_target_if_needed()
@@ -188,8 +198,7 @@ class DQNAgent(Agent):
 
     def _train_stats(self, start_timestep):
         if self.remote_evaluators:
-            stats = ray.get([
-                e.stats.remote() for e in self.remote_evaluators])
+            stats = ray.get([e.stats.remote() for e in self.remote_evaluators])
         else:
             stats = self.local_evaluator.stats()
             if not isinstance(stats, list):
@@ -202,7 +211,7 @@ class DQNAgent(Agent):
 
         if self.config["per_worker_exploration"]:
             # Return stats from workers with the lowest 20% of exploration
-            test_stats = stats[-int(max(1, len(stats)*0.2)):]
+            test_stats = stats[-int(max(1, len(stats) * 0.2)):]
         else:
             test_stats = stats
 
@@ -225,7 +234,8 @@ class DQNAgent(Agent):
                 "min_exploration": min(explorations),
                 "max_exploration": max(explorations),
                 "num_target_updates": self.num_target_updates,
-            }, **opt_stats))
+            }, **opt_stats)
+        )
 
         return result
 
@@ -238,13 +248,14 @@ class DQNAgent(Agent):
         checkpoint_path = self.saver.save(
             self.local_evaluator.sess,
             os.path.join(checkpoint_dir, "checkpoint"),
-            global_step=self.iteration)
+            global_step=self.iteration
+        )
         extra_data = [
             self.local_evaluator.save(),
             ray.get([e.save.remote() for e in self.remote_evaluators]),
-            self.optimizer.save(),
-            self.num_target_updates,
-            self.last_target_update_ts]
+            self.optimizer.save(), self.num_target_updates,
+            self.last_target_update_ts
+        ]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
@@ -253,12 +264,15 @@ class DQNAgent(Agent):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
         ray.get([
-            e.restore.remote(d) for (d, e)
-            in zip(extra_data[1], self.remote_evaluators)])
+            e.restore.remote(d)
+            for (d, e) in zip(extra_data[1], self.remote_evaluators)
+        ])
         self.optimizer.restore(extra_data[2])
         self.num_target_updates = extra_data[3]
         self.last_target_update_ts = extra_data[4]
 
     def compute_action(self, observation):
         return self.local_evaluator.dqn_graph.act(
-            self.local_evaluator.sess, np.array(observation)[None], 0.0)[0]
+            self.local_evaluator.sess,
+            np.array(observation)[None], 0.0
+        )[0]

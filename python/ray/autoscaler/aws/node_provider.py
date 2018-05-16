@@ -15,7 +15,8 @@ class AWSNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
         self.ec2 = boto3.resource(
-            "ec2", region_name=provider_config["region"], config=config)
+            "ec2", region_name=provider_config["region"], config=config
+        )
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.

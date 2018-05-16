@@ -47,8 +47,10 @@ LIST_SIMPLE_OBJECTS = [[obj] for obj in BASE_SIMPLE_OBJECTS]
 TUPLE_SIMPLE_OBJECTS = [(obj, ) for obj in BASE_SIMPLE_OBJECTS]
 DICT_SIMPLE_OBJECTS = [{(): obj} for obj in BASE_SIMPLE_OBJECTS]
 
-SIMPLE_OBJECTS = (BASE_SIMPLE_OBJECTS + LIST_SIMPLE_OBJECTS +
-                  TUPLE_SIMPLE_OBJECTS + DICT_SIMPLE_OBJECTS)
+SIMPLE_OBJECTS = (
+    BASE_SIMPLE_OBJECTS + LIST_SIMPLE_OBJECTS + TUPLE_SIMPLE_OBJECTS +
+    DICT_SIMPLE_OBJECTS
+)
 
 # Create some complex objects that cannot be serialized by value in tasks.
 
@@ -71,8 +73,10 @@ LIST_COMPLEX_OBJECTS = [[obj] for obj in BASE_COMPLEX_OBJECTS]
 TUPLE_COMPLEX_OBJECTS = [(obj, ) for obj in BASE_COMPLEX_OBJECTS]
 DICT_COMPLEX_OBJECTS = [{(): obj} for obj in BASE_COMPLEX_OBJECTS]
 
-COMPLEX_OBJECTS = (BASE_COMPLEX_OBJECTS + LIST_COMPLEX_OBJECTS +
-                   TUPLE_COMPLEX_OBJECTS + DICT_COMPLEX_OBJECTS)
+COMPLEX_OBJECTS = (
+    BASE_COMPLEX_OBJECTS + LIST_COMPLEX_OBJECTS + TUPLE_COMPLEX_OBJECTS +
+    DICT_COMPLEX_OBJECTS
+)
 
 
 class TestSerialization(unittest.TestCase):
@@ -168,8 +172,9 @@ class TestTask(unittest.TestCase):
                      object_ids + 100 * ["a"] + object_ids]
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
-                task = local_scheduler.Task(driver_id, function_id, args,
-                                            num_return_vals, parent_id, 0)
+                task = local_scheduler.Task(
+                    driver_id, function_id, args, num_return_vals, parent_id, 0
+                )
                 self.check_task(task, function_id, num_return_vals, args)
                 data = local_scheduler.task_to_string(task)
                 task2 = local_scheduler.task_from_string(data)

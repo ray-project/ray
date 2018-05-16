@@ -29,16 +29,21 @@ def _make_scheduler(args):
     if args.scheduler in _SCHEDULERS:
         return _SCHEDULERS[args.scheduler](**args.scheduler_config)
     else:
-        raise TuneError("Unknown scheduler: {}, should be one of {}".format(
-            args.scheduler, _SCHEDULERS.keys()))
+        raise TuneError(
+            "Unknown scheduler: {}, should be one of {}".format(
+                args.scheduler, _SCHEDULERS.keys()
+            )
+        )
 
 
-def run_experiments(experiments,
-                    scheduler=None,
-                    with_server=False,
-                    server_port=TuneServer.DEFAULT_PORT,
-                    verbose=True,
-                    queue_trials=False):
+def run_experiments(
+    experiments,
+    scheduler=None,
+    with_server=False,
+    server_port=TuneServer.DEFAULT_PORT,
+    verbose=True,
+    queue_trials=False
+):
     """Tunes experiments.
 
     Args:
@@ -64,7 +69,8 @@ def run_experiments(experiments,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=verbose,
-        queue_trials=queue_trials)
+        queue_trials=queue_trials
+    )
     exp_list = experiments
     if isinstance(experiments, Experiment):
         exp_list = [experiments]
@@ -74,8 +80,10 @@ def run_experiments(experiments,
             for name, spec in experiments.items()
         ]
 
-    if (type(exp_list) is list
-            and all(isinstance(exp, Experiment) for exp in exp_list)):
+    if (
+        type(exp_list) is list
+        and all(isinstance(exp, Experiment) for exp in exp_list)
+    ):
         for experiment in exp_list:
             scheduler.add_experiment(experiment, runner)
     else:

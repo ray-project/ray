@@ -24,16 +24,18 @@ class PGPolicy():
         self.initialize()
 
     def _setup_graph(self, ob_space, ac_space):
-        self.x = tf.placeholder(tf.float32, shape=[None]+list(ob_space.shape))
+        self.x = tf.placeholder(tf.float32, shape=[None] + list(ob_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self.model = ModelCatalog.get_model(
-                        self.registry, self.x, self.logit_dim,
-                        options=self.config["model"])
+            self.registry, self.x, self.logit_dim, options=self.config["model"]
+        )
         self.action_logits = self.model.outputs  # logit for each action
         self.dist = dist_class(self.action_logits)
         self.sample = self.dist.sample()
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
+        self.var_list = tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES,
+            tf.get_variable_scope().name
+        )
 
     def _setup_loss(self, action_space):
         self.ac = ModelCatalog.get_action_placeholder(action_space)
@@ -53,7 +55,8 @@ class PGPolicy():
     def initialize(self):
         self.sess = tf.Session()
         self.variables = ray.experimental.TensorFlowVariables(
-                            self.loss, self.sess)
+            self.loss, self.sess
+        )
         self.sess.run(tf.global_variables_initializer())
 
     def compute_gradients(self, samples):

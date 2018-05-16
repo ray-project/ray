@@ -12,7 +12,6 @@ from ray.rllib.optimizers import AsyncOptimizer, SampleBatch
 
 
 class AsyncOptimizerTest(unittest.TestCase):
-
     def tearDown(self):
         ray.worker.cleanup()
 
@@ -21,8 +20,9 @@ class AsyncOptimizerTest(unittest.TestCase):
         local = _MockEvaluator()
         remotes = ray.remote(_MockEvaluator)
         remote_evaluators = [remotes.remote() for i in range(5)]
-        test_optimizer = AsyncOptimizer(
-            {"grads_per_step": 10}, local, remote_evaluators)
+        test_optimizer = AsyncOptimizer({
+            "grads_per_step": 10
+        }, local, remote_evaluators)
         test_optimizer.step()
         self.assertTrue(all(local.get_weights() == 0))
 

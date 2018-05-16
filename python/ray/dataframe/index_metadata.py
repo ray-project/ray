@@ -2,9 +2,7 @@ import pandas as pd
 import numpy as np
 import ray
 
-from .utils import (
-    _build_index,
-    _build_columns)
+from .utils import (_build_index, _build_columns)
 
 from pandas.core.indexing import convert_to_index_sliceable
 
@@ -57,8 +55,17 @@ class _IndexMetadataBase(object):
     def __getitem__(self, key):
         return self.coords_of(key)
 
-    def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
-                group_keys=True, squeeze=False, **kwargs):
+    def groupby(
+        self,
+        by=None,
+        axis=0,
+        level=None,
+        as_index=True,
+        sort=True,
+        group_keys=True,
+        squeeze=False,
+        **kwargs
+    ):
         raise NotImplementedError()
 
     def __len__(self):
@@ -70,8 +77,9 @@ class _IndexMetadataBase(object):
     def last_valid_index(self):
         return self._coord_df.last_valid_index()
 
-    def insert(self, key, loc=None, partition=None,
-               index_within_partition=None):
+    def insert(
+        self, key, loc=None, partition=None, index_within_partition=None
+    ):
         raise NotImplementedError()
 
     def drop(self, labels, errors='raise'):
@@ -114,8 +122,9 @@ class _IndexMetadata(_IndexMetadataBase):
     partitions.
     """
 
-    def __init__(self, dfs=None, index=None, axis=0, lengths_oid=None,
-                 coord_df_oid=None):
+    def __init__(
+        self, dfs=None, index=None, axis=0, lengths_oid=None, coord_df_oid=None
+    ):
         """Inits a IndexMetadata from Ray DataFrame partitions
 
         Args:
@@ -165,8 +174,17 @@ class _IndexMetadata(_IndexMetadataBase):
         """
         return self._coord_df.loc[key]
 
-    def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
-                group_keys=True, squeeze=False, **kwargs):
+    def groupby(
+        self,
+        by=None,
+        axis=0,
+        level=None,
+        as_index=True,
+        sort=True,
+        group_keys=True,
+        squeeze=False,
+        **kwargs
+    ):
         # TODO: Find out what this does, and write a docstring
         assignments_df = self._coord_df.groupby(by=by, axis=axis, level=level,
                                                 as_index=as_index, sort=sort,
@@ -193,19 +211,20 @@ class _IndexMetadata(_IndexMetadataBase):
             # partition, we have to make sure that our reference to it is
             # updated as well.
             try:
-                self._coord_df.loc[partition_mask,
-                                   'index_within_partition'] = [
-                    p for p in range(sum(partition_mask))]
+                self._coord_df.loc[partition_mask, 'index_within_partition'] = [
+                    p for p in range(sum(partition_mask))
+                ]
             except ValueError:
                 # Copy the arrow sealed dataframe so we can mutate it.
                 # We only do this the first time we try to mutate the sealed.
                 self._coord_df = self._coord_df.copy()
-                self._coord_df.loc[partition_mask,
-                                   'index_within_partition'] = [
-                    p for p in range(sum(partition_mask))]
+                self._coord_df.loc[partition_mask, 'index_within_partition'] = [
+                    p for p in range(sum(partition_mask))
+                ]
 
-    def insert(self, key, loc=None, partition=None,
-               index_within_partition=None):
+    def insert(
+        self, key, loc=None, partition=None, index_within_partition=None
+    ):
         """Inserts a key at a certain location in the index, or a certain coord
         in a partition. Called with either `loc` or `partition` and
         `index_within_partition`. If called with both, `loc` will be used.
@@ -251,10 +270,13 @@ class _IndexMetadata(_IndexMetadataBase):
         # TODO: Determine if there's a better way to do a row-index insert in
         # pandas, because this is very annoying/unsure of efficiency
         # Create new coord entry to insert
-        coord_to_insert = pd.DataFrame(
-                {'partition': partition,
-                 'index_within_partition': index_within_partition},
-                index=[key])
+        coord_to_insert = pd.DataFrame({
+            'partition':
+            partition,
+            'index_within_partition':
+            index_within_partition
+        },
+                                       index=[key])
 
         # Insert into cached RangeIndex, and order by new column index
         self._coord_df = _coord_df_copy.append(coord_to_insert).loc[new_index]
@@ -272,8 +294,9 @@ class _IndexMetadata(_IndexMetadataBase):
                            'index_within_partition'] -= 1
 
     def copy(self):
-        return _IndexMetadata(coord_df_oid=self._coord_df,
-                              lengths_oid=self._lengths)
+        return _IndexMetadata(
+            coord_df_oid=self._coord_df, lengths_oid=self._lengths
+        )
 
 
 class _WrappingIndexMetadata(_IndexMetadata):
@@ -317,12 +340,22 @@ class _WrappingIndexMetadata(_IndexMetadata):
         ret_obj['index_within_partition'] = loc_idxs
         return ret_obj
 
-    def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
-                group_keys=True, squeeze=False, **kwargs):
+    def groupby(
+        self,
+        by=None,
+        axis=0,
+        level=None,
+        as_index=True,
+        sort=True,
+        group_keys=True,
+        squeeze=False,
+        **kwargs
+    ):
         raise NotImplementedError()
 
-    def insert(self, key, loc=None, partition=None,
-               index_within_partition=None):
+    def insert(
+        self, key, loc=None, partition=None, index_within_partition=None
+    ):
         """Inserts a key at a certain location in the index, or a certain coord
         in a partition. Called with either `loc` or `partition` and
         `index_within_partition`. If called with both, `loc` will be used.
@@ -343,5 +376,8 @@ class _WrappingIndexMetadata(_IndexMetadata):
         self._coord_df = pd.DataFrame(index=new_index)
 
         # Shouldn't really need this, but here to maintain API consistency
-        return pd.DataFrame({'partition': 0, 'index_within_partition': loc},
+        return pd.DataFrame({
+            'partition': 0,
+            'index_within_partition': loc
+        },
                             index=[key])

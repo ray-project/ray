@@ -52,7 +52,8 @@ register_trainable("my_class", MyTrainableClass)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     args, _ = parser.parse_known_args()
     ray.init()
 
@@ -61,7 +62,8 @@ if __name__ == "__main__":
     hyperband = HyperBandScheduler(
         time_attr="timesteps_total",
         reward_attr="episode_reward_mean",
-        max_t=100)
+        max_t=100
+    )
 
     exp = Experiment(
         name="hyperband_test",
@@ -71,6 +73,7 @@ if __name__ == "__main__":
         config={
             "width": lambda spec: 10 + int(90 * random.random()),
             "height": lambda spec: int(100 * random.random())
-        })
+        }
+    )
 
     run_experiments(exp, scheduler=hyperband)

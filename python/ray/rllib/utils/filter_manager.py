@@ -20,8 +20,9 @@ class FilterManager(object):
             local_filters (dict): Filters to be synchronized.
             remotes (list): Remote evaluators with filters.
         """
-        remote_filters = ray.get(
-            [r.get_filters.remote(flush_after=True) for r in remotes])
+        remote_filters = ray.get([
+            r.get_filters.remote(flush_after=True) for r in remotes
+        ])
         for rf in remote_filters:
             for k in local_filters:
                 local_filters[k].apply_changes(rf[k], with_buffer=False)

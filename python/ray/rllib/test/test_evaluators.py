@@ -31,7 +31,6 @@ class DQNEvaluatorTest(unittest.TestCase):
 
 
 class A3CEvaluatorTest(unittest.TestCase):
-
     def setUp(self):
         ray.init(num_cpus=1)
         config = DEFAULT_CONFIG.copy()
@@ -44,7 +43,8 @@ class A3CEvaluatorTest(unittest.TestCase):
             get_registry(),
             lambda config: gym.make("CartPole-v0"),
             config,
-            logdir=self._temp_dir)
+            logdir=self._temp_dir
+        )
 
     def tearDown(self):
         ray.worker.cleanup()

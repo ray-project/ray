@@ -14,6 +14,7 @@ class AsyncOptimizer(PolicyOptimizer):
     evaluators, sending updated weights back as needed. This pipelines the
     gradient computations on the remote workers.
     """
+
     def _init(self, grads_per_step=100, batch_size=10):
         self.apply_timer = TimerStat()
         self.wait_timer = TimerStat()
@@ -54,8 +55,10 @@ class AsyncOptimizer(PolicyOptimizer):
         self.num_steps_trained += self.grads_per_step * self.batch_size
 
     def stats(self):
-        return dict(PolicyOptimizer.stats(), **{
-            "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
-            "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
-            "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),
-        })
+        return dict(
+            PolicyOptimizer.stats(), **{
+                "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
+                "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
+                "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),
+            }
+        )

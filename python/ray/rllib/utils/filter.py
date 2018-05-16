@@ -59,7 +59,6 @@ class NoFilter(Filter):
 
 # http://www.johndcook.com/blog/standard_deviation/
 class RunningStat(object):
-
     def __init__(self, shape=None):
         self._n = 0
         self._M = np.zeros(shape)
@@ -75,8 +74,9 @@ class RunningStat(object):
     def push(self, x):
         x = np.asarray(x)
         # Unvectorized update of the running statistics.
-        assert x.shape == self._M.shape, ("x.shape = {}, self.shape = {}"
-                                          .format(x.shape, self._M.shape))
+        assert x.shape == self._M.shape, (
+            "x.shape = {}, self.shape = {}".format(x.shape, self._M.shape)
+        )
         n1 = self._n
         self._n += 1
         if self._n == 1:
@@ -103,7 +103,8 @@ class RunningStat(object):
 
     def __repr__(self):
         return '(n={}, mean_mean={}, mean_std={})'.format(
-            self.n, np.mean(self.mean), np.mean(self.std))
+            self.n, np.mean(self.mean), np.mean(self.std)
+        )
 
     @property
     def n(self):
@@ -227,8 +228,8 @@ class MeanStdFilter(Filter):
 
     def __repr__(self):
         return 'MeanStdFilter({}, {}, {}, {}, {}, {})'.format(
-            self.shape, self.demean, self.destd,
-            self.clip, self.rs, self.buffer)
+            self.shape, self.demean, self.destd, self.clip, self.rs, self.buffer
+        )
 
 
 class ConcurrentMeanStdFilter(MeanStdFilter):
@@ -242,6 +243,7 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
             def wrapper(*args, **kwargs):
                 with self._lock:
                     return func(*args, **kwargs)
+
             return wrapper
 
         self.__getattribute__ = lock_wrap(self.__getattribute__)
@@ -260,8 +262,8 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
     def __repr__(self):
         return 'ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})'.format(
-            self.shape, self.demean, self.destd,
-            self.clip, self.rs, self.buffer)
+            self.shape, self.demean, self.destd, self.clip, self.rs, self.buffer
+        )
 
 
 def get_filter(filter_config, shape):
@@ -273,5 +275,4 @@ def get_filter(filter_config, shape):
     elif filter_config == "NoFilter":
         return NoFilter()
     else:
-        raise Exception("Unknown observation_filter: " +
-                        str(filter_config))
+        raise Exception("Unknown observation_filter: " + str(filter_config))

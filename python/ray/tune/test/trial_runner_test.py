@@ -88,17 +88,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("B", B)
 
         def f(cpus, gpus, queue_trials):
-            return run_experiments(
-                {
-                    "foo": {
-                        "run": "B",
-                        "config": {
-                            "cpu": cpus,
-                            "gpu": gpus,
-                        },
-                    }
-                },
-                queue_trials=queue_trials)[0]
+            return run_experiments({
+                "foo": {
+                    "run": "B",
+                    "config": {
+                        "cpu": cpus,
+                        "gpu": gpus,
+                    },
+                }
+            },
+                                   queue_trials=queue_trials)[0]
 
         # Should all succeed
         self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
@@ -359,13 +358,15 @@ class RunExperimentTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        exp1 = Experiment(**{
-            "name": "foo",
-            "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
+        exp1 = Experiment(
+            **{
+                "name": "foo",
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
             }
-        })
+        )
         [trial] = run_experiments(exp1)
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result.timesteps_total, 99)
@@ -376,20 +377,24 @@ class RunExperimentTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        exp1 = Experiment(**{
-            "name": "foo",
-            "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
+        exp1 = Experiment(
+            **{
+                "name": "foo",
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
             }
-        })
-        exp2 = Experiment(**{
-            "name": "bar",
-            "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
+        )
+        exp2 = Experiment(
+            **{
+                "name": "bar",
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0
+                }
             }
-        })
+        )
         trials = run_experiments([exp1, exp2])
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
@@ -421,8 +426,9 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
         self.assertEqual(trials[0].max_failures, 5)
-        self.assertEqual(trials[0].local_dir,
-                         os.path.join(DEFAULT_RESULTS_DIR, "tune-pong"))
+        self.assertEqual(
+            trials[0].local_dir, os.path.join(DEFAULT_RESULTS_DIR, "tune-pong")
+        )
         self.assertEqual(trials[1].experiment_tag, "1")
 
     def testEval(self):
@@ -528,7 +534,8 @@ class VariantGeneratorTest(unittest.TestCase):
                     "config": {
                         "foo": lambda spec: spec.config.foo,
                     },
-                }))
+                })
+            )
         except RecursiveDependencyError as e:
             assert "`foo` recursively depends on" in str(e), e
         else:

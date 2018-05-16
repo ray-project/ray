@@ -70,8 +70,8 @@ class build_ext(_build_ext.build_ext):
         pyarrow_files = [
             os.path.join("ray/pyarrow_files/pyarrow", filename)
             for filename in os.listdir("./ray/pyarrow_files/pyarrow")
-            if not os.path.isdir(
-                os.path.join("ray/pyarrow_files/pyarrow", filename))
+            if not os.path.
+            isdir(os.path.join("ray/pyarrow_files/pyarrow", filename))
         ]
 
         files_to_include = ray_files + pyarrow_files
@@ -83,15 +83,18 @@ class build_ext(_build_ext.build_ext):
         for filename in os.listdir(generated_python_directory):
             if filename[-3:] == ".py":
                 self.move_file(
-                    os.path.join(generated_python_directory, filename))
+                    os.path.join(generated_python_directory, filename)
+                )
 
         # Try to copy over the optional files.
         for filename in optional_ray_files:
             try:
                 self.move_file(filename)
             except Exception as e:
-                print("Failed to copy optional file {}. This is ok."
-                      .format(filename))
+                print(
+                    "Failed to copy optional file {}. This is ok."
+                    .format(filename)
+                )
 
     def move_file(self, filename):
         # TODO(rkn): This feels very brittle. It may not handle all cases. See
@@ -138,4 +141,5 @@ setup(
     entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
     include_package_data=True,
     zip_safe=False,
-    license="Apache 2.0")
+    license="Apache 2.0"
+)

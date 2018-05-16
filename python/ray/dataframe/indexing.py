@@ -20,8 +20,10 @@ class _Location_Indexer_Base():
 
     def _get_lookup_dict(self, ray_partition_idx):
         if ray_partition_idx.ndim == 1:  # Single row matched
-            position = (ray_partition_idx['partition'],
-                        ray_partition_idx['index_within_partition'])
+            position = (
+                ray_partition_idx['partition'],
+                ray_partition_idx['index_within_partition']
+            )
             rows_to_lookup = {position[0]: [position[1]]}
         if ray_partition_idx.ndim == 2:  # Multiple rows matched
             # We copy ray_partition_idx because it allows us to
@@ -29,7 +31,8 @@ class _Location_Indexer_Base():
             # And have room to optimize.
             ray_partition_idx = ray_partition_idx.copy()
             rows_to_lookup = ray_partition_idx.groupby('partition').aggregate(
-                lambda x: list(x)).to_dict()['index_within_partition']
+                lambda x: list(x)
+            ).to_dict()['index_within_partition']
         return rows_to_lookup
 
     def locate_2d(self, row_label, col_label):
@@ -54,10 +57,10 @@ class _Location_Indexer_Base():
                 return df.iloc[idx_lst, col_idx]
 
         retrieved_rows_remote = [
-            _deploy_func.remote(retrieve_func,
-                                self.df._row_partitions[partition],
-                                idx_to_lookup, col_lst)
-            for partition, idx_to_lookup in lookup_dict.items()
+            _deploy_func.remote(
+                retrieve_func, self.df._row_partitions[partition],
+                idx_to_lookup, col_lst
+            ) for partition, idx_to_lookup in lookup_dict.items()
         ]
         return retrieved_rows_remote
 
@@ -69,7 +72,8 @@ class _Loc_Indexer(_Location_Indexer_Base):
         index_loc = self.df._row_index.loc[row_label]
         lookup_dict = self._get_lookup_dict(index_loc)
         retrieved_rows_remote = self._map_partition(
-            lookup_dict, col_label, indexer='loc')
+            lookup_dict, col_label, indexer='loc'
+        )
         joined_df = pd.concat(ray.get(retrieved_rows_remote))
 
         if index_loc.ndim == 2:
@@ -90,7 +94,8 @@ class _iLoc_Indexer(_Location_Indexer_Base):
         index_loc = self.df._row_index.iloc[row_idx]
         lookup_dict = self._get_lookup_dict(index_loc)
         retrieved_rows_remote = self._map_partition(
-            lookup_dict, col_idx, indexer='iloc')
+            lookup_dict, col_idx, indexer='iloc'
+        )
         joined_df = pd.concat(ray.get(retrieved_rows_remote))
 
         if index_loc.ndim == 2:

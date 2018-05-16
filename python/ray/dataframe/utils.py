@@ -95,9 +95,9 @@ def from_pandas(df, num_partitions=None, chunksize=None):
     row_partitions = \
         _partition_pandas_dataframe(df, num_partitions, chunksize)
 
-    return DataFrame(row_partitions=row_partitions,
-                     columns=df.columns,
-                     index=df.index)
+    return DataFrame(
+        row_partitions=row_partitions, columns=df.columns, index=df.index
+    )
 
 
 def to_pandas(df):
@@ -110,8 +110,7 @@ def to_pandas(df):
     if df._row_partitions is not None:
         pd_df = pd.concat(ray.get(df._row_partitions))
     else:
-        pd_df = pd.concat(ray.get(df._col_partitions),
-                          axis=1)
+        pd_df = pd.concat(ray.get(df._col_partitions), axis=1)
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
@@ -145,25 +144,30 @@ def _map_partitions(func, partitions, *argslists):
     if partitions is None:
         return None
 
-    assert(callable(func))
+    assert (callable(func))
     if len(argslists) == 0:
         return [_deploy_func.remote(func, part) for part in partitions]
     elif len(argslists) == 1:
-        return [_deploy_func.remote(func, part, argslists[0])
-                for part in partitions]
+        return [
+            _deploy_func.remote(func, part, argslists[0]) for part in partitions
+        ]
     else:
-        assert(all([len(args) == len(partitions) for args in argslists]))
-        return [_deploy_func.remote(func, part, *args)
-                for part, args in zip(partitions, *argslists)]
+        assert (all([len(args) == len(partitions) for args in argslists]))
+        return [
+            _deploy_func.remote(func, part, *args)
+            for part, args in zip(partitions, *argslists)
+        ]
 
 
 @ray.remote(num_return_vals=2)
 def _build_columns(df_col, columns):
     """Build columns and compute lengths for each partition."""
     # Columns and width
-    widths = np.array(ray.get([_deploy_func.remote(_get_widths, d)
-                      for d in df_col]))
-    dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(widths))
+    widths = np.array(
+        ray.get([_deploy_func.remote(_get_widths, d) for d in df_col])
+    )
+    dest_indices = [(p_idx, p_sub_idx)
+                    for p_idx in range(len(widths))
                     for p_sub_idx in range(widths[p_idx])]
 
     col_names = ("partition", "index_within_partition")
@@ -176,10 +180,12 @@ def _build_columns(df_col, columns):
 def _build_index(df_row, index):
     """Build index and compute lengths for each partition."""
     # Rows and length
-    lengths = np.array(ray.get([_deploy_func.remote(_get_lengths, d)
-                       for d in df_row]))
+    lengths = np.array(
+        ray.get([_deploy_func.remote(_get_lengths, d) for d in df_row])
+    )
 
-    dest_indices = [(p_idx, p_sub_idx) for p_idx in range(len(lengths))
+    dest_indices = [(p_idx, p_sub_idx)
+                    for p_idx in range(len(lengths))
                     for p_sub_idx in range(lengths[p_idx])]
     col_names = ("partition", "index_within_partition")
     index_df = pd.DataFrame(dest_indices, index=index, columns=col_names)
@@ -194,9 +200,11 @@ def _create_block_partitions(partitions, axis=0, length=None):
     else:
         npartitions = get_npartitions()
 
-    x = [create_blocks._submit(args=(partition, npartitions, axis),
-                               num_return_vals=npartitions)
-         for partition in partitions]
+    x = [
+        create_blocks._submit(
+            args=(partition, npartitions, axis), num_return_vals=npartitions
+        ) for partition in partitions
+    ]
 
     # In the case that axis is 1 we have to transpose because we build the
     # columns into rows. Fortunately numpy is efficient at this.
@@ -221,10 +229,11 @@ def create_blocks_helper(df, npartitions, axis):
     # if not isinstance(df.columns, pd.RangeIndex):
     #     df.columns = pd.RangeIndex(0, len(df.columns))
 
-    blocks = [df.iloc[:, i * block_size: (i + 1) * block_size]
-              if axis == 0
-              else df.iloc[i * block_size: (i + 1) * block_size, :]
-              for i in range(npartitions)]
+    blocks = [
+        df.iloc[:, i * block_size:(i + 1) * block_size]
+        if axis == 0 else df.iloc[i * block_size:(i + 1) * block_size, :]
+        for i in range(npartitions)
+    ]
 
     for block in blocks:
         block.columns = pd.RangeIndex(0, len(block.columns))
@@ -267,6 +276,7 @@ def _inherit_docstrings(parent):
         function: decorator which replaces the decorated class' documentation
             parent's documentation.
     """
+
     def decorator(cls):
         # cls.__doc__ = parent.__doc__
         for attr, obj in cls.__dict__.items():
