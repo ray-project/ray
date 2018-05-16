@@ -110,13 +110,21 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 }
 
 void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
-  pull_requests_[object_id] = std::make_shared<boost::asio::deadline_timer>(
-      *main_service_, boost::posix_time::milliseconds(wait_ms));
-  pull_requests_[object_id]->async_wait(
-      [this, object_id](const boost::system::error_code &error_code) {
-        pull_requests_.erase(object_id);
-        RAY_CHECK_OK(PullGetLocations(object_id));
-      });
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+    *main_service_, boost::posix_time::milliseconds(wait_ms));
+  
+  {
+    std::lock_guard<std::mutex> lock(pull_requests_lock_);
+    pull_requests_[object_id] = timer;
+  }
+
+  timer->async_wait([this, object_id](const boost::system::error_code &error_code) {
+    {
+      std::lock_guard<std::mutex> lock(pull_requests_lock_);
+      pull_requests_.erase(object_id);
+    }
+    RAY_CHECK_OK(PullGetLocations(object_id));
+  });
 }
 
 ray::Status ObjectManager::PullGetLocations(const ObjectID &object_id) {

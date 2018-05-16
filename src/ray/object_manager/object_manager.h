@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <thread>
+#include <mutex>
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -177,6 +178,9 @@ class ObjectManager {
 
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;
+
+  /// Lock for pull_requests_
+  std::mutex pull_requests_lock_;
 
   /// Timeout for failed pull requests.
   std::unordered_map<ObjectID, std::shared_ptr<boost::asio::deadline_timer>>
