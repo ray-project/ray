@@ -13,6 +13,7 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
 from ray.rllib.models.preprocessors import get_preprocessor
+
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
@@ -208,6 +209,7 @@ class ModelCatalog(object):
         if "custom_preprocessor" in options:
             preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
+            import ipdb; ipdb.set_trace()
             return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
 

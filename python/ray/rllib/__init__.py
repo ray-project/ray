@@ -6,7 +6,6 @@ from __future__ import print_function
 # This file is imported from the tune module in order to register RLlib agents.
 from ray.tune.registry import register_trainable
 
-
 def _register_all():
     for key in ["PPO", "ES", "DQN", "APEX", "A3C", "BC", "PG", "DDPG",
                 "DDPG2", "APEX_DDPG", "__fake", "__sigmoid_fake_data",

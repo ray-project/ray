@@ -19,7 +19,6 @@ from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 
-
 # TODO(rliaw): Move this onto LocalMultiGPUOptimizer
 class PPOEvaluator(PolicyEvaluator):
     """
@@ -58,13 +57,13 @@ class PPOEvaluator(PolicyEvaluator):
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(), dtype=tf.float32)
 
-        # The input observations.
+        import ipdb; ipdb.set_trace()
         self.observations = tf.placeholder(
             tf.float32, shape=(None,) + self.env.observation_space.shape)
         # Targets of the value function.
-        self.value_targets = tf.placeholder(tf.float32, shape=(None,))
+        self.value_targets = tf.placeholder(tf.float32, shape=(None,self.env.n_agents))
         # Advantage values in the policy gradient estimator.
-        self.advantages = tf.placeholder(tf.float32, shape=(None,))
+        self.advantages = tf.placeholder(tf.float32, shape=(None,self.env.n_agents))
 
         action_space = self.env.action_space
         self.actions = ModelCatalog.get_action_placeholder(action_space)
@@ -86,11 +85,17 @@ class PPOEvaluator(PolicyEvaluator):
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
         def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
-            return ProximalPolicyLoss(
-                self.env.observation_space, self.env.action_space,
-                obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
-                self.kl_coeff, self.distribution_class, self.config,
-                self.sess, self.registry)
+            if self.env.n_agents > 1:
+                return mProximalPolicyLoss(self.env,
+                                        obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
+                                        self.kl_coeff, self.distribution_class, self.config,
+                                        self.sess)
+            else:
+                return ProximalPolicyLoss(
+                    self.env.observation_space, self.env.action_space,
+                    obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
+                    self.kl_coeff, self.distribution_class, self.config,
+                    self.sess)
 
         self.par_opt = LocalSyncParallelOptimizer(
             tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
@@ -136,7 +141,13 @@ class PPOEvaluator(PolicyEvaluator):
 
     def load_data(self, trajectories, full_trace):
         use_gae = self.config["use_gae"]
-        dummy = np.zeros_like(trajectories["advantages"])
+        if self.env.n_agents > 1:
+            # fixme you need to change things in process advantages
+            dummy = np.asarray([np.zeros_like(trajectories["advantages"])])
+            # this is just here to gae is setup
+            gae_dummy = np.asarray([np.zeros(trajectories["advantages"].shape[0])])
+        else:
+            dummy = np.zeros_like(trajectories["advantages"])
         return self.par_opt.load_data(
             self.sess,
             [trajectories["obs"],
@@ -144,7 +155,7 @@ class PPOEvaluator(PolicyEvaluator):
              trajectories["advantages"],
              trajectories["actions"],
              trajectories["logprobs"],
-             trajectories["vf_preds"] if use_gae else dummy],
+             trajectories["vf_preds"] if use_gae else gae_dummy],
             full_trace=full_trace)
 
     def run_sgd_minibatch(

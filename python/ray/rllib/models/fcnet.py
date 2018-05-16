@@ -21,6 +21,8 @@ class FullyConnectedNetwork(Model):
         elif fcnet_activation == "relu":
             activation = tf.nn.relu
 
+        model_num = options.get("model_num", "0")
+
         with tf.name_scope("fc_net"):
             i = 1
             last_layer = inputs
