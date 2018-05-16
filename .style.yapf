@@ -170,7 +170,7 @@ split_before_dict_set_generator=True
 
 # Split after the opening paren which surrounds an expression if it doesn't
 # fit on a single line.
-split_before_expression_after_opening_paren=False
+split_before_expression_after_opening_paren=True
 
 # If an argument / parameter list is going to be split, then split before
 # the first argument.
