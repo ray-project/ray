@@ -64,7 +64,6 @@ class PPOEvaluator(PolicyEvaluator):
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(num_kl_terms,), dtype=tf.float32)
 
-        import ipdb; ipdb.set_trace()
         self.observations = tf.placeholder(
             tf.float32, shape=(None,) + self.env.observation_space.shape)
         # Targets of the value function.
