@@ -68,6 +68,9 @@ class ObjectManager {
 
   ~ObjectManager();
 
+  /// Register GCS-related functionality.
+  void RegisterGcs();
+
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   ///
@@ -178,10 +181,6 @@ class ObjectManager {
   /// Connection pool for reusing outgoing connections to remote object managers.
   ConnectionPool connection_pool_;
 
-  /// Timeout for failed pull requests.
-  std::unordered_map<ObjectID, std::shared_ptr<boost::asio::deadline_timer>>
-      pull_requests_;
-
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT> local_objects_;
 
@@ -196,11 +195,6 @@ class ObjectManager {
 
   /// Register object remove with directory.
   void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
-
-  /// Wait wait_ms milliseconds before triggering a pull request for object_id.
-  /// This is invoked when a pull fails. Only point of failure currently considered
-  /// is GetLocationsFailed.
-  void SchedulePull(const ObjectID &object_id, int wait_ms);
 
   /// Part of an asynchronous sequence of Pull methods.
   /// Gets the location of an object before invoking PullEstablishConnection.
@@ -218,10 +212,6 @@ class ObjectManager {
   /// ObjectDirectory.
   void GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
                            const ray::ObjectID &object_id);
-
-  /// Private callback implementation for failure on get location. Called from
-  /// ObjectDirectory.
-  void GetLocationsFailed(const ObjectID &object_id);
 
   /// Synchronously send a pull request via remote object manager connection.
   /// Executes on main_service_ thread.

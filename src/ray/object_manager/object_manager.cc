@@ -57,6 +57,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
 
 ObjectManager::~ObjectManager() { StopIOService(); }
 
+void ObjectManager::RegisterGcs() { object_directory_->RegisterBackend(); }
+
 void ObjectManager::StartIOService() {
   for (int i = 0; i < config_.max_sends; ++i) {
     send_threads_.emplace_back(std::thread(&ObjectManager::RunSendService, this));
@@ -109,23 +111,13 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   return PullGetLocations(object_id);
 }
 
-void ObjectManager::SchedulePull(const ObjectID &object_id, int wait_ms) {
-  pull_requests_[object_id] = std::make_shared<boost::asio::deadline_timer>(
-      *main_service_, boost::posix_time::milliseconds(wait_ms));
-  pull_requests_[object_id]->async_wait(
-      [this, object_id](const boost::system::error_code &error_code) {
-        pull_requests_.erase(object_id);
-        RAY_CHECK_OK(PullGetLocations(object_id));
-      });
-}
-
 ray::Status ObjectManager::PullGetLocations(const ObjectID &object_id) {
-  ray::Status status_code = object_directory_->GetLocations(
+  ray::Status status_code = object_directory_->SubscribeObjectLocations(
       object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
-        return GetLocationsSuccess(client_ids, object_id);
-      },
-      [this](const ObjectID &object_id) { return GetLocationsFailed(object_id); });
+        object_directory_->UnsubscribeObjectLocations(object_id);
+        GetLocationsSuccess(client_ids, object_id);
+      });
   return status_code;
 }
 
@@ -134,10 +126,6 @@ void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client
   RAY_CHECK(!client_ids.empty());
   ClientID client_id = client_ids.front();
   ray::Status status_code = Pull(object_id, client_id);
-}
-
-void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
-  SchedulePull(object_id, config_.pull_timeout_ms);
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
@@ -158,10 +146,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
   status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id,
                                       &conn);
   if (!status.ok()) {
-    // TODO(hme): Keep track of retries,
-    // and only retry on object not local
-    // for now.
-    SchedulePull(object_id, config_.pull_timeout_ms);
+    // TODO (hme): Accept changes in error cleanup PR.
     return status;
   }
   if (conn == nullptr) {
@@ -175,7 +160,8 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           RAY_CHECK_OK(PullSendRequest(object_id, async_conn));
         },
         [this, object_id](const Status &status) {
-          SchedulePull(object_id, config_.pull_timeout_ms);
+          RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
+          RAY_CHECK_OK(status);
         });
   } else {
     RAY_CHECK_OK(PullSendRequest(object_id, conn));
@@ -299,8 +285,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 }
 
 ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
-  // TODO(hme): Account for pull timers.
-  ray::Status status = object_directory_->Cancel(object_id);
+  ray::Status status = object_directory_->UnsubscribeObjectLocations(object_id);
   return ray::Status::OK();
 }
 
