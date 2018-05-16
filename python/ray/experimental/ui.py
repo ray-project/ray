@@ -451,8 +451,8 @@ def task_completion_time_distribution():
         # Create the distribution to plot
         distr = []
         for task_id, data in tasks.items():
-            distr.append(
-                data["store_outputs_end"] - data["get_arguments_start"])
+            distr.append(data["store_outputs_end"] -
+                         data["get_arguments_start"])
 
         # Create a histogram from the distribution
         top, bin_edges = np.histogram(distr, bins="auto")
@@ -520,10 +520,10 @@ def compute_utilizations(abs_earliest,
         # Walk over each time bucket that this task intersects, adding the
         # amount of time that the task intersects within each bucket
         for bucket_idx in range(start_bucket, end_bucket + 1):
-            bucket_start_time = ((
-                earliest_time + bucket_idx) * bucket_time_length)
-            bucket_end_time = ((earliest_time +
-                                (bucket_idx + 1)) * bucket_time_length)
+            bucket_start_time = (
+                (earliest_time + bucket_idx) * bucket_time_length)
+            bucket_end_time = (
+                (earliest_time + (bucket_idx + 1)) * bucket_time_length)
 
             task_start_time_within_bucket = max(task_start_time,
                                                 bucket_start_time)
