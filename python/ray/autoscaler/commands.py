@@ -57,7 +57,7 @@ def teardown_cluster(config_file, yes):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
-        TAG_RAY_NODE_TYPE: "head",
+        TAG_RAY_NODE_TYPE: "Head",
     }
     for node in provider.nodes(head_node_tags):
         print("Terminating head node {}".format(node))
@@ -76,7 +76,7 @@ def get_or_create_head_node(config, no_restart, yes):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
-        TAG_RAY_NODE_TYPE: "head",
+        TAG_RAY_NODE_TYPE: "Head",
     }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
@@ -187,7 +187,7 @@ def get_head_node_ip(config_file):
     config = yaml.load(open(config_file).read())
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
-        TAG_RAY_NODE_TYPE: "head", # TODO Check this
+        TAG_RAY_NODE_TYPE: "Head",
     }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
