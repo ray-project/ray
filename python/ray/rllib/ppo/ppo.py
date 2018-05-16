@@ -105,8 +105,16 @@ class PPOAgent(Agent):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
+
+        self.shared_model = (self.config["model"].get("custom_options", {}).
+                        get("multiagent_shared_model", False))
+        if self.shared_model:
+            self.num_models = 1
+        else:
+            self.num_models = len(self.config["model"].get(
+                "custom_options", {}).get("multiagent_obs_shapes", [1]))
         self.global_step = 0
-        self.kl_coeff = self.config["kl_coeff"]
+        self.kl_coeff = [self.config["kl_coeff"]] * self.num_models
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
@@ -207,7 +215,7 @@ class PPOAgent(Agent):
                 metric_prefix = "ppo/sgd/final_iter/"
                 values.append(tf.Summary.Value(
                     tag=metric_prefix + "kl_coeff",
-                    simple_value=self.kl_coeff))
+                    simple_value=np.mean(self.kl_coeff)))
                 values.extend([
                     tf.Summary.Value(
                         tag=metric_prefix + "mean_entropy",
@@ -223,14 +231,20 @@ class PPOAgent(Agent):
                     self.file_writer.add_summary(sgd_stats, self.global_step)
             self.global_step += 1
             sgd_time += sgd_end - sgd_start
-        if kl > 2.0 * config["kl_target"]:
-            self.kl_coeff *= 1.5
-        elif kl < 0.5 * config["kl_target"]:
-            self.kl_coeff *= 0.5
+
+        # treat single-agent as a multi-agent system w/ one agent
+        if not isinstance(kl, np.ndarray):
+            kl = [kl]
+
+        for i, kl_i in enumerate(kl):
+            if kl_i > 2.0 * config["kl_target"]:
+                self.kl_coeff[i] *= 1.5
+            elif kl_i < 0.5 * config["kl_target"]:
+                self.kl_coeff[i] *= 0.5
 
         info = {
-            "kl_divergence": kl,
-            "kl_coefficient": self.kl_coeff,
+            "kl_divergence": np.mean(kl),
+            "kl_coefficient": np.mean(self.kl_coeff),
             "rollouts_time": rollouts_time,
             "shuffle_time": shuffle_time,
             "load_time": load_time,
