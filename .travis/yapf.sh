@@ -3,6 +3,9 @@
 # Cause the script to exit if a single command fails
 set -eo pipefail
 
+# this stops git rev-parse from failing if we run this from the .git directory
+builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
+
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT"
 
@@ -27,4 +30,3 @@ if [[ "${#CHANGED_FILES[@]}" -gt 0 ]]; then
 
     exit 1
 fi
-
