@@ -4,14 +4,7 @@ from __future__ import print_function
 
 from ray.rllib.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
 from ray.tune.trial import Resources
-
-
-def merge_dicts(d1, d2):
-    """Merge two dicts and return a new dict that's their union."""
-    d = d1.copy()
-    d.update(d2)
-    return d
-
+from ray.utils import merge_dicts
 
 APEX_DEFAULT_CONFIG = merge_dicts(
     DQN_CONFIG,
