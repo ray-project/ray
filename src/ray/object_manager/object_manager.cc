@@ -134,10 +134,7 @@ void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client
   RAY_CHECK(!client_ids.empty());
   ClientID client_id = client_ids.front();
   ray::Status status = Pull(object_id, client_id);
-  if (!status.ok()) {
-    // A failed pull request is not fatal.
-    RAY_LOG(ERROR) << status.message();
-  }
+  RAY_CHECK_OK(status);
 }
 
 void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
@@ -162,6 +159,8 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
   status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id,
                                       &conn);
   // Currently, acquiring a connection should not fail.
+  // No status from GetSender is returned which can be
+  // handled without failing.
   RAY_CHECK_OK(status);
 
   if (conn == nullptr) {
@@ -173,9 +172,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
           Status pull_send_status = PullSendRequest(object_id, async_conn);
-          if (!pull_send_status.ok()) {
-            RAY_LOG(ERROR) << pull_send_status.message();
-          }
+          RAY_CHECK_OK(pull_send_status);
         },
         [this, object_id](const Status &status) {
           SchedulePull(object_id, config_.pull_timeout_ms);
