@@ -246,7 +246,7 @@ Status LineageCache::Flush() {
         if (parent->GetStatus() == GcsStatus_UNCOMMITTED_REMOTE) {
           auto inserted = subscribed_tasks_.insert(parent_id);
           if (inserted.second) {
-            // Only request notificataions about the parent entry if we haven't
+            // Only request notifications about the parent entry if we haven't
             // already requested notifications for it.
             RAY_CHECK_OK(
                 task_pubsub_.RequestNotifications(JobID::nil(), parent_id, client_id_));
