@@ -382,3 +382,13 @@ class _IndexMetadata(object):
             key: slice to convert and check
         """
         return convert_to_index_sliceable(self._coord_df, key)
+
+    def get_partition(self, partition_id):
+        """Return a view of coord_df where partition = partition_id
+        """
+        return self._coord_df[self._coord_df.partition == partition_id]
+
+    def sorted_index(self):
+        return (self._coord_df
+                    .sort_values(['partition', 'index_within_partition'])
+                    .index)
