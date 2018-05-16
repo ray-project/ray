@@ -1,4 +1,5 @@
 [style]
+based_on_style=chromium
 # Align closing bracket with visual indentation.
 align_closing_bracket_with_visual_indent=True
 
@@ -52,7 +53,7 @@ blank_line_before_nested_class_or_def=False
 #        'key1': 'value1',
 #        'key2': 'value2',
 #    })
-coalesce_brackets=False
+coalesce_brackets=True
 
 # The column limit.
 column_limit=80
@@ -105,7 +106,7 @@ i18n_comment=
 # The i18n function call names. The presence of this function stops
 # reformattting on that line, because the string it has cannot be moved
 # away from the i18n comment.
-i18n_function_call=
+i18n_function_call=['']
 
 # Indent the dictionary value if it cannot fit on the same line as the
 # dictionary key. For example:
@@ -132,7 +133,7 @@ join_multiple_lines=False
 #
 #   1 + 2*3 - 4/5
 #
-no_spaces_around_selected_binary_operators=set()
+no_spaces_around_selected_binary_operators={'set()'}
 
 # Use spaces around default or named assigns.
 spaces_around_default_or_named_assign=False
@@ -241,4 +242,5 @@ split_penalty_logical_operator=300
 
 # Use the Tab character for indentation.
 use_tabs=False
+
 
