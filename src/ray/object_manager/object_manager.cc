@@ -141,16 +141,20 @@ void ObjectManager::GetLocationsFailed(const ObjectID &object_id) {
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
+  // Check if object is already local.
+  if (local_objects_.count(object_id) != 0) {
+    return ray::Status::OK();
+  }
+  // Check if we're pulling from self.
+  if (client_id == client_id_) {
+    RAY_LOG(ERROR) << client_id_ << " attempted to pull an object from itself.";
+    return ray::Status::Invalid("A node cannot pull an object from itself.");
+  }
   return PullEstablishConnection(object_id, client_id);
 };
 
 ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                                    const ClientID &client_id) {
-  // Check if object is already local, and client_id is not itself.
-  if (local_objects_.count(object_id) != 0 || client_id == client_id_) {
-    return ray::Status::OK();
-  }
-
   // Acquire a message connection and send pull request.
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
