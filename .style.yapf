@@ -217,7 +217,7 @@ split_penalty_bitwise_operator=300
 split_penalty_comprehension=80
 
 # The penalty for characters over the column limit.
-split_penalty_excess_character=4500
+split_penalty_excess_character=1000
 
 # The penalty incurred by adding a line split to the unwrapped line. The
 # more line splits added the higher the penalty.
