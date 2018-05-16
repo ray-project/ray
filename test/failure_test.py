@@ -387,9 +387,8 @@ class PutErrorTest(unittest.TestCase):
             # on the one before it. The result of the first task should get
             # evicted.
             args = []
-            arg = single_dependency.remote(0,
-                                           np.zeros(
-                                               object_size, dtype=np.uint8))
+            arg = single_dependency.remote(
+                0, np.zeros(object_size, dtype=np.uint8))
             for i in range(num_objects):
                 arg = single_dependency.remote(i, arg)
                 args.append(arg)
