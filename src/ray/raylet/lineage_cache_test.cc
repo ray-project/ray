@@ -253,24 +253,21 @@ TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
   lineage_cache_.AddWaitingTask(task2, Lineage());
   lineage_cache_.AddWaitingTask(dependent_task, Lineage());
 
-  // Mark one of the independent tasks and the dependent task as ready.
+  // Flush one of the independent tasks.
   lineage_cache_.AddReadyTask(task1);
-  lineage_cache_.AddReadyTask(dependent_task);
-  // Check that only the first independent task is flushed.
   num_tasks_flushed++;
   CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-
-  // Flush acknowledgements. The dependent task should still not be flushed
-  // since task2 is not committed yet.
+  // Flush acknowledgements. The lineage cache should receive the commit for
+  // the first task.
   mock_gcs_.Flush();
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-
-  // Mark the other independent task as ready.
+  // Mark the other independent task and the dependent as ready.
   lineage_cache_.AddReadyTask(task2);
-  // Check that the other independent task gets flushed.
+  lineage_cache_.AddReadyTask(dependent_task);
+  // Two tasks are ready, but only the independent task should be flushed. The
+  // dependent task should only be flushed once commits for both independent
+  // tasks are received.
   num_tasks_flushed++;
   CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-
   // Flush acknowledgements. The dependent task should now be able to be
   // written.
   mock_gcs_.Flush();
