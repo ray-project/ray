@@ -1,5 +1,4 @@
 [style]
-based_on_style=chromium
 # Align closing bracket with visual indentation.
 align_closing_bracket_with_visual_indent=True
 
@@ -171,7 +170,7 @@ split_before_dict_set_generator=True
 
 # Split after the opening paren which surrounds an expression if it doesn't
 # fit on a single line.
-split_before_expression_after_opening_paren=True
+split_before_expression_after_opening_paren=False
 
 # If an argument / parameter list is going to be split, then split before
 # the first argument.
@@ -242,5 +241,4 @@ split_penalty_logical_operator=300
 
 # Use the Tab character for indentation.
 use_tabs=False
-
 
