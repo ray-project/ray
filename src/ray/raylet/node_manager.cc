@@ -627,10 +627,11 @@ void NodeManager::AssignTask(Task &task) {
       // guarantee deterministic reconstruction ordering for tasks whose
       // updates are reflected in the task table.
       auto execution_dependency = actor_entry->second.GetExecutionDependency();
+      // If the execution dependency is nil, then this is the first task to
+      // run on the actor, which has no dependencies.
       if (!execution_dependency.is_nil()) {
         TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
-        mutable_spec.SetExecutionDependencies(
-            {actor_entry->second.GetExecutionDependency()});
+        mutable_spec.SetExecutionDependencies({execution_dependency});
       }
       actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
     }
