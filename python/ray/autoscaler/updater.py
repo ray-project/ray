@@ -75,9 +75,9 @@ class NodeUpdater(object):
             self.provider.set_node_tags(self.node_id,
                                         {TAG_RAY_NODE_STATUS: "UpdateFailed"})
             if self.logfile is not None:
-                print("----- BEGIN REMOTE LOGS -----\n" + open(
-                    self.logfile.name).read() + "\n----- END REMOTE LOGS -----"
-                      )
+                print("----- BEGIN REMOTE LOGS -----\n" +
+                      open(self.logfile.name).read() +
+                      "\n----- END REMOTE LOGS -----")
             raise e
         self.provider.set_node_tags(
             self.node_id, {
