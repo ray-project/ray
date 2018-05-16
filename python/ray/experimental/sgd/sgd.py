@@ -195,6 +195,12 @@ class SGDWorker(object):
                            tf.local_variables_initializer())
         self.sess.run(init_op)
 
+    def foreach_model(self, fn):
+        return [fn(m) for m in self.models]
+
+    def foreach_worker(self, fn):
+        return fn(self)
+
     def compute_gradients(self, verbose):
         start = time.time()
         fetches = self.sess.run(
@@ -476,6 +482,17 @@ class DistributedSGD(object):
                     worker_index, model_creator,
                     num_devices=devices_per_worker, use_cpus=use_cpus,
                     verbose=True))
+
+    def foreach_worker(self, fn):
+        results = ray.get([w.foreach_worker.remote(fn) for w in self.workers])
+        return results
+
+    def foreach_model(self, fn):
+        results = ray.get([w.foreach_model.remote(fn) for w in self.workers])
+        out = []
+        for r in results:
+            out.extend(r)
+        return r
 
     def step(self):
         return do_sgd_step(self.workers, True)
