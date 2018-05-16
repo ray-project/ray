@@ -79,7 +79,7 @@ class DataFrame(object):
                 Metadata for the new dataframe's columns
         """
         if isinstance(data, DataFrame):
-            self._data = data._data
+            self._frame_data = data._frame_data
             return
 
         self._dtypes_cache = dtypes_cache
@@ -171,7 +171,7 @@ class DataFrame(object):
         if self._dtypes_cache is None:
             self._correct_dtypes()
 
-    def _get_data(self):
+    def _get_frame_data(self):
         data = {}
         data['blocks'] = self._block_partitions
         data['col_metadata'] = self._col_metadata
@@ -182,7 +182,7 @@ class DataFrame(object):
 
         return data
 
-    def _set_data(self, data):
+    def _set_frame_data(self, data):
         self._block_partitions = data['blocks']
         self._col_metadata = data['col_metadata']
         self._row_metadata = data['row_metadata']
@@ -190,7 +190,7 @@ class DataFrame(object):
         self.index = data['index']
         self._dtypes_cache = data['dtypes']
 
-    _data = property(_get_data, _set_data)
+    _frame_data = property(_get_frame_data, _set_frame_data)
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
