@@ -127,6 +127,8 @@ def _infer_column(first_line, kwargs={}):
 
 @ray.remote
 def _read_csv_with_offset(fn, start, end, kwargs={}, header=b''):
+    kwargs["quoting"] = int(kwargs["quoting"])  # See issue #2078
+
     bio = open(fn, 'rb')
     bio.seek(start)
     to_read = header + bio.read(end - start)
