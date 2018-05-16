@@ -74,8 +74,8 @@ def run_experiments(experiments,
             for name, spec in experiments.items()
         ]
 
-    if (type(exp_list) is list
-            and all(isinstance(exp, Experiment) for exp in exp_list)):
+    if (type(exp_list) is list and
+            all(isinstance(exp, Experiment) for exp in exp_list)):
         for experiment in exp_list:
             scheduler.add_experiment(experiment, runner)
     else:

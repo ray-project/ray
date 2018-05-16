@@ -399,8 +399,8 @@ class TestGlobalStateStore(unittest.TestCase):
 
     def check_task_subscription(self, p, scheduling_state, local_scheduler_id):
         task_args = [
-            b"task_id", scheduling_state,
-            local_scheduler_id.encode("ascii"), b"", 0, b"task_spec"
+            b"task_id", scheduling_state, local_scheduler_id.encode("ascii"),
+            b"", 0, b"task_spec"
         ]
         self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
         # Receive the data.

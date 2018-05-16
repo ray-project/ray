@@ -113,12 +113,11 @@ def set_actor_checkpoint(worker, actor_id, checkpoint_index, checkpoint,
         frontier: The task frontier at the time of the checkpoint.
     """
     actor_key = b"Actor:" + actor_id
-    worker.redis_client.hmset(
-        actor_key, {
-            "checkpoint_index": checkpoint_index,
-            "checkpoint": checkpoint,
-            "frontier": frontier,
-        })
+    worker.redis_client.hmset(actor_key, {
+        "checkpoint_index": checkpoint_index,
+        "checkpoint": checkpoint,
+        "frontier": frontier,
+    })
 
 
 def get_actor_checkpoint(worker, actor_id):
@@ -230,15 +229,15 @@ def make_actor_method_executor(worker, method_name, method, actor_imported):
                 return
 
         # Determine whether we should checkpoint the actor.
-        checkpointing_on = (actor_imported
-                            and worker.actor_checkpoint_interval > 0)
+        checkpointing_on = (actor_imported and
+                            worker.actor_checkpoint_interval > 0)
         # We should checkpoint the actor if user checkpointing is on, we've
         # executed checkpoint_interval tasks since the last checkpoint, and the
         # method we're about to execute is not a checkpoint.
-        save_checkpoint = (
-            checkpointing_on and
-            (worker.actor_task_counter % worker.actor_checkpoint_interval == 0
-             and method_name != "__ray_checkpoint__"))
+        save_checkpoint = (checkpointing_on and
+                           (worker.actor_task_counter %
+                            worker.actor_checkpoint_interval == 0 and
+                            method_name != "__ray_checkpoint__"))
 
         # Execute the assigned method and save a checkpoint if necessary.
         try:
@@ -334,8 +333,8 @@ def fetch_and_register_actor(actor_class_key, worker):
         worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
 
         def pred(x):
-            return (inspect.isfunction(x) or inspect.ismethod(x)
-                    or is_cython(x))
+            return (inspect.isfunction(x) or inspect.ismethod(x) or
+                    is_cython(x))
 
         actor_methods = inspect.getmembers(unpickled_class, predicate=pred)
         for actor_method_name, actor_method in actor_methods:
@@ -483,8 +482,8 @@ class ActorClass(object):
 
         # Get the actor methods of the given class.
         def pred(x):
-            return (inspect.isfunction(x) or inspect.ismethod(x)
-                    or is_cython(x))
+            return (inspect.isfunction(x) or inspect.ismethod(x) or
+                    is_cython(x))
 
         self._actor_methods = inspect.getmembers(
             self._modified_class, predicate=pred)
@@ -857,32 +856,20 @@ class ActorHandle(object):
             A dictionary of the information needed to reconstruct the object.
         """
         state = {
-            "actor_id":
-            self._ray_actor_id.id(),
-            "class_name":
-            self._ray_class_name,
-            "actor_forks":
-            self._ray_actor_forks,
-            "actor_cursor":
-            self._ray_actor_cursor.id(),
-            "actor_counter":
-            0,  # Reset the actor counter.
-            "actor_method_names":
-            self._ray_actor_method_names,
-            "method_signatures":
-            self._ray_method_signatures,
-            "method_num_return_vals":
-            self._ray_method_num_return_vals,
+            "actor_id": self._ray_actor_id.id(),
+            "class_name": self._ray_class_name,
+            "actor_forks": self._ray_actor_forks,
+            "actor_cursor": self._ray_actor_cursor.id(),
+            "actor_counter": 0,  # Reset the actor counter.
+            "actor_method_names": self._ray_actor_method_names,
+            "method_signatures": self._ray_method_signatures,
+            "method_num_return_vals": self._ray_method_num_return_vals,
             "actor_creation_dummy_object_id":
             self._ray_actor_creation_dummy_object_id.id(),
-            "actor_method_cpus":
-            self._ray_actor_method_cpus,
-            "actor_driver_id":
-            self._ray_actor_driver_id.id(),
-            "previous_actor_handle_id":
-            self._ray_actor_handle_id.id(),
-            "ray_forking":
-            ray_forking
+            "actor_method_cpus": self._ray_actor_method_cpus,
+            "actor_driver_id": self._ray_actor_driver_id.id(),
+            "previous_actor_handle_id": self._ray_actor_handle_id.id(),
+            "ray_forking": ray_forking
         }
 
         if ray_forking:

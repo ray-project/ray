@@ -227,11 +227,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testBadParams4(self):
         def f():
-            run_experiments({
-                "foo": {
-                    "run": "asdf",
-                }
-            })
+            run_experiments({"foo": {"run": "asdf", }})
 
         self.assertRaises(TuneError, f)
 
@@ -526,13 +522,11 @@ class VariantGeneratorTest(unittest.TestCase):
         trials = generate_trials({
             "run": "PPO",
             "config": {
-                "x":
-                grid_search([
+                "x": grid_search([
                     lambda spec: spec.config.y * 100,
                     lambda spec: spec.config.y * 200
                 ]),
-                "y":
-                lambda spec: 1,
+                "y": lambda spec: 1,
             },
         })
         trials = list(trials)
@@ -611,7 +605,8 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(cpu=1, gpu=0, extra_cpu=3, extra_gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=0, extra_cpu=3, extra_gpu=1),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -632,7 +627,8 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -661,7 +657,8 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 5
             },
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -690,7 +687,8 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
         }
         _default_registry.register(TRAINABLE_CLASS, "asdf", None)
         trials = [Trial("asdf", **kwargs), Trial("__fake", **kwargs)]
@@ -709,7 +707,8 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
             "checkpoint_freq": 1,
             "max_failures": 0,
             "config": {
@@ -731,7 +730,8 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
             "checkpoint_freq": 1,
             "max_failures": 1,
             "config": {
@@ -755,7 +755,8 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
             "checkpoint_freq": 1,
             "max_failures": 2,
             "config": {
@@ -787,7 +788,8 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -820,7 +822,8 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 2
             },
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -839,7 +842,8 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 2
             },
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -870,13 +874,12 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 5
             },
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
         }
         trials = [
-            Trial("__fake", **kwargs),
-            Trial("__fake", **kwargs),
-            Trial("__fake", **kwargs),
-            Trial("__fake", **kwargs)
+            Trial("__fake", **kwargs), Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs), Trial("__fake", **kwargs)
         ]
         for t in trials:
             runner.add_trial(t)

@@ -51,8 +51,8 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
-    if huge_pages and not (sys.platform == "linux"
-                           or sys.platform == "linux2"):
+    if huge_pages and not (sys.platform == "linux" or
+                           sys.platform == "linux2"):
         raise Exception("The huge_pages argument is only supported on "
                         "Linux.")
 

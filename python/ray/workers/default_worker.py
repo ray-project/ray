@@ -8,9 +8,8 @@ import traceback
 import ray
 import ray.actor
 
-parser = argparse.ArgumentParser(
-    description=("Parse addresses for the worker "
-                 "to connect to."))
+parser = argparse.ArgumentParser(description=("Parse addresses for the worker "
+                                              "to connect to."))
 parser.add_argument(
     "--node-ip-address",
     required=True,

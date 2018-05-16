@@ -115,9 +115,8 @@ class FunctionRunner(Trainable):
         if result.timesteps_total is None:
             raise TuneError("Must specify timesteps_total in result", result)
 
-        result = result._replace(
-            timesteps_this_iter=(
-                result.timesteps_total - self._last_reported_timestep))
+        result = result._replace(timesteps_this_iter=(
+            result.timesteps_total - self._last_reported_timestep))
         self._last_reported_timestep = result.timesteps_total
 
         return result

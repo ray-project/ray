@@ -115,8 +115,8 @@ class TestGlobalScheduler(unittest.TestCase):
         for p4 in self.local_scheduler_pids:
             self.assertEqual(p4.poll(), None)
 
-        redis_processes = services.all_processes[
-            services.PROCESS_TYPE_REDIS_SERVER]
+        redis_processes = services.all_processes[services.
+                                                 PROCESS_TYPE_REDIS_SERVER]
         for redis_process in redis_processes:
             self.assertEqual(redis_process.poll(), None)
 
@@ -163,19 +163,21 @@ class TestGlobalScheduler(unittest.TestCase):
         return db_client_id
 
     def test_task_default_resources(self):
-        task1 = local_scheduler.Task(
-            random_driver_id(), random_function_id(), [random_object_id()], 0,
-            random_task_id(), 0)
+        task1 = local_scheduler.Task(random_driver_id(),
+                                     random_function_id(),
+                                     [random_object_id()], 0,
+                                     random_task_id(), 0)
         self.assertEqual(task1.required_resources(), {"CPU": 1})
-        task2 = local_scheduler.Task(
-            random_driver_id(), random_function_id(), [random_object_id()], 0,
-            random_task_id(), 0, local_scheduler.ObjectID(NIL_ACTOR_ID),
-            local_scheduler.ObjectID(NIL_OBJECT_ID),
-            local_scheduler.ObjectID(NIL_ACTOR_ID),
-            local_scheduler.ObjectID(NIL_ACTOR_ID), 0, 0, [], {
-                "CPU": 1,
-                "GPU": 2
-            })
+        task2 = local_scheduler.Task(random_driver_id(),
+                                     random_function_id(),
+                                     [random_object_id()], 0,
+                                     random_task_id(), 0,
+                                     local_scheduler.ObjectID(NIL_ACTOR_ID),
+                                     local_scheduler.ObjectID(NIL_OBJECT_ID),
+                                     local_scheduler.ObjectID(NIL_ACTOR_ID),
+                                     local_scheduler.ObjectID(NIL_ACTOR_ID), 0,
+                                     0, [], {"CPU": 1,
+                                             "GPU": 2})
         self.assertEqual(task2.required_resources(), {"CPU": 1, "GPU": 2})
 
     def test_redis_only_single_task(self):
@@ -214,7 +216,8 @@ class TestGlobalScheduler(unittest.TestCase):
         time.sleep(0.1)
         # Submit a task to Redis.
         task = local_scheduler.Task(
-            random_driver_id(), random_function_id(),
+            random_driver_id(),
+            random_function_id(),
             [local_scheduler.ObjectID(object_dep.binary())],
             num_return_vals[0], random_task_id(), 0)
         self.local_scheduler_clients[0].submit(task)
@@ -267,7 +270,8 @@ class TestGlobalScheduler(unittest.TestCase):
                 # yield CPU).
                 time.sleep(0.010)
             task = local_scheduler.Task(
-                random_driver_id(), random_function_id(),
+                random_driver_id(),
+                random_function_id(),
                 [local_scheduler.ObjectID(object_dep.binary())],
                 num_return_vals[0], random_task_id(), 0)
             self.local_scheduler_clients[0].submit(task)
@@ -281,15 +285,13 @@ class TestGlobalScheduler(unittest.TestCase):
             # First, check if all tasks made it to Redis.
             if len(task_entries) == num_tasks:
                 task_statuses = [
-                    task_entry["State"]
-                    for task_entry in task_entries.values()
+                    task_entry["State"] for task_entry in task_entries.values()
                 ]
                 self.assertTrue(
                     all([
                         status in [
-                            state.TASK_STATUS_WAITING,
-                            state.TASK_STATUS_SCHEDULED,
-                            state.TASK_STATUS_QUEUED
+                            state.TASK_STATUS_WAITING, state.
+                            TASK_STATUS_SCHEDULED, state.TASK_STATUS_QUEUED
                         ] for status in task_statuses
                     ]))
                 num_tasks_done = task_statuses.count(state.TASK_STATUS_QUEUED)

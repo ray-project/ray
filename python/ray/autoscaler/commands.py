@@ -38,8 +38,8 @@ def create_or_update_cluster(config_file, override_min_workers,
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
-        raise NotImplementedError("Unsupported provider {}".format(
-            config["provider"]))
+        raise NotImplementedError(
+            "Unsupported provider {}".format(config["provider"]))
 
     bootstrap_config, _ = importer()
     config = bootstrap_config(config)
@@ -56,9 +56,7 @@ def teardown_cluster(config_file, yes):
     confirm("This will destroy your cluster", yes)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
-    head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
-    }
+    head_node_tags = {TAG_RAY_NODE_TYPE: "Head", }
     for node in provider.nodes(head_node_tags):
         print("Terminating head node {}".format(node))
         provider.terminate_node(node)
@@ -75,9 +73,7 @@ def get_or_create_head_node(config, no_restart, yes):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
-    head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
-    }
+    head_node_tags = {TAG_RAY_NODE_TYPE: "Head", }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
         head_node = nodes[0]
@@ -128,10 +124,8 @@ def get_or_create_head_node(config, no_restart, yes):
     remote_config_file.write(json.dumps(remote_config))
     remote_config_file.flush()
     config["file_mounts"].update({
-        remote_key_path:
-        config["auth"]["ssh_private_key"],
-        "~/ray_bootstrap_config.yaml":
-        remote_config_file.name
+        remote_key_path: config["auth"]["ssh_private_key"],
+        "~/ray_bootstrap_config.yaml": remote_config_file.name
     })
 
     if no_restart:
@@ -166,8 +160,8 @@ def get_or_create_head_node(config, no_restart, yes):
 
     monitor_str = "tail -f /tmp/raylogs/monitor-*"
     for s in init_commands:
-        if ("ray start" in s and "docker exec" in s
-                and "--autoscaling-config" in s):
+        if ("ray start" in s and "docker exec" in s and
+                "--autoscaling-config" in s):
             monitor_str = "docker exec {} /bin/sh -c {}".format(
                 config["docker"]["container_name"], quote(monitor_str))
     print("To monitor auto-scaling activity, you can run:\n\n"
@@ -186,9 +180,7 @@ def get_head_node_ip(config_file):
 
     config = yaml.load(open(config_file).read())
     provider = get_node_provider(config["provider"], config["cluster_name"])
-    head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
-    }
+    head_node_tags = {TAG_RAY_NODE_TYPE: "Head", }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
         head_node = nodes[0]

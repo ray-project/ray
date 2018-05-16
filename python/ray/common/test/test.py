@@ -30,9 +30,7 @@ def random_task_id():
 
 BASE_SIMPLE_OBJECTS = [
     0, 1, 100000, 0.0, 0.5, 0.9, 100000.1, (), [], {}, "", 990 * "h", u"",
-    990 * u"h",
-    np.ones(3),
-    np.array([True, False]), None, True, False
+    990 * u"h", np.ones(3), np.array([True, False]), None, True, False
 ]
 
 if sys.version_info < (3, 0):
@@ -62,8 +60,7 @@ class Foo(object):
 
 
 BASE_COMPLEX_OBJECTS = [
-    15000 * "h", 15000 * u"h", lst,
-    Foo(), 100 * [100 * [10 * [1]]],
+    15000 * "h", 15000 * u"h", lst, Foo(), 100 * [100 * [10 * [1]]],
     np.array([Foo()])
 ]
 

@@ -21,12 +21,11 @@ def json_to_resources(data):
                 "The field `{}` is no longer supported. Use `extra_cpu` "
                 "or `extra_gpu` instead.".format(k))
         if k not in Resources._fields:
-            raise TuneError(
-                "Unknown resource type {}, must be one of {}".format(
-                    k, Resources._fields))
+            raise TuneError("Unknown resource type {}, must be one of {}".
+                            format(k, Resources._fields))
     return Resources(
-        data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
-        data.get("extra_gpu", 0))
+        data.get("cpu", 1),
+        data.get("gpu", 0), data.get("extra_cpu", 0), data.get("extra_gpu", 0))
 
 
 def resources_to_json(resources):

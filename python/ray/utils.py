@@ -66,11 +66,10 @@ def push_error_to_driver(redis_client,
         driver_id = DRIVER_ID_LENGTH * b"\x00"
     error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
-    redis_client.hmset(error_key, {
-        "type": error_type,
-        "message": message,
-        "data": data
-    })
+    redis_client.hmset(error_key,
+                       {"type": error_type,
+                        "message": message,
+                        "data": data})
     redis_client.rpush("ErrorKeys", error_key)
 
 

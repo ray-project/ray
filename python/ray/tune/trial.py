@@ -113,8 +113,8 @@ class Trial(object):
         self.local_dir = os.path.expanduser(local_dir)
         self.experiment_tag = experiment_tag
         self.resources = (
-            resources
-            or self._get_trainable_cls().default_resource_request(self.config))
+            resources or
+            self._get_trainable_cls().default_resource_request(self.config))
         self.stopping_criterion = stopping_criterion or {}
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
@@ -174,8 +174,8 @@ class Trial(object):
         try:
             if error_msg and self.logdir:
                 self.num_failures += 1
-                error_file = os.path.join(self.logdir, "error_{}.txt".format(
-                    date_str()))
+                error_file = os.path.join(self.logdir,
+                                          "error_{}.txt".format(date_str()))
                 with open(error_file, "w") as f:
                     f.write(error_msg)
                 self.error_file = error_file
@@ -262,8 +262,8 @@ class Trial(object):
             '{} [{}]'.format(self._status_string(),
                              location_string(self.last_result.hostname,
                                              self.last_result.pid)),
-            '{} s'.format(int(self.last_result.time_total_s)), '{} ts'.format(
-                int(self.last_result.timesteps_total))
+            '{} s'.format(int(self.last_result.time_total_s)),
+            '{} ts'.format(int(self.last_result.timesteps_total))
         ]
 
         if self.last_result.episode_reward_mean is not None:
@@ -271,12 +271,12 @@ class Trial(object):
                 format(self.last_result.episode_reward_mean, '.3g')))
 
         if self.last_result.mean_loss is not None:
-            pieces.append('{} loss'.format(
-                format(self.last_result.mean_loss, '.3g')))
+            pieces.append(
+                '{} loss'.format(format(self.last_result.mean_loss, '.3g')))
 
         if self.last_result.mean_accuracy is not None:
-            pieces.append('{} acc'.format(
-                format(self.last_result.mean_accuracy, '.3g')))
+            pieces.append(
+                '{} acc'.format(format(self.last_result.mean_accuracy, '.3g')))
 
         return ', '.join(pieces)
 
@@ -340,8 +340,9 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        if self.verbose and (terminate or time.time() - self.last_debug >
-                             DEBUG_PRINT_INTERVAL):
+        if self.verbose and (
+                terminate or
+                time.time() - self.last_debug > DEBUG_PRINT_INTERVAL):
             print("TrainingResult for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()

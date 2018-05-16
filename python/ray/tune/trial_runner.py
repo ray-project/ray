@@ -200,16 +200,16 @@ class TrialRunner(object):
         cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
         gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
 
-        have_space = (resources.cpu_total() <= cpu_avail
-                      and resources.gpu_total() <= gpu_avail)
+        have_space = (resources.cpu_total() <= cpu_avail and
+                      resources.gpu_total() <= gpu_avail)
 
         if have_space:
             return True
 
         can_overcommit = self._queue_trials
 
-        if ((resources.cpu_total() > 0 and cpu_avail <= 0)
-                or (resources.gpu_total() > 0 and gpu_avail <= 0)):
+        if ((resources.cpu_total() > 0 and cpu_avail <= 0) or
+            (resources.gpu_total() > 0 and gpu_avail <= 0)):
             can_overcommit = False  # requested resource is already saturated
 
         if can_overcommit:
@@ -260,8 +260,8 @@ class TrialRunner(object):
                 self._scheduler_alg.on_trial_complete(self, trial, result)
                 decision = TrialScheduler.STOP
             else:
-                decision = self._scheduler_alg.on_trial_result(
-                    self, trial, result)
+                decision = self._scheduler_alg.on_trial_result(self, trial,
+                                                               result)
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
 
@@ -369,8 +369,9 @@ class TrialRunner(object):
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()
         local_schedulers = [
-            entry for client in clients.values() for entry in client if
-            (entry['ClientType'] == 'local_scheduler' and not entry['Deleted'])
+            entry for client in clients.values() for entry in client
+            if (entry['ClientType'] == 'local_scheduler' and
+                not entry['Deleted'])
         ]
         num_cpus = sum(ls['CPU'] for ls in local_schedulers)
         num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)

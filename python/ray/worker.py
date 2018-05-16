@@ -94,8 +94,8 @@ class RayTaskError(Exception):
     def __init__(self, function_name, exception, traceback_str):
         """Initialize a RayTaskError."""
         self.function_name = function_name
-        if (isinstance(exception, RayGetError)
-                or isinstance(exception, RayGetArgumentError)):
+        if (isinstance(exception, RayGetError) or
+                isinstance(exception, RayGetArgumentError)):
             self.exception = exception
         else:
             self.exception = None
@@ -315,22 +315,22 @@ class Worker(object):
                     try:
                         register_custom_serializer(
                             type(e.example_object), use_pickle=True)
-                        warning_message = ("WARNING: Falling back to "
-                                           "serializing objects of type {} by "
-                                           "using pickle. This may be "
-                                           "inefficient.".format(
-                                               type(e.example_object)))
+                        warning_message = (
+                            "WARNING: Falling back to "
+                            "serializing objects of type {} by "
+                            "using pickle. This may be "
+                            "inefficient.".format(type(e.example_object)))
                         print(warning_message)
                     except serialization.CloudPickleError:
                         register_custom_serializer(
                             type(e.example_object),
                             use_pickle=True,
                             local=True)
-                        warning_message = ("WARNING: Pickling the class {} "
-                                           "failed, so we are using pickle "
-                                           "and only registering the class "
-                                           "locally.".format(
-                                               type(e.example_object)))
+                        warning_message = (
+                            "WARNING: Pickling the class {} "
+                            "failed, so we are using pickle "
+                            "and only registering the class "
+                            "locally.".format(type(e.example_object)))
                         print(warning_message)
 
     def put_object(self, object_id, value):
@@ -381,12 +381,12 @@ class Worker(object):
                 # long time, if the store is blocked, it can block the manager
                 # as well as a consequence.
                 results = []
-                for i in range(0, len(object_ids),
+                for i in range(0,
+                               len(object_ids),
                                ray._config.worker_get_request_size()):
                     results += self.plasma_client.get(
-                        object_ids[i:(
-                            i + ray._config.worker_get_request_size())],
-                        timeout, self.serialization_context)
+                        object_ids[i:(i + ray._config.worker_get_request_size()
+                                      )], timeout, self.serialization_context)
                 return results
             except pyarrow.lib.ArrowInvalid as e:
                 # TODO(ekl): the local scheduler could include relevant
@@ -442,7 +442,8 @@ class Worker(object):
         plain_object_ids = [
             plasma.ObjectID(object_id.id()) for object_id in object_ids
         ]
-        for i in range(0, len(object_ids),
+        for i in range(0,
+                       len(object_ids),
                        ray._config.worker_fetch_request_size()):
             if not self.use_raylet:
                 self.plasma_client.fetch(plain_object_ids[i:(
@@ -472,7 +473,8 @@ class Worker(object):
             # prolonged period of time in a single call.
             object_ids_to_fetch = list(
                 map(plasma.ObjectID, unready_ids.keys()))
-            for i in range(0, len(object_ids_to_fetch),
+            for i in range(0,
+                           len(object_ids_to_fetch),
                            ray._config.worker_fetch_request_size()):
                 if not self.use_raylet:
                     self.plasma_client.fetch(object_ids_to_fetch[i:(
@@ -586,8 +588,8 @@ class Worker(object):
 
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
-                driver_id, ray.ObjectID(
-                    function_id.id()), args_for_local_scheduler,
+                driver_id,
+                ray.ObjectID(function_id.id()), args_for_local_scheduler,
                 num_return_vals, self.current_task_id, self.task_index,
                 actor_creation_id, actor_creation_dummy_object_id, actor_id,
                 actor_handle_id, actor_counter, is_actor_checkpoint_method,
@@ -637,15 +639,14 @@ class Worker(object):
             else:
                 del function.__globals__[function.__name__]
 
-        self.redis_client.hmset(
-            key, {
-                "driver_id": self.task_driver_id.id(),
-                "function_id": function_id.id(),
-                "name": function_name,
-                "module": function.__module__,
-                "function": pickled_function,
-                "max_calls": max_calls
-            })
+        self.redis_client.hmset(key, {
+            "driver_id": self.task_driver_id.id(),
+            "function_id": function_id.id(),
+            "name": function_name,
+            "module": function.__module__,
+            "function": pickled_function,
+            "max_calls": max_calls
+        })
         self.redis_client.rpush("Exports", key)
 
     def run_function_on_all_workers(self, function):
@@ -685,12 +686,11 @@ class Worker(object):
                 # we don't need to export it again.
                 return
             # Run the function on all workers.
-            self.redis_client.hmset(
-                key, {
-                    "driver_id": self.task_driver_id.id(),
-                    "function_id": function_to_run_id,
-                    "function": pickled_function
-                })
+            self.redis_client.hmset(key, {
+                "driver_id": self.task_driver_id.id(),
+                "function_id": function_to_run_id,
+                "function": pickled_function
+            })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hmset and rpush, then the program will
@@ -720,9 +720,9 @@ class Worker(object):
         warning_sent = False
         while True:
             with self.lock:
-                if (self.actor_id == NIL_ACTOR_ID
-                        and (function_id.id() in
-                             self.function_execution_info[driver_id])):
+                if (self.actor_id == NIL_ACTOR_ID and
+                    (function_id.id() in
+                     self.function_execution_info[driver_id])):
                     break
                 elif self.actor_id != NIL_ACTOR_ID and (
                         self.actor_id in self.actors):
@@ -838,17 +838,16 @@ class Worker(object):
         # Get task arguments from the object store.
         try:
             with log_span("ray:task:get_arguments", worker=self):
-                arguments = self._get_arguments_for_execution(
-                    function_name, args)
+                arguments = self._get_arguments_for_execution(function_name,
+                                                              args)
         except (RayGetError, RayGetArgumentError) as e:
             self._handle_process_task_failure(function_id, return_object_ids,
                                               e, None)
             return
         except Exception as e:
-            self._handle_process_task_failure(function_id, return_object_ids,
-                                              e,
-                                              ray.utils.format_error_message(
-                                                  traceback.format_exc()))
+            self._handle_process_task_failure(
+                function_id, return_object_ids, e,
+                ray.utils.format_error_message(traceback.format_exc()))
             return
 
         # Execute the task.
@@ -881,10 +880,9 @@ class Worker(object):
                     outputs = (outputs, )
                 self._store_outputs_in_objstore(return_object_ids, outputs)
         except Exception as e:
-            self._handle_process_task_failure(function_id, return_object_ids,
-                                              e,
-                                              ray.utils.format_error_message(
-                                                  traceback.format_exc()))
+            self._handle_process_task_failure(
+                function_id, return_object_ids, e,
+                ray.utils.format_error_message(traceback.format_exc()))
 
     def _handle_process_task_failure(self, function_id, return_object_ids,
                                      error, backtrace):
@@ -960,8 +958,9 @@ class Worker(object):
         with self.lock:
             log(event_type="ray:acquire_lock", kind=LOG_SPAN_END, worker=self)
 
-            function_name = (self.function_execution_info[driver_id][
-                function_id.id()]).function_name
+            function_name = (
+                self.function_execution_info[driver_id][function_id.id()]
+            ).function_name
             contents = {
                 "function_name": function_name,
                 "task_id": task.task_id().hex(),
@@ -1119,10 +1118,10 @@ def error_applies_to_driver(error_key, worker=global_worker):
     # If the driver ID in the error message is a sequence of all zeros, then
     # the message is intended for all drivers.
     generic_driver_id = DRIVER_ID_LENGTH * b"\x00"
-    driver_id = error_key[len(ERROR_KEY_PREFIX):(
-        len(ERROR_KEY_PREFIX) + DRIVER_ID_LENGTH)]
-    return (driver_id == worker.task_driver_id.id()
-            or driver_id == generic_driver_id)
+    driver_id = error_key[len(ERROR_KEY_PREFIX):(len(ERROR_KEY_PREFIX) +
+                                                 DRIVER_ID_LENGTH)]
+    return (driver_id == worker.task_driver_id.id() or
+            driver_id == generic_driver_id)
 
 
 def error_info(worker=global_worker):
@@ -1235,8 +1234,8 @@ def get_address_info_from_redis_helper(redis_address,
             assert b"client_type" in info
             client_node_ip_address = info[b"node_ip_address"].decode("ascii")
             if (client_node_ip_address == node_ip_address or
-                (client_node_ip_address == "127.0.0.1"
-                 and redis_ip_address == ray.services.get_node_ip_address())):
+                (client_node_ip_address == "127.0.0.1" and
+                 redis_ip_address == ray.services.get_node_ip_address())):
                 if info[b"client_type"].decode("ascii") == "plasma_manager":
                     plasma_managers.append(info)
                 elif info[b"client_type"].decode("ascii") == "local_scheduler":
@@ -1278,13 +1277,13 @@ def get_address_info_from_redis_helper(redis_address,
         clients = redis_client.zrange(client_key, 0, -1)
         raylets = []
         for client_message in clients:
-            client = ClientTableData.GetRootAsClientTableData(
-                client_message, 0)
+            client = ClientTableData.GetRootAsClientTableData(client_message,
+                                                              0)
             client_node_ip_address = client.NodeManagerAddress().decode(
                 "ascii")
             if (client_node_ip_address == node_ip_address or
-                (client_node_ip_address == "127.0.0.1"
-                 and redis_ip_address == ray.services.get_node_ip_address())):
+                (client_node_ip_address == "127.0.0.1" and
+                 redis_ip_address == ray.services.get_node_ip_address())):
                 raylets.append(client)
 
         object_store_addresses = [
@@ -1848,8 +1847,8 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
     driver_id, serialized_function = worker.redis_client.hmget(
         key, ["driver_id", "function"])
 
-    if (worker.mode in [SCRIPT_MODE, SILENT_MODE]
-            and driver_id != worker.task_driver_id.id()):
+    if (worker.mode in [SCRIPT_MODE, SILENT_MODE] and
+            driver_id != worker.task_driver_id.id()):
         # This export was from a different driver and there's no need for this
         # driver to import it.
         return
@@ -1864,8 +1863,8 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
         # traceback and notify the scheduler of the failure.
         traceback_str = traceback.format_exc()
         # Log the error message.
-        name = function.__name__ if ("function" in locals()
-                                     and hasattr(function, "__name__")) else ""
+        name = function.__name__ if ("function" in locals() and
+                                     hasattr(function, "__name__")) else ""
         ray.utils.push_error_to_driver(
             worker.redis_client,
             "function_to_run",
@@ -2039,14 +2038,14 @@ def connect(info,
     if mode == WORKER_MODE:
         # This key is set in services.py when Redis is started.
         redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
-        if (redirect_worker_output_val is not None
-                and int(redirect_worker_output_val) == 1):
+        if (redirect_worker_output_val is not None and
+                int(redirect_worker_output_val) == 1):
             redirect_worker_output = 1
         else:
             redirect_worker_output = 0
         if redirect_worker_output:
-            log_stdout_file, log_stderr_file = services.new_log_files(
-                "worker", True)
+            log_stdout_file, log_stderr_file = services.new_log_files("worker",
+                                                                      True)
             sys.stdout = log_stdout_file
             sys.stderr = log_stderr_file
             services.record_log_files_in_redis(
@@ -2137,15 +2136,18 @@ def connect(info,
         nil_actor_counter = 0
 
         driver_task = ray.local_scheduler.Task(
-            worker.task_driver_id, ray.ObjectID(NIL_FUNCTION_ID), [], 0,
-            worker.current_task_id, worker.task_index,
-            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
-            ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
-            nil_actor_counter, False, [], {"CPU": 0}, worker.use_raylet)
+            worker.task_driver_id,
+            ray.ObjectID(NIL_FUNCTION_ID), [], 0, worker.current_task_id,
+            worker.task_index,
+            ray.ObjectID(NIL_ACTOR_ID),
+            ray.ObjectID(NIL_ACTOR_ID),
+            ray.ObjectID(NIL_ACTOR_ID),
+            ray.ObjectID(NIL_ACTOR_ID), nil_actor_counter, False, [],
+            {"CPU": 0}, worker.use_raylet)
         global_state._execute_command(
             driver_task.task_id(), "RAY.TASK_TABLE_ADD",
-            driver_task.task_id().id(),
-            TASK_STATUS_RUNNING, NIL_LOCAL_SCHEDULER_ID,
+            driver_task.task_id().id(), TASK_STATUS_RUNNING,
+            NIL_LOCAL_SCHEDULER_ID,
             driver_task.execution_dependencies_string(), 0,
             ray.local_scheduler.task_to_string(driver_task))
         # Set the driver's current task ID to the task ID assigned to the
@@ -2541,9 +2543,9 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     if worker.mode != PYTHON_MODE:
         for object_id in object_ids:
             if not isinstance(object_id, ray.ObjectID):
-                raise TypeError("wait() expected a list of ObjectID, "
-                                "got list containing {}".format(
-                                    type(object_id)))
+                raise TypeError(
+                    "wait() expected a list of ObjectID, "
+                    "got list containing {}".format(type(object_id)))
 
     worker.check_connected()
     with log_span("ray:wait", worker=worker):
@@ -2598,8 +2600,8 @@ def make_decorator(num_return_vals=None,
                    checkpoint_interval=None,
                    worker=None):
     def decorator(function_or_class):
-        if (inspect.isfunction(function_or_class)
-                or is_cython(function_or_class)):
+        if (inspect.isfunction(function_or_class) or
+                is_cython(function_or_class)):
             # Set the remote function default resources.
             if checkpoint_interval is not None:
                 raise Exception("The keyword 'checkpoint_interval' is not "
@@ -2667,9 +2669,9 @@ def remote(*args, **kwargs):
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
     resources = kwargs.get("resources")
     if not isinstance(resources, dict) and resources is not None:
-        raise Exception("The 'resources' keyword argument must be a "
-                        "dictionary, but received type {}.".format(
-                            type(resources)))
+        raise Exception(
+            "The 'resources' keyword argument must be a "
+            "dictionary, but received type {}.".format(type(resources)))
     if resources is not None:
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."

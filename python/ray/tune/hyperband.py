@@ -116,7 +116,8 @@ class HyperBandScheduler(FIFOScheduler):
                     cur_bracket = None
                 else:
                     retry = False
-                    cur_bracket = Bracket(self._time_attr, self._get_n0(s),
+                    cur_bracket = Bracket(self._time_attr,
+                                          self._get_n0(s),
                                           self._get_r0(s), self._max_t_attr,
                                           self._eta, s)
                 cur_band.append(cur_bracket)
@@ -220,8 +221,8 @@ class HyperBandScheduler(FIFOScheduler):
             for bracket in sorted(
                     hyperband, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
-                    if (trial.status == Trial.PENDING
-                            and trial_runner.has_resources(trial.resources)):
+                    if (trial.status == Trial.PENDING and
+                            trial_runner.has_resources(trial.resources)):
                         return trial
         return None
 
@@ -391,9 +392,9 @@ class Bracket():
 
     def __repr__(self):
         status = ", ".join([
-            "Max Size (n)={}".format(self._n), "Milestone (r)={}".format(
-                self._cumul_r), "completed={:.1%}".format(
-                    self.completion_percentage())
+            "Max Size (n)={}".format(self._n),
+            "Milestone (r)={}".format(self._cumul_r),
+            "completed={:.1%}".format(self.completion_percentage())
         ])
         counts = collections.Counter([t.status for t in self._all_trials])
         trial_statuses = ", ".join(

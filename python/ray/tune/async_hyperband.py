@@ -76,7 +76,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             action = TrialScheduler.STOP
         else:
             bracket = self._trial_info[trial.trial_id]
-            action = bracket.on_result(trial, getattr(result, self._time_attr),
+            action = bracket.on_result(trial,
+                                       getattr(result, self._time_attr),
                                        getattr(result, self._reward_attr))
         if action == TrialScheduler.STOP:
             self._num_stopped += 1
@@ -84,7 +85,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
     def on_trial_complete(self, trial_runner, trial, result):
         bracket = self._trial_info[trial.trial_id]
-        bracket.on_result(trial, getattr(result, self._time_attr),
+        bracket.on_result(trial,
+                          getattr(result, self._time_attr),
                           getattr(result, self._reward_attr))
         del self._trial_info[trial.trial_id]
 

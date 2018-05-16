@@ -385,8 +385,8 @@ class HyperbandSuite(unittest.TestCase):
         trials = sched._state["bracket"].current_trials()
         for t in trials[:-1]:
             mock_runner._launch_trial(t)
-            sched.on_trial_result(mock_runner, t, result(
-                stats[str(1)]["r"], 10))
+            sched.on_trial_result(mock_runner, t,
+                                  result(stats[str(1)]["r"], 10))
 
         mock_runner._launch_trial(trials[-1])
         sched.on_trial_error(mock_runner, trials[-1])
@@ -420,8 +420,8 @@ class HyperbandSuite(unittest.TestCase):
         trials = sched._state["bracket"].current_trials()
         for t in trials[:-1]:
             mock_runner._launch_trial(t)
-            sched.on_trial_result(mock_runner, t, result(
-                stats[str(1)]["r"], 10))
+            sched.on_trial_result(mock_runner, t,
+                                  result(stats[str(1)]["r"], 10))
 
         mock_runner._launch_trial(trials[-1])
         sched.on_trial_complete(mock_runner, trials[-1], result(100, 12))
@@ -440,8 +440,8 @@ class HyperbandSuite(unittest.TestCase):
             mock_runner._launch_trial(t)
 
         for i, t in enumerate(bracket_trials):
-            action = sched.on_trial_result(mock_runner, t, result(
-                init_units, i))
+            action = sched.on_trial_result(mock_runner, t,
+                                           result(init_units, i))
         self.assertEqual(action, TrialScheduler.CONTINUE)
         t = Trial("__fake")
         sched.on_trial_add(None, t)
@@ -573,13 +573,12 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             custom_explore_fn=explore)
         runner = _MockTrialRunner(pbt)
         for i in range(5):
-            trial = _MockTrial(
-                i, {
-                    "id_factor": i,
-                    "float_factor": 2.0,
-                    "const_factor": 3,
-                    "int_factor": 10
-                })
+            trial = _MockTrial(i, {
+                "id_factor": i,
+                "float_factor": 2.0,
+                "const_factor": 3,
+                "int_factor": 10
+            })
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
             self.assertEqual(

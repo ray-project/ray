@@ -36,14 +36,12 @@ def get_sliders(update):
     # Start_box value indicates the desired start point of queried window.
     start_box = widgets.FloatText(
         description="Start Time:",
-        disabled=True,
-    )
+        disabled=True, )
 
     # End_box value indicates the desired end point of queried window.
     end_box = widgets.FloatText(
         description="End Time:",
-        disabled=True,
-    )
+        disabled=True, )
 
     # Percentage slider. Indicates either % of total time or total tasks
     # depending on what breakdown_opt is set to.
@@ -55,8 +53,7 @@ def get_sliders(update):
         description="%:",
         continuous_update=False,
         orientation="horizontal",
-        readout=True,
-    )
+        readout=True, )
 
     # Indicates the number of tasks that the user wants to be returned. Is
     # disabled when the breakdown_opt value is set to total_time_value.
@@ -101,9 +98,8 @@ def get_sliders(update):
                 if event == INIT_EVENT:
                     if breakdown_opt.value == total_tasks_value:
                         num_tasks_box.value = -min(10000, num_tasks)
-                        range_slider.value = (int(
-                            100 - (100. * -num_tasks_box.value) / num_tasks),
-                                              100)
+                        range_slider.value = (int(100 - (
+                            100. * -num_tasks_box.value) / num_tasks), 100)
                     else:
                         low, high = map(lambda x: x / 100., range_slider.value)
                         start_box.value = round(diff * low, 2)
@@ -126,8 +122,8 @@ def get_sliders(update):
                     elif end_box.value > diff:
                         end_box.value = diff
                     low, high = range_slider.value
-                    range_slider.value = (low,
-                                          int((end_box.value * 100.) / diff))
+                    range_slider.value = (low, int(
+                        (end_box.value * 100.) / diff))
 
                 # Event was triggered by a change in the breakdown options
                 # toggle.
@@ -141,9 +137,8 @@ def get_sliders(update):
                         # Make CSS display go back to the default settings.
                         num_tasks_box.layout.display = None
                         num_tasks_box.value = min(10000, num_tasks)
-                        range_slider.value = (int(
-                            100 - (100. * num_tasks_box.value) / num_tasks),
-                                              100)
+                        range_slider.value = (int(100 - (
+                            100. * num_tasks_box.value) / num_tasks), 100)
                     else:
                         start_box.disabled = False
                         end_box.disabled = False
@@ -152,9 +147,9 @@ def get_sliders(update):
                         # Make CSS display go back to the default settings.
                         total_time_box.layout.display = None
                         num_tasks_box.layout.display = 'none'
-                        range_slider.value = (
-                            int((start_box.value * 100.) / diff),
-                            int((end_box.value * 100.) / diff))
+                        range_slider.value = (int(
+                            (start_box.value * 100.) / diff), int(
+                                (end_box.value * 100.) / diff))
 
                 # Event was triggered by a change in the range_slider
                 # value.
@@ -165,8 +160,8 @@ def get_sliders(update):
                         new_low, new_high = event["new"]
                         if old_low != new_low:
                             range_slider.value = (new_low, 100)
-                            num_tasks_box.value = (
-                                -(100. - new_low) / 100. * num_tasks)
+                            num_tasks_box.value = (-(100. - new_low) / 100. *
+                                                   num_tasks)
                         else:
                             range_slider.value = (0, new_high)
                             num_tasks_box.value = new_high / 100. * num_tasks
@@ -178,9 +173,8 @@ def get_sliders(update):
                 # value.
                 elif event["owner"] == num_tasks_box:
                     if num_tasks_box.value > 0:
-                        range_slider.value = (
-                            0, int(
-                                100 * float(num_tasks_box.value) / num_tasks))
+                        range_slider.value = (0, int(
+                            100 * float(num_tasks_box.value) / num_tasks))
                     elif num_tasks_box.value < 0:
                         range_slider.value = (100 + int(
                             100 * float(num_tasks_box.value) / num_tasks), 100)
@@ -301,8 +295,7 @@ def task_timeline():
     breakdown_opt = widgets.Dropdown(
         options=["Basic", "Task Breakdowns"],
         value="Task Breakdowns",
-        disabled=False,
-    )
+        disabled=False, )
     obj_dep = widgets.Checkbox(
         value=True, disabled=False, layout=widgets.Layout(width='20px'))
     task_dep = widgets.Checkbox(
@@ -337,8 +330,8 @@ def task_timeline():
         elif breakdown_opt.value == breakdown_task:
             breakdown = True
         else:
-            raise ValueError("Unexpected breakdown value '{}'".format(
-                breakdown_opt.value))
+            raise ValueError(
+                "Unexpected breakdown value '{}'".format(breakdown_opt.value))
 
         low, high = map(lambda x: x / 100., range_slider.value)
 
@@ -356,8 +349,8 @@ def task_timeline():
                 tasks = _truncated_task_profiles(
                     num_tasks=int(num_tasks * (high - low)), fwd=False)
         else:
-            raise ValueError("Unexpected time value '{}'".format(
-                time_opt.value))
+            raise ValueError(
+                "Unexpected time value '{}'".format(time_opt.value))
         # Write trace to a JSON file
         print("Collected profiles for {} tasks.".format(len(tasks)))
         print("Dumping task profile data to {}, "
@@ -451,8 +444,8 @@ def task_completion_time_distribution():
         # Create the distribution to plot
         distr = []
         for task_id, data in tasks.items():
-            distr.append(
-                data["store_outputs_end"] - data["get_arguments_start"])
+            distr.append(data["store_outputs_end"] -
+                         data["get_arguments_start"])
 
         # Create a histogram from the distribution
         top, bin_edges = np.histogram(distr, bins="auto")
@@ -520,10 +513,10 @@ def compute_utilizations(abs_earliest,
         # Walk over each time bucket that this task intersects, adding the
         # amount of time that the task intersects within each bucket
         for bucket_idx in range(start_bucket, end_bucket + 1):
-            bucket_start_time = ((
-                earliest_time + bucket_idx) * bucket_time_length)
-            bucket_end_time = ((earliest_time +
-                                (bucket_idx + 1)) * bucket_time_length)
+            bucket_start_time = (
+                (earliest_time + bucket_idx) * bucket_time_length)
+            bucket_end_time = (
+                (earliest_time + (bucket_idx + 1)) * bucket_time_length)
 
             task_start_time_within_bucket = max(task_start_time,
                                                 bucket_start_time)
@@ -580,8 +573,8 @@ def cpu_usage():
             y_range=[0, 1])
 
         # Create the data source that the plot will pull from
-        time_series_source = ColumnDataSource(
-            data=dict(left=[], right=[], top=[]))
+        time_series_source = ColumnDataSource(data=dict(
+            left=[], right=[], top=[]))
 
         # Plot the rectangles representing the distribution
         time_series_fig.quad(
@@ -648,18 +641,16 @@ def cluster_usage():
         HoverTool,
         LinearColorMapper,
         BasicTicker,
-        ColorBar,
-    )
+        ColorBar, )
     output_notebook(resources=CDN)
 
     # Initial values
-    source = ColumnDataSource(
-        data={
-            "node_ip_address": ['127.0.0.1'],
-            "time": ['0.5'],
-            "num_tasks": ['1'],
-            "length": [1]
-        })
+    source = ColumnDataSource(data={
+        "node_ip_address": ['127.0.0.1'],
+        "time": ['0.5'],
+        "num_tasks": ['1'],
+        "length": [1]
+    })
 
     # Define the color schema
     colors = [
@@ -695,10 +686,8 @@ def cluster_usage():
         width="length",
         height=1,
         source=source,
-        fill_color={
-            "field": "num_tasks",
-            "transform": mapper
-        },
+        fill_color={"field": "num_tasks",
+                    "transform": mapper},
         line_color=None)
 
     # Add legend to the side of the plot

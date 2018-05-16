@@ -148,9 +148,8 @@ class TensorFlowVariables(object):
         placeholders = [
             self.placeholders[k] for k, v in self.variables.items()
         ]
-        self.sess.run(
-            list(self.assignment_nodes.values()),
-            feed_dict=dict(zip(placeholders, arrays)))
+        self.sess.run(list(self.assignment_nodes.values()),
+                      feed_dict=dict(zip(placeholders, arrays)))
 
     def get_weights(self):
         """Returns a dictionary containing the weights of the network.
@@ -185,10 +184,9 @@ class TensorFlowVariables(object):
                              "defined in the same TensorFlow graph. To fix "
                              "this, place each network definition in its own "
                              "tf.Graph.")
-        self.sess.run(
-            assign_list,
-            feed_dict={
-                self.placeholders[name]: value
-                for (name, value) in new_weights.items()
-                if name in self.placeholders
-            })
+        self.sess.run(assign_list,
+                      feed_dict={
+                          self.placeholders[name]: value
+                          for (name, value) in new_weights.items()
+                          if name in self.placeholders
+                      })

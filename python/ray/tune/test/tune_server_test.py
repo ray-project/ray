@@ -36,7 +36,8 @@ class TuneServerSuite(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 3
             },
-            "resources": Resources(cpu=1, gpu=1),
+            "resources": Resources(
+                cpu=1, gpu=1),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -63,7 +64,8 @@ class TuneServerSuite(unittest.TestCase):
             "stop": {
                 "training_iteration": 3
             },
-            "trial_resources": dict(cpu=1, gpu=1),
+            "trial_resources": dict(
+                cpu=1, gpu=1),
         }
         client.add_trial("test", spec)
         runner.step()

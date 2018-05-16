@@ -131,9 +131,9 @@ def extract_signature(func, ignore_first=False):
 
     if ignore_first:
         if len(sig_params) == 0:
-            raise Exception("Methods must take a 'self' argument, but the "
-                            "method '{}' does not have one.".format(
-                                func.__name__))
+            raise Exception(
+                "Methods must take a 'self' argument, but the "
+                "method '{}' does not have one.".format(func.__name__))
         sig_params = sig_params[1:]
 
     # Extract the names of the keyword arguments.
@@ -185,12 +185,12 @@ def extend_args(function_signature, args, kwargs):
     for keyword_name in kwargs:
         if keyword_name not in keyword_names:
             raise Exception("The name '{}' is not a valid keyword argument "
-                            "for the function '{}'.".format(
-                                keyword_name, function_name))
+                            "for the function '{}'.".format(keyword_name,
+                                                            function_name))
 
     # Fill in the remaining arguments.
-    zipped_info = list(zip(arg_names, arg_defaults,
-                           arg_is_positionals))[len(args):]
+    zipped_info = list(
+        zip(arg_names, arg_defaults, arg_is_positionals))[len(args):]
     for keyword_name, default_value, is_positional in zipped_info:
         if keyword_name in kwargs:
             args.append(kwargs[keyword_name])
@@ -206,9 +206,8 @@ def extend_args(function_signature, args, kwargs):
                                     "'{}' for the function '{}'.".format(
                                         keyword_name, function_name))
 
-    too_many_arguments = (len(args) > len(arg_names)
-                          and (len(arg_is_positionals) == 0
-                               or not arg_is_positionals[-1]))
+    too_many_arguments = (len(args) > len(arg_names) and (
+        len(arg_is_positionals) == 0 or not arg_is_positionals[-1]))
     if too_many_arguments:
         raise Exception("Too many arguments were passed to the function '{}'"
                         .format(function_name))

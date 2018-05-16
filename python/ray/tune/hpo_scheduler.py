@@ -112,8 +112,7 @@ class HyperOptScheduler(FIFOScheduler):
             new_cfg.update(suggested_config)
 
             kv_str = "_".join([
-                "{}={}".format(k,
-                               str(v)[:5])
+                "{}={}".format(k, str(v)[:5])
                 for k, v in sorted(suggested_config.items())
             ])
             experiment_tag = "{}_{}".format(new_trial_id, kv_str)

@@ -76,14 +76,13 @@ class NodeUpdater(object):
                                         {TAG_RAY_NODE_STATUS: "UpdateFailed"})
             if self.logfile is not None:
                 print("----- BEGIN REMOTE LOGS -----\n" + open(
-                    self.logfile.name).read() + "\n----- END REMOTE LOGS -----"
-                      )
+                    self.logfile.name).read() +
+                      "\n----- END REMOTE LOGS -----")
             raise e
-        self.provider.set_node_tags(
-            self.node_id, {
-                TAG_RAY_NODE_STATUS: "Up-to-date",
-                TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
-            })
+        self.provider.set_node_tags(self.node_id, {
+            TAG_RAY_NODE_STATUS: "Up-to-date",
+            TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
+        })
         print(
             "NodeUpdater: Applied config {} to node {}".format(
                 self.runtime_hash, self.node_id),
@@ -140,8 +139,8 @@ class NodeUpdater(object):
                                     {TAG_RAY_NODE_STATUS: "SyncingFiles"})
         for remote_path, local_path in self.file_mounts.items():
             print(
-                "NodeUpdater: Syncing {} to {}...".format(
-                    local_path, remote_path),
+                "NodeUpdater: Syncing {} to {}...".format(local_path,
+                                                          remote_path),
                 file=self.stdout)
             assert os.path.exists(local_path)
             if os.path.isdir(local_path):
@@ -176,10 +175,10 @@ class NodeUpdater(object):
         self.process_runner.check_call(
             [
                 "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
-                "-o", "StrictHostKeyChecking=no",
-                "-i", self.ssh_private_key, "{}@{}".format(
-                    self.ssh_user, self.ssh_ip), "bash --login -c {}".format(
-                        pipes.quote(force_interactive + cmd))
+                "-o", "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
+                "{}@{}".format(self.ssh_user,
+                               self.ssh_ip), "bash --login -c {}".format(
+                                   pipes.quote(force_interactive + cmd))
             ],
             stdout=redirect or self.stdout,
             stderr=redirect or self.stderr)

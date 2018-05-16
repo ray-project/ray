@@ -181,19 +181,15 @@ class LoadMetrics(object):
             nodes_used += max_frac
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
         return {
-            "ResourceUsage":
-            ", ".join([
+            "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
                     round(resources_used[rid], 2),
                     round(resources_total[rid], 2), rid)
                 for rid in sorted(resources_used)
             ]),
-            "NumNodesConnected":
-            len(self.static_resources_by_ip),
-            "NumNodesUsed":
-            round(nodes_used, 2),
-            "NodeIdleSeconds":
-            "Min={} Mean={} Max={}".format(
+            "NumNodesConnected": len(self.static_resources_by_ip),
+            "NumNodesUsed": round(nodes_used, 2),
+            "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,
                 int(np.max(idle_times)) if idle_times else -1),
@@ -381,9 +377,8 @@ class StandardAutoscaler(object):
     def files_up_to_date(self, node_id):
         applied = self.provider.node_tags(node_id).get(TAG_RAY_RUNTIME_CONFIG)
         if applied != self.runtime_hash:
-            print(
-                "StandardAutoscaler: {} has runtime state {}, want {}".format(
-                    node_id, applied, self.runtime_hash))
+            print("StandardAutoscaler: {} has runtime state {}, want {}".
+                  format(node_id, applied, self.runtime_hash))
             return False
         return True
 
@@ -447,21 +442,18 @@ class StandardAutoscaler(object):
     def launch_new_node(self, count):
         print("StandardAutoscaler: Launching {} new nodes".format(count))
         num_before = len(self.workers())
-        self.provider.create_node(
-            self.config["worker_nodes"], {
-                TAG_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
-                TAG_RAY_NODE_TYPE: "Worker",
-                TAG_RAY_NODE_STATUS: "Uninitialized",
-                TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
-            }, count)
+        self.provider.create_node(self.config["worker_nodes"], {
+            TAG_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
+            TAG_RAY_NODE_TYPE: "Worker",
+            TAG_RAY_NODE_STATUS: "Uninitialized",
+            TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
+        }, count)
         # TODO(ekl) be less conservative in this check
         assert len(self.workers()) > num_before, \
             "Num nodes failed to increase after creating a new node"
 
     def workers(self):
-        return self.provider.nodes(tag_filters={
-            TAG_RAY_NODE_TYPE: "Worker",
-        })
+        return self.provider.nodes(tag_filters={TAG_RAY_NODE_TYPE: "Worker", })
 
     def debug_string(self, nodes=None):
         if nodes is None:
@@ -473,7 +465,9 @@ class StandardAutoscaler(object):
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
         return "StandardAutoscaler [{}]: {}/{} target nodes{}\n{}".format(
-            datetime.now(), len(nodes), self.target_num_workers(), suffix,
+            datetime.now(),
+            len(nodes),
+            self.target_num_workers(), suffix,
             self.load_metrics.debug_string())
 
 
@@ -495,9 +489,8 @@ def check_required(config, schema):
         if kreq is REQUIRED:
             if k not in config:
                 type_str = typename(v)
-                raise ValueError(
-                    "Missing required config key `{}` of type {}".format(
-                        k, type_str))
+                raise ValueError("Missing required config key `{}` of type {}".
+                                 format(k, type_str))
             if not isinstance(v, type):
                 check_required(config[k], v)
 
@@ -517,8 +510,7 @@ def check_extraneous(config, schema):
             if not isinstance(config[k], v):
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
-                        k,
-                        type(config[k]).__name__, v.__name__))
+                        k, type(config[k]).__name__, v.__name__))
         else:
             check_extraneous(config[k], v)
 
@@ -550,7 +542,8 @@ def with_head_node_ip(cmds):
 def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
     hasher.update(
-        json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
+        json.dumps(
+            [node_conf, auth], sort_keys=True).encode("utf-8"))
     return hasher.hexdigest()
 
 

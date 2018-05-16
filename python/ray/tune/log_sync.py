@@ -84,11 +84,11 @@ class _LogSyncer(object):
             if not distutils.spawn.find_executable("rsync"):
                 print("Error: log sync requires rsync to be installed.")
                 return
-            worker_to_local_sync_cmd = ((
-                """rsync -avz -e "ssh -i '{}' -o ConnectTimeout=120s """
-                """-o StrictHostKeyChecking=no" '{}@{}:{}/' '{}/'""").format(
-                    ssh_key, ssh_user, self.worker_ip,
-                    pipes.quote(self.local_dir), pipes.quote(self.local_dir)))
+            worker_to_local_sync_cmd = (
+                ("""rsync -avz -e "ssh -i '{}' -o ConnectTimeout=120s """
+                 """-o StrictHostKeyChecking=no" '{}@{}:{}/' '{}/'""").format(
+                     ssh_key, ssh_user, self.worker_ip,
+                     pipes.quote(self.local_dir), pipes.quote(self.local_dir)))
 
         if self.remote_dir:
             local_to_remote_sync_cmd = ("aws s3 sync '{}' '{}'".format(

@@ -101,12 +101,9 @@ class AWSNodeProvider(NodeProvider):
                 "Value": v,
             })
         conf.update({
-            "MinCount":
-            1,
-            "MaxCount":
-            count,
-            "TagSpecifications":
-            conf.get("TagSpecifications", []) + [{
+            "MinCount": 1,
+            "MaxCount": count,
+            "TagSpecifications": conf.get("TagSpecifications", []) + [{
                 "ResourceType": "instance",
                 "Tags": tag_pairs,
             }]

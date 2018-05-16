@@ -21,10 +21,10 @@ def dockerize_if_needed(config):
     else:
         assert cname, "Must provide container name!"
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
-    config["setup_commands"] = (
-        docker_install_cmds() + docker_start_cmds(
-            config["auth"]["ssh_user"], docker_image, docker_mounts, cname) +
-        with_docker_exec(config["setup_commands"], container_name=cname))
+    config["setup_commands"] = (docker_install_cmds() + docker_start_cmds(
+        config["auth"]["ssh_user"], docker_image, docker_mounts,
+        cname) + with_docker_exec(
+            config["setup_commands"], container_name=cname))
 
     config["head_setup_commands"] = with_docker_exec(
         config["head_setup_commands"], container_name=cname)
@@ -82,12 +82,14 @@ def docker_start_cmds(user, image, mount, cname):
         for port in ["6379", "8076", "4321"]
     ])
     mount_flags = " ".join(
-        ["-v {src}:{dest}".format(src=k, dest=v) for k, v in mount.items()])
+        ["-v {src}:{dest}".format(
+            src=k, dest=v) for k, v in mount.items()])
 
     # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
     env_flags = " ".join(
-        ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
+        ["-e {name}={val}".format(
+            name=k, val=v) for k, v in env_vars.items()])
 
     # docker run command
     docker_run = [

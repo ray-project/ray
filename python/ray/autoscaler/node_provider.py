@@ -71,8 +71,8 @@ def get_node_provider(provider_config, cluster_name):
     importer = NODE_PROVIDERS.get(provider_config["type"])
 
     if importer is None:
-        raise NotImplementedError("Unsupported node provider: {}".format(
-            provider_config["type"]))
+        raise NotImplementedError(
+            "Unsupported node provider: {}".format(provider_config["type"]))
     _, provider_cls = importer()
     return provider_cls(provider_config, cluster_name)
 
@@ -82,8 +82,8 @@ def get_default_config(provider_config):
         return {}
     load_config = DEFAULT_CONFIGS.get(provider_config["type"])
     if load_config is None:
-        raise NotImplementedError("Unsupported node provider: {}".format(
-            provider_config["type"]))
+        raise NotImplementedError(
+            "Unsupported node provider: {}".format(provider_config["type"]))
     path_to_default = load_config()
     with open(path_to_default) as f:
         defaults = yaml.load(f)

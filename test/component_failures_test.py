@@ -181,8 +181,8 @@ class ComponentFailureTest(unittest.TestCase):
             if check_component_alive:
                 self.assertTrue(component.poll() is None)
             else:
-                print("waiting for " + component_type + " with PID " +
-                      str(component.pid) + "to terminate")
+                print("waiting for " + component_type + " with PID " + str(
+                    component.pid) + "to terminate")
                 component.wait()
                 print("done waiting for " + component_type + " with PID " +
                       str(component.pid) + "to terminate")

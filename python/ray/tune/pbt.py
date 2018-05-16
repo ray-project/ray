@@ -50,12 +50,10 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
                 new_config[key] = random.choice(distribution)
             elif random.random() > 0.5:
                 new_config[key] = distribution[max(
-                    0,
-                    distribution.index(config[key]) - 1)]
+                    0, distribution.index(config[key]) - 1)]
             else:
                 new_config[key] = distribution[min(
-                    len(distribution) - 1,
-                    distribution.index(config[key]) + 1)]
+                    len(distribution) - 1, distribution.index(config[key]) + 1)]
         else:
             if random.random() < resample_probability:
                 new_config[key] = distribution()
@@ -69,8 +67,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
         new_config = custom_explore_fn(new_config)
         assert new_config is not None, \
             "Custom explore fn failed to return new config"
-    print("[explore] perturbed config from {} -> {}".format(
-        config, new_config))
+    print(
+        "[explore] perturbed config from {} -> {}".format(config, new_config))
     return new_config
 
 

@@ -143,8 +143,7 @@ class Cifar10Model(Trainable):
             # randomly flip images
             horizontal_flip=True,
             # randomly flip images
-            vertical_flip=False,
-        )
+            vertical_flip=False, )
 
         aug_gen.fit(x_train)
         gen = aug_gen.flow(
@@ -211,8 +210,6 @@ if __name__ == "__main__":
         time_attr="timesteps_total",
         reward_attr="mean_accuracy",
         perturbation_interval=10,
-        hyperparam_mutations={
-            "dropout": lambda _: np.random.uniform(0, 1),
-        })
+        hyperparam_mutations={"dropout": lambda _: np.random.uniform(0, 1), })
 
     run_experiments({"pbt_cifar10": train_spec}, scheduler=pbt)

@@ -174,8 +174,8 @@ class ReconstructionTests(unittest.TestCase):
         # Start the Plasma store instances with a total of 1GB memory.
         self.plasma_store_memory = 10**9
         plasma_addresses = []
-        objstore_memory = (
-            self.plasma_store_memory // self.num_local_schedulers)
+        objstore_memory = (self.plasma_store_memory //
+                           self.num_local_schedulers)
         for i in range(self.num_local_schedulers):
             store_stdout_file, store_stderr_file = ray.services.new_log_files(
                 "plasma_store_{}".format(i), True)

@@ -52,24 +52,18 @@ if __name__ == "__main__":
                 "env": "Humanoid-v1",
                 "repeat": 8,
                 "config": {
-                    "kl_coeff":
-                    1.0,
-                    "num_workers":
-                    8,
+                    "kl_coeff": 1.0,
+                    "num_workers": 8,
                     "devices": ["/gpu:0"],
                     "model": {
                         "free_log_std": True
                     },
                     # These params are tuned from a fixed starting value.
-                    "lambda":
-                    0.95,
-                    "clip_param":
-                    0.2,
-                    "sgd_stepsize":
-                    1e-4,
+                    "lambda": 0.95,
+                    "clip_param": 0.2,
+                    "sgd_stepsize": 1e-4,
                     # These params start off randomly drawn from a set.
-                    "num_sgd_iter":
-                    lambda spec: random.choice([10, 20, 30]),
+                    "num_sgd_iter": lambda spec: random.choice([10, 20, 30]),
                     "sgd_batchsize":
                     lambda spec: random.choice([128, 512, 2048]),
                     "timesteps_per_batch":

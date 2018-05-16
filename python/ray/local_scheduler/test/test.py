@@ -121,8 +121,9 @@ class TestLocalSchedulerClient(unittest.TestCase):
     def test_scheduling_when_objects_ready(self):
         # Create a task and submit it.
         object_id = random_object_id()
-        task = local_scheduler.Task(random_driver_id(), random_function_id(),
-                                    [object_id], 0, random_task_id(), 0)
+        task = local_scheduler.Task(random_driver_id(),
+                                    random_function_id(), [object_id], 0,
+                                    random_task_id(), 0)
         self.local_scheduler_client.submit(task)
 
         # Launch a thread to get the task.
@@ -145,7 +146,8 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Create a task with two dependencies and submit it.
         object_id1 = random_object_id()
         object_id2 = random_object_id()
-        task = local_scheduler.Task(random_driver_id(), random_function_id(),
+        task = local_scheduler.Task(random_driver_id(),
+                                    random_function_id(),
                                     [object_id1, object_id2], 0,
                                     random_task_id(), 0)
         self.local_scheduler_client.submit(task)

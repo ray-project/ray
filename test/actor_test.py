@@ -46,17 +46,19 @@ class ActorAPI(unittest.TestCase):
 
         actor = Actor.remote(1, arg2="c")
         self.assertEqual(
-            ray.get(actor.get_values.remote(0, arg2="d")), (1, 3, "cd"))
+            ray.get(actor.get_values.remote(
+                0, arg2="d")), (1, 3, "cd"))
         self.assertEqual(
-            ray.get(actor.get_values.remote(0, arg2="d", arg1=0)),
-            (1, 1, "cd"))
+            ray.get(actor.get_values.remote(
+                0, arg2="d", arg1=0)), (1, 1, "cd"))
 
         actor = Actor.remote(1, arg2="c", arg1=2)
         self.assertEqual(
-            ray.get(actor.get_values.remote(0, arg2="d")), (1, 4, "cd"))
+            ray.get(actor.get_values.remote(
+                0, arg2="d")), (1, 4, "cd"))
         self.assertEqual(
-            ray.get(actor.get_values.remote(0, arg2="d", arg1=0)),
-            (1, 2, "cd"))
+            ray.get(actor.get_values.remote(
+                0, arg2="d", arg1=0)), (1, 2, "cd"))
 
         # Make sure we get an exception if the constructor is called
         # incorrectly.
@@ -746,8 +748,8 @@ class ActorsOnMultipleNodes(unittest.TestCase):
             names = set(locations)
             counts = [locations.count(name) for name in names]
             print("Counts are {}.".format(counts))
-            if (len(names) == num_local_schedulers
-                    and all([count >= minimum_count for count in counts])):
+            if (len(names) == num_local_schedulers and
+                    all([count >= minimum_count for count in counts])):
                 break
             attempts += 1
         self.assertLess(attempts, num_attempts)
@@ -993,8 +995,8 @@ class ActorsWithGPUs(unittest.TestCase):
                     self.assertLess(first_interval[0], first_interval[1])
                     self.assertLess(second_interval[0], second_interval[1])
                     intervals_nonoverlapping = (
-                        first_interval[1] <= second_interval[0]
-                        or second_interval[1] <= first_interval[0])
+                        first_interval[1] <= second_interval[0] or
+                        second_interval[1] <= first_interval[0])
                     assert intervals_nonoverlapping, (
                         "Intervals {} and {} are overlapping.".format(
                             first_interval, second_interval))
@@ -1038,14 +1040,17 @@ class ActorsWithGPUs(unittest.TestCase):
         def locations_to_intervals_for_many_tasks():
             # Launch a bunch of GPU tasks.
             locations_ids_and_intervals = ray.get([
-                f1.remote() for _ in range(
-                    5 * num_local_schedulers * num_gpus_per_scheduler)
+                f1.remote()
+                for _ in range(5 * num_local_schedulers *
+                               num_gpus_per_scheduler)
             ] + [
-                f2.remote() for _ in range(
-                    5 * num_local_schedulers * num_gpus_per_scheduler)
+                f2.remote()
+                for _ in range(5 * num_local_schedulers *
+                               num_gpus_per_scheduler)
             ] + [
-                f1.remote() for _ in range(
-                    5 * num_local_schedulers * num_gpus_per_scheduler)
+                f1.remote()
+                for _ in range(5 * num_local_schedulers *
+                               num_gpus_per_scheduler)
             ])
 
             locations_to_intervals = collections.defaultdict(lambda: [])
@@ -1108,8 +1113,9 @@ class ActorsWithGPUs(unittest.TestCase):
 
         # Create more actors to fill up all the GPUs.
         more_actors = [
-            Actor1.remote() for _ in range(
-                num_local_schedulers * num_gpus_per_scheduler - 1 - 3)
+            Actor1.remote()
+            for _ in range(num_local_schedulers * num_gpus_per_scheduler - 1 -
+                           3)
         ]
         # Wait for the actors to finish being created.
         ray.get([actor.get_location_and_ids.remote() for actor in more_actors])
@@ -1288,8 +1294,8 @@ class ActorReconstruction(unittest.TestCase):
 
         # Kill the second plasma store to get rid of the cached objects and
         # trigger the corresponding local scheduler to exit.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
@@ -1363,9 +1369,8 @@ class ActorReconstruction(unittest.TestCase):
         # Get the results and check that they have the correct values.
         for _, result_id_list in result_ids.items():
             self.assertEqual(
-                ray.get(result_id_list), list(
-                    range(1,
-                          len(result_id_list) + 1)))
+                ray.get(result_id_list),
+                list(range(1, len(result_id_list) + 1)))
 
     def setup_counter_actor(self,
                             test_checkpoint=False,
@@ -1440,8 +1445,8 @@ class ActorReconstruction(unittest.TestCase):
         ray.get(ids[-1])
 
         # Kill the corresponding plasma store to get rid of the cached objects.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
@@ -1466,8 +1471,8 @@ class ActorReconstruction(unittest.TestCase):
         ray.get(actor.__ray_checkpoint__.remote())
 
         # Kill the corresponding plasma store to get rid of the cached objects.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
@@ -1491,8 +1496,8 @@ class ActorReconstruction(unittest.TestCase):
         ray.get(ids[len(ids) // 10])
 
         # Kill the corresponding plasma store to get rid of the cached objects.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
@@ -1518,8 +1523,8 @@ class ActorReconstruction(unittest.TestCase):
         ray.get(ids[-1])
 
         # Kill the corresponding plasma store to get rid of the cached objects.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
@@ -1547,8 +1552,8 @@ class ActorReconstruction(unittest.TestCase):
         ray.get(ids[-1])
 
         # Kill the corresponding plasma store to get rid of the cached objects.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
@@ -1592,8 +1597,8 @@ class ActorReconstruction(unittest.TestCase):
 
         # Kill the second plasma store to get rid of the cached objects and
         # trigger the corresponding local scheduler to exit.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
@@ -1630,8 +1635,8 @@ class ActorReconstruction(unittest.TestCase):
 
         # Kill the second plasma store to get rid of the cached objects and
         # trigger the corresponding local scheduler to exit.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
@@ -1671,8 +1676,8 @@ class ActorReconstruction(unittest.TestCase):
 
         # Kill the second plasma store to get rid of the cached objects and
         # trigger the corresponding local scheduler to exit.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
@@ -1730,8 +1735,8 @@ class ActorReconstruction(unittest.TestCase):
         enqueue_tasks = []
         for fork in range(num_forks):
             enqueue_tasks.append(
-                enqueue.remote(actor,
-                               [(fork, i) for i in range(num_items_per_fork)]))
+                enqueue.remote(actor, [(fork, i)
+                                       for i in range(num_items_per_fork)]))
         # Wait for the forks to complete their tasks.
         enqueue_tasks = ray.get(enqueue_tasks)
         enqueue_tasks = [fork_ids[0] for fork_ids in enqueue_tasks]
@@ -1742,8 +1747,8 @@ class ActorReconstruction(unittest.TestCase):
 
         # Kill the second plasma store to get rid of the cached objects and
         # trigger the corresponding local scheduler to exit.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process = ray.services.all_processes[ray.services.
+                                             PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 

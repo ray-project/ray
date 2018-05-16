@@ -74,8 +74,7 @@ def start_local_scheduler(plasma_store_name,
     local_scheduler_name = "/tmp/scheduler{}".format(random_name())
     command = [
         local_scheduler_executable, "-s", local_scheduler_name, "-p",
-        plasma_store_name, "-h", node_ip_address, "-n",
-        str(num_workers)
+        plasma_store_name, "-h", node_ip_address, "-n", str(num_workers)
     ]
     if plasma_manager_name is not None:
         command += ["-m", plasma_manager_name]
@@ -83,16 +82,16 @@ def start_local_scheduler(plasma_store_name,
         assert plasma_store_name is not None
         assert plasma_manager_name is not None
         assert redis_address is not None
-        start_worker_command = ("{} {} "
-                                "--node-ip-address={} "
-                                "--object-store-name={} "
-                                "--object-store-manager-name={} "
-                                "--local-scheduler-name={} "
-                                "--redis-address={}".format(
-                                    sys.executable, worker_path,
-                                    node_ip_address, plasma_store_name,
-                                    plasma_manager_name, local_scheduler_name,
-                                    redis_address))
+        start_worker_command = (
+            "{} {} "
+            "--node-ip-address={} "
+            "--object-store-name={} "
+            "--object-store-manager-name={} "
+            "--local-scheduler-name={} "
+            "--redis-address={}".format(sys.executable, worker_path,
+                                        node_ip_address, plasma_store_name,
+                                        plasma_manager_name,
+                                        local_scheduler_name, redis_address))
         command += ["-w", start_worker_command]
     if redis_address is not None:
         command += ["-r", redis_address]
@@ -101,8 +100,8 @@ def start_local_scheduler(plasma_store_name,
     if static_resources is not None:
         resource_argument = ""
         for resource_name, resource_quantity in static_resources.items():
-            assert (isinstance(resource_quantity, int)
-                    or isinstance(resource_quantity, float))
+            assert (isinstance(resource_quantity, int) or
+                    isinstance(resource_quantity, float))
         resource_argument = ",".join([
             resource_name + "," + str(resource_quantity)
             for resource_name, resource_quantity in static_resources.items()

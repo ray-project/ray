@@ -171,11 +171,10 @@ def main(_):
         for i in range(20000):
             batch = mnist.train.next_batch(50)
             if i % 10 == 0:
-                train_accuracy = accuracy.eval(feed_dict={
-                    x: batch[0],
-                    y_: batch[1],
-                    keep_prob: 1.0
-                })
+                train_accuracy = accuracy.eval(
+                    feed_dict={x: batch[0],
+                               y_: batch[1],
+                               keep_prob: 1.0})
 
                 # !!! Report status to ray.tune !!!
                 if status_reporter:
@@ -183,11 +182,10 @@ def main(_):
                         timesteps_total=i, mean_accuracy=train_accuracy)
 
                 print('step %d, training accuracy %g' % (i, train_accuracy))
-            train_step.run(feed_dict={
-                x: batch[0],
-                y_: batch[1],
-                keep_prob: 0.5
-            })
+            train_step.run(
+                feed_dict={x: batch[0],
+                           y_: batch[1],
+                           keep_prob: 0.5})
 
         print('test accuracy %g' % accuracy.eval(feed_dict={
             x: mnist.test.images,

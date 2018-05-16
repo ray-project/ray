@@ -496,8 +496,8 @@ def start_redis(node_ip_address,
         A tuple of the address for the primary Redis shard and a list of
             addresses for the remaining shards.
     """
-    redis_stdout_file, redis_stderr_file = new_log_files(
-        "redis", redirect_output)
+    redis_stdout_file, redis_stderr_file = new_log_files("redis",
+                                                         redirect_output)
 
     if redis_shard_ports is None:
         redis_shard_ports = num_redis_shards * [None]
@@ -603,8 +603,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
             print("Redis failed to start, retrying now.")
         p = subprocess.Popen(
             [
-                executable, "--port",
-                str(port), "--loglevel", "warning", "--loadmodule", module
+                executable, "--port", str(port), "--loglevel", "warning",
+                "--loadmodule", module
             ],
             stdout=stdout_file,
             stderr=stderr_file)
@@ -654,8 +654,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
-    cur_config = (redis_client.config_get("client-output-buffer-limit")[
-        "client-output-buffer-limit"])
+    cur_config = (redis_client.config_get(
+        "client-output-buffer-limit")["client-output-buffer-limit"])
     cur_config_list = cur_config.split()
     assert len(cur_config_list) == 12
     cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
@@ -823,8 +823,8 @@ def check_and_update_resources(resources):
 
     # Check that the number of GPUs that the local scheduler wants doesn't
     # excede the amount allowed by CUDA_VISIBLE_DEVICES.
-    if ("GPU" in resources and gpu_ids is not None
-            and resources["GPU"] > len(gpu_ids)):
+    if ("GPU" in resources and gpu_ids is not None and
+            resources["GPU"] > len(gpu_ids)):
         raise Exception("Attempting to start local scheduler with {} GPUs, "
                         "but CUDA_VISIBLE_DEVICES contains {}.".format(
                             resources["GPU"], gpu_ids))
@@ -838,8 +838,8 @@ def check_and_update_resources(resources):
 
     # Check types.
     for _, resource_quantity in resources.items():
-        assert (isinstance(resource_quantity, int)
-                or isinstance(resource_quantity, float))
+        assert (isinstance(resource_quantity, int) or
+                isinstance(resource_quantity, float))
 
     return resources
 

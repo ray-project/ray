@@ -160,7 +160,8 @@ class Monitor(object):
             # task as lost.
             key = binary_to_object_id(hex_to_binary(task_id))
             ok = self.state._execute_command(
-                key, "RAY.TASK_TABLE_UPDATE", hex_to_binary(task_id),
+                key, "RAY.TASK_TABLE_UPDATE",
+                hex_to_binary(task_id),
                 ray.experimental.state.TASK_STATUS_LOST, NIL_ID,
                 task["ExecutionDependenciesString"], task["SpillbackCount"])
             if ok != b"OK":
@@ -426,8 +427,8 @@ class Monitor(object):
         """
         message = DriverTableMessage.GetRootAsDriverTableMessage(data, 0)
         driver_id = message.DriverId()
-        log.info("Driver {} has been removed.".format(
-            binary_to_hex(driver_id)))
+        log.info(
+            "Driver {} has been removed.".format(binary_to_hex(driver_id)))
 
         self._clean_up_entries_for_driver(driver_id)
 
@@ -569,9 +570,8 @@ class Monitor(object):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the "
-                     "monitor to connect to."))
+    parser = argparse.ArgumentParser(description=("Parse Redis server for the "
+                                                  "monitor to connect to."))
     parser.add_argument(
         "--redis-address",
         required=True,

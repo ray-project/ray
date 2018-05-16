@@ -190,8 +190,8 @@ def dot(a, b):
                         "b.ndim = {}.".format(b.ndim))
     if a.shape[1] != b.shape[0]:
         raise Exception("dot expects a.shape[1] to equal b.shape[0], but "
-                        "a.shape = {} and b.shape = {}.".format(
-                            a.shape, b.shape))
+                        "a.shape = {} and b.shape = {}.".format(a.shape,
+                                                                b.shape))
     shape = [a.shape[0], b.shape[1]]
     result = DistArray(shape)
     for (i, j) in np.ndindex(*result.num_blocks):
@@ -249,8 +249,8 @@ def subblocks(a, *ranges):
 def transpose(a):
     if a.ndim != 2:
         raise Exception("transpose expects its argument to be 2-dimensional, "
-                        "but a.ndim = {}, a.shape = {}.".format(
-                            a.ndim, a.shape))
+                        "but a.ndim = {}, a.shape = {}.".format(a.ndim,
+                                                                a.shape))
     result = DistArray([a.shape[1], a.shape[0]])
     for i in range(result.num_blocks[0]):
         for j in range(result.num_blocks[1]):

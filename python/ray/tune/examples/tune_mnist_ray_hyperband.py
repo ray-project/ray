@@ -178,22 +178,20 @@ class TrainMNIST(Trainable):
     def _train(self):
         for i in range(10):
             batch = self.mnist.train.next_batch(50)
-            self.sess.run(
-                self.train_step,
-                feed_dict={
-                    self.x: batch[0],
-                    self.y_: batch[1],
-                    self.keep_prob: 0.5
-                })
+            self.sess.run(self.train_step,
+                          feed_dict={
+                              self.x: batch[0],
+                              self.y_: batch[1],
+                              self.keep_prob: 0.5
+                          })
 
         batch = self.mnist.train.next_batch(50)
-        train_accuracy = self.sess.run(
-            self.accuracy,
-            feed_dict={
-                self.x: batch[0],
-                self.y_: batch[1],
-                self.keep_prob: 1.0
-            })
+        train_accuracy = self.sess.run(self.accuracy,
+                                       feed_dict={
+                                           self.x: batch[0],
+                                           self.y_: batch[1],
+                                           self.keep_prob: 1.0
+                                       })
 
         self.iterations += 1
         return TrainingResult(

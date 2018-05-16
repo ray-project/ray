@@ -229,11 +229,10 @@ class DockerRunner(object):
             raise Exception("Failed to remove container {}."
                             .format(container_id))
 
-        print(
-            "stop_node", {
-                "container_id": container_id,
-                "is_head": container_id == self.head_container_id
-            })
+        print("stop_node", {
+            "container_id": container_id,
+            "is_head": container_id == self.head_container_id
+        })
 
     def stop_ray(self):
         """Stop the Ray cluster."""

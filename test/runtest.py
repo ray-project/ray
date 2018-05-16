@@ -19,11 +19,11 @@ if sys.version_info >= (3, 0):
 
 
 def assert_equal(obj1, obj2):
-    module_numpy = (type(obj1).__module__ == np.__name__
-                    or type(obj2).__module__ == np.__name__)
+    module_numpy = (type(obj1).__module__ == np.__name__ or
+                    type(obj2).__module__ == np.__name__)
     if module_numpy:
-        empty_shape = ((hasattr(obj1, "shape") and obj1.shape == ())
-                       or (hasattr(obj2, "shape") and obj2.shape == ()))
+        empty_shape = ((hasattr(obj1, "shape") and obj1.shape == ()) or
+                       (hasattr(obj2, "shape") and obj2.shape == ()))
         if empty_shape:
             # This is a special case because currently np.testing.assert_equal
             # fails because we do not properly handle different numerical
@@ -48,26 +48,26 @@ def assert_equal(obj1, obj2):
             assert_equal(obj1[key], obj2[key])
     elif type(obj1) is list or type(obj2) is list:
         assert len(obj1) == len(obj2), ("Objects {} and {} are lists with "
-                                        "different lengths.".format(
-                                            obj1, obj2))
+                                        "different lengths.".format(obj1,
+                                                                    obj2))
         for i in range(len(obj1)):
             assert_equal(obj1[i], obj2[i])
     elif type(obj1) is tuple or type(obj2) is tuple:
         assert len(obj1) == len(obj2), ("Objects {} and {} are tuples with "
-                                        "different lengths.".format(
-                                            obj1, obj2))
+                                        "different lengths.".format(obj1,
+                                                                    obj2))
         for i in range(len(obj1)):
             assert_equal(obj1[i], obj2[i])
-    elif (ray.serialization.is_named_tuple(type(obj1))
-          or ray.serialization.is_named_tuple(type(obj2))):
+    elif (ray.serialization.is_named_tuple(type(obj1)) or
+          ray.serialization.is_named_tuple(type(obj2))):
         assert len(obj1) == len(obj2), ("Objects {} and {} are named tuples "
-                                        "with different lengths.".format(
-                                            obj1, obj2))
+                                        "with different lengths.".format(obj1,
+                                                                         obj2))
         for i in range(len(obj1)):
             assert_equal(obj1[i], obj2[i])
     else:
-        assert obj1 == obj2, "Objects {} and {} are different.".format(
-            obj1, obj2)
+        assert obj1 == obj2, "Objects {} and {} are different.".format(obj1,
+                                                                       obj2)
 
 
 if sys.version_info >= (3, 0):
@@ -85,19 +85,11 @@ else:
 PRIMITIVE_OBJECTS = [
     0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], "a",
     string.printable, "\u262F", u"hello world", u"\xff\xfe\x9c\x001\x000\x00",
-    None, True, False, [], (), {},
-    np.int8(3),
-    np.int32(4),
-    np.int64(5),
-    np.uint8(3),
-    np.uint32(4),
-    np.uint64(5),
-    np.float32(1.9),
-    np.float64(1.9),
-    np.zeros([100, 100]),
-    np.random.normal(size=[100, 100]),
-    np.array(["hi", 3]),
-    np.array(["hi", 3], dtype=object)
+    None, True, False, [],
+    (), {}, np.int8(3), np.int32(4), np.int64(5), np.uint8(3), np.uint32(4),
+    np.uint64(5), np.float32(1.9), np.float64(1.9), np.zeros([100, 100]),
+    np.random.normal(size=[100, 100]), np.array(["hi", 3]), np.array(
+        ["hi", 3], dtype=object)
 ] + long_extras
 
 COMPLEX_OBJECTS = [
@@ -106,8 +98,7 @@ COMPLEX_OBJECTS = [
      for i in range(10)},
     # {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {
     #      (): {(): {}}}}}}}}}}}}},
-    (
-        (((((((((), ), ), ), ), ), ), ), ), ),
+    ((((((((((), ), ), ), ), ), ), ), ), ),
     {
         "a": {
             "b": {
@@ -167,7 +158,8 @@ NamedTupleExample = namedtuple("Example",
 CUSTOM_OBJECTS = [
     Exception("Test object."),
     CustomError(),
-    Point(11, y=22),
+    Point(
+        11, y=22),
     Foo(),
     Bar(),
     Baz(),  # Qux(), SubQux(),
@@ -184,12 +176,11 @@ DICT_OBJECTS = (
     [{
         obj: obj
     } for obj in PRIMITIVE_OBJECTS
-     if (obj.__hash__ is not None and type(obj).__module__ != "numpy")] +
-    [{
-        0: obj
-    } for obj in BASE_OBJECTS] + [{
-        Foo(123): Foo(456)
-    }])
+     if (obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
+         0: obj
+     } for obj in BASE_OBJECTS] + [{
+         Foo(123): Foo(456)
+     }])
 
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
@@ -709,8 +700,8 @@ class APITest(unittest.TestCase):
         assert ray.get(f._submit(args=[3], num_return_vals=3)) == [0, 1, 2]
         assert ray.get(
             g._submit(
-                args=[], num_cpus=1, num_gpus=1, resources={"Custom":
-                                                            1})) == [0]
+                args=[], num_cpus=1, num_gpus=1, resources={"Custom": 1
+                                                            })) == [0]
 
     def testGetMultiple(self):
         self.init_ray()
@@ -735,10 +726,7 @@ class APITest(unittest.TestCase):
             return 1
 
         objectids = [
-            f.remote(1.0),
-            f.remote(0.5),
-            f.remote(0.5),
-            f.remote(0.5)
+            f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)
         ]
         ready_ids, remaining_ids = ray.wait(objectids)
         self.assertEqual(len(ready_ids), 1)
@@ -748,10 +736,7 @@ class APITest(unittest.TestCase):
         self.assertEqual(remaining_ids, [])
 
         objectids = [
-            f.remote(0.5),
-            f.remote(0.5),
-            f.remote(0.5),
-            f.remote(0.5)
+            f.remote(0.5), f.remote(0.5), f.remote(0.5), f.remote(0.5)
         ]
         start_time = time.time()
         ready_ids, remaining_ids = ray.wait(
@@ -761,10 +746,7 @@ class APITest(unittest.TestCase):
         self.assertEqual(len(remaining_ids), 1)
         ray.wait(objectids)
         objectids = [
-            f.remote(1.0),
-            f.remote(0.5),
-            f.remote(0.5),
-            f.remote(0.5)
+            f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)
         ]
         start_time = time.time()
         ready_ids, remaining_ids = ray.wait(objectids, timeout=5000)
@@ -1793,8 +1775,8 @@ class SchedulingAlgorithm(unittest.TestCase):
             names = set(locations)
             counts = [locations.count(name) for name in names]
             print("Counts are {}.".format(counts))
-            if (len(names) == num_local_schedulers
-                    and all([count >= minimum_count for count in counts])):
+            if (len(names) == num_local_schedulers and
+                    all([count >= minimum_count for count in counts])):
                 break
             attempts += 1
         self.assertLess(attempts, num_attempts)
@@ -1967,8 +1949,8 @@ class GlobalStateAPI(unittest.TestCase):
             while time.time() - start_time < timeout:
                 object_table = ray.global_state.object_table()
                 tables_ready = (
-                    object_table[x_id]["ManagerIDs"] is not None
-                    and object_table[result_id]["ManagerIDs"] is not None)
+                    object_table[x_id]["ManagerIDs"] is not None and
+                    object_table[result_id]["ManagerIDs"] is not None)
                 if tables_ready:
                     return
                 time.sleep(0.1)
@@ -2107,9 +2089,7 @@ class GlobalStateAPI(unittest.TestCase):
         # We use a number of test objects because objects that are not JSON
         # serializable caused problems in the past.
         test_objects = [
-            0, 0.5, "hi", b"hi",
-            ray.put(0),
-            np.zeros(3), [0], (0, ), {
+            0, 0.5, "hi", b"hi", ray.put(0), np.zeros(3), [0], (0, ), {
                 0: 0
             }, True, False, None
         ]
@@ -2157,9 +2137,9 @@ class GlobalStateAPI(unittest.TestCase):
             for object_info in object_table.values():
                 if len(object_info) != 5:
                     tables_ready = False
-                if (object_info["ManagerIDs"] is None
-                        or object_info["DataSize"] == -1
-                        or object_info["Hash"] == ""):
+                if (object_info["ManagerIDs"] is None or
+                        object_info["DataSize"] == -1 or
+                        object_info["Hash"] == ""):
                     tables_ready = False
 
             if len(task_table) != 10 + 1:
