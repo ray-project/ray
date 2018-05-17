@@ -2336,8 +2336,8 @@ class DataFrame(object):
         Returns:
             A generator that iterates over the rows of the frame.
         """
-        index_iter = iter([self._row_metadata.partition_series(i).index
-                           for i in range(len(self._row_partitions))])
+        index_iter = (self._row_metadata.partition_series(i).index
+                      for i in range(len(self._row_partitions)))
 
         def iterrow_helper(part):
             df = ray.get(part)
@@ -2362,8 +2362,8 @@ class DataFrame(object):
         Returns:
             A generator that iterates over the columns of the frame.
         """
-        col_iter = iter([self._col_metadata.partition_series(i).index
-                         for i in range(len(self._col_partitions))])
+        col_iter = (self._col_metadata.partition_series(i).index
+                    for i in range(len(self._col_partitions)))
 
         def items_helper(part):
             df = ray.get(part)
@@ -2404,8 +2404,8 @@ class DataFrame(object):
         Returns:
             A tuple representing row data. See args for varying tuples.
         """
-        index_iter = iter([self._row_metadata.partition_series(i).index
-                           for i in range(len(self._row_partitions))])
+        index_iter = (self._row_metadata.partition_series(i).index
+                      for i in range(len(self._row_partitions)))
 
         def itertuples_helper(part):
             df = ray.get(part)
