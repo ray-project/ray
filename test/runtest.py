@@ -529,6 +529,8 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(x), "1 hi")
         x = test_functions.keyword_fct1.remote(1, b="world")
         self.assertEqual(ray.get(x), "1 world")
+        x = test_functions.keyword_fct1.remote(a=1, b="world")
+        self.assertEqual(ray.get(x), "1 world")
 
         x = test_functions.keyword_fct2.remote(a="w", b="hi")
         self.assertEqual(ray.get(x), "w hi")
@@ -545,6 +547,10 @@ class APITest(unittest.TestCase):
 
         x = test_functions.keyword_fct3.remote(0, 1, c="w", d="hi")
         self.assertEqual(ray.get(x), "0 1 w hi")
+        x = test_functions.keyword_fct3.remote(0, b=1, c="w", d="hi")
+        self.assertEqual(ray.get(x), "0 1 w hi")
+        x = test_functions.keyword_fct3.remote(a=0, b=1, c="w", d="hi")
+        self.assertEqual(ray.get(x), "0 1 w hi")
         x = test_functions.keyword_fct3.remote(0, 1, d="hi", c="w")
         self.assertEqual(ray.get(x), "0 1 w hi")
         x = test_functions.keyword_fct3.remote(0, 1, c="w")
@@ -552,6 +558,8 @@ class APITest(unittest.TestCase):
         x = test_functions.keyword_fct3.remote(0, 1, d="hi")
         self.assertEqual(ray.get(x), "0 1 hello hi")
         x = test_functions.keyword_fct3.remote(0, 1)
+        self.assertEqual(ray.get(x), "0 1 hello world")
+        x = test_functions.keyword_fct3.remote(a=0, b=1)
         self.assertEqual(ray.get(x), "0 1 hello world")
 
         # Check that we cannot pass invalid keyword arguments to functions.
@@ -573,6 +581,9 @@ class APITest(unittest.TestCase):
         with self.assertRaises(Exception):
             f2.remote(0, w=0)
 
+        with self.assertRaises(Exception):
+            f2.remote(3, x=3)
+
         # Make sure we get an exception if too many arguments are passed in.
         with self.assertRaises(Exception):
             f2.remote(1, 2, 3, 4)
@@ -593,7 +604,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(x), "1 2")
 
         self.assertTrue(test_functions.kwargs_exception_thrown)
-        self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
 
         @ray.remote
         def f1(*args):
