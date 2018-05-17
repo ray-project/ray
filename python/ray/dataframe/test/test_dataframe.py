@@ -3275,7 +3275,7 @@ def test___delitem__(ray_df, pd_df):
     ray_df_equals_pandas(ray_df, pd_df)
 
     # Issue 2027
-    last_label = pd_df.iloc[:,-1].name
+    last_label = pd_df.iloc[:, -1].name
     ray_df.__delitem__(last_label)
     pd_df.__delitem__(last_label)
     ray_df_equals_pandas(ray_df, pd_df)

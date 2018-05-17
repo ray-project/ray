@@ -4857,8 +4857,9 @@ class DataFrame(object):
                 del_df[del_df['partition'] == i]['index_within_partition']
 
             for j in range(self._block_partitions.shape[0]):
-                self._block_partitions[j,i] = _deploy_func.remote(
-                    del_helper, self._block_partitions[j,i], to_delete_in_partition)
+                self._block_partitions[j, i] = _deploy_func.remote(
+                    del_helper, self._block_partitions[j, i],
+                    to_delete_in_partition)
 
         self._col_metadata.reset_partition_coords(col_parts_to_del)
 
