@@ -616,9 +616,13 @@ void NodeManager::AssignTask(Task &task) {
     // If the task was an actor task, then record this execution to guarantee
     // consistency in the case of reconstruction.
     if (spec.IsActorTask()) {
-      // Extend the frontier to include the executing task.
       auto actor_entry = actor_registry_.find(spec.ActorId());
       RAY_CHECK(actor_entry != actor_registry_.end());
+      auto execution_dependency = actor_entry->second.GetExecutionDependency();
+      // The execution dependency is initialized to the actor creation task's
+      // return value, and is subsequently updated to the assigned tasks'
+      // return values, so it should never be nil.
+      RAY_CHECK(!execution_dependency.is_nil());
       // Update the task's execution dependencies to reflect the actual
       // execution order, to support deterministic reconstruction.
       // NOTE(swang): The update of an actor task's execution dependencies is
@@ -626,13 +630,9 @@ void NodeManager::AssignTask(Task &task) {
       // we may lose updates that are in flight to the task table. We only
       // guarantee deterministic reconstruction ordering for tasks whose
       // updates are reflected in the task table.
-      auto execution_dependency = actor_entry->second.GetExecutionDependency();
-      // If the execution dependency is nil, then this is the first task to
-      // run on the actor, which has no dependencies.
-      if (!execution_dependency.is_nil()) {
-        TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
-        mutable_spec.SetExecutionDependencies({execution_dependency});
-      }
+      TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
+      mutable_spec.SetExecutionDependencies({execution_dependency});
+      // Extend the frontier to include the executing task.
       actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
     }
     // We started running the task, so the task is ready to write to GCS.
