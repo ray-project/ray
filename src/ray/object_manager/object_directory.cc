@@ -9,7 +9,7 @@ ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> &gcs_clien
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback = [this](gcs::AsyncGcsClient *client,
                                              const ObjectID &object_id,
-                                             const std::vector<ObjectTableDataT> data) {
+                                             const std::vector<ObjectTableDataT> &data) {
     // Objects are added to this map in SubscribeObjectLocations.
     auto entry = listeners_.find(object_id);
     // Do nothing for objects we are not listening for.
@@ -18,7 +18,7 @@ void ObjectDirectory::RegisterBackend() {
     }
     // Obtain reported client ids.
     std::vector<ClientID> client_ids;
-    for (auto item : data) {
+    for (auto &item : data) {
       if (!item.is_eviction) {
         ClientID client_id = ClientID::from_binary(item.manager);
         client_ids.push_back(client_id);
@@ -121,7 +121,7 @@ ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
                              const std::vector<ObjectTableDataT> &location_entries) {
         // Build the set of current locations based on the entries in the log.
         std::unordered_set<ClientID> locations;
-        for (auto entry : location_entries) {
+        for (auto &entry : location_entries) {
           ClientID client_id = ClientID::from_binary(entry.manager);
           if (!entry.is_eviction) {
             locations.insert(client_id);
