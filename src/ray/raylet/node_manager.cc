@@ -521,8 +521,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
   // Mark the task as pending. Once the task has finished execution, or once it
-  // has been forwarded to another node, the task should be canceled in the
-  // TaskDependencyManager.
+  // has been forwarded to another node, the task must be marked as canceled in
+  // the TaskDependencyManager.
   task_dependency_manager_.TaskPending(task);
 
   const TaskSpecification &spec = task.GetTaskSpecification();
@@ -729,9 +729,7 @@ void NodeManager::ResubmitTask(const TaskID &task_id) {
 
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is local.
-  std::vector<ObjectID> objects_to_cancel;
   const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
-  // task_dependency_manager_.HandleObjectLocal(object_id, objects_to_cancel);
   // Transition the tasks whose dependencies are now fulfilled to the ready
   // state.
   if (ready_task_ids.size() > 0) {
@@ -741,10 +739,6 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
     // Schedule the newly ready tasks.
     ScheduleTasks();
-  }
-  // Cancel remote dependencies.
-  for (const auto &object_id : objects_to_cancel) {
-    HandleRemoteDependencyCanceled(object_id);
   }
 }
 
