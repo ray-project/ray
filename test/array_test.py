@@ -67,11 +67,12 @@ class DistributedArrayTest(unittest.TestCase):
         b = ra.zeros.remote([da.BLOCK_SIZE, da.BLOCK_SIZE])
         x = da.DistArray([2 * da.BLOCK_SIZE, da.BLOCK_SIZE],
                          np.array([[a], [b]]))
-        assert_equal(x.assemble(),
-                     np.vstack([
-                         np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]),
-                         np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])
-                     ]))
+        assert_equal(
+            x.assemble(),
+            np.vstack([
+                np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]),
+                np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])
+            ]))
 
     def testMethods(self):
         for module in [

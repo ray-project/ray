@@ -1038,14 +1038,14 @@ class ActorsWithGPUs(unittest.TestCase):
         def locations_to_intervals_for_many_tasks():
             # Launch a bunch of GPU tasks.
             locations_ids_and_intervals = ray.get([
-                f1.remote() for _ in range(
-                    5 * num_local_schedulers * num_gpus_per_scheduler)
+                f1.remote() for _ in range(5 * num_local_schedulers *
+                                           num_gpus_per_scheduler)
             ] + [
-                f2.remote() for _ in range(
-                    5 * num_local_schedulers * num_gpus_per_scheduler)
+                f2.remote() for _ in range(5 * num_local_schedulers *
+                                           num_gpus_per_scheduler)
             ] + [
-                f1.remote() for _ in range(
-                    5 * num_local_schedulers * num_gpus_per_scheduler)
+                f1.remote() for _ in range(5 * num_local_schedulers *
+                                           num_gpus_per_scheduler)
             ])
 
             locations_to_intervals = collections.defaultdict(lambda: [])
@@ -1108,8 +1108,9 @@ class ActorsWithGPUs(unittest.TestCase):
 
         # Create more actors to fill up all the GPUs.
         more_actors = [
-            Actor1.remote() for _ in range(
-                num_local_schedulers * num_gpus_per_scheduler - 1 - 3)
+            Actor1.remote()
+            for _ in range(num_local_schedulers * num_gpus_per_scheduler - 1 -
+                           3)
         ]
         # Wait for the actors to finish being created.
         ray.get([actor.get_location_and_ids.remote() for actor in more_actors])

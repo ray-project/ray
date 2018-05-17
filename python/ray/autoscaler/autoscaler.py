@@ -142,6 +142,7 @@ class LoadMetrics(object):
         def prune(mapping):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
+                print("Removed mapping", unwanted_key, mapping[unwanted_key])
                 del mapping[unwanted_key]
             if unwanted:
                 print("Removed {} stale ip mappings: {} not in {}".format(
@@ -454,9 +455,8 @@ class StandardAutoscaler(object):
                 TAG_RAY_NODE_STATUS: "Uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             }, count)
-        # TODO(ekl) be less conservative in this check
-        assert len(self.workers()) > num_before, \
-            "Num nodes failed to increase after creating a new node"
+        if len(self.workers()) <= num_before:
+            print("Warning: Num nodes failed to increase after node creation")
 
     def workers(self):
         return self.provider.nodes(tag_filters={

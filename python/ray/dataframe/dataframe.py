@@ -5027,9 +5027,8 @@ class DataFrame(object):
         We currently support: single label, list array, slice object
         We do not support: boolean array, callable
         """
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        from .indexing import _Loc_Indexer
+        return _Loc_Indexer(self)
 
     @property
     def is_copy(self):
@@ -5054,9 +5053,8 @@ class DataFrame(object):
         We currently support: single label, list array, slice object
         We do not support: boolean array, callable
         """
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        from .indexing import _iLoc_Indexer
+        return _iLoc_Indexer(self)
 
     def _copartition(self, other, new_index):
         """Colocates the values of other with this for certain operations.

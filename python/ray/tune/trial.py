@@ -174,8 +174,8 @@ class Trial(object):
         try:
             if error_msg and self.logdir:
                 self.num_failures += 1
-                error_file = os.path.join(self.logdir, "error_{}.txt".format(
-                    date_str()))
+                error_file = os.path.join(self.logdir,
+                                          "error_{}.txt".format(date_str()))
                 with open(error_file, "w") as f:
                     f.write(error_msg)
                 self.error_file = error_file
@@ -259,9 +259,10 @@ class Trial(object):
                 return '{} pid={}'.format(hostname, pid)
 
         pieces = [
-            '{} [{}]'.format(self._status_string(),
-                             location_string(self.last_result.hostname,
-                                             self.last_result.pid)),
+            '{} [{}]'.format(
+                self._status_string(),
+                location_string(self.last_result.hostname,
+                                self.last_result.pid)),
             '{} s'.format(int(self.last_result.time_total_s)), '{} ts'.format(
                 int(self.last_result.timesteps_total))
         ]
@@ -281,8 +282,10 @@ class Trial(object):
         return ', '.join(pieces)
 
     def _status_string(self):
-        return "{}{}".format(self.status, ", {} failures: {}".format(
-            self.num_failures, self.error_file) if self.error_file else "")
+        return "{}{}".format(
+            self.status, ", {} failures: {}".format(self.num_failures,
+                                                    self.error_file)
+            if self.error_file else "")
 
     def has_checkpoint(self):
         return self._checkpoint_path is not None or \
