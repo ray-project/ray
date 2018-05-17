@@ -74,7 +74,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const ObjectID &object_id,
   ray::Status status = ray::Status::OK();
   if (listeners_.find(object_id) != listeners_.end()) {
     RAY_LOG(ERROR) << "Duplicate calls to SubscribeObjectLocations for " << object_id;
-    return ray::Status::Invalid("Cannot do things.");
+    return ray::Status::Invalid("Unable to subscribe to the same object twice.");
   }
   listeners_.emplace(object_id, LocationListenerState(callback));
   GetLocations(
