@@ -604,7 +604,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(x), "1 2")
 
         self.assertTrue(test_functions.kwargs_exception_thrown)
-        self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
 
         @ray.remote
         def f1(*args):
