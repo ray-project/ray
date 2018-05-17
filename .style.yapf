@@ -14,8 +14,18 @@ allow_multiline_dictionary_keys=False
 # Allow lambdas to be formatted on more than one line.
 allow_multiline_lambdas=False
 
+# Allow splits before the dictionary value.
+allow_split_before_dict_value=True
+
+# Number of blank lines surrounding top-level function and class
+# definitions.
+blank_lines_around_top_level_definition=2
+
 # Insert a blank line before a class-level docstring.
 blank_line_before_class_docstring=False
+
+# Insert a blank line before a module docstring.
+blank_line_before_module_docstring=False
 
 # Insert a blank line before a 'def' or 'class' immediately nested
 # within another 'def' or 'class'. For example:
@@ -42,10 +52,26 @@ blank_line_before_nested_class_or_def=False
 #        'key1': 'value1',
 #        'key2': 'value2',
 #    })
-coalesce_brackets=True
+coalesce_brackets=False
 
 # The column limit.
-column_limit=79
+column_limit=80
+
+# The style for continuation alignment. Possible values are:
+#
+# - SPACE: Use spaces for continuation alignment. This is default behavior.
+# - FIXED: Use fixed number (CONTINUATION_INDENT_WIDTH) of columns
+#   (ie: CONTINUATION_INDENT_WIDTH/INDENT_WIDTH tabs) for continuation
+#   alignment.
+# - LESS: Slightly left if cannot vertically align continuation lines with
+#   indent characters.
+# - VALIGN-RIGHT: Vertically align continuation lines with indent
+#   characters. Slightly right (one more indent character) if cannot
+#   vertically align continuation lines with indent characters.
+#
+# For options FIXED, and VALIGN-RIGHT are only available when USE_TABS is
+# enabled.
+continuation_align_style=SPACE
 
 # Indent width used for line continuations.
 continuation_indent_width=4
@@ -66,7 +92,7 @@ continuation_indent_width=4
 #       start_ts=now()-timedelta(days=3),
 #       end_ts=now(),
 #   )        # <--- this bracket is dedented and on a separate line
-dedent_closing_brackets=False
+dedent_closing_brackets=True
 
 # Place each dictionary entry onto its own line.
 each_dict_entry_on_separate_line=True
@@ -90,13 +116,13 @@ i18n_function_call=
 #       'key2': value1 +
 #               value2,
 #   }
-indent_dictionary_value=True
+indent_dictionary_value=False
 
 # The number of columns to use for indentation.
 indent_width=4
 
 # Join short lines into one line. E.g., single line 'if' statements.
-join_multiple_lines=True
+join_multiple_lines=False
 
 # Do not include spaces around selected binary operators. For example:
 #
@@ -106,7 +132,7 @@ join_multiple_lines=True
 #
 #   1 + 2*3 - 4/5
 #
-no_spaces_around_selected_binary_operators=set([])
+no_spaces_around_selected_binary_operators={'set()'}
 
 # Use spaces around default or named assigns.
 spaces_around_default_or_named_assign=False
@@ -123,11 +149,15 @@ space_between_ending_comma_and_closing_bracket=True
 
 # Split before arguments if the argument list is terminated by a
 # comma.
-split_arguments_when_comma_terminated=False
+split_arguments_when_comma_terminated=True
 
 # Set to True to prefer splitting before '&', '|' or '^' rather than
 # after.
 split_before_bitwise_operator=True
+
+# Split before the closing bracket if a list or dict literal doesn't fit on
+# a single line.
+split_before_closing_bracket=True
 
 # Split before a dictionary or set generator (comp_for). For example, note
 # the split before the 'for':
@@ -137,6 +167,10 @@ split_before_bitwise_operator=True
 #       for variable in bar if variable != 42
 #   }
 split_before_dict_set_generator=True
+
+# Split after the opening paren which surrounds an expression if it doesn't
+# fit on a single line.
+split_before_expression_after_opening_paren=True
 
 # If an argument / parameter list is going to be split, then split before
 # the first argument.
@@ -148,6 +182,22 @@ split_before_logical_operator=True
 
 # Split named assignments onto individual lines.
 split_before_named_assigns=True
+
+# Set to True to split list comprehensions and generators that have
+# non-trivial expressions and multiple clauses before each of these
+# clauses. For example:
+#
+#   result = [
+#       a_long_var + 100 for a_long_var in xrange(1000)
+#       if a_long_var % 10]
+#
+# would reformat to something like:
+#
+#   result = [
+#       a_long_var + 100
+#       for a_long_var in xrange(1000)
+#       if a_long_var % 10]
+split_complex_comprehension=True
 
 # The penalty for splitting right after the opening bracket.
 split_penalty_after_opening_bracket=30
@@ -162,8 +212,12 @@ split_penalty_before_if_expr=0
 # operators.
 split_penalty_bitwise_operator=300
 
+# The penalty for splitting a list comprehension or generator
+# expression.
+split_penalty_comprehension=80
+
 # The penalty for characters over the column limit.
-split_penalty_excess_character=4500
+split_penalty_excess_character=1000
 
 # The penalty incurred by adding a line split to the unwrapped line. The
 # more line splits added the higher the penalty.
@@ -187,3 +241,4 @@ split_penalty_logical_operator=300
 
 # Use the Tab character for indentation.
 use_tabs=False
+
