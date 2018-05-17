@@ -572,14 +572,14 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 
 void NodeManager::HandleRemoteDependencyRequired(const ObjectID &dependency_id) {
   // Try to fetch the object from the object manager.
-  object_manager_.Pull(dependency_id);
+  RAY_CHECK_OK(object_manager_.Pull(dependency_id));
   // TODO(swang): Request reconstruction of the object, possibly after a
   // timeout.
 }
 
 void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) {
   // Cancel the fetch request from the object manager.
-  object_manager_.Cancel(dependency_id);
+  RAY_CHECK_OK(object_manager_.Cancel(dependency_id));
   // TODO(swang): Cancel reconstruction of the object.
 }
 

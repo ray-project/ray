@@ -43,7 +43,7 @@ void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &objec
     if (inserted.second) {
       // If we haven't already, request the object manager to pull it from a
       // remote node.
-      object_manager_.Pull(object_id);
+      RAY_CHECK_OK(object_manager_.Pull(object_id));
     }
   }
 }
@@ -54,7 +54,7 @@ void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &objec
   if (!required) {
     auto it = required_objects_.find(object_id);
     if (it != required_objects_.end()) {
-      object_manager_.Cancel(object_id);
+      RAY_CHECK_OK(object_manager_.Cancel(object_id));
       required_objects_.erase(it);
     }
   }

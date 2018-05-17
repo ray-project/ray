@@ -291,7 +291,6 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   }
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> ready_tasks;
-    std::vector<ObjectID> null;
     ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i]);
     if (i == arguments.size() - 1) {
       ASSERT_EQ(ready_tasks.size(), 1);
@@ -328,7 +327,6 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   }
   for (size_t i = 0; i < arguments.size(); i++) {
     std::vector<TaskID> ready_tasks;
-    std::vector<ObjectID> null;
     ready_tasks = task_dependency_manager_.HandleObjectLocal(arguments[i]);
     if (i == arguments.size() - 1) {
       ASSERT_EQ(ready_tasks.size(), 1);
