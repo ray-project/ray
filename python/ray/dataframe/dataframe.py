@@ -49,7 +49,8 @@ from .index_metadata import _IndexMetadata
 from .iterator import PartitionIterator
 
 
-@_inherit_docstrings(pd.DataFrame)
+@_inherit_docstrings(pd.DataFrame,
+                     excluded=[pd.DataFrame, pd.DataFrame.__init__])
 class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
