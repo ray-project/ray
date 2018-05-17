@@ -111,19 +111,15 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
 
  private:
-  using OnLocationsFailure = std::function<void(const ray::ObjectID &object_id)>;
-
   /// Callbacks associated with a call to GetLocations.
   struct LocationListenerState {
     LocationListenerState(const OnLocationsFound &locations_found_callback)
-        : locations_found_callback(locations_found_callback), listening(false) {}
+        : locations_found_callback(locations_found_callback) {}
+    /// The callback to invoke when object locations are found.
     OnLocationsFound locations_found_callback;
-    bool listening;
+    /// The current set of known locations of this object.
+    std::unordered_set<ClientID> client_ids;
   };
-
-  ray::Status GetLocations(const ObjectID &object_id,
-                           const OnLocationsFound &success_callback,
-                           const OnLocationsFailure &fail_callback);
 
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
