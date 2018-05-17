@@ -61,7 +61,8 @@ class DataFrame(object):
             data (numpy ndarray (structured or homogeneous) or dict):
                 Dict can contain Series, arrays, constants, or list-like
                 objects.
-            index (pandas.Index or list): The row index for this dataframe.
+            index (pandas.Index, list, ObjectID): The row index for this
+                dataframe.
             columns (pandas.Index): The column names for this dataframe, in
                 pandas Index object.
             dtype: Data type to force. Only a single dtype is allowed.
@@ -1845,7 +1846,8 @@ class DataFrame(object):
         columns = columns_copy.columns
 
         if inplace:
-            self._update_inplace(row_partitions=new_rows, columns=columns)
+            self._update_inplace(row_partitions=new_rows, columns=columns,
+                                 index=self.index)
         else:
             return DataFrame(columns=columns, row_partitions=new_rows)
 
@@ -2330,18 +2332,31 @@ class DataFrame(object):
         # Deploy insert function to specific column partition, and replace that
         # column
         def insert_col_part(df):
-            df.insert(index_within_partition, column, value, allow_duplicates)
+            if isinstance(value, pd.Series) and \
+                    isinstance(value.dtype,
+                               pd.core.dtypes.dtypes.DatetimeTZDtype):
+                # Need to set index to index of this dtype or inserted values
+                # become NaT
+                df.index = value
+                df.insert(index_within_partition, column,
+                          value, allow_duplicates)
+                df.index = pd.RangeIndex(0, len(df))
+            else:
+                df.insert(index_within_partition, column,
+                          value, allow_duplicates)
             return df
 
         new_obj = _deploy_func.remote(insert_col_part,
                                       self._col_partitions[partition])
+
         new_cols = [self._col_partitions[i]
                     if i != partition
                     else new_obj
                     for i in range(len(self._col_partitions))]
         new_col_names = self.columns.insert(loc, column)
 
-        self._update_inplace(col_partitions=new_cols, columns=new_col_names)
+        self._update_inplace(col_partitions=new_cols, columns=new_col_names,
+                             index=self.index)
 
     def interpolate(self, method='linear', axis=0, limit=None, inplace=False,
                     limit_direction='forward', downcast=None, **kwargs):
@@ -3242,7 +3257,7 @@ class DataFrame(object):
                                    self._row_partitions)
 
         if inplace:
-            self._update_inplace(row_partitions=new_rows)
+            self._update_inplace(row_partitions=new_rows, index=self.index)
         else:
             return DataFrame(row_partitions=new_rows,
                              col_metadata=self._col_metadata)
@@ -4201,23 +4216,72 @@ class DataFrame(object):
         port_frame = to_pandas(self)
         port_frame.to_clipboard(excel, sep, **kwargs)
 
-    def to_csv(self, path_or_buf=None, sep=',', na_rep='', float_format=None,
+    def to_csv(self, path_or_buf=None, sep=",", na_rep="", float_format=None,
                columns=None, header=True, index=True, index_label=None,
-               mode='w', encoding=None, compression=None, quoting=None,
-               quotechar='"', line_terminator='\n', chunksize=None,
+               mode="w", encoding=None, compression=None, quoting=None,
+               quotechar='"', line_terminator="\n", chunksize=None,
                tupleize_cols=None, date_format=None, doublequote=True,
-               escapechar=None, decimal='.'):
+               escapechar=None, decimal="."):
 
-        warnings.warn("Defaulting to Pandas implementation",
-                      PendingDeprecationWarning)
+        kwargs = dict(
+                path_or_buf=path_or_buf, sep=sep, na_rep=na_rep,
+                float_format=float_format, columns=columns, header=header,
+                index=index, index_label=index_label, mode=mode,
+                encoding=encoding, compression=compression, quoting=quoting,
+                quotechar=quotechar, line_terminator=line_terminator,
+                chunksize=chunksize, tupleize_cols=tupleize_cols,
+                date_format=date_format, doublequote=doublequote,
+                escapechar=escapechar, decimal=decimal
+                )
 
-        port_frame = to_pandas(self)
-        port_frame.to_csv(path_or_buf, sep, na_rep, float_format,
-                          columns, header, index, index_label,
-                          mode, encoding, compression, quoting,
-                          quotechar, line_terminator, chunksize,
-                          tupleize_cols, date_format, doublequote,
-                          escapechar, decimal)
+        if compression is not None:
+            warnings.warn("Defaulting to Pandas implementation",
+                          PendingDeprecationWarning)
+            return to_pandas(self).to_csv(**kwargs)
+
+        if tupleize_cols is not None:
+            warnings.warn("The 'tupleize_cols' parameter is deprecated and "
+                          "will be removed in a future version",
+                          FutureWarning, stacklevel=2)
+        else:
+            tupleize_cols = False
+
+        remote_kwargs_id = ray.put(dict(kwargs, path_or_buf=None))
+        columns_id = ray.put(self.columns)
+
+        def get_csv_str(df, index, columns, header, kwargs):
+            df.index = index
+            df.columns = columns
+            kwargs["header"] = header
+            return df.to_csv(**kwargs)
+
+        idxs = [0] + np.cumsum(self._row_metadata._lengths).tolist()
+        idx_args = [self.index[idxs[i]:idxs[i+1]]
+                    for i in range(len(self._row_partitions))]
+        csv_str_ids = _map_partitions(
+                get_csv_str, self._row_partitions, idx_args,
+                [columns_id] * len(self._row_partitions),
+                [header] + [False] * (len(self._row_partitions) - 1),
+                [remote_kwargs_id] * len(self._row_partitions))
+
+        if path_or_buf is None:
+            buf = io.StringIO()
+        elif isinstance(path_or_buf, str):
+            buf = open(path_or_buf, mode)
+        else:
+            buf = path_or_buf
+
+        for csv_str_id in csv_str_ids:
+            buf.write(ray.get(csv_str_id))
+            buf.flush()
+
+        result = None
+        if path_or_buf is None:
+            result = buf.getvalue()
+            buf.close()
+        elif isinstance(path_or_buf, str):
+            buf.close()
+        return result
 
     def to_dense(self):
         raise NotImplementedError(
@@ -4668,9 +4732,13 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-            indices_for_rows = \
-                [i for i, item in enumerate(self.columns)
-                 if item in set(columns)]
+            column_indices = {item: i for i, item in enumerate(self.columns)}
+            indices_for_rows = [column_indices[column] for column in columns]
+
+            def get_columns_partition(df):
+                result = df.__getitem__(indices_for_rows),
+                result.columns = pd.RangeIndex(0, len(result.columns))
+                return result
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
