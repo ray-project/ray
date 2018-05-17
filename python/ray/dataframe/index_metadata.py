@@ -203,15 +203,13 @@ class _IndexMetadata(object):
             # updated as well.
             try:
                 self._coord_df.loc[partition_mask,
-                                   'index_within_partition'] = [
-                    p for p in range(sum(partition_mask))]
+                                   'index_within_partition'] = np.arange(sum(partition_mask)).astype(int)
             except ValueError:
                 # Copy the arrow sealed dataframe so we can mutate it.
                 # We only do this the first time we try to mutate the sealed.
                 self._coord_df = self._coord_df.copy()
                 self._coord_df.loc[partition_mask,
-                                   'index_within_partition'] = [
-                    p for p in range(sum(partition_mask))]
+                                   'index_within_partition'] = np.arange(sum(partition_mask)).astype(int)
 
     def insert(self, key, loc=None, partition=None,
                index_within_partition=None):
@@ -354,9 +352,16 @@ class _IndexMetadata(object):
 
         # Update first lengths to prevent possible length inconsistencies
         if isinstance(dropped, pd.DataFrame):
-            drop_per_part = dropped.groupby(["partition"]).size()\
-                    .reindex(index=pd.RangeIndex(len(self._lengths)),
-                             fill_value=0)
+            try:
+                drop_per_part = dropped.groupby(["partition"]).size()\
+                        .reindex(index=pd.RangeIndex(len(self._lengths)),
+                                 fill_value=0)
+            except ValueError:
+                # Copy the arrow sealed dataframe so we can mutate it.
+                dropped = dropped.copy()
+                drop_per_part = dropped.groupby(["partition"]).size()\
+                        .reindex(index=pd.RangeIndex(len(self._lengths)),
+                                 fill_value=0)
         elif isinstance(dropped, pd.Series):
             drop_per_part = np.zeros_like(self._lengths)
             drop_per_part[dropped["partition"]] = 1
