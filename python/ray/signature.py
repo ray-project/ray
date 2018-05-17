@@ -129,9 +129,9 @@ def extract_signature(func, ignore_first=False):
 
     if ignore_first:
         if len(sig_params) == 0:
-            raise Exception(
-                "Methods must take a 'self' argument, but the "
-                "method '{}' does not have one.".format(func.__name__))
+            raise Exception("Methods must take a 'self' argument, but the "
+                            "method '{}' does not have one.".format(
+                                func.__name__))
         sig_params = sig_params[1:]
 
     # Construct the argument default values and other argument information.
@@ -181,8 +181,8 @@ def extend_args(function_signature, args, kwargs):
     for keyword_name in kwargs:
         if keyword_name not in keyword_names:
             raise Exception("The name '{}' is not a valid keyword argument "
-                            "for the function '{}'.".format(keyword_name,
-                                                            function_name))
+                            "for the function '{}'.".format(
+                                keyword_name, function_name))
 
     # Fill in the remaining arguments.
     for skipped_name in arg_names[0:len(args)]:
