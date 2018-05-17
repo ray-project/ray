@@ -8,19 +8,16 @@ from ray.rllib.bc.bc_evaluator import BCEvaluator, GPURemoteBCEvaluator, \
     RemoteBCEvaluator
 from ray.rllib.optimizers import AsyncOptimizer
 from ray.tune.result import TrainingResult
-from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
-    "num_workers": 1,
+    "num_workers": 4,
     # Size of rollout batch
     "batch_size": 100,
     # Max global norm for each gradient calculated by worker
     "grad_clip": 40.0,
     # Learning rate
     "lr": 0.0001,
-    # Whether to use a GPU for local optimization.
-    "gpu": False,
     # Whether to place workers on GPUs
     "use_gpu_for_workers": False,
     # Model and preprocessor options
@@ -48,18 +45,6 @@ class BCAgent(Agent):
     _agent_name = "BC"
     _default_config = DEFAULT_CONFIG
     _allow_unknown_configs = True
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        if cf["use_gpu_for_workers"]:
-            num_gpus_per_worker = 1
-        else:
-            num_gpus_per_worker = 0
-        return Resources(
-            cpu=1, gpu=cf["gpu"] and 1 or 0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=num_gpus_per_worker * cf["num_workers"])
 
     def _init(self):
         self.local_evaluator = BCEvaluator(

@@ -17,9 +17,9 @@ class SharedTorchPolicy(TorchPolicy):
     other_output = ["vf_preds"]
     is_recurrent = False
 
-    def __init__(self, registry, ob_space, ac_space, config, **kwargs):
+    def __init__(self, ob_space, ac_space, config, **kwargs):
         super(SharedTorchPolicy, self).__init__(
-            registry, ob_space, ac_space, config, **kwargs)
+            ob_space, ac_space, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         _, self.logit_dim = ModelCatalog.get_action_dist(ac_space)

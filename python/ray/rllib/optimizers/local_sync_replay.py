@@ -9,7 +9,6 @@ from ray.rllib.optimizers.replay_buffer import ReplayBuffer, \
     PrioritizedReplayBuffer
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
-from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
@@ -65,8 +64,7 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
                 batch = self.local_evaluator.sample()
             for row in batch.rows():
                 self.replay_buffer.add(
-                    pack_if_needed(row["obs"]), row["actions"], row["rewards"],
-                    pack_if_needed(row["new_obs"]),
+                    row["obs"], row["actions"], row["rewards"], row["new_obs"],
                     row["dones"], row["weights"])
 
         if len(self.replay_buffer) >= self.replay_starts:

@@ -5,18 +5,18 @@ Ray RLlib is an RL execution toolkit built on the Ray distributed execution fram
 
 RLlib includes the following reference algorithms:
 
-- Proximal Policy Optimization (`PPO <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ppo>`__) which is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
+-  `Proximal Policy Optimization (PPO) <https://arxiv.org/abs/1707.06347>`__ which
+   is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
 
-- Policy Gradients (`PG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/pg>`__).
+-  `The Asynchronous Advantage Actor-Critic (A3C) <https://arxiv.org/abs/1602.01783>`__.
 
-- Asynchronous Advantage Actor-Critic (`A3C <https://github.com/ray-project/ray/tree/master/python/ray/rllib/a3c>`__).
+- `Deep Q Networks (DQN) <https://arxiv.org/abs/1312.5602>`__.
 
-- Deep Q Networks (`DQN <https://github.com/ray-project/ray/tree/master/python/ray/rllib/dqn>`__).
+- `Ape-X Distributed Prioritized Experience Replay <https://arxiv.org/abs/1803.00933>`__.
 
-- Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__, `DDPG2 <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg2>`__).
-
-- Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__ variants.
-
-- Evolution Strategies (`ES <https://github.com/ray-project/ray/tree/master/python/ray/rllib/es>`__), as described in `this paper <https://arxiv.org/abs/1703.03864>`__.
+-  Evolution Strategies, as described in `this
+   paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
+   is adapted from
+   `here <https://github.com/openai/evolution-strategies-starter>`__.
 
 These algorithms can be run on any OpenAI Gym MDP, including custom ones written and registered by the user.

@@ -13,7 +13,6 @@ from ray.rllib.utils import FilterManager
 from ray.rllib.a3c.a3c_evaluator import A3CEvaluator, RemoteA3CEvaluator, \
     GPURemoteA3CEvaluator
 from ray.tune.result import TrainingResult
-from ray.tune.trial import Resources
 
 
 DEFAULT_CONFIG = {
@@ -69,14 +68,6 @@ class A3CAgent(Agent):
     _default_config = DEFAULT_CONFIG
     _allow_unknown_subkeys = ["model", "optimizer", "env_config"]
 
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        return Resources(
-            cpu=1, gpu=0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
-
     def _init(self):
         self.local_evaluator = A3CEvaluator(
             self.registry, self.env_creator, self.config, self.logdir,
@@ -126,7 +117,7 @@ class A3CAgent(Agent):
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
+            ev.__ray_terminate__.remote(ev._ray_actor_id.id())
 
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(

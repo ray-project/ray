@@ -12,7 +12,6 @@ from tensorflow.python import debug as tf_debug
 
 import ray
 from ray.tune.result import TrainingResult
-from ray.tune.trial import Resources
 from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
@@ -23,7 +22,7 @@ DEFAULT_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.995,
     # Number of steps after which the rollout gets cut
-    "horizon": 1000,
+    "horizon": 2000,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
@@ -64,16 +63,14 @@ DEFAULT_CONFIG = {
     # If >1, adds frameskip
     "extra_frameskip": 1,
     # Number of timesteps collected in each outer loop
-    "timesteps_per_batch": 15000,
+    "timesteps_per_batch": 4000,
     # Each tasks performs rollouts until at least this
     # number of steps is obtained
     "min_steps_per_task": 200,
     # Number of actors used to collect the rollouts
     "num_workers": 5,
-    # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
-    # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
+    # Resource requirements for remote actors
+    "worker_resources": {"num_cpus": None},
     # Dump TensorFlow timeline after this many SGD minibatches
     "full_trace_nth_sgd_batch": -1,
     # Whether to profile data loading
@@ -92,17 +89,9 @@ DEFAULT_CONFIG = {
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
-    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
+    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config",
+                              "worker_resources"]
     _default_config = DEFAULT_CONFIG
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        return Resources(
-            cpu=1,
-            gpu=len([d for d in cf["devices"] if "gpu" in d.lower()]),
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
 
@@ -118,8 +107,7 @@ class PPOAgent(Agent):
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
-            num_cpus=self.config["num_cpus_per_worker"],
-            num_gpus=self.config["num_gpus_per_worker"])(PPOEvaluator)
+            **self.config["worker_resources"])(PPOEvaluator)
         self.remote_evaluators = [
             RemotePPOEvaluator.remote(
                 self.registry, self.env_creator, self.config, self.logdir,
@@ -283,7 +271,7 @@ class PPOAgent(Agent):
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for ev in self.remote_evaluators:
-            ev.__ray_terminate__.remote()
+            ev.__ray_terminate__.remote(ev._ray_actor_id.id())
 
     def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(

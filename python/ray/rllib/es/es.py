@@ -13,7 +13,6 @@ import time
 
 import ray
 from ray.rllib import agent
-from ray.tune.trial import Resources
 
 from ray.rllib.es import optimizers
 from ray.rllib.es import policies
@@ -138,11 +137,6 @@ class ESAgent(agent.Agent):
     _agent_name = "ES"
     _default_config = DEFAULT_CONFIG
     _allow_unknown_subkeys = ["env_config"]
-
-    @classmethod
-    def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
-        return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
 
     def _init(self):
         policy_params = {
@@ -311,7 +305,7 @@ class ESAgent(agent.Agent):
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:
-            w.__ray_terminate__.remote()
+            w.__ray_terminate__.remote(w._ray_actor_id.id())
 
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(

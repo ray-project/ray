@@ -22,7 +22,6 @@ ray.init()
 CONFIGS = {
     "ES": {"episodes_per_batch": 10, "timesteps_per_batch": 100},
     "DQN": {},
-    "DDPG": {"noise_scale": 0.0},
     "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000},
     "A3C": {"use_lstm": False},
 }
@@ -30,12 +29,8 @@ CONFIGS = {
 
 def test(use_object_store, alg_name):
     cls = get_agent_class(alg_name)
-    if alg_name == "DDPG":
-        alg1 = cls(config=CONFIGS[name], env="Pendulum-v0")
-        alg2 = cls(config=CONFIGS[name], env="Pendulum-v0")
-    else:
-        alg1 = cls(config=CONFIGS[name], env="CartPole-v0")
-        alg2 = cls(config=CONFIGS[name], env="CartPole-v0")
+    alg1 = cls(config=CONFIGS[name], env="CartPole-v0")
+    alg2 = cls(config=CONFIGS[name], env="CartPole-v0")
 
     for _ in range(3):
         res = alg1.train()
@@ -48,10 +43,7 @@ def test(use_object_store, alg_name):
         alg2.restore(alg1.save())
 
     for _ in range(10):
-        if alg_name == "DDPG":
-            obs = np.random.uniform(size=3)
-        else:
-            obs = np.random.uniform(size=4)
+        obs = np.random.uniform(size=4)
         a1 = get_mean_action(alg1, obs)
         a2 = get_mean_action(alg2, obs)
         print("Checking computed actions", alg1, obs, a1, a2)
@@ -59,8 +51,9 @@ def test(use_object_store, alg_name):
 
 
 if __name__ == "__main__":
+    # https://github.com/ray-project/ray/issues/1062 for enabling ES test too
     for use_object_store in [False, True]:
-        for name in ["ES", "DQN", "DDPG", "PPO", "A3C"]:
+        for name in ["ES", "DQN", "PPO", "A3C"]:
             test(use_object_store, name)
 
     print("All checkpoint restore tests passed!")

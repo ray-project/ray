@@ -28,12 +28,6 @@ def pack(data):
     return data
 
 
-def pack_if_needed(data):
-    if isinstance(data, np.ndarray):
-        data = pack(data)
-    return data
-
-
 def unpack(data):
     if LZ4_ENABLED:
         data = base64.b64decode(data)

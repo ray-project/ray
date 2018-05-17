@@ -11,8 +11,7 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
-
-def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True, n_agents=1):
+def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
     """Given a rollout, compute its value targets and the advantage.
 
     Args:
@@ -47,9 +46,6 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True, n_
 
     for i in range(traj["advantages"].shape[0]):
         traj["advantages"][i] = reward_filter(traj["advantages"][i])
-    # FIXME(ev) this only makes sense for shared rewards where the value function is identical
-    if n_agents > 1:
-        traj['advantages'] = np.tile(traj['advantages'], (n_agents, 1)).T
 
     traj["advantages"] = traj["advantages"].copy()
 

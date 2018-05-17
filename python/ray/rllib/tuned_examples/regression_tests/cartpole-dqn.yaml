@@ -4,6 +4,8 @@ cartpole-dqn:
     stop:
         episode_reward_mean: 200
         time_total_s: 600
+    trial_resources:
+        cpu: 1
     config:
         n_step: 3
         gamma: 0.95
