@@ -20,7 +20,7 @@ yapf \
 
 CHANGED_FILES=($(git diff --name-only))
 
-if [[ "${#CHANGED_FILES[@]}" -gt 0 ]]; then
+if (("${#CHANGED_FILES[@]}" > 0)); then
     echo 'Reformatted staged files. Please review and stage the changes.'
     echo 'Files updated:'
 
