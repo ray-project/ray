@@ -131,4 +131,28 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   return status;
 }
 
+ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
+                                             const OnLocationsFound &callback) {
+  JobID job_id = JobID::nil();
+  ray::Status status = gcs_client_->object_table().Lookup(
+      job_id, object_id, [this, callback](
+          gcs::AsyncGcsClient *client, const ObjectID &object_id,
+          const std::vector<ObjectTableDataT> &location_entries) {
+        // Build the set of current locations based on the entries in the log.
+        std::unordered_set<ClientID> locations;
+        for (auto entry : location_entries) {
+          ClientID client_id = ClientID::from_binary(entry.manager);
+          if (!entry.is_eviction) {
+            locations.insert(client_id);
+          } else {
+            locations.erase(client_id);
+          }
+        }
+        // Invoke the callback.
+        std::vector<ClientID> locations_vector(locations.begin(), locations.end());
+        callback(locations_vector, object_id);
+      });
+  return status;
+}
+
 }  // namespace ray

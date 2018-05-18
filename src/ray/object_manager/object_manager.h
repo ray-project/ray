@@ -205,7 +205,7 @@ class ObjectManager : public ObjectManagerInterface {
     WaitCallback callback;
     std::unordered_set<ObjectID> remaining;
     std::unordered_set<ObjectID> found;
-    std::unordered_set<ObjectID> subscribed_objects;
+    std::unordered_set<ObjectID> requested_objects;
     uint64_t num_required_objects;
     boost::posix_time::ptime start_time;
   };

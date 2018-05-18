@@ -316,31 +316,49 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
   }
 
   if (num_required_objects == 0) {
+    // TODO: Confirm this is the default value for waiting for all objects.
     num_required_objects = object_ids.size();
   }
 
-  if (wait_ms == 0) {
-    // Need GetLocations.
-  } else {
-    // Initialize fields.
-    active_wait_requests_.emplace(wait_id, WaitState(*main_service_, wait_ms, callback));
-    auto &wait_state = active_wait_requests_.find(wait_id)->second;
-    wait_state.num_required_objects = num_required_objects;
-    wait_state.start_time = boost::posix_time::second_clock::local_time();
-    for (auto &oid : object_ids) {
-      if (local_objects_.count(oid) > 0) {
-        wait_state.found.insert(oid);
-      } else {
-        wait_state.remaining.insert(oid);
-      }
+  // Initialize fields.
+  active_wait_requests_.emplace(wait_id, WaitState(*main_service_, wait_ms, callback));
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  wait_state.num_required_objects = num_required_objects;
+  wait_state.start_time = boost::posix_time::second_clock::local_time();
+  for (auto &oid : object_ids) {
+    if (local_objects_.count(oid) > 0) {
+      wait_state.found.insert(oid);
+    } else {
+      wait_state.remaining.insert(oid);
     }
-    if (wait_state.found.size() >= wait_state.num_required_objects) {
-      // Requirements already satisfied.
-      WaitComplete(wait_id);
+  }
+
+  if (wait_state.found.size() >= wait_state.num_required_objects) {
+    // Requirements already satisfied.
+    WaitComplete(wait_id);
+  } else {
+    if (wait_ms == 0) {
+      for (auto &oid : wait_state.remaining) {
+        // Subscribe to object notifications.
+        wait_state.requested_objects.insert(oid);
+        object_directory_->LookupLocations(
+            oid, [this, wait_id](const std::vector<ClientID> &client_ids,
+                                 const ObjectID &object_id) {
+              auto &wait_state = active_wait_requests_.find(wait_id)->second;
+              if (!client_ids.empty()) {
+                wait_state.remaining.erase(object_id);
+                wait_state.found.insert(object_id);
+              }
+              wait_state.requested_objects.erase(object_id);
+              if (wait_state.requested_objects.empty()) {
+                WaitComplete(wait_id);
+              }
+            });
+      }
     } else {
       for (auto &oid : wait_state.remaining) {
         // Subscribe to object notifications.
-        wait_state.subscribed_objects.insert(oid);
+        wait_state.requested_objects.insert(oid);
         object_directory_->SubscribeObjectLocations(
             wait_id, oid, [this, wait_id](const std::vector<ClientID> &client_ids,
                                           const ObjectID &object_id) {
@@ -349,7 +367,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
                 wait_state.remaining.erase(object_id);
                 wait_state.found.insert(object_id);
               }
-              wait_state.subscribed_objects.erase(object_id);
+              wait_state.requested_objects.erase(object_id);
               object_directory_->UnsubscribeObjectLocations(wait_id, object_id);
               if (wait_state.found.size() >= wait_state.num_required_objects) {
                 WaitComplete(wait_id);
@@ -371,8 +389,10 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  // If we complete with outstanding requests, then wait_ms should be non-zero.
+  RAY_CHECK(!(wait_state.requested_objects.size() > 0) || wait_state.wait_ms > 0);
   // Unsubscribe to any objects that weren't found in the time allotted.
-  for (auto &object_id : wait_state.subscribed_objects) {
+  for (auto &object_id : wait_state.requested_objects) {
     object_directory_->UnsubscribeObjectLocations(wait_id, object_id);
   }
   // Cancel the timer. This is okay even if the timer hasn't been started.

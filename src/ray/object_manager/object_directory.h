@@ -49,6 +49,14 @@ class ObjectDirectoryInterface {
   using OnLocationsFound = std::function<void(const std::vector<ray::ClientID> &,
                                               const ray::ObjectID &object_id)>;
 
+  /// Lookup object locations. Callback may be invoked with empty list of client ids.
+  ///
+  /// \param object_id The object's ObjectID.
+  /// \param callback Invoked with (possibly empty) list of client ids and object_id.
+  /// \return Status of whether async call to backend succeeded.
+  virtual ray::Status LookupLocations(const ObjectID &object_id,
+                                      const OnLocationsFound &callback) = 0;
+
   /// Subscribe to be notified of locations (ClientID) of the given object.
   /// The callback will be invoked whenever locations are obtained for the
   /// specified object.
@@ -102,6 +110,9 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status GetInformation(const ClientID &client_id,
                              const InfoSuccessCallback &success_callback,
                              const InfoFailureCallback &fail_callback) override;
+
+  ray::Status LookupLocations(const ObjectID &object_id,
+                              const OnLocationsFound &callback) override;
 
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
