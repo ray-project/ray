@@ -4223,16 +4223,28 @@ class DataFrame(object):
                tupleize_cols=None, date_format=None, doublequote=True,
                escapechar=None, decimal="."):
 
-        kwargs = dict(
-                path_or_buf=path_or_buf, sep=sep, na_rep=na_rep,
-                float_format=float_format, columns=columns, header=header,
-                index=index, index_label=index_label, mode=mode,
-                encoding=encoding, compression=compression, quoting=quoting,
-                quotechar=quotechar, line_terminator=line_terminator,
-                chunksize=chunksize, tupleize_cols=tupleize_cols,
-                date_format=date_format, doublequote=doublequote,
-                escapechar=escapechar, decimal=decimal
-                )
+        kwargs = {
+            'path_or_buf': path_or_buf,
+            'sep': sep,
+            'na_rep': na_rep,
+            'float_format': float_format,
+            'columns': columns,
+            'header': header,
+            'index': index,
+            'index_label': index_label,
+            'mode': mode,
+            'encoding': encoding,
+            'compression': compression,
+            'quoting': quoting,
+            'quotechar': quotechar,
+            'line_terminator': line_terminator,
+            'chunksize': chunksize,
+            'tupleize_cols': tupleize_cols,
+            'date_format': date_format,
+            'doublequote': doublequote,
+            'escapechar': escapechar,
+            'decimal': decimal
+        }
 
         if compression is not None:
             warnings.warn("Defaulting to Pandas implementation",
