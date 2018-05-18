@@ -306,9 +306,9 @@ MOD_INIT(liblocal_scheduler_library_python) {
 #if PY_MAJOR_VERSION >= 3
   PyObject *m = PyModule_Create(&moduledef);
 #else
-  PyObject *m =
-      Py_InitModule3("liblocal_scheduler_library_python", local_scheduler_methods,
-                     "A module for the local scheduler.");
+  PyObject *m = Py_InitModule3("liblocal_scheduler_library_python",
+                               local_scheduler_methods,
+                               "A module for the local scheduler.");
 #endif
 
   init_numpy_module();
