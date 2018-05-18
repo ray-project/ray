@@ -7,27 +7,38 @@ ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> &gcs_clien
 }
 
 void ObjectDirectory::RegisterBackend() {
-  auto object_notification_callback = [this](gcs::AsyncGcsClient *client,
-                                             const ObjectID &object_id,
-                                             const std::vector<ObjectTableDataT> &data) {
+  auto object_notification_callback = [this](
+      gcs::AsyncGcsClient *client, const ObjectID &object_id,
+      const std::vector<ObjectTableDataT> &object_location_ids) {
     // Objects are added to this map in SubscribeObjectLocations.
-    auto entry = listeners_.find(object_id);
+    auto object_id_listener_pair = listeners_.find(object_id);
     // Do nothing for objects we are not listening for.
-    if (entry == listeners_.end()) {
+    if (object_id_listener_pair == listeners_.end()) {
       return;
     }
     // Update entries for this object.
-    auto client_id_set = entry->second.client_ids;
-    for (auto &object_table_data : data) {
+    auto &location_client_id_set = object_id_listener_pair->second.location_client_ids;
+    // object_location_ids has the history of locations of the object:
+    // client1.is_eviction = false
+    // client1.is_eviction = true
+    // client2.is_eviction = false
+    for (const auto &object_table_data : object_location_ids) {
       ClientID client_id = ClientID::from_binary(object_table_data.manager);
       if (!object_table_data.is_eviction) {
-        client_id_set.insert(client_id);
+        location_client_id_set.insert(client_id);
       } else {
-        client_id_set.erase(client_id);
+        location_client_id_set.erase(client_id);
       }
     }
-    std::vector<ClientID> client_id_vec(client_id_set.begin(), client_id_set.end());
-    entry->second.locations_found_callback(client_id_vec, object_id);
+    std::vector<ClientID> client_id_vec(location_client_id_set.begin(),
+                                        location_client_id_set.end());
+    // Copy the callbacks so that the callbacks can unsubscribe without interrupting
+    // looping over the callbacks.
+    auto callbacks = object_id_listener_pair->second.callbacks;
+    // Call all callbacks associated with the object id locations we have received.
+    for (const auto &callback_pair : callbacks) {
+      callback_pair.second(client_id_vec, object_id);
+    }
   };
   gcs_client_->object_table().Subscribe(UniqueID::nil(),
                                         gcs_client_->client_table().GetLocalClientId(),
@@ -72,25 +83,41 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
   return ray::Status::OK();
 }
 
-ray::Status ObjectDirectory::SubscribeObjectLocations(const ObjectID &object_id,
+ray::Status ObjectDirectory::SubscribeObjectLocations(const std::string &callback_id,
+                                                      const ObjectID &object_id,
                                                       const OnLocationsFound &callback) {
-  if (listeners_.find(object_id) != listeners_.end()) {
-    RAY_LOG(ERROR) << "Duplicate calls to SubscribeObjectLocations for " << object_id;
+  ray::Status status = ray::Status::OK();
+  if (listeners_.find(object_id) == listeners_.end()) {
+    listeners_.emplace(object_id, LocationListenerState());
+    status = gcs_client_->object_table().RequestNotifications(
+        JobID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+  }
+  if (listeners_[object_id].callbacks.count(callback_id) > 0) {
     return ray::Status::OK();
   }
-  listeners_.emplace(object_id, LocationListenerState(callback));
-  return gcs_client_->object_table().RequestNotifications(
-      JobID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+  listeners_[object_id].callbacks.emplace(callback_id, callback);
+  // Immediately notify of found object locations.
+  if (!listeners_[object_id].location_client_ids.empty()) {
+    std::vector<ClientID> client_id_vec(listeners_[object_id].location_client_ids.begin(),
+                                        listeners_[object_id].location_client_ids.end());
+    callback(client_id_vec, object_id);
+  }
+  return status;
 }
 
-ray::Status ObjectDirectory::UnsubscribeObjectLocations(const ObjectID &object_id) {
+ray::Status ObjectDirectory::UnsubscribeObjectLocations(const std::string &label,
+                                                        const ObjectID &object_id) {
+  ray::Status status = ray::Status::OK();
   auto entry = listeners_.find(object_id);
   if (entry == listeners_.end()) {
-    return ray::Status::OK();
+    return status;
   }
-  ray::Status status = gcs_client_->object_table().CancelNotifications(
-      JobID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
-  listeners_.erase(entry);
+  entry->second.callbacks.erase(label);
+  if (entry->second.callbacks.empty()) {
+    status = gcs_client_->object_table().CancelNotifications(
+        JobID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
+    listeners_.erase(entry);
+  }
   return status;
 }
 

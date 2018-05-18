@@ -109,9 +109,9 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   ray::Status status_code = object_directory_->SubscribeObjectLocations(
-      object_id,
+      "pull", object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
-        object_directory_->UnsubscribeObjectLocations(object_id);
+        object_directory_->UnsubscribeObjectLocations("pull", object_id);
         GetLocationsSuccess(client_ids, object_id);
       });
   return status_code;
@@ -281,7 +281,7 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 }
 
 ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
-  ray::Status status = object_directory_->UnsubscribeObjectLocations(object_id);
+  ray::Status status = object_directory_->UnsubscribeObjectLocations("pull", object_id);
   return status;
 }
 
