@@ -135,9 +135,9 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                                              const OnLocationsFound &callback) {
   JobID job_id = JobID::nil();
   ray::Status status = gcs_client_->object_table().Lookup(
-      job_id, object_id, [this, callback](
-          gcs::AsyncGcsClient *client, const ObjectID &object_id,
-          const std::vector<ObjectTableDataT> &location_entries) {
+      job_id, object_id,
+      [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
+                       const std::vector<ObjectTableDataT> &location_entries) {
         // Build the set of current locations based on the entries in the log.
         std::unordered_set<ClientID> locations;
         for (auto entry : location_entries) {
