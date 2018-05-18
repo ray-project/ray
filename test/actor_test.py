@@ -57,6 +57,9 @@ class ActorAPI(unittest.TestCase):
         self.assertEqual(
             ray.get(actor.get_values.remote(0, arg2="d", arg1=0)),
             (1, 2, "cd"))
+        self.assertEqual(
+            ray.get(actor.get_values.remote(arg2="d", arg1=0, arg0=2)),
+            (3, 2, "cd"))
 
         # Make sure we get an exception if the constructor is called
         # incorrectly.
@@ -65,6 +68,9 @@ class ActorAPI(unittest.TestCase):
 
         with self.assertRaises(Exception):
             actor = Actor.remote(0, 1, 2, arg3=3)
+
+        with self.assertRaises(Exception):
+            actor = Actor.remote(0, arg0=1)
 
         # Make sure we get an exception if the method is called incorrectly.
         actor = Actor.remote(1)
@@ -1038,14 +1044,14 @@ class ActorsWithGPUs(unittest.TestCase):
         def locations_to_intervals_for_many_tasks():
             # Launch a bunch of GPU tasks.
             locations_ids_and_intervals = ray.get([
-                f1.remote() for _ in range(
-                    5 * num_local_schedulers * num_gpus_per_scheduler)
+                f1.remote() for _ in range(5 * num_local_schedulers *
+                                           num_gpus_per_scheduler)
             ] + [
-                f2.remote() for _ in range(
-                    5 * num_local_schedulers * num_gpus_per_scheduler)
+                f2.remote() for _ in range(5 * num_local_schedulers *
+                                           num_gpus_per_scheduler)
             ] + [
-                f1.remote() for _ in range(
-                    5 * num_local_schedulers * num_gpus_per_scheduler)
+                f1.remote() for _ in range(5 * num_local_schedulers *
+                                           num_gpus_per_scheduler)
             ])
 
             locations_to_intervals = collections.defaultdict(lambda: [])
@@ -1108,8 +1114,9 @@ class ActorsWithGPUs(unittest.TestCase):
 
         # Create more actors to fill up all the GPUs.
         more_actors = [
-            Actor1.remote() for _ in range(
-                num_local_schedulers * num_gpus_per_scheduler - 1 - 3)
+            Actor1.remote()
+            for _ in range(num_local_schedulers * num_gpus_per_scheduler - 1 -
+                           3)
         ]
         # Wait for the actors to finish being created.
         ray.get([actor.get_location_and_ids.remote() for actor in more_actors])

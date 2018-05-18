@@ -12,7 +12,6 @@ from ray.rllib.optimizers import AsyncOptimizer, SampleBatch
 
 
 class AsyncOptimizerTest(unittest.TestCase):
-
     def tearDown(self):
         ray.worker.cleanup()
 
@@ -21,8 +20,9 @@ class AsyncOptimizerTest(unittest.TestCase):
         local = _MockEvaluator()
         remotes = ray.remote(_MockEvaluator)
         remote_evaluators = [remotes.remote() for i in range(5)]
-        test_optimizer = AsyncOptimizer(
-            {"grads_per_step": 10}, local, remote_evaluators)
+        test_optimizer = AsyncOptimizer({
+            "grads_per_step": 10
+        }, local, remote_evaluators)
         test_optimizer.step()
         self.assertTrue(all(local.get_weights() == 0))
 
@@ -33,11 +33,11 @@ class SampleBatchTest(unittest.TestCase):
         b2 = SampleBatch({"a": np.array([1]), "b": np.array([4])})
         b3 = SampleBatch({"a": np.array([1]), "b": np.array([5])})
         b12 = b1.concat(b2)
-        self.assertEqual(b12.data["a"].tolist(), [1, 2, 3, 1])
-        self.assertEqual(b12.data["b"].tolist(), [4, 5, 6, 4])
+        self.assertEqual(b12["a"].tolist(), [1, 2, 3, 1])
+        self.assertEqual(b12["b"].tolist(), [4, 5, 6, 4])
         b = SampleBatch.concat_samples([b1, b2, b3])
-        self.assertEqual(b.data["a"].tolist(), [1, 2, 3, 1, 1])
-        self.assertEqual(b.data["b"].tolist(), [4, 5, 6, 4, 5])
+        self.assertEqual(b["a"].tolist(), [1, 2, 3, 1, 1])
+        self.assertEqual(b["b"].tolist(), [4, 5, 6, 4, 5])
 
 
 if __name__ == '__main__':
