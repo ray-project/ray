@@ -139,21 +139,22 @@ class ObjectManager : public ObjectManagerInterface {
   ray::Status Cancel(const ObjectID &object_id);
 
   /// Callback definition for wait.
-  using WaitCallback = std::function<void(const ray::Status, uint64_t,
-                                          const std::vector<ray::ObjectID> &)>;
-  /// Wait for timeout_ms before invoking the provided callback.
-  /// If num_ready_objects is satisfied before the timeout, then
-  /// invoke the callback.
+  using WaitCallback = std::function<void(int64_t elapsed,
+                                          const std::unordered_set<ray::ObjectID> &found,
+                                          const std::unordered_set<ray::ObjectID> &remaining)>;
+  /// Wait until either num_required_objects are located or wait_ms has elapsed,
+  /// then invoke the provided callback.
   ///
   /// \param object_ids The object ids to wait on.
   /// \param timeout_ms The time in milliseconds to wait before invoking the callback.
-  /// \param num_ready_objects The minimum number of objects required before
+  /// \param num_required_objects The minimum number of objects required before
   /// invoking the callback.
+  /// \param wait_local Whether to wait until objects arrive to this node's store.
   /// \param callback Invoked when either timeout_ms is satisfied OR num_ready_objects
   /// is satisfied.
   /// \return Status of whether the wait successfully initiated.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, uint64_t timeout_ms,
-                   int num_ready_objects, const WaitCallback &callback);
+  ray::Status Wait(const std::vector<ObjectID> &object_ids, int64_t wait_ms,
+                   uint64_t num_required_objects, bool wait_local, const WaitCallback &callback);
 
  private:
   ClientID client_id_;
@@ -190,6 +191,30 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT> local_objects_;
+
+  UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
+
+  struct WaitState {
+    WaitState(asio::io_service &service, int64_t wait_ms, const WaitCallback &callback) :
+        wait_ms(wait_ms),
+        timeout_timer(std::make_shared<boost::asio::deadline_timer>(service, boost::posix_time::milliseconds(wait_ms))),
+        callback(callback)
+    {}
+    int64_t wait_ms;
+    std::shared_ptr<boost::asio::deadline_timer> timeout_timer;
+    WaitCallback callback;
+    std::unordered_set<ObjectID> remaining;
+    std::unordered_set<ObjectID> found;
+    std::unordered_set<ObjectID> subscribed_objects;
+    uint64_t num_required_objects;
+    boost::posix_time::ptime start_time;
+  };
+
+  /// A set of active wait requests.
+  std::unordered_map<UniqueID, WaitState> active_wait_requests_;
+
+  /// Completion handler for Wait.
+  void WaitComplete(const UniqueID &wait_id);
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();

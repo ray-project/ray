@@ -53,24 +53,23 @@ class ObjectDirectoryInterface {
   /// The callback will be invoked whenever locations are obtained for the
   /// specified object.
   ///
-  /// \param callback_id The label associated with this subscription. This is
-  /// tied to the callback method and is needed when UnsubscribeObjectLocations
-  /// is called.
+  /// \param callback_id The id associated with the specified callback. This is
+  /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
   /// \param success_cb Invoked with non-empty list of client ids and object_id.
   /// \return Status of whether subscription succeeded.
-  virtual ray::Status SubscribeObjectLocations(const std::string &callback_id,
+  virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                                const ObjectID &object_id,
                                                const OnLocationsFound &callback) = 0;
 
   /// Unsubscribe to object location notifications.
   ///
-  /// \param label The label associated with this subscription. This was given
+  /// \param callback_id The id associated with a callback. This was given
   /// at subscription time, and unsubscribes the corresponding callback from
   /// further notifications about the given object's location.
   /// \param object_id The object id invoked with Subscribe.
   /// \return Status of unsubscribing from object location notifications.
-  virtual ray::Status UnsubscribeObjectLocations(const std::string &label,
+  virtual ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                                  const ObjectID &object_id) = 0;
 
   /// Report objects added to this node's store to the object directory.
@@ -104,10 +103,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                              const InfoSuccessCallback &success_callback,
                              const InfoFailureCallback &fail_callback) override;
 
-  ray::Status SubscribeObjectLocations(const std::string &callback_id,
+  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
                                        const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const std::string &label,
+  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;
 
   ray::Status ReportObjectAdded(const ObjectID &object_id, const ClientID &client_id,
@@ -124,7 +123,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// Callbacks associated with a call to GetLocations.
   struct LocationListenerState {
     /// The callback to invoke when object locations are found.
-    std::unordered_map<std::string, OnLocationsFound> callbacks;
+    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<ClientID> location_client_ids;
   };

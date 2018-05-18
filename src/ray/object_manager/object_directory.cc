@@ -93,7 +93,7 @@ ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
   return ray::Status::OK();
 }
 
-ray::Status ObjectDirectory::SubscribeObjectLocations(const std::string &callback_id,
+ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
                                                       const ObjectID &object_id,
                                                       const OnLocationsFound &callback) {
   ray::Status status = ray::Status::OK();
@@ -115,14 +115,14 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const std::string &callbac
   return status;
 }
 
-ray::Status ObjectDirectory::UnsubscribeObjectLocations(const std::string &label,
+ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback_id,
                                                         const ObjectID &object_id) {
   ray::Status status = ray::Status::OK();
   auto entry = listeners_.find(object_id);
   if (entry == listeners_.end()) {
     return status;
   }
-  entry->second.callbacks.erase(label);
+  entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
     status = gcs_client_->object_table().CancelNotifications(
         JobID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());

@@ -114,9 +114,10 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
     return ray::Status::OK();
   }
   ray::Status status_code = object_directory_->SubscribeObjectLocations(
-      "pull", object_id,
+      object_directory_pull_callback_id_, object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
-        object_directory_->UnsubscribeObjectLocations("pull", object_id);
+        object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_,
+                                                      object_id);
         GetLocationsSuccess(client_ids, object_id);
       });
   return status_code;
@@ -296,15 +297,93 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 }
 
 ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
-  ray::Status status = object_directory_->UnsubscribeObjectLocations("pull", object_id);
+  ray::Status status = object_directory_->UnsubscribeObjectLocations(
+      object_directory_pull_callback_id_, object_id);
   return status;
 }
 
-ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
-                                uint64_t timeout_ms, int num_ready_objects,
+ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t wait_ms,
+                                uint64_t num_required_objects, bool wait_local,
                                 const WaitCallback &callback) {
-  // TODO: Implement wait.
+  UniqueID wait_id = UniqueID::from_random();
+
+  if (wait_ms < 0) {
+    return ray::Status::Invalid("Unable to wait negative wait time.");
+  }
+
+  if (wait_local) {
+    return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
+  }
+
+  if (num_required_objects == 0) {
+    num_required_objects = object_ids.size();
+  }
+
+  if (wait_ms == 0) {
+    // Need GetLocations.
+  } else {
+    // Initialize fields.
+    active_wait_requests_.emplace(wait_id, WaitState(*main_service_, wait_ms, callback));
+    auto &wait_state = active_wait_requests_.find(wait_id)->second;
+    wait_state.num_required_objects = num_required_objects;
+    wait_state.start_time = boost::posix_time::second_clock::local_time();
+    for (auto &oid : object_ids) {
+      if (local_objects_.count(oid) > 0) {
+        wait_state.found.insert(oid);
+      } else {
+        wait_state.remaining.insert(oid);
+      }
+    }
+    if (wait_state.found.size() >= wait_state.num_required_objects) {
+      // Requirements already satisfied.
+      WaitComplete(wait_id);
+    } else {
+      for (auto &oid : wait_state.remaining) {
+        // Subscribe to object notifications.
+        wait_state.subscribed_objects.insert(oid);
+        object_directory_->SubscribeObjectLocations(
+            wait_id, oid, [this, wait_id](const std::vector<ClientID> &client_ids,
+                                          const ObjectID &object_id) {
+              auto &wait_state = active_wait_requests_.find(wait_id)->second;
+              if (wait_state.remaining.count(object_id) != 0) {
+                wait_state.remaining.erase(object_id);
+                wait_state.found.insert(object_id);
+              }
+              wait_state.subscribed_objects.erase(object_id);
+              object_directory_->UnsubscribeObjectLocations(wait_id, object_id);
+              if (wait_state.found.size() >= wait_state.num_required_objects) {
+                WaitComplete(wait_id);
+              }
+            });
+      }
+      // Set timeout.
+      wait_state.timeout_timer->async_wait(
+          [this, wait_id](const boost::system::error_code &error_code) {
+            if (error_code.value() != 0) {
+              return;
+            }
+            WaitComplete(wait_id);
+          });
+    }
+  }
   return ray::Status::OK();
+}
+
+void ObjectManager::WaitComplete(const UniqueID &wait_id) {
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  // Unsubscribe to any objects that weren't found in the time allotted.
+  for (auto &object_id : wait_state.subscribed_objects) {
+    object_directory_->UnsubscribeObjectLocations(wait_id, object_id);
+  }
+  // Cancel the timer. This is okay even if the timer hasn't been started.
+  // The timer handler will be given a non-zero error code. The handler
+  // will do nothing on non-zero error codes.
+  wait_state.timeout_timer->cancel();
+  // Invoke the wait handler.
+  int64_t time_taken =
+      (boost::posix_time::second_clock::local_time() - wait_state.start_time)
+          .total_milliseconds();
+  wait_state.callback(time_taken, wait_state.found, wait_state.remaining);
 }
 
 std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
