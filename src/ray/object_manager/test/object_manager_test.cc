@@ -187,6 +187,8 @@ class TestObjectManager : public ::testing::Test {
 
 class TestObjectManagerCommands : public TestObjectManager {
  public:
+
+  int current_wait_test = -1;
   int num_connected_clients = 0;
   uint num_expected_objects;
   ClientID client_id_1;
@@ -233,6 +235,66 @@ class TestObjectManagerCommands : public TestObjectManager {
 
   void NotificationTestComplete(ObjectID object_id_1, ObjectID object_id_2) {
     ASSERT_EQ(object_id_1, object_id_2);
+    NextWaitTest();
+  }
+
+  void NextWaitTest() {
+    current_wait_test += 1;
+    switch(current_wait_test){
+      case 0: {
+        TestWait(100, 5, 3, 0, false);
+      } break;
+      case 1: {
+        TestWait(100, 5, 3, 1000, false);
+      } break;
+      case 2: {
+        TestWait(100, 5, 6, 1000, true);
+      } break;
+    }
+  }
+
+  void TestWait(int data_size, int num_objects, uint64_t required_objects, int wait_ms, bool include_nonexistent) {
+    std::vector<ObjectID> object_ids;
+    for (int i = -1; ++i < num_objects;) {
+      ObjectID oid = WriteDataToClient(client2, data_size);
+      object_ids.push_back(oid);
+    }
+    if (include_nonexistent) {
+      num_objects += 1;
+      object_ids.push_back(ObjectID::from_random());
+    }
+    server1->object_manager_.Wait(
+        object_ids, wait_ms, required_objects, false,
+        [this, num_objects, wait_ms, required_objects](int64_t elapsed,
+                            const std::unordered_set<ray::ObjectID> &found,
+                            const std::unordered_set<ray::ObjectID> &remaining) {
+          switch(current_wait_test){
+            case 0: {
+              ASSERT_TRUE(elapsed == 0);
+              ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
+              NextWaitTest();
+            } break;
+            case 1: {
+              RAY_LOG(DEBUG) << "elapsed " << elapsed;
+              RAY_LOG(DEBUG) << "found " << found.size();
+              RAY_LOG(DEBUG) << "remaining " << remaining.size();
+              ASSERT_TRUE(found.size() >= required_objects);
+              ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
+              NextWaitTest();
+            } break;
+            case 2: {
+              RAY_LOG(DEBUG) << "elapsed " << elapsed;
+              RAY_LOG(DEBUG) << "found " << found.size();
+              RAY_LOG(DEBUG) << "remaining " << remaining.size();
+              ASSERT_TRUE(elapsed >= wait_ms);
+              ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
+              TestWaitComplete();
+            } break;
+          }
+        });
+  }
+
+  void TestWaitComplete() {
     main_service.stop();
   }
 

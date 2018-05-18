@@ -375,6 +375,9 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
             });
       }
       // Set timeout.
+      // TODO (hme): If we need to just wait for all objects independent of time,
+      // determine what the value of wait_ms should be and skip this call.
+      // WaitComplete will be invoked when all objects have locations.
       wait_state.timeout_timer->async_wait(
           [this, wait_id](const boost::system::error_code &error_code) {
             if (error_code.value() != 0) {
@@ -400,7 +403,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   // will do nothing on non-zero error codes.
   wait_state.timeout_timer->cancel();
   // Invoke the wait handler.
-  int64_t time_taken =
+  int64_t time_taken = wait_state.wait_ms == 0? 0 :
       (boost::posix_time::second_clock::local_time() - wait_state.start_time)
           .total_milliseconds();
   wait_state.callback(time_taken, wait_state.found, wait_state.remaining);
