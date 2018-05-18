@@ -503,11 +503,13 @@ class Monitor(object):
             self.cleanup_task_table()
         if len(self.dead_plasma_managers) > 0:
             self.cleanup_object_table()
+
+        num_plasma_managers = len(self.live_plasma_managers) + len(self.dead_plasma_managers)
+
         log.debug("{} dead local schedulers, {} plasma managers total, {} "
                   "dead plasma managers".format(
                       len(self.dead_local_schedulers),
-                      (len(self.live_plasma_managers) + len(
-                          self.dead_plasma_managers)),
+                      num_plasma_managers,
                       len(self.dead_plasma_managers)))
 
         # Handle messages from the subscription channels.

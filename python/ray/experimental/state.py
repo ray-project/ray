@@ -733,6 +733,9 @@ class GlobalState(object):
                     parent_times = self._get_times(parent_info)
                     parent_profile = task_info.get(
                         task_table[task_id]["TaskSpec"]["ParentTaskID"])
+
+                    _parent_id = parent_info["worker_id"] + str(micros(min(parent_times)))
+
                     parent = {
                         "cat":
                         "submit_task",
@@ -749,8 +752,7 @@ class GlobalState(object):
                         "name":
                         "SubmitTask",
                         "args": {},
-                        "id": (parent_info["worker_id"] + str(
-                            micros(min(parent_times))))
+                        "id": _parent_id,
                     }
                     full_trace.append(parent)
 
@@ -808,6 +810,9 @@ class GlobalState(object):
                     parent_times = self._get_times(parent_info)
                     parent_profile = task_info.get(
                         task_table[task_id]["TaskSpec"]["ParentTaskID"])
+
+                    _parent_id = parent_info["worker_id"] + str(micros(min(parent_times)))
+
                     parent = {
                         "cat":
                         "submit_task",
@@ -824,8 +829,7 @@ class GlobalState(object):
                         "name":
                         "SubmitTask",
                         "args": {},
-                        "id": (parent_info["worker_id"] + str(
-                            micros(min(parent_times))))
+                        "id": _parent_id,
                     }
                     full_trace.append(parent)
 
