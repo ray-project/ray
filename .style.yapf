@@ -1,2 +1,3 @@
 [style]
 based_on_style=pep8
+allow_split_before_dict_value=False
