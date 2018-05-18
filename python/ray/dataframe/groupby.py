@@ -346,18 +346,13 @@ class DataFrameGroupBy(object):
 
         result = [DataFrame(f(v)).T for k, v in self._iter]
         concat_axis = self._axis if concat_axis is None else concat_axis
-        print(result)
 
         new_df = concat(result, axis=concat_axis)
         if self._axis == 0:
-            print(new_df)
-            print("COLUMNS: ", self._columns)
             new_df.columns = self._columns
             new_df.index = [k for k, v in self._iter]
         else:
             new_df = new_df.T
-            print(new_df)
-            print([k for k, v in self._iter])
             new_df.columns = [k for k, v in self._iter]
             new_df.index = self._index
         return new_df
@@ -371,9 +366,9 @@ class DataFrameGroupBy(object):
         new_df = concat(result, axis=concat_axis)
 
         if self._axis == 0:
-            new_df.reindex(self._index, axis=0)
+            new_df.reindex(self._index, axis=0, copy=False)
         else:
-            new_df.reindex(self._columns, axis=1)
+            new_df.reindex(self._columns, axis=1, copy=False)
 
         return new_df
 
