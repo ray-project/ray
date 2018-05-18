@@ -67,7 +67,7 @@ if ("${CMAKE_RAY_LANG_JAVA}" STREQUAL "YES")
     message (STATUS "JNI_INCLUDE_DIRS=${JNI_INCLUDE_DIRS}")
     message (STATUS "JNI_LIBRARIES=${JNI_LIBRARIES}")
   else()
-    message (WARNING "NOT FIND JNI")   
+    message (WARNING "NOT FIND JNI")
   endif()
 endif()
 
@@ -79,6 +79,5 @@ set(COMMON_LIB "${CMAKE_BINARY_DIR}/src/common/libcommon.a"
 include_directories("${CMAKE_CURRENT_LIST_DIR}/..")
 include_directories("${CMAKE_CURRENT_LIST_DIR}/../thirdparty/")
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
-include_directories("${CMAKE_CURRENT_LIST_DIR}/../lib/python")
+  include_directories("${CMAKE_CURRENT_LIST_DIR}/../lib/python")
 endif ()
-
