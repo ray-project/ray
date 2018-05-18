@@ -108,6 +108,11 @@ ray::Status ObjectManager::SubscribeObjDeleted(
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id) {
+  // Check if object is already local.
+  if (local_objects_.count(object_id) != 0) {
+    RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
+    return ray::Status::OK();
+  }
   ray::Status status_code = object_directory_->SubscribeObjectLocations(
       "pull", object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
@@ -119,32 +124,42 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
 
 void ObjectManager::GetLocationsSuccess(const std::vector<ray::ClientID> &client_ids,
                                         const ray::ObjectID &object_id) {
-  RAY_CHECK(!client_ids.empty());
-  ClientID client_id = client_ids.front();
-  ray::Status status_code = Pull(object_id, client_id);
+  if (local_objects_.count(object_id) == 0) {
+    // Only pull objects that aren't local.
+    RAY_CHECK(!client_ids.empty());
+    ClientID client_id = client_ids.front();
+    ray::Status status_code = Pull(object_id, client_id);
+    RAY_CHECK_OK(status_code);
+  }
 }
 
 ray::Status ObjectManager::Pull(const ObjectID &object_id, const ClientID &client_id) {
+  // Check if object is already local.
+  if (local_objects_.count(object_id) != 0) {
+    RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
+    return ray::Status::OK();
+  }
+  // Check if we're pulling from self.
+  if (client_id == client_id_) {
+    RAY_LOG(ERROR) << client_id_ << " attempted to pull an object from itself.";
+    return ray::Status::Invalid("A node cannot pull an object from itself.");
+  }
   return PullEstablishConnection(object_id, client_id);
 };
 
 ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
                                                    const ClientID &client_id) {
-  // Check if object is already local, and client_id is not itself.
-  if (local_objects_.count(object_id) != 0 || client_id == client_id_) {
-    return ray::Status::OK();
-  }
-
   // Acquire a message connection and send pull request.
   ray::Status status;
   std::shared_ptr<SenderConnection> conn;
   // TODO(hme): There is no cap on the number of pull request connections.
   status = connection_pool_.GetSender(ConnectionPool::ConnectionType::MESSAGE, client_id,
                                       &conn);
-  if (!status.ok()) {
-    // TODO (hme): Accept changes in error cleanup PR.
-    return status;
-  }
+  // Currently, acquiring a connection should not fail.
+  // No status from GetSender is returned which can be
+  // handled without failing.
+  RAY_CHECK_OK(status);
+
   if (conn == nullptr) {
     status = object_directory_->GetInformation(
         client_id,
@@ -153,14 +168,15 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
               ConnectionPool::ConnectionType::MESSAGE, connection_info);
           connection_pool_.RegisterSender(ConnectionPool::ConnectionType::MESSAGE,
                                           client_id, async_conn);
-          RAY_CHECK_OK(PullSendRequest(object_id, async_conn));
+          Status pull_send_status = PullSendRequest(object_id, async_conn);
+          RAY_CHECK_OK(pull_send_status);
         },
         [this, object_id](const Status &status) {
           RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
           RAY_CHECK_OK(status);
         });
   } else {
-    RAY_CHECK_OK(PullSendRequest(object_id, conn));
+    status = PullSendRequest(object_id, conn);
   }
   return status;
 }
@@ -238,10 +254,9 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
       buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
 
-  // If status is not okay, then return immediately because
-  // plasma_client.Get failed.
-  // No reference is acquired for this chunk, so no need to release the chunk.
-  RAY_RETURN_NOT_OK(chunk_status.second);
+  // Fail on status not okay. The object is local, and there is
+  // no other anticipated error here.
+  RAY_CHECK_OK(chunk_status.second);
 
   // Create buffer.
   flatbuffers::FlatBufferBuilder fbb;
@@ -408,7 +423,8 @@ void ObjectManager::ExecuteReceiveObject(const ClientID &client_id,
       // TODO(hme): This chunk failed, so create a pull request for this chunk.
     }
   } else {
-    RAY_LOG(ERROR) << "Buffer Create Failed: " << chunk_status.second.message();
+    RAY_LOG(ERROR) << "Create Chunk Failed index = " << chunk_index << ": "
+                   << chunk_status.second.message();
     // Read object into empty buffer.
     uint64_t buffer_length = buffer_pool_.GetBufferLength(chunk_index, data_size);
     std::vector<uint8_t> mutable_vec;

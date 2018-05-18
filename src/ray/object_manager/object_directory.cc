@@ -48,25 +48,35 @@ void ObjectDirectory::RegisterBackend() {
 ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
                                                const ClientID &client_id,
                                                const ObjectInfoT &object_info) {
-  // TODO(hme): Determine whether we need to do lookup to append.
-  JobID job_id = JobID::from_random();
+  // Append the addition entry to the object table.
+  JobID job_id = JobID::nil();
   auto data = std::make_shared<ObjectTableDataT>();
   data->manager = client_id.binary();
   data->is_eviction = false;
+  data->num_evictions = object_evictions_[object_id];
   data->object_size = object_info.data_size;
-  ray::Status status = gcs_client_->object_table().Append(
-      job_id, object_id, data,
-      [](gcs::AsyncGcsClient *client, const UniqueID &id, const ObjectTableDataT &data) {
-        // Do nothing.
-      });
+  ray::Status status =
+      gcs_client_->object_table().Append(job_id, object_id, data, nullptr);
   return status;
 }
 
 ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
                                                  const ClientID &client_id) {
-  // TODO(hme): Need corresponding remove method in GCS.
-  return ray::Status::NotImplemented("ObjectTable.Remove is not implemented");
-}
+  // Append the eviction entry to the object table.
+  JobID job_id = JobID::nil();
+  auto data = std::make_shared<ObjectTableDataT>();
+  data->manager = client_id.binary();
+  data->is_eviction = true;
+  data->num_evictions = object_evictions_[object_id];
+  ray::Status status =
+      gcs_client_->object_table().Append(job_id, object_id, data, nullptr);
+  // Increment the number of times we've evicted this object. NOTE(swang): This
+  // is only necessary because the Ray redis module expects unique entries in a
+  // log. We track the number of evictions so that the next eviction, if there
+  // is one, is unique.
+  object_evictions_[object_id]++;
+  return status;
+};
 
 ray::Status ObjectDirectory::GetInformation(const ClientID &client_id,
                                             const InfoSuccessCallback &success_callback,

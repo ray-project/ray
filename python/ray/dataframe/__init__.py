@@ -9,7 +9,7 @@ from pandas import (eval, unique, value_counts, cut, to_numeric, factorize,
                     test, qcut, match, Panel, date_range, Index, MultiIndex,
                     CategoricalIndex, Series, bdate_range, DatetimeIndex,
                     Timedelta, Timestamp, to_timedelta, set_eng_float_format,
-                    set_option, NaT)
+                    set_option, NaT, PeriodIndex, Categorical)
 import threading
 
 pd_version = pd.__version__
@@ -49,7 +49,7 @@ __all__ = [
     "match", "to_datetime", "get_dummies", "Panel", "date_range", "Index",
     "MultiIndex", "Series", "bdate_range", "DatetimeIndex", "to_timedelta",
     "set_eng_float_format", "set_option", "CategoricalIndex", "Timedelta",
-    "Timestamp", "NaT"
+    "Timestamp", "NaT", "PeriodIndex", "Categorical"
 ]
 
 try:
