@@ -189,10 +189,9 @@ class Monitor(object):
                 if manager in self.dead_plasma_managers:
                     # If the object was on a dead plasma manager, remove that
                     # location entry.
-                    ok = self.state._execute_command(object_id,
-                                                     "RAY.OBJECT_TABLE_REMOVE",
-                                                     object_id.id(),
-                                                     hex_to_binary(manager))
+                    ok = self.state._execute_command(
+                        object_id, "RAY.OBJECT_TABLE_REMOVE", object_id.id(),
+                        hex_to_binary(manager))
                     if ok != b"OK":
                         log.warn("Failed to remove object location for dead "
                                  "plasma manager.")
@@ -507,8 +506,8 @@ class Monitor(object):
         log.debug("{} dead local schedulers, {} plasma managers total, {} "
                   "dead plasma managers".format(
                       len(self.dead_local_schedulers),
-                      (len(self.live_plasma_managers) +
-                       len(self.dead_plasma_managers)),
+                      (len(self.live_plasma_managers) + len(
+                          self.dead_plasma_managers)),
                       len(self.dead_plasma_managers)))
 
         # Handle messages from the subscription channels.

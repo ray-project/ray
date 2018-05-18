@@ -3274,6 +3274,12 @@ def test___delitem__(ray_df, pd_df):
     pd_df.__delitem__('col1')
     ray_df_equals_pandas(ray_df, pd_df)
 
+    # Issue 2027
+    last_label = pd_df.iloc[:, -1].name
+    ray_df.__delitem__(last_label)
+    pd_df.__delitem__(last_label)
+    ray_df_equals_pandas(ray_df, pd_df)
+
 
 def test___finalize__():
     ray_df = create_test_dataframe()

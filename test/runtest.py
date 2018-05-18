@@ -180,12 +180,10 @@ LIST_OBJECTS = [[obj] for obj in BASE_OBJECTS]
 TUPLE_OBJECTS = [(obj, ) for obj in BASE_OBJECTS]
 # The check that type(obj).__module__ != "numpy" should be unnecessary, but
 # otherwise this seems to fail on Mac OS X on Travis.
-DICT_OBJECTS = (
-    [{
-        obj: obj
-    } for obj in PRIMITIVE_OBJECTS
-     if (obj.__hash__ is not None and type(obj).__module__ != "numpy")] +
-    [{
+DICT_OBJECTS = ([{
+    obj: obj
+} for obj in PRIMITIVE_OBJECTS if (
+    obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
         0: obj
     } for obj in BASE_OBJECTS] + [{
         Foo(123): Foo(456)
@@ -531,6 +529,8 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(x), "1 hi")
         x = test_functions.keyword_fct1.remote(1, b="world")
         self.assertEqual(ray.get(x), "1 world")
+        x = test_functions.keyword_fct1.remote(a=1, b="world")
+        self.assertEqual(ray.get(x), "1 world")
 
         x = test_functions.keyword_fct2.remote(a="w", b="hi")
         self.assertEqual(ray.get(x), "w hi")
@@ -547,6 +547,10 @@ class APITest(unittest.TestCase):
 
         x = test_functions.keyword_fct3.remote(0, 1, c="w", d="hi")
         self.assertEqual(ray.get(x), "0 1 w hi")
+        x = test_functions.keyword_fct3.remote(0, b=1, c="w", d="hi")
+        self.assertEqual(ray.get(x), "0 1 w hi")
+        x = test_functions.keyword_fct3.remote(a=0, b=1, c="w", d="hi")
+        self.assertEqual(ray.get(x), "0 1 w hi")
         x = test_functions.keyword_fct3.remote(0, 1, d="hi", c="w")
         self.assertEqual(ray.get(x), "0 1 w hi")
         x = test_functions.keyword_fct3.remote(0, 1, c="w")
@@ -554,6 +558,8 @@ class APITest(unittest.TestCase):
         x = test_functions.keyword_fct3.remote(0, 1, d="hi")
         self.assertEqual(ray.get(x), "0 1 hello hi")
         x = test_functions.keyword_fct3.remote(0, 1)
+        self.assertEqual(ray.get(x), "0 1 hello world")
+        x = test_functions.keyword_fct3.remote(a=0, b=1)
         self.assertEqual(ray.get(x), "0 1 hello world")
 
         # Check that we cannot pass invalid keyword arguments to functions.
@@ -575,6 +581,9 @@ class APITest(unittest.TestCase):
         with self.assertRaises(Exception):
             f2.remote(0, w=0)
 
+        with self.assertRaises(Exception):
+            f2.remote(3, x=3)
+
         # Make sure we get an exception if too many arguments are passed in.
         with self.assertRaises(Exception):
             f2.remote(1, 2, 3, 4)
@@ -595,7 +604,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(x), "1 2")
 
         self.assertTrue(test_functions.kwargs_exception_thrown)
-        self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
 
         @ray.remote
         def f1(*args):
@@ -704,13 +712,39 @@ class APITest(unittest.TestCase):
             return ray.get_gpu_ids()
 
         assert f._submit([0], num_return_vals=0) is None
-        assert ray.get(f._submit(args=[1], num_return_vals=1)) == [0]
-        assert ray.get(f._submit(args=[2], num_return_vals=2)) == [0, 1]
-        assert ray.get(f._submit(args=[3], num_return_vals=3)) == [0, 1, 2]
+        id1 = f._submit(args=[1], num_return_vals=1)
+        assert ray.get(id1) == [0]
+        id1, id2 = f._submit(args=[2], num_return_vals=2)
+        assert ray.get([id1, id2]) == [0, 1]
+        id1, id2, id3 = f._submit(args=[3], num_return_vals=3)
+        assert ray.get([id1, id2, id3]) == [0, 1, 2]
         assert ray.get(
             g._submit(
                 args=[], num_cpus=1, num_gpus=1, resources={"Custom":
                                                             1})) == [0]
+        infeasible_id = g._submit(args=[], resources={"NonexistentCustom": 1})
+        ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=50)
+        assert len(ready_ids) == 0
+        assert len(remaining_ids) == 1
+
+        @ray.remote
+        class Actor(object):
+            def __init__(self, x, y=0):
+                self.x = x
+                self.y = y
+
+            def method(self, a, b=0):
+                return self.x, self.y, a, b
+
+            def gpu_ids(self):
+                return ray.get_gpu_ids()
+
+        a = Actor._submit(
+            args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
+
+        id1, id2, id3, id4 = a.method._submit(
+            args=["test"], kwargs={"b": 2}, num_return_vals=4)
+        assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
     def testGetMultiple(self):
         self.init_ray()
@@ -2183,6 +2217,16 @@ class GlobalStateAPI(unittest.TestCase):
         # Make sure the tables are empty.
         assert len(ray.global_state.object_table()) == 0
         assert len(ray.global_state.task_table()) == 0
+
+        # Run some more tasks.
+        ray.get([f.remote() for _ in range(10)])
+
+        while len(ray.global_state.task_table()) != 0:
+            ray.experimental.flush_finished_tasks_unsafe()
+
+        # Make sure that we can call this method (but it won't do anything in
+        # this test case).
+        ray.experimental.flush_evicted_objects_unsafe()
 
 
 if __name__ == "__main__":
