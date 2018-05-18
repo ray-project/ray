@@ -286,7 +286,7 @@ static struct PyModuleDef moduledef = {
 #define MOD_INIT(name) PyMODINIT_FUNC init##name(void)
 #endif
 
-MOD_INIT(liblocal_scheduler_library) {
+MOD_INIT(liblocal_scheduler_library_python) {
   if (PyType_Ready(&PyTaskType) < 0) {
     INITERROR;
   }
@@ -307,7 +307,7 @@ MOD_INIT(liblocal_scheduler_library) {
   PyObject *m = PyModule_Create(&moduledef);
 #else
   PyObject *m =
-      Py_InitModule3("liblocal_scheduler_library", local_scheduler_methods,
+      Py_InitModule3("liblocal_scheduler_library_python", local_scheduler_methods,
                      "A module for the local scheduler.");
 #endif
 
