@@ -14,6 +14,7 @@ yapf \
     --in-place --recursive --parallel \
     --exclude 'python/ray/cloudpickle' \
     --exclude 'python/ray/dataframe' \
+    --exclude 'python/ray/rllib' \
     -- \
     'test' 'python'
 
