@@ -32,7 +32,7 @@ def compute_function_id(function):
         # in the hash.
         source = inspect.getsource(function).encode("ascii")
         function_id_hash.update(source)
-    except OSError:
+    except (IOError, OSError):
         # Source code may not be available: e.g. Cython or Python interpreter.
         pass
     # Compute the function ID.
