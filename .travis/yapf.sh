@@ -18,15 +18,12 @@ yapf \
     -- \
     'test' 'python'
 
-CHANGED_FILES=($(git diff --name-only))
-
-if (("${#CHANGED_FILES[@]}" > 0)); then
+if ! git diff --quiet; then
     echo 'Reformatted staged files. Please review and stage the changes.'
     echo 'Files updated:'
+    echo
 
-    for file in "${CHANGED_FILES[@]}"; do
-        echo "$file"
-    done
+    git --no-pager diff --name-only
 
     exit 1
 fi
