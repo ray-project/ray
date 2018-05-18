@@ -76,10 +76,9 @@ def tsqr(a):
                 lower = [a.shape[1], 0]
                 upper = [2 * a.shape[1], core.BLOCK_SIZE]
             ith_index //= 2
-            q_block_current = ra.dot.remote(q_block_current,
-                                            ra.subarray.remote(
-                                                q_tree[ith_index, j], lower,
-                                                upper))
+            q_block_current = ra.dot.remote(
+                q_block_current,
+                ra.subarray.remote(q_tree[ith_index, j], lower, upper))
         q_result.objectids[i] = q_block_current
     r = current_rs[0]
     return q_result, ray.get(r)
@@ -222,10 +221,10 @@ def qr(a):
         y_col_block = core.subblocks.remote(y_res, [], [i])
         q = core.subtract.remote(
             q,
-            core.dot.remote(y_col_block,
-                            core.dot.remote(
-                                Ts[i],
-                                core.dot.remote(
-                                    core.transpose.remote(y_col_block), q))))
+            core.dot.remote(
+                y_col_block,
+                core.dot.remote(
+                    Ts[i],
+                    core.dot.remote(core.transpose.remote(y_col_block), q))))
 
     return ray.get(q), r_res
