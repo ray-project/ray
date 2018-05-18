@@ -29,7 +29,8 @@ void ObjectDirectory::RegisterBackend() {
     if (!client_id_set.empty()) {
       // Only call the callback if we have object locations.
       std::vector<ClientID> client_id_vec(client_id_set.begin(), client_id_set.end());
-      entry->second.locations_found_callback(client_id_vec, object_id);
+      auto callback = entry->second.locations_found_callback;
+      callback(client_id_vec, object_id);
     }
   };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
