@@ -460,4 +460,11 @@ def _correct_column_dtypes(*column):
     Args:
     """
     concat_column = pd.concat(column, copy=False)
-    return create_blocks_helper(concat_column, len(column), 1)
+    partitions = []
+    i = 0
+    for old_part in column:
+        new_part = concat_column.iloc[i:i + len(old_part)]
+        new_part.index = pd.RangeIndex(0, len(new_part))
+        partitions.append(new_part)
+        i += len(new_part)
+    return partitions
