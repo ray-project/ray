@@ -649,6 +649,7 @@ class DataFrame(object):
         from .groupby import DataFrameGroupBy
 
         axis = pd.DataFrame()._get_axis_number(axis)
+
         if callable(by):
             by = by(self.index)
         elif isinstance(by, compat.string_types):

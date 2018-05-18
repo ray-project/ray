@@ -34,7 +34,8 @@ class DataFrameGroupBy(object):
                 .groupby(by=by, sort=sort)
         else:
             partitions = [row for row in df._block_partitions]
-            self._index_grouped = pd.Series(self._columns, index=self._index)\
+            self._index_grouped = \
+                pd.Series(self._columns, index=self._columns) \
                 .groupby(by=by, sort=sort)
 
         self._keys_and_values = [(k, v)
