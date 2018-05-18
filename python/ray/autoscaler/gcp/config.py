@@ -14,6 +14,7 @@ from googleapiclient import discovery, errors
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 
+# TODO.gcp: Make sure that these are thread safe
 crm = discovery.build('cloudresourcemanager', 'v1')
 iam = discovery.build('iam', 'v1')
 compute = discovery.build('compute', 'v1')

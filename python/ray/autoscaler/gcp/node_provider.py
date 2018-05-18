@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from googleapiclient import discovery
-compute = discovery.build('compute', 'v1')
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.gcp.config import wait_for_compute_zone_operation
@@ -21,6 +20,8 @@ TERMINATED_STATES = (
 class GCPNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
+
+        self.compute = discovery.build('compute', 'v1')
 
         self.tag_keys = TAG_KEYS.copy()
         self.tag_values = TAG_VALUES.copy()
@@ -62,7 +63,7 @@ class GCPNodeProvider(NodeProvider):
 
         filter_expr = ' AND '.join(not_empty_filters)
 
-        response = compute.instances().list(
+        response = self.compute.instances().list(
             project=self.provider_config['project_id'],
             zone=self.provider_config['availability_zone'],
             filter=filter_expr,
@@ -92,7 +93,7 @@ class GCPNodeProvider(NodeProvider):
         availability_zone = self.provider_config['availability_zone']
 
         node = self._node(node_id)
-        operation = compute.instances().setLabels(
+        operation = self.compute.instances().setLabels(
             project=project_id,
             zone=availability_zone,
             instance=node_id,
@@ -150,7 +151,7 @@ class GCPNodeProvider(NodeProvider):
 
         if count != 1: raise NotImplementedError(count)
 
-        operation = compute.instances().insert(
+        operation = self.compute.instances().insert(
             project=project_id,
             zone=availability_zone,
             body=config
@@ -165,7 +166,7 @@ class GCPNodeProvider(NodeProvider):
         project_id = self.provider_config['project_id']
         availability_zone = self.provider_config['availability_zone']
 
-        operation = compute.instances().delete(
+        operation = self.compute.instances().delete(
             project=project_id,
             zone=availability_zone,
             instance=node_id,
@@ -182,7 +183,7 @@ class GCPNodeProvider(NodeProvider):
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
 
-        instance = compute.instances().get(
+        instance = self.compute.instances().get(
             project=self.provider_config['project_id'],
             zone=self.provider_config['availability_zone'],
             instance=node_id,
