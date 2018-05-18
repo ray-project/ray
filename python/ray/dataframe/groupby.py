@@ -80,10 +80,13 @@ class DataFrameGroupBy(object):
         return len(self)
 
     def skew(self, **kwargs):
-        return self._apply_agg_function(lambda df: df.skew(**kwargs))
+        return self._apply_agg_function(lambda df: df.skew(axis=self._axis,
+                                                           **kwargs).T,
+                                        concat_axis=0)
 
     def ffill(self, limit=None):
-        return self._apply_df_function(lambda df: df.ffill(limit=limit))
+        return self._apply_df_function(lambda df: df.ffill(axis=self._axis,
+                                                           limit=limit))
 
     def sem(self, ddof=1):
         return self._apply_agg_function(lambda df: df.sem(ddof=ddof))
@@ -338,27 +341,40 @@ class DataFrameGroupBy(object):
     def take(self, **kwargs):
         return self._apply_df_function(lambda df: df.take(**kwargs))
 
-    def _apply_agg_function(self, f):
+    def _apply_agg_function(self, f, concat_axis=None):
         assert callable(f), "\'{0}\' object is not callable".format(type(f))
 
         result = [DataFrame(f(v)).T for k, v in self._iter]
+        concat_axis = self._axis if concat_axis is None else concat_axis
+        print(result)
 
-        new_df = concat(result)
+        new_df = concat(result, axis=concat_axis)
         if self._axis == 0:
+            print(new_df)
+            print("COLUMNS: ", self._columns)
             new_df.columns = self._columns
             new_df.index = [k for k, v in self._iter]
         else:
             new_df = new_df.T
+            print(new_df)
+            print([k for k, v in self._iter])
             new_df.columns = [k for k, v in self._iter]
             new_df.index = self._index
         return new_df
 
-    def _apply_df_function(self, f):
+    def _apply_df_function(self, f, concat_axis=None):
         assert callable(f), "\'{0}\' object is not callable".format(type(f))
 
         result = [f(v) for k, v in self._iter]
+        concat_axis = self._axis if concat_axis is None else concat_axis
 
-        new_df = concat(result)
+        new_df = concat(result, axis=concat_axis)
+
+        if self._axis == 0:
+            new_df.reindex(self._index, axis=0)
+        else:
+            new_df.reindex(self._columns, axis=1)
+
         return new_df
 
 

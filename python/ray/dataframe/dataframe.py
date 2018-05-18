@@ -118,9 +118,20 @@ class DataFrame(object):
                 "for internal DataFrame creations"
 
             if block_partitions is not None:
+                axis = 0
                 # put in numpy array here to make accesses easier since it's 2D
                 self._block_partitions = np.array(block_partitions)
-                axis = 0
+
+                # Sometimes we only get a single column or row, which is
+                # problematic for building blocks from the partitions, so we
+                # add whatever dimension we're missing from the input.
+                if self._block_partitions.ndim < 2:
+                    self._block_partitions = \
+                        np.expand_dims(self._block_partitions, axis=axis ^ 1)
+
+                assert self._block_partitions.ndim == 2, \
+                    "Block Partitions must be 2D."
+
             else:
                 if row_partitions is not None:
                     axis = 0
@@ -3316,9 +3327,62 @@ class DataFrame(object):
     def reindex(self, labels=None, index=None, columns=None, axis=None,
                 method=None, copy=True, level=None, fill_value=np.nan,
                 limit=None, tolerance=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if level is not None:
+            raise NotImplementedError(
+                "Multilevel Index not Implemented. "
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+
+        axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
+            else None
+        if axis == 0:
+            index = labels
+        elif axis == 1:
+            columns = labels
+
+        new_df = self
+        if index is not None:
+            old_index = new_df.index
+
+            def reindex_index_helper(df):
+                df.index = old_index
+                new_df = df.reindex(labels=index, axis=0, method=method,
+                                    fill_value=fill_value, limit=limit,
+                                    tolerance=tolerance)
+                new_df.reset_index(drop=True, inplace=True)
+                return new_df
+
+            new_cols = _map_partitions(reindex_index_helper,
+                                       new_df._col_partitions)
+
+            new_df = DataFrame(col_partitions=new_cols,
+                               columns=new_df.columns,
+                               index=index,
+                               col_metadata=new_df._col_metadata)
+
+        if columns is not None:
+            old_columns = new_df.columns
+
+            def reindex_column_helper(df):
+                df.columns = old_columns
+                new_df = df.reindex(labels=columns, axis=1, method=method,
+                                    fill_value=fill_value, limit=limit,
+                                    tolerance=tolerance)
+                new_df.columns = pd.RangeIndex(len(new_df.columns))
+                return new_df
+
+            new_rows = _map_partitions(reindex_column_helper,
+                                       new_df._row_partitions)
+
+            new_df = DataFrame(row_partitions=new_rows,
+                               columns=columns,
+                               index=new_df.index,
+                               row_metadata=new_df._row_metadata)
+
+        if copy:
+            return new_df
+
+        self._frame_data = new_df._frame_data
 
     def reindex_axis(self, labels, axis=0, method=None, level=None, copy=True,
                      limit=None, fill_value=np.nan):
