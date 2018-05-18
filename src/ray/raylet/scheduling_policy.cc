@@ -45,7 +45,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
     for (const auto &client_resource_pair : cluster_resources) {
       // pair = ClientID, SchedulingResources
       ClientID node_client_id = client_resource_pair.first;
-      SchedulingResources node_resources = client_resource_pair.second;
+      const auto &node_resources = client_resource_pair.second;
       RAY_LOG(DEBUG) << "client_id " << node_client_id << " resources: "
                      << node_resources.GetAvailableResources().ToString();
       if (resource_demand.IsSubset(node_resources.GetTotalResources())) {
