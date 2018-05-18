@@ -116,7 +116,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   ray::Status status_code = object_directory_->SubscribeObjectLocations(
       object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
-        object_directory_->UnsubscribeObjectLocations(object_id);
+        RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(object_id));
         GetLocationsSuccess(client_ids, object_id);
       });
   return status_code;
