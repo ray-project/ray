@@ -1558,8 +1558,8 @@ def _init(address_info=None,
         driver_address_info = {
             "node_ip_address": node_ip_address,
             "redis_address": address_info["redis_address"],
-            "store_socket_name":
-            (address_info["object_store_addresses"][0].name),
+            "store_socket_name": (
+                address_info["object_store_addresses"][0].name),
             "webui_url": address_info["webui_url"]
         }
         if not use_raylet:
