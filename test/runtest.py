@@ -1925,8 +1925,6 @@ class GlobalStateAPI(unittest.TestCase):
 
         self.assertEqual(ray.global_state.object_table(), dict())
 
-        ID_SIZE = 20
-
         driver_id = ray.experimental.state.binary_to_hex(
             ray.worker.global_worker.worker_id)
         driver_task_id = ray.experimental.state.binary_to_hex(
@@ -1942,12 +1940,12 @@ class GlobalStateAPI(unittest.TestCase):
         self.assertEqual(task_table[driver_task_id]["TaskSpec"]["TaskID"],
                          driver_task_id)
         self.assertEqual(task_table[driver_task_id]["TaskSpec"]["ActorID"],
-                         ID_SIZE * "ff")
+                         ray._RAY_ID_SIZE * "ff")
         self.assertEqual(task_table[driver_task_id]["TaskSpec"]["Args"], [])
         self.assertEqual(task_table[driver_task_id]["TaskSpec"]["DriverID"],
                          driver_id)
         self.assertEqual(task_table[driver_task_id]["TaskSpec"]["FunctionID"],
-                         ID_SIZE * "ff")
+                         ray._RAY_ID_SIZE * "ff")
         self.assertEqual(
             (task_table[driver_task_id]["TaskSpec"]["ReturnObjectIDs"]), [])
 
@@ -1980,7 +1978,7 @@ class GlobalStateAPI(unittest.TestCase):
             time.sleep(0.1)
         function_table = ray.global_state.function_table()
         task_spec = task_table[task_id]["TaskSpec"]
-        self.assertEqual(task_spec["ActorID"], ID_SIZE * "ff")
+        self.assertEqual(task_spec["ActorID"], ray._RAY_ID_SIZE * "ff")
         self.assertEqual(task_spec["Args"], [1, "hi", x_id])
         self.assertEqual(task_spec["DriverID"], driver_id)
         self.assertEqual(task_spec["ReturnObjectIDs"], [result_id])

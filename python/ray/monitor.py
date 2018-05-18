@@ -26,8 +26,7 @@ from ray.worker import NIL_ACTOR_ID
 
 # These variables must be kept in sync with the C codebase.
 # common/common.h
-DB_CLIENT_ID_SIZE = 20
-NIL_ID = b"\xff" * DB_CLIENT_ID_SIZE
+NIL_ID = ray._RAY_ID_SIZE * "\xff"
 
 # common/task.h
 TASK_STATUS_LOST = 32
@@ -284,8 +283,8 @@ class Monitor(object):
         This resets the number of heartbeats that we've missed from this plasma
         manager.
         """
-        # The first DB_CLIENT_ID_SIZE characters are the client ID.
-        db_client_id = data[:DB_CLIENT_ID_SIZE]
+        # The first ray._RAY_ID_SIZE characters are the client ID.
+        db_client_id = data[:ray._RAY_ID_SIZE]
         # Reset the number of heartbeats that we've missed from this plasma
         # manager.
         self.live_plasma_managers[db_client_id] = 0

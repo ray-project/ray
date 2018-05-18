@@ -63,6 +63,8 @@ from ray.actor import method  # noqa: E402
 # Fix this.
 __version__ = "0.4.0"
 
+_RAY_ID_SIZE = 20
+
 __all__ = [
     "error_info", "init", "connect", "disconnect", "get", "put", "wait",
     "remote", "log_event", "log_span", "flush_log", "actor", "method",

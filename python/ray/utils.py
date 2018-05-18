@@ -12,14 +12,13 @@ import uuid
 import ray.local_scheduler
 
 ERROR_KEY_PREFIX = b"Error:"
-DRIVER_ID_LENGTH = 20
 
 
 def _random_string():
     id_hash = hashlib.sha1()
     id_hash.update(uuid.uuid4().bytes)
     id_bytes = id_hash.digest()
-    assert len(id_bytes) == 20
+    assert len(id_bytes) == ray._RAY_ID_SIZE
     return id_bytes
 
 
@@ -63,7 +62,7 @@ def push_error_to_driver(redis_client,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = DRIVER_ID_LENGTH * b"\x00"
+        driver_id = ray._RAY_ID_SIZE * b"\x00"
     error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
     redis_client.hmset(error_key, {
@@ -102,14 +101,14 @@ def random_string():
     deterministic manner, then we will need to make some changes here.
 
     Returns:
-        A random byte string of length 20.
+        A random byte string of length ray._RAY_ID_SIZE.
     """
     # Get the state of the numpy random number generator.
     numpy_state = np.random.get_state()
     # Try to use true randomness.
     np.random.seed(None)
     # Generate the random ID.
-    random_id = np.random.bytes(20)
+    random_id = np.random.bytes(ray._RAY_ID_SIZE)
     # Reset the state of the numpy random number generator.
     np.random.set_state(numpy_state)
     return random_id

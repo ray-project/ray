@@ -9,7 +9,7 @@ import pyarrow.plasma as plasma
 
 
 def random_object_id():
-    return plasma.ObjectID(np.random.bytes(20))
+    return plasma.ObjectID(np.random.bytes(ray._RAY_ID_SIZE))
 
 
 def generate_metadata(length):
