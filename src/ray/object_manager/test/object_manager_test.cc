@@ -242,21 +242,29 @@ class TestObjectManagerCommands : public TestObjectManager {
     current_wait_test += 1;
     switch(current_wait_test){
       case 0: {
-        TestWait(100, 5, 3, 0, false);
+        TestWait(100, 5, 3, 0, false, false);
       } break;
       case 1: {
-        TestWait(100, 5, 3, 1000, false);
+        TestWait(100, 5, 3, 1000, false, true);
       } break;
       case 2: {
-        TestWait(100, 5, 6, 1000, true);
+        TestWait(100, 5, 3, 1000, false, false);
+      } break;
+      case 3: {
+        TestWait(100, 5, 6, 1000, true, false);
       } break;
     }
   }
 
-  void TestWait(int data_size, int num_objects, uint64_t required_objects, int wait_ms, bool include_nonexistent) {
+  void TestWait(int data_size, int num_objects, uint64_t required_objects, int wait_ms, bool include_nonexistent, bool test_local) {
     std::vector<ObjectID> object_ids;
     for (int i = -1; ++i < num_objects;) {
-      ObjectID oid = WriteDataToClient(client2, data_size);
+      ObjectID oid;
+      if (test_local) {
+        oid = WriteDataToClient(client1, data_size);
+      } else {
+        oid = WriteDataToClient(client2, data_size);
+      }
       object_ids.push_back(oid);
     }
     if (include_nonexistent) {
@@ -283,6 +291,14 @@ class TestObjectManagerCommands : public TestObjectManager {
               NextWaitTest();
             } break;
             case 2: {
+              RAY_LOG(DEBUG) << "elapsed " << elapsed;
+              RAY_LOG(DEBUG) << "found " << found.size();
+              RAY_LOG(DEBUG) << "remaining " << remaining.size();
+              ASSERT_TRUE(found.size() >= required_objects);
+              ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
+              NextWaitTest();
+            } break;
+            case 3: {
               RAY_LOG(DEBUG) << "elapsed " << elapsed;
               RAY_LOG(DEBUG) << "found " << found.size();
               RAY_LOG(DEBUG) << "remaining " << remaining.size();
