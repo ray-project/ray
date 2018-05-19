@@ -2,12 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pandas.core.groupby
 import pandas as pd
+import pandas.core.groupby
 from pandas.core.dtypes.common import is_list_like
+import pandas.core.common as com
+
 import ray
 
-from .utils import _map_partitions
 from .utils import _inherit_docstrings
 from .dataframe import DataFrame
 from .concat import concat
@@ -97,17 +98,25 @@ class DataFrameGroupBy(object):
 
     @property
     def plot(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def ohlc(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __bytes__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     @property
     def tshift(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     @property
     def groups(self):
@@ -141,10 +150,14 @@ class DataFrameGroupBy(object):
         return 2  # ndim is always 2 for DataFrames
 
     def shift(self, periods=1, freq=None, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def nth(self, n, dropna=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def cumsum(self, axis=0, *args, **kwargs):
         return self._apply_df_function(lambda df: df.cumsum(axis,
@@ -160,7 +173,9 @@ class DataFrameGroupBy(object):
             lambda df: df.pct_change(axis=self._axis))
 
     def filter(self, func, dropna=True, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def cummax(self, axis=0, **kwargs):
         return self._apply_df_function(lambda df: df.cummax(axis,
@@ -187,12 +202,10 @@ class DataFrameGroupBy(object):
                 result = [DataFrame(x).T for x in result]
                 new_df = concat(result)
                 new_df = new_df.T
-                print(new_df)
                 new_df.columns = [k for k, v in self._iter]
                 new_df.index = self._index
             else:
                 new_df = concat(result, axis=1)
-                print(new_df)
                 new_df.reindex(self._columns, axis=1, copy=False)
 
         return new_df
@@ -212,7 +225,9 @@ class DataFrameGroupBy(object):
 
     def __getitem__(self, key):
         # This operation requires a SeriesGroupBy Object
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def cummin(self, axis=0, **kwargs):
         return self._apply_df_function(lambda df: df.cummin(axis=axis,
@@ -268,31 +283,40 @@ class DataFrameGroupBy(object):
                                                           **kwargs))
 
     def last(self, **kwargs):
-        return self._apply_df_function(lambda df: df.last(**kwargs))
+        return self._apply_df_function(lambda df: df.last(offset=0,
+                                                          **kwargs))
 
     def mad(self):
         return self._apply_agg_function(lambda df: df.mad())
 
     def rank(self):
-        return self._apply_df_function(lambda df: df.rank())
+        return self._apply_df_function(lambda df: df.rank(axis=self._axis))
 
     @property
     def corrwith(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def pad(self, limit=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def max(self, **kwargs):
-        return self._apply_agg_function(lambda df: df.max(**kwargs))
+        return self._apply_agg_function(lambda df: df.max(axis=self._axis,
+                                                          **kwargs))
 
     def var(self, ddof=1, *args, **kwargs):
-        return self._apply_agg_function(lambda df: df.var(ddof,
+        return self._apply_agg_function(lambda df: df.var(ddof=ddof,
+                                                          axis=self._axis,
                                                           *args,
                                                           **kwargs))
 
     def get_group(self, name, obj=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def __len__(self):
         return len(self._keys_and_values)
@@ -308,29 +332,46 @@ class DataFrameGroupBy(object):
                                         df.sum(axis=self._axis, **kwargs))
 
     def __unicode__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def describe(self, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def boxplot(self, grouped, subplots=True, column=None, fontsize=None,
                 rot=0, grid=True, ax=None, figsize=None, layout=None, **kwds):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def ngroup(self, ascending=True):
         return self._index_grouped.ngroup(ascending)
 
     def nunique(self, dropna=True):
-        return self._apply_agg_function(lambda df: df.nunique(dropna))
+        return self._apply_agg_function(lambda df: df.nunique(dropna=dropna,
+                                                              axis=self._axis))
 
     def resample(self, rule, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def median(self, **kwargs):
-        return self._apply_agg_function(lambda df: df.median(**kwargs))
+        return self._apply_agg_function(lambda df: df.median(axis=self._axis,
+                                                             **kwargs))
 
     def head(self, n=5):
-        return self._apply_df_function(lambda df: df.head(n))
+        result = [v.head(n) for k, v in self._iter]
+        new_df = concat(result, axis=self._axis)
+
+        if self._axis == 0:
+            new_index = [v[:n] for k, v in self._keys_and_values]
+            new_df.index = [i for j in new_index for i in j]
+
+        return new_df
 
     def cumprod(self, axis=0, *args, **kwargs):
         return self._apply_df_function(lambda df: df.cumprod(axis,
@@ -347,50 +388,71 @@ class DataFrameGroupBy(object):
         return self._apply_agg_function(lambda df: df.cov())
 
     def transform(self, func, *args, **kwargs):
-        from .concat import concat
-
-        new_parts = concat([v.transform(func, *args, **kwargs)
-                            for k, v in self._iter])
-        return new_parts
+        return self._apply_df_function(lambda df: df.transform(func,
+                                                               *args,
+                                                               **kwargs))
 
     def corr(self, **kwargs):
         return self._apply_agg_function(lambda df: df.corr(**kwargs))
 
     def fillna(self, **kwargs):
-        return self._apply_df_function(lambda df: df.fillna(**kwargs))
+        return self._apply_df_function(lambda df: df.fillna(axis=self._axis,
+                                                            **kwargs))
 
     def count(self, **kwargs):
-        return self._apply_agg_function(lambda df: df.count(**kwargs))
+        return self._apply_agg_function(lambda df: df.count(self._axis,
+                                                            **kwargs))
 
     def pipe(self, func, *args, **kwargs):
-        return self._apply_df_function(lambda df: df.pipe(func,
-                                                          *args,
-                                                          **kwargs))
+        return com._pipe(self, func, *args, **kwargs)
 
     def cumcount(self, ascending=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def tail(self, n=5):
-        return self._apply_df_function(lambda df: df.tail(n))
+        result = [v.tail(n) for k, v in self._iter]
+        new_df = concat(result, axis=self._axis)
+
+        if self._axis == 0:
+            new_index = [v[-n:] for k, v in self._keys_and_values]
+            new_df.index = [i for j in new_index for i in j]
+
+        return new_df
 
     # expanding and rolling are unique cases and need to likely be handled
     # separately. They do not appear to be commonly used.
     def expanding(self, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def rolling(self, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def hist(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def quantile(self, q=0.5, **kwargs):
-        return self._apply_df_function(lambda df: df.quantile(q, **kwargs)) \
-            if is_list_like(q) \
-            else self._apply_agg_function(lambda df: df.quantile(q, **kwargs))
+        if is_list_like(q):
+            raise NotImplementedError(
+                "This requires Multi-level index to be implemented. "
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+
+        return self._apply_agg_function(lambda df: df.quantile(q=q,
+                                                               axis=self._axis,
+                                                               **kwargs))
 
     def diff(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError(
+            "To contribute to Pandas on Ray, please visit "
+            "github.com/ray-project/ray.")
 
     def take(self, **kwargs):
         return self._apply_df_function(lambda df: df.take(**kwargs))
