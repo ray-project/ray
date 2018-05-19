@@ -14,7 +14,7 @@ def na_op():
     raise NotImplementedError("Not Yet implemented.")
 
 
-@_inherit_docstrings(pd.Series)
+@_inherit_docstrings(pd.Series, excluded=[pd.Series, pd.Series.__init__])
 class Series(object):
 
     def __init__(self, series_oids):
