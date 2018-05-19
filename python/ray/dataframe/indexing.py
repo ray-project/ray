@@ -188,11 +188,18 @@ class _Location_Indexer_Base():
     def _generate_view(self, row_lookup, col_lookup):
         """Generate a DataFrameView from lookup
         """
+        row_lengths = [0] * len(self.df._row_metadata._lengths)
+        for i in row_lookup["partition"]:
+            row_lengths[i] += 1
+        col_lengths = [0] * len(self.df._col_metadata._lengths)
+        for i in col_lookup["partition"]:
+            col_lengths[i] += 1
+
         row_metadata_view = _IndexMetadata(
-            coord_df_oid=row_lookup, lengths_oid=self.df._row_metadata._lengths)
+            coord_df_oid=row_lookup, lengths_oid=row_lengths)
 
         col_metadata_view = _IndexMetadata(
-            coord_df_oid=col_lookup, lengths_oid=self.df._col_metadata._lengths)
+            coord_df_oid=col_lookup, lengths_oid=col_lengths)
 
         df_view = DataFrameView(
             block_partitions=self.block_oids,
