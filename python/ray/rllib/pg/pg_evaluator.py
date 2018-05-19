@@ -21,14 +21,16 @@ class PGEvaluator(PolicyEvaluator):
         self.policy = PGPolicy(registry, self.env.observation_space,
                                self.env.action_space, config)
         self.sampler = SyncSampler(
-                        self.env, self.policy, NoFilter(),
-                        config["batch_size"], horizon=config["horizon"])
+            self.env,
+            self.policy,
+            NoFilter(),
+            config["batch_size"],
+            horizon=config["horizon"])
 
     def sample(self):
         rollout = self.sampler.get_data()
         samples = process_rollout(
-                    rollout, NoFilter(),
-                    gamma=self.config["gamma"], use_gae=False)
+            rollout, NoFilter(), gamma=self.config["gamma"], use_gae=False)
         return samples
 
     def get_completed_rollout_metrics(self):

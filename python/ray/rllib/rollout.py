@@ -25,30 +25,37 @@ example usage:
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
     description="Roll out a reinforcement learning agent "
-                "given a checkpoint.", epilog=EXAMPLE_USAGE)
+    "given a checkpoint.",
+    epilog=EXAMPLE_USAGE)
 
 parser.add_argument(
     "checkpoint", type=str, help="Checkpoint from which to roll out.")
 required_named = parser.add_argument_group("required named arguments")
 required_named.add_argument(
-    "--run", type=str, required=True,
+    "--run",
+    type=str,
+    required=True,
     help="The algorithm or model to train. This may refer to the name "
-         "of a built-on algorithm (e.g. RLLib's DQN or PPO), or a "
-         "user-defined trainable function or class registered in the "
-         "tune registry.")
+    "of a built-on algorithm (e.g. RLLib's DQN or PPO), or a "
+    "user-defined trainable function or class registered in the "
+    "tune registry.")
 required_named.add_argument(
     "--env", type=str, help="The gym environment to use.")
 parser.add_argument(
-    "--no-render", default=False, action="store_const", const=True,
+    "--no-render",
+    default=False,
+    action="store_const",
+    const=True,
     help="Surpress rendering of the environment.")
 parser.add_argument(
     "--steps", default=None, help="Number of steps to roll out.")
+parser.add_argument("--out", default=None, help="Output filename.")
 parser.add_argument(
-    "--out", default=None, help="Output filename.")
-parser.add_argument(
-    "--config", default="{}", type=json.loads,
+    "--config",
+    default="{}",
+    type=json.loads,
     help="Algorithm-specific configuration (e.g. env, hyperparams). "
-         "Surpresses loading of configuration from checkpoint.")
+    "Surpresses loading of configuration from checkpoint.")
 
 if __name__ == "__main__":
     args = parser.parse_args()

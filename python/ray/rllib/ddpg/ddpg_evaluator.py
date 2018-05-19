@@ -41,7 +41,7 @@ class DDPGEvaluator(PolicyEvaluator):
         if config["per_worker_exploration"]:
             assert config["num_workers"] > 1, "This requires multiple workers"
             self.exploration = ConstantSchedule(
-                config["noise_scale"] * 0.4 **
+                config["noise_scale"] * 0.4**
                 (1 + worker_index / float(config["num_workers"] - 1) * 7))
         else:
             self.exploration = LinearSchedule(
@@ -77,8 +77,8 @@ class DDPGEvaluator(PolicyEvaluator):
 
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
-        for _ in range(
-                self.config["sample_batch_size"] + self.config["n_step"] - 1):
+        for _ in range(self.config["sample_batch_size"] +
+                       self.config["n_step"] - 1):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
             obs.append(ob)
             actions.append(act)
