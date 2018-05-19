@@ -709,6 +709,8 @@ class GlobalState(object):
                     }
                     full_trace.append(parent)
 
+                    _id = info["worker_id"] + str(micros(min(parent_times)))
+
                     task_trace = {
                         "cat": "submit_task",
                         "pid": "Node " + worker["node_ip_address"],
@@ -717,8 +719,7 @@ class GlobalState(object):
                         "ph": "f",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": (info["worker_id"] + str(
-                            micros(min(parent_times)))),
+                        "id": _id,
                         "bp": "e",
                         "cname": "olive"
                     }
@@ -764,6 +765,8 @@ class GlobalState(object):
                     }
                     full_trace.append(parent)
 
+                    _id = info["worker_id"] + str(micros(min(parent_times)))
+
                     task_trace = {
                         "cat": "submit_task",
                         "pid": "Node " + worker["node_ip_address"],
@@ -772,8 +775,7 @@ class GlobalState(object):
                         "ph": "f",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": (info["worker_id"] + str(
-                            micros(min(parent_times)))),
+                        "id": _id,
                         "bp": "e"
                     }
                     full_trace.append(task_trace)
