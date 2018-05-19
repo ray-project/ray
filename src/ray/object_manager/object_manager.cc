@@ -171,7 +171,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           Status pull_send_status = PullSendRequest(object_id, async_conn);
           RAY_CHECK_OK(pull_send_status);
         },
-        [this, object_id](const Status &status) {
+        [](const Status &status) {
           RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
           RAY_CHECK_OK(status);
         });
