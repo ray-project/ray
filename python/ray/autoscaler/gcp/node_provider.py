@@ -34,11 +34,11 @@ class GCPNodeProvider(NodeProvider):
         self.internal_ip_cache = {}
         self.external_ip_cache = {}
 
-    def nodes(self, label_filters):
-        if label_filters:
+    def nodes(self, tag_filters):
+        if tag_filters:
             label_filter_expr = '(' + ' AND '.join([
                 '(labels.{key} = {value})'.format(key=key, value=value)
-                for key, value in label_filters.items()
+                for key, value in tag_filters.items()
             ]) + ')'
         else:
             label_filter_expr = ''
@@ -88,7 +88,8 @@ class GCPNodeProvider(NodeProvider):
         labels = node.get('labels', {})
         return labels
 
-    def set_node_tags(self, node_id, labels):
+    def set_node_tags(self, node_id, tags):
+        labels = tags
         project_id = self.provider_config['project_id']
         availability_zone = self.provider_config['availability_zone']
 
@@ -131,9 +132,10 @@ class GCPNodeProvider(NodeProvider):
         return ip
 
 
-    def create_node(self, base_config, labels, count):
+    def create_node(self, base_config, tags, count):
         # NOTE: gcp uses 'labels' instead of aws 'tags'
         # https://cloud.google.com/compute/docs/instances/create-start-instance#startinginstancwithimage
+        labels = tags
         project_id = self.provider_config['project_id']
         availability_zone = self.provider_config['availability_zone']
 
