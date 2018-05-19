@@ -247,6 +247,14 @@ class StandardAutoscaler(object):
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
+        # Expand local file_mounts to allow ~ in the paths. This can't be done
+        # earlier when the config is written since we might be on different
+        # platform and the expansion would result in wrong path.
+        self.config['file_mounts'] = {
+            remote: os.path.expanduser(local)
+            for remote, local in self.config['file_mounts'].items()
+        }
+
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
@@ -569,7 +577,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
                     with open(os.path.join(dirpath, name), "rb") as f:
                         hasher.update(f.read())
         else:
-            with open(path, 'r') as f:
+            with open(os.path.expanduser(path), 'r') as f:
                 hasher.update(f.read().encode("utf-8"))
 
     hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
