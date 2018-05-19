@@ -189,10 +189,10 @@ class _Location_Indexer_Base():
         """Generate a DataFrameView from lookup
         """
         row_metadata_view = _IndexMetadata(
-            _coord_df=row_lookup, _lengths=self.df._row_metadata._lengths)
+            coord_df_oid=row_lookup, lengths_oid=self.df._row_metadata._lengths)
 
         col_metadata_view = _IndexMetadata(
-            _coord_df=col_lookup, _lengths=self.df._col_metadata._lengths)
+            coord_df_oid=col_lookup, lengths_oid=self.df._col_metadata._lengths)
 
         df_view = DataFrameView(
             block_partitions=self.block_oids,
@@ -354,7 +354,7 @@ class _Loc_Indexer(_Location_Indexer_Base):
         lens = major_meta._lengths
         lens = np.concatenate([lens, np.array([num_nan_labels])])
 
-        metadata_view = _IndexMetadata(_coord_df=coord_df, _lengths=lens)
+        metadata_view = _IndexMetadata(coord_df_oid=coord_df, lengths_oid=lens)
         return metadata_view
 
     def _compute_enlarge_labels(self, locator, base_index):
