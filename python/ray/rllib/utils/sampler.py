@@ -90,7 +90,7 @@ class SyncSampler(object):
 
     This class provides data on invocation, rather than on a separate
     thread."""
-    async = False
+    _async = False
 
     def __init__(self, env, policy, obs_filter, num_local_steps, horizon=None):
         self.num_local_steps = num_local_steps
@@ -126,7 +126,7 @@ class AsyncSampler(threading.Thread):
 
     Note that batch_size is only a unit of measure here. Batches can
     accumulate and the gradient can be calculated on up to 5 batches."""
-    async = True
+    _async = True
 
     def __init__(self, env, policy, obs_filter, num_local_steps, horizon=None):
         assert getattr(
