@@ -20,7 +20,7 @@ ray_files = [
     "ray/core/src/common/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store", "ray/core/src/plasma/plasma_manager",
     "ray/core/src/local_scheduler/local_scheduler",
-    "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
+    "ray/core/src/local_scheduler/liblocal_scheduler_library_python.so",
     "ray/core/src/global_scheduler/global_scheduler",
     "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
     "ray/WebUI.ipynb"
@@ -63,7 +63,7 @@ class build_ext(_build_ext.build_ext):
         # version of Python to build pyarrow inside the build.sh script. Note
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
-        subprocess.check_call(["../build.sh", sys.executable])
+        subprocess.check_call(["../build.sh", "-p", sys.executable])
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.
