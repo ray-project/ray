@@ -41,7 +41,7 @@ class DDPGEvaluator(PolicyEvaluator):
         if config["per_worker_exploration"]:
             assert config["num_workers"] > 1, "This requires multiple workers"
             self.exploration = ConstantSchedule(
-                config["noise_scale"] * 0.4**
+                config["noise_scale"] * 0.4 **
                 (1 + worker_index / float(config["num_workers"] - 1) * 7))
         else:
             self.exploration = LinearSchedule(
