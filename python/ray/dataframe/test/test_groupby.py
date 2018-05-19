@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import pytest
 import pandas
+import numpy as np
 import ray.dataframe as pd
 from ray.dataframe.utils import (
     from_pandas,
@@ -14,6 +15,15 @@ from ray.dataframe.utils import (
 def ray_df_equals_pandas(ray_df, pandas_df):
     assert isinstance(ray_df, pd.DataFrame)
     assert to_pandas(ray_df).sort_index().equals(pandas_df.sort_index())
+
+
+@pytest.fixture
+def ray_df_almost_equals_pandas(ray_df, pandas_df):
+    assert isinstance(ray_df, pd.DataFrame)
+    difference = to_pandas(ray_df).sort_index() - pandas_df.sort_index()
+    diff_max = difference.max().max()
+    assert to_pandas(ray_df).sort_index().equals(pandas_df.sort_index()) or \
+        diff_max < 0.01
 
 
 @pytest.fixture
@@ -112,12 +122,163 @@ def test_simple_row_groupby():
     test_take(ray_groupby, pandas_groupby)
 
 
-def test_simple_col_groupby():
+def test_single_group_row_groupby():
     pandas_df = pandas.DataFrame({'col1': [0, 1, 2, 3],
-                                  'col2': [4, 5, 6, 7],
+                                  'col2': [4, 5, 36, 7],
                                   'col3': [3, 8, 12, 10],
-                                  'col4': [17, 13, 16, 15],
-                                  'col5': [-4, -5, -6, -7]})
+                                  'col4': [17, 3, 16, 15],
+                                  'col5': [-4, 5, -6, -7]})
+
+    ray_df = from_pandas(pandas_df, 2)
+
+    by = [1, 1, 1, 1]
+    n = 6
+
+    ray_groupby = ray_df.groupby(by=by)
+    pandas_groupby = pandas_df.groupby(by=by)
+
+    ray_groupby_equals_pandas(ray_groupby, pandas_groupby)
+    test_ngroups(ray_groupby, pandas_groupby)
+    test_skew(ray_groupby, pandas_groupby)
+    test_ffill(ray_groupby, pandas_groupby)
+    test_sem(ray_groupby, pandas_groupby)
+    test_mean(ray_groupby, pandas_groupby)
+    test_any(ray_groupby, pandas_groupby)
+    test_min(ray_groupby, pandas_groupby)
+    test_idxmax(ray_groupby, pandas_groupby)
+    test_ndim(ray_groupby, pandas_groupby)
+    test_cumsum(ray_groupby, pandas_groupby)
+    test_pct_change(ray_groupby, pandas_groupby)
+    test_cummax(ray_groupby, pandas_groupby)
+
+    apply_functions = [lambda df: df.sum(), lambda df: -df]
+    for func in apply_functions:
+        test_apply(ray_groupby, pandas_groupby, func)
+
+    test_dtypes(ray_groupby, pandas_groupby)
+    test_first(ray_groupby, pandas_groupby)
+    test_backfill(ray_groupby, pandas_groupby)
+    test_cummin(ray_groupby, pandas_groupby)
+    test_bfill(ray_groupby, pandas_groupby)
+    test_idxmin(ray_groupby, pandas_groupby)
+    test_prod(ray_groupby, pandas_groupby)
+    test_std(ray_groupby, pandas_groupby)
+
+    agg_functions = ['min', 'max']
+    for func in agg_functions:
+        test_agg(ray_groupby, pandas_groupby, func)
+        test_aggregate(ray_groupby, pandas_groupby, func)
+
+    test_last(ray_groupby, pandas_groupby)
+    test_mad(ray_groupby, pandas_groupby)
+    test_rank(ray_groupby, pandas_groupby)
+    test_max(ray_groupby, pandas_groupby)
+    test_var(ray_groupby, pandas_groupby)
+    test_len(ray_groupby, pandas_groupby)
+    test_sum(ray_groupby, pandas_groupby)
+    test_ngroup(ray_groupby, pandas_groupby)
+    test_nunique(ray_groupby, pandas_groupby)
+    test_median(ray_groupby, pandas_groupby)
+    test_head(ray_groupby, pandas_groupby, n)
+    test_cumprod(ray_groupby, pandas_groupby)
+    test_cov(ray_groupby, pandas_groupby)
+
+    transform_functions = [lambda df: df + 4, lambda df: -df - 10]
+    for func in transform_functions:
+        test_transform(ray_groupby, pandas_groupby, func)
+
+    pipe_functions = [lambda dfgb: dfgb.sum()]
+    for func in pipe_functions:
+        test_pipe(ray_groupby, pandas_groupby, func)
+
+    test_corr(ray_groupby, pandas_groupby)
+    test_fillna(ray_groupby, pandas_groupby)
+    test_count(ray_groupby, pandas_groupby)
+    test_tail(ray_groupby, pandas_groupby, n)
+    test_quantile(ray_groupby, pandas_groupby)
+    test_take(ray_groupby, pandas_groupby)
+
+
+def test_large_row_groupby():
+    pandas_df = pandas.DataFrame(np.random.randint(0, 8, size=(100, 4)),
+                                 columns=list('ABCD'))
+
+    ray_df = from_pandas(pandas_df, 2)
+
+    by = pandas_df['A'].tolist()
+    n = 4
+
+    ray_groupby = ray_df.groupby(by=by)
+    pandas_groupby = pandas_df.groupby(by=by)
+
+    ray_groupby_equals_pandas(ray_groupby, pandas_groupby)
+    test_ngroups(ray_groupby, pandas_groupby)
+    test_skew(ray_groupby, pandas_groupby)
+    test_ffill(ray_groupby, pandas_groupby)
+    test_sem(ray_groupby, pandas_groupby)
+    test_mean(ray_groupby, pandas_groupby)
+    test_any(ray_groupby, pandas_groupby)
+    test_min(ray_groupby, pandas_groupby)
+    test_idxmax(ray_groupby, pandas_groupby)
+    test_ndim(ray_groupby, pandas_groupby)
+    test_cumsum(ray_groupby, pandas_groupby)
+    test_pct_change(ray_groupby, pandas_groupby)
+    test_cummax(ray_groupby, pandas_groupby)
+
+    apply_functions = [lambda df: df.sum(), lambda df: -df]
+    for func in apply_functions:
+        test_apply(ray_groupby, pandas_groupby, func)
+
+    test_dtypes(ray_groupby, pandas_groupby)
+    test_first(ray_groupby, pandas_groupby)
+    test_backfill(ray_groupby, pandas_groupby)
+    test_cummin(ray_groupby, pandas_groupby)
+    test_bfill(ray_groupby, pandas_groupby)
+    test_idxmin(ray_groupby, pandas_groupby)
+    # test_prod(ray_groupby, pandas_groupby) causes overflows
+    test_std(ray_groupby, pandas_groupby)
+
+    agg_functions = ['min', 'max']
+    for func in agg_functions:
+        test_agg(ray_groupby, pandas_groupby, func)
+        test_aggregate(ray_groupby, pandas_groupby, func)
+
+    test_last(ray_groupby, pandas_groupby)
+    test_mad(ray_groupby, pandas_groupby)
+    test_rank(ray_groupby, pandas_groupby)
+    test_max(ray_groupby, pandas_groupby)
+    test_var(ray_groupby, pandas_groupby)
+    test_len(ray_groupby, pandas_groupby)
+    test_sum(ray_groupby, pandas_groupby)
+    test_ngroup(ray_groupby, pandas_groupby)
+    test_nunique(ray_groupby, pandas_groupby)
+    test_median(ray_groupby, pandas_groupby)
+    test_head(ray_groupby, pandas_groupby, n)
+    # test_cumprod(ray_groupby, pandas_groupby) causes overflows
+    test_cov(ray_groupby, pandas_groupby)
+
+    transform_functions = [lambda df: df + 4, lambda df: -df - 10]
+    for func in transform_functions:
+        test_transform(ray_groupby, pandas_groupby, func)
+
+    pipe_functions = [lambda dfgb: dfgb.sum()]
+    for func in pipe_functions:
+        test_pipe(ray_groupby, pandas_groupby, func)
+
+    test_corr(ray_groupby, pandas_groupby)
+    test_fillna(ray_groupby, pandas_groupby)
+    test_count(ray_groupby, pandas_groupby)
+    test_tail(ray_groupby, pandas_groupby, n)
+    test_quantile(ray_groupby, pandas_groupby)
+    test_take(ray_groupby, pandas_groupby)
+
+
+def test_simple_col_groupby():
+    pandas_df = pandas.DataFrame({'col1': [0, 3, 2, 3],
+                                  'col2': [4, 1, 6, 7],
+                                  'col3': [3, 8, 2, 10],
+                                  'col4': [1, 13, 6, 15],
+                                  'col5': [-4, 5, 6, -7]})
 
     ray_df = from_pandas(pandas_df, 2)
 
@@ -190,7 +351,7 @@ def test_ngroups(ray_groupby, pandas_groupby):
 
 @pytest.fixture
 def test_skew(ray_groupby, pandas_groupby):
-    ray_df_equals_pandas(ray_groupby.skew(), pandas_groupby.skew())
+    ray_df_almost_equals_pandas(ray_groupby.skew(), pandas_groupby.skew())
 
 
 @pytest.fixture
@@ -206,7 +367,7 @@ def test_sem(ray_groupby, pandas_groupby):
 
 @pytest.fixture
 def test_mean(ray_groupby, pandas_groupby):
-    ray_df_equals_pandas(ray_groupby.mean(), pandas_groupby.mean())
+    ray_df_almost_equals_pandas(ray_groupby.mean(), pandas_groupby.mean())
 
 
 @pytest.fixture
@@ -290,7 +451,7 @@ def test_prod(ray_groupby, pandas_groupby):
 
 @pytest.fixture
 def test_std(ray_groupby, pandas_groupby):
-    ray_df_equals_pandas(ray_groupby.std(), pandas_groupby.std())
+    ray_df_almost_equals_pandas(ray_groupby.std(), pandas_groupby.std())
 
 
 @pytest.fixture
@@ -328,7 +489,7 @@ def test_max(ray_groupby, pandas_groupby):
 
 @pytest.fixture
 def test_var(ray_groupby, pandas_groupby):
-    ray_df_equals_pandas(ray_groupby.var(), pandas_groupby.var())
+    ray_df_almost_equals_pandas(ray_groupby.var(), pandas_groupby.var())
 
 
 @pytest.fixture

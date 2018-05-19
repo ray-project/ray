@@ -2459,8 +2459,32 @@ def test_rdiv():
 
 
 def test_reindex():
-    # TODO(kunalgosar): Implement this
-    pass
+    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3],
+                              'col2': [4, 5, 6, 7],
+                              'col3': [8, 9, 10, 11],
+                              'col4': [12, 13, 14, 15],
+                              'col5': [0, 0, 0, 0]})
+    ray_df = from_pandas(pandas_df, 2)
+
+    assert ray_df_equals_pandas(
+        ray_df.reindex([0, 3, 2, 1]), pandas_df.reindex([0, 3, 2, 1]))
+
+    assert ray_df_equals_pandas(
+        ray_df.reindex([0, 6, 2]), pandas_df.reindex([0, 6, 2]))
+
+    assert ray_df_equals_pandas(
+        ray_df.reindex(['col1', 'col3', 'col4', 'col2'], axis=1),
+        pandas_df.reindex(['col1', 'col3', 'col4', 'col2'], axis=1))
+
+    assert ray_df_equals_pandas(
+        ray_df.reindex(['col1', 'col7', 'col4', 'col8'], axis=1),
+        pandas_df.reindex(['col1', 'col7', 'col4', 'col8'], axis=1))
+
+    assert ray_df_equals_pandas(
+        ray_df.reindex(index=[0, 1, 5],
+                       columns=['col1', 'col7', 'col4', 'col8']),
+        pandas_df.reindex(index=[0, 1, 5],
+                          columns=['col1', 'col7', 'col4', 'col8']))
 
 
 def test_reindex_axis():

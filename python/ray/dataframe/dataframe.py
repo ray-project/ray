@@ -3344,10 +3344,10 @@ class DataFrame(object):
                 "github.com/ray-project/ray.")
 
         axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
-            else None
-        if axis == 0:
+            else 0
+        if axis == 0 and labels is not None:
             index = labels
-        elif axis == 1:
+        elif labels is not None:
             columns = labels
 
         new_df = self

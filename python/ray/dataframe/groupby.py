@@ -42,16 +42,22 @@ class DataFrameGroupBy(object):
         self._keys_and_values = [(k, v)
                                  for k, v in self._index_grouped]
 
-        self._grouped_partitions = \
-            list(zip(*(groupby._submit(args=(by,
-                                             axis,
-                                             level,
-                                             as_index,
-                                             sort,
-                                             group_keys,
-                                             squeeze) + tuple(part.tolist()),
-                                       num_return_vals=len(self))
-                       for part in partitions)))
+        if len(self) > 1:
+            self._grouped_partitions = \
+                list(zip(*(groupby._submit(args=(by,
+                                                 axis,
+                                                 level,
+                                                 as_index,
+                                                 sort,
+                                                 group_keys,
+                                                 squeeze) + tuple(part.tolist()),
+                                           num_return_vals=len(self))
+                           for part in partitions)))
+        else:
+            if axis == 0:
+                self._grouped_partitions = [df._col_partitions]
+            else:
+                self._grouped_partitions = [df._row_partitions]
 
     @property
     def _iter(self):
@@ -195,7 +201,7 @@ class DataFrameGroupBy(object):
                 new_df.index = [k for k, v in self._iter]
             else:
                 new_df = concat(result)
-                new_df.reindex(self._index, axis=0, copy=False)
+                new_df = new_df.reindex(self._index, axis=0)
         else:
             if isinstance(result[0], pd.Series):
                 # Applied an aggregation function
@@ -206,7 +212,7 @@ class DataFrameGroupBy(object):
                 new_df.index = self._index
             else:
                 new_df = concat(result, axis=1)
-                new_df.reindex(self._columns, axis=1, copy=False)
+                new_df = new_df.reindex(self._columns, axis=1)
 
         return new_df
 
@@ -482,9 +488,9 @@ class DataFrameGroupBy(object):
         new_df = concat(result, axis=concat_axis)
 
         if self._axis == 0:
-            new_df.reindex(self._index, axis=0, copy=False)
+            new_df = new_df.reindex(self._index, axis=0)
         else:
-            new_df.reindex(self._columns, axis=1, copy=False)
+            new_df = new_df.reindex(self._columns, axis=1)
 
         return new_df
 
