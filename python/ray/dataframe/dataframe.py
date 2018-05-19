@@ -988,36 +988,24 @@ class DataFrame(object):
         raise ValueError("{} is an unknown string function".format(func))
 
     def _callable_function(self, func, axis, *args, **kwargs):
-        if axis == 0:
-            partitions = self._col_partitions
-        else:
-            partitions = self._row_partitions
-
         if axis == 1:
             kwargs['axis'] = axis
-            kwargs['temp_columns'] = self.columns
-        else:
-            kwargs['temp_index'] = self.index
 
-        def agg_helper(df, arg, *args, **kwargs):
-            if 'temp_index' in kwargs:
-                df.index = kwargs.pop('temp_index', None)
-            else:
-                df.columns = kwargs.pop('temp_columns', None)
+        def agg_helper(df, arg, index, columns, *args, **kwargs):
+            df.index = index
+            df.columns = columns
             is_transform = kwargs.pop('is_transform', False)
             new_df = df.agg(arg, *args, **kwargs)
 
             is_series = False
+            index = None
+            columns = None
 
             if isinstance(new_df, pd.Series):
                 is_series = True
-                index = None
-                columns = None
             else:
-                index = new_df.index \
-                    if not isinstance(new_df.index, pd.RangeIndex) \
-                    else None
                 columns = new_df.columns
+                index = new_df.index
                 new_df.columns = pd.RangeIndex(0, len(new_df.columns))
                 new_df.reset_index(drop=True, inplace=True)
 
@@ -1028,13 +1016,37 @@ class DataFrame(object):
 
             return is_series, new_df, index, columns
 
-        remote_result = \
-            [_deploy_func._submit(args=(lambda df: agg_helper(df,
-                                                              func,
-                                                              *args,
-                                                              **kwargs),
-                                        part), num_return_vals=4)
-             for part in partitions]
+        if axis == 0:
+            index = self.index
+            columns = [self._col_metadata.partition_series(i).index
+                       for i in range(len(self._col_partitions))]
+
+            remote_result = \
+                [_deploy_func._submit(args=(
+                    lambda df: agg_helper(df,
+                                          func,
+                                          index,
+                                          cols,
+                                          *args,
+                                          **kwargs),
+                                          part), num_return_vals=4)
+                 for cols, part in zip(columns, self._col_partitions)]
+
+        if axis == 1:
+            indexes = [self._row_metadata.partition_series(i).index
+                     for i in range(len(self._row_partitions))]
+            columns = self.columns
+
+            remote_result = \
+                [_deploy_func._submit(args=(
+                    lambda df: agg_helper(df,
+                                          func,
+                                          index,
+                                          columns,
+                                          *args,
+                                          **kwargs),
+                                          part), num_return_vals=4)
+                 for index, part in zip(indexes, self._row_partitions)]
 
         # This magic transposes the list comprehension returned from remote
         is_series, new_parts, index, columns = \
@@ -1057,21 +1069,20 @@ class DataFrame(object):
         # remote objects. We build a Ray DataFrame from the Pandas partitions.
         elif axis == 0:
             new_index = ray.get(index[0])
-            columns = ray.get(columns)
-            columns = columns[0].append(columns[1:])
+            new_columns = ray.get(columns)
+            new_columns = [i for j in new_columns for i in j]
 
             return DataFrame(col_partitions=new_parts,
-                             columns=columns,
-                             index=self.index if new_index is None
-                             else new_index)
+                             columns=new_columns,
+                             index=new_index)
         else:
-            new_index = ray.get(index[0])
-            columns = ray.get(columns)
-            columns = columns[0].append(columns[1:])
+            new_columns = ray.get(columns[0])
+            new_index = ray.get(index)
+            new_index = [i for j in new_index for i in j]
+
             return DataFrame(row_partitions=new_parts,
-                             columns=columns,
-                             index=self.index if new_index is None
-                             else new_index)
+                             columns=new_columns,
+                             index=new_index)
 
     def align(self, other, join='outer', axis=None, level=None, copy=True,
               fill_value=None, method=None, limit=None, fill_axis=0,
@@ -1238,7 +1249,7 @@ class DataFrame(object):
         Returns:
             values: ndarray
         """
-        # TODO this is very inneficient, also see __array__
+        # TODO this is very inefficient, also see __array__
         return to_pandas(self).as_matrix(columns)
 
     def asfreq(self, freq, method=None, how=None, normalize=False,

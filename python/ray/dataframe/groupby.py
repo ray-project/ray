@@ -81,21 +81,23 @@ class DataFrameGroupBy(object):
 
     def skew(self, **kwargs):
         return self._apply_agg_function(lambda df: df.skew(axis=self._axis,
-                                                           **kwargs).T,
-                                        concat_axis=0)
+                                                           **kwargs).T)
 
     def ffill(self, limit=None):
         return self._apply_df_function(lambda df: df.ffill(axis=self._axis,
                                                            limit=limit))
 
     def sem(self, ddof=1):
-        return self._apply_agg_function(lambda df: df.sem(ddof=ddof))
+        return self._apply_agg_function(lambda df: df.sem(axis=self._axis,
+                                                          ddof=ddof))
 
     def mean(self, *args, **kwargs):
-        return self._apply_agg_function(lambda df: df.mean(*args, **kwargs))
+        return self._apply_agg_function(lambda df: df.mean(axis=self._axis,
+                                                           *args,
+                                                           **kwargs))
 
     def any(self):
-        return self._apply_agg_function(lambda df: df.any())
+        return self._apply_agg_function(lambda df: df.any(axis=self._axis))
 
     @property
     def plot(self):
@@ -116,14 +118,31 @@ class DataFrameGroupBy(object):
         return {k: pd.Index(v) for k, v in self._keys_and_values}
 
     def min(self, **kwargs):
-        return self._apply_agg_function(lambda df: df.min(**kwargs))
+        return self._apply_agg_function(lambda df: df.min(axis=self._axis,
+                                                          **kwargs))
 
     def idxmax(self):
-        return self._apply_agg_function(lambda df: df.idxmax())
+        def idxmax_helper(df, index):
+            result = df.idxmax(axis=self._axis)
+            result = result.apply(lambda v: index[v])
+            return result
+
+        results = [DataFrame(idxmax_helper(g[1], i[1])).T
+                   for g, i in zip(self._iter, self._index_grouped)]
+
+        new_df = concat(results)
+        if self._axis == 0:
+            new_df.columns = self._columns
+            new_df.index = [k for k, v in self._iter]
+        else:
+            new_df = new_df.T
+            new_df.columns = [k for k, v in self._iter]
+            new_df.index = self._index
+        return new_df
 
     @property
     def ndim(self):
-        return self._index_grouped.ndim
+        return 2  # ndim is always 2 for DataFrames
 
     def shift(self, periods=1, freq=None, axis=0):
         raise NotImplementedError("Not Yet implemented.")
@@ -132,23 +151,24 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def cumsum(self, axis=0, *args, **kwargs):
-        return self._apply_agg_function(lambda df: df.cumsum(axis,
-                                                             *args,
-                                                             **kwargs))
+        return self._apply_df_function(lambda df: df.cumsum(axis,
+                                                            *args,
+                                                            **kwargs))
 
     @property
     def indices(self):
         return dict(self._keys_and_values)
 
     def pct_change(self):
-        return self._apply_agg_function(lambda df: df.pct_change())
+        return self._apply_agg_function(
+            lambda df: df.pct_change(axis=self._axis))
 
     def filter(self, func, dropna=True, *args, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def cummax(self, axis=0, **kwargs):
-        return self._apply_agg_function(lambda df: df.cummax(axis=axis,
-                                                             **kwargs))
+        return self._apply_df_function(lambda df: df.cummax(axis,
+                                                            **kwargs))
 
     def apply(self, func, *args, **kwargs):
         return self._apply_df_function(lambda df: df.apply(func,
@@ -341,13 +361,12 @@ class DataFrameGroupBy(object):
     def take(self, **kwargs):
         return self._apply_df_function(lambda df: df.take(**kwargs))
 
-    def _apply_agg_function(self, f, concat_axis=None):
+    def _apply_agg_function(self, f):
         assert callable(f), "\'{0}\' object is not callable".format(type(f))
 
         result = [DataFrame(f(v)).T for k, v in self._iter]
-        concat_axis = self._axis if concat_axis is None else concat_axis
 
-        new_df = concat(result, axis=concat_axis)
+        new_df = concat(result)
         if self._axis == 0:
             new_df.columns = self._columns
             new_df.index = [k for k, v in self._iter]

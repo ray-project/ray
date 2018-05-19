@@ -330,7 +330,9 @@ def test_int_dataframe():
         with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
-        test_transform(ray_df, pandas_df)
+    test_apply(ray_df, pandas_df, lambda df: df.drop('col1'), 1)
+    test_apply(ray_df, pandas_df, lambda df: -df, 0)
+    test_transform(ray_df, pandas_df)
 
 
 def test_float_dataframe():
@@ -499,7 +501,9 @@ def test_float_dataframe():
         with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
-        test_transform(ray_df, pandas_df)
+    test_apply(ray_df, pandas_df, lambda df: df.drop('col1'), 1)
+    test_apply(ray_df, pandas_df, lambda df: -df, 0)
+    test_transform(ray_df, pandas_df)
 
 
 def test_mixed_dtype_dataframe():
@@ -665,7 +669,9 @@ def test_mixed_dtype_dataframe():
         with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
-        test_transform(ray_df, pandas_df)
+    test_transform(ray_df, pandas_df)
+    test_apply(ray_df, pandas_df, lambda df: df.drop('col1'), 1)
+    test_apply(ray_df, pandas_df, lambda df: -df, 0)
 
 
 def test_nan_dataframe():
@@ -828,7 +834,9 @@ def test_nan_dataframe():
         with pytest.raises(TypeError):
             test_agg(ray_df, pandas_df, func, 1)
 
-        test_transform(ray_df, pandas_df)
+    test_apply(ray_df, pandas_df, lambda df: df.drop('col1'), 1)
+    test_apply(ray_df, pandas_df, lambda df: -df, 0)
+    test_transform(ray_df, pandas_df)
 
 
 def test_dense_nan_df():
@@ -2452,10 +2460,8 @@ def test_rdiv():
 
 
 def test_reindex():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.reindex()
+    # TODO(kunalgosar): Implement this
+    pass
 
 
 def test_reindex_axis():
