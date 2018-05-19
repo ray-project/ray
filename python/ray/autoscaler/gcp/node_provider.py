@@ -126,7 +126,7 @@ class GCPNodeProvider(NodeProvider):
         if node_id in self.internal_ip_cache:
             return self.internal_ip_cache[node_id]
         node = self._node(node_id)
-        ip = node.get('networkInterfaces', {}).get('networkIP')
+        ip = node.get('networkInterfaces', [{}])[0].get('networkIP')
         if ip:
             self.internal_ip_cache[node_id] = ip
         return ip
