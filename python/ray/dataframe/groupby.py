@@ -199,6 +199,8 @@ class DataFrameGroupBy(object):
 
     @property
     def dtypes(self):
+        if self._axis == 1:
+            raise ValueError("Cannot call dtypes on groupby with axis=1")
         return self._apply_agg_function(lambda df: df.dtypes)
 
     def first(self, **kwargs):
@@ -213,30 +215,57 @@ class DataFrameGroupBy(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def cummin(self, axis=0, **kwargs):
-        return self._apply_agg_function(lambda df: df.cummin(axis=axis,
-                                                             **kwargs))
+        return self._apply_df_function(lambda df: df.cummin(axis=axis,
+                                                            **kwargs))
 
     def bfill(self, limit=None):
-        return self._apply_agg_function(lambda df: df.bfill(limit=limit))
+        return self._apply_df_function(lambda df: df.bfill(axis=self._axis,
+                                                           limit=limit))
 
     def idxmin(self):
-        return self._apply_agg_function(lambda df: df.idxmin())
+        def idxmin_helper(df, index):
+            result = df.idxmin(axis=self._axis)
+            result = result.apply(lambda v: index[v])
+            return result
+
+        results = [DataFrame(idxmin_helper(g[1], i[1])).T
+                   for g, i in zip(self._iter, self._index_grouped)]
+
+        new_df = concat(results)
+        if self._axis == 0:
+            new_df.columns = self._columns
+            new_df.index = [k for k, v in self._iter]
+        else:
+            new_df = new_df.T
+            new_df.columns = [k for k, v in self._iter]
+            new_df.index = self._index
+        return new_df
 
     def prod(self, **kwargs):
-        return self._apply_agg_function(lambda df: df.prod(**kwargs))
+        return self._apply_agg_function(lambda df: df.prod(axis=self._axis,
+                                                           **kwargs))
 
     def std(self, ddof=1, *args, **kwargs):
-        return self._apply_agg_function(lambda df: df.std(ddof=ddof,
-                                                          *args, **kwargs))
+        return self._apply_agg_function(lambda df: df.std(axis=self._axis,
+                                                          ddof=ddof,
+                                                          *args,
+                                                          **kwargs))
 
     def aggregate(self, arg, *args, **kwargs):
-        return self._apply_df_function(lambda df: df.agg(arg,
-                                                         *args,
-                                                         **kwargs)) \
-            if is_list_like(arg) \
-            else self._apply_agg_function(lambda df: df.agg(arg,
-                                                            *args,
-                                                            **kwargs))
+        if self._axis != 0:
+            # This is not implemented in pandas,
+            # so we throw a different message
+            raise NotImplementedError("axis other than 0 is not supported")
+
+        if is_list_like(arg):
+            raise NotImplementedError(
+                "This requires Multi-level index to be implemented. "
+                "To contribute to Pandas on Ray, please visit "
+                "github.com/ray-project/ray.")
+        return self._apply_agg_function(lambda df: df.agg(arg,
+                                                          axis=self._axis,
+                                                          *args,
+                                                          **kwargs))
 
     def last(self, **kwargs):
         return self._apply_df_function(lambda df: df.last(**kwargs))
@@ -312,20 +341,7 @@ class DataFrameGroupBy(object):
         return self._iter.__iter__()
 
     def agg(self, arg, *args, **kwargs):
-        def agg_help(df):
-            if isinstance(df, pd.Series):
-                return pd.DataFrame(df).T
-            else:
-                return df
-        x = [v.agg(arg, axis=self._axis, *args, **kwargs)
-             for k, v in self._iter]
-
-        new_parts = _map_partitions(lambda df: agg_help(df), x)
-
-        from .concat import concat
-        result = concat(new_parts)
-
-        return result
+        return self.aggregate(arg, *args, **kwargs)
 
     def cov(self):
         return self._apply_agg_function(lambda df: df.cov())

@@ -67,6 +67,20 @@ def test_simple_row_groupby():
     for func in apply_functions:
         test_apply(ray_groupby, pandas_groupby, func)
 
+    test_dtypes(ray_groupby, pandas_groupby)
+    test_first(ray_groupby, pandas_groupby)
+    test_backfill(ray_groupby, pandas_groupby)
+    test_cummin(ray_groupby, pandas_groupby)
+    test_bfill(ray_groupby, pandas_groupby)
+    test_idxmin(ray_groupby, pandas_groupby)
+    test_prod(ray_groupby, pandas_groupby)
+    test_std(ray_groupby, pandas_groupby)
+
+    agg_functions = ['min', 'max']
+    for func in agg_functions:
+        test_agg(ray_groupby, pandas_groupby, func)
+        test_aggregate(ray_groupby, pandas_groupby, func)
+
 
 def test_simple_col_groupby():
     pandas_df = pandas.DataFrame({'col1': [0, 1, 2, 3],
@@ -96,11 +110,19 @@ def test_simple_col_groupby():
     # https://github.com/pandas-dev/pandas/issues/21127
     # test_cumsum(ray_groupby, pandas_groupby)
     # test_cummax(ray_groupby, pandas_groupby)
+    # test_cummin(ray_groupby, pandas_groupby)
 
     test_pct_change(ray_groupby, pandas_groupby)
     apply_functions = [lambda df: -df, lambda df: df.sum(axis=1)]
     for func in apply_functions:
         test_apply(ray_groupby, pandas_groupby, func)
+
+    test_first(ray_groupby, pandas_groupby)
+    test_backfill(ray_groupby, pandas_groupby)
+    test_bfill(ray_groupby, pandas_groupby)
+    test_idxmin(ray_groupby, pandas_groupby)
+    test_prod(ray_groupby, pandas_groupby)
+    test_std(ray_groupby, pandas_groupby)
 
 
 @pytest.fixture
@@ -169,7 +191,56 @@ def test_cummax(ray_groupby, pandas_groupby):
 
 @pytest.fixture
 def test_apply(ray_groupby, pandas_groupby, func):
-    print(ray_groupby.apply(func))
-    print(type(ray_groupby.apply(func)))
-    print(pandas_groupby.apply(func))
     ray_df_equals_pandas(ray_groupby.apply(func), pandas_groupby.apply(func))
+
+
+@pytest.fixture
+def test_dtypes(ray_groupby, pandas_groupby):
+    ray_df_equals_pandas(ray_groupby.dtypes, pandas_groupby.dtypes)
+
+
+@pytest.fixture
+def test_first(ray_groupby, pandas_groupby):
+    with pytest.raises(NotImplementedError):
+        ray_groupby.first()
+
+
+@pytest.fixture
+def test_backfill(ray_groupby, pandas_groupby):
+    ray_df_equals_pandas(ray_groupby.backfill(), pandas_groupby.backfill())
+
+
+@pytest.fixture
+def test_cummin(ray_groupby, pandas_groupby):
+    ray_df_equals_pandas(ray_groupby.cummin(), pandas_groupby.cummin())
+
+
+@pytest.fixture
+def test_bfill(ray_groupby, pandas_groupby):
+    ray_df_equals_pandas(ray_groupby.bfill(), pandas_groupby.bfill())
+
+
+@pytest.fixture
+def test_idxmin(ray_groupby, pandas_groupby):
+    ray_df_equals_pandas(ray_groupby.idxmin(), pandas_groupby.idxmin())
+
+
+@pytest.fixture
+def test_prod(ray_groupby, pandas_groupby):
+    ray_df_equals_pandas(ray_groupby.prod(), pandas_groupby.prod())
+
+
+@pytest.fixture
+def test_std(ray_groupby, pandas_groupby):
+    ray_df_equals_pandas(ray_groupby.std(), pandas_groupby.std())
+
+
+@pytest.fixture
+def test_aggregate(ray_groupby, pandas_groupby, func):
+    ray_df_equals_pandas(ray_groupby.aggregate(func),
+                         pandas_groupby.aggregate(func))
+
+
+@pytest.fixture
+def test_agg(ray_groupby, pandas_groupby, func):
+    ray_df_equals_pandas(ray_groupby.agg(func), pandas_groupby.agg(func))
