@@ -1,8 +1,6 @@
 package org.ray.api;
 
 
-import org.apache.arrow.plasma.ObjectId;
-
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -12,7 +10,7 @@ import java.util.Random;
 /**
  * Unique ID for task, worker, function...
  */
-public class UniqueID implements Serializable, ObjectId {
+public class UniqueID implements Serializable {
 
   private static final long serialVersionUID = 8588849129675565761L;
 

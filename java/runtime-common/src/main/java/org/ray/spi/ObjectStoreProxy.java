@@ -3,9 +3,7 @@ package org.ray.spi;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.arrow.plasma.ObjectId;
 import org.apache.arrow.plasma.ObjectStoreLink;
-import org.apache.arrow.plasma.ObjectBuffer;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.RayList;
 import org.ray.api.RayObject;
@@ -33,10 +31,10 @@ public class ObjectStoreProxy {
 
   public <T> Pair<T, GetStatus> get(UniqueID id, int timeout_ms, boolean isMetadata)
       throws TaskExecutionException {
-    ObjectBuffer obj = store.get(id, timeout_ms, isMetadata);
-    if (obj.buffer() != null) {
-      T t = Serializer.decode(obj.buffer(), WorkerContext.currentClassLoader());
-      obj.release();
+    byte[] obj = store.get(id.getBytes(), timeout_ms, isMetadata);
+    if (obj != null) {
+      T t = Serializer.decode(obj, WorkerContext.currentClassLoader());
+      store.release(id.getBytes());
       if (t instanceof TaskExecutionException) {
         throw (TaskExecutionException) t;
       }
@@ -53,12 +51,13 @@ public class ObjectStoreProxy {
 
   public <T> List<Pair<T, GetStatus>> get(List<UniqueID> ids, int timeoutMs, boolean isMetadata)
       throws TaskExecutionException {
-    List<ObjectBuffer> objs = store.get(ids, timeoutMs, isMetadata);
+    List<byte[]> objs = store.get(getIdBytes(ids), timeoutMs, isMetadata);
     List<Pair<T, GetStatus>> ret = new ArrayList<>();
-    for (ObjectBuffer obj : objs) {
-      if (obj.buffer() != null) {
-        T t = Serializer.decode(obj.buffer(), WorkerContext.currentClassLoader());
-        obj.release();
+    for (int i = 0; i < objs.size(); i++) {
+      byte[] obj = objs.get(i);
+      if (obj != null) {
+        T t = Serializer.decode(obj, WorkerContext.currentClassLoader());
+        store.release(ids.get(i).getBytes());
         if (t instanceof TaskExecutionException) {
           throw (TaskExecutionException) t;
         }
@@ -76,7 +75,7 @@ public class ObjectStoreProxy {
   }
 
   public void put(UniqueID id, Object obj, Object metadata) {
-    store.put(id, Serializer.encode(obj), Serializer.encode(metadata));
+    store.put(id.getBytes(), Serializer.encode(obj), Serializer.encode(metadata));
   }
 
   public <T> WaitResult<T> wait(RayList<T> waitfor, int numReturns, int timeout) {
@@ -84,12 +83,12 @@ public class ObjectStoreProxy {
     for (RayObject<T> obj : waitfor.Objects()) {
       ids.add(obj.getId());
     }
-    List<ObjectId> readys = store.wait(ids, timeout, numReturns);
+    List<byte[]> readys = store.wait(getIdBytes(ids), timeout, numReturns);
 
     RayList<T> readyObjs = new RayList<>();
     RayList<T> remainObjs = new RayList<>();
     for (RayObject<T> obj : waitfor.Objects()) {
-      if (readys.contains(obj.getId())) {
+      if (readys.contains(obj.getId().getBytes())) {
         readyObjs.add(obj);
       } else {
         remainObjs.add(obj);
@@ -100,14 +99,24 @@ public class ObjectStoreProxy {
   }
 
   public void fetch(UniqueID objectId) {
-    store.fetch(objectId);
+    store.fetch(objectId.getBytes());
   }
 
   public void fetch(List<UniqueID> objectIds) {
-    store.fetch(objectIds);
+    store.fetch(getIdBytes(objectIds));
   }
 
   public int getFetchSize() {
     return 10000;
+  }
+
+
+  private static byte[][] getIdBytes(List<UniqueID> objectIds) {
+    int size = objectIds.size();
+    byte[][] ids = new byte[size][];
+    for (int i = 0; i < size; i++) {
+      ids[i] = objectIds.get(i).getBytes();
+    }
+    return ids;
   }
 }

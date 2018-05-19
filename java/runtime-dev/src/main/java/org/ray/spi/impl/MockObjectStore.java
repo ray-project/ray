@@ -6,9 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.arrow.plasma.ObjectId;
 import org.apache.arrow.plasma.ObjectStoreLink;
-import org.apache.arrow.plasma.ObjectBuffer;
 import org.ray.api.UniqueID;
 import org.ray.core.WorkerContext;
 import org.ray.util.logger.RayLog;
@@ -23,27 +21,29 @@ public class MockObjectStore implements ObjectStoreLink {
   private MockLocalScheduler scheduler_ = null;
 
   @Override
-  public void put(ObjectId objectId, byte[] value, byte[] metadataValue) {
-    if (objectId == null || value == null) {
+  public void put(byte[] objectId, byte[] value, byte[] metadataValue) {
+    if (objectId == null || objectId.length == 0 || value == null) {
       RayLog.core
           .error(logPrefix() + "cannot put null: " + objectId + "," + Arrays.toString(value));
       System.exit(-1);
     }
-    data_.put((UniqueID) objectId, value);
-    metadata_.put((UniqueID) objectId, metadataValue);
+    UniqueID uniqueID = new UniqueID(objectId);
+    data_.put(uniqueID, value);
+    metadata_.put(uniqueID, metadataValue);
 
     if (scheduler_ != null) {
-      scheduler_.onObjectPut((UniqueID) objectId);
+      scheduler_.onObjectPut(uniqueID);
     }
   }
 
   @Override
-  public List<ObjectBuffer> get(List<? extends ObjectId> objectIds, int timeoutMs, boolean isMetadata) {
+  public List<byte[]> get(byte[][] objectIds, int timeoutMs, boolean isMetadata) {
     final Map<UniqueID, byte[]> dataMap = isMetadata ? metadata_ : data_;
-    ArrayList<ObjectBuffer> rets = new ArrayList<>(objectIds.size());
-    for (ObjectId objId : objectIds) {
-      RayLog.core.info(logPrefix() + " is notified for objectid " + objId);
-      rets.add(new ObjectBuffer(dataMap.get(objId)));
+    ArrayList<byte[]> rets = new ArrayList<>(objectIds.length);
+    for (byte[] objId : objectIds) {
+      UniqueID uniqueID = new UniqueID(objId);
+      RayLog.core.info(logPrefix() + " is notified for objectid " + uniqueID);
+      rets.add(dataMap.get(uniqueID));
     }
     return rets;
   }
@@ -63,10 +63,11 @@ public class MockObjectStore implements ObjectStoreLink {
   }
 
   @Override
-  public List<ObjectId> wait(List<? extends ObjectId> objectIds, int timeoutMs, int numReturns) {
-    ArrayList<ObjectId> rets = new ArrayList<>();
-    for (ObjectId objId : objectIds) {
-      if (data_.containsKey(objId)) {
+  public List<byte[]> wait(byte[][] objectIds, int timeoutMs, int numReturns) {
+    ArrayList<byte[]> rets = new ArrayList<>();
+    for (byte[] objId : objectIds) {
+      //tod test
+      if (data_.containsKey(new UniqueID(objId))) {
         rets.add(objId);
       }
     }
@@ -74,12 +75,12 @@ public class MockObjectStore implements ObjectStoreLink {
   }
 
   @Override
-  public byte[] hash(ObjectId objectId) {
+  public byte[] hash(byte[] objectId) {
     return null;
   }
 
   @Override
-  public void fetch(List<? extends ObjectId> objectIds) {
+  public void fetch(byte[][] objectIds) {
 
   }
 
@@ -94,5 +95,10 @@ public class MockObjectStore implements ObjectStoreLink {
 
   public void registerScheduler(MockLocalScheduler s) {
     scheduler_ = s;
+  }
+
+  @Override
+  public void release(byte[] objectId) {
+    return;
   }
 }
