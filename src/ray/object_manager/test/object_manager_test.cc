@@ -45,7 +45,9 @@ class MockServer {
     client_info.node_manager_address = ip;
     client_info.node_manager_port = object_manager_port;
     client_info.object_manager_port = object_manager_port;
-    return gcs_client_->client_table().Connect(client_info);
+    ray::Status status = gcs_client_->client_table().Connect(client_info);
+    object_manager_.RegisterGcs();
+    return status;
   }
 
   void DoAcceptObjectManager() {
