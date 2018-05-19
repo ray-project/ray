@@ -526,13 +526,11 @@ class VariantGeneratorTest(unittest.TestCase):
         trials = generate_trials({
             "run": "PPO",
             "config": {
-                "x":
-                grid_search([
+                "x": grid_search([
                     lambda spec: spec.config.y * 100,
                     lambda spec: spec.config.y * 200
                 ]),
-                "y":
-                lambda spec: 1,
+                "y": lambda spec: 1,
             },
         })
         trials = list(trials)
