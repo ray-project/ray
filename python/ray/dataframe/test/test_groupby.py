@@ -63,9 +63,8 @@ def test_simple_row_groupby():
     test_pct_change(ray_groupby, pandas_groupby)
     test_cummax(ray_groupby, pandas_groupby)
 
-    apply_agg_functions = [lambda df: df.sum(),
-                           lambda df: -df]
-    for func in apply_agg_functions:
+    apply_functions = [lambda df: df.sum(), lambda df: -df]
+    for func in apply_functions:
         test_apply(ray_groupby, pandas_groupby, func)
 
 
@@ -99,9 +98,8 @@ def test_simple_col_groupby():
     # test_cummax(ray_groupby, pandas_groupby)
 
     test_pct_change(ray_groupby, pandas_groupby)
-    apply_agg_functions = [lambda df: df.sum(),
-                           lambda df: -df]
-    for func in apply_agg_functions:
+    apply_functions = [lambda df: -df, lambda df: df.sum(axis=1)]
+    for func in apply_functions:
         test_apply(ray_groupby, pandas_groupby, func)
 
 

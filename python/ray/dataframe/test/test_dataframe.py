@@ -671,7 +671,6 @@ def test_mixed_dtype_dataframe():
 
     test_transform(ray_df, pandas_df)
     test_apply(ray_df, pandas_df, lambda df: df.drop('col1'), 1)
-    test_apply(ray_df, pandas_df, lambda df: -df, 0)
 
 
 def test_nan_dataframe():

@@ -988,8 +988,7 @@ class DataFrame(object):
         raise ValueError("{} is an unknown string function".format(func))
 
     def _callable_function(self, func, axis, *args, **kwargs):
-        if axis == 1:
-            kwargs['axis'] = axis
+        kwargs['axis'] = axis
 
         def agg_helper(df, arg, index, columns, *args, **kwargs):
             df.index = index

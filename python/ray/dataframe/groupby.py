@@ -61,8 +61,6 @@ class DataFrameGroupBy(object):
                      DataFrame(col_partitions=part,
                                columns=self._columns,
                                index=self._keys_and_values[i][1].index,
-                               row_metadata=self._row_metadata[
-                                   self._keys_and_values[i][1].index],
                                col_metadata=self._col_metadata))
                     for i, part in enumerate(self._grouped_partitions)]
         else:
@@ -70,9 +68,7 @@ class DataFrameGroupBy(object):
                      DataFrame(row_partitions=part,
                                columns=self._keys_and_values[i][1].index,
                                index=self._index,
-                               row_metadata=self._row_metadata,
-                               col_metadata=self._col_metadata[
-                                   self._keys_and_values[i][1].index]))
+                               row_metadata=self._row_metadata))
                     for i, part in enumerate(self._grouped_partitions)]
 
     @property
@@ -81,7 +77,7 @@ class DataFrameGroupBy(object):
 
     def skew(self, **kwargs):
         return self._apply_agg_function(lambda df: df.skew(axis=self._axis,
-                                                           **kwargs).T)
+                                                           **kwargs))
 
     def ffill(self, limit=None):
         return self._apply_df_function(lambda df: df.ffill(axis=self._axis,
@@ -171,13 +167,35 @@ class DataFrameGroupBy(object):
                                                             **kwargs))
 
     def apply(self, func, *args, **kwargs):
-        return self._apply_df_function(lambda df: df.apply(func,
-                                                           *args,
-                                                           **kwargs)) \
-            if is_list_like(func) \
-            else self._apply_agg_function(lambda df: df.apply(func,
-                                                              *args,
-                                                              **kwargs))
+        def apply_helper(df):
+            return df.apply(func, axis=self._axis, *args, **kwargs)
+
+        result = [func(v) for k, v in self._iter]
+        if self._axis == 0:
+            if isinstance(result[0], pd.Series):
+                # Applied an aggregation function
+                result = [DataFrame(x).T for x in result]
+                new_df = concat(result)
+                new_df.columns = self._columns
+                new_df.index = [k for k, v in self._iter]
+            else:
+                new_df = concat(result)
+                new_df.reindex(self._index, axis=0, copy=False)
+        else:
+            if isinstance(result[0], pd.Series):
+                # Applied an aggregation function
+                result = [DataFrame(x).T for x in result]
+                new_df = concat(result)
+                new_df = new_df.T
+                print(new_df)
+                new_df.columns = [k for k, v in self._iter]
+                new_df.index = self._index
+            else:
+                new_df = concat(result, axis=1)
+                print(new_df)
+                new_df.reindex(self._columns, axis=1, copy=False)
+
+        return new_df
 
     @property
     def dtypes(self):
@@ -364,13 +382,14 @@ class DataFrameGroupBy(object):
     def _apply_agg_function(self, f):
         assert callable(f), "\'{0}\' object is not callable".format(type(f))
 
-        result = [DataFrame(f(v)).T for k, v in self._iter]
-
-        new_df = concat(result)
         if self._axis == 0:
+            result = [DataFrame(f(v)).T for k, v in self._iter]
+            new_df = concat(result)
             new_df.columns = self._columns
             new_df.index = [k for k, v in self._iter]
         else:
+            result = [DataFrame(f(v)).T for k, v in self._iter]
+            new_df = concat(result)
             new_df = new_df.T
             new_df.columns = [k for k, v in self._iter]
             new_df.index = self._index
