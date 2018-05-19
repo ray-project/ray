@@ -50,7 +50,8 @@ class DataFrameGroupBy(object):
                                                  as_index,
                                                  sort,
                                                  group_keys,
-                                                 squeeze) + tuple(part.tolist()),
+                                                 squeeze)
+                                           + tuple(part.tolist()),
                                            num_return_vals=len(self))
                            for part in partitions)))
         else:
