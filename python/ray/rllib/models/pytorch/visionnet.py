@@ -18,25 +18,23 @@ class VisionNetwork(Model):
             inputs (tuple): (channels, rows/height, cols/width)
             num_outputs (int): logits size
         """
-        filters = options.get("conv_filters", [
-            [16, [8, 8], 4],
-            [32, [4, 4], 2],
-            [512, [10, 10], 1]
-        ])
+        filters = options.get(
+            "conv_filters",
+            [[16, [8, 8], 4], [32, [4, 4], 2], [512, [10, 10], 1]])
         layers = []
         in_channels, in_size = inputs[0], inputs[1:]
 
         for out_channels, kernel, stride in filters[:-1]:
-            padding, out_size = valid_padding(
-                in_size, kernel, [stride, stride])
-            layers.append(SlimConv2d(
-                in_channels, out_channels, kernel, stride, padding))
+            padding, out_size = valid_padding(in_size, kernel,
+                                              [stride, stride])
+            layers.append(
+                SlimConv2d(in_channels, out_channels, kernel, stride, padding))
             in_channels = out_channels
             in_size = out_size
 
         out_channels, kernel, stride = filters[-1]
-        layers.append(SlimConv2d(
-                in_channels, out_channels, kernel, stride, None))
+        layers.append(
+            SlimConv2d(in_channels, out_channels, kernel, stride, None))
         self._convs = nn.Sequential(*layers)
 
         self.logits = SlimFC(

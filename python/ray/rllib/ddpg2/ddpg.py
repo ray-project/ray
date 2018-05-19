@@ -37,7 +37,6 @@ DEFAULT_CONFIG = {
     "num_local_steps": 1,
     # Number of workers (excluding master)
     "num_workers": 0,
-
     "optimizer": {
         # Replay buffer size
         "buffer_size": 10000,
@@ -63,15 +62,16 @@ class DDPG2Agent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
-        self.local_evaluator = DDPGEvaluator(
-            self.registry, self.env_creator, self.config)
+        self.local_evaluator = DDPGEvaluator(self.registry, self.env_creator,
+                                             self.config)
         self.remote_evaluators = [
-            RemoteDDPGEvaluator.remote(
-                self.registry, self.env_creator, self.config)
-            for _ in range(self.config["num_workers"])]
-        self.optimizer = LocalSyncReplayOptimizer(
-            self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+            RemoteDDPGEvaluator.remote(self.registry, self.env_creator,
+                                       self.config)
+            for _ in range(self.config["num_workers"])
+        ]
+        self.optimizer = LocalSyncReplayOptimizer(self.config["optimizer"],
+                                                  self.local_evaluator,
+                                                  self.remote_evaluators)
 
     def _train(self):
         for _ in range(self.config["train_steps"]):
@@ -87,8 +87,10 @@ class DDPG2Agent(Agent):
         episode_rewards = []
         episode_lengths = []
         if self.config["num_workers"] > 0:
-            metric_lists = [a.get_completed_rollout_metrics.remote()
-                            for a in self.remote_evaluators]
+            metric_lists = [
+                a.get_completed_rollout_metrics.remote()
+                for a in self.remote_evaluators
+            ]
             for metrics in metric_lists:
                 for episode in ray.get(metrics):
                     episode_lengths.append(episode.episode_length)

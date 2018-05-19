@@ -7,8 +7,7 @@ import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 import distutils.version
 
-from ray.rllib.models.misc import (conv2d, linear, flatten,
-                                   normc_initializer)
+from ray.rllib.models.misc import (conv2d, linear, flatten, normc_initializer)
 from ray.rllib.models.model import Model
 
 
@@ -46,10 +45,12 @@ class LSTM(Model):
             state_in = rnn.LSTMStateTuple(c_in, h_in)
         else:
             state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
-        lstm_out, lstm_state = tf.nn.dynamic_rnn(lstm, x,
-                                                 initial_state=state_in,
-                                                 sequence_length=step_size,
-                                                 time_major=False)
+        lstm_out, lstm_state = tf.nn.dynamic_rnn(
+            lstm,
+            x,
+            initial_state=state_in,
+            sequence_length=step_size,
+            time_major=False)
         lstm_c, lstm_h = lstm_state
         x = tf.reshape(lstm_out, [-1, size])
         logits = linear(x, num_outputs, "action", normc_initializer(0.01))

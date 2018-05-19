@@ -9,6 +9,7 @@ import torch.nn as nn
 
 class FullyConnectedNetwork(Model):
     """TODO(rliaw): Logits, Value should both be contained here"""
+
     def _init(self, inputs, num_outputs, options):
         assert type(inputs) is int
         hiddens = options.get("fcnet_hiddens", [256, 256])
@@ -23,21 +24,25 @@ class FullyConnectedNetwork(Model):
         layers = []
         last_layer_size = inputs
         for size in hiddens:
-            layers.append(SlimFC(
-                last_layer_size, size,
-                initializer=normc_initializer(1.0),
-                activation_fn=activation))
+            layers.append(
+                SlimFC(
+                    last_layer_size,
+                    size,
+                    initializer=normc_initializer(1.0),
+                    activation_fn=activation))
             last_layer_size = size
 
         self.hidden_layers = nn.Sequential(*layers)
 
         self.logits = SlimFC(
-            last_layer_size, num_outputs,
+            last_layer_size,
+            num_outputs,
             initializer=normc_initializer(0.01),
             activation_fn=None)
         self.probs = nn.Softmax()
         self.value_branch = SlimFC(
-            last_layer_size, 1,
+            last_layer_size,
+            1,
             initializer=normc_initializer(1.0),
             activation_fn=None)
 

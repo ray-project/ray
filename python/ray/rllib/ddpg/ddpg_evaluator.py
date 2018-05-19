@@ -77,8 +77,8 @@ class DDPGEvaluator(PolicyEvaluator):
 
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
-        for _ in range(
-                self.config["sample_batch_size"] + self.config["n_step"] - 1):
+        for _ in range(self.config["sample_batch_size"] +
+                       self.config["n_step"] - 1):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
             obs.append(ob)
             actions.append(act)

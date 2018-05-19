@@ -34,8 +34,7 @@ def _deep_update(original, new_dict, new_keys_allowed, whitelist):
     for k, value in new_dict.items():
         if k not in original and k != "env":
             if not new_keys_allowed:
-                raise Exception(
-                    "Unknown config parameter `{}` ".format(k))
+                raise Exception("Unknown config parameter `{}` ".format(k))
         if type(original.get(k)) is dict:
             if k in whitelist:
                 _deep_update(original[k], value, True, [])
@@ -65,15 +64,16 @@ class Agent(Trainable):
 
     @classmethod
     def resource_help(cls, config):
-        return (
-            "\n\nYou can adjust the resource requests of RLlib agents by "
-            "setting `num_workers` and other configs. See the "
-            "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-            "The config of this agent is: " + json.dumps(config))
+        return ("\n\nYou can adjust the resource requests of RLlib agents by "
+                "setting `num_workers` and other configs. See the "
+                "DEFAULT_CONFIG defined by each agent for more info.\n\n"
+                "The config of this agent is: " + json.dumps(config))
 
-    def __init__(
-            self, config=None, env=None, registry=None,
-            logger_creator=None):
+    def __init__(self,
+                 config=None,
+                 env=None,
+                 registry=None,
+                 logger_creator=None):
         """Initialize an RLLib agent.
 
         Args:
@@ -162,8 +162,10 @@ class _MockAgent(Agent):
                 and (self.config["persistent_error"] or not self.restored):
             raise Exception("mock error")
         return TrainingResult(
-            episode_reward_mean=10, episode_len_mean=10,
-            timesteps_this_iter=10, info={})
+            episode_reward_mean=10,
+            episode_len_mean=10,
+            timesteps_this_iter=10,
+            info={})
 
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")
@@ -204,9 +206,11 @@ class _SigmoidFakeData(_MockAgent):
         v = np.tanh(float(i) / self.config["width"])
         v *= self.config["height"]
         return TrainingResult(
-            episode_reward_mean=v, episode_len_mean=v,
+            episode_reward_mean=v,
+            episode_len_mean=v,
             timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"], info={})
+            time_this_iter_s=self.config["iter_time"],
+            info={})
 
 
 class _ParameterTuningAgent(_MockAgent):
@@ -225,7 +229,8 @@ class _ParameterTuningAgent(_MockAgent):
             episode_reward_mean=self.config["reward_amt"] * self.iteration,
             episode_len_mean=self.config["reward_amt"],
             timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"], info={})
+            time_this_iter_s=self.config["iter_time"],
+            info={})
 
 
 def get_agent_class(alg):
@@ -271,5 +276,4 @@ def get_agent_class(alg):
     elif alg == "__parameter_tuning":
         return _ParameterTuningAgent
     else:
-        raise Exception(
-            ("Unknown algorithm {}.").format(alg))
+        raise Exception(("Unknown algorithm {}.").format(alg))
