@@ -3,12 +3,17 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
+import sys
 import pandas
 import numpy as np
 import ray.dataframe as pd
 from ray.dataframe.utils import (
     from_pandas,
     to_pandas)
+
+PY2 = False
+if sys.version_info.major < 3:
+    PY2 = True
 
 
 @pytest.fixture
@@ -295,8 +300,12 @@ def test_simple_col_groupby():
     test_mean(ray_groupby, pandas_groupby)
     test_any(ray_groupby, pandas_groupby)
     test_min(ray_groupby, pandas_groupby)
-    test_idxmax(ray_groupby, pandas_groupby)
     test_ndim(ray_groupby, pandas_groupby)
+
+    if not PY2:
+        # idxmax and idxmin fail on column groupby in pandas with python2
+        test_idxmax(ray_groupby, pandas_groupby)
+        test_idxmin(ray_groupby, pandas_groupby)
 
     # https://github.com/pandas-dev/pandas/issues/21127
     # test_cumsum(ray_groupby, pandas_groupby)
@@ -312,7 +321,6 @@ def test_simple_col_groupby():
     test_first(ray_groupby, pandas_groupby)
     test_backfill(ray_groupby, pandas_groupby)
     test_bfill(ray_groupby, pandas_groupby)
-    test_idxmin(ray_groupby, pandas_groupby)
     test_prod(ray_groupby, pandas_groupby)
     test_std(ray_groupby, pandas_groupby)
     test_last(ray_groupby, pandas_groupby)
@@ -406,6 +414,8 @@ def test_pct_change(ray_groupby, pandas_groupby):
 @pytest.fixture
 def test_cummax(ray_groupby, pandas_groupby):
     ray_df_equals_pandas(ray_groupby.cummax(), pandas_groupby.cummax())
+    ray_df_equals_pandas(ray_groupby.cummax(axis=1),
+                         pandas_groupby.cummax(axis=1))
 
 
 @pytest.fixture
@@ -432,6 +442,8 @@ def test_backfill(ray_groupby, pandas_groupby):
 @pytest.fixture
 def test_cummin(ray_groupby, pandas_groupby):
     ray_df_equals_pandas(ray_groupby.cummin(), pandas_groupby.cummin())
+    ray_df_equals_pandas(ray_groupby.cummin(axis=1),
+                         pandas_groupby.cummin(axis=1))
 
 
 @pytest.fixture
@@ -525,6 +537,8 @@ def test_head(ray_groupby, pandas_groupby, n):
 @pytest.fixture
 def test_cumprod(ray_groupby, pandas_groupby):
     ray_df_equals_pandas(ray_groupby.cumprod(), pandas_groupby.cumprod())
+    ray_df_equals_pandas(ray_groupby.cumprod(axis=1),
+                         pandas_groupby.cumprod(axis=1))
 
 
 @pytest.fixture
