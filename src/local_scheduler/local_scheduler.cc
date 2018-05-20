@@ -366,10 +366,10 @@ LocalSchedulerState *LocalSchedulerState_init(
   if (plasma_manager_socket_name != NULL) {
     ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name,
                                                plasma_manager_socket_name,
-                                               PLASMA_DEFAULT_RELEASE_DELAY));
+                                               plasma::kPlasmaDefaultReleaseDelay));
   } else {
     ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name, "",
-                                               PLASMA_DEFAULT_RELEASE_DELAY));
+                                               plasma::kPlasmaDefaultReleaseDelay));
   }
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd;
