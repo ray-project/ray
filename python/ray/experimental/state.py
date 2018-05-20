@@ -360,7 +360,7 @@ class GlobalState(object):
         """
         self._check_connected()
         db_client_keys = self.redis_client.keys(DB_CLIENT_PREFIX + "*")
-        node_info = dict()
+        node_info = {}
         for key in db_client_keys:
             client_info = self.redis_client.hgetall(key)
             node_ip_address = decode(client_info[b"node_ip_address"])
@@ -403,7 +403,7 @@ class GlobalState(object):
         """
         relevant_files = self.redis_client.keys("LOGFILE*")
 
-        ip_filename_file = dict()
+        ip_filename_file = {}
 
         for filename in relevant_files:
             filename = filename.decode("ascii")
@@ -417,7 +417,7 @@ class GlobalState(object):
                 file_str.append(y)
 
             if ip_addr not in ip_filename_file:
-                ip_filename_file[ip_addr] = dict()
+                ip_filename_file[ip_addr] = {}
 
             ip_filename_file[ip_addr][filename] = file_str
 
@@ -445,7 +445,7 @@ class GlobalState(object):
                 list of profiling information for tasks where the events have
                 no task ID.
         """
-        task_info = dict()
+        task_info = {}
         event_log_sets = self.redis_client.keys("event_log*")
 
         # The heap is used to maintain the set of x tasks that occurred the
@@ -498,7 +498,7 @@ class GlobalState(object):
                 for event in event_dict:
                     if "task_id" in event[3]:
                         task_id = event[3]["task_id"]
-                task_info[task_id] = dict()
+                task_info[task_id] = {}
                 task_info[task_id]["score"] = score
                 # Add task to (min/max) heap by its start point.
                 # if fwd, we want to delete the largest elements, so -score
@@ -901,7 +901,7 @@ class GlobalState(object):
     def workers(self):
         """Get a dictionary mapping worker ID to worker information."""
         worker_keys = self.redis_client.keys("Worker*")
-        workers_data = dict()
+        workers_data = {}
 
         for worker_key in worker_keys:
             worker_info = self.redis_client.hgetall(worker_key)
@@ -927,7 +927,7 @@ class GlobalState(object):
 
     def actors(self):
         actor_keys = self.redis_client.keys("Actor:*")
-        actor_info = dict()
+        actor_info = {}
         for key in actor_keys:
             info = self.redis_client.hgetall(key)
             actor_id = key[len("Actor:"):]

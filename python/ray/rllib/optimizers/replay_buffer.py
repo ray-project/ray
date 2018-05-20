@@ -44,7 +44,7 @@ class ReplayBuffer(object):
 
         if self._next_idx >= len(self._storage):
             self._storage.append(data)
-            self._est_size_bytes += sum([sys.getsizeof(d) for d in data])
+            self._est_size_bytes += sum(sys.getsizeof(d) for d in data)
         else:
             self._storage[self._next_idx] = data
         if self._next_idx + 1 >= self._maxsize:

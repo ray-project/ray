@@ -54,7 +54,7 @@ def get_signature_params(func):
             "__code__", "__annotations__", "__defaults__", "__kwdefaults__"
         ]
 
-        if all([hasattr(func, attr) for attr in attrs]):
+        if all(hasattr(func, attr) for attr in attrs):
             original_func = func
 
             def func():
@@ -63,7 +63,7 @@ def get_signature_params(func):
             for attr in attrs:
                 setattr(func, attr, getattr(original_func, attr))
         else:
-            raise TypeError("{0!r} is not a Python function we can process"
+            raise TypeError("{!r} is not a Python function we can process"
                             .format(func))
 
     return list(funcsigs.signature(func).parameters.items())

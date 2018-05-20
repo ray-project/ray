@@ -145,10 +145,8 @@ def _configure_key_pair(config):
 def _configure_subnet(config):
     ec2 = _resource("ec2", config)
     subnets = sorted(
-        [
-            s for s in ec2.subnets.all()
-            if s.state == "available" and s.map_public_ip_on_launch
-        ],
+        (s for s in ec2.subnets.all()
+         if s.state == "available" and s.map_public_ip_on_launch),
         reverse=True,  # sort from Z-A
         key=lambda subnet: subnet.availability_zone)
     if not subnets:
@@ -293,11 +291,11 @@ def _get_key(key_name, config):
 
 
 def _client(name, config):
-    boto_config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
+    boto_config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
     return boto3.client(name, config["provider"]["region"], config=boto_config)
 
 
 def _resource(name, config):
-    boto_config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
+    boto_config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
     return boto3.resource(
         name, config["provider"]["region"], config=boto_config)
