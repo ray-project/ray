@@ -412,7 +412,10 @@ class StandardAutoscaler(object):
             return
         if self.files_up_to_date(node_id):
             return
-        if self.config.get("no_restart", False) and \
+        if self.config.get("files_only", False) and \
+                self.num_successful_updates.get(node_id, 0) > 0:
+            init_commands = []
+        elif self.config.get("no_restart", False) and \
                 self.num_successful_updates.get(node_id, 0) > 0:
             init_commands = (self.config["setup_commands"] +
                              self.config["worker_setup_commands"])

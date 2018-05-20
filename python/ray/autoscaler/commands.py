@@ -24,7 +24,8 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(config_file, override_min_workers,
-                             override_max_workers, no_restart, yes):
+                             override_max_workers, no_restart,
+                             files_only, yes):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -121,6 +122,7 @@ def get_or_create_head_node(config, no_restart, yes):
         new_mounts[remote_path] = remote_path
     remote_config["file_mounts"] = new_mounts
     remote_config["no_restart"] = no_restart
+    remote_config["files_only"] = files_only
 
     # Now inject the rewritten config and SSH key into the head node
     remote_config_file = tempfile.NamedTemporaryFile(
@@ -134,7 +136,9 @@ def get_or_create_head_node(config, no_restart, yes):
         remote_config_file.name
     })
 
-    if no_restart:
+    if files_only:
+        init_commands = []
+    elif no_restart:
         init_commands = (
             config["setup_commands"] + config["head_setup_commands"])
     else:
@@ -205,16 +209,16 @@ def confirm(msg, yes):
 
 def file_sync(config_file):
     """Returns head node IP for given configuration file if exists."""
-    config = yaml.load(open(config_file).read())
-    validate_config(config)
-    config = fillout_defaults(config)
-    importer = NODE_PROVIDERS.get(config["provider"]["type"])
-    if not importer:
-        raise NotImplementedError("Unsupported provider {}".format(
-            config["provider"]))
+    # config = yaml.load(open(config_file).read())
+    # validate_config(config)
+    # config = fillout_defaults(config)
+    # importer = NODE_PROVIDERS.get(config["provider"]["type"])
+    # if not importer:
+    #     raise NotImplementedError("Unsupported provider {}".format(
+    #         config["provider"]))
 
-    bootstrap_config, provider_cls = importer()
-    config = bootstrap_config(config)
+    # bootstrap_config, provider_cls = importer()
+    # config = bootstrap_config(config)
 
     provider = provider_cls(config["provider"], config["cluster_name"])
     head_node_tags = {

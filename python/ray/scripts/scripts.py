@@ -365,6 +365,13 @@ def stop():
     help=("Whether to skip restarting Ray services during the update. "
           "This avoids interrupting running jobs."))
 @click.option(
+    "--files-only",
+    is_flag=True,
+    default=False,
+    help=("Whether to skip restarting Ray services during the update. "
+          "This avoids any extra commands or interruptions. This will"
+          "also override no-restart."))
+@click.option(
     "--min-workers",
     required=False,
     type=int,
@@ -381,9 +388,9 @@ def stop():
     default=False,
     help=("Don't ask for confirmation."))
 def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
-                     yes):
+                     files_only, yes):
     create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, yes)
+                             no_restart, files_only, yes)
 
 
 @click.command()
@@ -404,19 +411,11 @@ def get_head_ip(cluster_config_file):
     click.echo(get_head_node_ip(cluster_config_file))
 
 
-@click.command()
-@click.argument("cluster_config_file", required=True, type=str)
-def sync(cluster_config_file):
-    """Syncs files with head node."""
-    file_sync(cluster_config_file)
-
-
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(teardown)
 cli.add_command(get_head_ip)
-cli.add_command(sync)
 
 
 def main():
