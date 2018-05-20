@@ -155,7 +155,6 @@ bool TaskDependencyManager::SubscribeDependencies(
   return (task_entry.num_missing_dependencies == 0);
 }
 
-
 void TaskDependencyManager::UnsubscribeDependencies(const TaskID &task_id) {
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);

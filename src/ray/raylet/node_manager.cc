@@ -300,7 +300,7 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 }
 
 void NodeManager::DispatchTasks() {
-   // Work with a copy of scheduled tasks.
+  // Work with a copy of scheduled tasks.
   auto scheduled_tasks = local_queues_.GetScheduledTasks();
   // Return if there are no tasks to schedule.
   if (scheduled_tasks.empty()) {
