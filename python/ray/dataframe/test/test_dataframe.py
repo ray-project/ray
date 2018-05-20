@@ -2244,42 +2244,42 @@ def test_merge():
         # Defaults
         ray_result = ray_df.merge(ray_df2, how=how)
         pandas_result = pandas_df.merge(pandas_df2, how=how)
-        assert ray_df_equals_pandas(ray_result, pandas_result)
+        ray_df_equals_pandas(ray_result, pandas_result)
 
         # left_on and right_index
         ray_result = ray_df.merge(ray_df2, how=how, left_on='col1',
                                   right_index=True)
         pandas_result = pandas_df.merge(pandas_df2, how=how, left_on='col1',
                                         right_index=True)
-        assert ray_df_equals_pandas(ray_result, pandas_result)
+        ray_df_equals_pandas(ray_result, pandas_result)
 
         # left_index and right_index
         ray_result = ray_df.merge(ray_df2, how=how, left_index=True,
                                   right_index=True)
         pandas_result = pandas_df.merge(pandas_df2, how=how, left_index=True,
                                         right_index=True)
-        assert ray_df_equals_pandas(ray_result, pandas_result)
+        ray_df_equals_pandas(ray_result, pandas_result)
 
         # left_index and right_on
         ray_result = ray_df.merge(ray_df2, how=how, left_index=True,
                                   right_on='col1')
         pandas_result = pandas_df.merge(pandas_df2, how=how, left_index=True,
                                         right_on='col1')
-        assert ray_df_equals_pandas(ray_result, pandas_result)
+        ray_df_equals_pandas(ray_result, pandas_result)
 
         # left_on and right_on col1
         ray_result = ray_df.merge(ray_df2, how=how, left_on='col1',
                                   right_on='col1')
         pandas_result = pandas_df.merge(pandas_df2, how=how, left_on='col1',
                                         right_on='col1')
-        assert ray_df_equals_pandas(ray_result, pandas_result)
+        ray_df_equals_pandas(ray_result, pandas_result)
 
         # left_on and right_on col2
         ray_result = ray_df.merge(ray_df2, how=how, left_on='col2',
                                   right_on='col2')
         pandas_result = pandas_df.merge(pandas_df2, how=how, left_on='col2',
                                         right_on='col2')
-        assert ray_df_equals_pandas(ray_result, pandas_result)
+        ray_df_equals_pandas(ray_result, pandas_result)
 
 
 @pytest.fixture
