@@ -364,12 +364,12 @@ LocalSchedulerState *LocalSchedulerState_init(
   /* Connect to Plasma. This method will retry if Plasma hasn't started yet. */
   state->plasma_conn = new plasma::PlasmaClient();
   if (plasma_manager_socket_name != NULL) {
-    ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name,
-                                               plasma_manager_socket_name,
-                                               plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(state->plasma_conn->Connect(
+      plasma_store_socket_name, plasma_manager_socket_name,
+      plasma::kPlasmaDefaultReleaseDelay));
   } else {
-    ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name, "",
-                                               plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(state->plasma_conn->Connect(
+      plasma_store_socket_name, "", plasma::kPlasmaDefaultReleaseDelay));
   }
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd;
