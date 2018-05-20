@@ -2,11 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from googleapiclient import discovery
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.gcp.config import wait_for_compute_zone_operation
 from ray.autoscaler.gcp.tags import TAG_KEYS, TAG_VALUES
+from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
 from ray.ray_constants import BOTO_MAX_RETRIES
 
 TERMINATED_STATES = (
@@ -16,6 +18,28 @@ TERMINATED_STATES = (
     'SUSPENDED',
     'TERMINATED',
 )
+
+def wait_for_compute_zone_operation(compute, project_name, operation, zone):
+    """TODO: This seems unnecessary. Figure out if we can get rid of this"""
+    print('Waiting for operation {} to finish...'.format(operation['name']))
+
+    for _ in range(MAX_POLLS):
+        result = compute.zoneOperations().get(
+            project=project_name,
+            operation=operation['name'],
+            zone=zone
+        ).execute()
+        if 'error' in result:
+            raise Exception(result['error'])
+
+        if result['status'] == 'DONE':
+            print("Done.")
+            break
+
+        time.sleep(POLL_INTERVAL)
+
+    return result
+
 
 class GCPNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
@@ -105,7 +129,7 @@ class GCPNodeProvider(NodeProvider):
         ).execute()
 
         result = wait_for_compute_zone_operation(
-            project_id, operation, availability_zone)
+            self.compute, project_id, operation, availability_zone)
 
         return result
 
@@ -160,7 +184,7 @@ class GCPNodeProvider(NodeProvider):
         ).execute()
 
         result = wait_for_compute_zone_operation(
-            project_id, operation, availability_zone)
+            self.compute, project_id, operation, availability_zone)
 
         return result
 
@@ -175,9 +199,7 @@ class GCPNodeProvider(NodeProvider):
         ).execute()
 
         result = wait_for_compute_zone_operation(
-            project_id,
-            operation,
-            availability_zone)
+            self.compute, project_id, operation, availability_zone)
 
         return result
 

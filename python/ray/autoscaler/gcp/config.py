@@ -78,28 +78,6 @@ def wait_for_compute_global_operation(project_name, operation):
     return result
 
 
-def wait_for_compute_zone_operation(project_name, operation, zone):
-    """TODO: This seems unnecessary. Figure out if we can get rid of this"""
-    print('Waiting for operation {} to finish...'.format(operation['name']))
-
-    for _ in range(MAX_POLLS):
-        result = compute.zoneOperations().get(
-            project=project_name,
-            operation=operation['name'],
-            zone=zone
-        ).execute()
-        if 'error' in result:
-            raise Exception(result['error'])
-
-        if result['status'] == 'DONE':
-            print("Done.")
-            break
-
-        time.sleep(POLL_INTERVAL)
-
-    return result
-
-
 def key_pair_name(i, region):
     """Returns the ith default gcp_key_pair_name."""
     key_name = "{}_gcp_{}_{}".format(RAY, i, region)

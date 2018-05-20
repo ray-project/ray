@@ -266,8 +266,8 @@ class StandardAutoscaler(object):
             self.reload_config(errors_fatal=False)
             self._update()
         except Exception as e:
-            print("StandardAutoscaler: Error during autoscaling: {}",
-                  traceback.format_exc())
+            print("StandardAutoscaler: Error during autoscaling: {}"
+                  "".format(traceback.format_exc()))
             self.num_failures += 1
             if self.num_failures > self.max_failures:
                 print("*** StandardAutoscaler: Too many errors, abort. ***")
