@@ -668,7 +668,7 @@ class DataFrame(object):
             mismatch = len(by) != len(self) if axis == 0 \
                 else len(by) != len(self.columns)
 
-            if all([obj in self for obj in by]) and mismatch:
+            if all(obj in self for obj in by) and mismatch:
                 raise NotImplementedError(
                     "Groupby with lists of columns not yet supported.")
             elif mismatch:
@@ -2194,7 +2194,7 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
-        if not all([d != np.dtype('O') for d in self.dtypes]):
+        if not all(d != np.dtype('O') for d in self.dtypes):
             raise TypeError(
                 "reduction operation 'argmax' not allowed for this dtype")
 
@@ -2216,7 +2216,7 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
-        if not all([d != np.dtype('O') for d in self.dtypes]):
+        if not all(d != np.dtype('O') for d in self.dtypes):
             raise TypeError(
                 "reduction operation 'argmax' not allowed for this dtype")
 
@@ -3196,9 +3196,9 @@ class DataFrame(object):
             """
             # This if call prevents ValueErrors with object only partitions
             if (numeric_only and
-                    all([dtype == np.dtype('O') or
-                         is_timedelta64_dtype(dtype)
-                         for dtype in df.dtypes])):
+                    all(dtype == np.dtype('O') or
+                        is_timedelta64_dtype(dtype)
+                        for dtype in df.dtypes)):
                 return base_object
             else:
                 return df.quantile(q=q, axis=axis, numeric_only=numeric_only,
@@ -4224,16 +4224,28 @@ class DataFrame(object):
                tupleize_cols=None, date_format=None, doublequote=True,
                escapechar=None, decimal="."):
 
-        kwargs = dict(
-                path_or_buf=path_or_buf, sep=sep, na_rep=na_rep,
-                float_format=float_format, columns=columns, header=header,
-                index=index, index_label=index_label, mode=mode,
-                encoding=encoding, compression=compression, quoting=quoting,
-                quotechar=quotechar, line_terminator=line_terminator,
-                chunksize=chunksize, tupleize_cols=tupleize_cols,
-                date_format=date_format, doublequote=doublequote,
-                escapechar=escapechar, decimal=decimal
-                )
+        kwargs = {
+            'path_or_buf': path_or_buf,
+            'sep': sep,
+            'na_rep': na_rep,
+            'float_format': float_format,
+            'columns': columns,
+            'header': header,
+            'index': index,
+            'index_label': index_label,
+            'mode': mode,
+            'encoding': encoding,
+            'compression': compression,
+            'quoting': quoting,
+            'quotechar': quotechar,
+            'line_terminator': line_terminator,
+            'chunksize': chunksize,
+            'tupleize_cols': tupleize_cols,
+            'date_format': date_format,
+            'doublequote': doublequote,
+            'escapechar': escapechar,
+            'decimal': decimal
+        }
 
         if compression is not None:
             warnings.warn("Defaulting to Pandas implementation",

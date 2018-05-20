@@ -580,8 +580,11 @@ def cpu_usage():
             y_range=[0, 1])
 
         # Create the data source that the plot will pull from
-        time_series_source = ColumnDataSource(
-            data=dict(left=[], right=[], top=[]))
+        time_series_source = ColumnDataSource(data={
+            'left': [],
+            'right': [],
+            'top': []
+        })
 
         # Plot the rectangles representing the distribution
         time_series_fig.quad(
@@ -731,7 +734,7 @@ def cluster_usage():
         earliest = time.time()
         latest = 0
 
-        node_to_tasks = dict()
+        node_to_tasks = {}
         # Determine which task has the earlest start time out of the ones
         # passed into the update function
         for task_id, data in tasks.items():

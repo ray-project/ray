@@ -1829,7 +1829,7 @@ class SchedulingAlgorithm(unittest.TestCase):
             counts = [locations.count(name) for name in names]
             print("Counts are {}.".format(counts))
             if (len(names) == num_local_schedulers
-                    and all([count >= minimum_count for count in counts])):
+                    and all(count >= minimum_count for count in counts)):
                 break
             attempts += 1
         self.assertLess(attempts, num_attempts)
@@ -1924,7 +1924,7 @@ class GlobalStateAPI(unittest.TestCase):
         resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
         assert ray.global_state.cluster_resources() == resources
 
-        self.assertEqual(ray.global_state.object_table(), dict())
+        self.assertEqual(ray.global_state.object_table(), {})
 
         ID_SIZE = 20
 

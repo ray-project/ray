@@ -9,7 +9,7 @@ import ray
 from . import get_npartitions
 
 
-_NAN_BLOCKS = dict()
+_NAN_BLOCKS = {}
 
 
 def _get_nan_block_id(n_row=1, n_col=1, transpose=False):
@@ -225,7 +225,7 @@ def _map_partitions(func, partitions, *argslists):
         return [_deploy_func.remote(func, part, argslists[0])
                 for part in partitions]
     else:
-        assert(all([len(args) == len(partitions) for args in argslists]))
+        assert(all(len(args) == len(partitions) for args in argslists))
         return [_deploy_func.remote(func, *args)
                 for args in zip(partitions, *argslists)]
 

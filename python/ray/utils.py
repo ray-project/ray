@@ -208,3 +208,10 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
         resources["GPU"] = default_num_gpus
 
     return resources
+
+
+def merge_dicts(d1, d2):
+    """Merge two dicts and return a new dict that's their union."""
+    d = d1.copy()
+    d.update(d2)
+    return d
