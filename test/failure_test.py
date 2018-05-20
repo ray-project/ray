@@ -64,6 +64,18 @@ class TaskStatusTest(unittest.TestCase):
                 # ray.get should throw an exception.
                 self.assertTrue(False)
 
+        @ray.remote
+        def f():
+            raise Exception("This function failed.")
+
+        try:
+            ray.get(f.remote())
+        except Exception as e:
+            self.assertIn("This function failed.", str(e))
+        else:
+            # ray.get should throw an exception.
+            self.assertTrue(False)
+
     def testFailImportingRemoteFunction(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
