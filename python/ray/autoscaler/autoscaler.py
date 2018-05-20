@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import json
 import hashlib
+import uuid
 import os
 import subprocess
 import time
@@ -458,7 +459,9 @@ class StandardAutoscaler(object):
         num_before = len(self.workers())
         self.provider.create_node(
             self.config["worker_nodes"], {
-                self.provider.tag_keys['node-name']: "ray-{}-worker".format(self.config["cluster_name"]),
+                self.provider.tag_keys['node-name']: (
+                    "ray-{}-worker-{}".format(
+                        self.config["cluster_name"], uuid.uuid4().hex)),
                 self.provider.tag_keys['node-type']: self.provider.tag_values["worker"],
                 self.provider.tag_keys['node-status']: self.provider.tag_values["uninitialized"],
                 self.provider.tag_keys['launch-config']: self.launch_hash,
