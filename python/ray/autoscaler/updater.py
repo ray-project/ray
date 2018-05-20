@@ -186,7 +186,13 @@ class NodeUpdater(object):
                 "NodeUpdater: running {} on {}...".format(
                     pretty_cmd(cmd), self.ssh_ip),
                 file=self.stdout)
-        force_interactive = "set -i && source ~/.bashrc && "
+        # TODO(hartikainen): ssh command used to begin with 'set -i', but
+        # was removed since bash >= 4.4 evaluates it incorrectly. Figure out a
+        # better way to handle this.
+        # For more, see:
+        # - https://unix.stackexchange.com/q/364617
+        # - https://github.com/ray-project/ray/pull/2061#discussion_r188838635
+        source_bashrc = "source ~/.bashrc && "
         self.process_runner.check_call(
             [
                 "ssh",
@@ -194,7 +200,7 @@ class NodeUpdater(object):
                 "-o", "StrictHostKeyChecking=no",
                 "-i", self.ssh_private_key,
                 "{}@{}".format(self.ssh_user, self.ssh_ip),
-                "bash --login -c {}".format(quote(force_interactive + cmd))
+                "bash --login -c {}".format(quote(source_bashrc + cmd))
             ],
             stdout=redirect or self.stdout,
             stderr=redirect or self.stderr)
