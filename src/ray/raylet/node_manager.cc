@@ -229,13 +229,14 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   }
   // Locate the client id in remote client table and update available resources based on
   // the received heartbeat information.
-  if (this->cluster_resource_map_.count(client_id) == 0) {
+  auto it = this->cluster_resource_map_.find(client_id);
+  if (it == cluster_resource_map_.end()) {
     // Haven't received the client registration for this client yet, skip this heartbeat.
     RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
                   << client_id;
     return;
   }
-  SchedulingResources &resources = this->cluster_resource_map_[client_id];
+  SchedulingResources &resources = it->second;
   ResourceSet heartbeat_resource_available(heartbeat_data.resources_available_label,
                                            heartbeat_data.resources_available_capacity);
   resources.SetAvailableResources(
@@ -300,26 +301,30 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
 
 void NodeManager::DispatchTasks() {
   // Work with a copy of scheduled tasks.
-  auto scheduled_tasks = local_queues_.GetScheduledTasks();
+  const auto &scheduled_tasks = local_queues_.GetScheduledTasks();
   // Return if there are no tasks to schedule.
   if (scheduled_tasks.empty()) {
     return;
   }
   const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
+  const auto &local_resources =
+      cluster_resource_map_[my_client_id].GetAvailableResources();
 
+  std::unordered_set<TaskID> dispatched_task_ids;
   for (const auto &task : scheduled_tasks) {
-    const auto &local_resources =
-        cluster_resource_map_[my_client_id].GetAvailableResources();
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
     if (!task_resources.IsSubset(local_resources)) {
       // Not enough local resources for this task right now, skip this task.
       continue;
     }
-    // We have enough resources for this task. Assign task.
-    // TODO(atumanov): perform the task state/queue transition inside AssignTask.
-    auto dispatched_task =
-        local_queues_.RemoveTasks({task.GetTaskSpecification().TaskId()});
-    AssignTask(dispatched_task.front());
+    dispatched_task_ids.insert(task.GetTaskSpecification().TaskId());
+  }
+
+  // We have enough resources for this task. Assign task.
+  // TODO(atumanov): perform the task state/queue transition inside AssignTask.
+  auto dispatched_tasks = local_queues_.RemoveTasks(std::move(dispatched_task_ids));
+  for (auto &task : dispatched_tasks) {
+    AssignTask(task);
   }
 }
 
@@ -786,13 +791,14 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   auto client_info = gcs_client_->client_table().GetClient(node_id);
 
   // Lookup remote server connection for this node_id and use it to send the request.
-  if (remote_server_connections_.count(node_id) == 0) {
+  auto it = remote_server_connections_.find(node_id);
+  if (it == remote_server_connections_.end()) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
     RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id;
     return ray::Status::IOError("NodeManager connection not found");
   }
 
-  auto &server_conn = remote_server_connections_.at(node_id);
+  auto &server_conn = it->second;
   auto status = server_conn.WriteMessage(protocol::MessageType_ForwardTaskRequest,
                                          fbb.GetSize(), fbb.GetBufferPointer());
   if (status.ok()) {
