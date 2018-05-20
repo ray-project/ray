@@ -1744,22 +1744,18 @@ def print_error_messages(worker):
     # which process the error came from (e.g., a worker or a plasma store).
     # Currently all error messages come from workers.
 
-    helpful_message = """
-  You can inspect errors by running
-
-      ray.error_info()
-
-  If this driver is hanging, start a new one with
-
-      ray.init(redis_address="{}")
-  """.format(worker.redis_address)
-
     worker.error_message_pubsub_client = worker.redis_client.pubsub()
     # Exports that are published after the call to
     # error_message_pubsub_client.subscribe and before the call to
     # error_message_pubsub_client.listen will still be processed in the loop.
     worker.error_message_pubsub_client.subscribe("__keyspace@0__:ErrorKeys")
     num_errors_received = 0
+
+    # Keep a set of all the error messages that we've seen so far in order to
+    # avoid printing the same error message repeatedly. This is especially
+    # important when running a script inside of a tool like screen where
+    # scrolling is difficult.
+    old_error_messages = set()
 
     # Get the exports that occurred before the call to subscribe.
     with worker.lock:
@@ -1768,8 +1764,11 @@ def print_error_messages(worker):
             if error_applies_to_driver(error_key, worker=worker):
                 error_message = worker.redis_client.hget(
                     error_key, "message").decode("ascii")
-                print(error_message)
-                print(helpful_message)
+                if error_message not in old_error_messages:
+                    print(error_message)
+                    old_error_messages.add(error_message)
+                else:
+                    print("Suppressing duplicate error message.")
             num_errors_received += 1
 
     try:
@@ -1780,8 +1779,11 @@ def print_error_messages(worker):
                     if error_applies_to_driver(error_key, worker=worker):
                         error_message = worker.redis_client.hget(
                             error_key, "message").decode("ascii")
-                        print(error_message)
-                        print(helpful_message)
+                        if error_message not in old_error_messages:
+                            print(error_message)
+                            old_error_messages.add(error_message)
+                        else:
+                            print("Suppressing duplicate error message.")
                     num_errors_received += 1
     except redis.ConnectionError:
         # When Redis terminates the listen call will throw a ConnectionError,
