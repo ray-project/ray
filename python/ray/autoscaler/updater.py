@@ -154,7 +154,7 @@ class NodeUpdater(object):
                 "NodeUpdater: Syncing {} to {}...".format(
                     local_path, remote_path),
                 file=self.stdout)
-            assert os.path.exists(local_path)
+            assert os.path.exists(local_path), local_path
             if os.path.isdir(local_path):
                 if not local_path.endswith("/"):
                     local_path += "/"

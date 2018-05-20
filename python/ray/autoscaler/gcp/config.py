@@ -101,12 +101,16 @@ def wait_for_compute_zone_operation(project_name, operation, zone):
 
 
 def key_pair_name(i, region):
-    """Returns the ith default (gcp_key_pair_name, key_pair_path)."""
-    if i == 0:
-        return ("{}_gcp_{}".format(RAY, region),
-                os.path.expanduser("~/.ssh/{}_gcp_{}.pem".format(RAY, region)))
-    return ("{}_gcp_{}_{}".format(RAY, i, region),
-            os.path.expanduser("~/.ssh/{}_gcp_{}_{}.pem".format(RAY, i, region)))
+    """Returns the ith default gcp_key_pair_name."""
+    key_name = "{}_gcp_{}_{}".format(RAY, i, region)
+    return key_name
+
+
+def key_pair_paths(key_name):
+    """Returns public and private key paths for a given key_name."""
+    public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
+    private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+    return public_key_path, private_key_path
 
 
 def generate_rsa_key_pair():
@@ -198,8 +202,8 @@ def _configure_iam_role(config):
         'email': service_account['email'],
         # NOTE: The amount of access is determined by the scope + IAM
         # role of the service account. Even if the cloud-platform scope
-        # gives (scope) access to whole, cloud-platform, the service
-        # account is limited by the IAM rights specified in config.py
+        # gives (scope) access to the whole cloud-platform, the service
+        # account is limited by the IAM rights specified below.
         'scopes': [ 'https://www.googleapis.com/auth/cloud-platform' ]
     }]
 
@@ -212,13 +216,20 @@ def _configure_key_pair(config):
     Creates a project-wide ssh key that can be used to access all the instances
     unless explicitly prohibited by instance config.
 
-    TODO.gcp: It seems weird how complicated this is compared to, for example,
-    aws. Figure out if there's a better way to do this.
+    The ssh-keys created by ray are of format:
+
+      [USERNAME]:ssh-rsa [KEY_VALUE] [USERNAME]
+
+    where:
+
+      [USERNAME] is the user for the SSH key, specified in the config.
+      [KEY_VALUE] is the public SSH key value.
     """
 
-    # NOTE: https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys
     if 'ssh_private_key' in config['auth']:
         return config
+
+    ssh_user = config['auth']['ssh_user']
 
     project = compute.projects().get(
         project=config['provider']['project_id']
@@ -226,51 +237,43 @@ def _configure_key_pair(config):
 
     # Key pairs associated with project meta data. The key pairs are general,
     # and not just ssh keys.
-    ssh_keys = next((
+    ssh_keys_str = next((
         item for item
         in project['commonInstanceMetadata'].get('items', [])
         if item['key'] == 'ssh-keys'
-    ), {}).get('value', None)
+    ), {}).get('value', '')
 
-    if ssh_keys is None:
-        ssh_keys = []
-    else:
-        ssh_keys = ssh_keys.split('\n')
+    ssh_keys = ssh_keys_str.split('\n') if ssh_keys_str else []
+
 
     # Try a few times to get or create a good key pair.
     key_found = False
     for i in range(10):
-        key_name, key_path = key_pair_name(i, config["provider"]["region"])
+        key_name = key_pair_name(i, config["provider"]["region"])
+        public_key_path, private_key_path = key_pair_paths(key_name)
 
         for ssh_key in ssh_keys:
             key_parts = ssh_key.split(' ')
-            if len(key_parts) != 3:
-                continue
+            if len(key_parts) != 3: continue
 
-            title_parts = key_parts[0].split(':')
-            if len(title_parts) != 2:
-                continue
-
-            username = title_parts[0]
-
-            if username == key_name and os.path.exists(key_path):
+            if key_parts[2] == ssh_user and os.path.exists(private_key_path):
                 # Found a key
                 key_found = True
                 break
 
         # Create a key since it doesn't exist locally or in GCP
-        if not key_found and not os.path.exists(key_path):
+        if not key_found and not os.path.exists(private_key_path):
             print("Creating new key pair {}".format(key_name))
             public_key, private_key = generate_rsa_key_pair()
 
-            email = SERVICE_ACCOUNT_EMAIL_TEMPLATE.format(
-                account_id=DEFAULT_SERVICE_ACCOUNT_ID,
-                project_id=config['provider']['project_id'])
-            _create_project_ssh_key_pair(project, key_name, public_key, email)
+            _create_project_ssh_key_pair(project, public_key, ssh_user)
 
-            with open(key_path, "w") as f:
+            with open(private_key_path, 'w') as f:
                 f.write(private_key)
-            os.chmod(key_path, 0o600)
+            os.chmod(private_key_path, 0o600)
+
+            with open(public_key_path, 'w') as f:
+                f.write(public_key)
 
             key_found = True
 
@@ -279,13 +282,16 @@ def _configure_key_pair(config):
         if key_found:
             break
 
-    assert key_found, "SSH keypair {} not found for {}".format(key_name, key_path)
-    assert os.path.exists(key_path), (
-        "Private key file {} not found for {}".format(key_path, key_name))
+    assert key_found, "SSH keypair for user {} not found for {}".format(
+        ssh_user, private_key_path)
+    assert os.path.exists(private_key_path), (
+        "Private key file {} not found for user {}"
+        "".format(private_key_path, ssh_user))
 
-    print("KeyName not specified for nodes, using {}".format(key_name))
+    print("Private key not specified in config, using {}"
+          "".format(private_key_path))
 
-    config["auth"]["ssh_private_key"] = key_path
+    config["auth"]["ssh_private_key"] = private_key_path
 
     return config
 
@@ -435,26 +441,35 @@ def _add_iam_policy_binding(service_account, roles):
     return result
 
 
-def _create_project_ssh_key_pair(project, key_name, public_key, email):
+def _create_project_ssh_key_pair(project, public_key, ssh_user):
     """Inserts an ssh-key into project commonInstanceMetadata"""
 
     key_parts = public_key.split(' ')
-    title = '{key_name}:{title}'.format(
-        key_name=key_name, title=key_parts[0])
+
+    # Sanity checks to make sure that the generated key matches expectation
+    assert len(key_parts) == 2, key_parts
+    assert key_parts[0] == 'ssh-rsa', key_parts
+
+    new_ssh_meta = '{ssh_user}:ssh-rsa {key_value} {ssh_user}'.format(
+        ssh_user=ssh_user, key_value=key_parts[1])
 
     common_instance_metadata = project['commonInstanceMetadata']
     items = common_instance_metadata.get('items', [])
 
-    for item in items:
-        if item['key'] != 'ssh-keys': continue
+    ssh_keys_i = next(
+        (i for i, item in enumerate(items) if item['key'] == 'ssh-keys'),
+        None)
 
-        item['value'] += '\n{title} {key_value} {email}'.format(
-            title=title,
-            key_value=key_parts[1],
-            email=email
-        )
 
-        break
+    if ssh_keys_i is None:
+        items.append({
+            'key': 'ssh-keys',
+            'value': new_ssh_meta
+        })
+    else:
+        ssh_keys = items[ssh_keys_i]
+        ssh_keys['value'] += '\n' + new_ssh_meta
+        items[ssh_keys_i] = ssh_keys
 
     common_instance_metadata['items'] = items
 
