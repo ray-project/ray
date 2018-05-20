@@ -41,9 +41,9 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
     all_series = all(isinstance(obj, pandas.Series)
                      for obj in objs)
     if all_series:
-        return pandas.concat(objs, axis, join, join_axes,
-                             ignore_index, keys, levels, names,
-                             verify_integrity, copy)
+        return DataFrame(pandas.concat(objs, axis, join, join_axes,
+                                       ignore_index, keys, levels, names,
+                                       verify_integrity, copy))
 
     if isinstance(objs, dict):
         raise NotImplementedError(

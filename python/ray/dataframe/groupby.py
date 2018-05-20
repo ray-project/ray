@@ -10,7 +10,6 @@ import pandas.core.common as com
 import ray
 
 from .utils import _inherit_docstrings
-from .dataframe import DataFrame
 from .concat import concat
 
 
@@ -139,15 +138,15 @@ class DataFrameGroupBy(object):
             result = result.apply(lambda v: index[v])
             return result
 
-        results = [DataFrame(idxmax_helper(g[1], i[1])).T
+        results = [idxmax_helper(g[1], i[1])
                    for g, i in zip(self._iter, self._index_grouped)]
 
-        new_df = concat(results)
+        new_df = concat(results, axis=1)
         if self._axis == 0:
+            new_df = new_df.T
             new_df.columns = self._columns
             new_df.index = [k for k, v in self._iter]
         else:
-            new_df = new_df.T
             new_df.columns = [k for k, v in self._iter]
             new_df.index = self._index
         return new_df
@@ -196,8 +195,7 @@ class DataFrameGroupBy(object):
         if self._axis == 0:
             if isinstance(result[0], pd.Series):
                 # Applied an aggregation function
-                result = [DataFrame(x).T for x in result]
-                new_df = concat(result)
+                new_df = concat(result, axis=1).T
                 new_df.columns = self._columns
                 new_df.index = [k for k, v in self._iter]
             else:
@@ -206,9 +204,7 @@ class DataFrameGroupBy(object):
         else:
             if isinstance(result[0], pd.Series):
                 # Applied an aggregation function
-                result = [DataFrame(x).T for x in result]
-                new_df = concat(result)
-                new_df = new_df.T
+                new_df = concat(result, axis=1)
                 new_df.columns = [k for k, v in self._iter]
                 new_df.index = self._index
             else:
@@ -250,15 +246,15 @@ class DataFrameGroupBy(object):
             result = result.apply(lambda v: index[v])
             return result
 
-        results = [DataFrame(idxmin_helper(g[1], i[1])).T
+        results = [idxmin_helper(g[1], i[1])
                    for g, i in zip(self._iter, self._index_grouped)]
 
-        new_df = concat(results)
+        new_df = concat(results, axis=1)
         if self._axis == 0:
+            new_df = new_df.T
             new_df.columns = self._columns
             new_df.index = [k for k, v in self._iter]
         else:
-            new_df = new_df.T
             new_df.columns = [k for k, v in self._iter]
             new_df.index = self._index
         return new_df
@@ -467,15 +463,14 @@ class DataFrameGroupBy(object):
     def _apply_agg_function(self, f):
         assert callable(f), "\'{0}\' object is not callable".format(type(f))
 
+        result = [f(v) for k, v in self._iter]
+        new_df = concat(result, axis=1)
+
         if self._axis == 0:
-            result = [DataFrame(f(v)).T for k, v in self._iter]
-            new_df = concat(result)
+            new_df = new_df.T
             new_df.columns = self._columns
             new_df.index = [k for k, v in self._iter]
         else:
-            result = [DataFrame(f(v)).T for k, v in self._iter]
-            new_df = concat(result)
-            new_df = new_df.T
             new_df.columns = [k for k, v in self._iter]
             new_df.index = self._index
         return new_df

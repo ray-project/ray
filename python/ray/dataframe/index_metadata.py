@@ -51,7 +51,7 @@ class _IndexMetadata(object):
 
         self._lengths = lengths_oid
         self._coord_df = coord_df_oid
-        self._index_cache = np.array(index)
+        self._index_cache = index
         self._cached_index = False
 
     def _get__lengths(self):

@@ -1068,16 +1068,16 @@ class DataFrame(object):
         # remote objects. We build a Ray DataFrame from the Pandas partitions.
         elif axis == 0:
             new_index = ray.get(index[0])
-            new_columns = ray.get(columns)
-            new_columns = [i for j in new_columns for i in j]
+            # This does not handle the Multi Index case
+            new_columns = pd.Index([i for j in ray.get(columns) for i in j])
 
             return DataFrame(col_partitions=new_parts,
                              columns=new_columns,
                              index=new_index)
         else:
             new_columns = ray.get(columns[0])
-            new_index = ray.get(index)
-            new_index = [i for j in new_index for i in j]
+            # This does not handle the Multi Index case
+            new_index = pd.Index([i for j in ray.get(index) for i in j])
 
             return DataFrame(row_partitions=new_parts,
                              columns=new_columns,
@@ -3367,7 +3367,7 @@ class DataFrame(object):
 
             new_df = DataFrame(col_partitions=new_cols,
                                columns=new_df.columns,
-                               index=index,
+                               index=pd.Index(index),
                                col_metadata=new_df._col_metadata)
 
         if columns is not None:
@@ -3385,7 +3385,7 @@ class DataFrame(object):
                                        new_df._row_partitions)
 
             new_df = DataFrame(row_partitions=new_rows,
-                               columns=columns,
+                               columns=pd.Index(columns),
                                index=new_df.index,
                                row_metadata=new_df._row_metadata)
 
