@@ -100,18 +100,17 @@ class _LogSyncer(object):
                 print("Error: log sync requires rsync to be installed.")
                 return
             worker_to_local_sync_cmd = ((
-                """rsync -avz -e "ssh -i '{}' -o ConnectTimeout=120s """
+                """rsync -avz -e "ssh -i {} -o ConnectTimeout=120s """
                 """-o StrictHostKeyChecking=no" '{}@{}:{}/' '{}/'""").format(
-                    ssh_key, ssh_user, self.worker_ip,
+                    quote(ssh_key), ssh_user, self.worker_ip,
                     quote(self.local_dir), quote(self.local_dir)))
 
         if self.remote_dir:
             if self.remote_dir.startswith(S3_PREFIX):
-                #  TODO.gcp: probably don't need the ' because we use quote?
-                local_to_remote_sync_cmd = ("aws s3 sync '{}' '{}'".format(
+                local_to_remote_sync_cmd = ("aws s3 sync {} {}".format(
                     quote(self.local_dir), quote(self.remote_dir)))
             elif self.remote_dir.startswith(GCS_PREFIX):
-                local_to_remote_sync_cmd = ("gsutil rsync -r '{}' '{}'".format(
+                local_to_remote_sync_cmd = ("gsutil rsync -r {} {}".format(
                     quote(self.local_dir), quote(self.remote_dir)))
         else:
             local_to_remote_sync_cmd = None

@@ -15,6 +15,7 @@ TAG_KEYS = {
     'node-type': 'ray_node-type',
     # Tag that reports the current state of the node (e.g. Updating, Up-to-date)
     'node-status': 'ray_node-status',
+    # Tag identifying nodes of a cluster
     'cluster-name': 'ray_cluster-name',
     # Hash of the node launch config, used to identify out-of-date nodes
     'launch-config': 'ray_launch-config',

@@ -11,13 +11,6 @@ from ray.autoscaler.gcp.tags import TAG_KEYS, TAG_VALUES
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
 from ray.ray_constants import BOTO_MAX_RETRIES
 
-TERMINATED_STATES = (
-    'STOPPING',
-    'STOPPED',
-    'SUSPENDING',
-    'SUSPENDED',
-    'TERMINATED',
-)
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
     """TODO: This seems unnecessary. Figure out if we can get rid of this"""
@@ -69,7 +62,7 @@ class GCPNodeProvider(NodeProvider):
 
         instance_state_filter_expr = '(' + ' OR '.join([
             '(status = {status})'.format(status=status)
-            for status in ['PROVISIONING', 'STAGING', 'RUNNING']
+            for status in {'PROVISIONING', 'STAGING', 'RUNNING'}
         ]) + ')'
 
         cluster_name_filter_expr = (
@@ -105,7 +98,7 @@ class GCPNodeProvider(NodeProvider):
 
     def is_terminated(self, node_id):
         node = self._node(node_id)
-        return node['status'] in TERMINATED_STATES
+        return node['status'] not in {'PROVISIONING', 'STAGING', 'RUNNING'}
 
     def node_tags(self, node_id):
         node = self._node(node_id)
@@ -155,7 +148,6 @@ class GCPNodeProvider(NodeProvider):
             self.internal_ip_cache[node_id] = ip
         return ip
 
-
     def create_node(self, base_config, tags, count):
         # NOTE: gcp uses 'labels' instead of aws 'tags'
         # https://cloud.google.com/compute/docs/instances/create-start-instance#startinginstancwithimage
@@ -175,7 +167,11 @@ class GCPNodeProvider(NodeProvider):
             **labels,
             **{self.tag_keys['cluster-name']: self.cluster_name})
 
-        if count != 1: raise NotImplementedError(count)
+        if count != 1:
+            print("WARNING: Requested to create {} nodes. GCPNodeProvider"
+                  " currently only support creating one node at a time. This"
+                  " possible discrepancy should already be handled in the"
+                  " autoscaling loop.".format(count))
 
         operation = self.compute.instances().insert(
             project=project_id,
