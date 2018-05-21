@@ -94,15 +94,15 @@ class FilterManagerTest(unittest.TestCase):
         remote_e.sample.remote()
 
         FilterManager.synchronize(
-            {"obs_filter": filt1, "rew_filter": filt1.copy()}, [remote_e])
+            {'obs_filter': filt1, 'rew_filter': filt1.copy()}, [remote_e])
 
         filters = ray.get(remote_e.get_filters.remote())
-        obs_f = filters["obs_filter"]
+        obs_f = filters['obs_filter']
         self.assertEqual(filt1.rs.n, 20)
         self.assertEqual(filt1.buffer.n, 0)
         self.assertEqual(obs_f.rs.n, filt1.rs.n)
         self.assertEqual(obs_f.buffer.n, filt1.buffer.n)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -13,7 +13,7 @@ def unflatten(vector, shapes):
         array = vector[i:(i + size)].reshape(shape)
         arrays.append(array)
         i += size
-    assert len(vector) == i, "Passed weight does not have the correct shape."
+    assert len(vector) == i, 'Passed weight does not have the correct shape.'
     return arrays
 
 
@@ -60,7 +60,7 @@ class TensorFlowVariables(object):
             # The object put into the queue is not necessarily an operation,
             # so we want the op attribute to get the operation underlying the
             # object. Only operations contain the inputs that we can explore.
-            if hasattr(tf_obj, "op"):
+            if hasattr(tf_obj, 'op'):
                 tf_obj = tf_obj.op
             for input_op in tf_obj.inputs:
                 if input_op not in explored_inputs:
@@ -72,7 +72,7 @@ class TensorFlowVariables(object):
                 if control not in explored_inputs:
                     queue.append(control)
                     explored_inputs.add(control)
-            if "Variable" in tf_obj.node_def.op:
+            if 'Variable' in tf_obj.node_def.op:
                 variable_names.append(tf_obj.node_def.name)
         self.variables = OrderedDict()
         variable_list = [
@@ -92,7 +92,7 @@ class TensorFlowVariables(object):
             self.placeholders[k] = tf.placeholder(
                 var.value().dtype,
                 var.get_shape().as_list(),
-                name="Placeholder_" + k)
+                name='Placeholder_' + k)
             self.assignment_nodes[k] = var.assign(self.placeholders[k])
 
     def set_session(self, sess):
@@ -114,10 +114,10 @@ class TensorFlowVariables(object):
 
     def _check_sess(self):
         """Checks if the session is set, and if not throw an error message."""
-        assert self.sess is not None, ("The session is not set. Set the "
-                                       "session either by passing it into the "
-                                       "TensorFlowVariables constructor or by "
-                                       "calling set_session(sess).")
+        assert self.sess is not None, ('The session is not set. Set the '
+                                       'session either by passing it into the '
+                                       'TensorFlowVariables constructor or by '
+                                       'calling set_session(sess).')
 
     def get_flat(self):
         """Gets the weights and returns them as a flat array.
@@ -179,11 +179,11 @@ class TensorFlowVariables(object):
             self.assignment_nodes[name] for name in new_weights.keys()
             if name in self.assignment_nodes
         ]
-        assert assign_list, ("No variables in the input matched those in the "
-                             "network. Possible cause: Two networks were "
-                             "defined in the same TensorFlow graph. To fix "
-                             "this, place each network definition in its own "
-                             "tf.Graph.")
+        assert assign_list, ('No variables in the input matched those in the '
+                             'network. Possible cause: Two networks were '
+                             'defined in the same TensorFlow graph. To fix '
+                             'this, place each network definition in its own '
+                             'tf.Graph.')
         self.sess.run(
             assign_list,
             feed_dict={

@@ -33,7 +33,7 @@ class PolicyOptimizer(object):
     @classmethod
     def make(
             cls, evaluator_cls, evaluator_args, num_workers, optimizer_config,
-            evaluator_resources={"num_cpus": None}):
+            evaluator_resources={'num_cpus': None}):
         """Create evaluators and an optimizer instance using those evaluators.
 
         Args:
@@ -90,8 +90,8 @@ class PolicyOptimizer(object):
         """Returns a dictionary of internal performance statistics."""
 
         return {
-            "num_steps_trained": self.num_steps_trained,
-            "num_steps_sampled": self.num_steps_sampled,
+            'num_steps_trained': self.num_steps_trained,
+            'num_steps_sampled': self.num_steps_sampled,
         }
 
     def save(self):

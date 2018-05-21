@@ -137,10 +137,10 @@ class TrainMNIST(Trainable):
         for _ in range(10):
             try:
                 self.mnist = input_data.read_data_sets(
-                    "/tmp/mnist_ray_demo", one_hot=True)
+                    '/tmp/mnist_ray_demo', one_hot=True)
                 break
             except Exception as e:
-                print("Error loading data, retrying", e)
+                print('Error loading data, retrying', e)
                 time.sleep(5)
 
         assert self.mnist
@@ -201,7 +201,7 @@ class TrainMNIST(Trainable):
 
     def _save(self, checkpoint_dir):
         return self.saver.save(
-            self.sess, checkpoint_dir + "/save", global_step=self.iterations)
+            self.sess, checkpoint_dir + '/save', global_step=self.iterations)
 
     def _restore(self, path):
         return self.saver.restore(self.sess, path)
@@ -214,7 +214,7 @@ if __name__ == '__main__':
         '--smoke-test', action='store_true', help='Finish quickly for testing')
     args, _ = parser.parse_known_args()
 
-    register_trainable("my_class", TrainMNIST)
+    register_trainable('my_class', TrainMNIST)
     mnist_spec = {
         'run': 'my_class',
         'stop': {
@@ -225,7 +225,7 @@ if __name__ == '__main__':
             'learning_rate': lambda spec: 10**np.random.uniform(-5, -3),
             'activation': grid_search(['relu', 'elu', 'tanh']),
         },
-        "repeat": 10,
+        'repeat': 10,
     }
 
     if args.smoke_test:
@@ -234,6 +234,6 @@ if __name__ == '__main__':
 
     ray.init()
     hyperband = HyperBandScheduler(
-        time_attr="timesteps_total", reward_attr="mean_accuracy", max_t=100)
+        time_attr='timesteps_total', reward_attr='mean_accuracy', max_t=100)
 
     run_experiments({'mnist_hyperband_test': mnist_spec}, scheduler=hyperband)

@@ -41,7 +41,7 @@ def driver(redis_address, driver_index):
 
     # Limit the number of drivers running concurrently.
     for i in range(driver_index - max_concurrent_drivers + 1):
-        _wait_for_event("DRIVER_{}_DONE".format(i), redis_address)
+        _wait_for_event('DRIVER_{}_DONE'.format(i), redis_address)
 
     def try_to_create_actor(actor_class, timeout=500):
         # Try to create an actor, but allow failures while we wait for the
@@ -55,7 +55,7 @@ def driver(redis_address, driver_index):
             else:
                 return actor
         # If we are here, then we timed out while looping.
-        raise Exception("Timed out while trying to create actor.")
+        raise Exception('Timed out while trying to create actor.')
 
     # Create some actors that require one GPU.
     actors_one_gpu = []
@@ -65,15 +65,15 @@ def driver(redis_address, driver_index):
     for _ in range(100):
         ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
 
-    _broadcast_event("DRIVER_{}_DONE".format(driver_index), redis_address)
+    _broadcast_event('DRIVER_{}_DONE'.format(driver_index), redis_address)
 
 
-if __name__ == "__main__":
-    driver_index = int(os.environ["RAY_DRIVER_INDEX"])
-    redis_address = os.environ["RAY_REDIS_ADDRESS"]
-    print("Driver {} started at {}.".format(driver_index, time.time()))
+if __name__ == '__main__':
+    driver_index = int(os.environ['RAY_DRIVER_INDEX'])
+    redis_address = os.environ['RAY_REDIS_ADDRESS']
+    print('Driver {} started at {}.'.format(driver_index, time.time()))
 
     # In this test, all drivers will run the same script.
     driver(redis_address, driver_index)
 
-    print("Driver {} finished at {}.".format(driver_index, time.time()))
+    print('Driver {} finished at {}.'.format(driver_index, time.time()))

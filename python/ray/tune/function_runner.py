@@ -36,10 +36,10 @@ class StatusReporter(object):
 
     def _get_and_clear_status(self):
         if self._error:
-            raise TuneError("Error running trial: " + str(self._error))
+            raise TuneError('Error running trial: ' + str(self._error))
         if self._done and not self._latest_result:
             if not self._last_result:
-                raise TuneError("Trial finished without reporting result!")
+                raise TuneError('Trial finished without reporting result!')
             return self._last_result._replace(done=True)
         with self._lock:
             res = self._latest_result
@@ -47,12 +47,12 @@ class StatusReporter(object):
             return res
 
     def _stop(self):
-        self._error = "Agent stopped"
+        self._error = 'Agent stopped'
 
 
 DEFAULT_CONFIG = {
     # batch results to at least this granularity
-    "script_min_iter_time_s": 1,
+    'script_min_iter_time_s': 1,
 }
 
 
@@ -71,7 +71,7 @@ class _RunnerThread(threading.Thread):
             self._entrypoint(*self._entrypoint_args)
         except Exception as e:
             self._status_reporter._error = e
-            print("Runner thread raised: {}".format(traceback.format_exc()))
+            print('Runner thread raised: {}'.format(traceback.format_exc()))
             raise e
         finally:
             self._status_reporter._done = True
@@ -82,7 +82,7 @@ class FunctionRunner(Trainable):
 
     This mode of execution does not support checkpoint/restore."""
 
-    _name = "func"
+    _name = 'func'
     _default_config = DEFAULT_CONFIG
 
     def _setup(self):
@@ -105,15 +105,15 @@ class FunctionRunner(Trainable):
 
     def _train(self):
         time.sleep(
-            self.config.get("script_min_iter_time_s",
-                            self._default_config["script_min_iter_time_s"]))
+            self.config.get('script_min_iter_time_s',
+                            self._default_config['script_min_iter_time_s']))
         result = self._status_reporter._get_and_clear_status()
         while result is None:
             _serve_get_pin_requests()
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
         if result.timesteps_total is None:
-            raise TuneError("Must specify timesteps_total in result", result)
+            raise TuneError('Must specify timesteps_total in result', result)
 
         result = result._replace(
             timesteps_this_iter=(

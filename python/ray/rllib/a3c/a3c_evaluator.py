@@ -29,7 +29,7 @@ class A3CEvaluator(PolicyEvaluator):
     def __init__(
             self, registry, env_creator, config, logdir, start_sampler=True):
         env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]), config["model"])
+            registry, env_creator(config['env_config']), config['model'])
         self.env = env
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
@@ -39,12 +39,12 @@ class A3CEvaluator(PolicyEvaluator):
 
         # Technically not needed when not remote
         self.obs_filter = get_filter(
-            config["observation_filter"], env.observation_space.shape)
-        self.rew_filter = get_filter(config["reward_filter"], ())
-        self.filters = {"obs_filter": self.obs_filter,
-                        "rew_filter": self.rew_filter}
+            config['observation_filter'], env.observation_space.shape)
+        self.rew_filter = get_filter(config['reward_filter'], ())
+        self.filters = {'obs_filter': self.obs_filter,
+                        'rew_filter': self.rew_filter}
         self.sampler = AsyncSampler(env, self.policy, self.obs_filter,
-                                    config["batch_size"])
+                                    config['batch_size'])
         if start_sampler and self.sampler._async:
             self.sampler.start()
         self.logdir = logdir
@@ -52,8 +52,8 @@ class A3CEvaluator(PolicyEvaluator):
     def sample(self):
         rollout = self.sampler.get_data()
         samples = process_rollout(
-            rollout, self.rew_filter, gamma=self.config["gamma"],
-            lambda_=self.config["lambda"], use_gae=True)
+            rollout, self.rew_filter, gamma=self.config['gamma'],
+            lambda_=self.config['lambda'], use_gae=True)
         return samples
 
     def get_completed_rollout_metrics(self):
@@ -80,13 +80,13 @@ class A3CEvaluator(PolicyEvaluator):
         filters = self.get_filters(flush_after=True)
         weights = self.get_weights()
         return pickle.dumps({
-            "filters": filters,
-            "weights": weights})
+            'filters': filters,
+            'weights': weights})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        self.sync_filters(objs["filters"])
-        self.set_weights(objs["weights"])
+        self.sync_filters(objs['filters'])
+        self.set_weights(objs['weights'])
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.

@@ -270,7 +270,7 @@ def setup_sql_file(conn, force=False):
                                'col3': [8, 9, 10, 11],
                                'col4': [12, 13, 14, 15],
                                'col5': [0, 0, 0, 0]})
-        df.to_sql(TEST_SQL_FILENAME.split(".")[0], conn)
+        df.to_sql(TEST_SQL_FILENAME.split('.')[0], conn)
 
 
 @pytest.fixture
@@ -334,7 +334,7 @@ def test_from_html():
     teardown_html_file()
 
 
-@pytest.mark.skip(reason="No clipboard on Travis")
+@pytest.mark.skip(reason='No clipboard on Travis')
 def test_from_clipboard():
     setup_clipboard(SMALL_ROW_SIZE)
 
@@ -366,7 +366,7 @@ def test_from_feather():
     teardown_feather_file()
 
 
-@pytest.mark.skip(reason="Memory overflow on Travis")
+@pytest.mark.skip(reason='Memory overflow on Travis')
 def test_from_hdf():
     setup_hdf_file(SMALL_ROW_SIZE)
 
@@ -415,15 +415,15 @@ def test_from_sql():
     conn = sqlite3.connect(TEST_SQL_FILENAME)
     setup_sql_file(conn, True)
 
-    pandas_df = pandas.read_sql("select * from test", conn)
-    ray_df = pd.read_sql("select * from test", conn)
+    pandas_df = pandas.read_sql('select * from test', conn)
+    ray_df = pd.read_sql('select * from test', conn)
 
     assert ray_df_equals_pandas(ray_df, pandas_df)
 
     teardown_sql_file()
 
 
-@pytest.mark.skip(reason="No SAS write methods in Pandas")
+@pytest.mark.skip(reason='No SAS write methods in Pandas')
 def test_from_sas():
     pandas_df = pandas.read_sas(TEST_SAS_FILENAME)
     ray_df = pd.read_sas(TEST_SAS_FILENAME)
@@ -442,7 +442,7 @@ def test_from_csv_delimiter():
     teardown_csv_file()
 
 
-@pytest.mark.skip(reason="No clipboard on Travis")
+@pytest.mark.skip(reason='No clipboard on Travis')
 def test_to_clipboard():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
@@ -460,8 +460,8 @@ def test_to_csv():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_CSV_DF_FILENAME = "test_df.csv"
-    TEST_CSV_pandas_FILENAME = "test_pandas.csv"
+    TEST_CSV_DF_FILENAME = 'test_df.csv'
+    TEST_CSV_pandas_FILENAME = 'test_pandas.csv'
 
     ray_df.to_csv(TEST_CSV_DF_FILENAME)
     pandas_df.to_csv(TEST_CSV_pandas_FILENAME)
@@ -491,8 +491,8 @@ def test_to_excel():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_EXCEL_DF_FILENAME = "test_df.xlsx"
-    TEST_EXCEL_pandas_FILENAME = "test_pandas.xlsx"
+    TEST_EXCEL_DF_FILENAME = 'test_df.xlsx'
+    TEST_EXCEL_pandas_FILENAME = 'test_pandas.xlsx'
 
     ray_writer = pandas.ExcelWriter(TEST_EXCEL_DF_FILENAME)
     pandas_writer = pandas.ExcelWriter(TEST_EXCEL_pandas_FILENAME)
@@ -514,8 +514,8 @@ def test_to_feather():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_FEATHER_DF_FILENAME = "test_df.feather"
-    TEST_FEATHER_pandas_FILENAME = "test_pandas.feather"
+    TEST_FEATHER_DF_FILENAME = 'test_df.feather'
+    TEST_FEATHER_pandas_FILENAME = 'test_pandas.feather'
 
     ray_df.to_feather(TEST_FEATHER_DF_FILENAME)
     pandas_df.to_feather(TEST_FEATHER_pandas_FILENAME)
@@ -530,7 +530,7 @@ def test_to_feather():
 def test_to_gbq():
     ray_df = create_test_ray_dataframe()
 
-    TEST_GBQ_DF_FILENAME = "test_df.gbq"
+    TEST_GBQ_DF_FILENAME = 'test_df.gbq'
     with pytest.raises(NotImplementedError):
         ray_df.to_gbq(TEST_GBQ_DF_FILENAME, None)
 
@@ -539,8 +539,8 @@ def test_to_html():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_HTML_DF_FILENAME = "test_df.html"
-    TEST_HTML_pandas_FILENAME = "test_pandas.html"
+    TEST_HTML_DF_FILENAME = 'test_df.html'
+    TEST_HTML_pandas_FILENAME = 'test_pandas.html'
 
     ray_df.to_html(TEST_HTML_DF_FILENAME)
     pandas_df.to_html(TEST_HTML_pandas_FILENAME)
@@ -556,8 +556,8 @@ def test_to_json():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_JSON_DF_FILENAME = "test_df.json"
-    TEST_JSON_pandas_FILENAME = "test_pandas.json"
+    TEST_JSON_DF_FILENAME = 'test_df.json'
+    TEST_JSON_pandas_FILENAME = 'test_pandas.json'
 
     ray_df.to_json(TEST_JSON_DF_FILENAME)
     pandas_df.to_json(TEST_JSON_pandas_FILENAME)
@@ -580,8 +580,8 @@ def test_to_msgpack():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_MSGPACK_DF_FILENAME = "test_df.msgpack"
-    TEST_MSGPACK_pandas_FILENAME = "test_pandas.msgpack"
+    TEST_MSGPACK_DF_FILENAME = 'test_df.msgpack'
+    TEST_MSGPACK_pandas_FILENAME = 'test_pandas.msgpack'
 
     ray_df.to_msgpack(TEST_MSGPACK_DF_FILENAME)
     pandas_df.to_msgpack(TEST_MSGPACK_pandas_FILENAME)
@@ -604,8 +604,8 @@ def test_to_parquet():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_PARQUET_DF_FILENAME = "test_df.parquet"
-    TEST_PARQUET_pandas_FILENAME = "test_pandas.parquet"
+    TEST_PARQUET_DF_FILENAME = 'test_df.parquet'
+    TEST_PARQUET_pandas_FILENAME = 'test_pandas.parquet'
 
     ray_df.to_parquet(TEST_PARQUET_DF_FILENAME)
     pandas_df.to_parquet(TEST_PARQUET_pandas_FILENAME)
@@ -628,8 +628,8 @@ def test_to_pickle():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_PICKLE_DF_FILENAME = "test_df.pkl"
-    TEST_PICKLE_pandas_FILENAME = "test_pandas.pkl"
+    TEST_PICKLE_DF_FILENAME = 'test_df.pkl'
+    TEST_PICKLE_pandas_FILENAME = 'test_pandas.pkl'
 
     ray_df.to_pickle(TEST_PICKLE_DF_FILENAME)
     pandas_df.to_pickle(TEST_PICKLE_pandas_FILENAME)
@@ -645,8 +645,8 @@ def test_to_sql():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_SQL_DF_FILENAME = "test_df.sql"
-    TEST_SQL_pandas_FILENAME = "test_pandas.sql"
+    TEST_SQL_DF_FILENAME = 'test_df.sql'
+    TEST_SQL_pandas_FILENAME = 'test_pandas.sql'
 
     ray_df.to_pickle(TEST_SQL_DF_FILENAME)
     pandas_df.to_pickle(TEST_SQL_pandas_FILENAME)
@@ -662,8 +662,8 @@ def test_to_stata():
     ray_df = create_test_ray_dataframe()
     pandas_df = create_test_pandas_dataframe()
 
-    TEST_STATA_DF_FILENAME = "test_df.stata"
-    TEST_STATA_pandas_FILENAME = "test_pandas.stata"
+    TEST_STATA_DF_FILENAME = 'test_df.stata'
+    TEST_STATA_pandas_FILENAME = 'test_pandas.stata'
 
     ray_df.to_stata(TEST_STATA_DF_FILENAME)
     pandas_df.to_stata(TEST_STATA_pandas_FILENAME)

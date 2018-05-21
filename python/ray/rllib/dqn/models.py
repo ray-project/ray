@@ -12,12 +12,12 @@ from ray.rllib.optimizers.multi_gpu_impl import TOWER_SCOPE_NAME
 
 
 def _build_q_network(registry, inputs, num_actions, config):
-    dueling = config["dueling"]
-    hiddens = config["hiddens"]
-    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
+    dueling = config['dueling']
+    hiddens = config['hiddens']
+    frontend = ModelCatalog.get_model(registry, inputs, 1, config['model'])
     frontend_out = frontend.last_layer
 
-    with tf.variable_scope("action_value"):
+    with tf.variable_scope('action_value'):
         action_out = frontend_out
         for hidden in hiddens:
             action_out = layers.fully_connected(
@@ -26,7 +26,7 @@ def _build_q_network(registry, inputs, num_actions, config):
             action_out, num_outputs=num_actions, activation_fn=None)
 
     if dueling:
-        with tf.variable_scope("state_value"):
+        with tf.variable_scope('state_value'):
             state_out = frontend_out
             for hidden in hiddens:
                 state_out = layers.fully_connected(
@@ -111,11 +111,11 @@ class ModelAndLoss(object):
             self, registry, num_actions, config,
             obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
         # q network evaluation
-        with tf.variable_scope("q_func", reuse=True):
+        with tf.variable_scope('q_func', reuse=True):
             self.q_t = _build_q_network(registry, obs_t, num_actions, config)
 
         # target q network evalution
-        with tf.variable_scope("target_q_func") as scope:
+        with tf.variable_scope('target_q_func') as scope:
             self.q_tp1 = _build_q_network(
                 registry, obs_tp1, num_actions, config)
             self.target_q_func_vars = _scope_vars(scope.name)
@@ -125,8 +125,8 @@ class ModelAndLoss(object):
             self.q_t * tf.one_hot(act_t, num_actions), 1)
 
         # compute estimate of best possible value starting from state at t + 1
-        if config["double_q"]:
-            with tf.variable_scope("q_func", reuse=True):
+        if config['double_q']:
+            with tf.variable_scope('q_func', reuse=True):
                 q_tp1_using_online_net = _build_q_network(
                     registry, obs_tp1, num_actions, config)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
@@ -139,7 +139,7 @@ class ModelAndLoss(object):
 
         # compute RHS of bellman equation
         q_t_selected_target = (
-            rew_t + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
+            rew_t + config['gamma'] ** config['n_step'] * q_tp1_best_masked)
 
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
@@ -154,16 +154,16 @@ class DQNGraph(object):
     def __init__(self, registry, env, config, logdir):
         self.env = env
         num_actions = env.action_space.n
-        optimizer = tf.train.AdamOptimizer(learning_rate=config["lr"])
+        optimizer = tf.train.AdamOptimizer(learning_rate=config['lr'])
 
         # Action inputs
-        self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
-        self.eps = tf.placeholder(tf.float32, (), name="eps")
+        self.stochastic = tf.placeholder(tf.bool, (), name='stochastic')
+        self.eps = tf.placeholder(tf.float32, (), name='eps')
         self.cur_observations = tf.placeholder(
             tf.float32, shape=(None,) + env.observation_space.shape)
 
         # Action Q network
-        q_scope_name = TOWER_SCOPE_NAME + "/q_func"
+        q_scope_name = TOWER_SCOPE_NAME + '/q_func'
         with tf.variable_scope(q_scope_name) as scope:
             q_values = _build_q_network(
                 registry, self.cur_observations, num_actions, config)
@@ -180,13 +180,13 @@ class DQNGraph(object):
         # Replay inputs
         self.obs_t = tf.placeholder(
             tf.float32, shape=(None,) + env.observation_space.shape)
-        self.act_t = tf.placeholder(tf.int32, [None], name="action")
-        self.rew_t = tf.placeholder(tf.float32, [None], name="reward")
+        self.act_t = tf.placeholder(tf.int32, [None], name='action')
+        self.rew_t = tf.placeholder(tf.float32, [None], name='reward')
         self.obs_tp1 = tf.placeholder(
             tf.float32, shape=(None,) + env.observation_space.shape)
-        self.done_mask = tf.placeholder(tf.float32, [None], name="done")
+        self.done_mask = tf.placeholder(tf.float32, [None], name='done')
         self.importance_weights = tf.placeholder(
-            tf.float32, [None], name="weight")
+            tf.float32, [None], name='weight')
 
         def build_loss(
                 obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
@@ -196,12 +196,12 @@ class DQNGraph(object):
                 obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights)
 
         self.loss_inputs = [
-            ("obs", self.obs_t),
-            ("actions", self.act_t),
-            ("rewards", self.rew_t),
-            ("new_obs", self.obs_tp1),
-            ("dones", self.done_mask),
-            ("weights", self.importance_weights),
+            ('obs', self.obs_t),
+            ('actions', self.act_t),
+            ('rewards', self.rew_t),
+            ('new_obs', self.obs_tp1),
+            ('dones', self.done_mask),
+            ('weights', self.importance_weights),
         ]
 
         with tf.variable_scope(TOWER_SCOPE_NAME):
@@ -218,10 +218,10 @@ class DQNGraph(object):
         self.td_error = loss_obj.td_error
 
         # compute optimization op (potentially with gradient clipping)
-        if config["grad_norm_clipping"] is not None:
+        if config['grad_norm_clipping'] is not None:
             self.grads_and_vars = _minimize_and_clip(
                 optimizer, weighted_error, var_list=q_func_vars,
-                clip_val=config["grad_norm_clipping"])
+                clip_val=config['grad_norm_clipping'])
         else:
             self.grads_and_vars = optimizer.compute_gradients(
                 weighted_error, var_list=q_func_vars)

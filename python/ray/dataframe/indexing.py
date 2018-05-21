@@ -237,8 +237,8 @@ class _Location_Indexer_Base():
         except ValueError:
             from_shape = np.array(item).shape
             raise ValueError(
-                "could not broadcast input array from \
-                shape {from_shape} into shape {to_shape}".format(
+                'could not broadcast input array from \
+                shape {from_shape} into shape {to_shape}'.format(
                     from_shape=from_shape, to_shape=to_shape))
 
     def _write_items(self, row_lookup, col_lookup, item):

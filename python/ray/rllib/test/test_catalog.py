@@ -34,11 +34,11 @@ class ModelCatalogTest(unittest.TestCase):
 
     def testGymPreprocessors(self):
         p1 = ModelCatalog.get_preprocessor(
-            get_registry(), gym.make("CartPole-v0"))
+            get_registry(), gym.make('CartPole-v0'))
         self.assertEqual(type(p1), NoPreprocessor)
 
         p2 = ModelCatalog.get_preprocessor(
-            get_registry(), gym.make("FrozenLake-v0"))
+            get_registry(), gym.make('FrozenLake-v0'))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
     def testTuplePreprocessor(self):
@@ -57,14 +57,14 @@ class ModelCatalogTest(unittest.TestCase):
 
     def testCustomPreprocessor(self):
         ray.init()
-        ModelCatalog.register_custom_preprocessor("foo", CustomPreprocessor)
-        ModelCatalog.register_custom_preprocessor("bar", CustomPreprocessor2)
-        env = gym.make("CartPole-v0")
+        ModelCatalog.register_custom_preprocessor('foo', CustomPreprocessor)
+        ModelCatalog.register_custom_preprocessor('bar', CustomPreprocessor2)
+        env = gym.make('CartPole-v0')
         p1 = ModelCatalog.get_preprocessor(
-            get_registry(), env, {"custom_preprocessor": "foo"})
+            get_registry(), env, {'custom_preprocessor': 'foo'})
         self.assertEqual(str(type(p1)), str(CustomPreprocessor))
         p2 = ModelCatalog.get_preprocessor(
-            get_registry(), env, {"custom_preprocessor": "bar"})
+            get_registry(), env, {'custom_preprocessor': 'bar'})
         self.assertEqual(str(type(p2)), str(CustomPreprocessor2))
         p3 = ModelCatalog.get_preprocessor(get_registry(), env)
         self.assertEqual(type(p3), NoPreprocessor)
@@ -72,23 +72,23 @@ class ModelCatalogTest(unittest.TestCase):
     def testDefaultModels(self):
         ray.init()
 
-        with tf.variable_scope("test1"):
+        with tf.variable_scope('test1'):
             p1 = ModelCatalog.get_model(
                 get_registry(), np.zeros((10, 3), dtype=np.float32), 5)
             self.assertEqual(type(p1), FullyConnectedNetwork)
 
-        with tf.variable_scope("test2"):
+        with tf.variable_scope('test2'):
             p2 = ModelCatalog.get_model(
                 get_registry(), np.zeros((10, 80, 80, 3), dtype=np.float32), 5)
             self.assertEqual(type(p2), VisionNetwork)
 
     def testCustomModel(self):
         ray.init()
-        ModelCatalog.register_custom_model("foo", CustomModel)
+        ModelCatalog.register_custom_model('foo', CustomModel)
         p1 = ModelCatalog.get_model(
-            get_registry(), 1, 5, {"custom_model": "foo"})
+            get_registry(), 1, 5, {'custom_model': 'foo'})
         self.assertEqual(str(type(p1)), str(CustomModel))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main(verbosity=2)

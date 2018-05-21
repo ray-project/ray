@@ -127,7 +127,7 @@ def _infer_column(first_line, kwargs={}):
 
 @ray.remote
 def _read_csv_with_offset(fn, start, end, kwargs={}, header=b''):
-    kwargs["quoting"] = int(kwargs["quoting"])  # See issue #2078
+    kwargs['quoting'] = int(kwargs['quoting'])  # See issue #2078
 
     bio = open(fn, 'rb')
     bio.seek(start)
@@ -268,7 +268,7 @@ def read_csv(filepath_or_buffer,
     if not isinstance(filepath_or_buffer, str) or \
             _infer_compression(filepath_or_buffer, compression) is not None:
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         pd_obj = pd.read_csv(filepath_or_buffer, **kwargs)
@@ -282,8 +282,8 @@ def read_csv(filepath_or_buffer,
     # TODO: handle case where header is a list of lines
     first_line = _get_firstline(filepath)
     columns = _infer_column(first_line, kwargs=kwargs)
-    if header is None or (header == "infer" and names is not None):
-        first_line = b""
+    if header is None or (header == 'infer' and names is not None):
+        first_line = b''
         ignore_first_line = False
     else:
         ignore_first_line = True
@@ -329,7 +329,7 @@ def read_json(path_or_buf=None,
               chunksize=None,
               compression='infer'):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_json(path_or_buf, orient, typ, dtype,
@@ -357,7 +357,7 @@ def read_html(io,
               na_values=None,
               keep_default_na=True):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_html(io, match, flavor, header, index_col,
@@ -371,7 +371,7 @@ def read_html(io,
 
 def read_clipboard(sep=r'\s+'):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_clipboard(sep)
@@ -400,7 +400,7 @@ def read_excel(io,
                engine=None,
                squeeze=False):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_excel(io, sheet_name, header, skiprows, skip_footer,
@@ -417,7 +417,7 @@ def read_hdf(path_or_buf,
              key=None,
              mode='r'):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_hdf(path_or_buf, key, mode)
@@ -429,7 +429,7 @@ def read_hdf(path_or_buf,
 def read_feather(path,
                  nthreads=1):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_feather(path)
@@ -442,7 +442,7 @@ def read_msgpack(path_or_buf,
                  encoding='utf-8',
                  iterator=False):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_msgpack(path_or_buf, encoding, iterator)
@@ -463,7 +463,7 @@ def read_stata(filepath_or_buffer,
                chunksize=None,
                iterator=False):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_stata(filepath_or_buffer, convert_dates,
@@ -482,7 +482,7 @@ def read_sas(filepath_or_buffer,
              chunksize=None,
              iterator=False):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_sas(filepath_or_buffer, format, index, encoding,
@@ -495,7 +495,7 @@ def read_sas(filepath_or_buffer,
 def read_pickle(path,
                 compression='infer'):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_pickle(path, compression)
@@ -513,7 +513,7 @@ def read_sql(sql,
              columns=None,
              chunksize=None):
 
-    warnings.warn("Defaulting to Pandas implementation",
+    warnings.warn('Defaulting to Pandas implementation',
                   PendingDeprecationWarning)
 
     port_frame = pd.read_sql(sql, con, index_col, coerce_float, params,

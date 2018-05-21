@@ -15,20 +15,20 @@ class PGEvaluator(PolicyEvaluator):
 
     def __init__(self, registry, env_creator, config):
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]), config["model"])
+            registry, env_creator(config['env_config']), config['model'])
         self.config = config
 
         self.policy = PGPolicy(registry, self.env.observation_space,
                                self.env.action_space, config)
         self.sampler = SyncSampler(
                         self.env, self.policy, NoFilter(),
-                        config["batch_size"], horizon=config["horizon"])
+                        config['batch_size'], horizon=config['horizon'])
 
     def sample(self):
         rollout = self.sampler.get_data()
         samples = process_rollout(
                     rollout, NoFilter(),
-                    gamma=self.config["gamma"], use_gae=False)
+                    gamma=self.config['gamma'], use_gae=False)
         return samples
 
     def get_completed_rollout_metrics(self):

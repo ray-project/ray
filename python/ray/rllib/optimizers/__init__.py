@@ -9,6 +9,6 @@ from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator, \
 
 
 __all__ = [
-    "ApexOptimizer", "AsyncOptimizer", "LocalSyncOptimizer",
-    "LocalSyncReplayOptimizer", "LocalMultiGPUOptimizer", "SampleBatch",
-    "PolicyEvaluator", "TFMultiGPUSupport"]
+    'ApexOptimizer', 'AsyncOptimizer', 'LocalSyncOptimizer',
+    'LocalSyncReplayOptimizer', 'LocalMultiGPUOptimizer', 'SampleBatch',
+    'PolicyEvaluator', 'TFMultiGPUSupport']

@@ -9,7 +9,7 @@ import sys
 import time
 
 __all__ = [
-    "start_plasma_store", "start_plasma_manager", "DEFAULT_PLASMA_STORE_MEMORY"
+    'start_plasma_store', 'start_plasma_manager', 'DEFAULT_PLASMA_STORE_MEMORY'
 ]
 
 PLASMA_WAIT_TIMEOUT = 2**30
@@ -49,42 +49,42 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
             the plasma store process.
     """
     if use_valgrind and use_profiler:
-        raise Exception("Cannot use valgrind and profiler at the same time.")
+        raise Exception('Cannot use valgrind and profiler at the same time.')
 
-    if huge_pages and not (sys.platform == "linux"
-                           or sys.platform == "linux2"):
-        raise Exception("The huge_pages argument is only supported on "
-                        "Linux.")
+    if huge_pages and not (sys.platform == 'linux'
+                           or sys.platform == 'linux2'):
+        raise Exception('The huge_pages argument is only supported on '
+                        'Linux.')
 
     if huge_pages and plasma_directory is None:
-        raise Exception("If huge_pages is True, then the "
-                        "plasma_directory argument must be provided.")
+        raise Exception('If huge_pages is True, then the '
+                        'plasma_directory argument must be provided.')
 
     plasma_store_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
-        "../core/src/plasma/plasma_store")
-    plasma_store_name = "/tmp/plasma_store{}".format(random_name())
+        '../core/src/plasma/plasma_store')
+    plasma_store_name = '/tmp/plasma_store{}'.format(random_name())
     command = [
-        plasma_store_executable, "-s", plasma_store_name, "-m",
+        plasma_store_executable, '-s', plasma_store_name, '-m',
         str(plasma_store_memory)
     ]
     if plasma_directory is not None:
-        command += ["-d", plasma_directory]
+        command += ['-d', plasma_directory]
     if huge_pages:
-        command += ["-h"]
+        command += ['-h']
     if use_valgrind:
         pid = subprocess.Popen(
             [
-                "valgrind", "--track-origins=yes", "--leak-check=full",
-                "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
-                "--error-exitcode=1"
+                'valgrind', '--track-origins=yes', '--leak-check=full',
+                '--show-leak-kinds=all', '--leak-check-heuristics=stdstring',
+                '--error-exitcode=1'
             ] + command,
             stdout=stdout_file,
             stderr=stderr_file)
         time.sleep(1.0)
     elif use_profiler:
         pid = subprocess.Popen(
-            ["valgrind", "--tool=callgrind"] + command,
+            ['valgrind', '--tool=callgrind'] + command,
             stdout=stdout_file,
             stderr=stderr_file)
         time.sleep(1.0)
@@ -100,7 +100,7 @@ def new_port():
 
 def start_plasma_manager(store_name,
                          redis_address,
-                         node_ip_address="127.0.0.1",
+                         node_ip_address='127.0.0.1',
                          plasma_manager_port=None,
                          num_retries=20,
                          use_valgrind=False,
@@ -132,42 +132,42 @@ def start_plasma_manager(store_name,
     """
     plasma_manager_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
-        "../core/src/plasma/plasma_manager")
-    plasma_manager_name = "/tmp/plasma_manager{}".format(random_name())
+        '../core/src/plasma/plasma_manager')
+    plasma_manager_name = '/tmp/plasma_manager{}'.format(random_name())
     if plasma_manager_port is not None:
         if num_retries != 1:
-            raise Exception("num_retries must be 1 if port is specified.")
+            raise Exception('num_retries must be 1 if port is specified.')
     else:
         plasma_manager_port = new_port()
     process = None
     counter = 0
     while counter < num_retries:
         if counter > 0:
-            print("Plasma manager failed to start, retrying now.")
+            print('Plasma manager failed to start, retrying now.')
         command = [
             plasma_manager_executable,
-            "-s",
+            '-s',
             store_name,
-            "-m",
+            '-m',
             plasma_manager_name,
-            "-h",
+            '-h',
             node_ip_address,
-            "-p",
+            '-p',
             str(plasma_manager_port),
-            "-r",
+            '-r',
             redis_address,
         ]
         if use_valgrind:
             process = subprocess.Popen(
                 [
-                    "valgrind", "--track-origins=yes", "--leak-check=full",
-                    "--show-leak-kinds=all", "--error-exitcode=1"
+                    'valgrind', '--track-origins=yes', '--leak-check=full',
+                    '--show-leak-kinds=all', '--error-exitcode=1'
                 ] + command,
                 stdout=stdout_file,
                 stderr=stderr_file)
         elif run_profiler:
             process = subprocess.Popen(
-                (["valgrind", "--tool=callgrind"] + command),
+                (['valgrind', '--tool=callgrind'] + command),
                 stdout=stdout_file,
                 stderr=stderr_file)
         else:

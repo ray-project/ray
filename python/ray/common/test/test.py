@@ -29,7 +29,7 @@ def random_task_id():
 
 
 BASE_SIMPLE_OBJECTS = [
-    0, 1, 100000, 0.0, 0.5, 0.9, 100000.1, (), [], {}, "", 990 * "h", u"",
+    0, 1, 100000, 0.0, 0.5, 0.9, 100000.1, (), [], {}, '', 990 * 'h', u"",
     990 * u"h",
     np.ones(3),
     np.array([True, False]), None, True, False
@@ -62,7 +62,7 @@ class Foo(object):
 
 
 BASE_COMPLEX_OBJECTS = [
-    15000 * "h", 15000 * u"h", lst,
+    15000 * 'h', 15000 * u"h", lst,
     Foo(), 100 * [100 * [10 * [1]]],
     np.array([Foo()])
 ]
@@ -110,10 +110,10 @@ class TestObjectID(unittest.TestCase):
         self.assertRaises(Exception, lambda: pickle.dumps(h))
 
     def test_equality_comparisons(self):
-        x1 = local_scheduler.ObjectID(ID_SIZE * b"a")
-        x2 = local_scheduler.ObjectID(ID_SIZE * b"a")
-        y1 = local_scheduler.ObjectID(ID_SIZE * b"b")
-        y2 = local_scheduler.ObjectID(ID_SIZE * b"b")
+        x1 = local_scheduler.ObjectID(ID_SIZE * b'a')
+        x2 = local_scheduler.ObjectID(ID_SIZE * b'a')
+        y1 = local_scheduler.ObjectID(ID_SIZE * b'b')
+        y2 = local_scheduler.ObjectID(ID_SIZE * b'b')
         self.assertEqual(x1, x2)
         self.assertEqual(y1, y2)
         self.assertNotEqual(x1, y1)
@@ -155,17 +155,17 @@ class TestTask(unittest.TestCase):
         parent_id = random_task_id()
         function_id = random_function_id()
         object_ids = [random_object_id() for _ in range(256)]
-        args_list = [[], 1 * [1], 10 * [1], 100 * [1], 1000 * [1], 1 * ["a"],
-                     10 * ["a"], 100 * ["a"], 1000 * ["a"], [
-                         1, 1.3, 2, 1 << 100, "hi", u"hi", [1, 2]
+        args_list = [[], 1 * [1], 10 * [1], 100 * [1], 1000 * [1], 1 * ['a'],
+                     10 * ['a'], 100 * ['a'], 1000 * ['a'], [
+                         1, 1.3, 2, 1 << 100, 'hi', u"hi", [1, 2]
                      ], object_ids[:1], object_ids[:2], object_ids[:3],
                      object_ids[:4], object_ids[:5], object_ids[:10],
                      object_ids[:100], object_ids[:256], [1, object_ids[0]], [
-                         object_ids[0], "a"
-                     ], [1, object_ids[0], "a"], [
-                         object_ids[0], 1, object_ids[1], "a"
-                     ], object_ids[:3] + [1, "hi", 2.3] + object_ids[:5],
-                     object_ids + 100 * ["a"] + object_ids]
+                         object_ids[0], 'a'
+                     ], [1, object_ids[0], 'a'], [
+                         object_ids[0], 1, object_ids[1], 'a'
+                     ], object_ids[:3] + [1, 'hi', 2.3] + object_ids[:5],
+                     object_ids + 100 * ['a'] + object_ids]
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
                 task = local_scheduler.Task(driver_id, function_id, args,
@@ -176,5 +176,5 @@ class TestTask(unittest.TestCase):
                 self.check_task(task2, function_id, num_return_vals, args)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -18,13 +18,13 @@ from ray.tune.registry import get_registry
 class DQNEvaluatorTest(unittest.TestCase):
     def testNStep(self):
         obs = [1, 2, 3, 4, 5, 6, 7]
-        actions = ["a", "b", "a", "a", "a", "b", "a"]
+        actions = ['a', 'b', 'a', 'a', 'a', 'b', 'a']
         rewards = [10.0, 0.0, 100.0, 100.0, 100.0, 100.0, 100000.0]
         new_obs = [2, 3, 4, 5, 6, 7, 8]
         dones = [1, 0, 0, 0, 0, 1, 0]
         adjust_nstep(3, 0.9, obs, actions, rewards, new_obs, dones)
         self.assertEqual(obs, [1, 2, 3, 4, 5])
-        self.assertEqual(actions, ["a", "b", "a", "a", "a"])
+        self.assertEqual(actions, ['a', 'b', 'a', 'a', 'a'])
         self.assertEqual(rewards, [10.0, 171.0, 271.0, 271.0, 190.0])
         self.assertEqual(new_obs, [2, 5, 6, 7, 7])
         self.assertEqual(dones, [1, 0, 0, 0, 0])
@@ -35,14 +35,14 @@ class A3CEvaluatorTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=1)
         config = DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
-        config["observation_filter"] = "ConcurrentMeanStdFilter"
-        config["reward_filter"] = "MeanStdFilter"
-        config["batch_size"] = 2
-        self._temp_dir = tempfile.mkdtemp("a3c_evaluator_test")
+        config['num_workers'] = 1
+        config['observation_filter'] = 'ConcurrentMeanStdFilter'
+        config['reward_filter'] = 'MeanStdFilter'
+        config['batch_size'] = 2
+        self._temp_dir = tempfile.mkdtemp('a3c_evaluator_test')
         self.e = A3CEvaluator(
             get_registry(),
-            lambda config: gym.make("CartPole-v0"),
+            lambda config: gym.make('CartPole-v0'),
             config,
             logdir=self._temp_dir)
 
@@ -55,8 +55,8 @@ class A3CEvaluatorTest(unittest.TestCase):
         time.sleep(2)
         self.e.sample()
         filters = e.get_filters(flush_after=True)
-        obs_f = filters["obs_filter"]
-        rew_f = filters["rew_filter"]
+        obs_f = filters['obs_filter']
+        rew_f = filters['rew_filter']
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         self.assertNotEqual(rew_f.rs.n, 0)
@@ -68,9 +68,9 @@ class A3CEvaluatorTest(unittest.TestCase):
         e = self.e
         self.sample_and_flush()
         filters = e.get_filters(flush_after=False)
-        obs_f = filters["obs_filter"]
+        obs_f = filters['obs_filter']
         filters2 = e.get_filters(flush_after=False)
-        obs_f2 = filters2["obs_filter"]
+        obs_f2 = filters2['obs_filter']
         self.assertGreaterEqual(obs_f2.rs.n, obs_f.rs.n)
         self.assertGreaterEqual(obs_f2.buffer.n, obs_f.buffer.n)
 
@@ -81,16 +81,16 @@ class A3CEvaluatorTest(unittest.TestCase):
 
         # Current State
         filters = e.get_filters(flush_after=False)
-        obs_f = filters["obs_filter"]
-        rew_f = filters["rew_filter"]
+        obs_f = filters['obs_filter']
+        rew_f = filters['rew_filter']
 
         self.assertLessEqual(obs_f.buffer.n, 20)
 
         new_obsf = obs_f.copy()
         new_obsf.rs._n = 100
-        e.sync_filters({"obs_filter": new_obsf, "rew_filter": rew_f})
+        e.sync_filters({'obs_filter': new_obsf, 'rew_filter': rew_f})
         filters = e.get_filters(flush_after=False)
-        obs_f = filters["obs_filter"]
+        obs_f = filters['obs_filter']
         self.assertGreaterEqual(obs_f.rs.n, 100)
         self.assertLessEqual(obs_f.buffer.n, 20)
 

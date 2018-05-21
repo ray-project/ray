@@ -9,12 +9,12 @@ from ray.rllib.utils.atari_wrappers import wrap_deepmind
 def wrap_dqn(registry, env, options, random_starts):
     """Apply a common set of wrappers for DQN."""
 
-    is_atari = hasattr(env.unwrapped, "ale")
+    is_atari = hasattr(env.unwrapped, 'ale')
 
     # Override atari default to use the deepmind wrappers.
     # TODO(ekl) this logic should be pushed to the catalog.
-    if is_atari and "custom_preprocessor" not in options:
+    if is_atari and 'custom_preprocessor' not in options:
         return wrap_deepmind(
-            env, random_starts=random_starts, dim=options.get("dim", 80))
+            env, random_starts=random_starts, dim=options.get('dim', 80))
 
     return ModelCatalog.get_preprocessor_as_wrapper(registry, env, options)

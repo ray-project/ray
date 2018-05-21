@@ -35,7 +35,7 @@ class SegmentTree(object):
         """
 
         assert capacity > 0 and capacity & (capacity - 1) == 0, \
-            "capacity must be positive and a power of 2."
+            'capacity must be positive and a power of 2.'
         self._capacity = capacity
         self._value = [neutral_element for _ in range(2 * capacity)]
         self._operation = operation

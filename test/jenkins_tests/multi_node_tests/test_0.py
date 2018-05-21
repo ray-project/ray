@@ -14,10 +14,10 @@ def f():
     return ray.services.get_node_ip_address()
 
 
-if __name__ == "__main__":
-    driver_index = int(os.environ["RAY_DRIVER_INDEX"])
-    redis_address = os.environ["RAY_REDIS_ADDRESS"]
-    print("Driver {} started at {}.".format(driver_index, time.time()))
+if __name__ == '__main__':
+    driver_index = int(os.environ['RAY_DRIVER_INDEX'])
+    redis_address = os.environ['RAY_REDIS_ADDRESS']
+    print('Driver {} started at {}.'.format(driver_index, time.time()))
 
     ray.init(redis_address=redis_address)
     # Check that tasks are scheduled on all nodes.
@@ -28,9 +28,9 @@ if __name__ == "__main__":
         counts = [
             ip_addresses.count(address) for address in distinct_addresses
         ]
-        print("Counts are {}".format(counts))
+        print('Counts are {}'.format(counts))
         if len(counts) == 5:
             break
     assert len(counts) == 5
 
-    print("Driver {} finished at {}.".format(driver_index, time.time()))
+    print('Driver {} finished at {}.'.format(driver_index, time.time()))

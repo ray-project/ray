@@ -32,10 +32,10 @@ class Preprocessor(object):
 
 class AtariPixelPreprocessor(Preprocessor):
     def _init(self):
-        self._grayscale = self._options.get("grayscale", False)
-        self._zero_mean = self._options.get("zero_mean", True)
-        self._dim = self._options.get("dim", 80)
-        self._channel_major = self._options.get("channel_major", False)
+        self._grayscale = self._options.get('grayscale', False)
+        self._zero_mean = self._options.get('zero_mean', True)
+        self._dim = self._options.get('dim', 80)
+        self._channel_major = self._options.get('channel_major', False)
         if self._grayscale:
             self.shape = (self._dim, self._dim, 1)
         else:
@@ -107,7 +107,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
         self.preprocessors = []
         for i in range(len(self._obs_space.spaces)):
             space = self._obs_space.spaces[i]
-            print("Creating sub-preprocessor for", space)
+            print('Creating sub-preprocessor for', space)
             preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
             size += np.product(preprocessor.shape)
@@ -125,22 +125,22 @@ def get_preprocessor(space):
 
     legacy_patch_shapes(space)
     obs_shape = space.shape
-    print("Observation shape is {}".format(obs_shape))
+    print('Observation shape is {}'.format(obs_shape))
 
     if isinstance(space, gym.spaces.Discrete):
-        print("Using one-hot preprocessor for discrete envs.")
+        print('Using one-hot preprocessor for discrete envs.')
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
-        print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
+        print('Assuming Atari pixel env, using AtariPixelPreprocessor.')
         preprocessor = AtariPixelPreprocessor
     elif obs_shape == ATARI_RAM_OBS_SHAPE:
-        print("Assuming Atari ram env, using AtariRamPreprocessor.")
+        print('Assuming Atari ram env, using AtariRamPreprocessor.')
         preprocessor = AtariRamPreprocessor
     elif isinstance(space, gym.spaces.Tuple):
-        print("Using a TupleFlatteningPreprocessor")
+        print('Using a TupleFlatteningPreprocessor')
         preprocessor = TupleFlatteningPreprocessor
     else:
-        print("Not using any observation preprocessor.")
+        print('Not using any observation preprocessor.')
         preprocessor = NoPreprocessor
 
     return preprocessor
@@ -153,7 +153,7 @@ def legacy_patch_shapes(space):
     for Tuple and Discrete spaces.
     """
 
-    if not hasattr(space, "shape"):
+    if not hasattr(space, 'shape'):
         if isinstance(space, gym.spaces.Discrete):
             space.shape = ()
         elif isinstance(space, gym.spaces.Tuple):

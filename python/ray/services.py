@@ -25,16 +25,16 @@ import ray.local_scheduler
 import ray.plasma
 import ray.global_scheduler as global_scheduler
 
-PROCESS_TYPE_MONITOR = "monitor"
-PROCESS_TYPE_LOG_MONITOR = "log_monitor"
-PROCESS_TYPE_WORKER = "worker"
-PROCESS_TYPE_RAYLET = "raylet"
-PROCESS_TYPE_LOCAL_SCHEDULER = "local_scheduler"
-PROCESS_TYPE_PLASMA_MANAGER = "plasma_manager"
-PROCESS_TYPE_PLASMA_STORE = "plasma_store"
-PROCESS_TYPE_GLOBAL_SCHEDULER = "global_scheduler"
-PROCESS_TYPE_REDIS_SERVER = "redis_server"
-PROCESS_TYPE_WEB_UI = "web_ui"
+PROCESS_TYPE_MONITOR = 'monitor'
+PROCESS_TYPE_LOG_MONITOR = 'log_monitor'
+PROCESS_TYPE_WORKER = 'worker'
+PROCESS_TYPE_RAYLET = 'raylet'
+PROCESS_TYPE_LOCAL_SCHEDULER = 'local_scheduler'
+PROCESS_TYPE_PLASMA_MANAGER = 'plasma_manager'
+PROCESS_TYPE_PLASMA_STORE = 'plasma_store'
+PROCESS_TYPE_GLOBAL_SCHEDULER = 'global_scheduler'
+PROCESS_TYPE_REDIS_SERVER = 'redis_server'
+PROCESS_TYPE_WEB_UI = 'web_ui'
 
 # This is a dictionary tracking all of the processes of different types that
 # have been started by this services module. Note that the order of the keys is
@@ -57,53 +57,53 @@ RUN_PLASMA_STORE_PROFILER = False
 # Location of the redis server and module.
 REDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/common/thirdparty/redis/src/redis-server")
+    'core/src/common/thirdparty/redis/src/redis-server')
 REDIS_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/common/redis_module/libray_redis_module.so")
+    'core/src/common/redis_module/libray_redis_module.so')
 
 # Location of the credis server and modules.
 CREDIS_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/credis/redis/src/redis-server")
+    'core/src/credis/redis/src/redis-server')
 CREDIS_MASTER_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/credis/build/src/libmaster.so")
+    'core/src/credis/build/src/libmaster.so')
 CREDIS_MEMBER_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/credis/build/src/libmember.so")
+    'core/src/credis/build/src/libmember.so')
 
 # Location of the raylet executables.
 RAYLET_MONITOR_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "core/src/ray/raylet/raylet_monitor")
+    'core/src/ray/raylet/raylet_monitor')
 RAYLET_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "core/src/ray/raylet/raylet")
+    os.path.abspath(os.path.dirname(__file__)), 'core/src/ray/raylet/raylet')
 
 # ObjectStoreAddress tuples contain all information necessary to connect to an
 # object store. The fields are:
 # - name: The socket name for the object store
 # - manager_name: The socket name for the object store manager
 # - manager_port: The Internet port that the object store manager listens on
-ObjectStoreAddress = namedtuple("ObjectStoreAddress",
-                                ["name", "manager_name", "manager_port"])
+ObjectStoreAddress = namedtuple('ObjectStoreAddress',
+                                ['name', 'manager_name', 'manager_port'])
 
 
 def address(ip_address, port):
-    return ip_address + ":" + str(port)
+    return ip_address + ':' + str(port)
 
 
 def get_ip_address(address):
-    assert type(address) == str, "Address must be a string"
-    ip_address = address.split(":")[0]
+    assert type(address) == str, 'Address must be a string'
+    ip_address = address.split(':')[0]
     return ip_address
 
 
 def get_port(address):
     try:
-        port = int(address.split(":")[1])
+        port = int(address.split(':')[1])
     except Exception:
-        raise Exception("Unable to parse port from address {}".format(address))
+        raise Exception('Unable to parse port from address {}'.format(address))
     return port
 
 
@@ -175,7 +175,7 @@ def cleanup():
         # Reset the list of processes of this type.
         all_processes[process_type] = []
     if not successfully_shut_down:
-        print("Ray did not shut down properly.")
+        print('Ray did not shut down properly.')
 
 
 def all_processes_alive(exclude=[]):
@@ -190,7 +190,7 @@ def all_processes_alive(exclude=[]):
         # alive.
         processes_alive = [p.poll() is None for p in processes]
         if (not all(processes_alive) and process_type not in exclude):
-            print("A process of type {} has died.".format(process_type))
+            print('A process of type {} has died.'.format(process_type))
             return False
     return True
 
@@ -209,15 +209,15 @@ def address_to_ip(address):
         The same address but with the hostname replaced by a numerical IP
             address.
     """
-    address_parts = address.split(":")
+    address_parts = address.split(':')
     ip_address = socket.gethostbyname(address_parts[0])
     # Make sure localhost isn't resolved to the loopback ip
-    if ip_address == "127.0.0.1":
+    if ip_address == '127.0.0.1':
         ip_address = get_node_ip_address()
-    return ":".join([ip_address] + address_parts[1:])
+    return ':'.join([ip_address] + address_parts[1:])
 
 
-def get_node_ip_address(address="8.8.8.8:53"):
+def get_node_ip_address(address='8.8.8.8:53'):
     """Determine the IP address of the local node.
 
     Args:
@@ -227,7 +227,7 @@ def get_node_ip_address(address="8.8.8.8:53"):
     Returns:
         The IP address of the current node.
     """
-    ip_address, port = address.split(":")
+    ip_address, port = address.split(':')
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # This command will raise an exception if there is no internet
@@ -235,7 +235,7 @@ def get_node_ip_address(address="8.8.8.8:53"):
         s.connect((ip_address, int(port)))
         node_ip_address = s.getsockname()[0]
     except Exception as e:
-        node_ip_address = "127.0.0.1"
+        node_ip_address = '127.0.0.1'
 
     return node_ip_address
 
@@ -255,12 +255,12 @@ def record_log_files_in_redis(redis_address, node_ip_address, log_files):
     """
     for log_file in log_files:
         if log_file is not None:
-            redis_ip_address, redis_port = redis_address.split(":")
+            redis_ip_address, redis_port = redis_address.split(':')
             redis_client = redis.StrictRedis(
                 host=redis_ip_address, port=redis_port)
             # The name of the key storing the list of log filenames for this IP
             # address.
-            log_file_list_key = "LOG_FILENAMES:{}".format(node_ip_address)
+            log_file_list_key = 'LOG_FILENAMES:{}'.format(node_ip_address)
             redis_client.rpush(log_file_list_key, log_file.name)
 
 
@@ -273,7 +273,7 @@ def create_redis_client(redis_address):
     Returns:
         A Redis client.
     """
-    redis_ip_address, redis_port = redis_address.split(":")
+    redis_ip_address, redis_port = redis_address.split(':')
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
     return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
@@ -300,20 +300,20 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
     while counter < num_retries:
         try:
             # Run some random command and see if it worked.
-            print("Waiting for redis server at {}:{} to respond...".format(
+            print('Waiting for redis server at {}:{} to respond...'.format(
                 redis_ip_address, redis_port))
             redis_client.client_list()
         except redis.ConnectionError as e:
             # Wait a little bit.
             time.sleep(1)
-            print("Failed to connect to the redis server, retrying.")
+            print('Failed to connect to the redis server, retrying.')
             counter += 1
         else:
             break
     if counter == num_retries:
-        raise Exception("Unable to connect to Redis. If the Redis instance is "
-                        "on a different machine, check that your firewall is "
-                        "configured properly.")
+        raise Exception('Unable to connect to Redis. If the Redis instance is '
+                        'on a different machine, check that your firewall is '
+                        'configured properly.')
 
 
 def _autodetect_num_gpus():
@@ -324,7 +324,7 @@ def _autodetect_num_gpus():
     Returns:
         The number of GPUs if any were detected, otherwise 0.
     """
-    proc_gpus_path = "/proc/driver/nvidia/gpus"
+    proc_gpus_path = '/proc/driver/nvidia/gpus'
     if os.path.isdir(proc_gpus_path):
         return len(os.listdir(proc_gpus_path))
     return 0
@@ -337,7 +337,7 @@ def _compute_version_info():
         A tuple containing the version information.
     """
     ray_version = ray.__version__
-    python_version = ".".join(map(str, sys.version_info[:3]))
+    python_version = '.'.join(map(str, sys.version_info[:3]))
     pyarrow_version = pyarrow.__version__
     return (ray_version, python_version, pyarrow_version)
 
@@ -351,7 +351,7 @@ def _put_version_info_in_redis(redis_client):
     Args:
         redis_client: A client for the primary Redis shard.
     """
-    redis_client.set("VERSION_INFO", json.dumps(_compute_version_info()))
+    redis_client.set('VERSION_INFO', json.dumps(_compute_version_info()))
 
 
 def check_version_info(redis_client):
@@ -367,26 +367,26 @@ def check_version_info(redis_client):
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
-    redis_reply = redis_client.get("VERSION_INFO")
+    redis_reply = redis_client.get('VERSION_INFO')
 
     # Don't do the check if there is no version information in Redis. This
     # is to make it easier to do things like start the processes by hand.
     if redis_reply is None:
         return
 
-    true_version_info = tuple(json.loads(redis_reply.decode("ascii")))
+    true_version_info = tuple(json.loads(redis_reply.decode('ascii')))
     version_info = _compute_version_info()
     if version_info != true_version_info:
         node_ip_address = ray.services.get_node_ip_address()
-        error_message = ("Version mismatch: The cluster was started with:\n"
-                         "    Ray: " + true_version_info[0] + "\n"
-                         "    Python: " + true_version_info[1] + "\n"
-                         "    Pyarrow: " + str(true_version_info[2]) + "\n"
-                         "This process on node " + node_ip_address +
-                         " was started with:" + "\n"
-                         "    Ray: " + version_info[0] + "\n"
-                         "    Python: " + version_info[1] + "\n"
-                         "    Pyarrow: " + str(version_info[2]))
+        error_message = ('Version mismatch: The cluster was started with:\n'
+                         '    Ray: ' + true_version_info[0] + '\n'
+                         '    Python: ' + true_version_info[1] + '\n'
+                         '    Pyarrow: ' + str(true_version_info[2]) + '\n'
+                         'This process on node ' + node_ip_address +
+                         ' was started with:' + '\n'
+                         '    Ray: ' + version_info[0] + '\n'
+                         '    Python: ' + version_info[1] + '\n'
+                         '    Pyarrow: ' + str(version_info[2]))
         if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
@@ -422,7 +422,7 @@ def start_credis(node_ip_address,
         The address (ip_address:port) of the credis master process.
     """
 
-    components = ["credis_master", "credis_head", "credis_tail"]
+    components = ['credis_master', 'credis_head', 'credis_tail']
     modules = [
         CREDIS_MASTER_MODULE, CREDIS_MEMBER_MODULE, CREDIS_MEMBER_MODULE
     ]
@@ -447,15 +447,15 @@ def start_credis(node_ip_address,
     # Connect the members to the master
 
     master_client = redis.StrictRedis(host=node_ip_address, port=master_port)
-    master_client.execute_command("MASTER.ADD", node_ip_address, head_port)
-    master_client.execute_command("MASTER.ADD", node_ip_address, tail_port)
+    master_client.execute_command('MASTER.ADD', node_ip_address, head_port)
+    master_client.execute_command('MASTER.ADD', node_ip_address, tail_port)
 
     credis_address = address(node_ip_address, master_port)
 
     # Register credis master in redis
-    redis_ip_address, redis_port = redis_address.split(":")
+    redis_ip_address, redis_port = redis_address.split(':')
     redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
-    redis_client.set("credis_address", credis_address)
+    redis_client.set('credis_address', credis_address)
 
     return credis_address
 
@@ -497,13 +497,13 @@ def start_redis(node_ip_address,
             addresses for the remaining shards.
     """
     redis_stdout_file, redis_stderr_file = new_log_files(
-        "redis", redirect_output)
+        'redis', redirect_output)
 
     if redis_shard_ports is None:
         redis_shard_ports = num_redis_shards * [None]
     elif len(redis_shard_ports) != num_redis_shards:
-        raise Exception("The number of Redis shard ports does not match the "
-                        "number of Redis shards.")
+        raise Exception('The number of Redis shard ports does not match the '
+                        'number of Redis shards.')
 
     assigned_port, _ = start_redis_instance(
         node_ip_address=node_ip_address,
@@ -520,11 +520,11 @@ def start_redis(node_ip_address,
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
     redis_client = redis.StrictRedis(host=node_ip_address, port=port)
-    redis_client.set("NumRedisShards", str(num_redis_shards))
+    redis_client.set('NumRedisShards', str(num_redis_shards))
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
     # can access it and know whether or not to redirect their output.
-    redis_client.set("RedirectOutput", 1 if redirect_worker_output else 0)
+    redis_client.set('RedirectOutput', 1 if redirect_worker_output else 0)
 
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(redis_client)
@@ -534,7 +534,7 @@ def start_redis(node_ip_address,
     redis_shards = []
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = new_log_files(
-            "redis-{}".format(i), redirect_output)
+            'redis-{}'.format(i), redirect_output)
         redis_shard_port, _ = start_redis_instance(
             node_ip_address=node_ip_address,
             port=redis_shard_ports[i],
@@ -547,12 +547,12 @@ def start_redis(node_ip_address,
         shard_address = address(node_ip_address, redis_shard_port)
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
-        redis_client.rpush("RedisShards", shard_address)
+        redis_client.rpush('RedisShards', shard_address)
 
     return redis_address, redis_shards
 
 
-def start_redis_instance(node_ip_address="127.0.0.1",
+def start_redis_instance(node_ip_address='127.0.0.1',
                          port=None,
                          redis_max_clients=None,
                          num_retries=20,
@@ -600,11 +600,11 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         port = new_port()
     while counter < num_retries:
         if counter > 0:
-            print("Redis failed to start, retrying now.")
+            print('Redis failed to start, retrying now.')
         p = subprocess.Popen(
             [
-                executable, "--port",
-                str(port), "--loglevel", "warning", "--loadmodule", module
+                executable, '--port',
+                str(port), '--loglevel', 'warning', '--loadmodule', module
             ],
             stdout=stdout_file,
             stderr=stderr_file)
@@ -621,25 +621,25 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         raise Exception("Couldn't start Redis.")
 
     # Create a Redis client just for configuring Redis.
-    redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
+    redis_client = redis.StrictRedis(host='127.0.0.1', port=port)
     # Wait for the Redis server to start.
-    wait_for_redis_to_start("127.0.0.1", port)
+    wait_for_redis_to_start('127.0.0.1', port)
     # Configure Redis to generate keyspace notifications. TODO(rkn): Change
     # this to only generate notifications for the export keys.
-    redis_client.config_set("notify-keyspace-events", "Kl")
+    redis_client.config_set('notify-keyspace-events', 'Kl')
     # Configure Redis to not run in protected mode so that processes on other
     # hosts can connect to it. TODO(rkn): Do this in a more secure way.
-    redis_client.config_set("protected-mode", "no")
+    redis_client.config_set('protected-mode', 'no')
     # If redis_max_clients is provided, attempt to raise the number of maximum
     # number of Redis clients.
     if redis_max_clients is not None:
-        redis_client.config_set("maxclients", str(redis_max_clients))
+        redis_client.config_set('maxclients', str(redis_max_clients))
     else:
         # If redis_max_clients is not provided, determine the current ulimit.
         # We will use this to attempt to raise the maximum number of Redis
         # clients.
         current_max_clients = int(
-            redis_client.config_get("maxclients")["maxclients"])
+            redis_client.config_get('maxclients')['maxclients'])
         # The below command should be the same as doing ulimit -n.
         ulimit_n = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
         # The quantity redis_client_buffer appears to be the required buffer
@@ -648,21 +648,21 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         # 10000 - redis_client_buffer.
         redis_client_buffer = 32
         if current_max_clients < ulimit_n - redis_client_buffer:
-            redis_client.config_set("maxclients",
+            redis_client.config_set('maxclients',
                                     ulimit_n - redis_client_buffer)
 
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
-    cur_config = (redis_client.config_get("client-output-buffer-limit")[
-        "client-output-buffer-limit"])
+    cur_config = (redis_client.config_get('client-output-buffer-limit')[
+        'client-output-buffer-limit'])
     cur_config_list = cur_config.split()
     assert len(cur_config_list) == 12
-    cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
-    redis_client.config_set("client-output-buffer-limit",
-                            " ".join(cur_config_list))
+    cur_config_list[8:] = ['pubsub', '134217728', '134217728', '60']
+    redis_client.config_set('client-output-buffer-limit',
+                            ' '.join(cur_config_list))
     # Put a time stamp in Redis to indicate when it was started.
-    redis_client.set("redis_start_time", time.time())
+    redis_client.set('redis_start_time', time.time())
     # Record the log files in Redis.
     record_log_files_in_redis(
         address(node_ip_address, port), node_ip_address,
@@ -690,11 +690,11 @@ def start_log_monitor(redis_address,
             Python process that imported services exits.
     """
     log_monitor_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "log_monitor.py")
+        os.path.dirname(os.path.abspath(__file__)), 'log_monitor.py')
     p = subprocess.Popen(
         [
-            sys.executable, "-u", log_monitor_filepath, "--redis-address",
-            redis_address, "--node-ip-address", node_ip_address
+            sys.executable, '-u', log_monitor_filepath, '--redis-address',
+            redis_address, '--node-ip-address', node_ip_address
         ],
         stdout=stdout_file,
         stderr=stderr_file)
@@ -749,36 +749,36 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     """
     new_env = os.environ.copy()
     notebook_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "WebUI.ipynb")
+        os.path.dirname(os.path.abspath(__file__)), 'WebUI.ipynb')
     # We copy the notebook file so that the original doesn't get modified by
     # the user.
     random_ui_id = random.randint(0, 100000)
-    new_notebook_filepath = "/tmp/raylogs/ray_ui{}.ipynb".format(random_ui_id)
+    new_notebook_filepath = '/tmp/raylogs/ray_ui{}.ipynb'.format(random_ui_id)
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     port = 8888
     while True:
         try:
             port_test_socket = socket.socket()
-            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.bind(('127.0.0.1', port))
             port_test_socket.close()
             break
         except socket.error:
             port += 1
     new_env = os.environ.copy()
-    new_env["REDIS_ADDRESS"] = redis_address
+    new_env['REDIS_ADDRESS'] = redis_address
     # We generate the token used for authentication ourselves to avoid
     # querying the jupyter server.
-    token = binascii.hexlify(os.urandom(24)).decode("ascii")
+    token = binascii.hexlify(os.urandom(24)).decode('ascii')
     command = [
-        "jupyter", "notebook", "--no-browser", "--port={}".format(port),
-        "--NotebookApp.iopub_data_rate_limit=10000000000",
-        "--NotebookApp.open_browser=False",
-        "--NotebookApp.token={}".format(token)
+        'jupyter', 'notebook', '--no-browser', '--port={}'.format(port),
+        '--NotebookApp.iopub_data_rate_limit=10000000000',
+        '--NotebookApp.open_browser=False',
+        '--NotebookApp.token={}'.format(token)
     ]
     # If the user is root, add the --allow-root flag.
     if os.geteuid() == 0:
-        command.append("--allow-root")
+        command.append('--allow-root')
 
     try:
         ui_process = subprocess.Popen(
@@ -788,16 +788,16 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             stdout=stdout_file,
             stderr=stderr_file)
     except Exception:
-        print("Failed to start the UI, you may need to run "
+        print('Failed to start the UI, you may need to run '
               "'pip install jupyter'.")
     else:
         if cleanup:
             all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
-        webui_url = ("http://localhost:{}/notebooks/ray_ui{}.ipynb?token={}"
+        webui_url = ('http://localhost:{}/notebooks/ray_ui{}.ipynb?token={}'
                      .format(port, random_ui_id, token))
-        print("\n" + "=" * 70)
-        print("View the web UI at {}".format(webui_url))
-        print("=" * 70 + "\n")
+        print('\n' + '=' * 70)
+        print('View the web UI at {}'.format(webui_url))
+        print('=' * 70 + '\n')
         return webui_url
 
 
@@ -813,28 +813,28 @@ def check_and_update_resources(resources):
     if resources is None:
         resources = {}
     resources = resources.copy()
-    if "CPU" not in resources:
+    if 'CPU' not in resources:
         # By default, use the number of hardware execution threads for the
         # number of cores.
-        resources["CPU"] = psutil.cpu_count()
+        resources['CPU'] = psutil.cpu_count()
 
     # See if CUDA_VISIBLE_DEVICES has already been set.
     gpu_ids = ray.utils.get_cuda_visible_devices()
 
     # Check that the number of GPUs that the local scheduler wants doesn't
     # excede the amount allowed by CUDA_VISIBLE_DEVICES.
-    if ("GPU" in resources and gpu_ids is not None
-            and resources["GPU"] > len(gpu_ids)):
-        raise Exception("Attempting to start local scheduler with {} GPUs, "
-                        "but CUDA_VISIBLE_DEVICES contains {}.".format(
-                            resources["GPU"], gpu_ids))
+    if ('GPU' in resources and gpu_ids is not None
+            and resources['GPU'] > len(gpu_ids)):
+        raise Exception('Attempting to start local scheduler with {} GPUs, '
+                        'but CUDA_VISIBLE_DEVICES contains {}.'.format(
+                            resources['GPU'], gpu_ids))
 
-    if "GPU" not in resources:
+    if 'GPU' not in resources:
         # Try to automatically detect the number of GPUs.
-        resources["GPU"] = _autodetect_num_gpus()
+        resources['GPU'] = _autodetect_num_gpus()
         # Don't use more GPUs than allowed by CUDA_VISIBLE_DEVICES.
         if gpu_ids is not None:
-            resources["GPU"] = min(resources["GPU"], len(gpu_ids))
+            resources['GPU'] = min(resources['GPU'], len(gpu_ids))
 
     # Check types.
     for _, resource_quantity in resources.items():
@@ -884,7 +884,7 @@ def start_local_scheduler(redis_address,
     """
     resources = check_and_update_resources(resources)
 
-    print("Starting local scheduler with the following resources: {}."
+    print('Starting local scheduler with the following resources: {}.'
           .format(resources))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(
         plasma_store_name,
@@ -938,21 +938,21 @@ def start_raylet(redis_address,
     static_resources = check_and_update_resources(resources)
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
-    resource_argument = ",".join([
-        "{},{}".format(resource_name, resource_value)
+    resource_argument = ','.join([
+        '{},{}'.format(resource_name, resource_value)
         for resource_name, resource_value in zip(static_resources.keys(),
                                                  static_resources.values())
     ])
 
-    gcs_ip_address, gcs_port = redis_address.split(":")
-    raylet_name = "/tmp/raylet{}".format(random_name())
+    gcs_ip_address, gcs_port = redis_address.split(':')
+    raylet_name = '/tmp/raylet{}'.format(random_name())
 
     # Create the command that the Raylet will use to start workers.
-    start_worker_command = ("{} {} "
-                            "--node-ip-address={} "
-                            "--object-store-name={} "
-                            "--raylet-name={} "
-                            "--redis-address={}".format(
+    start_worker_command = ('{} {} '
+                            '--node-ip-address={} '
+                            '--object-store-name={} '
+                            '--raylet-name={} '
+                            '--redis-address={}'.format(
                                 sys.executable, worker_path, node_ip_address,
                                 plasma_store_name, raylet_name, redis_address))
 
@@ -1026,14 +1026,14 @@ def start_objstore(node_ip_address,
     if objstore_memory is None:
         # Compute a fraction of the system memory for the Plasma store to use.
         system_memory = psutil.virtual_memory().total
-        if sys.platform == "linux" or sys.platform == "linux2":
+        if sys.platform == 'linux' or sys.platform == 'linux2':
             # On linux we use /dev/shm, its size is half the size of the
             # physical memory. To not overflow it, we set the plasma memory
             # limit to 0.4 times the size of the physical memory.
             objstore_memory = int(system_memory * 0.4)
             # Compare the requested memory size to the memory available in
             # /dev/shm.
-            shm_fd = os.open("/dev/shm", os.O_RDONLY)
+            shm_fd = os.open('/dev/shm', os.O_RDONLY)
             try:
                 shm_fs_stats = os.fstatvfs(shm_fd)
                 # The value shm_fs_stats.f_bsize is the block size and the
@@ -1041,11 +1041,11 @@ def start_objstore(node_ip_address,
                 # blocks.
                 shm_avail = shm_fs_stats.f_bsize * shm_fs_stats.f_bavail
                 if objstore_memory > shm_avail:
-                    print("Warning: Reducing object store memory because "
-                          "/dev/shm has only {} bytes available. You may be "
-                          "able to free up space by deleting files in "
-                          "/dev/shm. If you are inside a Docker container, "
-                          "you may need to pass an argument with the flag "
+                    print('Warning: Reducing object store memory because '
+                          '/dev/shm has only {} bytes available. You may be '
+                          'able to free up space by deleting files in '
+                          '/dev/shm. If you are inside a Docker container, '
+                          'you may need to pass an argument with the flag '
                           "'--shm-size' to 'docker run'.".format(shm_avail))
                     objstore_memory = int(shm_avail * 0.8)
             finally:
@@ -1131,12 +1131,12 @@ def start_worker(node_ip_address,
             default.
     """
     command = [
-        sys.executable, "-u", worker_path,
-        "--node-ip-address=" + node_ip_address,
-        "--object-store-name=" + object_store_name,
-        "--object-store-manager-name=" + object_store_manager_name,
-        "--local-scheduler-name=" + local_scheduler_name,
-        "--redis-address=" + str(redis_address)
+        sys.executable, '-u', worker_path,
+        '--node-ip-address=' + node_ip_address,
+        '--object-store-name=' + object_store_name,
+        '--object-store-manager-name=' + object_store_manager_name,
+        '--local-scheduler-name=' + local_scheduler_name,
+        '--redis-address=' + str(redis_address)
     ]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
@@ -1168,13 +1168,13 @@ def start_monitor(redis_address,
         autoscaling_config: path to autoscaling config file.
     """
     monitor_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "monitor.py")
+        os.path.dirname(os.path.abspath(__file__)), 'monitor.py')
     command = [
-        sys.executable, "-u", monitor_path,
-        "--redis-address=" + str(redis_address)
+        sys.executable, '-u', monitor_path,
+        '--redis-address=' + str(redis_address)
     ]
     if autoscaling_config:
-        command.append("--autoscaling-config=" + str(autoscaling_config))
+        command.append('--autoscaling-config=' + str(autoscaling_config))
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_MONITOR].append(p)
@@ -1199,7 +1199,7 @@ def start_raylet_monitor(redis_address,
             Python process that imported services exits. This is True by
             default.
     """
-    gcs_ip_address, gcs_port = redis_address.split(":")
+    gcs_ip_address, gcs_port = redis_address.split(':')
     command = [RAYLET_MONITOR_EXECUTABLE, gcs_ip_address, gcs_port]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
@@ -1207,7 +1207,7 @@ def start_raylet_monitor(redis_address,
 
 
 def start_ray_processes(address_info=None,
-                        node_ip_address="127.0.0.1",
+                        node_ip_address='127.0.0.1',
                         redis_port=None,
                         redis_shard_ports=None,
                         num_workers=None,
@@ -1287,7 +1287,7 @@ def start_ray_processes(address_info=None,
         A dictionary of the address information for the processes that were
             started.
     """
-    print("Process STDOUT and STDERR is being redirected to /tmp/raylogs/.")
+    print('Process STDOUT and STDERR is being redirected to /tmp/raylogs/.')
 
     if resources is None:
         resources = {}
@@ -1299,25 +1299,25 @@ def start_ray_processes(address_info=None,
     else:
         workers_per_local_scheduler = []
         for resource_dict in resources:
-            cpus = resource_dict.get("CPU")
+            cpus = resource_dict.get('CPU')
             workers_per_local_scheduler.append(cpus if cpus is not None else
                                                psutil.cpu_count())
 
     if address_info is None:
         address_info = {}
-    address_info["node_ip_address"] = node_ip_address
+    address_info['node_ip_address'] = node_ip_address
 
     if worker_path is None:
         worker_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
-            "workers/default_worker.py")
+            'workers/default_worker.py')
 
     # Start Redis if there isn't already an instance running. TODO(rkn): We are
     # suppressing the output of Redis because on Linux it prints a bunch of
     # warning messages when it starts up. Instead of suppressing the output, we
     # should address the warnings.
-    redis_address = address_info.get("redis_address")
-    redis_shards = address_info.get("redis_shards", [])
+    redis_address = address_info.get('redis_address')
+    redis_shards = address_info.get('redis_shards', [])
     if redis_address is None:
         redis_address, redis_shards = start_redis(
             node_ip_address,
@@ -1328,16 +1328,16 @@ def start_ray_processes(address_info=None,
             redirect_output=True,
             redirect_worker_output=redirect_worker_output,
             cleanup=cleanup)
-        address_info["redis_address"] = redis_address
-        if "RAY_USE_NEW_GCS" in os.environ:
+        address_info['redis_address'] = redis_address
+        if 'RAY_USE_NEW_GCS' in os.environ:
             credis_address = start_credis(
                 node_ip_address, redis_address, cleanup=cleanup)
-            address_info["credis_address"] = credis_address
+            address_info['credis_address'] = credis_address
         time.sleep(0.1)
 
         # Start monitoring the processes.
         monitor_stdout_file, monitor_stderr_file = new_log_files(
-            "monitor", redirect_output)
+            'monitor', redirect_output)
         start_monitor(
             redis_address,
             node_ip_address,
@@ -1354,17 +1354,17 @@ def start_ray_processes(address_info=None,
 
     if redis_shards == []:
         # Get redis shards from primary redis instance.
-        redis_ip_address, redis_port = redis_address.split(":")
+        redis_ip_address, redis_port = redis_address.split(':')
         redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port)
-        redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
-        redis_shards = [shard.decode("ascii") for shard in redis_shards]
-        address_info["redis_shards"] = redis_shards
+        redis_shards = redis_client.lrange('RedisShards', start=0, end=-1)
+        redis_shards = [shard.decode('ascii') for shard in redis_shards]
+        address_info['redis_shards'] = redis_shards
 
     # Start the log monitor, if necessary.
     if include_log_monitor:
         log_monitor_stdout_file, log_monitor_stderr_file = new_log_files(
-            "log_monitor", redirect_output=True)
+            'log_monitor', redirect_output=True)
         start_log_monitor(
             redis_address,
             node_ip_address,
@@ -1375,7 +1375,7 @@ def start_ray_processes(address_info=None,
     # Start the global scheduler, if necessary.
     if include_global_scheduler and not use_raylet:
         global_scheduler_stdout_file, global_scheduler_stderr_file = (
-            new_log_files("global_scheduler", redirect_output))
+            new_log_files('global_scheduler', redirect_output))
         start_global_scheduler(
             redis_address,
             node_ip_address,
@@ -1384,19 +1384,19 @@ def start_ray_processes(address_info=None,
             cleanup=cleanup)
 
     # Initialize with existing services.
-    if "object_store_addresses" not in address_info:
-        address_info["object_store_addresses"] = []
-    object_store_addresses = address_info["object_store_addresses"]
-    if "local_scheduler_socket_names" not in address_info:
-        address_info["local_scheduler_socket_names"] = []
-    local_scheduler_socket_names = address_info["local_scheduler_socket_names"]
-    if "raylet_socket_names" not in address_info:
-        address_info["raylet_socket_names"] = []
-    raylet_socket_names = address_info["raylet_socket_names"]
+    if 'object_store_addresses' not in address_info:
+        address_info['object_store_addresses'] = []
+    object_store_addresses = address_info['object_store_addresses']
+    if 'local_scheduler_socket_names' not in address_info:
+        address_info['local_scheduler_socket_names'] = []
+    local_scheduler_socket_names = address_info['local_scheduler_socket_names']
+    if 'raylet_socket_names' not in address_info:
+        address_info['raylet_socket_names'] = []
+    raylet_socket_names = address_info['raylet_socket_names']
 
     # Get the ports to use for the object managers if any are provided.
-    object_manager_ports = (address_info["object_manager_ports"] if
-                            "object_manager_ports" in address_info else None)
+    object_manager_ports = (address_info['object_manager_ports'] if
+                            'object_manager_ports' in address_info else None)
     if not isinstance(object_manager_ports, list):
         object_manager_ports = num_local_schedulers * [object_manager_ports]
     assert len(object_manager_ports) == num_local_schedulers
@@ -1405,9 +1405,9 @@ def start_ray_processes(address_info=None,
     for i in range(num_local_schedulers - len(object_store_addresses)):
         # Start Plasma.
         plasma_store_stdout_file, plasma_store_stderr_file = new_log_files(
-            "plasma_store_{}".format(i), redirect_output)
+            'plasma_store_{}'.format(i), redirect_output)
         plasma_manager_stdout_file, plasma_manager_stderr_file = new_log_files(
-            "plasma_manager_{}".format(i), redirect_output)
+            'plasma_manager_{}'.format(i), redirect_output)
         object_store_address = start_objstore(
             node_ip_address,
             redis_address,
@@ -1431,7 +1431,7 @@ def start_ray_processes(address_info=None,
             # Connect the local scheduler to the object store at the same
             # index.
             object_store_address = object_store_addresses[i]
-            plasma_address = "{}:{}".format(node_ip_address,
+            plasma_address = '{}:{}'.format(node_ip_address,
                                             object_store_address.manager_port)
             # Determine how many workers this local scheduler should start.
             if start_workers_from_local_scheduler:
@@ -1446,7 +1446,7 @@ def start_ray_processes(address_info=None,
             # scheduler output.
             local_scheduler_stdout_file, local_scheduler_stderr_file = (
                 new_log_files(
-                    "local_scheduler_{}".format(i),
+                    'local_scheduler_{}'.format(i),
                     redirect_output=redirect_worker_output))
             local_scheduler_name = start_local_scheduler(
                 redis_address,
@@ -1471,8 +1471,8 @@ def start_ray_processes(address_info=None,
         # Start any raylets that do not exist yet.
         for i in range(len(raylet_socket_names), num_local_schedulers):
             raylet_stdout_file, raylet_stderr_file = new_log_files(
-                "raylet_{}".format(i), redirect_output=redirect_output)
-            address_info["raylet_socket_names"].append(
+                'raylet_{}'.format(i), redirect_output=redirect_output)
+            address_info['raylet_socket_names'].append(
                 start_raylet(
                     redis_address,
                     node_ip_address,
@@ -1492,7 +1492,7 @@ def start_ray_processes(address_info=None,
             local_scheduler_name = local_scheduler_socket_names[i]
             for j in range(num_local_scheduler_workers):
                 worker_stdout_file, worker_stderr_file = new_log_files(
-                    "worker_{}_{}".format(i, j), redirect_output)
+                    'worker_{}_{}'.format(i, j), redirect_output)
                 start_worker(
                     node_ip_address,
                     object_store_address.name,
@@ -1511,14 +1511,14 @@ def start_ray_processes(address_info=None,
     # Try to start the web UI.
     if include_webui:
         ui_stdout_file, ui_stderr_file = new_log_files(
-            "webui", redirect_output=True)
-        address_info["webui_url"] = start_ui(
+            'webui', redirect_output=True)
+        address_info['webui_url'] = start_ui(
             redis_address,
             stdout_file=ui_stdout_file,
             stderr_file=ui_stderr_file,
             cleanup=cleanup)
     else:
-        address_info["webui_url"] = ""
+        address_info['webui_url'] = ''
     # Return the addresses of the relevant processes.
     return address_info
 
@@ -1577,8 +1577,8 @@ def start_ray_node(node_ip_address,
             started.
     """
     address_info = {
-        "redis_address": redis_address,
-        "object_manager_ports": object_manager_ports
+        'redis_address': redis_address,
+        'object_manager_ports': object_manager_ports
     }
     return start_ray_processes(
         address_info=address_info,
@@ -1598,7 +1598,7 @@ def start_ray_node(node_ip_address,
 
 
 def start_ray_head(address_info=None,
-                   node_ip_address="127.0.0.1",
+                   node_ip_address='127.0.0.1',
                    redis_port=None,
                    redis_shard_ports=None,
                    num_workers=0,
@@ -1709,7 +1709,7 @@ def try_to_create_directory(directory_path):
             if e.errno != os.errno.EEXIST:
                 raise e
             print("Attempted to create '{}', but the directory already "
-                  "exists.".format(directory_path))
+                  'exists.'.format(directory_path))
         # Change the log directory permissions so others can use it. This is
         # important when multiple people are using the same machine.
         os.chmod(directory_path, 0o0777)
@@ -1734,16 +1734,16 @@ def new_log_files(name, redirect_output):
         return None, None
 
     # Create a directory to be used for process log files.
-    logs_dir = "/tmp/raylogs"
+    logs_dir = '/tmp/raylogs'
     try_to_create_directory(logs_dir)
     # Create another directory that will be used by some of the RL algorithms.
-    try_to_create_directory("/tmp/ray")
+    try_to_create_directory('/tmp/ray')
 
     log_id = random.randint(0, 10000)
-    date_str = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-    log_stdout = "{}/{}-{}-{:05d}.out".format(logs_dir, name, date_str, log_id)
-    log_stderr = "{}/{}-{}-{:05d}.err".format(logs_dir, name, date_str, log_id)
+    date_str = datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
+    log_stdout = '{}/{}-{}-{:05d}.out'.format(logs_dir, name, date_str, log_id)
+    log_stderr = '{}/{}-{}-{:05d}.err'.format(logs_dir, name, date_str, log_id)
     # Line-buffer the output (mode 1)
-    log_stdout_file = open(log_stdout, "a", buffering=1)
-    log_stderr_file = open(log_stderr, "a", buffering=1)
+    log_stdout_file = open(log_stdout, 'a', buffering=1)
+    log_stderr_file = open(log_stderr, 'a', buffering=1)
     return log_stdout_file, log_stderr_file

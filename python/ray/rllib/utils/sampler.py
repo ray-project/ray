@@ -20,7 +20,7 @@ class PartialRollout(object):
         last_r (float): Value of next state. Used for bootstrapping.
     """
 
-    fields = ["obs", "actions", "rewards", "new_obs", "dones", "features"]
+    fields = ['obs', 'actions', 'rewards', 'new_obs', 'dones', 'features']
 
     def __init__(self, extra_fields=None):
         """Initializers internals. Maintains a `last_r` field
@@ -54,7 +54,7 @@ class PartialRollout(object):
 
         Returns:
             terminal (bool): if rollout has terminated."""
-        return self.data["dones"][-1]
+        return self.data['dones'][-1]
 
     def __getitem__(self, key):
         return self.data[key]
@@ -78,8 +78,8 @@ class PartialRollout(object):
         return x in self.data
 
 
-CompletedRollout = namedtuple("CompletedRollout",
-                              ["episode_length", "episode_reward"])
+CompletedRollout = namedtuple('CompletedRollout',
+                              ['episode_length', 'episode_reward'])
 
 
 class SyncSampler(object):
@@ -130,8 +130,8 @@ class AsyncSampler(threading.Thread):
 
     def __init__(self, env, policy, obs_filter, num_local_steps, horizon=None):
         assert getattr(
-            obs_filter, "is_concurrent",
-            False), ("Observation Filter must support concurrent updates.")
+            obs_filter, 'is_concurrent',
+            False), ('Observation Filter must support concurrent updates.')
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()
@@ -171,7 +171,7 @@ class AsyncSampler(threading.Thread):
         Returns:
             rollout (PartialRollout): trajectory data (unprocessed)
         """
-        assert self.started, "Sampler never started running!"
+        assert self.started, 'Sampler never started running!'
         rollout = self.queue.get(timeout=600.0)
         if isinstance(rollout, BaseException):
             raise rollout
@@ -218,10 +218,10 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
     try:
         horizon = horizon if horizon else env.spec.max_episode_steps
     except Exception:
-        print("Warning, no horizon specified, assuming infinite")
+        print('Warning, no horizon specified, assuming infinite')
     if not horizon:
         horizon = 999999
-    if hasattr(policy, "get_initial_features"):
+    if hasattr(policy, 'get_initial_features'):
         last_features = policy.get_initial_features()
     else:
         last_features = []
@@ -237,8 +237,8 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
         for _ in range(num_local_steps):
             action, pi_info = policy.compute(last_observation, *last_features)
             if policy.is_recurrent:
-                features = pi_info["features"]
-                del pi_info["features"]
+                features = pi_info['features']
+                del pi_info['features']
             observation, reward, terminal, info = env.step(action)
             observation = obs_filter(observation)
 
@@ -269,9 +269,9 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                 yield CompletedRollout(length, rewards)
 
                 if (length >= horizon
-                        or not env.metadata.get("semantics.autoreset")):
+                        or not env.metadata.get('semantics.autoreset')):
                     last_observation = obs_filter(env.reset())
-                    if hasattr(policy, "get_initial_features"):
+                    if hasattr(policy, 'get_initial_features'):
                         last_features = policy.get_initial_features()
                     else:
                         last_features = []

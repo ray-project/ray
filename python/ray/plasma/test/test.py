@@ -44,22 +44,22 @@ def assert_get_object_equal(unit_test,
     unit_test.assertEqual(len(client1_metadata), len(client2_metadata))
     # Check that the buffers from the two clients are the same.
     assert_equal(
-        np.frombuffer(client1_buff, dtype="uint8"),
-        np.frombuffer(client2_buff, dtype="uint8"))
+        np.frombuffer(client1_buff, dtype='uint8'),
+        np.frombuffer(client2_buff, dtype='uint8'))
     # Check that the metadata buffers from the two clients are the same.
     assert_equal(
-        np.frombuffer(client1_metadata, dtype="uint8"),
-        np.frombuffer(client2_metadata, dtype="uint8"))
+        np.frombuffer(client1_metadata, dtype='uint8'),
+        np.frombuffer(client2_metadata, dtype='uint8'))
     # If a reference buffer was provided, check that it is the same as well.
     if memory_buffer is not None:
         assert_equal(
-            np.frombuffer(memory_buffer, dtype="uint8"),
-            np.frombuffer(client1_buff, dtype="uint8"))
+            np.frombuffer(memory_buffer, dtype='uint8'),
+            np.frombuffer(client1_buff, dtype='uint8'))
     # If reference metadata was provided, check that it is the same as well.
     if metadata is not None:
         assert_equal(
-            np.frombuffer(metadata, dtype="uint8"),
-            np.frombuffer(client1_metadata, dtype="uint8"))
+            np.frombuffer(metadata, dtype='uint8'),
+            np.frombuffer(client1_metadata, dtype='uint8'))
 
 
 DEFAULT_PLASMA_STORE_MEMORY = 10**9
@@ -85,26 +85,26 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
             the plasma store process.
     """
     if use_valgrind and use_profiler:
-        raise Exception("Cannot use valgrind and profiler at the same time.")
-    plasma_store_executable = os.path.join(pa.__path__[0], "plasma_store")
-    plasma_store_name = "/tmp/plasma_store{}".format(random_name())
+        raise Exception('Cannot use valgrind and profiler at the same time.')
+    plasma_store_executable = os.path.join(pa.__path__[0], 'plasma_store')
+    plasma_store_name = '/tmp/plasma_store{}'.format(random_name())
     command = [
-        plasma_store_executable, "-s", plasma_store_name, "-m",
+        plasma_store_executable, '-s', plasma_store_name, '-m',
         str(plasma_store_memory)
     ]
     if use_valgrind:
         pid = subprocess.Popen(
             [
-                "valgrind", "--track-origins=yes", "--leak-check=full",
-                "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
-                "--error-exitcode=1"
+                'valgrind', '--track-origins=yes', '--leak-check=full',
+                '--show-leak-kinds=all', '--leak-check-heuristics=stdstring',
+                '--error-exitcode=1'
             ] + command,
             stdout=stdout_file,
             stderr=stderr_file)
         time.sleep(1.0)
     elif use_profiler:
         pid = subprocess.Popen(
-            ["valgrind", "--tool=callgrind"] + command,
+            ['valgrind', '--tool=callgrind'] + command,
             stdout=stdout_file,
             stderr=stderr_file)
         time.sleep(1.0)
@@ -123,7 +123,7 @@ class TestPlasmaManager(unittest.TestCase):
         store_name1, self.p2 = start_plasma_store(use_valgrind=USE_VALGRIND)
         store_name2, self.p3 = start_plasma_store(use_valgrind=USE_VALGRIND)
         # Start a Redis server.
-        redis_address, _ = services.start_redis("127.0.0.1")
+        redis_address, _ = services.start_redis('127.0.0.1')
         # Start two PlasmaManagers.
         manager_name1, self.p4, self.port1 = ray.plasma.start_plasma_manager(
             store_name1, redis_address, use_valgrind=USE_VALGRIND)
@@ -151,7 +151,7 @@ class TestPlasmaManager(unittest.TestCase):
                 process.send_signal(signal.SIGTERM)
                 process.wait()
                 if process.returncode != 0:
-                    print("aborting due to valgrind error")
+                    print('aborting due to valgrind error')
                     os._exit(-1)
         else:
             for process in self.processes_to_kill:
@@ -401,7 +401,7 @@ class TestPlasmaManager(unittest.TestCase):
             # race condition on the create and transfer of the object, so keep
             # trying until the object appears on the second Plasma store.
             for i in range(num_attempts):
-                self.client1.transfer("127.0.0.1", self.port2, object_id1)
+                self.client1.transfer('127.0.0.1', self.port2, object_id1)
                 buff = self.client2.get_buffers(
                     [object_id1], timeout_ms=100)[0]
                 if buff is not None:
@@ -432,7 +432,7 @@ class TestPlasmaManager(unittest.TestCase):
             # race condition on the create and transfer of the object, so keep
             # trying until the object appears on the second Plasma store.
             for i in range(num_attempts):
-                self.client2.transfer("127.0.0.1", self.port1, object_id2)
+                self.client2.transfer('127.0.0.1', self.port1, object_id2)
                 buff = self.client1.get_buffers(
                     [object_id2], timeout_ms=100)[0]
                 if buff is not None:
@@ -469,10 +469,10 @@ class TestPlasmaManager(unittest.TestCase):
             self.client1.create(object_id, 1)
             self.client1.seal(object_id)
         for object_id in object_ids:
-            self.client1.transfer("127.0.0.1", self.port2, object_id)
+            self.client1.transfer('127.0.0.1', self.port2, object_id)
         b = time.time() - a
 
-        print("it took", b, "seconds to put and transfer the objects")
+        print('it took', b, 'seconds to put and transfer the objects')
 
 
 class TestPlasmaManagerRecovery(unittest.TestCase):
@@ -481,7 +481,7 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
         self.store_name, self.p2 = start_plasma_store(
             use_valgrind=USE_VALGRIND)
         # Start a Redis server.
-        self.redis_address, _ = services.start_redis("127.0.0.1")
+        self.redis_address, _ = services.start_redis('127.0.0.1')
         # Start a PlasmaManagers.
         manager_name, self.p3, self.port1 = ray.plasma.start_plasma_manager(
             self.store_name, self.redis_address, use_valgrind=USE_VALGRIND)
@@ -507,7 +507,7 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
                 process.send_signal(signal.SIGTERM)
                 process.wait()
                 if process.returncode != 0:
-                    print("aborting due to valgrind error")
+                    print('aborting due to valgrind error')
                     os._exit(-1)
         else:
             for process in self.processes_to_kill:
@@ -546,12 +546,12 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
         self.assertEqual(waiting, [])
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     if len(sys.argv) > 1:
         # Pop the argument so we don't mess with unittest's own argument
         # parser.
-        if sys.argv[-1] == "valgrind":
+        if sys.argv[-1] == 'valgrind':
             arg = sys.argv.pop()
             USE_VALGRIND = True
-            print("Using valgrind for tests")
+            print('Using valgrind for tests')
     unittest.main(verbosity=2)

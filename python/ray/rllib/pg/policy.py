@@ -16,9 +16,9 @@ class PGPolicy():
     def __init__(self, registry, ob_space, ac_space, config):
         self.config = config
         self.registry = registry
-        with tf.variable_scope("local"):
+        with tf.variable_scope('local'):
             self._setup_graph(ob_space, ac_space)
-        print("Setting up loss")
+        print('Setting up loss')
         self._setup_loss(ac_space)
         self._setup_gradients()
         self.initialize()
@@ -28,7 +28,7 @@ class PGPolicy():
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self.model = ModelCatalog.get_model(
                         self.registry, self.x, self.logit_dim,
-                        options=self.config["model"])
+                        options=self.config['model'])
         self.action_logits = self.model.outputs  # logit for each action
         self.dist = dist_class(self.action_logits)
         self.sample = self.dist.sample()
@@ -37,7 +37,7 @@ class PGPolicy():
 
     def _setup_loss(self, action_space):
         self.ac = ModelCatalog.get_action_placeholder(action_space)
-        self.adv = tf.placeholder(tf.float32, [None], name="adv")
+        self.adv = tf.placeholder(tf.float32, [None], name='adv')
 
         log_prob = self.dist.logp(self.ac)
 
@@ -47,7 +47,7 @@ class PGPolicy():
     def _setup_gradients(self):
         self.grads = tf.gradients(self.loss, self.var_list)
         grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = tf.train.AdamOptimizer(self.config["lr"])
+        opt = tf.train.AdamOptimizer(self.config['lr'])
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
     def initialize(self):
@@ -59,9 +59,9 @@ class PGPolicy():
     def compute_gradients(self, samples):
         info = {}
         feed_dict = {
-            self.x: samples["obs"],
-            self.ac: samples["actions"],
-            self.adv: samples["advantages"],
+            self.x: samples['obs'],
+            self.ac: samples['actions'],
+            self.adv: samples['advantages'],
         }
         self.grads = [g for g in self.grads if g is not None]
         grad = self.sess.run(self.grads, feed_dict=feed_dict)

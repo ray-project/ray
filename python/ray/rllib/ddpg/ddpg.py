@@ -15,9 +15,9 @@ from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
 OPTIMIZER_SHARED_CONFIGS = [
-    "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps", "sample_batch_size",
-    "train_batch_size", "learning_starts", "clip_rewards"
+    'buffer_size', 'prioritized_replay', 'prioritized_replay_alpha',
+    'prioritized_replay_beta', 'prioritized_replay_eps', 'sample_batch_size',
+    'train_batch_size', 'learning_starts', 'clip_rewards'
 ]
 
 DEFAULT_CONFIG = {
@@ -103,16 +103,16 @@ DEFAULT_CONFIG = {
     # === Tensorflow ===
     # Arguments to pass to tensorflow
     'tf_session_args': {
-        "device_count": {
-            "CPU": 2
+        'device_count': {
+            'CPU': 2
         },
-        "log_device_placement": False,
-        "allow_soft_placement": True,
-        "gpu_options": {
-            "allow_growth": True
+        'log_device_placement': False,
+        'allow_soft_placement': True,
+        'gpu_options': {
+            'allow_growth': True
         },
-        "inter_op_parallelism_threads": 1,
-        "intra_op_parallelism_threads": 1,
+        'inter_op_parallelism_threads': 1,
+        'intra_op_parallelism_threads': 1,
     },
 
     # === Parallelism ===
@@ -123,7 +123,7 @@ DEFAULT_CONFIG = {
     # Whether to allocate GPUs for workers (if > 0).
     'num_gpus_per_worker': 0,
     # Optimizer class to use.
-    'optimizer_class': "LocalSyncReplayOptimizer",
+    'optimizer_class': 'LocalSyncReplayOptimizer',
     # Config to pass to the optimizer.
     'optimizer_config': {},
     # Whether to use a distribution of epsilons across workers for exploration.
@@ -134,9 +134,9 @@ DEFAULT_CONFIG = {
 
 
 class DDPGAgent(Agent):
-    _agent_name = "DDPG"
+    _agent_name = 'DDPG'
     _allow_unknown_subkeys = [
-        "model", "optimizer", "tf_session_args", "env_config"
+        'model', 'optimizer', 'tf_session_args', 'env_config'
     ]
     _default_config = DEFAULT_CONFIG
 
@@ -145,19 +145,19 @@ class DDPGAgent(Agent):
                                              self.config, self.logdir, 0)
         remote_cls = ray.remote(
             num_cpus=1,
-            num_gpus=self.config["num_gpus_per_worker"])(DDPGEvaluator)
+            num_gpus=self.config['num_gpus_per_worker'])(DDPGEvaluator)
         self.remote_evaluators = [
             remote_cls.remote(self.registry, self.env_creator, self.config,
                               self.logdir, i)
-            for i in range(self.config["num_workers"])
+            for i in range(self.config['num_workers'])
         ]
 
         for k in OPTIMIZER_SHARED_CONFIGS:
-            if k not in self.config["optimizer_config"]:
-                self.config["optimizer_config"][k] = self.config[k]
+            if k not in self.config['optimizer_config']:
+                self.config['optimizer_config'][k] = self.config[k]
 
-        self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
-            self.config["optimizer_config"], self.local_evaluator,
+        self.optimizer = getattr(optimizers, self.config['optimizer_class'])(
+            self.config['optimizer_config'], self.local_evaluator,
             self.remote_evaluators)
 
         self.saver = tf.train.Saver(max_to_keep=None)
@@ -170,7 +170,7 @@ class DDPGAgent(Agent):
 
     def update_target_if_needed(self):
         if self.global_timestep - self.last_target_update_ts > \
-                self.config["target_network_update_freq"]:
+                self.config['target_network_update_freq']:
             self.local_evaluator.update_target()
             self.last_target_update_ts = self.global_timestep
             self.num_target_updates += 1
@@ -179,7 +179,7 @@ class DDPGAgent(Agent):
         start_timestep = self.global_timestep
 
         while (self.global_timestep - start_timestep <
-               self.config["timesteps_per_iteration"]):
+               self.config['timesteps_per_iteration']):
 
             self.optimizer.step()
             self.update_target_if_needed()
@@ -203,19 +203,19 @@ class DDPGAgent(Agent):
         num_episodes = 0
         explorations = []
 
-        if self.config["per_worker_exploration"]:
+        if self.config['per_worker_exploration']:
             # Return stats from workers with the lowest 20% of exploration
             test_stats = stats[-int(max(1, len(stats) * 0.2)):]
         else:
             test_stats = stats
 
         for s in test_stats:
-            mean_100ep_reward += s["mean_100ep_reward"] / len(test_stats)
-            mean_100ep_length += s["mean_100ep_length"] / len(test_stats)
+            mean_100ep_reward += s['mean_100ep_reward'] / len(test_stats)
+            mean_100ep_length += s['mean_100ep_length'] / len(test_stats)
 
         for s in stats:
-            num_episodes += s["num_episodes"]
-            explorations.append(s["exploration"])
+            num_episodes += s['num_episodes']
+            explorations.append(s['exploration'])
 
         opt_stats = self.optimizer.stats()
 
@@ -225,9 +225,9 @@ class DDPGAgent(Agent):
             episodes_total=num_episodes,
             timesteps_this_iter=self.global_timestep - start_timestep,
             info=dict({
-                "min_exploration": min(explorations),
-                "max_exploration": max(explorations),
-                "num_target_updates": self.num_target_updates,
+                'min_exploration': min(explorations),
+                'max_exploration': max(explorations),
+                'num_target_updates': self.num_target_updates,
             }, **opt_stats))
 
         return result
@@ -240,7 +240,7 @@ class DDPGAgent(Agent):
     def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(
             self.local_evaluator.sess,
-            os.path.join(checkpoint_dir, "checkpoint"),
+            os.path.join(checkpoint_dir, 'checkpoint'),
             global_step=self.iteration)
         extra_data = [
             self.local_evaluator.save(),
@@ -248,12 +248,12 @@ class DDPGAgent(Agent):
             self.optimizer.save(), self.num_target_updates,
             self.last_target_update_ts
         ]
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+        pickle.dump(extra_data, open(checkpoint_path + '.extra_data', 'wb'))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
         self.saver.restore(self.local_evaluator.sess, checkpoint_path)
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        extra_data = pickle.load(open(checkpoint_path + '.extra_data', 'rb'))
         self.local_evaluator.restore(extra_data[0])
         ray.get([
             e.restore.remote(d)

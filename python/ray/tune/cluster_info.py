@@ -17,7 +17,7 @@ def get_ssh_user():
 def get_ssh_key():
     """Returns ssh key to connecting to cluster workers."""
 
-    path = os.path.expanduser("~/ray_bootstrap_key.pem")
+    path = os.path.expanduser('~/ray_bootstrap_key.pem')
     if os.path.exists(path):
         return path
     return None

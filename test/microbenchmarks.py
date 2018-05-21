@@ -32,11 +32,11 @@ class MicroBenchmarkTest(unittest.TestCase):
             elapsed_times.append(end_time - start_time)
         elapsed_times = np.sort(elapsed_times)
         average_elapsed_time = sum(elapsed_times) / 1000
-        print("Time required to submit an empty function call:")
-        print("    Average: {}".format(average_elapsed_time))
-        print("    90th percentile: {}".format(elapsed_times[900]))
-        print("    99th percentile: {}".format(elapsed_times[990]))
-        print("    worst:           {}".format(elapsed_times[999]))
+        print('Time required to submit an empty function call:')
+        print('    Average: {}'.format(average_elapsed_time))
+        print('    90th percentile: {}'.format(elapsed_times[900]))
+        print('    99th percentile: {}'.format(elapsed_times[990]))
+        print('    worst:           {}'.format(elapsed_times[999]))
         # average_elapsed_time should be about 0.00038.
 
         # Measure the time required to submit a remote task to the scheduler
@@ -49,11 +49,11 @@ class MicroBenchmarkTest(unittest.TestCase):
             elapsed_times.append(end_time - start_time)
         elapsed_times = np.sort(elapsed_times)
         average_elapsed_time = sum(elapsed_times) / 1000
-        print("Time required to submit a trivial function call:")
-        print("    Average: {}".format(average_elapsed_time))
-        print("    90th percentile: {}".format(elapsed_times[900]))
-        print("    99th percentile: {}".format(elapsed_times[990]))
-        print("    worst:           {}".format(elapsed_times[999]))
+        print('Time required to submit a trivial function call:')
+        print('    Average: {}'.format(average_elapsed_time))
+        print('    90th percentile: {}'.format(elapsed_times[900]))
+        print('    99th percentile: {}'.format(elapsed_times[990]))
+        print('    worst:           {}'.format(elapsed_times[999]))
         # average_elapsed_time should be about 0.001.
 
         # Measure the time required to submit a remote task to the scheduler
@@ -67,12 +67,12 @@ class MicroBenchmarkTest(unittest.TestCase):
             elapsed_times.append(end_time - start_time)
         elapsed_times = np.sort(elapsed_times)
         average_elapsed_time = sum(elapsed_times) / 1000
-        print("Time required to submit a trivial function call and get the "
-              "result:")
-        print("    Average: {}".format(average_elapsed_time))
-        print("    90th percentile: {}".format(elapsed_times[900]))
-        print("    99th percentile: {}".format(elapsed_times[990]))
-        print("    worst:           {}".format(elapsed_times[999]))
+        print('Time required to submit a trivial function call and get the '
+              'result:')
+        print('    Average: {}'.format(average_elapsed_time))
+        print('    90th percentile: {}'.format(elapsed_times[900]))
+        print('    99th percentile: {}'.format(elapsed_times[990]))
+        print('    worst:           {}'.format(elapsed_times[999]))
         # average_elapsed_time should be about 0.0013.
 
         # Measure the time required to do do a put.
@@ -84,11 +84,11 @@ class MicroBenchmarkTest(unittest.TestCase):
             elapsed_times.append(end_time - start_time)
         elapsed_times = np.sort(elapsed_times)
         average_elapsed_time = sum(elapsed_times) / 1000
-        print("Time required to put an int:")
-        print("    Average: {}".format(average_elapsed_time))
-        print("    90th percentile: {}".format(elapsed_times[900]))
-        print("    99th percentile: {}".format(elapsed_times[990]))
-        print("    worst:           {}".format(elapsed_times[999]))
+        print('Time required to put an int:')
+        print('    Average: {}'.format(average_elapsed_time))
+        print('    90th percentile: {}'.format(elapsed_times[900]))
+        print('    99th percentile: {}'.format(elapsed_times[990]))
+        print('    worst:           {}'.format(elapsed_times[999]))
         # average_elapsed_time should be about 0.00087.
 
     def testCache(self):
@@ -108,13 +108,13 @@ class MicroBenchmarkTest(unittest.TestCase):
         d = time.time() - c
 
         if d > 1.5 * b:
-            if os.getenv("TRAVIS") is None:
-                raise Exception("The caching test was too slow. "
-                                "d = {}, b = {}".format(d, b))
+            if os.getenv('TRAVIS') is None:
+                raise Exception('The caching test was too slow. '
+                                'd = {}, b = {}'.format(d, b))
             else:
-                print("WARNING: The caching test was too slow. "
-                      "d = {}, b = {}".format(d, b))
+                print('WARNING: The caching test was too slow. '
+                      'd = {}, b = {}'.format(d, b))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main(verbosity=2)

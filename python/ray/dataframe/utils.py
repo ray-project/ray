@@ -254,7 +254,7 @@ def _build_coord_df(lengths, index):
     coords = np.vstack([np.column_stack((np.full(l, i), np.arange(l)))
                         for i, l in enumerate(lengths)])
 
-    col_names = ("partition", "index_within_partition")
+    col_names = ('partition', 'index_within_partition')
     return pd.DataFrame(coords, index=index, columns=col_names)
 
 

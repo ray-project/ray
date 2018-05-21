@@ -27,28 +27,28 @@ from ray.worker import NIL_ACTOR_ID
 # These variables must be kept in sync with the C codebase.
 # common/common.h
 DB_CLIENT_ID_SIZE = 20
-NIL_ID = b"\xff" * DB_CLIENT_ID_SIZE
+NIL_ID = b'\xff' * DB_CLIENT_ID_SIZE
 
 # common/task.h
 TASK_STATUS_LOST = 32
 
 # common/state/redis.cc
-LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
-PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
-DRIVER_DEATH_CHANNEL = b"driver_deaths"
+LOCAL_SCHEDULER_INFO_CHANNEL = b'local_schedulers'
+PLASMA_MANAGER_HEARTBEAT_CHANNEL = b'plasma_managers'
+DRIVER_DEATH_CHANNEL = b'driver_deaths'
 
 # common/redis_module/ray_redis_module.cc
-OBJECT_INFO_PREFIX = b"OI:"
-OBJECT_LOCATION_PREFIX = b"OL:"
-TASK_TABLE_PREFIX = b"TT:"
-DB_CLIENT_PREFIX = b"CL:"
-DB_CLIENT_TABLE_NAME = b"db_clients"
+OBJECT_INFO_PREFIX = b'OI:'
+OBJECT_LOCATION_PREFIX = b'OL:'
+TASK_TABLE_PREFIX = b'TT:'
+DB_CLIENT_PREFIX = b'CL:'
+DB_CLIENT_TABLE_NAME = b'db_clients'
 
 # local_scheduler/local_scheduler.h
-LOCAL_SCHEDULER_CLIENT_TYPE = b"local_scheduler"
+LOCAL_SCHEDULER_CLIENT_TYPE = b'local_scheduler'
 
 # plasma/plasma_manager.cc
-PLASMA_MANAGER_CLIENT_TYPE = b"plasma_manager"
+PLASMA_MANAGER_CLIENT_TYPE = b'plasma_manager'
 
 # Set up logging.
 logging.basicConfig()
@@ -128,7 +128,7 @@ class Monitor(object):
         num_tasks_updated = 0
         for task_id, task in tasks.items():
             # See if the corresponding local scheduler is alive.
-            if task["LocalSchedulerID"] not in self.dead_local_schedulers:
+            if task['LocalSchedulerID'] not in self.dead_local_schedulers:
                 continue
 
             # Remove dummy objects returned by actor tasks from any plasma
@@ -137,10 +137,10 @@ class Monitor(object):
             # local scheduler connected to a different store.
             # TODO(swang): Actually remove the objects from the object store,
             # so that the reconstructed actor can reuse the same object store.
-            if hex_to_binary(task["TaskSpec"]["ActorID"]) != NIL_ACTOR_ID:
-                dummy_object_id = task["TaskSpec"]["ReturnObjectIDs"][-1]
+            if hex_to_binary(task['TaskSpec']['ActorID']) != NIL_ACTOR_ID:
+                dummy_object_id = task['TaskSpec']['ReturnObjectIDs'][-1]
                 obj = self.state.object_table(dummy_object_id)
-                manager_ids = obj["ManagerIDs"]
+                manager_ids = obj['ManagerIDs']
                 if manager_ids is not None:
                     # The dummy object should exist on at most one plasma
                     # manager, the manager associated with the local scheduler
@@ -150,25 +150,25 @@ class Monitor(object):
                     # associated with the dead local scheduler, if any.
                     for manager in manager_ids:
                         ok = self.state._execute_command(
-                            dummy_object_id, "RAY.OBJECT_TABLE_REMOVE",
+                            dummy_object_id, 'RAY.OBJECT_TABLE_REMOVE',
                             dummy_object_id.id(), hex_to_binary(manager))
-                        if ok != b"OK":
-                            log.warn("Failed to remove object location for "
-                                     "dead plasma manager.")
+                        if ok != b'OK':
+                            log.warn('Failed to remove object location for '
+                                     'dead plasma manager.')
 
             # If the task is scheduled on a dead local scheduler, mark the
             # task as lost.
             key = binary_to_object_id(hex_to_binary(task_id))
             ok = self.state._execute_command(
-                key, "RAY.TASK_TABLE_UPDATE", hex_to_binary(task_id),
+                key, 'RAY.TASK_TABLE_UPDATE', hex_to_binary(task_id),
                 ray.experimental.state.TASK_STATUS_LOST, NIL_ID,
-                task["ExecutionDependenciesString"], task["SpillbackCount"])
-            if ok != b"OK":
-                log.warn("Failed to update lost task for dead scheduler.")
+                task['ExecutionDependenciesString'], task['SpillbackCount'])
+            if ok != b'OK':
+                log.warn('Failed to update lost task for dead scheduler.')
             num_tasks_updated += 1
 
         if num_tasks_updated > 0:
-            log.warn("Marked {} tasks as lost.".format(num_tasks_updated))
+            log.warn('Marked {} tasks as lost.'.format(num_tasks_updated))
 
     def cleanup_object_table(self):
         """Clean up global state for failed plasma managers.
@@ -182,7 +182,7 @@ class Monitor(object):
         objects = self.state.object_table()
         num_objects_removed = 0
         for object_id, obj in objects.items():
-            manager_ids = obj["ManagerIDs"]
+            manager_ids = obj['ManagerIDs']
             if manager_ids is None:
                 continue
             for manager in manager_ids:
@@ -190,14 +190,14 @@ class Monitor(object):
                     # If the object was on a dead plasma manager, remove that
                     # location entry.
                     ok = self.state._execute_command(
-                        object_id, "RAY.OBJECT_TABLE_REMOVE", object_id.id(),
+                        object_id, 'RAY.OBJECT_TABLE_REMOVE', object_id.id(),
                         hex_to_binary(manager))
-                    if ok != b"OK":
-                        log.warn("Failed to remove object location for dead "
-                                 "plasma manager.")
+                    if ok != b'OK':
+                        log.warn('Failed to remove object location for dead '
+                                 'plasma manager.')
                     num_objects_removed += 1
         if num_objects_removed > 0:
-            log.warn("Marked {} objects as lost.".format(num_objects_removed))
+            log.warn('Marked {} objects as lost.'.format(num_objects_removed))
 
     def scan_db_client_table(self):
         """Scan the database client table for dead clients.
@@ -210,9 +210,9 @@ class Monitor(object):
         clients = self.state.client_table()
         for node_ip_address, node_clients in clients.items():
             for client in node_clients:
-                db_client_id = client["DBClientID"]
-                client_type = client["ClientType"]
-                if client["Deleted"]:
+                db_client_id = client['DBClientID']
+                client_type = client['ClientType']
+                if client['Deleted']:
                     if client_type == LOCAL_SCHEDULER_CLIENT_TYPE:
                         self.dead_local_schedulers.add(db_client_id)
                     elif client_type == PLASMA_MANAGER_CLIENT_TYPE:
@@ -220,7 +220,7 @@ class Monitor(object):
 
     def subscribe_handler(self, channel, data):
         """Handle a subscription success message from Redis."""
-        log.debug("Subscribed to {}, data was {}".format(channel, data))
+        log.debug('Subscribed to {}, data was {}'.format(channel, data))
         self.subscribed[channel] = True
 
     def db_client_notification_handler(self, unused_channel, data):
@@ -244,7 +244,7 @@ class Monitor(object):
 
         # If the update was a deletion, add them to our accounting for dead
         # local schedulers and plasma managers.
-        log.warn("Removed {}, client ID {}".format(client_type, db_client_id))
+        log.warn('Removed {}, client ID {}'.format(client_type, db_client_id))
         if client_type == LOCAL_SCHEDULER_CLIENT_TYPE:
             if db_client_id not in self.dead_local_schedulers:
                 self.dead_local_schedulers.add(db_client_id)
@@ -266,16 +266,16 @@ class Monitor(object):
         for i in range(num_resources):
             dyn = message.DynamicResources(i)
             static = message.StaticResources(i)
-            dynamic_resources[dyn.Key().decode("utf-8")] = dyn.Value()
-            static_resources[static.Key().decode("utf-8")] = static.Value()
+            dynamic_resources[dyn.Key().decode('utf-8')] = dyn.Value()
+            static_resources[static.Key().decode('utf-8')] = static.Value()
 
         # Update the load metrics for this local scheduler.
-        client_id = binascii.hexlify(message.DbClientId()).decode("utf-8")
+        client_id = binascii.hexlify(message.DbClientId()).decode('utf-8')
         ip = self.local_scheduler_id_to_ip_map.get(client_id)
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:
-            print("Warning: could not find ip for client {}."
+            print('Warning: could not find ip for client {}.'
                   .format(client_id))
 
     def plasma_manager_heartbeat_handler(self, unused_channel, data):
@@ -309,9 +309,9 @@ class Monitor(object):
 
         # Scan the task table & filter to get the list of tasks belong to this
         # driver.  Use a cursor in order not to block the redis shards.
-        for key in redis.scan_iter(match=TASK_TABLE_PREFIX + b"*"):
+        for key in redis.scan_iter(match=TASK_TABLE_PREFIX + b'*'):
             entry = redis.hgetall(key)
-            task_info = TaskInfo.GetRootAsTaskInfo(entry[b"TaskSpec"], 0)
+            task_info = TaskInfo.GetRootAsTaskInfo(entry[b'TaskSpec'], 0)
             if driver_id != task_info.DriverId():
                 # Ignore tasks that aren't from this driver.
                 continue
@@ -327,12 +327,12 @@ class Monitor(object):
 
         # Also record all the ray.put()'d objects.
         put_objects = []
-        for key in redis.scan_iter(match=OBJECT_INFO_PREFIX + b"*"):
+        for key in redis.scan_iter(match=OBJECT_INFO_PREFIX + b'*'):
             entry = redis.hgetall(key)
-            if entry[b"is_put"] == "0":
+            if entry[b'is_put'] == '0':
                 continue
             object_id = key.split(OBJECT_INFO_PREFIX)[1]
-            task_id = entry[b"task"]
+            task_id = entry[b'task']
             put_objects.append((object_id, task_id))
 
         return returned_object_ids, task_table_infos.keys(), put_objects
@@ -362,12 +362,12 @@ class Monitor(object):
         # Remove with best effort.
         num_deleted = redis.delete(*keys)
         log.info(
-            "Removed {} dead redis entries of the driver from redis shard {}.".
+            'Removed {} dead redis entries of the driver from redis shard {}.'.
             format(num_deleted, shard_index))
         if num_deleted != len(keys):
             log.warning(
-                "Failed to remove {} relevant redis entries"
-                " from redis shard {}.".format(len(keys) - num_deleted))
+                'Failed to remove {} relevant redis entries'
+                ' from redis shard {}.'.format(len(keys) - num_deleted))
 
     def _clean_up_entries_for_driver(self, driver_id):
         """Remove this driver's object/task entries from all redis shards.
@@ -425,7 +425,7 @@ class Monitor(object):
         """
         message = DriverTableMessage.GetRootAsDriverTableMessage(data, 0)
         driver_id = message.DriverId()
-        log.info("Driver {} has been removed.".format(
+        log.info('Driver {} has been removed.'.format(
             binary_to_hex(driver_id)))
 
         self._clean_up_entries_for_driver(driver_id)
@@ -446,8 +446,8 @@ class Monitor(object):
                 return
 
             # Parse the message.
-            channel = message["channel"]
-            data = message["data"]
+            channel = message['channel']
+            data = message['data']
 
             # Determine the appropriate message handler.
             message_handler = None
@@ -470,10 +470,10 @@ class Monitor(object):
             elif channel == DRIVER_DEATH_CHANNEL:
                 assert self.subscribed[channel]
                 # The message was a notification that a driver was removed.
-                log.info("message-handler: driver_removed_handler")
+                log.info('message-handler: driver_removed_handler')
                 message_handler = self.driver_removed_handler
             else:
-                raise Exception("This code should be unreachable.")
+                raise Exception('This code should be unreachable.')
 
             # Call the handler.
             assert (message_handler is not None)
@@ -507,8 +507,8 @@ class Monitor(object):
         num_plasma_managers = len(self.live_plasma_managers) + len(
             self.dead_plasma_managers)
 
-        log.debug("{} dead local schedulers, {} plasma managers total, {} "
-                  "dead plasma managers".format(
+        log.debug('{} dead local schedulers, {} plasma managers total, {} '
+                  'dead plasma managers'.format(
                       len(self.dead_local_schedulers), num_plasma_managers,
                       len(self.dead_plasma_managers)))
 
@@ -519,8 +519,8 @@ class Monitor(object):
             local_schedulers = self.state.local_schedulers()
             self.local_scheduler_id_to_ip_map = {}
             for local_scheduler_info in local_schedulers:
-                client_id = local_scheduler_info["DBClientID"]
-                ip_address = local_scheduler_info["AuxAddress"].split(":")[0]
+                client_id = local_scheduler_info['DBClientID']
+                ip_address = local_scheduler_info['AuxAddress'].split(':')[0]
                 self.local_scheduler_id_to_ip_map[client_id] = ip_address
 
             # Process autoscaling actions
@@ -544,7 +544,7 @@ class Monitor(object):
             for plasma_manager_id in plasma_manager_ids:
                 if ((self.live_plasma_managers[plasma_manager_id]) >=
                         ray._config.num_heartbeats_timeout()):
-                    log.warn("Timed out {}".format(PLASMA_MANAGER_CLIENT_TYPE))
+                    log.warn('Timed out {}'.format(PLASMA_MANAGER_CLIENT_TYPE))
                     # Remove the plasma manager from the managers whose
                     # heartbeats we're tracking.
                     del self.live_plasma_managers[plasma_manager_id]
@@ -552,7 +552,7 @@ class Monitor(object):
                     # corresponding state in the object table will be cleaned
                     # up once we receive the notification for this db_client
                     # deletion.
-                    self.redis.execute_command("RAY.DISCONNECT",
+                    self.redis.execute_command('RAY.DISCONNECT',
                                                plasma_manager_id)
 
             # Increment the number of heartbeats that we've missed from each
@@ -569,20 +569,20 @@ class Monitor(object):
         # drivers.
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the "
-                     "monitor to connect to."))
+        description=('Parse Redis server for the '
+                     'monitor to connect to.'))
     parser.add_argument(
-        "--redis-address",
+        '--redis-address',
         required=True,
         type=str,
-        help="the address to use for Redis")
+        help='the address to use for Redis')
     parser.add_argument(
-        "--autoscaling-config",
+        '--autoscaling-config',
         required=False,
         type=str,
-        help="the path to the autoscaling config file")
+        help='the path to the autoscaling config file')
     args = parser.parse_args()
 
     redis_ip_address = get_ip_address(args.redis_address)

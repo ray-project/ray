@@ -31,18 +31,18 @@ def trivial_function():
 
 
 @ray.remote
-def keyword_fct1(a, b="hello"):
-    return "{} {}".format(a, b)
+def keyword_fct1(a, b='hello'):
+    return '{} {}'.format(a, b)
 
 
 @ray.remote
-def keyword_fct2(a="hello", b="world"):
-    return "{} {}".format(a, b)
+def keyword_fct2(a='hello', b='world'):
+    return '{} {}'.format(a, b)
 
 
 @ray.remote
-def keyword_fct3(a, b, c="hello", d="world"):
-    return "{} {} {} {}".format(a, b, c, d)
+def keyword_fct3(a, b, c='hello', d='world'):
+    return '{} {} {} {}'.format(a, b, c, d)
 
 
 # Test variable numbers of arguments
@@ -50,12 +50,12 @@ def keyword_fct3(a, b, c="hello", d="world"):
 
 @ray.remote
 def varargs_fct1(*a):
-    return " ".join(map(str, a))
+    return ' '.join(map(str, a))
 
 
 @ray.remote
 def varargs_fct2(a, *b):
-    return " ".join(map(str, b))
+    return ' '.join(map(str, b))
 
 
 try:
@@ -73,17 +73,17 @@ except Exception:
 
 @ray.remote
 def throw_exception_fct1():
-    raise Exception("Test function 1 intentionally failed.")
+    raise Exception('Test function 1 intentionally failed.')
 
 
 @ray.remote
 def throw_exception_fct2():
-    raise Exception("Test function 2 intentionally failed.")
+    raise Exception('Test function 2 intentionally failed.')
 
 
 @ray.remote(num_return_vals=3)
 def throw_exception_fct3(x):
-    raise Exception("Test function 3 intentionally failed.")
+    raise Exception('Test function 3 intentionally failed.')
 
 
 # test Python mode

@@ -18,7 +18,7 @@ def _flatten_dict(dt):
         for key, value in dt.items():
             if type(value) is dict:
                 for subkey, v in value.items():
-                    add[":".join([key, subkey])] = v
+                    add[':'.join([key, subkey])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
@@ -35,7 +35,7 @@ def _parse_results(res_path):
                 pass
         res_dict = _flatten_dict(json.loads(line.strip()))
     except Exception as e:
-        print("Importing %s failed...Perhaps empty?" % res_path, e)
+        print('Importing %s failed...Perhaps empty?' % res_path, e)
     return res_dict
 
 
@@ -52,7 +52,7 @@ def _resolve(directory, result_fname):
     try:
         resultp = osp.join(directory, result_fname)
         res_dict = _parse_results(resultp)
-        cfgp = osp.join(directory, "params.json")
+        cfgp = osp.join(directory, 'params.json')
         cfg_dict = _parse_configs(cfgp)
         cfg_dict.update(res_dict)
         return cfg_dict
@@ -60,7 +60,7 @@ def _resolve(directory, result_fname):
         return None
 
 
-def load_results_to_df(directory, result_name="result.json"):
+def load_results_to_df(directory, result_name='result.json'):
     exp_directories = [
         dirpath for dirpath, dirs, files in os.walk(directory) for f in files
         if f == result_name
@@ -72,18 +72,18 @@ def load_results_to_df(directory, result_name="result.json"):
 
 def generate_plotly_dim_dict(df, field):
     dim_dict = {}
-    dim_dict["label"] = field
+    dim_dict['label'] = field
     column = df[field]
     if is_numeric_dtype(column):
-        dim_dict["values"] = column
+        dim_dict['values'] = column
     elif is_string_dtype(column):
         texts = column.unique()
-        dim_dict["values"] = [
+        dim_dict['values'] = [
             np.argwhere(texts == x).flatten()[0] for x in column
         ]
-        dim_dict["tickvals"] = list(range(len(texts)))
-        dim_dict["ticktext"] = texts
+        dim_dict['tickvals'] = list(range(len(texts)))
+        dim_dict['ticktext'] = texts
     else:
-        raise Exception("Unidentifiable Type")
+        raise Exception('Unidentifiable Type')
 
     return dim_dict

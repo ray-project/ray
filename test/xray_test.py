@@ -5,7 +5,7 @@ from __future__ import print_function
 import pytest
 import ray
 
-test_values = [1, 1.0, "test", b"test", (0, 1), [0, 1], {0: 1}]
+test_values = [1, 1.0, 'test', b'test', (0, 1), [0, 1], {0: 1}]
 
 
 @pytest.fixture

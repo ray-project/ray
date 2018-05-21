@@ -17,11 +17,11 @@ total_num_nodes = 5
 
 
 def actor_event_name(driver_index, actor_index):
-    return "DRIVER_{}_ACTOR_{}_RUNNING".format(driver_index, actor_index)
+    return 'DRIVER_{}_ACTOR_{}_RUNNING'.format(driver_index, actor_index)
 
 
 def remote_function_event_name(driver_index, task_index):
-    return "DRIVER_{}_TASK_{}_RUNNING".format(driver_index, task_index)
+    return 'DRIVER_{}_TASK_{}_RUNNING'.format(driver_index, task_index)
 
 
 @ray.remote
@@ -125,7 +125,7 @@ def driver_0(redis_address, driver_index):
     # affect anything.
     actors_no_gpus[0].long_running_method.remote()
 
-    _broadcast_event("DRIVER_0_DONE", redis_address)
+    _broadcast_event('DRIVER_0_DONE', redis_address)
 
 
 def driver_1(redis_address, driver_index):
@@ -167,7 +167,7 @@ def driver_1(redis_address, driver_index):
     # affect anything.
     actors_one_gpu[0].long_running_method.remote()
 
-    _broadcast_event("DRIVER_1_DONE", redis_address)
+    _broadcast_event('DRIVER_1_DONE', redis_address)
 
 
 def cleanup_driver(redis_address, driver_index):
@@ -187,8 +187,8 @@ def cleanup_driver(redis_address, driver_index):
             Actor0.remote(driver_index, i, redis_address) for i in range(10)
         ]
 
-    _wait_for_event("DRIVER_0_DONE", redis_address)
-    _wait_for_event("DRIVER_1_DONE", redis_address)
+    _wait_for_event('DRIVER_0_DONE', redis_address)
+    _wait_for_event('DRIVER_1_DONE', redis_address)
 
     def try_to_create_actor(actor_class, driver_index, actor_index,
                             timeout=20):
@@ -204,7 +204,7 @@ def cleanup_driver(redis_address, driver_index):
             else:
                 return actor
         # If we are here, then we timed out while looping.
-        raise Exception("Timed out while trying to create actor.")
+        raise Exception('Timed out while trying to create actor.')
 
     # Only one of the cleanup drivers should create more actors.
     if driver_index == 2:
@@ -250,7 +250,7 @@ def cleanup_driver(redis_address, driver_index):
             wait_for_pid_to_exit(pid)
             removed_workers += 1
 
-    print("{} workers/actors were removed on this node."
+    print('{} workers/actors were removed on this node.'
           .format(removed_workers))
 
     # Only one of the cleanup drivers should create and use more actors.
@@ -260,13 +260,13 @@ def cleanup_driver(redis_address, driver_index):
             ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
             ray.get([actor.check_ids.remote() for actor in actors_no_gpus])
 
-    _broadcast_event("DRIVER_{}_DONE".format(driver_index), redis_address)
+    _broadcast_event('DRIVER_{}_DONE'.format(driver_index), redis_address)
 
 
-if __name__ == "__main__":
-    driver_index = int(os.environ["RAY_DRIVER_INDEX"])
-    redis_address = os.environ["RAY_REDIS_ADDRESS"]
-    print("Driver {} started at {}.".format(driver_index, time.time()))
+if __name__ == '__main__':
+    driver_index = int(os.environ['RAY_DRIVER_INDEX'])
+    redis_address = os.environ['RAY_REDIS_ADDRESS']
+    print('Driver {} started at {}.'.format(driver_index, time.time()))
 
     if driver_index == 0:
         driver_0(redis_address, driver_index)
@@ -275,6 +275,6 @@ if __name__ == "__main__":
     elif driver_index in [2, 3, 4, 5, 6]:
         cleanup_driver(redis_address, driver_index)
     else:
-        raise Exception("This code should be unreachable.")
+        raise Exception('This code should be unreachable.')
 
-    print("Driver {} finished at {}.".format(driver_index, time.time()))
+    print('Driver {} finished at {}.'.format(driver_index, time.time()))

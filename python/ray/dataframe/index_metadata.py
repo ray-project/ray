@@ -40,7 +40,7 @@ class _IndexMetadata(object):
             specified partitions
         """
         assert (lengths_oid is None) == (coord_df_oid is None), \
-            "Must pass both or neither of lengths_oid and coord_df_oid"
+            'Must pass both or neither of lengths_oid and coord_df_oid'
 
         if dfs is not None and lengths_oid is None:
             if axis == 0:
@@ -238,7 +238,7 @@ class _IndexMetadata(object):
                 partition = 0
             if partition >= len(cum_lens):
                 if loc > cum_lens[-1]:
-                    raise IndexError("index {0} is out of bounds".format(loc))
+                    raise IndexError('index {0} is out of bounds'.format(loc))
                 else:
                     index_within_partition = self._lengths[-1]
             else:
@@ -358,20 +358,20 @@ class _IndexMetadata(object):
         # Update first lengths to prevent possible length inconsistencies
         if isinstance(dropped, pd.DataFrame):
             try:
-                drop_per_part = dropped.groupby(["partition"]).size()\
+                drop_per_part = dropped.groupby(['partition']).size()\
                         .reindex(index=pd.RangeIndex(len(self._lengths)),
                                  fill_value=0)
             except ValueError:
                 # Copy the arrow sealed dataframe so we can mutate it.
                 dropped = dropped.copy()
-                drop_per_part = dropped.groupby(["partition"]).size()\
+                drop_per_part = dropped.groupby(['partition']).size()\
                     .reindex(index=pd.RangeIndex(len(self._lengths)),
                              fill_value=0)
         elif isinstance(dropped, pd.Series):
             drop_per_part = np.zeros_like(self._lengths)
-            drop_per_part[dropped["partition"]] = 1
+            drop_per_part[dropped['partition']] = 1
         else:
-            raise AssertionError("Unrecognized result from `coords_of`")
+            raise AssertionError('Unrecognized result from `coords_of`')
         self._lengths = self._lengths - drop_per_part
 
         self._coord_df = self._coord_df.drop(labels, errors=errors)

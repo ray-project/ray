@@ -20,8 +20,8 @@ class DDPGEvaluator(PolicyEvaluator):
     """The base DDPG Evaluator."""
 
     def __init__(self, registry, env_creator, config, logdir, worker_index):
-        env = env_creator(config["env_config"])
-        env = wrap_dqn(registry, env, config["model"], config["random_starts"])
+        env = env_creator(config['env_config'])
+        env = wrap_dqn(registry, env, config['model'], config['random_starts'])
         self.env = env
         self.config = config
 
@@ -30,26 +30,26 @@ class DDPGEvaluator(PolicyEvaluator):
         # take action by calling, e.g., env.step([3.5])
         if not isinstance(env.action_space, Box):
             raise UnsupportedSpaceException(
-                "Action space {} is not supported for DDPG.".format(
+                'Action space {} is not supported for DDPG.'.format(
                     env.action_space))
 
-        tf_config = tf.ConfigProto(**config["tf_session_args"])
+        tf_config = tf.ConfigProto(**config['tf_session_args'])
         self.sess = tf.Session(config=tf_config)
         self.ddpg_graph = models.DDPGGraph(registry, env, config, logdir)
 
         # Use either a different `eps` per worker, or a linear schedule.
-        if config["per_worker_exploration"]:
-            assert config["num_workers"] > 1, "This requires multiple workers"
+        if config['per_worker_exploration']:
+            assert config['num_workers'] > 1, 'This requires multiple workers'
             self.exploration = ConstantSchedule(
-                config["noise_scale"] * 0.4 **
-                (1 + worker_index / float(config["num_workers"] - 1) * 7))
+                config['noise_scale'] * 0.4 **
+                (1 + worker_index / float(config['num_workers'] - 1) * 7))
         else:
             self.exploration = LinearSchedule(
-                schedule_timesteps=int(config["exploration_fraction"] *
-                                       config["schedule_max_timesteps"]),
-                initial_p=config["noise_scale"] * 1.0,
-                final_p=config["noise_scale"] *
-                config["exploration_final_eps"])
+                schedule_timesteps=int(config['exploration_fraction'] *
+                                       config['schedule_max_timesteps']),
+                initial_p=config['noise_scale'] * 1.0,
+                final_p=config['noise_scale'] *
+                config['exploration_final_eps'])
 
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())
@@ -78,7 +78,7 @@ class DDPGEvaluator(PolicyEvaluator):
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
         for _ in range(
-                self.config["sample_batch_size"] + self.config["n_step"] - 1):
+                self.config['sample_batch_size'] + self.config['n_step'] - 1):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
             obs.append(ob)
             actions.append(act)
@@ -87,47 +87,47 @@ class DDPGEvaluator(PolicyEvaluator):
             dones.append(done)
 
         # N-step Q adjustments
-        if self.config["n_step"] > 1:
+        if self.config['n_step'] > 1:
             # Adjust for steps lost from truncation
-            self.local_timestep -= (self.config["n_step"] - 1)
-            adjust_nstep(self.config["n_step"], self.config["gamma"], obs,
+            self.local_timestep -= (self.config['n_step'] - 1)
+            adjust_nstep(self.config['n_step'], self.config['gamma'], obs,
                          actions, rewards, new_obs, dones)
 
         batch = SampleBatch({
-            "obs": [pack(np.array(o)) for o in obs],
-            "actions": actions,
-            "rewards": rewards,
-            "new_obs": [pack(np.array(o)) for o in new_obs],
-            "dones": dones,
-            "weights": np.ones_like(rewards)
+            'obs': [pack(np.array(o)) for o in obs],
+            'actions': actions,
+            'rewards': rewards,
+            'new_obs': [pack(np.array(o)) for o in new_obs],
+            'dones': dones,
+            'weights': np.ones_like(rewards)
         })
-        assert (batch.count == self.config["sample_batch_size"])
+        assert (batch.count == self.config['sample_batch_size'])
 
         # Prioritize on the worker side
-        if self.config["worker_side_prioritization"]:
+        if self.config['worker_side_prioritization']:
             td_errors = self.ddpg_graph.compute_td_error(
-                self.sess, obs, batch["actions"], batch["rewards"], new_obs,
-                batch["dones"], batch["weights"])
+                self.sess, obs, batch['actions'], batch['rewards'], new_obs,
+                batch['dones'], batch['weights'])
             new_priorities = (
-                np.abs(td_errors) + self.config["prioritized_replay_eps"])
-            batch.data["weights"] = new_priorities
+                np.abs(td_errors) + self.config['prioritized_replay_eps'])
+            batch.data['weights'] = new_priorities
 
         return batch
 
     def compute_gradients(self, samples):
         td_err, grads = self.ddpg_graph.compute_gradients(
-            self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
-        return grads, {"td_error": td_err}
+            self.sess, samples['obs'], samples['actions'], samples['rewards'],
+            samples['new_obs'], samples['dones'], samples['weights'])
+        return grads, {'td_error': td_err}
 
     def apply_gradients(self, grads):
         self.ddpg_graph.apply_gradients(self.sess, grads)
 
     def compute_apply(self, samples):
         td_error = self.ddpg_graph.compute_apply(
-            self.sess, samples["obs"], samples["actions"], samples["rewards"],
-            samples["new_obs"], samples["dones"], samples["weights"])
-        return {"td_error": td_error}
+            self.sess, samples['obs'], samples['actions'], samples['rewards'],
+            samples['new_obs'], samples['dones'], samples['weights'])
+        return {'td_error': td_error}
 
     def get_weights(self):
         return self.variables.get_weights()
@@ -157,16 +157,16 @@ class DDPGEvaluator(PolicyEvaluator):
         return ret
 
     def stats(self):
-        n = self.config["smoothing_num_episodes"] + 1
+        n = self.config['smoothing_num_episodes'] + 1
         mean_100ep_reward = round(np.mean(self.episode_rewards[-n:-1]), 5)
         mean_100ep_length = round(np.mean(self.episode_lengths[-n:-1]), 5)
         exploration = self.exploration.value(self.global_timestep)
         return {
-            "mean_100ep_reward": mean_100ep_reward,
-            "mean_100ep_length": mean_100ep_length,
-            "num_episodes": len(self.episode_rewards),
-            "exploration": exploration,
-            "local_timestep": self.local_timestep,
+            'mean_100ep_reward': mean_100ep_reward,
+            'mean_100ep_length': mean_100ep_length,
+            'num_episodes': len(self.episode_rewards),
+            'exploration': exploration,
+            'local_timestep': self.local_timestep,
         }
 
     def save(self):

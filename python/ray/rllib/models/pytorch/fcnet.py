@@ -11,14 +11,14 @@ class FullyConnectedNetwork(Model):
     """TODO(rliaw): Logits, Value should both be contained here"""
     def _init(self, inputs, num_outputs, options):
         assert type(inputs) is int
-        hiddens = options.get("fcnet_hiddens", [256, 256])
-        fcnet_activation = options.get("fcnet_activation", "tanh")
+        hiddens = options.get('fcnet_hiddens', [256, 256])
+        fcnet_activation = options.get('fcnet_activation', 'tanh')
         activation = None
-        if fcnet_activation == "tanh":
+        if fcnet_activation == 'tanh':
             activation = nn.Tanh
-        elif fcnet_activation == "relu":
+        elif fcnet_activation == 'relu':
             activation = nn.ReLU
-        print("Constructing fcnet {} {}".format(hiddens, activation))
+        print('Constructing fcnet {} {}'.format(hiddens, activation))
 
         layers = []
         last_layer_size = inputs

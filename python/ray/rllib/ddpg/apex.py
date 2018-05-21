@@ -38,13 +38,13 @@ class ApexDDPGAgent(DDPGAgent):
     running in a large cluster, increase the `num_workers` config var.
     """
 
-    _agent_name = "APEX_DDPG"
+    _agent_name = 'APEX_DDPG'
     _default_config = APEX_DDPG_DEFAULT_CONFIG
 
     def update_target_if_needed(self):
         # Ape-X updates based on num steps trained, not sampled
         if self.optimizer.num_steps_trained - self.last_target_update_ts > \
-                self.config["target_network_update_freq"]:
+                self.config['target_network_update_freq']:
             self.local_evaluator.update_target()
             self.last_target_update_ts = self.optimizer.num_steps_trained
             self.num_target_updates += 1

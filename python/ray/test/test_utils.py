@@ -11,7 +11,7 @@ import time
 
 import ray
 
-EVENT_KEY = "RAY_MULTI_NODE_TEST_KEY"
+EVENT_KEY = 'RAY_MULTI_NODE_TEST_KEY'
 """This key is used internally within this file for coordinating drivers."""
 
 
@@ -38,23 +38,23 @@ def _wait_for_nodes_to_join(num_nodes, timeout=20):
             # Check that for each node, a local scheduler and a plasma manager
             # are present.
             for ip_address, clients in client_table.items():
-                client_types = [client["ClientType"] for client in clients]
-                if "local_scheduler" not in client_types:
+                client_types = [client['ClientType'] for client in clients]
+                if 'local_scheduler' not in client_types:
                     ready = False
-                if "plasma_manager" not in client_types:
+                if 'plasma_manager' not in client_types:
                     ready = False
             if ready:
                 return
         if num_ready_nodes > num_nodes:
             # Too many nodes have joined. Something must be wrong.
-            raise Exception("{} nodes have joined the cluster, but we were "
-                            "expecting {} nodes.".format(
+            raise Exception('{} nodes have joined the cluster, but we were '
+                            'expecting {} nodes.'.format(
                                 num_ready_nodes, num_nodes))
         time.sleep(0.1)
 
     # If we get here then we timed out.
-    raise Exception("Timed out while waiting for {} nodes to join. Only {} "
-                    "nodes have joined so far.".format(num_ready_nodes,
+    raise Exception('Timed out while waiting for {} nodes to join. Only {} '
+                    'nodes have joined so far.'.format(num_ready_nodes,
                                                        num_nodes))
 
 
@@ -71,7 +71,7 @@ def _broadcast_event(event_name, redis_address, data=None):
             the corresponding _wait_for_event call). This data must be json
             serializable.
     """
-    redis_host, redis_port = redis_address.split(":")
+    redis_host, redis_port = redis_address.split(':')
     redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
     payload = json.dumps((event_name, data))
     redis_client.rpush(EVENT_KEY, payload)
@@ -91,7 +91,7 @@ def _wait_for_event(event_name, redis_address, extra_buffer=0):
     Returns:
         The data that was passed into the corresponding _broadcast_event call.
     """
-    redis_host, redis_port = redis_address.split(":")
+    redis_host, redis_port = redis_address.split(':')
     redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
     while True:
         event_infos = redis_client.lrange(EVENT_KEY, 0, -1)
@@ -99,7 +99,7 @@ def _wait_for_event(event_name, redis_address, extra_buffer=0):
         for event_info in event_infos:
             name, data = json.loads(event_info)
             if name in events:
-                raise Exception("The same event {} was broadcast twice."
+                raise Exception('The same event {} was broadcast twice.'
                                 .format(name))
             events[name] = data
         if event_name in events:
@@ -131,14 +131,14 @@ def wait_for_pid_to_exit(pid, timeout=20):
         if not _pid_alive(pid):
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for process to exit.")
+    raise Exception('Timed out while waiting for process to exit.')
 
 
 def run_and_get_output(command):
     with tempfile.NamedTemporaryFile() as tmp:
         p = subprocess.Popen(command, stdout=tmp)
         if p.wait() != 0:
-            raise RuntimeError("ray start did not terminate properly")
+            raise RuntimeError('ray start did not terminate properly')
         with open(tmp.name, 'r') as f:
             result = f.readlines()
-            return "\n".join(result)
+            return '\n'.join(result)

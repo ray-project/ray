@@ -13,7 +13,7 @@ from ray.tune.config_parser import make_parser, json_to_resources
 def to_argv(config):
     argv = []
     for k, v in config.items():
-        argv.append("--{}".format(k.replace("_", "-")))
+        argv.append('--{}'.format(k.replace('_', '-')))
         if isinstance(v, str):
             argv.append(v)
         else:
@@ -32,40 +32,40 @@ def generate_trials(unresolved_spec, output_path=''):
         output_path (str): Path where to store experiment outputs.
     """
 
-    if "run" not in unresolved_spec:
-        raise TuneError("Must specify `run` in {}".format(unresolved_spec))
+    if 'run' not in unresolved_spec:
+        raise TuneError('Must specify `run` in {}'.format(unresolved_spec))
     parser = make_parser()
     i = 0
-    for _ in range(unresolved_spec.get("repeat", 1)):
+    for _ in range(unresolved_spec.get('repeat', 1)):
         for resolved_vars, spec in generate_variants(unresolved_spec):
             try:
                 # Special case the `env` param for RLlib by automatically
                 # moving it into the `config` section.
-                if "env" in spec:
-                    spec["config"] = spec.get("config", {})
-                    spec["config"]["env"] = spec["env"]
-                    del spec["env"]
+                if 'env' in spec:
+                    spec['config'] = spec.get('config', {})
+                    spec['config']['env'] = spec['env']
+                    del spec['env']
                 args = parser.parse_args(to_argv(spec))
             except SystemExit:
-                raise TuneError("Error parsing args, see above message", spec)
+                raise TuneError('Error parsing args, see above message', spec)
             if resolved_vars:
-                experiment_tag = "{}_{}".format(i, resolved_vars)
+                experiment_tag = '{}_{}'.format(i, resolved_vars)
             else:
                 experiment_tag = str(i)
             i += 1
-            if "trial_resources" in spec:
-                resources = json_to_resources(spec["trial_resources"])
+            if 'trial_resources' in spec:
+                resources = json_to_resources(spec['trial_resources'])
             else:
                 resources = None
             yield Trial(
-                trainable_name=spec["run"],
-                config=spec.get("config", {}),
+                trainable_name=spec['run'],
+                config=spec.get('config', {}),
                 local_dir=os.path.join(args.local_dir, output_path),
                 experiment_tag=experiment_tag,
                 resources=resources,
-                stopping_criterion=spec.get("stop", {}),
+                stopping_criterion=spec.get('stop', {}),
                 checkpoint_freq=args.checkpoint_freq,
-                restore_path=spec.get("restore"),
+                restore_path=spec.get('restore'),
                 upload_dir=args.upload_dir,
                 max_failures=args.max_failures)
 
@@ -108,12 +108,12 @@ def generate_variants(unresolved_spec):
 def grid_search(values):
     """Convenience method for specifying grid search over a value."""
 
-    return {"grid_search": values}
+    return {'grid_search': values}
 
 
 _STANDARD_IMPORTS = {
-    "random": random,
-    "np": numpy,
+    'random': random,
+    'np': numpy,
 }
 
 _MAX_RESOLUTION_PASSES = 20
@@ -122,7 +122,7 @@ _MAX_RESOLUTION_PASSES = 20
 def _format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
-        if path[0] in ["run", "env", "trial_resources"]:
+        if path[0] in ['run', 'env', 'trial_resources']:
             continue  # TrialRunner already has these in the experiment_tag
         pieces = []
         last_string = True
@@ -133,15 +133,15 @@ def _format_vars(resolved_vars):
                 last_string = False
                 pieces.append(k)
         pieces.reverse()
-        out.append(_clean_value("_".join(pieces)) + "=" + _clean_value(value))
-    return ",".join(out)
+        out.append(_clean_value('_'.join(pieces)) + '=' + _clean_value(value))
+    return ','.join(out)
 
 
 def _clean_value(value):
     if isinstance(value, float):
-        return "{:.5}".format(value)
+        return '{:.5}'.format(value)
     else:
-        return str(value).replace("/", "_")
+        return str(value).replace('/', '_')
 
 
 def _generate_variants(spec):
@@ -170,9 +170,9 @@ def _generate_variants(spec):
                 if (k in resolved_vars and v != resolved_vars[k]
                         and _is_resolved(resolved_vars[k])):
                     raise ValueError(
-                        "The variable `{}` could not be unambiguously "
-                        "resolved to a single value. Consider simplifying "
-                        "your variable dependencies.".format(k))
+                        'The variable `{}` could not be unambiguously '
+                        'resolved to a single value. Consider simplifying '
+                        'your variable dependencies.'.format(k))
                 resolved_vars[k] = v
             yield resolved_vars, spec
 
@@ -246,16 +246,16 @@ def _try_resolve(v):
     if isinstance(v, types.FunctionType):
         # Lambda function
         return False, v
-    elif isinstance(v, dict) and len(v) == 1 and "eval" in v:
+    elif isinstance(v, dict) and len(v) == 1 and 'eval' in v:
         # Lambda function in eval syntax
         return False, lambda spec: eval(
-            v["eval"], _STANDARD_IMPORTS, {"spec": spec})
-    elif isinstance(v, dict) and len(v) == 1 and "grid_search" in v:
+            v['eval'], _STANDARD_IMPORTS, {'spec': spec})
+    elif isinstance(v, dict) and len(v) == 1 and 'grid_search' in v:
         # Grid search values
-        grid_values = v["grid_search"]
+        grid_values = v['grid_search']
         if not isinstance(grid_values, list):
             raise TuneError(
-                "Grid search expected list of values, got: {}".format(
+                'Grid search expected list of values, got: {}'.format(
                     grid_values))
         return False, grid_values
     return True, v
@@ -288,7 +288,7 @@ class _UnresolvedAccessGuard(dict):
         value = dict.__getattribute__(self, item)
         if not _is_resolved(value):
             raise RecursiveDependencyError(
-                "`{}` recursively depends on {}".format(item, value))
+                '`{}` recursively depends on {}'.format(item, value))
         elif isinstance(value, dict):
             return _UnresolvedAccessGuard(value)
         else:

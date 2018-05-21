@@ -33,18 +33,18 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         self.num_sgd_iter = num_sgd_iter
         gpu_ids = ray.get_gpu_ids()
         if not gpu_ids:
-            self.devices = ["/cpu:0"]
+            self.devices = ['/cpu:0']
         else:
-            self.devices = ["/gpu:{}".format(i) for i in range(len(gpu_ids))]
-        assert self.batch_size > len(self.devices), "batch size too small"
+            self.devices = ['/gpu:{}'.format(i) for i in range(len(gpu_ids))]
+        assert self.batch_size > len(self.devices), 'batch size too small'
         self.per_device_batch_size = self.batch_size // len(self.devices)
         self.sample_timer = TimerStat()
         self.load_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.update_weights_timer = TimerStat()
 
-        print("LocalMultiGPUOptimizer devices", self.devices)
-        print("LocalMultiGPUOptimizer batch size", self.batch_size)
+        print('LocalMultiGPUOptimizer devices', self.devices)
+        print('LocalMultiGPUOptimizer batch size', self.batch_size)
 
         # List of (feature name, feature placeholder) tuples
         self.loss_inputs = self.local_evaluator.tf_loss_inputs()
@@ -103,8 +103,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
 
     def stats(self):
         return dict(PolicyOptimizer.stats(), **{
-            "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
-            "load_time_ms": round(1000 * self.load_timer.mean, 3),
-            "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
+            'sample_time_ms': round(1000 * self.sample_timer.mean, 3),
+            'load_time_ms': round(1000 * self.load_timer.mean, 3),
+            'grad_time_ms': round(1000 * self.grad_timer.mean, 3),
+            'update_time_ms': round(1000 * self.update_weights_timer.mean, 3),
         })

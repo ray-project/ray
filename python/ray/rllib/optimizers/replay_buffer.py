@@ -28,7 +28,7 @@ class ReplayBuffer(object):
         self._eviction_started = False
         self._num_added = 0
         self._num_sampled = 0
-        self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
+        self._evicted_hit_stats = WindowStat('evicted_hit', 1000)
         self._est_size_bytes = 0
         self._clip_rewards = clip_rewards
 
@@ -97,10 +97,10 @@ class ReplayBuffer(object):
 
     def stats(self):
         data = {
-            "added_count": self._num_added,
-            "sampled_count": self._num_sampled,
-            "est_size_bytes": self._est_size_bytes,
-            "num_entries": len(self._storage),
+            'added_count': self._num_added,
+            'sampled_count': self._num_sampled,
+            'est_size_bytes': self._est_size_bytes,
+            'num_entries': len(self._storage),
         }
         data.update(self._evicted_hit_stats.stats())
         return data
@@ -134,7 +134,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_sum = SumSegmentTree(it_capacity)
         self._it_min = MinSegmentTree(it_capacity)
         self._max_priority = 1.0
-        self._prio_change_stats = WindowStat("reprio", 1000)
+        self._prio_change_stats = WindowStat('reprio', 1000)
 
     def add(self, obs_t, action, reward, obs_tp1, done, weight):
         """See ReplayBuffer.store_effect"""

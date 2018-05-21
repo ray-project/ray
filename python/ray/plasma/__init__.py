@@ -6,5 +6,5 @@ from ray.plasma.plasma import (start_plasma_store, start_plasma_manager,
                                DEFAULT_PLASMA_STORE_MEMORY)
 
 __all__ = [
-    "start_plasma_store", "start_plasma_manager", "DEFAULT_PLASMA_STORE_MEMORY"
+    'start_plasma_store', 'start_plasma_manager', 'DEFAULT_PLASMA_STORE_MEMORY'
 ]

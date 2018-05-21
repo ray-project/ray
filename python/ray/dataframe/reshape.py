@@ -38,19 +38,19 @@ def get_dummies(data, prefix=None, prefix_sep='_', dummy_na=False,
 
     if sparse:
         raise NotImplementedError(
-            "SparseDataFrame is not implemented. "
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'SparseDataFrame is not implemented. '
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     if columns is None:
-        columns_to_encode = data.dtypes.isin([np.dtype("O"), 'category'])
+        columns_to_encode = data.dtypes.isin([np.dtype('O'), 'category'])
         columns_to_encode = data.columns[columns_to_encode]
     else:
         columns_to_encode = columns
 
     def check_len(item, name):
         len_msg = ("Length of '{name}' ({len_item}) did not match the "
-                   "length of the columns being encoded ({len_enc}).")
+                   'length of the columns being encoded ({len_enc}).')
 
         if is_list_like(item):
             if not len(item) == len(columns_to_encode):

@@ -13,7 +13,7 @@ def easy_objective(config, reporter):
     reporter(
         timesteps_total=1,
         episode_reward_mean=-(
-            (config["height"] - 14)**2 + abs(config["width"] - 3)))
+            (config['height'] - 14)**2 + abs(config['width'] - 3)))
     time.sleep(0.2)
 
 
@@ -23,11 +23,11 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        '--smoke-test', action='store_true', help='Finish quickly for testing')
     args, _ = parser.parse_known_args()
     ray.init(redirect_output=True)
 
-    register_trainable("exp", easy_objective)
+    register_trainable('exp', easy_objective)
 
     space = {
         'width': hp.uniform('width', 0, 20),
@@ -35,14 +35,14 @@ if __name__ == '__main__':
     }
 
     config = {
-        "my_exp": {
-            "run": "exp",
-            "repeat": 5 if args.smoke_test else 1000,
-            "stop": {
-                "training_iteration": 1
+        'my_exp': {
+            'run': 'exp',
+            'repeat': 5 if args.smoke_test else 1000,
+            'stop': {
+                'training_iteration': 1
             },
-            "config": {
-                "space": space
+            'config': {
+                'space': space
             }
         }
     }

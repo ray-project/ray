@@ -51,17 +51,17 @@ class TbWriter(object):
 
 def start(dir):
     if _Logger.CURRENT is not _Logger.DEFAULT:
-        sys.stderr.write("WARNING: You asked to start logging (dir=%s), but "
-                         "you never stopped the previous logger (dir=%s)."
-                         "\n" % (dir, _Logger.CURRENT.dir))
+        sys.stderr.write('WARNING: You asked to start logging (dir=%s), but '
+                         'you never stopped the previous logger (dir=%s).'
+                         '\n' % (dir, _Logger.CURRENT.dir))
     _Logger.CURRENT = _Logger(dir=dir)
 
 
 def stop():
     if _Logger.CURRENT is _Logger.DEFAULT:
-        sys.stderr.write("WARNING: You asked to stop logging, but you never "
-                         "started any previous logger."
-                         "\n" % (dir, _Logger.CURRENT.dir))
+        sys.stderr.write('WARNING: You asked to stop logging, but you never '
+                         'started any previous logger.'
+                         '\n' % (dir, _Logger.CURRENT.dir))
         return
     _Logger.CURRENT.close()
     _Logger.CURRENT = _Logger.DEFAULT
@@ -123,7 +123,7 @@ def get_dir():
 
 
 def get_expt_dir():
-    sys.stderr.write("get_expt_dir() is Deprecated. Switch to get_dir()\n")
+    sys.stderr.write('get_expt_dir() is Deprecated. Switch to get_dir()\n')
     return get_dir()
 
 # Backend
@@ -143,8 +143,8 @@ class _Logger(object):
         self.text_outputs = [sys.stdout]
         if dir is not None:
             os.makedirs(dir, exist_ok=True)
-            self.text_outputs.append(open(os.path.join(dir, "log.txt"), "w"))
-            self.tbwriter = TbWriter(dir=dir, prefix="events")
+            self.text_outputs.append(open(os.path.join(dir, 'log.txt'), 'w'))
+            self.tbwriter = TbWriter(dir=dir, prefix='events')
         else:
             self.tbwriter = None
 
@@ -157,19 +157,19 @@ class _Logger(object):
         # Create strings for printing.
         key2str = OrderedDict()
         for (key, val) in self.name2val.items():
-            if hasattr(val, "__float__"):
-                valstr = "%-8.3g" % val
+            if hasattr(val, '__float__'):
+                valstr = '%-8.3g' % val
             else:
                 valstr = val
             key2str[self._truncate(key)] = self._truncate(valstr)
         keywidth = max(map(len, key2str.keys()))
         valwidth = max(map(len, key2str.values()))
         # Write to all text outputs
-        self._write_text("-" * (keywidth + valwidth + 7), "\n")
+        self._write_text('-' * (keywidth + valwidth + 7), '\n')
         for (key, val) in key2str.items():
-            self._write_text("| ", key, " " * (keywidth - len(key)),
-                             " | ", val, " " * (valwidth - len(val)), " |\n")
-        self._write_text("-" * (keywidth + valwidth + 7), "\n")
+            self._write_text('| ', key, ' ' * (keywidth - len(key)),
+                             ' | ', val, ' ' * (valwidth - len(val)), ' |\n')
+        self._write_text('-' * (keywidth + valwidth + 7), '\n')
         for f in self.text_outputs:
             try:
                 f.flush()
@@ -216,7 +216,7 @@ class _Logger(object):
 
     def _truncate(self, s):
         if len(s) > 33:
-            return s[:30] + "..."
+            return s[:30] + '...'
         else:
             return s
 

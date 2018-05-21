@@ -7,9 +7,9 @@ from ray.tune.variant_generator import generate_trials
 
 
 class TrialScheduler(object):
-    CONTINUE = "CONTINUE"
-    PAUSE = "PAUSE"
-    STOP = "STOP"
+    CONTINUE = 'CONTINUE'
+    PAUSE = 'PAUSE'
+    STOP = 'STOP'
 
     def on_trial_add(self, trial_runner, trial):
         """Called when a new trial is added to the trial runner."""
@@ -109,4 +109,4 @@ class FIFOScheduler(TrialScheduler):
         return None
 
     def debug_string(self):
-        return "Using FIFO scheduling algorithm."
+        return 'Using FIFO scheduling algorithm.'

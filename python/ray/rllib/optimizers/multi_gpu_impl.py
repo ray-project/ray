@@ -10,7 +10,7 @@ import tensorflow as tf
 
 
 # Variable scope in which created variables will be placed under
-TOWER_SCOPE_NAME = "tower"
+TOWER_SCOPE_NAME = 'tower'
 
 
 class LocalSyncParallelOptimizer(object):
@@ -67,7 +67,7 @@ class LocalSyncParallelOptimizer(object):
         self._batch_index = tf.placeholder(tf.int32)
 
         # Split on the CPU in case the data doesn't fit in GPU memory.
-        with tf.device("/cpu:0"):
+        with tf.device('/cpu:0'):
             data_splits = zip(
                 *[tf.split(ph, len(devices)) for ph in input_placeholders])
 
@@ -122,15 +122,15 @@ class LocalSyncParallelOptimizer(object):
             run_metadata=run_metadata)
         if full_trace:
             trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            trace_file = open(os.path.join(self.logdir, "timeline-load.json"),
-                              "w")
+            trace_file = open(os.path.join(self.logdir, 'timeline-load.json'),
+                              'w')
             trace_file.write(trace.generate_chrome_trace_format())
 
         tuples_per_device = truncated_len / len(self.devices)
         assert tuples_per_device > 0, \
-            "Too few tuples per batch, trying increasing the training " \
-            "batch size or decreasing the sgd batch size. Tried to split up " \
-            "{} rows {}-ways in batches of {} (total across devices).".format(
+            'Too few tuples per batch, trying increasing the training ' \
+            'batch size or decreasing the sgd batch size. Tried to split up ' \
+            '{} rows {}-ways in batches of {} (total across devices).'.format(
                 len(arr), len(self.devices), self.batch_size)
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
@@ -176,11 +176,11 @@ class LocalSyncParallelOptimizer(object):
 
         if file_writer:
             trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            trace_file = open(os.path.join(self.logdir, "timeline-sgd.json"),
-                              "w")
+            trace_file = open(os.path.join(self.logdir, 'timeline-sgd.json'),
+                              'w')
             trace_file.write(trace.generate_chrome_trace_format())
             file_writer.add_run_metadata(
-                run_metadata, "sgd_train_{}".format(batch_index))
+                run_metadata, 'sgd_train_{}'.format(batch_index))
 
         return outs[1:]
 
@@ -218,7 +218,7 @@ class LocalSyncParallelOptimizer(object):
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.
-Tower = namedtuple("Tower", ["init_op", "grads", "loss_object"])
+Tower = namedtuple('Tower', ['init_op', 'grads', 'loss_object'])
 
 
 def make_divisible_by(array, n):

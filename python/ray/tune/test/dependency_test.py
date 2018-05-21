@@ -14,15 +14,15 @@ def f(config, reporter):
     reporter(timesteps_total=1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     ray.init()
-    register_trainable("my_class", f)
+    register_trainable('my_class', f)
     run_experiments({
-        "test": {
-            "run": "my_class",
-            "stop": {
-                "training_iteration": 1
+        'test': {
+            'run': 'my_class',
+            'stop': {
+                'training_iteration': 1
             }
         }
     })
-    assert 'ray.rllib' not in sys.modules, "RLlib should not be imported"
+    assert 'ray.rllib' not in sys.modules, 'RLlib should not be imported'

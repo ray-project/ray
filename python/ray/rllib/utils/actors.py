@@ -50,7 +50,7 @@ def split_colocated(actors):
 def try_create_colocated(cls, args, count):
     actors = [cls.remote(*args) for _ in range(count)]
     local, _ = split_colocated(actors)
-    print("Got {} colocated actors of {}".format(len(local), count))
+    print('Got {} colocated actors of {}'.format(len(local), count))
     return local
 
 
@@ -62,5 +62,5 @@ def create_colocated(cls, args, count):
         ok.extend(attempt)
         i += 1
     if len(ok) < count:
-        raise Exception("Unable to create enough colocated actors, abort.")
+        raise Exception('Unable to create enough colocated actors, abort.')
     return ok[:count]

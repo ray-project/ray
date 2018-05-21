@@ -7,23 +7,23 @@ import ray
 
 
 @ray.remote
-def zeros(shape, dtype_name="float", order="C"):
+def zeros(shape, dtype_name='float', order='C'):
     return np.zeros(shape, dtype=np.dtype(dtype_name), order=order)
 
 
 @ray.remote
-def zeros_like(a, dtype_name="None", order="K", subok=True):
-    dtype_val = None if dtype_name == "None" else np.dtype(dtype_name)
+def zeros_like(a, dtype_name='None', order='K', subok=True):
+    dtype_val = None if dtype_name == 'None' else np.dtype(dtype_name)
     return np.zeros_like(a, dtype=dtype_val, order=order, subok=subok)
 
 
 @ray.remote
-def ones(shape, dtype_name="float", order="C"):
+def ones(shape, dtype_name='float', order='C'):
     return np.ones(shape, dtype=np.dtype(dtype_name), order=order)
 
 
 @ray.remote
-def eye(N, M=-1, k=0, dtype_name="float"):
+def eye(N, M=-1, k=0, dtype_name='float'):
     M = N if M == -1 else M
     return np.eye(N, M=M, k=k, dtype=np.dtype(dtype_name))
 
@@ -51,7 +51,7 @@ def subarray(a, lower_indices, upper_indices):
 
 
 @ray.remote
-def copy(a, order="K"):
+def copy(a, order='K'):
     return np.copy(a, order=order)
 
 

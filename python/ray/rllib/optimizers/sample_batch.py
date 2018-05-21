@@ -30,7 +30,7 @@ class SampleBatch(object):
         for k, v in self.data.copy().items():
             assert type(k) == str, self
             lengths.append(len(v))
-        assert len(set(lengths)) == 1, "data columns must be same length"
+        assert len(set(lengths)) == 1, 'data columns must be same length'
         self.count = lengths[0]
 
     @staticmethod
@@ -50,7 +50,7 @@ class SampleBatch(object):
             {"a": [1, 2, 3, 4, 5]}
         """
 
-        assert self.keys() == other.keys(), "must have same columns"
+        assert self.keys() == other.keys(), 'must have same columns'
         out = {}
         for k in self.keys():
             out[k] = np.concatenate([self[k], other[k]])
@@ -100,10 +100,10 @@ class SampleBatch(object):
         self.data[key] = item
 
     def __str__(self):
-        return "SampleBatch({})".format(str(self.data))
+        return 'SampleBatch({})'.format(str(self.data))
 
     def __repr__(self):
-        return "SampleBatch({})".format(str(self.data))
+        return 'SampleBatch({})'.format(str(self.data))
 
     def keys(self):
         return self.data.keys()

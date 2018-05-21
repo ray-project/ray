@@ -113,7 +113,7 @@ class TensorFlowTest(unittest.TestCase):
         variables.set_weights(weights)
         self.assertEqual(weights, variables.get_weights())
 
-        loss2, init2, _, _ = make_linear_network("w", "b")
+        loss2, init2, _, _ = make_linear_network('w', 'b')
         sess.run(init2)
 
         variables2 = ray.experimental.TensorFlowVariables(loss2, sess)
@@ -266,5 +266,5 @@ class TensorFlowTest(unittest.TestCase):
         self.assertTrue(before_acc < after_acc)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -42,11 +42,11 @@ class AsyncHyperBandScheduler(FIFOScheduler):
                  grace_period=10,
                  reduction_factor=3,
                  brackets=3):
-        assert max_t > 0, "Max (time_attr) not valid!"
-        assert max_t >= grace_period, "grace_period must be <= max_t!"
-        assert grace_period > 0, "grace_period must be positive!"
-        assert reduction_factor > 1, "Reduction Factor not valid!"
-        assert brackets > 0, "brackets must be positive!"
+        assert max_t > 0, 'Max (time_attr) not valid!'
+        assert max_t >= grace_period, 'grace_period must be <= max_t!'
+        assert grace_period > 0, 'grace_period must be positive!'
+        assert reduction_factor > 1, 'Reduction Factor not valid!'
+        assert brackets > 0, 'brackets must be positive!'
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
         self._max_t = max_t
@@ -92,8 +92,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         del self._trial_info[trial.trial_id]
 
     def debug_string(self):
-        out = "Using AsyncHyperBand: num_stopped={}".format(self._num_stopped)
-        out += "\n" + "\n".join([b.debug_str() for b in self._brackets])
+        out = 'Using AsyncHyperBand: num_stopped={}'.format(self._num_stopped)
+        out += '\n' + '\n'.join([b.debug_str() for b in self._brackets])
         return out
 
 
@@ -133,19 +133,19 @@ class _Bracket():
                 if cutoff is not None and cur_rew < cutoff:
                     action = TrialScheduler.STOP
                 if cur_rew is None:
-                    print("Reward attribute is None! Consider"
-                          " reporting using a different field.")
+                    print('Reward attribute is None! Consider'
+                          ' reporting using a different field.')
                 else:
                     recorded[trial.trial_id] = cur_rew
                 break
         return action
 
     def debug_str(self):
-        iters = " | ".join([
-            "Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))
+        iters = ' | '.join([
+            'Iter {:.3f}: {}'.format(milestone, self.cutoff(recorded))
             for milestone, recorded in self._rungs
         ])
-        return "Bracket: " + iters
+        return 'Bracket: ' + iters
 
 
 if __name__ == '__main__':

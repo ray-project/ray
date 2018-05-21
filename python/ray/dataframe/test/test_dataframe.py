@@ -85,7 +85,7 @@ def test_shape(ray_df, pandas_df):
 
 @pytest.fixture
 def test_add_prefix(ray_df, pandas_df):
-    test_prefix = "TEST"
+    test_prefix = 'TEST'
     new_ray_df = ray_df.add_prefix(test_prefix)
     new_pandas_df = pandas_df.add_prefix(test_prefix)
     assert(new_ray_df.columns.equals(new_pandas_df.columns))
@@ -93,7 +93,7 @@ def test_add_prefix(ray_df, pandas_df):
 
 @pytest.fixture
 def test_add_suffix(ray_df, pandas_df):
-    test_suffix = "TEST"
+    test_suffix = 'TEST'
     new_ray_df = ray_df.add_suffix(test_suffix)
     new_pandas_df = pandas_df.add_suffix(test_suffix)
 
@@ -291,13 +291,13 @@ def test_int_dataframe():
 
     for key in keys:
         test___contains__(ray_df, key, True)
-    test___contains__(ray_df, "Not Exists", False)
+    test___contains__(ray_df, 'Not Exists', False)
 
     for key in keys:
-        test_insert(ray_df, pandas_df, 0, "New Column", ray_df[key])
-        test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
-        test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
-        test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 0, 'New Column', ray_df[key])
+        test_insert(ray_df, pandas_df, 0, 'New Column', pandas_df[key])
+        test_insert(ray_df, pandas_df, 1, 'New Column', ray_df[key])
+        test_insert(ray_df, pandas_df, 4, 'New Column', ray_df[key])
 
     test___array__(ray_df, pandas_df)
 
@@ -459,13 +459,13 @@ def test_float_dataframe():
 
     for key in keys:
         test___contains__(ray_df, key, True)
-    test___contains__(ray_df, "Not Exists", False)
+    test___contains__(ray_df, 'Not Exists', False)
 
     for key in keys:
-        test_insert(ray_df, pandas_df, 0, "New Column", ray_df[key])
-        test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
-        test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
-        test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 0, 'New Column', ray_df[key])
+        test_insert(ray_df, pandas_df, 0, 'New Column', pandas_df[key])
+        test_insert(ray_df, pandas_df, 1, 'New Column', ray_df[key])
+        test_insert(ray_df, pandas_df, 4, 'New Column', ray_df[key])
 
     # TODO Nans are always not equal to each other, fix it
     # test___array__(ray_df, pandas_df)
@@ -638,13 +638,13 @@ def test_mixed_dtype_dataframe():
 
     for key in keys:
         test___contains__(ray_df, key, True)
-    test___contains__(ray_df, "Not Exists", False)
+    test___contains__(ray_df, 'Not Exists', False)
 
     for key in keys:
-        test_insert(ray_df, pandas_df, 0, "New Column", ray_df[key])
-        test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
-        test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
-        test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 0, 'New Column', ray_df[key])
+        test_insert(ray_df, pandas_df, 0, 'New Column', pandas_df[key])
+        test_insert(ray_df, pandas_df, 1, 'New Column', ray_df[key])
+        test_insert(ray_df, pandas_df, 4, 'New Column', ray_df[key])
 
     test___array__(ray_df, pandas_df)
 
@@ -788,13 +788,13 @@ def test_nan_dataframe():
 
     for key in keys:
         test___contains__(ray_df, key, True)
-    test___contains__(ray_df, "Not Exists", False)
+    test___contains__(ray_df, 'Not Exists', False)
 
     for key in keys:
-        test_insert(ray_df, pandas_df, 0, "New Column", ray_df[key])
-        test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
-        test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
-        test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+        test_insert(ray_df, pandas_df, 0, 'New Column', ray_df[key])
+        test_insert(ray_df, pandas_df, 0, 'New Column', pandas_df[key])
+        test_insert(ray_df, pandas_df, 1, 'New Column', ray_df[key])
+        test_insert(ray_df, pandas_df, 4, 'New Column', ray_df[key])
 
     # TODO Nans are always not equal to each other, fix it
     # test___array__(ray_df, pandas_df)
@@ -855,11 +855,11 @@ def test_dense_nan_df():
 
 @pytest.fixture
 def test_inter_df_math(op, simple=False):
-    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    ray_df = rdf.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                            'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
-    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                              'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
     ray_df_equals_pandas(getattr(ray_df, op)(ray_df),
                          getattr(pandas_df, op)(pandas_df))
@@ -868,8 +868,8 @@ def test_inter_df_math(op, simple=False):
     ray_df_equals_pandas(getattr(ray_df, op)(4.0),
                          getattr(pandas_df, op)(4.0))
 
-    ray_df2 = rdf.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
-    pandas_df2 = pd.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
+    ray_df2 = rdf.DataFrame({'A': [0, 2], 'col1': [0, 19], 'col2': [1, 1]})
+    pandas_df2 = pd.DataFrame({'A': [0, 2], 'col1': [0, 19], 'col2': [1, 1]})
 
     ray_df_equals_pandas(getattr(ray_df, op)(ray_df2),
                          getattr(pandas_df, op)(pandas_df2))
@@ -886,11 +886,11 @@ def test_inter_df_math(op, simple=False):
 
 @pytest.fixture
 def test_comparison_inter_ops(op):
-    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    ray_df = rdf.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                            'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
-    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                              'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
     ray_df_equals_pandas(getattr(ray_df, op)(ray_df),
                          getattr(pandas_df, op)(pandas_df))
@@ -899,8 +899,8 @@ def test_comparison_inter_ops(op):
     ray_df_equals_pandas(getattr(ray_df, op)(4.0),
                          getattr(pandas_df, op)(4.0))
 
-    ray_df2 = rdf.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
-    pandas_df2 = pd.DataFrame({"A": [0, 2], "col1": [0, 19], "col2": [1, 1]})
+    ray_df2 = rdf.DataFrame({'A': [0, 2], 'col1': [0, 19], 'col2': [1, 1]})
+    pandas_df2 = pd.DataFrame({'A': [0, 2], 'col1': [0, 19], 'col2': [1, 1]})
 
     ray_df_equals_pandas(getattr(ray_df2, op)(ray_df2),
                          getattr(pandas_df2, op)(pandas_df2))
@@ -908,11 +908,11 @@ def test_comparison_inter_ops(op):
 
 @pytest.fixture
 def test_inter_df_math_right_ops(op):
-    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    ray_df = rdf.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                            'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
-    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                              'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
     ray_df_equals_pandas(getattr(ray_df, op)(4),
                          getattr(pandas_df, op)(4))
@@ -921,7 +921,7 @@ def test_inter_df_math_right_ops(op):
 
 
 def test_add():
-    test_inter_df_math("add", simple=False)
+    test_inter_df_math('add', simple=False)
 
 
 @pytest.fixture
@@ -964,15 +964,15 @@ def test_any(ray_df, pd_df):
 
 
 def test_append():
-    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    ray_df = rdf.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                            'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
-    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                              'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
-    ray_df2 = rdf.DataFrame({"col5": [0], "col6": [1]})
+    ray_df2 = rdf.DataFrame({'col5': [0], 'col6': [1]})
 
-    pandas_df2 = pd.DataFrame({"col5": [0], "col6": [1]})
+    pandas_df2 = pd.DataFrame({'col5': [0], 'col6': [1]})
 
     assert ray_df_equals_pandas(ray_df.append(ray_df2),
                                 pandas_df.append(pandas_df2))
@@ -1234,11 +1234,11 @@ def test_diff(ray_df, pandas_df):
 
 
 def test_div():
-    test_inter_df_math("div", simple=False)
+    test_inter_df_math('div', simple=False)
 
 
 def test_divide():
-    test_inter_df_math("divide", simple=False)
+    test_inter_df_math('divide', simple=False)
 
 
 def test_dot():
@@ -1250,10 +1250,10 @@ def test_dot():
 
 def test_drop():
     ray_df = create_test_dataframe()
-    simple = pd.DataFrame({"A": [1, 2, 3, 4], "B": [0, 1, 2, 3]})
+    simple = pd.DataFrame({'A': [1, 2, 3, 4], 'B': [0, 1, 2, 3]})
     ray_simple = from_pandas(simple, 2)
-    assert ray_df_equals_pandas(ray_simple.drop("A", axis=1), simple[['B']])
-    assert ray_df_equals_pandas(ray_simple.drop(["A", "B"], axis='columns'),
+    assert ray_df_equals_pandas(ray_simple.drop('A', axis=1), simple[['B']])
+    assert ray_df_equals_pandas(ray_simple.drop(['A', 'B'], axis='columns'),
                                 simple[[]])
     assert ray_df_equals_pandas(ray_simple.drop([0, 1, 3], axis=0),
                                 simple.loc[[2], :])
@@ -1288,7 +1288,7 @@ def test_drop():
     nu_df.columns = list('abc')
     ray_nu_df = from_pandas(nu_df, 3)
     assert ray_df_equals_pandas(ray_nu_df.drop('X', axis='rows'),
-                                nu_df.loc[["Y"], :])
+                                nu_df.loc[['Y'], :])
     assert ray_df_equals_pandas(ray_nu_df.drop(['X', 'Y'], axis=0),
                                 nu_df.loc[[], :])
 
@@ -1449,7 +1449,7 @@ def test_duplicated():
 
 
 def test_eq():
-    test_comparison_inter_ops("eq")
+    test_comparison_inter_ops('eq')
 
 
 def test_equals():
@@ -1472,10 +1472,10 @@ def test_eval_df_use_case():
     df = pd.DataFrame({'a': np.random.randn(10),
                        'b': np.random.randn(10)})
     ray_df = from_pandas(df, 2)
-    df.eval("e = arctan2(sin(a), b)",
+    df.eval('e = arctan2(sin(a), b)',
             engine='python',
             parser='pandas', inplace=True)
-    ray_df.eval("e = arctan2(sin(a), b)",
+    ray_df.eval('e = arctan2(sin(a), b)',
                 engine='python',
                 parser='pandas', inplace=True)
     # TODO: Use a series equality validator.
@@ -1486,10 +1486,10 @@ def test_eval_df_arithmetic_subexpression():
     df = pd.DataFrame({'a': np.random.randn(10),
                        'b': np.random.randn(10)})
     ray_df = from_pandas(df, 2)
-    df.eval("not_e = sin(a + b)",
+    df.eval('not_e = sin(a + b)',
             engine='python',
             parser='pandas', inplace=True)
-    ray_df.eval("not_e = sin(a + b)",
+    ray_df.eval('not_e = sin(a + b)',
                 engine='python',
                 parser='pandas', inplace=True)
     # TODO: Use a series equality validator.
@@ -1631,8 +1631,8 @@ def test_fillna_sanity(num_partitions=2):
     # with datelike
     # GH 6344
     df = pd.DataFrame({
-        'Date': [pd.NaT, pd.Timestamp("2014-1-1")],
-        'Date2': [pd.Timestamp("2013-1-1"), pd.NaT]
+        'Date': [pd.NaT, pd.Timestamp('2014-1-1')],
+        'Date2': [pd.Timestamp('2013-1-1'), pd.NaT]
     })
     result = df.fillna(value={'Date': df['Date2']})
     ray_df = from_pandas(df, num_partitions).fillna(
@@ -1772,7 +1772,7 @@ def test_frame_pad_backfill_limit(num_partitions=2):
 @pytest.fixture
 def test_fillna_dtype_conversion(num_partitions=2):
     # make sure that fillna on an empty frame works
-    df = pd.DataFrame(index=["A", "B", "C"], columns=[1, 2, 3, 4, 5])
+    df = pd.DataFrame(index=['A', 'B', 'C'], columns=[1, 2, 3, 4, 5])
 
     # empty block
     df = pd.DataFrame(index=range(3), columns=['A', 'B'], dtype='float64')
@@ -1895,7 +1895,7 @@ def test_fillna_invalid_value(num_partitions=2):
 
 @pytest.fixture
 def test_fillna_col_reordering(num_partitions=2):
-    cols = ["COL." + str(i) for i in range(5, 0, -1)]
+    cols = ['COL.' + str(i) for i in range(5, 0, -1)]
     data = np.random.rand(20, 5)
     df = pd.DataFrame(index=range(20), columns=cols, data=data)
     ray_df = from_pandas(df, num_partitions)
@@ -1961,7 +1961,7 @@ def test_first_valid_index(ray_df, pandas_df):
 
 
 def test_floordiv():
-    test_inter_df_math("floordiv", simple=False)
+    test_inter_df_math('floordiv', simple=False)
 
 
 def test_from_csv():
@@ -1985,7 +1985,7 @@ def test_from_records():
 
 
 def test_ge():
-    test_comparison_inter_ops("ge")
+    test_comparison_inter_ops('ge')
 
 
 def test_get_value():
@@ -2003,7 +2003,7 @@ def test_get_values():
 
 
 def test_gt():
-    test_comparison_inter_ops("gt")
+    test_comparison_inter_ops('gt')
 
 
 @pytest.fixture
@@ -2115,27 +2115,27 @@ def test_itertuples(ray_df, pandas_df):
 
 
 def test_join():
-    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                           "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    ray_df = rdf.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                           'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
-    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                              'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
-    ray_df2 = rdf.DataFrame({"col5": [0], "col6": [1]})
+    ray_df2 = rdf.DataFrame({'col5': [0], 'col6': [1]})
 
-    pandas_df2 = pd.DataFrame({"col5": [0], "col6": [1]})
+    pandas_df2 = pd.DataFrame({'col5': [0], 'col6': [1]})
 
-    join_types = ["left", "right", "outer", "inner"]
+    join_types = ['left', 'right', 'outer', 'inner']
     for how in join_types:
         ray_join = ray_df.join(ray_df2, how=how)
         pandas_join = pandas_df.join(pandas_df2, how=how)
         ray_df_equals_pandas(ray_join, pandas_join)
 
-    ray_df3 = rdf.DataFrame({"col7": [1, 2, 3, 5, 6, 7, 8]})
+    ray_df3 = rdf.DataFrame({'col7': [1, 2, 3, 5, 6, 7, 8]})
 
-    pandas_df3 = pd.DataFrame({"col7": [1, 2, 3, 5, 6, 7, 8]})
+    pandas_df3 = pd.DataFrame({'col7': [1, 2, 3, 5, 6, 7, 8]})
 
-    join_types = ["left", "outer", "inner"]
+    join_types = ['left', 'outer', 'inner']
     for how in join_types:
         ray_join = ray_df.join([ray_df2, ray_df3], how=how)
         pandas_join = pandas_df.join([pandas_df2, pandas_df3], how=how)
@@ -2169,7 +2169,7 @@ def test_last_valid_index(ray_df, pandas_df):
 
 
 def test_le():
-    test_comparison_inter_ops("le")
+    test_comparison_inter_ops('le')
 
 
 def test_lookup():
@@ -2180,7 +2180,7 @@ def test_lookup():
 
 
 def test_lt():
-    test_comparison_inter_ops("lt")
+    test_comparison_inter_ops('lt')
 
 
 def test_mad():
@@ -2229,17 +2229,17 @@ def test_memory_usage(ray_df):
 
 
 def test_merge():
-    ray_df = rdf.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                            "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    ray_df = rdf.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                            'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
-    pandas_df = pd.DataFrame({"col1": [0, 1, 2, 3], "col2": [4, 5, 6, 7],
-                              "col3": [8, 9, 0, 1], "col4": [2, 4, 5, 6]})
+    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3], 'col2': [4, 5, 6, 7],
+                              'col3': [8, 9, 0, 1], 'col4': [2, 4, 5, 6]})
 
-    ray_df2 = rdf.DataFrame({"col1": [0, 1, 2], "col2": [1, 5, 6]})
+    ray_df2 = rdf.DataFrame({'col1': [0, 1, 2], 'col2': [1, 5, 6]})
 
-    pandas_df2 = pd.DataFrame({"col1": [0, 1, 2], "col2": [1, 5, 6]})
+    pandas_df2 = pd.DataFrame({'col1': [0, 1, 2], 'col2': [1, 5, 6]})
 
-    join_types = ["outer", "inner"]
+    join_types = ['outer', 'inner']
     for how in join_types:
         # Defaults
         ray_result = ray_df.merge(ray_df2, how=how)
@@ -2289,7 +2289,7 @@ def test_min(ray_df, pandas_df):
 
 
 def test_mod():
-    test_inter_df_math("mod", simple=False)
+    test_inter_df_math('mod', simple=False)
 
 
 @pytest.fixture
@@ -2300,15 +2300,15 @@ def test_mode(ray_df, pandas_df):
 
 
 def test_mul():
-    test_inter_df_math("mul", simple=False)
+    test_inter_df_math('mul', simple=False)
 
 
 def test_multiply():
-    test_inter_df_math("multiply", simple=False)
+    test_inter_df_math('multiply', simple=False)
 
 
 def test_ne():
-    test_comparison_inter_ops("ne")
+    test_comparison_inter_ops('ne')
 
 
 def test_nlargest():
@@ -2412,7 +2412,7 @@ def test_pop(ray_df, pandas_df):
 
 
 def test_pow():
-    test_inter_df_math("pow", simple=False)
+    test_inter_df_math('pow', simple=False)
 
 
 @pytest.fixture
@@ -2438,7 +2438,7 @@ def test_query(ray_df, pandas_df, funcs):
 
 
 def test_radd():
-    test_inter_df_math_right_ops("radd")
+    test_inter_df_math_right_ops('radd')
 
 
 @pytest.fixture
@@ -2448,7 +2448,7 @@ def test_rank(ray_df, pandas_df):
 
 
 def test_rdiv():
-    test_inter_df_math_right_ops("rdiv")
+    test_inter_df_math_right_ops('rdiv')
 
 
 def test_reindex():
@@ -2760,15 +2760,15 @@ def test_reset_index(ray_df, pandas_df, inplace=False):
 
 
 def test_rfloordiv():
-    test_inter_df_math_right_ops("rfloordiv")
+    test_inter_df_math_right_ops('rfloordiv')
 
 
 def test_rmod():
-    test_inter_df_math_right_ops("rmod")
+    test_inter_df_math_right_ops('rmod')
 
 
 def test_rmul():
-    test_inter_df_math_right_ops("rmul")
+    test_inter_df_math_right_ops('rmul')
 
 
 def test_rolling():
@@ -2785,15 +2785,15 @@ def test_round(ray_df, pd_df):
 
 
 def test_rpow():
-    test_inter_df_math_right_ops("rpow")
+    test_inter_df_math_right_ops('rpow')
 
 
 def test_rsub():
-    test_inter_df_math_right_ops("rsub")
+    test_inter_df_math_right_ops('rsub')
 
 
 def test_rtruediv():
-    test_inter_df_math_right_ops("rtruediv")
+    test_inter_df_math_right_ops('rtruediv')
 
 
 def test_sample():
@@ -2821,7 +2821,7 @@ def test_select_dtypes():
     rd = from_pandas(df, 2)
     r = rd.select_dtypes(include=include, exclude=exclude)
 
-    e = df[["test2", "test3", "test6"]]
+    e = df[['test2', 'test3', 'test6']]
     assert(ray_df_equals_pandas(r, e))
 
     try:
@@ -2953,11 +2953,11 @@ def test_std(ray_df, pandas_df):
 
 
 def test_sub():
-    test_inter_df_math("sub", simple=False)
+    test_inter_df_math('sub', simple=False)
 
 
 def test_subtract():
-    test_inter_df_math("subtract", simple=False)
+    test_inter_df_math('subtract', simple=False)
 
 
 def test_swapaxes():
@@ -3030,7 +3030,7 @@ def test_transform(ray_df, pandas_df):
 
 
 def test_truediv():
-    test_inter_df_math("truediv", simple=False)
+    test_inter_df_math('truediv', simple=False)
 
 
 def test_truncate():
@@ -3143,17 +3143,17 @@ def test___getitem__(ray_df, pd_df):
 def test___getattr__():
     df = create_test_dataframe()
 
-    col = df.__getattr__("col1")
+    col = df.__getattr__('col1')
     assert isinstance(col, pd.Series)
 
-    col = getattr(df, "col1")
+    col = getattr(df, 'col1')
     assert isinstance(col, pd.Series)
 
     col = df.col1
     assert isinstance(col, pd.Series)
 
     # Check that lookup in column doesn't override other attributes
-    df2 = df.rename(index=str, columns={"col5": "columns"})
+    df2 = df.rename(index=str, columns={'col5': 'columns'})
     assert isinstance(df2.columns, pd.Index)
 
 
@@ -3322,7 +3322,7 @@ def test_iat():
 
 
 def test___rsub__():
-    test_inter_df_math_right_ops("__rsub__")
+    test_inter_df_math_right_ops('__rsub__')
 
 
 @pytest.fixture
@@ -3349,11 +3349,11 @@ def test_is_copy():
 
 
 def test___itruediv__():
-    test_inter_df_math("__itruediv__", simple=True)
+    test_inter_df_math('__itruediv__', simple=True)
 
 
 def test___div__():
-    test_inter_df_math("__div__", simple=True)
+    test_inter_df_math('__div__', simple=True)
 
 
 def test_at():
@@ -3391,7 +3391,7 @@ def test__doc__():
     assert rdf.DataFrame.__init__ != pd.DataFrame.__init__
     for attr, obj in rdf.DataFrame.__dict__.items():
         if (callable(obj) or isinstance(obj, property)) \
-                and attr != "__init__":
+                and attr != '__init__':
             pd_obj = getattr(pd.DataFrame, attr, None)
             if callable(pd_obj) or isinstance(pd_obj, property):
                 assert obj.__doc__ == pd_obj.__doc__

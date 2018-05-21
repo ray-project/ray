@@ -18,7 +18,7 @@ class SharedModelLSTM(TFPolicy):
             to be tracked).
     """
 
-    other_output = ["vf_preds", "features"]
+    other_output = ['vf_preds', 'features']
     is_recurrent = True
 
     def __init__(self, registry, ob_space, ac_space, config, **kwargs):
@@ -38,14 +38,14 @@ class SharedModelLSTM(TFPolicy):
         self.curr_dist = dist_class(self.logits)
         # with tf.variable_scope("vf"):
         #     vf_model = ModelCatalog.get_model(self.x, 1)
-        self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
+        self.vf = tf.reshape(linear(self._model.last_layer, 1, 'value',
                                     normc_initializer(1.0)), [-1])
 
         self.sample = self.curr_dist.sample()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
         self.global_step = tf.get_variable(
-            "global_step", [], tf.int32,
+            'global_step', [], tf.int32,
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
@@ -55,12 +55,12 @@ class SharedModelLSTM(TFPolicy):
         The LSTM needs its hidden states in order to compute the gradient
         accurately.
         """
-        features = samples["features"][0]
+        features = samples['features'][0]
         feed_dict = {
-            self.x: samples["obs"],
-            self.ac: samples["actions"],
-            self.adv: samples["advantages"],
-            self.r: samples["value_targets"],
+            self.x: samples['obs'],
+            self.ac: samples['actions'],
+            self.adv: samples['advantages'],
+            self.r: samples['value_targets'],
             self.state_in[0]: features[0],
             self.state_in[1]: features[1]
         }
@@ -78,7 +78,7 @@ class SharedModelLSTM(TFPolicy):
         action, vf, c, h = self.sess.run(
             [self.sample, self.vf] + self.state_out,
             {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})
-        return action[0], {"vf_preds": vf[0], "features": (c, h)}
+        return action[0], {'vf_preds': vf[0], 'features': (c, h)}
 
     def value(self, ob, c, h):
         vf = self.sess.run(self.vf, {self.x: [ob],

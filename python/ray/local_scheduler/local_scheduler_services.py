@@ -18,7 +18,7 @@ def start_local_scheduler(plasma_store_name,
                           plasma_manager_name=None,
                           worker_path=None,
                           plasma_address=None,
-                          node_ip_address="127.0.0.1",
+                          node_ip_address='127.0.0.1',
                           redis_address=None,
                           use_valgrind=False,
                           use_profiler=False,
@@ -63,67 +63,67 @@ def start_local_scheduler(plasma_store_name,
             the local scheduler process.
     """
     if (plasma_manager_name is None) != (redis_address is None):
-        raise Exception("If one of the plasma_manager_name and the "
-                        "redis_address is provided, then both must be "
-                        "provided.")
+        raise Exception('If one of the plasma_manager_name and the '
+                        'redis_address is provided, then both must be '
+                        'provided.')
     if use_valgrind and use_profiler:
-        raise Exception("Cannot use valgrind and profiler at the same time.")
+        raise Exception('Cannot use valgrind and profiler at the same time.')
     local_scheduler_executable = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "../core/src/local_scheduler/local_scheduler")
-    local_scheduler_name = "/tmp/scheduler{}".format(random_name())
+        '../core/src/local_scheduler/local_scheduler')
+    local_scheduler_name = '/tmp/scheduler{}'.format(random_name())
     command = [
-        local_scheduler_executable, "-s", local_scheduler_name, "-p",
-        plasma_store_name, "-h", node_ip_address, "-n",
+        local_scheduler_executable, '-s', local_scheduler_name, '-p',
+        plasma_store_name, '-h', node_ip_address, '-n',
         str(num_workers)
     ]
     if plasma_manager_name is not None:
-        command += ["-m", plasma_manager_name]
+        command += ['-m', plasma_manager_name]
     if worker_path is not None:
         assert plasma_store_name is not None
         assert plasma_manager_name is not None
         assert redis_address is not None
-        start_worker_command = ("{} {} "
-                                "--node-ip-address={} "
-                                "--object-store-name={} "
-                                "--object-store-manager-name={} "
-                                "--local-scheduler-name={} "
-                                "--redis-address={}".format(
+        start_worker_command = ('{} {} '
+                                '--node-ip-address={} '
+                                '--object-store-name={} '
+                                '--object-store-manager-name={} '
+                                '--local-scheduler-name={} '
+                                '--redis-address={}'.format(
                                     sys.executable, worker_path,
                                     node_ip_address, plasma_store_name,
                                     plasma_manager_name, local_scheduler_name,
                                     redis_address))
-        command += ["-w", start_worker_command]
+        command += ['-w', start_worker_command]
     if redis_address is not None:
-        command += ["-r", redis_address]
+        command += ['-r', redis_address]
     if plasma_address is not None:
-        command += ["-a", plasma_address]
+        command += ['-a', plasma_address]
     if static_resources is not None:
-        resource_argument = ""
+        resource_argument = ''
         for resource_name, resource_quantity in static_resources.items():
             assert (isinstance(resource_quantity, int)
                     or isinstance(resource_quantity, float))
-        resource_argument = ",".join([
-            resource_name + "," + str(resource_quantity)
+        resource_argument = ','.join([
+            resource_name + ',' + str(resource_quantity)
             for resource_name, resource_quantity in static_resources.items()
         ])
     else:
-        resource_argument = "CPU,{}".format(psutil.cpu_count())
-    command += ["-c", resource_argument]
+        resource_argument = 'CPU,{}'.format(psutil.cpu_count())
+    command += ['-c', resource_argument]
 
     if use_valgrind:
         pid = subprocess.Popen(
             [
-                "valgrind", "--track-origins=yes", "--leak-check=full",
-                "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
-                "--error-exitcode=1"
+                'valgrind', '--track-origins=yes', '--leak-check=full',
+                '--show-leak-kinds=all', '--leak-check-heuristics=stdstring',
+                '--error-exitcode=1'
             ] + command,
             stdout=stdout_file,
             stderr=stderr_file)
         time.sleep(1.0)
     elif use_profiler:
         pid = subprocess.Popen(
-            ["valgrind", "--tool=callgrind"] + command,
+            ['valgrind', '--tool=callgrind'] + command,
             stdout=stdout_file,
             stderr=stderr_file)
         time.sleep(1.0)
