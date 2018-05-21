@@ -426,7 +426,7 @@ TaskExecutionSpec::TaskExecutionSpec(TaskExecutionSpec *other)
   spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
 }
 
-std::vector<ObjectID> TaskExecutionSpec::ExecutionDependencies() const {
+const std::vector<ObjectID> &TaskExecutionSpec::ExecutionDependencies() const {
   return execution_dependencies_;
 }
 

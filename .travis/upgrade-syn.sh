@@ -9,14 +9,12 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT"
 
-yapf \
-    --style "$ROOT/.style.yapf" \
-    --in-place --recursive --parallel \
-    --exclude 'python/ray/cloudpickle' \
-    --exclude 'python/ray/dataframe' \
-    --exclude 'python/ray/rllib' \
-    -- \
-    'test' 'python'
+find \
+    python test \
+    -name '*.py' -type f \
+    -not -path 'python/ray/cloudpickle/*' \
+    -not -path 'python/ray/dataframe/*' \
+    -exec python -m pyupgrade {} +
 
 if ! git diff --quiet; then
     echo 'Reformatted staged files. Please review and stage the changes.'

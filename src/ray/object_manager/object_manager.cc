@@ -116,8 +116,7 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   ray::Status status_code = object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
-        object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_,
-                                                      object_id);
+        RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_, object_id));
         GetLocationsSuccess(client_ids, object_id);
       });
   return status_code;
@@ -172,7 +171,7 @@ ray::Status ObjectManager::PullEstablishConnection(const ObjectID &object_id,
           Status pull_send_status = PullSendRequest(object_id, async_conn);
           RAY_CHECK_OK(pull_send_status);
         },
-        [this, object_id](const Status &status) {
+        [](const Status &status) {
           RAY_LOG(ERROR) << "Failed to establish connection with remote object manager.";
           RAY_CHECK_OK(status);
         });

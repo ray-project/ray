@@ -30,19 +30,21 @@ void ObjectDirectory::RegisterBackend() {
         location_client_id_set.erase(client_id);
       }
     }
-    std::vector<ClientID> client_id_vec(location_client_id_set.begin(),
-                                        location_client_id_set.end());
-    // Copy the callbacks so that the callbacks can unsubscribe without interrupting
-    // looping over the callbacks.
-    auto callbacks = object_id_listener_pair->second.callbacks;
-    // Call all callbacks associated with the object id locations we have received.
-    for (const auto &callback_pair : callbacks) {
-      callback_pair.second(client_id_vec, object_id);
+    if (!location_client_id_set.empty()) {
+      std::vector<ClientID> client_id_vec(location_client_id_set.begin(),
+                                          location_client_id_set.end());
+      // Copy the callbacks so that the callbacks can unsubscribe without interrupting
+      // looping over the callbacks.
+      auto callbacks = object_id_listener_pair->second.callbacks;
+      // Call all callbacks associated with the object id locations we have received.
+      for (const auto &callback_pair : callbacks) {
+        callback_pair.second(client_id_vec, object_id);
+      }
     }
   };
-  gcs_client_->object_table().Subscribe(UniqueID::nil(),
+  RAY_CHECK_OK(gcs_client_->object_table().Subscribe(UniqueID::nil(),
                                         gcs_client_->client_table().GetLocalClientId(),
-                                        object_notification_callback, nullptr);
+                                        object_notification_callback, nullptr));
 }
 
 ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,

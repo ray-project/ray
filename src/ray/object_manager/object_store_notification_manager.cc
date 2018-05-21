@@ -63,25 +63,25 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
 }
 
 void ObjectStoreNotificationManager::ProcessStoreAdd(const ObjectInfoT &object_info) {
-  for (auto handler : add_handlers_) {
+  for (auto &handler : add_handlers_) {
     handler(object_info);
   }
 }
 
 void ObjectStoreNotificationManager::ProcessStoreRemove(const ObjectID &object_id) {
-  for (auto handler : rem_handlers_) {
+  for (auto &handler : rem_handlers_) {
     handler(object_id);
   }
 }
 
 void ObjectStoreNotificationManager::SubscribeObjAdded(
     std::function<void(const ObjectInfoT &)> callback) {
-  add_handlers_.push_back(callback);
+  add_handlers_.push_back(std::move(callback));
 }
 
 void ObjectStoreNotificationManager::SubscribeObjDeleted(
     std::function<void(const ObjectID &)> callback) {
-  rem_handlers_.push_back(callback);
+  rem_handlers_.push_back(std::move(callback));
 }
 
 }  // namespace ray

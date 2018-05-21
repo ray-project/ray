@@ -229,13 +229,14 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   }
   // Locate the client id in remote client table and update available resources based on
   // the received heartbeat information.
-  if (this->cluster_resource_map_.count(client_id) == 0) {
+  auto it = this->cluster_resource_map_.find(client_id);
+  if (it == cluster_resource_map_.end()) {
     // Haven't received the client registration for this client yet, skip this heartbeat.
     RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
                   << client_id;
     return;
   }
-  SchedulingResources &resources = this->cluster_resource_map_[client_id];
+  SchedulingResources &resources = it->second;
   ResourceSet heartbeat_resource_available(heartbeat_data.resources_available_label,
                                            heartbeat_data.resources_available_capacity);
   resources.SetAvailableResources(
@@ -646,10 +647,13 @@ void NodeManager::AssignTask(Task &task) {
     // If the task was an actor task, then record this execution to guarantee
     // consistency in the case of reconstruction.
     if (spec.IsActorTask()) {
-      // Extend the frontier to include the executing task.
       auto actor_entry = actor_registry_.find(spec.ActorId());
       RAY_CHECK(actor_entry != actor_registry_.end());
-      actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
+      auto execution_dependency = actor_entry->second.GetExecutionDependency();
+      // The execution dependency is initialized to the actor creation task's
+      // return value, and is subsequently updated to the assigned tasks'
+      // return values, so it should never be nil.
+      RAY_CHECK(!execution_dependency.is_nil());
       // Update the task's execution dependencies to reflect the actual
       // execution order, to support deterministic reconstruction.
       // NOTE(swang): The update of an actor task's execution dependencies is
@@ -658,8 +662,9 @@ void NodeManager::AssignTask(Task &task) {
       // guarantee deterministic reconstruction ordering for tasks whose
       // updates are reflected in the task table.
       TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
-      mutable_spec.SetExecutionDependencies(
-          {actor_entry->second.GetExecutionDependency()});
+      mutable_spec.SetExecutionDependencies({execution_dependency});
+      // Extend the frontier to include the executing task.
+      actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
     }
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
@@ -692,7 +697,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     auto actor_notification = std::make_shared<ActorTableDataT>();
     actor_notification->actor_id = actor_id.binary();
     actor_notification->actor_creation_dummy_object_id =
-        task.GetTaskSpecification().ActorCreationDummyObjectId().binary();
+        task.GetTaskSpecification().ActorDummyObject().binary();
     // TODO(swang): The driver ID.
     actor_notification->driver_id = JobID::nil().binary();
     actor_notification->node_manager_id =
@@ -782,13 +787,14 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   auto client_info = gcs_client_->client_table().GetClient(node_id);
 
   // Lookup remote server connection for this node_id and use it to send the request.
-  if (remote_server_connections_.count(node_id) == 0) {
+  auto it = remote_server_connections_.find(node_id);
+  if (it == remote_server_connections_.end()) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
     RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id;
     return ray::Status::IOError("NodeManager connection not found");
   }
 
-  auto &server_conn = remote_server_connections_.at(node_id);
+  auto &server_conn = it->second;
   auto status = server_conn.WriteMessage(protocol::MessageType_ForwardTaskRequest,
                                          fbb.GetSize(), fbb.GetBufferPointer());
   if (status.ok()) {
