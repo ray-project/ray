@@ -11,7 +11,9 @@ from .utils import _map_partitions
 from .utils import _inherit_docstrings
 
 
-@_inherit_docstrings(pandas.core.groupby.DataFrameGroupBy)
+@_inherit_docstrings(pandas.core.groupby.DataFrameGroupBy,
+                     excluded=[pandas.core.groupby.DataFrameGroupBy,
+                               pandas.core.groupby.DataFrameGroupBy.__init__])
 class DataFrameGroupBy(object):
 
     def __init__(self, df, by, axis, level, as_index, sort, group_keys,

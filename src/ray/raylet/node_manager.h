@@ -57,11 +57,16 @@ class NodeManager {
   ray::Status RegisterGcs();
 
  private:
-  // Handler for the addition of a new GCS client.
+  /// Methods for handling clients.
+  /// Handler for the addition of a new GCS client.
   void ClientAdded(const ClientTableDataT &data);
-  // Handler for the creation of an actor, possibly on a remote node.
-  void HandleActorCreation(const ActorID &actor_id,
-                           const std::vector<ActorTableDataT> &data);
+  /// Send heartbeats to the GCS.
+  void Heartbeat();
+  /// Handler for a heartbeat notification from the GCS.
+  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
+                      const HeartbeatTableDataT &data);
+
+  /// Methods for task scheduling.
   // Queue a task for local execution.
   void QueueTask(const Task &task);
   /// Submit a task to this node.
@@ -72,24 +77,34 @@ class NodeManager {
   void FinishAssignedTask(Worker &worker);
   /// Schedule tasks.
   void ScheduleTasks();
-  /// Handle a task whose local dependencies were missing and are now available.
-  void HandleWaitingTaskReady(const TaskID &task_id);
   /// Resubmit a task whose return value needs to be reconstructed.
   void ResubmitTask(const TaskID &task_id);
   /// Forward a task to another node to execute. The task is assumed to not be
   /// queued in local_queues_.
   ray::Status ForwardTask(const Task &task, const ClientID &node_id);
-  /// Send heartbeats to the GCS.
-  void Heartbeat();
-  /// Handler for a notification about a new client from the GCS.
-  void ClientAdded(gcs::AsyncGcsClient *client, const UniqueID &id,
-                   const ClientTableDataT &data);
-  /// Handler for a heartbeat notification from the GCS.
-  void HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &id,
-                      const HeartbeatTableDataT &data);
   /// Dispatch locally scheduled tasks. This attempts the transition from "scheduled" to
   /// "running" task state.
   void DispatchTasks();
+
+  /// Methods for actor scheduling.
+  /// Handler for the creation of an actor, possibly on a remote node.
+  void HandleActorCreation(const ActorID &actor_id,
+                           const std::vector<ActorTableDataT> &data);
+
+  /// Methods for managing object dependencies.
+  /// Handle a dependency required by a queued task that is missing locally.
+  /// The dependency is (1) on a remote node, (2) pending creation on a remote
+  /// node, or (3) missing from all nodes and requires reconstruction.
+  void HandleRemoteDependencyRequired(const ObjectID &dependency_id);
+  /// Handle a dependency that was previously required by a queued task that is
+  /// no longer required.
+  void HandleRemoteDependencyCanceled(const ObjectID &dependency_id);
+  /// Handle an object becoming local. This updates any local accounting, but
+  /// does not write to any global accounting in the GCS.
+  void HandleObjectLocal(const ObjectID &object_id);
+  /// Handle an object that is no longer local. This updates any local
+  /// accounting, but does not write to any global accounting in the GCS.
+  void HandleObjectMissing(const ObjectID &object_id);
 
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;

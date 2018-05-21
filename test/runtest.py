@@ -180,14 +180,15 @@ LIST_OBJECTS = [[obj] for obj in BASE_OBJECTS]
 TUPLE_OBJECTS = [(obj, ) for obj in BASE_OBJECTS]
 # The check that type(obj).__module__ != "numpy" should be unnecessary, but
 # otherwise this seems to fail on Mac OS X on Travis.
-DICT_OBJECTS = ([{
-    obj: obj
-} for obj in PRIMITIVE_OBJECTS if (
-    obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
-        0: obj
-    } for obj in BASE_OBJECTS] + [{
-        Foo(123): Foo(456)
-    }])
+DICT_OBJECTS = (
+    [{
+        obj: obj
+    } for obj in PRIMITIVE_OBJECTS
+     if (obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
+         0: obj
+     } for obj in BASE_OBJECTS] + [{
+         Foo(123): Foo(456)
+     }])
 
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
@@ -529,6 +530,8 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(x), "1 hi")
         x = test_functions.keyword_fct1.remote(1, b="world")
         self.assertEqual(ray.get(x), "1 world")
+        x = test_functions.keyword_fct1.remote(a=1, b="world")
+        self.assertEqual(ray.get(x), "1 world")
 
         x = test_functions.keyword_fct2.remote(a="w", b="hi")
         self.assertEqual(ray.get(x), "w hi")
@@ -545,6 +548,10 @@ class APITest(unittest.TestCase):
 
         x = test_functions.keyword_fct3.remote(0, 1, c="w", d="hi")
         self.assertEqual(ray.get(x), "0 1 w hi")
+        x = test_functions.keyword_fct3.remote(0, b=1, c="w", d="hi")
+        self.assertEqual(ray.get(x), "0 1 w hi")
+        x = test_functions.keyword_fct3.remote(a=0, b=1, c="w", d="hi")
+        self.assertEqual(ray.get(x), "0 1 w hi")
         x = test_functions.keyword_fct3.remote(0, 1, d="hi", c="w")
         self.assertEqual(ray.get(x), "0 1 w hi")
         x = test_functions.keyword_fct3.remote(0, 1, c="w")
@@ -552,6 +559,8 @@ class APITest(unittest.TestCase):
         x = test_functions.keyword_fct3.remote(0, 1, d="hi")
         self.assertEqual(ray.get(x), "0 1 hello hi")
         x = test_functions.keyword_fct3.remote(0, 1)
+        self.assertEqual(ray.get(x), "0 1 hello world")
+        x = test_functions.keyword_fct3.remote(a=0, b=1)
         self.assertEqual(ray.get(x), "0 1 hello world")
 
         # Check that we cannot pass invalid keyword arguments to functions.
@@ -573,6 +582,9 @@ class APITest(unittest.TestCase):
         with self.assertRaises(Exception):
             f2.remote(0, w=0)
 
+        with self.assertRaises(Exception):
+            f2.remote(3, x=3)
+
         # Make sure we get an exception if too many arguments are passed in.
         with self.assertRaises(Exception):
             f2.remote(1, 2, 3, 4)
@@ -593,7 +605,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(x), "1 2")
 
         self.assertTrue(test_functions.kwargs_exception_thrown)
-        self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
 
         @ray.remote
         def f1(*args):
@@ -710,8 +721,8 @@ class APITest(unittest.TestCase):
         assert ray.get([id1, id2, id3]) == [0, 1, 2]
         assert ray.get(
             g._submit(
-                args=[], num_cpus=1, num_gpus=1, resources={"Custom":
-                                                            1})) == [0]
+                args=[], num_cpus=1, num_gpus=1,
+                resources={"Custom": 1})) == [0]
         infeasible_id = g._submit(args=[], resources={"NonexistentCustom": 1})
         ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=50)
         assert len(ready_ids) == 0
@@ -1818,7 +1829,7 @@ class SchedulingAlgorithm(unittest.TestCase):
             counts = [locations.count(name) for name in names]
             print("Counts are {}.".format(counts))
             if (len(names) == num_local_schedulers
-                    and all([count >= minimum_count for count in counts])):
+                    and all(count >= minimum_count for count in counts)):
                 break
             attempts += 1
         self.assertLess(attempts, num_attempts)
@@ -1913,7 +1924,7 @@ class GlobalStateAPI(unittest.TestCase):
         resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
         assert ray.global_state.cluster_resources() == resources
 
-        self.assertEqual(ray.global_state.object_table(), dict())
+        self.assertEqual(ray.global_state.object_table(), {})
 
         ID_SIZE = 20
 
@@ -2207,6 +2218,16 @@ class GlobalStateAPI(unittest.TestCase):
         # Make sure the tables are empty.
         assert len(ray.global_state.object_table()) == 0
         assert len(ray.global_state.task_table()) == 0
+
+        # Run some more tasks.
+        ray.get([f.remote() for _ in range(10)])
+
+        while len(ray.global_state.task_table()) != 0:
+            ray.experimental.flush_finished_tasks_unsafe()
+
+        # Make sure that we can call this method (but it won't do anything in
+        # this test case).
+        ray.experimental.flush_evicted_objects_unsafe()
 
 
 if __name__ == "__main__":

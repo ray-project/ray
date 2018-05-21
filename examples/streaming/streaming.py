@@ -92,7 +92,7 @@ if __name__ == "__main__":
     article_index = 0
     while True:
         print("article index = {}".format(article_index))
-        wordcounts = dict()
+        wordcounts = {}
         counts = ray.get([reducer.next_reduce_result.remote(article_index)
                           for reducer in reducers])
         for count in counts:

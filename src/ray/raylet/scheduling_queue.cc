@@ -51,10 +51,8 @@ void removeTasksFromQueue(std::list<Task> &queue, std::unordered_set<TaskID> &ta
 }
 
 // Helper function to queue the given tasks to the given queue.
-void queueTasks(std::list<Task> &queue, const std::vector<Task> &tasks) {
-  for (auto &task : tasks) {
-    queue.push_back(task);
-  }
+inline void queueTasks(std::list<Task> &queue, const std::vector<Task> &tasks) {
+  queue.insert(queue.end(), tasks.begin(), tasks.end());
 }
 
 std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> task_ids) {
