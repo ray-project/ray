@@ -30,7 +30,7 @@ class TaskExecutionSpec {
   ///
   /// @return A vector of object IDs representing this task's execution
   ///         dependencies.
-  std::vector<ObjectID> ExecutionDependencies() const;
+  const std::vector<ObjectID> &ExecutionDependencies() const;
 
   /// Set the task's execution dependencies.
   ///
