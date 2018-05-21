@@ -115,8 +115,8 @@ class DataFrame(object):
             # created this invariant to make sure we never have to go into the
             # partitions to get the columns
             assert columns is not None or col_metadata is not None, \
-                "Columns not defined, must define columns or col_metadata " \
-                "for internal DataFrame creations"
+                'Columns not defined, must define columns or col_metadata ' \
+                'for internal DataFrame creations'
 
             if block_partitions is not None:
                 # put in numpy array here to make accesses easier since it's 2D
@@ -151,7 +151,7 @@ class DataFrame(object):
             self._block_partitions = np.expand_dims(self._block_partitions,
                                                     axis=axis ^ 1)
 
-        assert self._block_partitions.ndim == 2, "Block Partitions must be 2D."
+        assert self._block_partitions.ndim == 2, 'Block Partitions must be 2D.'
 
         # Create the row and column index objects for using our partitioning.
         # If the objects haven't been inherited, then generate them
@@ -285,10 +285,10 @@ class DataFrame(object):
             front = front(x, 10)
             back = back(x, 10)
 
-            col_dots = pd.Series(["..."
+            col_dots = pd.Series(['...'
                                   for _ in range(len(self.index))])
             col_dots.index = self.index
-            col_dots.name = "..."
+            col_dots.name = '...'
             x = pd.concat([front, col_dots, back], axis=1)
 
             # If less than 60 rows, x is already in the correct format.
@@ -299,10 +299,10 @@ class DataFrame(object):
         tail = tail(x, 30, get_local_head)
 
         # Make the dots in between the head and tail
-        row_dots = pd.Series(["..."
+        row_dots = pd.Series(['...'
                               for _ in range(len(head.columns))])
         row_dots.index = head.columns
-        row_dots.name = "..."
+        row_dots.name = '...'
 
         # We have to do it this way or convert dots to a dataframe and
         # transpose. This seems better.
@@ -316,8 +316,8 @@ class DataFrame(object):
             return repr(self._repr_helper_())
         # The split here is so that we don't repr pandas row lengths.
         result = self._repr_helper_()
-        final_result = repr(result).rsplit("\n\n", maxsplit=1)[0] + \
-            "\n\n[{0} rows x {1} columns]".format(len(self.index),
+        final_result = repr(result).rsplit('\n\n', maxsplit=1)[0] + \
+            '\n\n[{0} rows x {1} columns]'.format(len(self.index),
                                                   len(self.columns))
         return final_result
 
@@ -335,8 +335,8 @@ class DataFrame(object):
             return self._repr_helper_()._repr_html_()
         # We split so that we insert our correct dataframe dimensions.
         result = self._repr_helper_()._repr_html_()
-        return result.split("<p>")[0] + \
-            "<p>{0} rows x {1} columns</p>\n</div>".format(len(self.index),
+        return result.split('<p>')[0] + \
+            '<p>{0} rows x {1} columns</p>\n</div>'.format(len(self.index),
                                                            len(self.columns))
 
     def _get_index(self):
@@ -378,7 +378,7 @@ class DataFrame(object):
     def _arithmetic_helper(self, remote_func, axis, level=None):
         # TODO: We don't support `level` right now
         if level is not None:
-            raise NotImplementedError("Level not yet supported.")
+            raise NotImplementedError('Level not yet supported.')
 
         axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
             else 0
@@ -413,11 +413,11 @@ class DataFrame(object):
                 Python statements, only Python expressions.
         """
         if isinstance(expr, str) and expr is '':
-            raise ValueError("expr cannot be an empty string")
+            raise ValueError('expr cannot be an empty string')
 
         if isinstance(expr, str) and '@' in expr:
-            raise NotImplementedError("Local variables not yet supported in "
-                                      "eval.")
+            raise NotImplementedError('Local variables not yet supported in '
+                                      'eval.')
 
         if isinstance(expr, str) and 'not' in expr:
             if 'parser' in kwargs and kwargs['parser'] == 'python':
@@ -561,7 +561,7 @@ class DataFrame(object):
         """
         assert row_partitions is not None or col_partitions is not None\
             or block_partitions is not None, \
-            "To update inplace, new column or row partitions must be set."
+            'To update inplace, new column or row partitions must be set.'
 
         if block_partitions is not None:
             self._block_partitions = block_partitions
@@ -576,7 +576,7 @@ class DataFrame(object):
             self._col_metadata = col_metadata
         else:
             assert columns is not None, \
-                "If col_metadata is None, columns must be passed in"
+                'If col_metadata is None, columns must be passed in'
             self._col_metadata = _IndexMetadata(
                 self._block_partitions[0, :], index=columns, axis=1)
         if row_metadata is not None:
@@ -670,7 +670,7 @@ class DataFrame(object):
 
             if all(obj in self for obj in by) and mismatch:
                 raise NotImplementedError(
-                    "Groupby with lists of columns not yet supported.")
+                    'Groupby with lists of columns not yet supported.')
             elif mismatch:
                 raise KeyError(next(x for x in by if x not in self))
 
@@ -704,7 +704,7 @@ class DataFrame(object):
         for t in self.dtypes:
             if np.dtype('O') == t:
                 # TODO Give a more accurate error to Pandas
-                raise TypeError("bad operand type for abs():", "str")
+                raise TypeError('bad operand type for abs():', 'str')
 
         new_block_partitions = np.array([_map_partitions(lambda df: df.abs(),
                                                          block)
@@ -810,7 +810,7 @@ class DataFrame(object):
             If inplace is set to True, returns None, otherwise returns a new
             DataFrame with the dropna applied.
         """
-        inplace = validate_bool_kwarg(inplace, "inplace")
+        inplace = validate_bool_kwarg(inplace, 'inplace')
 
         if is_list_like(axis):
             axis = [pd.DataFrame()._get_axis_number(ax) for ax in axis]
@@ -952,15 +952,15 @@ class DataFrame(object):
         # Dictionaries have complex behavior because they can be renamed here.
         elif isinstance(arg, dict):
             raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
+                'To contribute to Pandas on Ray, please visit '
+                'github.com/ray-project/ray.')
         elif is_list_like(arg):
             return self.apply(arg, axis=_axis, args=args, **kwargs)
         elif callable(arg):
             self._callable_function(arg, _axis, *args, **kwargs)
         else:
             # TODO Make pandas error
-            raise ValueError("type {} is not callable".format(type(arg)))
+            raise ValueError('type {} is not callable'.format(type(arg)))
 
     def _string_function(self, func, *args, **kwargs):
         assert isinstance(func, compat.string_types)
@@ -979,9 +979,9 @@ class DataFrame(object):
 
         f = getattr(np, func, None)
         if f is not None:
-            raise NotImplementedError("Numpy aggregates not yet supported.")
+            raise NotImplementedError('Numpy aggregates not yet supported.')
 
-        raise ValueError("{} is an unknown string function".format(func))
+        raise ValueError('{} is an unknown string function'.format(func))
 
     def _callable_function(self, func, axis, *args, **kwargs):
         if axis == 0:
@@ -1019,8 +1019,8 @@ class DataFrame(object):
 
             if is_transform:
                 if is_scalar(new_df) or len(new_df) != len(df):
-                    raise ValueError("transforms cannot produce "
-                                     "aggregated results")
+                    raise ValueError('transforms cannot produce '
+                                     'aggregated results')
 
             return is_series, new_df, index, columns
 
@@ -1048,7 +1048,7 @@ class DataFrame(object):
         # This error is thrown when some of the partitions return Series and
         # others return DataFrames. We do not allow mixed returns.
         elif any(is_series):
-            raise ValueError("no results.")
+            raise ValueError('no results.')
         # The remaining logic executes when we have only DataFrames in the
         # remote objects. We build a Ray DataFrame from the Pandas partitions.
         elif axis == 0:
@@ -1073,8 +1073,8 @@ class DataFrame(object):
               fill_value=None, method=None, limit=None, fill_axis=0,
               broadcast_axis=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def all(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
@@ -1221,8 +1221,8 @@ class DataFrame(object):
 
     def as_blocks(self, copy=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def as_matrix(self, columns=None):
         """Convert the frame to its Numpy-array representation.
@@ -1240,26 +1240,26 @@ class DataFrame(object):
     def asfreq(self, freq, method=None, how=None, normalize=False,
                fill_value=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def asof(self, where, subset=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def assign(self, **kwargs):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def astype(self, dtype, copy=True, errors='raise', **kwargs):
         if isinstance(dtype, dict):
             if (not set(dtype.keys()).issubset(set(self.columns)) and
                     errors == 'raise'):
                 raise KeyError(
-                    "Only a column name can be used for the key in"
-                    "a dtype mappings argument.")
+                    'Only a column name can be used for the key in'
+                    'a dtype mappings argument.')
             columns = list(dtype.keys())
             col_idx = [(self.columns.get_loc(columns[i]), columns[i])
                        if columns[i] in self.columns
@@ -1293,14 +1293,14 @@ class DataFrame(object):
 
     def at_time(self, time, asof=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def between_time(self, start_time, end_time, include_start=True,
                      include_end=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
         """Synonym for DataFrame.fillna(method='bfill')
@@ -1334,60 +1334,60 @@ class DataFrame(object):
                 grid=True, figsize=None, layout=None, return_type=None,
                 **kwds):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def clip(self, lower=None, upper=None, axis=None, inplace=False, *args,
              **kwargs):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def clip_lower(self, threshold, axis=None, inplace=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def clip_upper(self, threshold, axis=None, inplace=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def combine(self, other, func, fill_value=None, overwrite=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def combine_first(self, other):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def compound(self, axis=None, skipna=None, level=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def consolidate(self, inplace=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def convert_objects(self, convert_dates=True, convert_numeric=False,
                         convert_timedeltas=True, copy=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def corr(self, method='pearson', min_periods=1):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def corrwith(self, other, axis=0, drop=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def count(self, axis=0, level=None, numeric_only=False):
         """Get the count of non-null objects in the DataFrame.
@@ -1408,8 +1408,8 @@ class DataFrame(object):
 
     def cov(self, min_periods=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def _cumulative_helper(self, func, axis):
         axis = pd.DataFrame()._get_axis_number(axis) if axis is not None \
@@ -1582,8 +1582,8 @@ class DataFrame(object):
 
     def dot(self, other):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def drop(self, labels=None, axis=0, index=None, columns=None, level=None,
              inplace=False, errors='raise'):
@@ -1608,9 +1608,9 @@ class DataFrame(object):
         """
         # TODO implement level
         if level is not None:
-            raise NotImplementedError("Level not yet supported for drop")
+            raise NotImplementedError('Level not yet supported for drop')
 
-        inplace = validate_bool_kwarg(inplace, "inplace")
+        inplace = validate_bool_kwarg(inplace, 'inplace')
         if labels is not None:
             if index is not None or columns is not None:
                 raise ValueError("Cannot specify both 'labels' and "
@@ -1699,14 +1699,14 @@ class DataFrame(object):
                 for label in labels:
                     if errors != 'ignore' and label and \
                             label not in getattr(self, axis):
-                        raise ValueError("The label [{}] is not in the [{}]",
+                        raise ValueError('The label [{}] is not in the [{}]',
                                          label, axis)
                     else:
                         obj = drop_helper(obj, axis, label)
             else:
                 if errors != 'ignore' and labels and \
                         labels not in getattr(self, axis):
-                    raise ValueError("The label [{}] is not in the [{}]",
+                    raise ValueError('The label [{}] is not in the [{}]',
                                      labels, axis)
                 else:
                     obj = drop_helper(obj, axis, labels)
@@ -1720,13 +1720,13 @@ class DataFrame(object):
 
     def drop_duplicates(self, subset=None, keep='first', inplace=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def duplicated(self, subset=None, keep='first'):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def eq(self, other, axis='columns', level=None):
         """Checks element-wise that this is equal to other.
@@ -1833,7 +1833,7 @@ class DataFrame(object):
                 result.columns = pd.RangeIndex(0, len(result.columns))
             return result
 
-        inplace = validate_bool_kwarg(inplace, "inplace")
+        inplace = validate_bool_kwarg(inplace, 'inplace')
         new_rows = _map_partitions(eval_helper, self._row_partitions)
 
         result_type = ray.get(_deploy_func.remote(lambda df: type(df),
@@ -1856,13 +1856,13 @@ class DataFrame(object):
     def ewm(self, com=None, span=None, halflife=None, alpha=None,
             min_periods=0, freq=None, adjust=True, ignore_na=False, axis=0):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def expanding(self, min_periods=1, freq=None, center=False, axis=0):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def ffill(self, axis=None, inplace=False, limit=None, downcast=None):
         """Synonym for DataFrame.fillna(method='ffill')
@@ -1909,8 +1909,8 @@ class DataFrame(object):
         """
         # TODO implement value passed as DataFrame
         if isinstance(value, pd.DataFrame):
-            raise NotImplementedError("Passing a DataFrame as the value for "
-                                      "fillna is not yet supported.")
+            raise NotImplementedError('Passing a DataFrame as the value for '
+                                      'fillna is not yet supported.')
 
         inplace = validate_bool_kwarg(inplace, 'inplace')
 
@@ -2031,8 +2031,8 @@ class DataFrame(object):
 
     def first(self, offset):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def first_valid_index(self):
         """Return index for first non-NA/null value.
@@ -2062,27 +2062,27 @@ class DataFrame(object):
                  parse_dates=True, encoding=None, tupleize_cols=None,
                  infer_datetime_format=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     @classmethod
     def from_dict(self, data, orient='columns', dtype=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     @classmethod
     def from_items(self, items, columns=None, orient='columns'):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     @classmethod
     def from_records(self, data, index=None, exclude=None, columns=None,
                      coerce_float=False, nrows=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def ge(self, other, axis='columns', level=None):
         """Checks element-wise that this is greater than or equal to other.
@@ -2134,13 +2134,13 @@ class DataFrame(object):
 
     def get_value(self, index, col, takeable=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def get_values(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def gt(self, other, axis='columns', level=None):
         """Checks element-wise that this is greater than other.
@@ -2180,8 +2180,8 @@ class DataFrame(object):
              xrot=None, ylabelsize=None, yrot=None, ax=None, sharex=False,
              sharey=False, figsize=None, layout=None, bins=10, **kwds):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def idxmax(self, axis=0, skipna=True):
         """Get the index of the first occurrence of the max value of the axis.
@@ -2229,8 +2229,8 @@ class DataFrame(object):
 
     def infer_objects(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def info(self, verbose=None, buf=None, max_cols=None, memory_usage=None,
              null_counts=None):
@@ -2265,15 +2265,15 @@ class DataFrame(object):
         col_lines = [prog.match(line) for line in lines]
         cols = [c.group(0) for c in col_lines if c is not None]
         # replace the partition columns names with real column names
-        columns = ["{0}\t{1}\n".format(self.columns[i],
-                                       cols[i].split(" ", 1)[1])
+        columns = ['{0}\t{1}\n'.format(self.columns[i],
+                                       cols[i].split(' ', 1)[1])
                    for i in range(len(cols))]
         col_string = ''.join(columns) + '\n'
 
         # A summary of the dtypes in the dataframe
-        dtypes_string = "dtypes: "
+        dtypes_string = 'dtypes: '
         for dtype, count in self.dtypes.value_counts().iteritems():
-            dtypes_string += "{0}({1}),".format(dtype, count)
+            dtypes_string += '{0}({1}),'.format(dtype, count)
         dtypes_string = dtypes_string[:-1] + '\n'
 
         # Compute the memory usage by summing per-partitions return values
@@ -2283,7 +2283,7 @@ class DataFrame(object):
         mem_vals = [float(re.search(r'\d+', m.group(0)).group())
                     for m in mems if m is not None]
 
-        memory_string = ""
+        memory_string = ''
 
         if len(mem_vals) != 0:
             # Sum memory usage from each partition
@@ -2317,16 +2317,16 @@ class DataFrame(object):
 
         if len(value) != len(self.index):
             raise ValueError(
-                "Length of values does not match length of index")
+                'Length of values does not match length of index')
         if not allow_duplicates and column in self.columns:
             raise ValueError(
-                "cannot insert {0}, already exists".format(column))
+                'cannot insert {0}, already exists'.format(column))
         if loc > len(self.columns):
             raise IndexError(
-                "index {0} is out of bounds for axis 0 with size {1}".format(
+                'index {0} is out of bounds for axis 0 with size {1}'.format(
                     loc, len(self.columns)))
         if loc < 0:
-            raise ValueError("unbounded slice")
+            raise ValueError('unbounded slice')
 
         partition, index_within_partition = \
             self._col_metadata.insert(column, loc)
@@ -2363,8 +2363,8 @@ class DataFrame(object):
     def interpolate(self, method='linear', axis=0, limit=None, inplace=False,
                     limit_direction='forward', downcast=None, **kwargs):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def iterrows(self):
         """Iterate over DataFrame rows as (index, Series) pairs.
@@ -2477,11 +2477,11 @@ class DataFrame(object):
         """
 
         if on is not None:
-            raise NotImplementedError("Not yet.")
+            raise NotImplementedError('Not yet.')
 
         if isinstance(other, pd.Series):
             if other.name is None:
-                raise ValueError("Other Series must have a name")
+                raise ValueError('Other Series must have a name')
             other = DataFrame({other.name: other})
 
         if isinstance(other, DataFrame):
@@ -2531,8 +2531,8 @@ class DataFrame(object):
         else:
             # This constraint carried over from Pandas.
             if on is not None:
-                raise ValueError("Joining multiple DataFrames only supported"
-                                 " for joining on index")
+                raise ValueError('Joining multiple DataFrames only supported'
+                                 ' for joining on index')
 
             # Joining the empty DataFrames with either index or columns is
             # fast. It gives us proper error checking for the edge cases that
@@ -2573,19 +2573,19 @@ class DataFrame(object):
     def kurt(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def kurtosis(self, axis=None, skipna=None, level=None, numeric_only=None,
                  **kwargs):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def last(self, offset):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def last_valid_index(self):
         """Return index for last non-NA/null value.
@@ -2610,8 +2610,8 @@ class DataFrame(object):
 
     def lookup(self, row_labels, col_labels):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def lt(self, other, axis='columns', level=None):
         """Checks element-wise that this is less than other.
@@ -2628,14 +2628,14 @@ class DataFrame(object):
 
     def mad(self, axis=None, skipna=None, level=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def mask(self, cond, other=np.nan, inplace=False, axis=None, level=None,
              errors='raise', try_cast=False, raise_on_error=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def max(self, axis=None, skipna=None, level=None, numeric_only=None,
             **kwargs):
@@ -2691,8 +2691,8 @@ class DataFrame(object):
     def melt(self, id_vars=None, value_vars=None, var_name=None,
              value_name='value', col_level=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def memory_usage(self, index=True, deep=False):
 
@@ -2736,8 +2736,8 @@ class DataFrame(object):
         """
 
         if not isinstance(right, DataFrame):
-            raise ValueError("can not merge DataFrame with instance of type "
-                             "{}".format(type(right)))
+            raise ValueError('can not merge DataFrame with instance of type '
+                             '{}'.format(type(right)))
 
         args = (how, on, left_on, right_on, left_index, right_index, sort,
                 suffixes, False, indicator, validate)
@@ -2755,7 +2755,7 @@ class DataFrame(object):
             if left_on is not None or right_on is not None:
                 raise MergeError("Can only pass argument \"on\" OR \"left_on\""
                                  " and \"right_on\", not a combination of "
-                                 "both.")
+                                 'both.')
             if not is_list_like(on):
                 on = [on]
 
@@ -2763,8 +2763,8 @@ class DataFrame(object):
                     next((True for key in on if key not in right), False):
 
                 missing_key = \
-                    next((str(key) for key in on if key not in self), "") + \
-                    next((str(key) for key in on if key not in right), "")
+                    next((str(key) for key in on if key not in self), '') + \
+                    next((str(key) for key in on if key not in right), '')
                 raise KeyError(missing_key)
 
         elif right_on is not None or right_index is True:
@@ -2772,14 +2772,14 @@ class DataFrame(object):
                 # Note: This is not the same error as pandas, but pandas throws
                 # a ValueError NoneType has no len(), and I don't think that
                 # helps enough.
-                raise TypeError("left_on must be specified or left_index must "
-                                "be true if right_on is specified.")
+                raise TypeError('left_on must be specified or left_index must '
+                                'be true if right_on is specified.')
 
         elif left_on is not None or left_index is True:
             if right_on is None and right_index is False:
                 # Note: See note above about TypeError.
-                raise TypeError("right_on must be specified or right_index "
-                                "must be true if right_on is specified.")
+                raise TypeError('right_on must be specified or right_index '
+                                'must be true if right_on is specified.')
 
         if left_on is not None:
             if not is_list_like(left_on):
@@ -2968,8 +2968,8 @@ class DataFrame(object):
 
     def nlargest(self, n, columns, keep='first'):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def notna(self):
         """Perform notna across the DataFrame.
@@ -3008,8 +3008,8 @@ class DataFrame(object):
 
     def nsmallest(self, n, columns, keep='first'):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def nunique(self, axis=0, dropna=True):
         """Return Series with number of distinct
@@ -3030,8 +3030,8 @@ class DataFrame(object):
     def pct_change(self, periods=1, fill_method='pad', limit=None, freq=None,
                    **kwargs):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def pipe(self, func, *args, **kwargs):
         """Apply func(self, *args, **kwargs)
@@ -3048,15 +3048,15 @@ class DataFrame(object):
 
     def pivot(self, index=None, columns=None, values=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def pivot_table(self, values=None, index=None, columns=None,
                     aggfunc='mean', fill_value=None, margins=False,
                     dropna=True, margins_name='All'):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def plot(self, x=None, y=None, kind='line', ax=None, subplots=False,
              sharex=None, sharey=False, layout=None, figsize=None,
@@ -3066,8 +3066,8 @@ class DataFrame(object):
              table=False, yerr=None, xerr=None, secondary_y=False,
              sort_columns=False, **kwds):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def pop(self, item):
         """Pops an item from this DataFrame and returns it.
@@ -3179,7 +3179,7 @@ class DataFrame(object):
             # can't afford the overhead of running the entire operation before
             # we error.
             if all(check_bad_dtype(t) for t in self.dtypes):
-                raise ValueError("need at least one array to concatenate")
+                raise ValueError('need at least one array to concatenate')
 
         # check that all qs are between 0 and 1
         pd.DataFrame()._check_percentile(q)
@@ -3324,20 +3324,20 @@ class DataFrame(object):
                 method=None, copy=True, level=None, fill_value=np.nan,
                 limit=None, tolerance=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def reindex_axis(self, labels, axis=0, method=None, level=None, copy=True,
                      limit=None, fill_value=np.nan):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def reindex_like(self, other, method=None, copy=True, limit=None,
                      tolerance=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def rename(self, mapper=None, index=None, columns=None, axis=None,
                copy=True, inplace=False, level=None):
@@ -3361,7 +3361,7 @@ class DataFrame(object):
         # them ourselves.
         args = locals()
         kwargs = {k: v for k, v in args.items()
-                  if v is not None and k != "self"}
+                  if v is not None and k != 'self'}
         # inplace should always be true because this is just a copy, and we
         # will use the results after.
         kwargs['inplace'] = True
@@ -3381,7 +3381,7 @@ class DataFrame(object):
             return obj
 
     def rename_axis(self, mapper, axis=0, copy=True, inplace=False):
-        axes_is_columns = axis == 1 or axis == "columns"
+        axes_is_columns = axis == 1 or axis == 'columns'
         renamed = self if inplace else self.copy()
         if axes_is_columns:
             renamed.columns.name = mapper
@@ -3401,7 +3401,7 @@ class DataFrame(object):
         Returns:
             Type of caller or None if inplace=True.
         """
-        axes_is_columns = axis == 1 or axis == "columns"
+        axes_is_columns = axis == 1 or axis == 'columns'
         renamed = self if inplace else self.copy()
         if axes_is_columns:
             renamed.columns.set_names(name)
@@ -3413,21 +3413,21 @@ class DataFrame(object):
 
     def reorder_levels(self, order, axis=0):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def replace(self, to_replace=None, value=None, inplace=False, limit=None,
                 regex=False, method='pad', axis=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def resample(self, rule, how=None, axis=0, fill_method=None, closed=None,
                  label=None, convention='start', kind=None, loffset=None,
                  limit=None, base=0, on=None, level=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def reset_index(self, level=None, drop=False, inplace=False, col_level=0,
                     col_fill=''):
@@ -3517,9 +3517,9 @@ class DataFrame(object):
                                 else [name])
                     if col_fill is None:
                         if len(col_name) not in (1, self.columns.nlevels):
-                            raise ValueError("col_fill=None is incompatible "
-                                             "with incomplete column name "
-                                             "{}".format(name))
+                            raise ValueError('col_fill=None is incompatible '
+                                             'with incomplete column name '
+                                             '{}'.format(name))
                         col_fill = col_name[0]
 
                     lev_num = self.columns._get_level_number(col_level)
@@ -3552,8 +3552,8 @@ class DataFrame(object):
     def rolling(self, window, min_periods=None, freq=None, center=False,
                 win_type=None, on=None, axis=0, closed=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def round(self, decimals=0, *args, **kwargs):
         new_block_partitions = np.array([_map_partitions(
@@ -3628,25 +3628,25 @@ class DataFrame(object):
                     try:
                         weights = self[weights]
                     except KeyError:
-                        raise KeyError("String passed to weights not a "
-                                       "valid column")
+                        raise KeyError('String passed to weights not a '
+                                       'valid column')
                 else:
-                    raise ValueError("Strings can only be passed to "
-                                     "weights when sampling from rows on "
-                                     "a DataFrame")
+                    raise ValueError('Strings can only be passed to '
+                                     'weights when sampling from rows on '
+                                     'a DataFrame')
 
             weights = pd.Series(weights, dtype='float64')
 
             if len(weights) != axis_length:
-                raise ValueError("Weights and axis to be sampled must be of "
-                                 "same length")
+                raise ValueError('Weights and axis to be sampled must be of '
+                                 'same length')
 
             if (weights == np.inf).any() or (weights == -np.inf).any():
-                raise ValueError("weight vector may not include `inf` values")
+                raise ValueError('weight vector may not include `inf` values')
 
             if (weights < 0).any():
-                raise ValueError("weight vector many not include negative "
-                                 "values")
+                raise ValueError('weight vector many not include negative '
+                                 'values')
 
             # weights cannot be NaN when sampling, so we must set all nan
             # values to 0
@@ -3659,7 +3659,7 @@ class DataFrame(object):
                 if weights_sum != 0:
                     weights = weights / weights_sum
                 else:
-                    raise ValueError("Invalid weights: weights sum to zero")
+                    raise ValueError('Invalid weights: weights sum to zero')
 
             weights = weights.values
 
@@ -3669,7 +3669,7 @@ class DataFrame(object):
             n = 1
         elif n is not None and frac is None and n % 1 != 0:
             # n must be an integer
-            raise ValueError("Only integers accepted as `n` values")
+            raise ValueError('Only integers accepted as `n` values')
         elif n is None and frac is not None:
             # compute the number of samples based on frac
             n = int(round(frac * axis_length))
@@ -3679,8 +3679,8 @@ class DataFrame(object):
             raise ValueError('Please enter a value for `frac` OR `n`, not '
                              'both')
         if n < 0:
-            raise ValueError("A negative number of rows requested. Please "
-                             "provide positive value.")
+            raise ValueError('A negative number of rows requested. Please '
+                             'provide positive value.')
 
         if n == 0:
             # An Empty DataFrame is returned if the number of samples is 0.
@@ -3707,8 +3707,8 @@ class DataFrame(object):
                 random_num_gen = random_state
             else:
                 # random_state must be an int or a numpy RandomState object
-                raise ValueError("Please enter an `int` OR a "
-                                 "np.random.RandomState for random_state")
+                raise ValueError('Please enter an `int` OR a '
+                                 'np.random.RandomState for random_state')
 
             # choose random numbers and then get corresponding labels from
             # chosen axis
@@ -3744,8 +3744,8 @@ class DataFrame(object):
 
     def select(self, crit, axis=0):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def select_dtypes(self, include=None, exclude=None):
         # Validates arguments for whether both include and exclude are None or
@@ -3788,8 +3788,8 @@ class DataFrame(object):
     def sem(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def set_axis(self, labels, axis=0, inplace=None):
         """Assign desired index to given axis.
@@ -3905,13 +3905,13 @@ class DataFrame(object):
 
     def set_value(self, index, col, value, takeable=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def shift(self, periods=1, freq=None, axis=0):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def skew(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
@@ -3935,8 +3935,8 @@ class DataFrame(object):
 
     def slice_shift(self, periods=1, axis=0):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def sort_index(self, axis=0, level=None, ascending=True, inplace=False,
                    kind='quicksort', na_position='last', sort_remaining=True,
@@ -3957,14 +3957,14 @@ class DataFrame(object):
             A sorted DataFrame
         """
         if level is not None:
-            raise NotImplementedError("Multilevel index not yet implemented.")
+            raise NotImplementedError('Multilevel index not yet implemented.')
 
         if by is not None:
-            warnings.warn("by argument to sort_index is deprecated, "
-                          "please use .sort_values(by=...)",
+            warnings.warn('by argument to sort_index is deprecated, '
+                          'please use .sort_values(by=...)',
                           FutureWarning, stacklevel=2)
             if level is not None:
-                raise ValueError("unable to simultaneously sort by and level")
+                raise ValueError('unable to simultaneously sort by and level')
             return self.sort_values(by, axis=axis, ascending=ascending,
                                     inplace=inplace)
 
@@ -4114,18 +4114,18 @@ class DataFrame(object):
     def sortlevel(self, level=0, axis=0, ascending=True, inplace=False,
                   sort_remaining=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def squeeze(self, axis=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def stack(self, level=-1, dropna=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def std(self, axis=None, skipna=None, level=None, ddof=1,
             numeric_only=None, **kwargs):
@@ -4176,13 +4176,13 @@ class DataFrame(object):
 
     def swapaxes(self, axis1, axis2, copy=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def swaplevel(self, i=-2, j=-1, axis=0):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def tail(self, n=5):
         """Get the last n rows of the dataframe.
@@ -4206,23 +4206,23 @@ class DataFrame(object):
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_clipboard(self, excel=None, sep=None, **kwargs):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
         port_frame.to_clipboard(excel, sep, **kwargs)
 
-    def to_csv(self, path_or_buf=None, sep=",", na_rep="", float_format=None,
+    def to_csv(self, path_or_buf=None, sep=',', na_rep='', float_format=None,
                columns=None, header=True, index=True, index_label=None,
-               mode="w", encoding=None, compression=None, quoting=None,
-               quotechar='"', line_terminator="\n", chunksize=None,
+               mode='w', encoding=None, compression=None, quoting=None,
+               quotechar='"', line_terminator='\n', chunksize=None,
                tupleize_cols=None, date_format=None, doublequote=True,
-               escapechar=None, decimal="."):
+               escapechar=None, decimal='.'):
 
         kwargs = {
             'path_or_buf': path_or_buf,
@@ -4248,13 +4248,13 @@ class DataFrame(object):
         }
 
         if compression is not None:
-            warnings.warn("Defaulting to Pandas implementation",
+            warnings.warn('Defaulting to Pandas implementation',
                           PendingDeprecationWarning)
             return to_pandas(self).to_csv(**kwargs)
 
         if tupleize_cols is not None:
             warnings.warn("The 'tupleize_cols' parameter is deprecated and "
-                          "will be removed in a future version",
+                          'will be removed in a future version',
                           FutureWarning, stacklevel=2)
         else:
             tupleize_cols = False
@@ -4265,7 +4265,7 @@ class DataFrame(object):
         def get_csv_str(df, index, columns, header, kwargs):
             df.index = index
             df.columns = columns
-            kwargs["header"] = header
+            kwargs['header'] = header
             return df.to_csv(**kwargs)
 
         idxs = [0] + np.cumsum(self._row_metadata._lengths).tolist()
@@ -4298,13 +4298,13 @@ class DataFrame(object):
 
     def to_dense(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_dict(self, orient='dict', into=dict):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_excel(self, excel_writer, sheet_name='Sheet1', na_rep='',
                  float_format=None, columns=None, header=True, index=True,
@@ -4312,7 +4312,7 @@ class DataFrame(object):
                  merge_cells=True, encoding=None, inf_rep='inf', verbose=True,
                  freeze_panes=None):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4324,7 +4324,7 @@ class DataFrame(object):
 
     def to_feather(self, fname):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4334,12 +4334,12 @@ class DataFrame(object):
                verbose=True, reauth=False, if_exists='fail',
                private_key=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_hdf(self, path_or_buf, key, **kwargs):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4352,7 +4352,7 @@ class DataFrame(object):
                 max_rows=None, max_cols=None, show_dimensions=False,
                 notebook=False, decimal='.', border=None):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4367,7 +4367,7 @@ class DataFrame(object):
                 double_precision=10, force_ascii=True, date_unit='ms',
                 default_handler=None, lines=False, compression=None):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4382,12 +4382,12 @@ class DataFrame(object):
                  escape=None, encoding=None, decimal='.', multicolumn=None,
                  multicolumn_format=None, multirow=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_msgpack(self, path_or_buf=None, encoding='utf-8', **kwargs):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4395,13 +4395,13 @@ class DataFrame(object):
 
     def to_panel(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_parquet(self, fname, engine='auto', compression='snappy',
                    **kwargs):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4409,13 +4409,13 @@ class DataFrame(object):
 
     def to_period(self, freq=None, axis=0, copy=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_pickle(self, path, compression='infer',
                   protocol=pkl.HIGHEST_PROTOCOL):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4423,18 +4423,18 @@ class DataFrame(object):
 
     def to_records(self, index=True, convert_datetime64=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_sparse(self, fill_value=None, kind='block'):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_sql(self, name, con, flavor=None, schema=None, if_exists='fail',
                index=True, index_label=None, chunksize=None, dtype=None):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4445,7 +4445,7 @@ class DataFrame(object):
                  encoding='latin-1', byteorder=None, time_stamp=None,
                  data_label=None, variable_labels=None):
 
-        warnings.warn("Defaulting to Pandas implementation",
+        warnings.warn('Defaulting to Pandas implementation',
                       PendingDeprecationWarning)
 
         port_frame = to_pandas(self)
@@ -4459,27 +4459,27 @@ class DataFrame(object):
                   justify=None, line_width=None, max_rows=None, max_cols=None,
                   show_dimensions=False):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_timestamp(self, freq=None, how='start', axis=0, copy=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def to_xarray(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def transform(self, func, *args, **kwargs):
-        kwargs["is_transform"] = True
+        kwargs['is_transform'] = True
         result = self.agg(func, *args, **kwargs)
         try:
             result.columns = self.columns
             result.index = self.index
         except ValueError:
-            raise ValueError("transforms cannot produce aggregated results")
+            raise ValueError('transforms cannot produce aggregated results')
         return result
 
     def truediv(self, other, axis='columns', level=None, fill_value=None):
@@ -4499,29 +4499,29 @@ class DataFrame(object):
 
     def truncate(self, before=None, after=None, axis=None, copy=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def tshift(self, periods=1, freq=None, axis=0):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def tz_convert(self, tz, axis=0, level=None, copy=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def tz_localize(self, tz, axis=0, level=None, copy=True,
                     ambiguous='raise'):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def unstack(self, level=-1, fill_value=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def update(self, other, join='left', overwrite=True, filter_func=None,
                raise_conflict=False):
@@ -4540,9 +4540,9 @@ class DataFrame(object):
         """
         if raise_conflict:
             raise NotImplementedError(
-                "raise_conflict parameter not yet supported. "
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
+                'raise_conflict parameter not yet supported. '
+                'To contribute to Pandas on Ray, please visit '
+                'github.com/ray-project/ray.')
 
         if not isinstance(other, DataFrame):
             other = DataFrame(other)
@@ -4595,11 +4595,11 @@ class DataFrame(object):
         inplace = validate_bool_kwarg(inplace, 'inplace')
 
         if isinstance(other, pd.Series) and axis is None:
-            raise ValueError("Must specify axis=0 or 1")
+            raise ValueError('Must specify axis=0 or 1')
 
         if level is not None:
-            raise NotImplementedError("Multilevel Index not yet supported on "
-                                      "Pandas on Ray.")
+            raise NotImplementedError('Multilevel Index not yet supported on '
+                                      'Pandas on Ray.')
 
         axis = pd.DataFrame()._get_axis_number(axis) if axis is not None else 0
 
@@ -4609,8 +4609,8 @@ class DataFrame(object):
             if not hasattr(cond, 'shape'):
                 cond = np.asanyarray(cond)
             if cond.shape != self.shape:
-                raise ValueError("Array conditional must be same shape as "
-                                 "self")
+                raise ValueError('Array conditional must be same shape as '
+                                 'self')
             cond = DataFrame(cond, index=self.index, columns=self.columns)
 
         zipped_partitions = self._copartition(cond, self.index)
@@ -4676,8 +4676,8 @@ class DataFrame(object):
 
     def xs(self, key, axis=0, level=None, drop_level=True):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __getitem__(self, key):
         """Get the column specified by key for this DataFrame.
@@ -4706,12 +4706,12 @@ class DataFrame(object):
         if isinstance(key, (pd.Series, np.ndarray, pd.Index, list)):
             return self._getitem_array(key)
         elif isinstance(key, DataFrame):
-            raise NotImplementedError("To contribute to Pandas on Ray, please"
-                                      "visit github.com/ray-project/ray.")
+            raise NotImplementedError('To contribute to Pandas on Ray, please'
+                                      'visit github.com/ray-project/ray.')
             # return self._getitem_frame(key)
         elif is_mi_columns:
-            raise NotImplementedError("To contribute to Pandas on Ray, please"
-                                      "visit github.com/ray-project/ray.")
+            raise NotImplementedError('To contribute to Pandas on Ray, please'
+                                      'visit github.com/ray-project/ray.')
             # return self._getitem_multilevel(key)
         else:
             return self._getitem_column(key)
@@ -4728,8 +4728,8 @@ class DataFrame(object):
         if com.is_bool_indexer(key):
             if isinstance(key, pd.Series) and \
                     not key.index.equals(self.index):
-                warnings.warn("Boolean Series key will be reindexed to match "
-                              "DataFrame index.", UserWarning, stacklevel=3)
+                warnings.warn('Boolean Series key will be reindexed to match '
+                              'DataFrame index.', UserWarning, stacklevel=3)
             elif len(key) != len(self.index):
                 raise ValueError('Item wrong length {} instead of {}.'.format(
                                  len(key), len(self.index)))
@@ -4801,8 +4801,8 @@ class DataFrame(object):
     def __setitem__(self, key, value):
         if not isinstance(key, str):
             raise NotImplementedError(
-                "To contribute to Pandas on Ray, please visit "
-                "github.com/ray-project/ray.")
+                'To contribute to Pandas on Ray, please visit '
+                'github.com/ray-project/ray.')
         if key not in self.columns:
             self.insert(loc=len(self.columns), column=key, value=value)
         else:
@@ -4820,18 +4820,18 @@ class DataFrame(object):
 
     def __unicode__(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __invert__(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __hash__(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __iter__(self):
         """Iterate over the columns
@@ -4854,13 +4854,13 @@ class DataFrame(object):
 
     def __nonzero__(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __bool__(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __abs__(self):
         """Creates a modified DataFrame by taking the absolute value.
@@ -4872,8 +4872,8 @@ class DataFrame(object):
 
     def __round__(self, decimals=0):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __array__(self, dtype=None):
         # TODO: This is very inefficient and needs fix, also see as_matrix
@@ -4881,18 +4881,18 @@ class DataFrame(object):
 
     def __array_wrap__(self, result, context=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __getstate__(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __setstate__(self, state):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __delitem__(self, key):
         """Delete a column by key. `del a[key]` for example.
@@ -4946,8 +4946,8 @@ class DataFrame(object):
 
     def __finalize__(self, other, method=None, **kwargs):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __copy__(self, deep=True):
         """Make a copy using Ray.DataFrame.copy method
@@ -4975,18 +4975,18 @@ class DataFrame(object):
 
     def __and__(self, other):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __or__(self, other):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __xor__(self, other):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def __lt__(self, other):
         return self.lt(other)
@@ -5012,7 +5012,7 @@ class DataFrame(object):
     def __iadd__(self, other):
         return self.add(other)
 
-    def __radd__(self, other, axis="columns", level=None, fill_value=None):
+    def __radd__(self, other, axis='columns', level=None, fill_value=None):
         return self.radd(other, axis, level, fill_value)
 
     def __mul__(self, other):
@@ -5021,7 +5021,7 @@ class DataFrame(object):
     def __imul__(self, other):
         return self.mul(other)
 
-    def __rmul__(self, other, axis="columns", level=None, fill_value=None):
+    def __rmul__(self, other, axis='columns', level=None, fill_value=None):
         return self.rmul(other, axis, level, fill_value)
 
     def __pow__(self, other):
@@ -5030,7 +5030,7 @@ class DataFrame(object):
     def __ipow__(self, other):
         return self.pow(other)
 
-    def __rpow__(self, other, axis="columns", level=None, fill_value=None):
+    def __rpow__(self, other, axis='columns', level=None, fill_value=None):
         return self.rpow(other, axis, level, fill_value)
 
     def __sub__(self, other):
@@ -5039,7 +5039,7 @@ class DataFrame(object):
     def __isub__(self, other):
         return self.sub(other)
 
-    def __rsub__(self, other, axis="columns", level=None, fill_value=None):
+    def __rsub__(self, other, axis='columns', level=None, fill_value=None):
         return self.rsub(other, axis, level, fill_value)
 
     def __floordiv__(self, other):
@@ -5048,7 +5048,7 @@ class DataFrame(object):
     def __ifloordiv__(self, other):
         return self.floordiv(other)
 
-    def __rfloordiv__(self, other, axis="columns", level=None,
+    def __rfloordiv__(self, other, axis='columns', level=None,
                       fill_value=None):
         return self.rfloordiv(other, axis, level, fill_value)
 
@@ -5058,7 +5058,7 @@ class DataFrame(object):
     def __itruediv__(self, other):
         return self.truediv(other)
 
-    def __rtruediv__(self, other, axis="columns", level=None, fill_value=None):
+    def __rtruediv__(self, other, axis='columns', level=None, fill_value=None):
         return self.rtruediv(other, axis, level, fill_value)
 
     def __mod__(self, other):
@@ -5067,13 +5067,13 @@ class DataFrame(object):
     def __imod__(self, other):
         return self.mod(other)
 
-    def __rmod__(self, other, axis="columns", level=None, fill_value=None):
+    def __rmod__(self, other, axis='columns', level=None, fill_value=None):
         return self.rmod(other, axis, level, fill_value)
 
-    def __div__(self, other, axis="columns", level=None, fill_value=None):
+    def __div__(self, other, axis='columns', level=None, fill_value=None):
         return self.div(other, axis, level, fill_value)
 
-    def __rdiv__(self, other, axis="columns", level=None, fill_value=None):
+    def __rdiv__(self, other, axis='columns', level=None, fill_value=None):
         return self.rdiv(other, axis, level, fill_value)
 
     def __neg__(self):
@@ -5086,7 +5086,7 @@ class DataFrame(object):
             if not (is_bool_dtype(t)
                     or is_numeric_dtype(t)
                     or is_timedelta64_dtype(t)):
-                raise TypeError("Unary negative expects numeric dtype, not {}"
+                raise TypeError('Unary negative expects numeric dtype, not {}'
                                 .format(t))
 
         new_block_partitions = np.array([_map_partitions(
@@ -5099,31 +5099,31 @@ class DataFrame(object):
 
     def __sizeof__(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     @property
     def __doc__(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     @property
     def blocks(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     @property
     def style(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def iat(self, axis=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     @property
     def loc(self):
@@ -5138,18 +5138,18 @@ class DataFrame(object):
     @property
     def is_copy(self):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def at(self, axis=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     def ix(self, axis=None):
         raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+            'To contribute to Pandas on Ray, please visit '
+            'github.com/ray-project/ray.')
 
     @property
     def iloc(self):
@@ -5203,7 +5203,7 @@ class DataFrame(object):
         if isinstance(other, DataFrame):
             return self._inter_df_op_helper(
                 lambda x, y: func(x, y, axis, level, *args),
-                other, "outer", axis, level)
+                other, 'outer', axis, level)
         else:
             return self._single_df_op_helper(
                 lambda df: func(df, other, axis, level, *args),
@@ -5212,8 +5212,8 @@ class DataFrame(object):
     def _inter_df_op_helper(self, func, other, how, axis, level,
                             inplace=False):
         if level is not None:
-            raise NotImplementedError("Mutlilevel index not yet supported "
-                                      "in Pandas on Ray")
+            raise NotImplementedError('Mutlilevel index not yet supported '
+                                      'in Pandas on Ray')
         axis = pd.DataFrame()._get_axis_number(axis)
 
         new_column_index = self.columns.join(other.columns, how=how)
@@ -5240,8 +5240,8 @@ class DataFrame(object):
 
     def _single_df_op_helper(self, func, other, axis, level):
         if level is not None:
-            raise NotImplementedError("Multilevel index not yet supported "
-                                      "in Pandas on Ray")
+            raise NotImplementedError('Multilevel index not yet supported '
+                                      'in Pandas on Ray')
         axis = pd.DataFrame()._get_axis_number(axis)
 
         if is_list_like(other):
@@ -5254,15 +5254,15 @@ class DataFrame(object):
             if axis == 0:
                 if len(other) != len(self.index):
                     raise ValueError(
-                        "Unable to coerce to Series, length must be {0}: "
-                        "given {1}".format(len(self.index), len(other)))
+                        'Unable to coerce to Series, length must be {0}: '
+                        'given {1}'.format(len(self.index), len(other)))
                 new_columns = _map_partitions(func, self._col_partitions)
                 new_rows = None
             else:
                 if len(other) != len(self.columns):
                     raise ValueError(
-                        "Unable to coerce to Series, length must be {0}: "
-                        "given {1}".format(len(self.columns), len(other)))
+                        'Unable to coerce to Series, length must be {0}: '
+                        'given {1}'.format(len(self.columns), len(other)))
                 new_rows = _map_partitions(func, self._row_partitions)
                 new_columns = None
 

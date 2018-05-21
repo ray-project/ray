@@ -18,7 +18,7 @@ class VisionNetwork(Model):
             inputs (tuple): (channels, rows/height, cols/width)
             num_outputs (int): logits size
         """
-        filters = options.get("conv_filters", [
+        filters = options.get('conv_filters', [
             [16, [8, 8], 4],
             [32, [4, 4], 2],
             [512, [10, 10], 1]

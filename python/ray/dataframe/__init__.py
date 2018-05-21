@@ -13,12 +13,12 @@ from pandas import (eval, unique, value_counts, cut, to_numeric, factorize,
 import threading
 
 pd_version = pd.__version__
-pd_major = int(pd_version.split(".")[0])
-pd_minor = int(pd_version.split(".")[1])
+pd_major = int(pd_version.split('.')[0])
+pd_minor = int(pd_version.split('.')[1])
 
 if pd_major == 0 and pd_minor < 22:
-    raise Exception("In order to use Pandas on Ray, please upgrade your Pandas"
-                    " version to >= 0.22.")
+    raise Exception('In order to use Pandas on Ray, please upgrade your Pandas'
+                    ' version to >= 0.22.')
 
 DEFAULT_NPARTITIONS = 8
 
@@ -44,16 +44,16 @@ from .datetimes import to_datetime  # noqa: 402
 from .reshape import get_dummies  # noqa: 402
 
 __all__ = [
-    "DataFrame", "Series", "read_csv", "read_parquet", "concat", "eval",
-    "unique", "value_counts", "cut", "to_numeric", "factorize", "test", "qcut",
-    "match", "to_datetime", "get_dummies", "Panel", "date_range", "Index",
-    "MultiIndex", "Series", "bdate_range", "DatetimeIndex", "to_timedelta",
-    "set_eng_float_format", "set_option", "CategoricalIndex", "Timedelta",
-    "Timestamp", "NaT", "PeriodIndex", "Categorical"
+    'DataFrame', 'Series', 'read_csv', 'read_parquet', 'concat', 'eval',
+    'unique', 'value_counts', 'cut', 'to_numeric', 'factorize', 'test', 'qcut',
+    'match', 'to_datetime', 'get_dummies', 'Panel', 'date_range', 'Index',
+    'MultiIndex', 'Series', 'bdate_range', 'DatetimeIndex', 'to_timedelta',
+    'set_eng_float_format', 'set_option', 'CategoricalIndex', 'Timedelta',
+    'Timestamp', 'NaT', 'PeriodIndex', 'Categorical'
 ]
 
 try:
-    if threading.current_thread().name == "MainThread":
+    if threading.current_thread().name == 'MainThread':
         import ray
         ray.init()
 except AssertionError:

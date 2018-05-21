@@ -11,7 +11,7 @@ from ray.tune.registry import _to_pinnable, _from_pinnable
 
 _pinned_objects = []
 _fetch_requests = queue.Queue()
-PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
+PINNED_OBJECT_PREFIX = 'ray.tune.PinnedObject:'
 
 
 def pin_in_object_store(obj):
@@ -24,8 +24,8 @@ def pin_in_object_store(obj):
 
     obj_id = ray.put(_to_pinnable(obj))
     _pinned_objects.append(ray.get(obj_id))
-    return "{}{}".format(PINNED_OBJECT_PREFIX,
-                         base64.b64encode(obj_id.id()).decode("utf-8"))
+    return '{}{}'.format(PINNED_OBJECT_PREFIX,
+                         base64.b64encode(obj_id.id()).decode('utf-8'))
 
 
 def get_pinned_object(pinned_id):
@@ -33,10 +33,10 @@ def get_pinned_object(pinned_id):
 
     from ray.local_scheduler import ObjectID
 
-    if threading.current_thread().getName() != "MainThread":
+    if threading.current_thread().getName() != 'MainThread':
         placeholder = queue.Queue()
         _fetch_requests.put((placeholder, pinned_id))
-        print("Requesting main thread to fetch pinned object", pinned_id)
+        print('Requesting main thread to fetch pinned object', pinned_id)
         return placeholder.get()
 
     return _from_pinnable(
@@ -52,12 +52,12 @@ def _serve_get_pin_requests():
     fetch in a queue that is periodically checked from the main thread.
     """
 
-    assert threading.current_thread().getName() == "MainThread"
+    assert threading.current_thread().getName() == 'MainThread'
 
     try:
         while not _fetch_requests.empty():
             (placeholder, pinned_id) = _fetch_requests.get_nowait()
-            print("Fetching pinned object from main thread", pinned_id)
+            print('Fetching pinned object from main thread', pinned_id)
             placeholder.put(get_pinned_object(pinned_id))
     except queue.Empty:
         pass
@@ -65,7 +65,7 @@ def _serve_get_pin_requests():
 
 if __name__ == '__main__':
     ray.init()
-    X = pin_in_object_store("hello")
+    X = pin_in_object_store('hello')
     print(X)
     result = get_pinned_object(X)
     print(result)

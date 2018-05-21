@@ -19,13 +19,13 @@ _syncers = {}
 
 def get_syncer(local_dir, remote_dir=None):
     if remote_dir:
-        if not remote_dir.startswith("s3://"):
-            raise TuneError("Upload uri must start with s3://")
+        if not remote_dir.startswith('s3://'):
+            raise TuneError('Upload uri must start with s3://')
 
-        if not distutils.spawn.find_executable("aws"):
-            raise TuneError("Upload uri requires awscli tool to be installed")
+        if not distutils.spawn.find_executable('aws'):
+            raise TuneError('Upload uri requires awscli tool to be installed')
 
-        if local_dir.startswith(DEFAULT_RESULTS_DIR + "/"):
+        if local_dir.startswith(DEFAULT_RESULTS_DIR + '/'):
             rel_path = os.path.relpath(local_dir, DEFAULT_RESULTS_DIR)
             remote_dir = os.path.join(remote_dir, rel_path)
 
@@ -54,7 +54,7 @@ class _LogSyncer(object):
         self.sync_process = None
         self.local_ip = ray.services.get_node_ip_address()
         self.worker_ip = None
-        print("Created LogSyncer for {} -> {}".format(local_dir, remote_dir))
+        print('Created LogSyncer for {} -> {}'.format(local_dir, remote_dir))
 
     def set_worker_ip(self, worker_ip):
         """Set the worker ip to sync logs from."""
@@ -68,7 +68,7 @@ class _LogSyncer(object):
     def sync_now(self, force=False):
         self.last_sync_time = time.time()
         if not self.worker_ip:
-            print("Worker ip unknown, skipping log sync for {}".format(
+            print('Worker ip unknown, skipping log sync for {}'.format(
                 self.local_dir))
             return
 
@@ -78,11 +78,11 @@ class _LogSyncer(object):
             ssh_key = get_ssh_key()
             ssh_user = get_ssh_user()
             if ssh_key is None or ssh_user is None:
-                print("Error: log sync requires cluster to be setup with "
-                      "`ray create_or_update`.")
+                print('Error: log sync requires cluster to be setup with '
+                      '`ray create_or_update`.')
                 return
-            if not distutils.spawn.find_executable("rsync"):
-                print("Error: log sync requires rsync to be installed.")
+            if not distutils.spawn.find_executable('rsync'):
+                print('Error: log sync requires rsync to be installed.')
                 return
             worker_to_local_sync_cmd = ((
                 """rsync -avz -e "ssh -i '{}' -o ConnectTimeout=120s """
@@ -102,18 +102,18 @@ class _LogSyncer(object):
                 if force:
                     self.sync_process.kill()
                 else:
-                    print("Warning: last sync is still in progress, skipping")
+                    print('Warning: last sync is still in progress, skipping')
                     return
 
         if worker_to_local_sync_cmd or local_to_remote_sync_cmd:
-            final_cmd = ""
+            final_cmd = ''
             if worker_to_local_sync_cmd:
                 final_cmd += worker_to_local_sync_cmd
             if local_to_remote_sync_cmd:
                 if final_cmd:
-                    final_cmd += " && "
+                    final_cmd += ' && '
                 final_cmd += local_to_remote_sync_cmd
-            print("Running log sync: {}".format(final_cmd))
+            print('Running log sync: {}'.format(final_cmd))
             self.sync_process = subprocess.Popen(final_cmd, shell=True)
 
     def wait(self):

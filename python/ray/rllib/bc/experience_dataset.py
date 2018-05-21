@@ -22,7 +22,7 @@ class ExperienceDataset(object):
           The file must be available on each machine used by a BCEvaluator.
         """
         self._dataset = list(itertools.chain.from_iterable(
-            pickle.load(open(dataset_path, "rb"))))
+            pickle.load(open(dataset_path, 'rb'))))
 
     def sample(self, batch_size):
         indexes = np.random.choice(len(self._dataset), batch_size)

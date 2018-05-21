@@ -27,18 +27,18 @@ def wait_for_output(proc):
             # NOTE(rkn): This try/except block is here because I once saw an
             # exception raised here and want to print more information if that
             # happens again.
-            stdout_data = stdout_data.decode("ascii")
+            stdout_data = stdout_data.decode('ascii')
         except UnicodeDecodeError:
-            raise Exception("Failed to decode stdout_data:", stdout_data)
+            raise Exception('Failed to decode stdout_data:', stdout_data)
 
     if stderr_data is not None:
         try:
             # NOTE(rkn): This try/except block is here because I once saw an
             # exception raised here and want to print more information if that
             # happens again.
-            stderr_data = stderr_data.decode("ascii")
+            stderr_data = stderr_data.decode('ascii')
         except UnicodeDecodeError:
-            raise Exception("Failed to decode stderr_data:", stderr_data)
+            raise Exception('Failed to decode stderr_data:', stderr_data)
 
     return stdout_data, stderr_data
 
@@ -75,7 +75,7 @@ class DockerRunner(object):
         Returns:
             The container ID of the docker container.
         """
-        p = re.compile("([0-9a-f]{64})\n")
+        p = re.compile('([0-9a-f]{64})\n')
         m = p.match(stdout_data)
         if m is None:
             return None
@@ -94,17 +94,17 @@ class DockerRunner(object):
         """
         proc = subprocess.Popen(
             [
-                "docker", "inspect",
-                "--format={{.NetworkSettings.Networks.bridge"
-                ".IPAddress}}", container_id
+                'docker', 'inspect',
+                '--format={{.NetworkSettings.Networks.bridge'
+                '.IPAddress}}', container_id
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
         stdout_data, _ = wait_for_output(proc)
-        p = re.compile("([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})")
+        p = re.compile('([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})')
         m = p.match(stdout_data)
         if m is None:
-            raise RuntimeError("Container IP not found.")
+            raise RuntimeError('Container IP not found.')
         else:
             return m.group(1)
 
@@ -112,54 +112,54 @@ class DockerRunner(object):
                          num_redis_shards, num_cpus, num_gpus,
                          development_mode):
         """Start the Ray head node inside a docker container."""
-        mem_arg = ["--memory=" + mem_size] if mem_size else []
-        shm_arg = ["--shm-size=" + shm_size] if shm_size else []
+        mem_arg = ['--memory=' + mem_size] if mem_size else []
+        shm_arg = ['--shm-size=' + shm_size] if shm_size else []
         volume_arg = ([
-            "-v", "{}:{}".format(
+            '-v', '{}:{}'.format(
                 os.path.dirname(os.path.realpath(__file__)),
-                "/ray/test/jenkins_tests")
+                '/ray/test/jenkins_tests')
         ] if development_mode else [])
 
-        command = (["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg + [
-            docker_image, "ray", "start", "--head", "--block",
-            "--redis-port=6379",
-            "--num-redis-shards={}".format(num_redis_shards),
-            "--num-cpus={}".format(num_cpus), "--num-gpus={}".format(num_gpus),
-            "--no-ui"
+        command = (['docker', 'run', '-d'] + mem_arg + shm_arg + volume_arg + [
+            docker_image, 'ray', 'start', '--head', '--block',
+            '--redis-port=6379',
+            '--num-redis-shards={}'.format(num_redis_shards),
+            '--num-cpus={}'.format(num_cpus), '--num-gpus={}'.format(num_gpus),
+            '--no-ui'
         ])
-        print("Starting head node with command:{}".format(command))
+        print('Starting head node with command:{}'.format(command))
 
         proc = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout_data, _ = wait_for_output(proc)
         container_id = self._get_container_id(stdout_data)
         if container_id is None:
-            raise RuntimeError("Failed to find container ID.")
+            raise RuntimeError('Failed to find container ID.')
         self.head_container_id = container_id
         self.head_container_ip = self._get_container_ip(container_id)
 
     def _start_worker_node(self, docker_image, mem_size, shm_size, num_cpus,
                            num_gpus, development_mode):
         """Start a Ray worker node inside a docker container."""
-        mem_arg = ["--memory=" + mem_size] if mem_size else []
-        shm_arg = ["--shm-size=" + shm_size] if shm_size else []
+        mem_arg = ['--memory=' + mem_size] if mem_size else []
+        shm_arg = ['--shm-size=' + shm_size] if shm_size else []
         volume_arg = ([
-            "-v", "{}:{}".format(
+            '-v', '{}:{}'.format(
                 os.path.dirname(os.path.realpath(__file__)),
-                "/ray/test/jenkins_tests")
+                '/ray/test/jenkins_tests')
         ] if development_mode else [])
-        command = (["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg + [
-            "--shm-size=" + shm_size, docker_image, "ray", "start", "--block",
-            "--redis-address={:s}:6379".format(self.head_container_ip),
-            "--num-cpus={}".format(num_cpus), "--num-gpus={}".format(num_gpus)
+        command = (['docker', 'run', '-d'] + mem_arg + shm_arg + volume_arg + [
+            '--shm-size=' + shm_size, docker_image, 'ray', 'start', '--block',
+            '--redis-address={:s}:6379'.format(self.head_container_ip),
+            '--num-cpus={}'.format(num_cpus), '--num-gpus={}'.format(num_gpus)
         ])
-        print("Starting worker node with command:{}".format(command))
+        print('Starting worker node with command:{}'.format(command))
         proc = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout_data, _ = wait_for_output(proc)
         container_id = self._get_container_id(stdout_data)
         if container_id is None:
-            raise RuntimeError("Failed to find container id")
+            raise RuntimeError('Failed to find container id')
         self.worker_container_ids.append(container_id)
 
     def start_ray(self,
@@ -210,29 +210,29 @@ class DockerRunner(object):
     def _stop_node(self, container_id):
         """Stop a node in the Ray cluster."""
         proc = subprocess.Popen(
-            ["docker", "kill", container_id],
+            ['docker', 'kill', container_id],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
         stdout_data, _ = wait_for_output(proc)
         stopped_container_id = self._get_container_id(stdout_data)
         if not container_id == stopped_container_id:
-            raise Exception("Failed to stop container {}."
+            raise Exception('Failed to stop container {}.'
                             .format(container_id))
 
         proc = subprocess.Popen(
-            ["docker", "rm", "-f", container_id],
+            ['docker', 'rm', '-f', container_id],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
         stdout_data, _ = wait_for_output(proc)
         removed_container_id = self._get_container_id(stdout_data)
         if not container_id == removed_container_id:
-            raise Exception("Failed to remove container {}."
+            raise Exception('Failed to remove container {}.'
                             .format(container_id))
 
         print(
-            "stop_node", {
-                "container_id": container_id,
-                "is_head": container_id == self.head_container_id
+            'stop_node', {
+                'container_id': container_id,
+                'is_head': container_id == self.head_container_id
             })
 
     def stop_ray(self):
@@ -288,7 +288,7 @@ class DockerRunner(object):
         # Define a signal handler and set an alarm to go off in
         # timeout_seconds.
         def handler(signum, frame):
-            raise RuntimeError("This test timed out after {} seconds."
+            raise RuntimeError('This test timed out after {} seconds.'
                                .format(timeout_seconds))
 
         signal.signal(signal.SIGALRM, handler)
@@ -300,11 +300,11 @@ class DockerRunner(object):
             # Get the container ID to run the ith driver in.
             container_id = all_container_ids[driver_locations[i]]
             command = [
-                "docker", "exec", container_id, "/bin/bash", "-c",
-                ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} python "
-                 "{}".format(self.head_container_ip, i, test_script))
+                'docker', 'exec', container_id, '/bin/bash', '-c',
+                ('RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} python '
+                 '{}'.format(self.head_container_ip, i, test_script))
             ]
-            print("Starting driver with command {}.".format(test_script))
+            print('Starting driver with command {}.'.format(test_script))
             # Start the driver.
             p = subprocess.Popen(
                 command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -314,13 +314,13 @@ class DockerRunner(object):
         results = []
         for p in driver_processes:
             stdout_data, stderr_data = wait_for_output(p)
-            print("STDOUT:")
+            print('STDOUT:')
             print(stdout_data)
-            print("STDERR:")
+            print('STDERR:')
             print(stderr_data)
             results.append({
-                "success": p.returncode == 0,
-                "return_code": p.returncode
+                'success': p.returncode == 0,
+                'return_code': p.returncode
             })
 
         # Disable the alarm.
@@ -329,58 +329,58 @@ class DockerRunner(object):
         return results
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description="Run multinode tests in Docker.")
+        description='Run multinode tests in Docker.')
     parser.add_argument(
-        "--docker-image", default="ray-project/deploy", help="docker image")
-    parser.add_argument("--mem-size", help="memory size")
-    parser.add_argument("--shm-size", default="1G", help="shared memory size")
+        '--docker-image', default='ray-project/deploy', help='docker image')
+    parser.add_argument('--mem-size', help='memory size')
+    parser.add_argument('--shm-size', default='1G', help='shared memory size')
     parser.add_argument(
-        "--num-nodes",
+        '--num-nodes',
         default=1,
         type=int,
-        help="number of nodes to use in the cluster")
+        help='number of nodes to use in the cluster')
     parser.add_argument(
-        "--num-redis-shards",
+        '--num-redis-shards',
         default=1,
         type=int,
-        help=("the number of Redis shards to start on the "
-              "head node"))
+        help=('the number of Redis shards to start on the '
+              'head node'))
     parser.add_argument(
-        "--num-cpus",
+        '--num-cpus',
         type=str,
-        help=("a comma separated list of values representing "
-              "the number of CPUs to start each node with"))
+        help=('a comma separated list of values representing '
+              'the number of CPUs to start each node with'))
     parser.add_argument(
-        "--num-gpus",
+        '--num-gpus',
         type=str,
-        help=("a comma separated list of values representing "
-              "the number of GPUs to start each node with"))
+        help=('a comma separated list of values representing '
+              'the number of GPUs to start each node with'))
     parser.add_argument(
-        "--num-drivers", default=1, type=int, help="number of drivers to run")
+        '--num-drivers', default=1, type=int, help='number of drivers to run')
     parser.add_argument(
-        "--driver-locations",
+        '--driver-locations',
         type=str,
-        help=("a comma separated list of indices of the "
-              "containers to run the drivers in"))
-    parser.add_argument("--test-script", required=True, help="test script")
+        help=('a comma separated list of indices of the '
+              'containers to run the drivers in'))
+    parser.add_argument('--test-script', required=True, help='test script')
     parser.add_argument(
-        "--development-mode",
-        action="store_true",
-        help="use local copies of the test scripts")
+        '--development-mode',
+        action='store_true',
+        help='use local copies of the test scripts')
     args = parser.parse_args()
 
     # Parse the number of CPUs and GPUs to use for each worker.
     num_nodes = args.num_nodes
-    num_cpus = ([int(i) for i in args.num_cpus.split(",")]
+    num_cpus = ([int(i) for i in args.num_cpus.split(',')]
                 if args.num_cpus is not None else num_nodes * [10])
-    num_gpus = ([int(i) for i in args.num_gpus.split(",")]
+    num_gpus = ([int(i) for i in args.num_gpus.split(',')]
                 if args.num_gpus is not None else num_nodes * [0])
 
     # Parse the driver locations.
     driver_locations = (None if args.driver_locations is None else
-                        [int(i) for i in args.driver_locations.split(",")])
+                        [int(i) for i in args.driver_locations.split(',')])
 
     d = DockerRunner()
     d.start_ray(
@@ -402,16 +402,16 @@ if __name__ == "__main__":
 
     any_failed = False
     for run_result in run_results:
-        if "success" in run_result and run_result["success"]:
-            print("RESULT: Test {} succeeded.".format(args.test_script))
+        if 'success' in run_result and run_result['success']:
+            print('RESULT: Test {} succeeded.'.format(args.test_script))
         else:
-            print("RESULT: Test {} failed.".format(args.test_script))
+            print('RESULT: Test {} failed.'.format(args.test_script))
             any_failed = True
 
     if any_failed:
         sys.exit(1)
     elif not successfully_stopped:
-        print("There was a failure when attempting to stop the containers.")
+        print('There was a failure when attempting to stop the containers.')
         sys.exit(1)
     else:
         sys.exit(0)

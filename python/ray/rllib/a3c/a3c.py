@@ -18,79 +18,79 @@ from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
-    "num_workers": 4,
+    'num_workers': 4,
     # Size of rollout batch
-    "batch_size": 10,
+    'batch_size': 10,
     # Use LSTM model - only applicable for image states
-    "use_lstm": False,
+    'use_lstm': False,
     # Use PyTorch as backend - no LSTM support
-    "use_pytorch": False,
+    'use_pytorch': False,
     # Which observation filter to apply to the observation
-    "observation_filter": "NoFilter",
+    'observation_filter': 'NoFilter',
     # Which reward filter to apply to the reward
-    "reward_filter": "NoFilter",
+    'reward_filter': 'NoFilter',
     # Discount factor of MDP
-    "gamma": 0.99,
+    'gamma': 0.99,
     # GAE(gamma) parameter
-    "lambda": 1.0,
+    'lambda': 1.0,
     # Max global norm for each gradient calculated by worker
-    "grad_clip": 40.0,
+    'grad_clip': 40.0,
     # Learning rate
-    "lr": 0.0001,
+    'lr': 0.0001,
     # Value Function Loss coefficient
-    "vf_loss_coeff": 0.5,
+    'vf_loss_coeff': 0.5,
     # Entropy coefficient
-    "entropy_coeff": -0.01,
+    'entropy_coeff': -0.01,
     # Whether to place workers on GPUs
-    "use_gpu_for_workers": False,
+    'use_gpu_for_workers': False,
     # Model and preprocessor options
-    "model": {
+    'model': {
         # (Image statespace) - Converts image to Channels = 1
-        "grayscale": True,
+        'grayscale': True,
         # (Image statespace) - Each pixel
-        "zero_mean": False,
+        'zero_mean': False,
         # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 80,
+        'dim': 80,
         # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False
+        'channel_major': False
     },
     # Arguments to pass to the rllib optimizer
-    "optimizer": {
+    'optimizer': {
         # Number of gradients applied for each `train` step
-        "grads_per_step": 100,
+        'grads_per_step': 100,
     },
     # Arguments to pass to the env creator
-    "env_config": {},
+    'env_config': {},
 }
 
 
 class A3CAgent(Agent):
-    _agent_name = "A3C"
+    _agent_name = 'A3C'
     _default_config = DEFAULT_CONFIG
-    _allow_unknown_subkeys = ["model", "optimizer", "env_config"]
+    _allow_unknown_subkeys = ['model', 'optimizer', 'env_config']
 
     @classmethod
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         return Resources(
             cpu=1, gpu=0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
+            extra_cpu=cf['num_workers'],
+            extra_gpu=cf['use_gpu_for_workers'] and cf['num_workers'] or 0)
 
     def _init(self):
         self.local_evaluator = A3CEvaluator(
             self.registry, self.env_creator, self.config, self.logdir,
             start_sampler=False)
-        if self.config["use_gpu_for_workers"]:
+        if self.config['use_gpu_for_workers']:
             remote_cls = GPURemoteA3CEvaluator
         else:
             remote_cls = RemoteA3CEvaluator
         self.remote_evaluators = [
             remote_cls.remote(
                 self.registry, self.env_creator, self.config, self.logdir)
-            for i in range(self.config["num_workers"])]
+            for i in range(self.config['num_workers'])]
         self.optimizer = AsyncOptimizer(
-            self.config["optimizer"], self.local_evaluator,
+            self.config['optimizer'], self.local_evaluator,
             self.remote_evaluators)
 
     def _train(self):
@@ -130,21 +130,21 @@ class A3CAgent(Agent):
 
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration))
+            checkpoint_dir, 'checkpoint-{}'.format(self.iteration))
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
         extra_data = {
-            "remote_state": agent_state,
-            "local_state": self.local_evaluator.save()}
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+            'remote_state': agent_state,
+            'local_state': self.local_evaluator.save()}
+        pickle.dump(extra_data, open(checkpoint_path + '.extra_data', 'wb'))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        extra_data = pickle.load(open(checkpoint_path + '.extra_data', 'rb'))
         ray.get(
             [a.restore.remote(o) for a, o in zip(
-                self.remote_evaluators, extra_data["remote_state"])])
-        self.local_evaluator.restore(extra_data["local_state"])
+                self.remote_evaluators, extra_data['remote_state'])])
+        self.local_evaluator.restore(extra_data['local_state'])
 
     def compute_action(self, observation):
         obs = self.local_evaluator.obs_filter(observation, update=False)

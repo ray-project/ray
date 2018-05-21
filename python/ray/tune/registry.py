@@ -9,10 +9,10 @@ import numpy as np
 import ray
 from ray.local_scheduler import ObjectID
 
-TRAINABLE_CLASS = "trainable_class"
-ENV_CREATOR = "env_creator"
-RLLIB_MODEL = "rllib_model"
-RLLIB_PREPROCESSOR = "rllib_preprocessor"
+TRAINABLE_CLASS = 'trainable_class'
+ENV_CREATOR = 'env_creator'
+RLLIB_MODEL = 'rllib_model'
+RLLIB_PREPROCESSOR = 'rllib_preprocessor'
 KNOWN_CATEGORIES = [
     TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR
 ]
@@ -33,7 +33,7 @@ def register_trainable(name, trainable):
     if isinstance(trainable, FunctionType):
         trainable = wrap_function(trainable)
     if not issubclass(trainable, Trainable):
-        raise TypeError("Second argument must be convertable to Trainable",
+        raise TypeError('Second argument must be convertable to Trainable',
                         trainable)
     _default_registry.register(TRAINABLE_CLASS, name, trainable)
 
@@ -47,7 +47,7 @@ def register_env(name, env_creator):
     """
 
     if not isinstance(env_creator, FunctionType):
-        raise TypeError("Second argument must be a function.", env_creator)
+        raise TypeError('Second argument must be a function.', env_creator)
     _default_registry.register(ENV_CREATOR, name, env_creator)
 
 
@@ -84,7 +84,7 @@ class _Registry(object):
     def register(self, category, key, value):
         if category not in KNOWN_CATEGORIES:
             from ray.tune import TuneError
-            raise TuneError("Unknown category {} not among {}".format(
+            raise TuneError('Unknown category {} not among {}'.format(
                 category, KNOWN_CATEGORIES))
         self._all_objects[(category, key)] = value
 

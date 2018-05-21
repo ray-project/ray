@@ -85,8 +85,8 @@ def test_ray_concat_on_column():
     assert ray_df_equals_pandas(pd.concat([ray_df, ray_df2], axis=1),
                                 pandas.concat([df, df2], axis=1))
 
-    assert ray_df_equals_pandas(pd.concat([ray_df, ray_df2], axis="columns"),
-                                pandas.concat([df, df2], axis="columns"))
+    assert ray_df_equals_pandas(pd.concat([ray_df, ray_df2], axis='columns'),
+                                pandas.concat([df, df2], axis='columns'))
 
 
 def test_invalid_axis_errors():

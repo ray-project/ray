@@ -32,79 +32,79 @@ REQUIRED, OPTIONAL = True, False
 # no extra fields can be introduced.
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
-    "cluster_name": (str, REQUIRED),
+    'cluster_name': (str, REQUIRED),
 
     # The minimum number of workers nodes to launch in addition to the head
     # node. This number should be >= 0.
-    "min_workers": (int, OPTIONAL),
+    'min_workers': (int, OPTIONAL),
 
     # The maximum number of workers nodes to launch in addition to the head
     # node. This takes precedence over min_workers.
-    "max_workers": (int, REQUIRED),
+    'max_workers': (int, REQUIRED),
 
     # The autoscaler will scale up the cluster to this target fraction of
     # resources usage. For example, if a cluster of 8 nodes is 100% busy
     # and target_utilization was 0.8, it would resize the cluster to 10.
-    "target_utilization_fraction": (float, OPTIONAL),
+    'target_utilization_fraction': (float, OPTIONAL),
 
     # If a node is idle for this many minutes, it will be removed.
-    "idle_timeout_minutes": (int, OPTIONAL),
+    'idle_timeout_minutes': (int, OPTIONAL),
 
     # Cloud-provider specific configuration.
-    "provider": (
+    'provider': (
         {
-            "type": (str, REQUIRED),  # e.g. aws
-            "region": (str, OPTIONAL),  # e.g. us-east-1
-            "availability_zone": (str, OPTIONAL),  # e.g. us-east-1a
-            "module": (str,
+            'type': (str, REQUIRED),  # e.g. aws
+            'region': (str, OPTIONAL),  # e.g. us-east-1
+            'availability_zone': (str, OPTIONAL),  # e.g. us-east-1a
+            'module': (str,
                        OPTIONAL),  # module, if using external node provider
         },
         REQUIRED),
 
     # How Ray will authenticate with newly launched nodes.
-    "auth": (
+    'auth': (
         {
-            "ssh_user": (str, REQUIRED),  # e.g. ubuntu
-            "ssh_private_key": (str, OPTIONAL),
+            'ssh_user': (str, REQUIRED),  # e.g. ubuntu
+            'ssh_private_key': (str, OPTIONAL),
         },
         REQUIRED),
 
     # Docker configuration. If this is specified, all setup and start commands
     # will be executed in the container.
-    "docker": (
+    'docker': (
         {
-            "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
-            "container_name": (str, OPTIONAL),  # e.g., ray_docker
+            'image': (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
+            'container_name': (str, OPTIONAL),  # e.g., ray_docker
         },
         OPTIONAL),
 
     # Provider-specific config for the head node, e.g. instance type.
-    "head_node": (dict, OPTIONAL),
+    'head_node': (dict, OPTIONAL),
 
     # Provider-specific config for worker nodes. e.g. instance type.
-    "worker_nodes": (dict, OPTIONAL),
+    'worker_nodes': (dict, OPTIONAL),
 
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
-    "file_mounts": (dict, OPTIONAL),
+    'file_mounts': (dict, OPTIONAL),
 
     # List of common shell commands to run to initialize nodes.
-    "setup_commands": (list, OPTIONAL),
+    'setup_commands': (list, OPTIONAL),
 
     # Commands that will be run on the head node after common setup.
-    "head_setup_commands": (list, OPTIONAL),
+    'head_setup_commands': (list, OPTIONAL),
 
     # Commands that will be run on worker nodes after common setup.
-    "worker_setup_commands": (list, OPTIONAL),
+    'worker_setup_commands': (list, OPTIONAL),
 
     # Command to start ray on the head node. You shouldn't need to modify this.
-    "head_start_ray_commands": (list, OPTIONAL),
+    'head_start_ray_commands': (list, OPTIONAL),
 
     # Command to start ray on worker nodes. You shouldn't need to modify this.
-    "worker_start_ray_commands": (list, OPTIONAL),
+    'worker_start_ray_commands': (list, OPTIONAL),
 
     # Whether to avoid restarting the cluster during updates. This field is
     # controlled by the ray --no-restart flag and cannot be set by the user.
-    "no_restart": (None, OPTIONAL),
+    'no_restart': (None, OPTIONAL),
 }
 
 
@@ -142,10 +142,10 @@ class LoadMetrics(object):
         def prune(mapping):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
-                print("Removed mapping", unwanted_key, mapping[unwanted_key])
+                print('Removed mapping', unwanted_key, mapping[unwanted_key])
                 del mapping[unwanted_key]
             if unwanted:
-                print("Removed {} stale ip mappings: {} not in {}".format(
+                print('Removed {} stale ip mappings: {} not in {}'.format(
                     len(unwanted), unwanted, active_ips))
 
         prune(self.last_used_time_by_ip)
@@ -153,11 +153,11 @@ class LoadMetrics(object):
         prune(self.dynamic_resources_by_ip)
 
     def approx_workers_used(self):
-        return self._info()["NumNodesUsed"]
+        return self._info()['NumNodesUsed']
 
     def debug_string(self):
-        return " - {}".format("\n - ".join(
-            ["{}: {}".format(k, v) for k, v in sorted(self._info().items())]))
+        return ' - {}'.format('\n - '.join(
+            ['{}: {}'.format(k, v) for k, v in sorted(self._info().items())]))
 
     def _info(self):
         nodes_used = 0.0
@@ -182,15 +182,15 @@ class LoadMetrics(object):
             nodes_used += max_frac
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
         return {
-            "ResourceUsage": ", ".join([
-                "{}/{} {}".format(
+            'ResourceUsage': ', '.join([
+                '{}/{} {}'.format(
                     round(resources_used[rid], 2),
                     round(resources_total[rid], 2), rid)
                 for rid in sorted(resources_used)
             ]),
-            "NumNodesConnected": len(self.static_resources_by_ip),
-            "NumNodesUsed": round(nodes_used, 2),
-            "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
+            'NumNodesConnected': len(self.static_resources_by_ip),
+            'NumNodesUsed': round(nodes_used, 2),
+            'NodeIdleSeconds': 'Min={} Mean={} Max={}'.format(
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,
                 int(np.max(idle_times)) if idle_times else -1),
@@ -227,8 +227,8 @@ class StandardAutoscaler(object):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
         self.load_metrics = load_metrics
-        self.provider = get_node_provider(self.config["provider"],
-                                          self.config["cluster_name"])
+        self.provider = get_node_provider(self.config['provider'],
+                                          self.config['cluster_name'])
 
         self.max_failures = max_failures
         self.max_concurrent_launches = max_concurrent_launches
@@ -244,21 +244,21 @@ class StandardAutoscaler(object):
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
-        for local_path in self.config["file_mounts"].values():
+        for local_path in self.config['file_mounts'].values():
             assert os.path.exists(local_path)
 
-        print("StandardAutoscaler: {}".format(self.config))
+        print('StandardAutoscaler: {}'.format(self.config))
 
     def update(self):
         try:
             self.reload_config(errors_fatal=False)
             self._update()
         except Exception as e:
-            print("StandardAutoscaler: Error during autoscaling: {}",
+            print('StandardAutoscaler: Error during autoscaling: {}',
                   traceback.format_exc())
             self.num_failures += 1
             if self.num_failures > self.max_failures:
-                print("*** StandardAutoscaler: Too many errors, abort. ***")
+                print('*** StandardAutoscaler: Too many errors, abort. ***')
                 raise e
 
     def _update(self):
@@ -275,20 +275,20 @@ class StandardAutoscaler(object):
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
-        horizon = time.time() - (60 * self.config["idle_timeout_minutes"])
+        horizon = time.time() - (60 * self.config['idle_timeout_minutes'])
         num_terminated = 0
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon and \
-                    len(nodes) - num_terminated > self.config["min_workers"]:
+                    len(nodes) - num_terminated > self.config['min_workers']:
                 num_terminated += 1
-                print("StandardAutoscaler: Terminating idle node: "
-                      "{}".format(node_id))
+                print('StandardAutoscaler: Terminating idle node: '
+                      '{}'.format(node_id))
                 self.provider.terminate_node(node_id)
             elif not self.launch_config_ok(node_id):
                 num_terminated += 1
-                print("StandardAutoscaler: Terminating outdated node: "
-                      "{}".format(node_id))
+                print('StandardAutoscaler: Terminating outdated node: '
+                      '{}'.format(node_id))
                 self.provider.terminate_node(node_id)
         if num_terminated > 0:
             nodes = self.workers()
@@ -296,10 +296,10 @@ class StandardAutoscaler(object):
 
         # Terminate nodes if there are too many
         num_terminated = 0
-        while len(nodes) > self.config["max_workers"]:
+        while len(nodes) > self.config['max_workers']:
             num_terminated += 1
-            print("StandardAutoscaler: Terminating unneeded node: "
-                  "{}".format(nodes[-1]))
+            print('StandardAutoscaler: Terminating unneeded node: '
+                  '{}'.format(nodes[-1]))
             self.provider.terminate_node(nodes[-1])
             nodes = nodes[:-1]
         if num_terminated > 0:
@@ -344,12 +344,12 @@ class StandardAutoscaler(object):
             with open(self.config_path) as f:
                 new_config = yaml.load(f.read())
             validate_config(new_config)
-            new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
-                                               new_config["auth"])
-            new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
-                new_config["setup_commands"],
-                new_config["worker_setup_commands"],
-                new_config["worker_start_ray_commands"]
+            new_launch_hash = hash_launch_conf(new_config['worker_nodes'],
+                                               new_config['auth'])
+            new_runtime_hash = hash_runtime_conf(new_config['file_mounts'], [
+                new_config['setup_commands'],
+                new_config['worker_setup_commands'],
+                new_config['worker_start_ray_commands']
             ])
             self.config = new_config
             self.launch_hash = new_launch_hash
@@ -358,15 +358,15 @@ class StandardAutoscaler(object):
             if errors_fatal:
                 raise e
             else:
-                print("StandardAutoscaler: Error parsing config: {}",
+                print('StandardAutoscaler: Error parsing config: {}',
                       traceback.format_exc())
 
     def target_num_workers(self):
-        target_frac = self.config["target_utilization_fraction"]
+        target_frac = self.config['target_utilization_fraction']
         cur_used = self.load_metrics.approx_workers_used()
         ideal_num_workers = int(np.ceil(cur_used / float(target_frac)))
-        return min(self.config["max_workers"],
-                   max(self.config["min_workers"], ideal_num_workers))
+        return min(self.config['max_workers'],
+                   max(self.config['min_workers'], ideal_num_workers))
 
     def launch_config_ok(self, node_id):
         launch_conf = self.provider.node_tags(node_id).get(
@@ -379,7 +379,7 @@ class StandardAutoscaler(object):
         applied = self.provider.node_tags(node_id).get(TAG_RAY_RUNTIME_CONFIG)
         if applied != self.runtime_hash:
             print(
-                "StandardAutoscaler: {} has runtime state {}, want {}".format(
+                'StandardAutoscaler: {} has runtime state {}, want {}'.format(
                     node_id, applied, self.runtime_hash))
             return False
         return True
@@ -391,13 +391,13 @@ class StandardAutoscaler(object):
             self.provider.internal_ip(node_id), 0)
         if time.time() - last_heartbeat_time < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return
-        print("StandardAutoscaler: Restarting Ray on {}".format(node_id))
+        print('StandardAutoscaler: Restarting Ray on {}'.format(node_id))
         updater = self.node_updater_cls(
             node_id,
-            self.config["provider"],
-            self.config["auth"],
-            self.config["cluster_name"], {},
-            with_head_node_ip(self.config["worker_start_ray_commands"]),
+            self.config['provider'],
+            self.config['auth'],
+            self.config['cluster_name'], {},
+            with_head_node_ip(self.config['worker_start_ray_commands']),
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
             process_runner=self.process_runner)
@@ -409,20 +409,20 @@ class StandardAutoscaler(object):
             return
         if self.files_up_to_date(node_id):
             return
-        if self.config.get("no_restart", False) and \
+        if self.config.get('no_restart', False) and \
                 self.num_successful_updates.get(node_id, 0) > 0:
-            init_commands = (self.config["setup_commands"] +
-                             self.config["worker_setup_commands"])
+            init_commands = (self.config['setup_commands'] +
+                             self.config['worker_setup_commands'])
         else:
-            init_commands = (self.config["setup_commands"] +
-                             self.config["worker_setup_commands"] +
-                             self.config["worker_start_ray_commands"])
+            init_commands = (self.config['setup_commands'] +
+                             self.config['worker_setup_commands'] +
+                             self.config['worker_start_ray_commands'])
         updater = self.node_updater_cls(
             node_id,
-            self.config["provider"],
-            self.config["auth"],
-            self.config["cluster_name"],
-            self.config["file_mounts"],
+            self.config['provider'],
+            self.config['auth'],
+            self.config['cluster_name'],
+            self.config['file_mounts'],
             with_head_node_ip(init_commands),
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
@@ -442,33 +442,33 @@ class StandardAutoscaler(object):
         return True
 
     def launch_new_node(self, count):
-        print("StandardAutoscaler: Launching {} new nodes".format(count))
+        print('StandardAutoscaler: Launching {} new nodes'.format(count))
         num_before = len(self.workers())
         self.provider.create_node(
-            self.config["worker_nodes"], {
-                TAG_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
-                TAG_RAY_NODE_TYPE: "Worker",
-                TAG_RAY_NODE_STATUS: "Uninitialized",
+            self.config['worker_nodes'], {
+                TAG_NAME: 'ray-{}-worker'.format(self.config['cluster_name']),
+                TAG_RAY_NODE_TYPE: 'Worker',
+                TAG_RAY_NODE_STATUS: 'Uninitialized',
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             }, count)
         if len(self.workers()) <= num_before:
-            print("Warning: Num nodes failed to increase after node creation")
+            print('Warning: Num nodes failed to increase after node creation')
 
     def workers(self):
         return self.provider.nodes(tag_filters={
-            TAG_RAY_NODE_TYPE: "Worker",
+            TAG_RAY_NODE_TYPE: 'Worker',
         })
 
     def debug_string(self, nodes=None):
         if nodes is None:
             nodes = self.workers()
-        suffix = ""
+        suffix = ''
         if self.updaters:
-            suffix += " ({} updating)".format(len(self.updaters))
+            suffix += ' ({} updating)'.format(len(self.updaters))
         if self.num_failed_updates:
-            suffix += " ({} failed to update)".format(
+            suffix += ' ({} failed to update)'.format(
                 len(self.num_failed_updates))
-        return "StandardAutoscaler [{}]: {}/{} target nodes{}\n{}".format(
+        return 'StandardAutoscaler [{}]: {}/{} target nodes{}\n{}'.format(
             datetime.now(), len(nodes), self.target_num_workers(), suffix,
             self.load_metrics.debug_string())
 
@@ -483,7 +483,7 @@ def typename(v):
 def check_required(config, schema):
     # Check required schema entries
     if type(config) is not dict:
-        raise ValueError("Config is not a dictionary")
+        raise ValueError('Config is not a dictionary')
 
     for k, (v, kreq) in schema.items():
         if v is None:
@@ -492,7 +492,7 @@ def check_required(config, schema):
             if k not in config:
                 type_str = typename(v)
                 raise ValueError(
-                    "Missing required config key `{}` of type {}".format(
+                    'Missing required config key `{}` of type {}'.format(
                         k, type_str))
             if not isinstance(v, type):
                 check_required(config[k], v)
@@ -501,10 +501,10 @@ def check_required(config, schema):
 def check_extraneous(config, schema):
     """Make sure all items of config are in schema"""
     if type(config) is not dict:
-        raise ValueError("Config {} is not a dictionary".format(config))
+        raise ValueError('Config {} is not a dictionary'.format(config))
     for k in config:
         if k not in schema:
-            raise ValueError("Unexpected config key `{}` not in {}".format(
+            raise ValueError('Unexpected config key `{}` not in {}'.format(
                 k, list(schema.keys())))
         v, kreq = schema[k]
         if v is None:
@@ -512,7 +512,7 @@ def check_extraneous(config, schema):
         elif isinstance(v, type):
             if not isinstance(config[k], v):
                 raise ValueError(
-                    "Config key `{}` has wrong type {}, expected {}".format(
+                    'Config key `{}` has wrong type {}, expected {}'.format(
                         k,
                         type(config[k]).__name__, v.__name__))
         else:
@@ -522,14 +522,14 @@ def check_extraneous(config, schema):
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     """Required Dicts indicate that no extra fields can be introduced."""
     if type(config) is not dict:
-        raise ValueError("Config {} is not a dictionary".format(config))
+        raise ValueError('Config {} is not a dictionary'.format(config))
 
     check_required(config, schema)
     check_extraneous(config, schema)
 
 
 def fillout_defaults(config):
-    defaults = get_default_config(config["provider"])
+    defaults = get_default_config(config['provider'])
     defaults.update(config)
     dockerize_if_needed(defaults)
     return defaults
@@ -539,14 +539,14 @@ def with_head_node_ip(cmds):
     head_ip = services.get_node_ip_address()
     out = []
     for cmd in cmds:
-        out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))
+        out.append('export RAY_HEAD_IP={}; {}'.format(head_ip, cmd))
     return out
 
 
 def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
     hasher.update(
-        json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
+        json.dumps([node_conf, auth], sort_keys=True).encode('utf-8'))
     return hasher.hexdigest()
 
 
@@ -559,17 +559,17 @@ def hash_runtime_conf(file_mounts, extra_objs):
             for dirpath, _, filenames in os.walk(path):
                 dirs.append((dirpath, sorted(filenames)))
             for dirpath, filenames in sorted(dirs):
-                hasher.update(dirpath.encode("utf-8"))
+                hasher.update(dirpath.encode('utf-8'))
                 for name in filenames:
-                    hasher.update(name.encode("utf-8"))
-                    with open(os.path.join(dirpath, name), "rb") as f:
+                    hasher.update(name.encode('utf-8'))
+                    with open(os.path.join(dirpath, name), 'rb') as f:
                         hasher.update(f.read())
         else:
             with open(path, 'r') as f:
-                hasher.update(f.read().encode("utf-8"))
+                hasher.update(f.read().encode('utf-8'))
 
-    hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
-    hasher.update(json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
+    hasher.update(json.dumps(sorted(file_mounts.items())).encode('utf-8'))
+    hasher.update(json.dumps(extra_objs, sort_keys=True).encode('utf-8'))
     for local_path in sorted(file_mounts.values()):
         add_content_hashes(local_path)
 

@@ -77,7 +77,7 @@ class Trainable(object):
             self._result_logger = logger_creator(self.config)
             self.logdir = self._result_logger.logdir
         else:
-            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            logdir_prefix = datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             self.logdir = tempfile.mkdtemp(
@@ -105,7 +105,7 @@ class Trainable(object):
     def resource_help(cls, config):
         """Returns a help string for configuring this trainable's resources."""
 
-        return ""
+        return ''
 
     def train(self):
         """Runs one logical iteration of training.
@@ -120,7 +120,7 @@ class Trainable(object):
 
         if not self._initialize_ok:
             raise ValueError(
-                "Trainable initialization failed, see previous errors")
+                'Trainable initialization failed, see previous errors')
 
         start = time.time()
         result = self._train()
@@ -131,7 +131,7 @@ class Trainable(object):
             time_this_iter = time.time() - start
 
         if result.timesteps_this_iter is None:
-            raise TuneError("Must specify timesteps_this_iter in result",
+            raise TuneError('Must specify timesteps_this_iter in result',
                             result)
 
         self._time_total += time_this_iter
@@ -146,7 +146,7 @@ class Trainable(object):
         now = datetime.today()
         result = result._replace(
             experiment_id=self._experiment_id,
-            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
+            date=now.strftime('%Y-%m-%d_%H-%M-%S'),
             timestamp=int(time.mktime(now.timetuple())),
             training_iteration=self._iteration,
             timesteps_total=self._timesteps_total,
@@ -179,7 +179,7 @@ class Trainable(object):
         pickle.dump([
             self._experiment_id, self._iteration, self._timesteps_total,
             self._time_total
-        ], open(checkpoint_path + ".tune_metadata", "wb"))
+        ], open(checkpoint_path + '.tune_metadata', 'wb'))
         return checkpoint_path
 
     def save_to_object(self):
@@ -190,7 +190,7 @@ class Trainable(object):
             Object holding checkpoint data.
         """
 
-        tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
+        tmpdir = tempfile.mkdtemp('save_to_object', dir=self.logdir)
         checkpoint_prefix = self.save(tmpdir)
 
         data = {}
@@ -198,16 +198,16 @@ class Trainable(object):
         for path in os.listdir(base_dir):
             path = os.path.join(base_dir, path)
             if path.startswith(checkpoint_prefix):
-                data[os.path.basename(path)] = open(path, "rb").read()
+                data[os.path.basename(path)] = open(path, 'rb').read()
 
         out = io.BytesIO()
-        with gzip.GzipFile(fileobj=out, mode="wb") as f:
+        with gzip.GzipFile(fileobj=out, mode='wb') as f:
             compressed = pickle.dumps({
-                "checkpoint_name": os.path.basename(checkpoint_prefix),
-                "data": data,
+                'checkpoint_name': os.path.basename(checkpoint_prefix),
+                'data': data,
             })
             if len(compressed) > 10e6:  # getting pretty large
-                print("Checkpoint size is {} bytes".format(len(compressed)))
+                print('Checkpoint size is {} bytes'.format(len(compressed)))
             f.write(compressed)
 
         shutil.rmtree(tmpdir)
@@ -223,7 +223,7 @@ class Trainable(object):
         """
 
         self._restore(checkpoint_path)
-        metadata = pickle.load(open(checkpoint_path + ".tune_metadata", "rb"))
+        metadata = pickle.load(open(checkpoint_path + '.tune_metadata', 'rb'))
         self._experiment_id = metadata[0]
         self._iteration = metadata[1]
         self._timesteps_total = metadata[2]
@@ -236,13 +236,13 @@ class Trainable(object):
         """
 
         out = io.BytesIO(obj)
-        info = pickle.loads(gzip.GzipFile(fileobj=out, mode="rb").read())
-        data = info["data"]
-        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
+        info = pickle.loads(gzip.GzipFile(fileobj=out, mode='rb').read())
+        data = info['data']
+        tmpdir = tempfile.mkdtemp('restore_from_object', dir=self.logdir)
+        checkpoint_path = os.path.join(tmpdir, info['checkpoint_name'])
 
         for file_name, file_contents in data.items():
-            with open(os.path.join(tmpdir, file_name), "wb") as f:
+            with open(os.path.join(tmpdir, file_name), 'wb') as f:
                 f.write(file_contents)
 
         self.restore(checkpoint_path)

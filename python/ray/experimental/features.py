@@ -5,9 +5,9 @@ from __future__ import print_function
 import ray
 from ray.utils import binary_to_hex
 
-OBJECT_INFO_PREFIX = b"OI:"
-OBJECT_LOCATION_PREFIX = b"OL:"
-TASK_PREFIX = b"TT:"
+OBJECT_INFO_PREFIX = b'OI:'
+OBJECT_LOCATION_PREFIX = b'OL:'
+TASK_PREFIX = b'TT:'
 
 
 def flush_redis_unsafe():
@@ -24,20 +24,20 @@ def flush_redis_unsafe():
     redis_client = ray.worker.global_worker.redis_client
 
     # Delete the log files from the primary Redis shard.
-    keys = redis_client.keys("LOGFILE:*")
+    keys = redis_client.keys('LOGFILE:*')
     if len(keys) > 0:
         num_deleted = redis_client.delete(*keys)
     else:
         num_deleted = 0
-    print("Deleted {} log files from Redis.".format(num_deleted))
+    print('Deleted {} log files from Redis.'.format(num_deleted))
 
     # Delete the event log from the primary Redis shard.
-    keys = redis_client.keys("event_log:*")
+    keys = redis_client.keys('event_log:*')
     if len(keys) > 0:
         num_deleted = redis_client.delete(*keys)
     else:
         num_deleted = 0
-    print("Deleted {} event logs from Redis.".format(num_deleted))
+    print('Deleted {} event logs from Redis.'.format(num_deleted))
 
 
 def flush_task_and_object_metadata_unsafe():
@@ -57,22 +57,22 @@ def flush_task_and_object_metadata_unsafe():
         # Flush the task table. Note that this also flushes the driver tasks
         # which may be undesirable.
         num_task_keys_deleted = 0
-        for key in redis_client.scan_iter(match=TASK_PREFIX + b"*"):
+        for key in redis_client.scan_iter(match=TASK_PREFIX + b'*'):
             num_task_keys_deleted += redis_client.delete(key)
-        print("Deleted {} task keys from Redis.".format(num_task_keys_deleted))
+        print('Deleted {} task keys from Redis.'.format(num_task_keys_deleted))
 
         # Flush the object information.
         num_object_keys_deleted = 0
-        for key in redis_client.scan_iter(match=OBJECT_INFO_PREFIX + b"*"):
+        for key in redis_client.scan_iter(match=OBJECT_INFO_PREFIX + b'*'):
             num_object_keys_deleted += redis_client.delete(key)
-        print("Deleted {} object info keys from Redis.".format(
+        print('Deleted {} object info keys from Redis.'.format(
             num_object_keys_deleted))
 
         # Flush the object locations.
         num_object_location_keys_deleted = 0
-        for key in redis_client.scan_iter(match=OBJECT_LOCATION_PREFIX + b"*"):
+        for key in redis_client.scan_iter(match=OBJECT_LOCATION_PREFIX + b'*'):
             num_object_location_keys_deleted += redis_client.delete(key)
-        print("Deleted {} object location keys from Redis.".format(
+        print('Deleted {} object location keys from Redis.'.format(
             num_object_location_keys_deleted))
 
     # Loop over the shards and flush all of them.
@@ -82,7 +82,7 @@ def flush_task_and_object_metadata_unsafe():
 
 def _task_table_shard(shard_index):
     redis_client = ray.global_state.redis_clients[shard_index]
-    task_table_keys = redis_client.keys(TASK_PREFIX + b"*")
+    task_table_keys = redis_client.keys(TASK_PREFIX + b'*')
     results = {}
     for key in task_table_keys:
         task_id_binary = key[len(TASK_PREFIX):]
@@ -94,7 +94,7 @@ def _task_table_shard(shard_index):
 
 def _object_table_shard(shard_index):
     redis_client = ray.global_state.redis_clients[shard_index]
-    object_table_keys = redis_client.keys(OBJECT_LOCATION_PREFIX + b"*")
+    object_table_keys = redis_client.keys(OBJECT_LOCATION_PREFIX + b'*')
     results = {}
     for key in object_table_keys:
         object_id_binary = key[len(OBJECT_LOCATION_PREFIX):]
@@ -112,16 +112,16 @@ def _flush_finished_tasks_unsafe_shard(shard_index):
 
     keys_to_delete = []
     for task_id, task_info in tasks.items():
-        if task_info["State"] == ray.experimental.state.TASK_STATUS_DONE:
+        if task_info['State'] == ray.experimental.state.TASK_STATUS_DONE:
             keys_to_delete.append(TASK_PREFIX +
                                   ray.utils.hex_to_binary(task_id))
 
     num_task_keys_deleted = 0
     if len(keys_to_delete) > 0:
         num_task_keys_deleted = redis_client.execute_command(
-            "del", *keys_to_delete)
+            'del', *keys_to_delete)
 
-    print("Deleted {} finished tasks from Redis shard."
+    print('Deleted {} finished tasks from Redis shard.'
           .format(num_task_keys_deleted))
 
 
@@ -133,7 +133,7 @@ def _flush_evicted_objects_unsafe_shard(shard_index):
 
     keys_to_delete = []
     for object_id, object_info in objects.items():
-        if object_info["ManagerIDs"] == []:
+        if object_info['ManagerIDs'] == []:
             keys_to_delete.append(OBJECT_LOCATION_PREFIX +
                                   ray.utils.hex_to_binary(object_id))
             keys_to_delete.append(OBJECT_INFO_PREFIX +
@@ -142,9 +142,9 @@ def _flush_evicted_objects_unsafe_shard(shard_index):
     num_object_keys_deleted = 0
     if len(keys_to_delete) > 0:
         num_object_keys_deleted = redis_client.execute_command(
-            "del", *keys_to_delete)
+            'del', *keys_to_delete)
 
-    print("Deleted {} keys for evicted objects from Redis."
+    print('Deleted {} keys for evicted objects from Redis.'
           .format(num_object_keys_deleted))
 
 

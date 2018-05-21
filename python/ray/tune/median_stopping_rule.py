@@ -33,8 +33,8 @@ class MedianStoppingRule(FIFOScheduler):
     """
 
     def __init__(self,
-                 time_attr="time_total_s",
-                 reward_attr="episode_reward_mean",
+                 time_attr='time_total_s',
+                 reward_attr='episode_reward_mean',
                  grace_period=60.0,
                  min_samples_required=3,
                  hard_stop=True,
@@ -67,11 +67,11 @@ class MedianStoppingRule(FIFOScheduler):
         median_result = self._get_median_result(time)
         best_result = self._best_result(trial)
         if self._verbose:
-            print("Trial {} best res={} vs median res={} at t={}".format(
+            print('Trial {} best res={} vs median res={} at t={}'.format(
                 trial, best_result, median_result, time))
         if best_result < median_result and time > self._grace_period:
             if self._verbose:
-                print("MedianStoppingRule: early stopping {}".format(trial))
+                print('MedianStoppingRule: early stopping {}'.format(trial))
             self._stopped_trials.add(trial)
             if self._hard_stop:
                 return TrialScheduler.STOP
@@ -90,7 +90,7 @@ class MedianStoppingRule(FIFOScheduler):
             self._completed_trials.add(trial)
 
     def debug_string(self):
-        return "Using MedianStoppingRule: num_stopped={}.".format(
+        return 'Using MedianStoppingRule: num_stopped={}.'.format(
             len(self._stopped_trials))
 
     def _get_median_result(self, time):

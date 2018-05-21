@@ -17,7 +17,7 @@ class ComponentFailureTest(unittest.TestCase):
     # This test checks that when a worker dies in the middle of a get, the
     # plasma store and manager will not die.
     def testDyingWorkerGet(self):
-        obj_id = 20 * b"a"
+        obj_id = 20 * b'a'
 
         @ray.remote
         def f():
@@ -54,7 +54,7 @@ class ComponentFailureTest(unittest.TestCase):
     # This test checks that when a worker dies in the middle of a wait, the
     # plasma store and manager will not die.
     def testDyingWorkerWait(self):
-        obj_id = 20 * b"a"
+        obj_id = 20 * b'a'
 
         @ray.remote
         def f():
@@ -181,15 +181,15 @@ class ComponentFailureTest(unittest.TestCase):
             if check_component_alive:
                 self.assertTrue(component.poll() is None)
             else:
-                print("waiting for " + component_type + " with PID " +
-                      str(component.pid) + "to terminate")
+                print('waiting for ' + component_type + ' with PID ' +
+                      str(component.pid) + 'to terminate')
                 component.wait()
-                print("done waiting for " + component_type + " with PID " +
-                      str(component.pid) + "to terminate")
+                print('done waiting for ' + component_type + ' with PID ' +
+                      str(component.pid) + 'to terminate')
                 self.assertTrue(not component.poll() is None)
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), 'Hanging with new GCS API.')
     def testLocalSchedulerFailed(self):
         # Kill all local schedulers on worker nodes.
         self._testComponentFailed(ray.services.PROCESS_TYPE_LOCAL_SCHEDULER)
@@ -204,7 +204,7 @@ class ComponentFailureTest(unittest.TestCase):
                                     False)
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), 'Hanging with new GCS API.')
     def testPlasmaManagerFailed(self):
         # Kill all plasma managers on worker nodes.
         self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_MANAGER)
@@ -219,7 +219,7 @@ class ComponentFailureTest(unittest.TestCase):
                                     False)
 
     @unittest.skipIf(
-        os.environ.get('RAY_USE_NEW_GCS', False), "Hanging with new GCS API.")
+        os.environ.get('RAY_USE_NEW_GCS', False), 'Hanging with new GCS API.')
     def testPlasmaStoreFailed(self):
         # Kill all plasma stores on worker nodes.
         self._testComponentFailed(ray.services.PROCESS_TYPE_PLASMA_STORE)
@@ -275,5 +275,5 @@ class ComponentFailureTest(unittest.TestCase):
         # If the driver can reach the tearDown method, then it is still alive.
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -24,11 +24,11 @@ MAX_LEN_IDENTIFIER = 130
 
 
 def date_str():
-    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+    return datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
 
 
 class Resources(
-        namedtuple("Resources", ["cpu", "gpu", "extra_cpu", "extra_gpu"])):
+        namedtuple('Resources', ['cpu', 'gpu', 'extra_cpu', 'extra_gpu'])):
     """Ray resources required to schedule a trial.
 
     Attributes:
@@ -46,7 +46,7 @@ class Resources(
                                              extra_gpu)
 
     def summary_string(self):
-        return "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
+        return '{} CPUs, {} GPUs'.format(self.cpu + self.extra_cpu,
                                          self.gpu + self.extra_gpu)
 
     def cpu_total(self):
@@ -71,17 +71,17 @@ class Trial(object):
     On error it transitions to ERROR, otherwise TERMINATED on success.
     """
 
-    PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    PAUSED = "PAUSED"
-    TERMINATED = "TERMINATED"
-    ERROR = "ERROR"
+    PENDING = 'PENDING'
+    RUNNING = 'RUNNING'
+    PAUSED = 'PAUSED'
+    TERMINATED = 'TERMINATED'
+    ERROR = 'ERROR'
 
     def __init__(self,
                  trainable_name,
                  config=None,
                  local_dir=DEFAULT_RESULTS_DIR,
-                 experiment_tag="",
+                 experiment_tag='',
                  resources=None,
                  stopping_criterion=None,
                  checkpoint_freq=0,
@@ -98,13 +98,13 @@ class Trial(object):
             # Make sure rllib agents are registered
             from ray import rllib  # noqa: F401
             if not has_trainable(trainable_name):
-                raise TuneError("Unknown trainable: " + trainable_name)
+                raise TuneError('Unknown trainable: ' + trainable_name)
 
         if stopping_criterion:
             for k in stopping_criterion:
                 if k not in TrainingResult._fields:
                     raise TuneError(
-                        "Stopping condition key `{}` must be one of {}".format(
+                        'Stopping condition key `{}` must be one of {}'.format(
                             k, TrainingResult._fields))
 
         # Trial config
@@ -175,8 +175,8 @@ class Trial(object):
             if error_msg and self.logdir:
                 self.num_failures += 1
                 error_file = os.path.join(self.logdir,
-                                          "error_{}.txt".format(date_str()))
-                with open(error_file, "w") as f:
+                                          'error_{}.txt'.format(date_str()))
+                with open(error_file, 'w') as f:
                     f.write(error_msg)
                 self.error_file = error_file
             if self.runner:
@@ -187,7 +187,7 @@ class Trial(object):
                 _, unfinished = ray.wait(
                     stop_tasks, num_returns=2, timeout=250)
         except Exception:
-            print("Error stopping runner:", traceback.format_exc())
+            print('Error stopping runner:', traceback.format_exc())
             self.status = Trial.ERROR
         finally:
             self.runner = None
@@ -206,7 +206,7 @@ class Trial(object):
             self.stop(stop_logger=False)
             self.status = Trial.PAUSED
         except Exception:
-            print("Error pausing runner:", traceback.format_exc())
+            print('Error pausing runner:', traceback.format_exc())
             self.status = Trial.ERROR
 
     def unpause(self):
@@ -282,10 +282,10 @@ class Trial(object):
         return ', '.join(pieces)
 
     def _status_string(self):
-        return "{}{}".format(
-            self.status, ", {} failures: {}".format(self.num_failures,
+        return '{}{}'.format(
+            self.status, ', {} failures: {}'.format(self.num_failures,
                                                     self.error_file)
-            if self.error_file else "")
+            if self.error_file else '')
 
     def has_checkpoint(self):
         return self._checkpoint_path is not None or \
@@ -309,7 +309,7 @@ class Trial(object):
         self._checkpoint_obj = obj
 
         if self.verbose:
-            print("Saved checkpoint for {} to {}".format(self, path or obj))
+            print('Saved checkpoint for {} to {}'.format(self, path or obj))
         return path or obj
 
     def restore_from_path(self, path):
@@ -320,24 +320,24 @@ class Trial(object):
         """
 
         if self.runner is None:
-            print("Unable to restore - no runner")
+            print('Unable to restore - no runner')
         else:
             try:
                 ray.get(self.runner.restore.remote(path))
             except Exception:
-                print("Error restoring runner:", traceback.format_exc())
+                print('Error restoring runner:', traceback.format_exc())
                 self.status = Trial.ERROR
 
     def restore_from_obj(self, obj):
         """Restores runner state from the specified object."""
 
         if self.runner is None:
-            print("Unable to restore - no runner")
+            print('Unable to restore - no runner')
         else:
             try:
                 ray.get(self.runner.restore_from_object.remote(obj))
             except Exception:
-                print("Error restoring runner:", traceback.format_exc())
+                print('Error restoring runner:', traceback.format_exc())
                 self.status = Trial.ERROR
 
     def update_last_result(self, result, terminate=False):
@@ -345,8 +345,8 @@ class Trial(object):
             result = result._replace(done=True)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
-            print("TrainingResult for {}:".format(self))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            print('TrainingResult for {}:'.format(self))
+            print('  {}'.format(pretty_print(result).replace('\n', '\n  ')))
             self.last_debug = time.time()
         self.last_result = result
         self.result_logger.on_result(self.last_result)
@@ -360,7 +360,7 @@ class Trial(object):
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix="{}_{}".format(
+                prefix='{}_{}'.format(
                     str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(self.config, self.logdir,
@@ -396,11 +396,11 @@ class Trial(object):
 
     def __str__(self):
         """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
-        if "env" in self.config:
-            identifier = "{}_{}".format(self.trainable_name,
-                                        self.config["env"])
+        if 'env' in self.config:
+            identifier = '{}_{}'.format(self.trainable_name,
+                                        self.config['env'])
         else:
             identifier = self.trainable_name
         if self.experiment_tag:
-            identifier += "_" + self.experiment_tag
+            identifier += '_' + self.experiment_tag
         return identifier

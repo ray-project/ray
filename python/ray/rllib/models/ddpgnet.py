@@ -14,7 +14,7 @@ class DDPGActor(Model):
     def _init(self, inputs, num_outputs, options):
         w_normal = tf.truncated_normal_initializer()
         w_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
-        ac_bound = options["action_bound"]
+        ac_bound = options['action_bound']
 
         net = slim.fully_connected(
              inputs, 400, activation_fn=tf.nn.relu,

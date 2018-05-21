@@ -17,20 +17,20 @@ class DDPGEvaluator(PolicyEvaluator):
 
     def __init__(self, registry, env_creator, config):
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]))
+            registry, env_creator(config['env_config']))
 
         # contains model, target_model
         self.model = DDPGModel(registry, self.env, config)
 
         self.sampler = SyncSampler(
                         self.env, self.model.model, NoFilter(),
-                        config["num_local_steps"], horizon=config["horizon"])
+                        config['num_local_steps'], horizon=config['horizon'])
 
     def sample(self):
         """Returns a batch of samples."""
 
         rollout = self.sampler.get_data()
-        rollout.data["weights"] = np.ones_like(rollout.data["rewards"])
+        rollout.data['weights'] = np.ones_like(rollout.data['rewards'])
 
         # since each sample is one step, no discounting needs to be applied;
         # this does not involve config["gamma"]

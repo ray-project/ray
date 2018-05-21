@@ -8,7 +8,7 @@ import ray
 
 from . import core
 
-__all__ = ["tsqr", "modified_lu", "tsqr_hr", "qr"]
+__all__ = ['tsqr', 'modified_lu', 'tsqr_hr', 'qr']
 
 
 @ray.remote(num_return_vals=2)
@@ -28,11 +28,11 @@ def tsqr(a):
             - np.allclose(r, np.triu(r)) == True.
     """
     if len(a.shape) != 2:
-        raise Exception("tsqr requires len(a.shape) == 2, but a.shape is "
-                        "{}".format(a.shape))
+        raise Exception('tsqr requires len(a.shape) == 2, but a.shape is '
+                        '{}'.format(a.shape))
     if a.num_blocks[1] != 1:
-        raise Exception("tsqr requires a.num_blocks[1] == 1, but a.num_blocks "
-                        "is {}".format(a.num_blocks))
+        raise Exception('tsqr requires a.num_blocks[1] == 1, but a.num_blocks '
+                        'is {}'.format(a.num_blocks))
 
     num_blocks = a.num_blocks[0]
     K = int(np.ceil(np.log2(num_blocks))) + 1
@@ -51,7 +51,7 @@ def tsqr(a):
             q_tree[i, j] = q
             new_rs.append(r)
         current_rs = new_rs
-    assert len(current_rs) == 1, "len(current_rs) = " + str(len(current_rs))
+    assert len(current_rs) == 1, 'len(current_rs) = ' + str(len(current_rs))
 
     # handle the special case in which the whole DistArray "a" fits in one
     # block and has fewer rows than columns, this is a bit ugly so think about

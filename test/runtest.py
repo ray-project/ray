@@ -22,22 +22,22 @@ def assert_equal(obj1, obj2):
     module_numpy = (type(obj1).__module__ == np.__name__
                     or type(obj2).__module__ == np.__name__)
     if module_numpy:
-        empty_shape = ((hasattr(obj1, "shape") and obj1.shape == ())
-                       or (hasattr(obj2, "shape") and obj2.shape == ()))
+        empty_shape = ((hasattr(obj1, 'shape') and obj1.shape == ())
+                       or (hasattr(obj2, 'shape') and obj2.shape == ()))
         if empty_shape:
             # This is a special case because currently np.testing.assert_equal
             # fails because we do not properly handle different numerical
             # types.
-            assert obj1 == obj2, ("Objects {} and {} are "
-                                  "different.".format(obj1, obj2))
+            assert obj1 == obj2, ('Objects {} and {} are '
+                                  'different.'.format(obj1, obj2))
         else:
             np.testing.assert_equal(obj1, obj2)
-    elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
-        special_keys = ["_pytype_"]
+    elif hasattr(obj1, '__dict__') and hasattr(obj2, '__dict__'):
+        special_keys = ['_pytype_']
         assert (set(list(obj1.__dict__.keys()) + special_keys) == set(
-            list(obj2.__dict__.keys()) + special_keys)), ("Objects {} "
-                                                          "and {} are "
-                                                          "different.".format(
+            list(obj2.__dict__.keys()) + special_keys)), ('Objects {} '
+                                                          'and {} are '
+                                                          'different.'.format(
                                                               obj1, obj2))
         for key in obj1.__dict__.keys():
             if key not in special_keys:
@@ -47,44 +47,44 @@ def assert_equal(obj1, obj2):
         for key in obj1.keys():
             assert_equal(obj1[key], obj2[key])
     elif type(obj1) is list or type(obj2) is list:
-        assert len(obj1) == len(obj2), ("Objects {} and {} are lists with "
-                                        "different lengths.".format(
+        assert len(obj1) == len(obj2), ('Objects {} and {} are lists with '
+                                        'different lengths.'.format(
                                             obj1, obj2))
         for i in range(len(obj1)):
             assert_equal(obj1[i], obj2[i])
     elif type(obj1) is tuple or type(obj2) is tuple:
-        assert len(obj1) == len(obj2), ("Objects {} and {} are tuples with "
-                                        "different lengths.".format(
+        assert len(obj1) == len(obj2), ('Objects {} and {} are tuples with '
+                                        'different lengths.'.format(
                                             obj1, obj2))
         for i in range(len(obj1)):
             assert_equal(obj1[i], obj2[i])
     elif (ray.serialization.is_named_tuple(type(obj1))
           or ray.serialization.is_named_tuple(type(obj2))):
-        assert len(obj1) == len(obj2), ("Objects {} and {} are named tuples "
-                                        "with different lengths.".format(
+        assert len(obj1) == len(obj2), ('Objects {} and {} are named tuples '
+                                        'with different lengths.'.format(
                                             obj1, obj2))
         for i in range(len(obj1)):
             assert_equal(obj1[i], obj2[i])
     else:
-        assert obj1 == obj2, "Objects {} and {} are different.".format(
+        assert obj1 == obj2, 'Objects {} and {} are different.'.format(
             obj1, obj2)
 
 
 if sys.version_info >= (3, 0):
-    long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
+    long_extras = [0, np.array([['hi', u"hi"], [1.3, 1]])]
 else:
 
     long_extras = [
         long(0),  # noqa: E501,F821
         np.array([
-            ["hi", u"hi"],
+            ['hi', u"hi"],
             [1.3, long(1)]  # noqa: E501,F821
         ])
     ]
 
 PRIMITIVE_OBJECTS = [
-    0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], "a",
-    string.printable, "\u262F", u"hello world", u"\xff\xfe\x9c\x001\x000\x00",
+    0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], 'a',
+    string.printable, '\u262F', u"hello world", u"\xff\xfe\x9c\x001\x000\x00",
     None, True, False, [], (), {},
     np.int8(3),
     np.int32(4),
@@ -96,23 +96,23 @@ PRIMITIVE_OBJECTS = [
     np.float64(1.9),
     np.zeros([100, 100]),
     np.random.normal(size=[100, 100]),
-    np.array(["hi", 3]),
-    np.array(["hi", 3], dtype=object)
+    np.array(['hi', 3]),
+    np.array(['hi', 3], dtype=object)
 ] + long_extras
 
 COMPLEX_OBJECTS = [
     [[[[[[[[[[[[]]]]]]]]]]]],
-    {"obj{}".format(i): np.random.normal(size=[100, 100])
+    {'obj{}'.format(i): np.random.normal(size=[100, 100])
      for i in range(10)},
     # {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {
     #      (): {(): {}}}}}}}}}}}}},
     (
         (((((((((), ), ), ), ), ), ), ), ), ),
     {
-        "a": {
-            "b": {
-                "c": {
-                    "d": {}
+        'a': {
+            'b': {
+                'c': {
+                    'd': {}
                 }
             }
         }
@@ -134,7 +134,7 @@ class Foo(object):
 class Bar(object):
     def __init__(self):
         for i, val in enumerate(PRIMITIVE_OBJECTS + COMPLEX_OBJECTS):
-            setattr(self, "field{}".format(i), val)
+            setattr(self, 'field{}'.format(i), val)
 
 
 class Baz(object):
@@ -160,18 +160,18 @@ class CustomError(Exception):
     pass
 
 
-Point = namedtuple("Point", ["x", "y"])
-NamedTupleExample = namedtuple("Example",
-                               "field1, field2, field3, field4, field5")
+Point = namedtuple('Point', ['x', 'y'])
+NamedTupleExample = namedtuple('Example',
+                               'field1, field2, field3, field4, field5')
 
 CUSTOM_OBJECTS = [
-    Exception("Test object."),
+    Exception('Test object.'),
     CustomError(),
     Point(11, y=22),
     Foo(),
     Bar(),
     Baz(),  # Qux(), SubQux(),
-    NamedTupleExample(1, 1.0, "hi", np.zeros([3, 5]), [1, 2, 3])
+    NamedTupleExample(1, 1.0, 'hi', np.zeros([3, 5]), [1, 2, 3])
 ]
 
 BASE_OBJECTS = PRIMITIVE_OBJECTS + COMPLEX_OBJECTS + CUSTOM_OBJECTS
@@ -184,7 +184,7 @@ DICT_OBJECTS = (
     [{
         obj: obj
     } for obj in PRIMITIVE_OBJECTS
-     if (obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
+     if (obj.__hash__ is not None and type(obj).__module__ != 'numpy')] + [{
          0: obj
      } for obj in BASE_OBJECTS] + [{
          Foo(123): Foo(456)
@@ -216,7 +216,7 @@ class SerializationTest(unittest.TestCase):
         a3.field = a2
         # Make a dictionary that contains itself.
         d1 = {}
-        d1["key"] = d1
+        d1['key'] = d1
         # Create a list of recursive objects.
         recursive_objects = [lst, a1, a2, a3, d1]
 
@@ -254,7 +254,7 @@ class SerializationTest(unittest.TestCase):
 
         # Test sets.
         self.assertEqual(ray.get(f.remote(set())), set())
-        s = {1, (1, 2, "hi")}
+        s = {1, (1, 2, 'hi')}
         self.assertEqual(ray.get(f.remote(s)), s)
 
         # Test types.
@@ -324,7 +324,7 @@ class WorkerTest(unittest.TestCase):
             self.assertEqual(value_before, value_after)
 
         for i in range(100):
-            value_before = "h" * i
+            value_before = 'h' * i
             objectid = ray.put(value_before)
             value_after = ray.get(objectid)
             self.assertEqual(value_before, value_after)
@@ -353,10 +353,10 @@ class APITest(unittest.TestCase):
                 self.x = 3
 
         def custom_serializer(obj):
-            return 3, "string1", type(obj).__name__
+            return 3, 'string1', type(obj).__name__
 
         def custom_deserializer(serialized_obj):
-            return serialized_obj, "string2"
+            return serialized_obj, 'string2'
 
         ray.register_custom_serializer(
             Foo,
@@ -364,7 +364,7 @@ class APITest(unittest.TestCase):
             deserializer=custom_deserializer)
 
         self.assertEqual(
-            ray.get(ray.put(Foo())), ((3, "string1", Foo.__name__), "string2"))
+            ray.get(ray.put(Foo())), ((3, 'string1', Foo.__name__), 'string2'))
 
         class Bar(object):
             def __init__(self):
@@ -380,7 +380,7 @@ class APITest(unittest.TestCase):
             return Bar()
 
         self.assertEqual(
-            ray.get(f.remote()), ((3, "string1", Bar.__name__), "string2"))
+            ray.get(f.remote()), ((3, 'string1', Bar.__name__), 'string2'))
 
     def testRegisterClass(self):
         self.init_ray(num_workers=2)
@@ -393,15 +393,15 @@ class APITest(unittest.TestCase):
         ray.get(ray.put(TempClass()))
 
         # Test subtypes of dictionaries.
-        value_before = OrderedDict([("hello", 1), ("world", 2)])
+        value_before = OrderedDict([('hello', 1), ('world', 2)])
         object_id = ray.put(value_before)
         self.assertEqual(value_before, ray.get(object_id))
 
-        value_before = defaultdict(lambda: 0, [("hello", 1), ("world", 2)])
+        value_before = defaultdict(lambda: 0, [('hello', 1), ('world', 2)])
         object_id = ray.put(value_before)
         self.assertEqual(value_before, ray.get(object_id))
 
-        value_before = defaultdict(lambda: [], [("hello", 1), ("world", 2)])
+        value_before = defaultdict(lambda: [], [('hello', 1), ('world', 2)])
         object_id = ray.put(value_before)
         self.assertEqual(value_before, ray.get(object_id))
 
@@ -478,12 +478,12 @@ class APITest(unittest.TestCase):
             c1.method1()
             c2.method2()
 
-            self.assertFalse(hasattr(c0, "method1"))
-            self.assertFalse(hasattr(c0, "method2"))
-            self.assertFalse(hasattr(c1, "method0"))
-            self.assertFalse(hasattr(c1, "method2"))
-            self.assertFalse(hasattr(c2, "method0"))
-            self.assertFalse(hasattr(c2, "method1"))
+            self.assertFalse(hasattr(c0, 'method1'))
+            self.assertFalse(hasattr(c0, 'method2'))
+            self.assertFalse(hasattr(c1, 'method0'))
+            self.assertFalse(hasattr(c1, 'method2'))
+            self.assertFalse(hasattr(c2, 'method0'))
+            self.assertFalse(hasattr(c2, 'method1'))
 
         @ray.remote
         def k():
@@ -513,55 +513,55 @@ class APITest(unittest.TestCase):
             c1.method1()
             c2.method2()
 
-            self.assertFalse(hasattr(c0, "method1"))
-            self.assertFalse(hasattr(c0, "method2"))
-            self.assertFalse(hasattr(c1, "method0"))
-            self.assertFalse(hasattr(c1, "method2"))
-            self.assertFalse(hasattr(c2, "method0"))
-            self.assertFalse(hasattr(c2, "method1"))
+            self.assertFalse(hasattr(c0, 'method1'))
+            self.assertFalse(hasattr(c0, 'method2'))
+            self.assertFalse(hasattr(c1, 'method0'))
+            self.assertFalse(hasattr(c1, 'method2'))
+            self.assertFalse(hasattr(c2, 'method0'))
+            self.assertFalse(hasattr(c2, 'method1'))
 
     def testKeywordArgs(self):
         reload(test_functions)
         self.init_ray()
 
         x = test_functions.keyword_fct1.remote(1)
-        self.assertEqual(ray.get(x), "1 hello")
-        x = test_functions.keyword_fct1.remote(1, "hi")
-        self.assertEqual(ray.get(x), "1 hi")
-        x = test_functions.keyword_fct1.remote(1, b="world")
-        self.assertEqual(ray.get(x), "1 world")
-        x = test_functions.keyword_fct1.remote(a=1, b="world")
-        self.assertEqual(ray.get(x), "1 world")
+        self.assertEqual(ray.get(x), '1 hello')
+        x = test_functions.keyword_fct1.remote(1, 'hi')
+        self.assertEqual(ray.get(x), '1 hi')
+        x = test_functions.keyword_fct1.remote(1, b='world')
+        self.assertEqual(ray.get(x), '1 world')
+        x = test_functions.keyword_fct1.remote(a=1, b='world')
+        self.assertEqual(ray.get(x), '1 world')
 
-        x = test_functions.keyword_fct2.remote(a="w", b="hi")
-        self.assertEqual(ray.get(x), "w hi")
-        x = test_functions.keyword_fct2.remote(b="hi", a="w")
-        self.assertEqual(ray.get(x), "w hi")
-        x = test_functions.keyword_fct2.remote(a="w")
-        self.assertEqual(ray.get(x), "w world")
-        x = test_functions.keyword_fct2.remote(b="hi")
-        self.assertEqual(ray.get(x), "hello hi")
-        x = test_functions.keyword_fct2.remote("w")
-        self.assertEqual(ray.get(x), "w world")
-        x = test_functions.keyword_fct2.remote("w", "hi")
-        self.assertEqual(ray.get(x), "w hi")
+        x = test_functions.keyword_fct2.remote(a='w', b='hi')
+        self.assertEqual(ray.get(x), 'w hi')
+        x = test_functions.keyword_fct2.remote(b='hi', a='w')
+        self.assertEqual(ray.get(x), 'w hi')
+        x = test_functions.keyword_fct2.remote(a='w')
+        self.assertEqual(ray.get(x), 'w world')
+        x = test_functions.keyword_fct2.remote(b='hi')
+        self.assertEqual(ray.get(x), 'hello hi')
+        x = test_functions.keyword_fct2.remote('w')
+        self.assertEqual(ray.get(x), 'w world')
+        x = test_functions.keyword_fct2.remote('w', 'hi')
+        self.assertEqual(ray.get(x), 'w hi')
 
-        x = test_functions.keyword_fct3.remote(0, 1, c="w", d="hi")
-        self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, b=1, c="w", d="hi")
-        self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(a=0, b=1, c="w", d="hi")
-        self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, 1, d="hi", c="w")
-        self.assertEqual(ray.get(x), "0 1 w hi")
-        x = test_functions.keyword_fct3.remote(0, 1, c="w")
-        self.assertEqual(ray.get(x), "0 1 w world")
-        x = test_functions.keyword_fct3.remote(0, 1, d="hi")
-        self.assertEqual(ray.get(x), "0 1 hello hi")
+        x = test_functions.keyword_fct3.remote(0, 1, c='w', d='hi')
+        self.assertEqual(ray.get(x), '0 1 w hi')
+        x = test_functions.keyword_fct3.remote(0, b=1, c='w', d='hi')
+        self.assertEqual(ray.get(x), '0 1 w hi')
+        x = test_functions.keyword_fct3.remote(a=0, b=1, c='w', d='hi')
+        self.assertEqual(ray.get(x), '0 1 w hi')
+        x = test_functions.keyword_fct3.remote(0, 1, d='hi', c='w')
+        self.assertEqual(ray.get(x), '0 1 w hi')
+        x = test_functions.keyword_fct3.remote(0, 1, c='w')
+        self.assertEqual(ray.get(x), '0 1 w world')
+        x = test_functions.keyword_fct3.remote(0, 1, d='hi')
+        self.assertEqual(ray.get(x), '0 1 hello hi')
         x = test_functions.keyword_fct3.remote(0, 1)
-        self.assertEqual(ray.get(x), "0 1 hello world")
+        self.assertEqual(ray.get(x), '0 1 hello world')
         x = test_functions.keyword_fct3.remote(a=0, b=1)
-        self.assertEqual(ray.get(x), "0 1 hello world")
+        self.assertEqual(ray.get(x), '0 1 hello world')
 
         # Check that we cannot pass invalid keyword arguments to functions.
         @ray.remote
@@ -600,9 +600,9 @@ class APITest(unittest.TestCase):
         self.init_ray()
 
         x = test_functions.varargs_fct1.remote(0, 1, 2)
-        self.assertEqual(ray.get(x), "0 1 2")
+        self.assertEqual(ray.get(x), '0 1 2')
         x = test_functions.varargs_fct2.remote(0, 1, 2)
-        self.assertEqual(ray.get(x), "1 2")
+        self.assertEqual(ray.get(x), '1 2')
 
         self.assertTrue(test_functions.kwargs_exception_thrown)
 
@@ -652,12 +652,12 @@ class APITest(unittest.TestCase):
             if val == 10:
                 break
             else:
-                print("Still using old definition of f, trying again.")
+                print('Still using old definition of f, trying again.')
 
         # Test that we can close over plain old data.
         data = [
-            np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60, {
-                "a": np.zeros(3)
+            np.zeros([3, 5]), (1, 2, 'a'), [0.0, 1.0, 1 << 62], 1 << 60, {
+                'a': np.zeros(3)
             }
         ]
 
@@ -699,10 +699,10 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(m.remote(1)), 2)
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testSubmitAPI(self):
-        self.init_ray(num_gpus=1, resources={"Custom": 1}, num_workers=1)
+        self.init_ray(num_gpus=1, resources={'Custom': 1}, num_workers=1)
 
         @ray.remote
         def f(n):
@@ -722,8 +722,8 @@ class APITest(unittest.TestCase):
         assert ray.get(
             g._submit(
                 args=[], num_cpus=1, num_gpus=1,
-                resources={"Custom": 1})) == [0]
-        infeasible_id = g._submit(args=[], resources={"NonexistentCustom": 1})
+                resources={'Custom': 1})) == [0]
+        infeasible_id = g._submit(args=[], resources={'NonexistentCustom': 1})
         ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=50)
         assert len(ready_ids) == 0
         assert len(remaining_ids) == 1
@@ -741,11 +741,11 @@ class APITest(unittest.TestCase):
                 return ray.get_gpu_ids()
 
         a = Actor._submit(
-            args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
+            args=[0], kwargs={'y': 1}, num_gpus=1, resources={'Custom': 1})
 
         id1, id2, id3, id4 = a.method._submit(
-            args=["test"], kwargs={"b": 2}, num_return_vals=4)
-        assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
+            args=['test'], kwargs={'b': 2}, num_return_vals=4)
+        assert ray.get([id1, id2, id3, id4]) == [0, 1, 'test', 2]
 
     def testGetMultiple(self):
         self.init_ray()
@@ -759,8 +759,8 @@ class APITest(unittest.TestCase):
         self.assertEqual(results, indices)
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testWait(self):
         self.init_ray(num_cpus=1)
 
@@ -827,8 +827,8 @@ class APITest(unittest.TestCase):
             ray.wait([1])
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
         # launched in this experiment can run at the same time.
@@ -907,7 +907,7 @@ class APITest(unittest.TestCase):
         self.init_ray()
 
         def f(worker_info):
-            sys.path.append("fake_directory")
+            sys.path.append('fake_directory')
 
         ray.worker.global_worker.run_function_on_all_workers(f)
 
@@ -915,7 +915,7 @@ class APITest(unittest.TestCase):
         def get_path1():
             return sys.path
 
-        self.assertEqual("fake_directory", ray.get(get_path1.remote())[-1])
+        self.assertEqual('fake_directory', ray.get(get_path1.remote())[-1])
 
         def f(worker_info):
             sys.path.pop(-1)
@@ -929,18 +929,18 @@ class APITest(unittest.TestCase):
         def get_path2():
             return sys.path
 
-        self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
+        self.assertTrue('fake_directory' not in ray.get(get_path2.remote()))
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testLoggingAPI(self):
         self.init_ray(driver_mode=ray.SILENT_MODE)
 
         def events():
             # This is a hack for getting the event log. It is not part of the
             # API.
-            keys = ray.worker.global_worker.redis_client.keys("event_log:*")
+            keys = ray.worker.global_worker.redis_client.keys('event_log:*')
             res = []
             for key in keys:
                 res.extend(
@@ -953,15 +953,15 @@ class APITest(unittest.TestCase):
                 if len(events()) >= num_events:
                     return
                 time.sleep(0.1)
-            print("Timing out of wait.")
+            print('Timing out of wait.')
 
         @ray.remote
         def test_log_event():
-            ray.log_event("event_type1", contents={"key": "val"})
+            ray.log_event('event_type1', contents={'key': 'val'})
 
         @ray.remote
         def test_log_span():
-            with ray.log_span("event_type2", contents={"key": "val"}):
+            with ray.log_span('event_type2', contents={'key': 'val'}):
                 pass
 
         # Make sure that we can call ray.log_event in a remote function.
@@ -979,8 +979,8 @@ class APITest(unittest.TestCase):
 
         @ray.remote
         def test_log_span_exception():
-            with ray.log_span("event_type2", contents={"key": "val"}):
-                raise Exception("This failed.")
+            with ray.log_span('event_type2', contents={'key': 'val'}):
+                raise Exception('This failed.')
 
         # Make sure that logging a span works if an exception is thrown.
         test_log_span_exception.remote()
@@ -1070,9 +1070,9 @@ class APITestSharded(APITest):
     def init_ray(self, **kwargs):
         if kwargs is None:
             kwargs = {}
-        kwargs["start_ray_local"] = True
-        kwargs["num_redis_shards"] = 20
-        kwargs["redirect_output"] = True
+        kwargs['start_ray_local'] = True
+        kwargs['num_redis_shards'] = 20
+        kwargs['redirect_output'] = True
         ray.worker._init(**kwargs)
 
 
@@ -1081,8 +1081,8 @@ class PythonModeTest(unittest.TestCase):
         ray.worker.cleanup()
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testPythonMode(self):
         reload(test_functions)
         ray.init(driver_mode=ray.PYTHON_MODE)
@@ -1280,8 +1280,8 @@ class ResourcesTest(unittest.TestCase):
         self.assertGreater(duration, 1)
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testGPUIDs(self):
         num_gpus = 10
         ray.init(num_cpus=10, num_gpus=num_gpus)
@@ -1291,7 +1291,7 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
-            assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+            assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                 [str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
@@ -1302,7 +1302,7 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 1
-            assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+            assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                 [str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
@@ -1313,7 +1313,7 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 2
-            assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+            assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                 [str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
@@ -1324,7 +1324,7 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 3
-            assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+            assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                 [str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
@@ -1335,7 +1335,7 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 4
-            assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+            assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                 [str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
@@ -1346,7 +1346,7 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 5
-            assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+            assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                 [str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
@@ -1363,8 +1363,8 @@ class ResourcesTest(unittest.TestCase):
             if len(set(ray.get([f.remote() for _ in range(10)]))) == 10:
                 break
             if time.time() > start_time + 10:
-                raise Exception("Timed out while waiting for workers to start "
-                                "up.")
+                raise Exception('Timed out while waiting for workers to start '
+                                'up.')
 
         list_of_ids = ray.get([f0.remote() for _ in range(10)])
         self.assertEqual(list_of_ids, 10 * [[]])
@@ -1399,7 +1399,7 @@ class ResourcesTest(unittest.TestCase):
             def __init__(self):
                 gpu_ids = ray.get_gpu_ids()
                 assert len(gpu_ids) == 0
-                assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+                assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                     [str(i) for i in gpu_ids]))
                 # Set self.x to make sure that we got here.
                 self.x = 1
@@ -1407,7 +1407,7 @@ class ResourcesTest(unittest.TestCase):
             def test(self):
                 gpu_ids = ray.get_gpu_ids()
                 assert len(gpu_ids) == 0
-                assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+                assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                     [str(i) for i in gpu_ids]))
                 return self.x
 
@@ -1416,7 +1416,7 @@ class ResourcesTest(unittest.TestCase):
             def __init__(self):
                 gpu_ids = ray.get_gpu_ids()
                 assert len(gpu_ids) == 1
-                assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+                assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                     [str(i) for i in gpu_ids]))
                 # Set self.x to make sure that we got here.
                 self.x = 1
@@ -1424,7 +1424,7 @@ class ResourcesTest(unittest.TestCase):
             def test(self):
                 gpu_ids = ray.get_gpu_ids()
                 assert len(gpu_ids) == 1
-                assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+                assert (os.environ['CUDA_VISIBLE_DEVICES'] == ','.join(
                     [str(i) for i in gpu_ids]))
                 return self.x
 
@@ -1506,48 +1506,48 @@ class ResourcesTest(unittest.TestCase):
             for i in range(100):
                 index = np.random.randint(6)
                 if index == 0:
-                    names.append("run_on_0")
+                    names.append('run_on_0')
                     results.append(run_on_0.remote())
                 elif index == 1:
-                    names.append("run_on_1")
+                    names.append('run_on_1')
                     results.append(run_on_1.remote())
                 elif index == 2:
-                    names.append("run_on_2")
+                    names.append('run_on_2')
                     results.append(run_on_2.remote())
                 elif index == 3:
-                    names.append("run_on_0_1_2")
+                    names.append('run_on_0_1_2')
                     results.append(run_on_0_1_2.remote())
                 elif index == 4:
-                    names.append("run_on_1_2")
+                    names.append('run_on_1_2')
                     results.append(run_on_1_2.remote())
                 elif index == 5:
-                    names.append("run_on_0_2")
+                    names.append('run_on_0_2')
                     results.append(run_on_0_2.remote())
             return names, results
 
         store_names = [
             object_store_address.name
-            for object_store_address in address_info["object_store_addresses"]
+            for object_store_address in address_info['object_store_addresses']
         ]
 
         def validate_names_and_results(names, results):
             for name, result in zip(names, ray.get(results)):
-                if name == "run_on_0":
+                if name == 'run_on_0':
                     self.assertIn(result, [store_names[0]])
-                elif name == "run_on_1":
+                elif name == 'run_on_1':
                     self.assertIn(result, [store_names[1]])
-                elif name == "run_on_2":
+                elif name == 'run_on_2':
                     self.assertIn(result, [store_names[2]])
-                elif name == "run_on_0_1_2":
+                elif name == 'run_on_0_1_2':
                     self.assertIn(
                         result,
                         [store_names[0], store_names[1], store_names[2]])
-                elif name == "run_on_1_2":
+                elif name == 'run_on_1_2':
                     self.assertIn(result, [store_names[1], store_names[2]])
-                elif name == "run_on_0_2":
+                elif name == 'run_on_0_2':
                     self.assertIn(result, [store_names[0], store_names[2]])
                 else:
-                    raise Exception("This should be unreachable.")
+                    raise Exception('This should be unreachable.')
                 self.assertEqual(set(ray.get(results)), set(store_names))
 
         names, results = run_lots_of_tasks()
@@ -1574,9 +1574,9 @@ class ResourcesTest(unittest.TestCase):
             num_local_schedulers=2,
             num_cpus=[3, 3],
             resources=[{
-                "CustomResource": 0
+                'CustomResource': 0
             }, {
-                "CustomResource": 1
+                'CustomResource': 1
             }])
 
         @ray.remote
@@ -1584,12 +1584,12 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(resources={"CustomResource": 1})
+        @ray.remote(resources={'CustomResource': 1})
         def g():
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(resources={"CustomResource": 1})
+        @ray.remote(resources={'CustomResource': 1})
         def h():
             ray.get([f.remote() for _ in range(5)])
             return ray.worker.global_worker.plasma_client.store_socket_name
@@ -1614,34 +1614,34 @@ class ResourcesTest(unittest.TestCase):
             num_local_schedulers=2,
             num_cpus=[3, 3],
             resources=[{
-                "CustomResource1": 1,
-                "CustomResource2": 2
+                'CustomResource1': 1,
+                'CustomResource2': 2
             }, {
-                "CustomResource1": 3,
-                "CustomResource2": 4
+                'CustomResource1': 3,
+                'CustomResource2': 4
             }])
 
-        @ray.remote(resources={"CustomResource1": 1})
+        @ray.remote(resources={'CustomResource1': 1})
         def f():
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(resources={"CustomResource2": 1})
+        @ray.remote(resources={'CustomResource2': 1})
         def g():
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(resources={"CustomResource1": 1, "CustomResource2": 3})
+        @ray.remote(resources={'CustomResource1': 1, 'CustomResource2': 3})
         def h():
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(resources={"CustomResource1": 4})
+        @ray.remote(resources={'CustomResource1': 4})
         def j():
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(resources={"CustomResource3": 1})
+        @ray.remote(resources={'CustomResource3': 1})
         def k():
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
@@ -1702,22 +1702,22 @@ class CudaVisibleDevicesTest(unittest.TestCase):
     def setUp(self):
         # Record the curent value of this environment variable so that we can
         # reset it after the test.
-        self.original_gpu_ids = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+        self.original_gpu_ids = os.environ.get('CUDA_VISIBLE_DEVICES', None)
 
     def tearDown(self):
         ray.worker.cleanup()
         # Reset the environment variable.
         if self.original_gpu_ids is not None:
-            os.environ["CUDA_VISIBLE_DEVICES"] = self.original_gpu_ids
+            os.environ['CUDA_VISIBLE_DEVICES'] = self.original_gpu_ids
         else:
-            del os.environ["CUDA_VISIBLE_DEVICES"]
+            del os.environ['CUDA_VISIBLE_DEVICES']
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testSpecificGPUs(self):
         allowed_gpu_ids = [4, 5, 6]
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+        os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(
             [str(i) for i in allowed_gpu_ids])
         ray.init(num_gpus=3)
 
@@ -1756,8 +1756,8 @@ class WorkerPoolTests(unittest.TestCase):
         ray.get([f.remote() for _ in range(100)])
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testBlockingTasks(self):
         ray.init(num_cpus=1)
 
@@ -1788,8 +1788,8 @@ class WorkerPoolTests(unittest.TestCase):
         ray.get(sleep.remote())
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testMaxCallTasks(self):
         ray.init(num_cpus=1)
 
@@ -1827,7 +1827,7 @@ class SchedulingAlgorithm(unittest.TestCase):
                 [remote_function.remote(*args) for _ in range(total_tasks)])
             names = set(locations)
             counts = [locations.count(name) for name in names]
-            print("Counts are {}.".format(counts))
+            print('Counts are {}.'.format(counts))
             if (len(names) == num_local_schedulers
                     and all(count >= minimum_count for count in counts)):
                 break
@@ -1881,7 +1881,7 @@ def wait_for_num_tasks(num_tasks, timeout=10):
         if len(ray.global_state.task_table()) >= num_tasks:
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for global state.")
+    raise Exception('Timed out while waiting for global state.')
 
 
 def wait_for_num_objects(num_objects, timeout=10):
@@ -1890,7 +1890,7 @@ def wait_for_num_objects(num_objects, timeout=10):
         if len(ray.global_state.object_table()) >= num_objects:
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for global state.")
+    raise Exception('Timed out while waiting for global state.')
 
 
 @unittest.skipIf(
@@ -1901,8 +1901,8 @@ class GlobalStateAPI(unittest.TestCase):
         ray.worker.cleanup()
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testGlobalStateAPI(self):
         with self.assertRaises(Exception):
             ray.global_state.object_table()
@@ -1919,9 +1919,9 @@ class GlobalStateAPI(unittest.TestCase):
         with self.assertRaises(Exception):
             ray.global_state.log_files()
 
-        ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+        ray.init(num_cpus=5, num_gpus=3, resources={'CustomResource': 1})
 
-        resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
+        resources = {'CPU': 5, 'GPU': 3, 'CustomResource': 1}
         assert ray.global_state.cluster_resources() == resources
 
         self.assertEqual(ray.global_state.object_table(), {})
@@ -1938,26 +1938,26 @@ class GlobalStateAPI(unittest.TestCase):
         task_table = ray.global_state.task_table()
         self.assertEqual(len(task_table), 1)
         self.assertEqual(driver_task_id, list(task_table.keys())[0])
-        self.assertEqual(task_table[driver_task_id]["State"],
+        self.assertEqual(task_table[driver_task_id]['State'],
                          ray.experimental.state.TASK_STATUS_RUNNING)
-        self.assertEqual(task_table[driver_task_id]["TaskSpec"]["TaskID"],
+        self.assertEqual(task_table[driver_task_id]['TaskSpec']['TaskID'],
                          driver_task_id)
-        self.assertEqual(task_table[driver_task_id]["TaskSpec"]["ActorID"],
-                         ID_SIZE * "ff")
-        self.assertEqual(task_table[driver_task_id]["TaskSpec"]["Args"], [])
-        self.assertEqual(task_table[driver_task_id]["TaskSpec"]["DriverID"],
+        self.assertEqual(task_table[driver_task_id]['TaskSpec']['ActorID'],
+                         ID_SIZE * 'ff')
+        self.assertEqual(task_table[driver_task_id]['TaskSpec']['Args'], [])
+        self.assertEqual(task_table[driver_task_id]['TaskSpec']['DriverID'],
                          driver_id)
-        self.assertEqual(task_table[driver_task_id]["TaskSpec"]["FunctionID"],
-                         ID_SIZE * "ff")
+        self.assertEqual(task_table[driver_task_id]['TaskSpec']['FunctionID'],
+                         ID_SIZE * 'ff')
         self.assertEqual(
-            (task_table[driver_task_id]["TaskSpec"]["ReturnObjectIDs"]), [])
+            (task_table[driver_task_id]['TaskSpec']['ReturnObjectIDs']), [])
 
         client_table = ray.global_state.client_table()
         node_ip_address = ray.worker.global_worker.node_ip_address
         self.assertEqual(len(client_table[node_ip_address]), 3)
         manager_client = [
             c for c in client_table[node_ip_address]
-            if c["ClientType"] == "plasma_manager"
+            if c['ClientType'] == 'plasma_manager'
         ][0]
 
         @ray.remote
@@ -1965,7 +1965,7 @@ class GlobalStateAPI(unittest.TestCase):
             return 1
 
         x_id = ray.put(1)
-        result_id = f.remote(1, "hi", x_id)
+        result_id = f.remote(1, 'hi', x_id)
 
         # Wait for one additional task to complete.
         start_time = time.time()
@@ -1976,19 +1976,19 @@ class GlobalStateAPI(unittest.TestCase):
             task_id_set = set(task_table.keys())
             task_id_set.remove(driver_task_id)
             task_id = list(task_id_set)[0]
-            if task_table[task_id]["State"] == "DONE":
+            if task_table[task_id]['State'] == 'DONE':
                 break
             time.sleep(0.1)
         function_table = ray.global_state.function_table()
-        task_spec = task_table[task_id]["TaskSpec"]
-        self.assertEqual(task_spec["ActorID"], ID_SIZE * "ff")
-        self.assertEqual(task_spec["Args"], [1, "hi", x_id])
-        self.assertEqual(task_spec["DriverID"], driver_id)
-        self.assertEqual(task_spec["ReturnObjectIDs"], [result_id])
-        function_table_entry = function_table[task_spec["FunctionID"]]
-        self.assertEqual(function_table_entry["Name"], "__main__.f")
-        self.assertEqual(function_table_entry["DriverID"], driver_id)
-        self.assertEqual(function_table_entry["Module"], "__main__")
+        task_spec = task_table[task_id]['TaskSpec']
+        self.assertEqual(task_spec['ActorID'], ID_SIZE * 'ff')
+        self.assertEqual(task_spec['Args'], [1, 'hi', x_id])
+        self.assertEqual(task_spec['DriverID'], driver_id)
+        self.assertEqual(task_spec['ReturnObjectIDs'], [result_id])
+        function_table_entry = function_table[task_spec['FunctionID']]
+        self.assertEqual(function_table_entry['Name'], '__main__.f')
+        self.assertEqual(function_table_entry['DriverID'], driver_id)
+        self.assertEqual(function_table_entry['Module'], '__main__')
 
         self.assertEqual(task_table[task_id],
                          ray.global_state.task_table(task_id))
@@ -2002,28 +2002,28 @@ class GlobalStateAPI(unittest.TestCase):
             while time.time() - start_time < timeout:
                 object_table = ray.global_state.object_table()
                 tables_ready = (
-                    object_table[x_id]["ManagerIDs"] is not None
-                    and object_table[result_id]["ManagerIDs"] is not None)
+                    object_table[x_id]['ManagerIDs'] is not None
+                    and object_table[result_id]['ManagerIDs'] is not None)
                 if tables_ready:
                     return
                 time.sleep(0.1)
-            raise Exception("Timed out while waiting for object table to "
-                            "update.")
+            raise Exception('Timed out while waiting for object table to '
+                            'update.')
 
         # Wait for the object table to be updated.
         wait_for_object_table()
         object_table = ray.global_state.object_table()
         self.assertEqual(len(object_table), 2)
 
-        self.assertEqual(object_table[x_id]["IsPut"], True)
-        self.assertEqual(object_table[x_id]["TaskID"], driver_task_id)
-        self.assertEqual(object_table[x_id]["ManagerIDs"],
-                         [manager_client["DBClientID"]])
+        self.assertEqual(object_table[x_id]['IsPut'], True)
+        self.assertEqual(object_table[x_id]['TaskID'], driver_task_id)
+        self.assertEqual(object_table[x_id]['ManagerIDs'],
+                         [manager_client['DBClientID']])
 
-        self.assertEqual(object_table[result_id]["IsPut"], False)
-        self.assertEqual(object_table[result_id]["TaskID"], task_id)
-        self.assertEqual(object_table[result_id]["ManagerIDs"],
-                         [manager_client["DBClientID"]])
+        self.assertEqual(object_table[result_id]['IsPut'], False)
+        self.assertEqual(object_table[result_id]['TaskID'], task_id)
+        self.assertEqual(object_table[result_id]['ManagerIDs'],
+                         [manager_client['DBClientID']])
 
         self.assertEqual(object_table[x_id],
                          ray.global_state.object_table(x_id))
@@ -2033,7 +2033,7 @@ class GlobalStateAPI(unittest.TestCase):
     def testLogFileAPI(self):
         ray.init(redirect_worker_output=True)
 
-        message = "unique message"
+        message = 'unique message'
 
         @ray.remote
         def f():
@@ -2051,7 +2051,7 @@ class GlobalStateAPI(unittest.TestCase):
             log_files = ray.global_state.log_files()
             for ip, innerdict in log_files.items():
                 for filename, contents in innerdict.items():
-                    contents_str = "".join(contents)
+                    contents_str = ''.join(contents)
                     if message in contents_str:
                         found_message = True
             if found_message:
@@ -2061,8 +2061,8 @@ class GlobalStateAPI(unittest.TestCase):
         self.assertEqual(found_message, True)
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testTaskProfileAPI(self):
         ray.init(redirect_output=True)
 
@@ -2088,12 +2088,12 @@ class GlobalStateAPI(unittest.TestCase):
 
         # Make sure that each entry is properly formatted.
         for task_id, data in profiles.items():
-            self.assertIn("execute_start", data)
-            self.assertIn("execute_end", data)
-            self.assertIn("get_arguments_start", data)
-            self.assertIn("get_arguments_end", data)
-            self.assertIn("store_outputs_start", data)
-            self.assertIn("store_outputs_end", data)
+            self.assertIn('execute_start', data)
+            self.assertIn('execute_end', data)
+            self.assertIn('get_arguments_start', data)
+            self.assertIn('get_arguments_end', data)
+            self.assertIn('store_outputs_start', data)
+            self.assertIn('store_outputs_end', data)
 
     def testWorkers(self):
         num_workers = 3
@@ -2114,16 +2114,16 @@ class GlobalStateAPI(unittest.TestCase):
         worker_info = ray.global_state.workers()
         self.assertEqual(len(worker_info), num_workers)
         for worker_id, info in worker_info.items():
-            self.assertIn("node_ip_address", info)
-            self.assertIn("local_scheduler_socket", info)
-            self.assertIn("plasma_manager_socket", info)
-            self.assertIn("plasma_store_socket", info)
-            self.assertIn("stderr_file", info)
-            self.assertIn("stdout_file", info)
+            self.assertIn('node_ip_address', info)
+            self.assertIn('local_scheduler_socket', info)
+            self.assertIn('plasma_manager_socket', info)
+            self.assertIn('plasma_store_socket', info)
+            self.assertIn('stderr_file', info)
+            self.assertIn('stdout_file', info)
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testDumpTraceFile(self):
         ray.init(redirect_output=True)
 
@@ -2142,7 +2142,7 @@ class GlobalStateAPI(unittest.TestCase):
         # We use a number of test objects because objects that are not JSON
         # serializable caused problems in the past.
         test_objects = [
-            0, 0.5, "hi", b"hi",
+            0, 0.5, 'hi', b'hi',
             ray.put(0),
             np.zeros(3), [0], (0, ), {
                 0: 0
@@ -2153,7 +2153,7 @@ class GlobalStateAPI(unittest.TestCase):
         ray.get([actor.method.remote() for actor in actors])
         ray.get([actor.method.remote() for actor in actors])
 
-        path = os.path.join("/tmp/ray_test_trace")
+        path = os.path.join('/tmp/ray_test_trace')
         task_info = ray.global_state.task_profiles(
             100, start=0, end=time.time())
         ray.global_state.dump_catapult_trace(path, task_info)
@@ -2163,8 +2163,8 @@ class GlobalStateAPI(unittest.TestCase):
         # trace could be malformed).
 
     @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+        os.environ.get('RAY_USE_XRAY') == '1',
+        'This test does not work with xray yet.')
     def testFlushAPI(self):
         ray.init(num_cpus=1)
 
@@ -2192,9 +2192,9 @@ class GlobalStateAPI(unittest.TestCase):
             for object_info in object_table.values():
                 if len(object_info) != 5:
                     tables_ready = False
-                if (object_info["ManagerIDs"] is None
-                        or object_info["DataSize"] == -1
-                        or object_info["Hash"] == ""):
+                if (object_info['ManagerIDs'] is None
+                        or object_info['DataSize'] == -1
+                        or object_info['Hash'] == ''):
                     tables_ready = False
 
             if len(task_table) != 10 + 1:
@@ -2204,8 +2204,8 @@ class GlobalStateAPI(unittest.TestCase):
                 ray.worker.global_worker.current_task_id.id())
 
             for info in task_table.values():
-                if info["State"] != ray.experimental.state.TASK_STATUS_DONE:
-                    if info["TaskSpec"]["TaskID"] != driver_task_id:
+                if info['State'] != ray.experimental.state.TASK_STATUS_DONE:
+                    if info['TaskSpec']['TaskID'] != driver_task_id:
                         tables_ready = False
 
             if tables_ready:
@@ -2230,5 +2230,5 @@ class GlobalStateAPI(unittest.TestCase):
         ray.experimental.flush_evicted_objects_unsafe()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main(verbosity=2)

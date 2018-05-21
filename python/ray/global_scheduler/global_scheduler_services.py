@@ -32,26 +32,26 @@ def start_global_scheduler(redis_address,
         The process ID of the global scheduler process.
     """
     if use_valgrind and use_profiler:
-        raise Exception("Cannot use valgrind and profiler at the same time.")
+        raise Exception('Cannot use valgrind and profiler at the same time.')
     global_scheduler_executable = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
-        "../core/src/global_scheduler/global_scheduler")
+        '../core/src/global_scheduler/global_scheduler')
     command = [
-        global_scheduler_executable, "-r", redis_address, "-h", node_ip_address
+        global_scheduler_executable, '-r', redis_address, '-h', node_ip_address
     ]
     if use_valgrind:
         pid = subprocess.Popen(
             [
-                "valgrind", "--track-origins=yes", "--leak-check=full",
-                "--show-leak-kinds=all", "--leak-check-heuristics=stdstring",
-                "--error-exitcode=1"
+                'valgrind', '--track-origins=yes', '--leak-check=full',
+                '--show-leak-kinds=all', '--leak-check-heuristics=stdstring',
+                '--error-exitcode=1'
             ] + command,
             stdout=stdout_file,
             stderr=stderr_file)
         time.sleep(1.0)
     elif use_profiler:
         pid = subprocess.Popen(
-            ["valgrind", "--tool=callgrind"] + command,
+            ['valgrind', '--tool=callgrind'] + command,
             stdout=stdout_file,
             stderr=stderr_file)
         time.sleep(1.0)

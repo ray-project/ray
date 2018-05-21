@@ -17,11 +17,11 @@ from ray.tune.web_server import TuneServer
 from ray.tune.experiment import Experiment
 
 _SCHEDULERS = {
-    "FIFO": FIFOScheduler,
-    "MedianStopping": MedianStoppingRule,
-    "HyperBand": HyperBandScheduler,
-    "AsyncHyperBand": AsyncHyperBandScheduler,
-    "HyperOpt": HyperOptScheduler,
+    'FIFO': FIFOScheduler,
+    'MedianStopping': MedianStoppingRule,
+    'HyperBand': HyperBandScheduler,
+    'AsyncHyperBand': AsyncHyperBandScheduler,
+    'HyperOpt': HyperOptScheduler,
 }
 
 
@@ -29,7 +29,7 @@ def _make_scheduler(args):
     if args.scheduler in _SCHEDULERS:
         return _SCHEDULERS[args.scheduler](**args.scheduler_config)
     else:
-        raise TuneError("Unknown scheduler: {}, should be one of {}".format(
+        raise TuneError('Unknown scheduler: {}, should be one of {}'.format(
             args.scheduler, _SCHEDULERS.keys()))
 
 
@@ -79,7 +79,7 @@ def run_experiments(experiments,
         for experiment in exp_list:
             scheduler.add_experiment(experiment, runner)
     else:
-        raise TuneError("Invalid argument: {}".format(experiments))
+        raise TuneError('Invalid argument: {}'.format(experiments))
 
     print(runner.debug_string(max_debug=99999))
 
@@ -95,7 +95,7 @@ def run_experiments(experiments,
     for trial in runner.get_trials():
         # TODO(rliaw): What about errored?
         if trial.status != Trial.TERMINATED:
-            raise TuneError("Trial did not complete", trial)
+            raise TuneError('Trial did not complete', trial)
 
     wait_for_log_sync()
     return runner.get_trials()

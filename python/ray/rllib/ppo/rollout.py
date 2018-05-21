@@ -19,7 +19,7 @@ def collect_samples(agents, config, local_evaluator):
         fut_sample = agent.sample.remote()
         agent_dict[fut_sample] = agent
 
-    while num_timesteps_so_far < config["timesteps_per_batch"]:
+    while num_timesteps_so_far < config['timesteps_per_batch']:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
         # conversion to list here.
         [fut_sample], _ = ray.wait(list(agent_dict))

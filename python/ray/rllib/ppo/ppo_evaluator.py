@@ -34,29 +34,29 @@ class PPOEvaluator(PolicyEvaluator):
         self.registry = registry
         self.is_remote = is_remote
         if is_remote:
-            os.environ["CUDA_VISIBLE_DEVICES"] = ""
-            devices = ["/cpu:0"]
+            os.environ['CUDA_VISIBLE_DEVICES'] = ''
+            devices = ['/cpu:0']
         else:
-            devices = config["devices"]
+            devices = config['devices']
         self.devices = devices
         self.config = config
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]), config["model"])
+            registry, env_creator(config['env_config']), config['model'])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
-            config_proto = tf.ConfigProto(**config["tf_session_args"])
+            config_proto = tf.ConfigProto(**config['tf_session_args'])
         self.sess = tf.Session(config=config_proto)
-        if config["tf_debug_inf_or_nan"] and not is_remote:
+        if config['tf_debug_inf_or_nan'] and not is_remote:
             self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
             self.sess.add_tensor_filter(
-                "has_inf_or_nan", tf_debug.has_inf_or_nan)
+                'has_inf_or_nan', tf_debug.has_inf_or_nan)
 
         # Defines the training inputs:
         # The coefficient of the KL penalty.
         self.kl_coeff = tf.placeholder(
-            name="newkl", shape=(), dtype=tf.float32)
+            name='newkl', shape=(), dtype=tf.float32)
 
         # The input observations.
         self.observations = tf.placeholder(
@@ -77,11 +77,11 @@ class PPOEvaluator(PolicyEvaluator):
         self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
 
         if is_remote:
-            self.batch_size = config["rollout_batchsize"]
-            self.per_device_batch_size = config["rollout_batchsize"]
+            self.batch_size = config['rollout_batchsize']
+            self.per_device_batch_size = config['rollout_batchsize']
         else:
             self.batch_size = int(
-                config["sgd_batchsize"] / len(devices)) * len(devices)
+                config['sgd_batchsize'] / len(devices)) * len(devices)
             assert self.batch_size % len(devices) == 0
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
@@ -93,7 +93,7 @@ class PPOEvaluator(PolicyEvaluator):
                 self.sess, self.registry)
 
         self.par_opt = LocalSyncParallelOptimizer(
-            tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
+            tf.train.AdamOptimizer(self.config['sgd_stepsize']),
             self.devices,
             [self.observations, self.value_targets, self.advantages,
              self.actions, self.prev_logits, self.prev_vf_preds],
@@ -102,7 +102,7 @@ class PPOEvaluator(PolicyEvaluator):
             self.logdir)
 
         # Metric ops
-        with tf.name_scope("test_outputs"):
+        with tf.name_scope('test_outputs'):
             policies = self.par_opt.get_device_losses()
             self.mean_loss = tf.reduce_mean(
                 tf.stack(values=[
@@ -125,26 +125,26 @@ class PPOEvaluator(PolicyEvaluator):
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
         self.obs_filter = get_filter(
-            config["observation_filter"], self.env.observation_space.shape)
+            config['observation_filter'], self.env.observation_space.shape)
         self.rew_filter = MeanStdFilter((), clip=5.0)
-        self.filters = {"obs_filter": self.obs_filter,
-                        "rew_filter": self.rew_filter}
+        self.filters = {'obs_filter': self.obs_filter,
+                        'rew_filter': self.rew_filter}
         self.sampler = SyncSampler(
             self.env, self.common_policy, self.obs_filter,
-            self.config["horizon"], self.config["horizon"])
+            self.config['horizon'], self.config['horizon'])
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
-        use_gae = self.config["use_gae"]
-        dummy = np.zeros_like(trajectories["advantages"])
+        use_gae = self.config['use_gae']
+        dummy = np.zeros_like(trajectories['advantages'])
         return self.par_opt.load_data(
             self.sess,
-            [trajectories["obs"],
-             trajectories["value_targets"] if use_gae else dummy,
-             trajectories["advantages"],
-             trajectories["actions"],
-             trajectories["logprobs"],
-             trajectories["vf_preds"] if use_gae else dummy],
+            [trajectories['obs'],
+             trajectories['value_targets'] if use_gae else dummy,
+             trajectories['advantages'],
+             trajectories['actions'],
+             trajectories['logprobs'],
+             trajectories['vf_preds'] if use_gae else dummy],
             full_trace=full_trace)
 
     def run_sgd_minibatch(
@@ -166,11 +166,11 @@ class PPOEvaluator(PolicyEvaluator):
 
     def save(self):
         filters = self.get_filters(flush_after=True)
-        return pickle.dumps({"filters": filters})
+        return pickle.dumps({'filters': filters})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        self.sync_filters(objs["filters"])
+        self.sync_filters(objs['filters'])
 
     def get_weights(self):
         return self.variables.get_weights()
@@ -188,11 +188,11 @@ class PPOEvaluator(PolicyEvaluator):
         num_steps_so_far = 0
         all_samples = []
 
-        while num_steps_so_far < self.config["min_steps_per_task"]:
+        while num_steps_so_far < self.config['min_steps_per_task']:
             rollout = self.sampler.get_data()
             samples = process_rollout(
-                rollout, self.rew_filter, self.config["gamma"],
-                self.config["lambda"], use_gae=self.config["use_gae"])
+                rollout, self.rew_filter, self.config['gamma'],
+                self.config['lambda'], use_gae=self.config['use_gae'])
             num_steps_so_far += samples.count
             all_samples.append(samples)
         return SampleBatch.concat_samples(all_samples)

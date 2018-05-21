@@ -243,7 +243,7 @@ if __name__ == '__main__':
             'tune_mnist_test': mnist_spec
         },
         scheduler=AsyncHyperBandScheduler(
-            time_attr="timesteps_total",
-            reward_attr="mean_accuracy",
+            time_attr='timesteps_total',
+            reward_attr='mean_accuracy',
             max_t=600,
         ))

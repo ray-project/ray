@@ -14,21 +14,21 @@ from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
-    "num_workers": 4,
+    'num_workers': 4,
     # Size of rollout batch
-    "batch_size": 512,
+    'batch_size': 512,
     # Discount factor of MDP
-    "gamma": 0.99,
+    'gamma': 0.99,
     # Number of steps after which the rollout gets cut
-    "horizon": 500,
+    'horizon': 500,
     # Learning rate
-    "lr": 0.0004,
+    'lr': 0.0004,
     # Arguments to pass to the rllib optimizer
-    "optimizer": {},
+    'optimizer': {},
     # Model parameters
-    "model": {"fcnet_hiddens": [128, 128]},
+    'model': {'fcnet_hiddens': [128, 128]},
     # Arguments to pass to the env creator
-    "env_config": {},
+    'env_config': {},
 }
 
 
@@ -40,20 +40,20 @@ class PGAgent(Agent):
     In most cases, you will probably want to use the PPO agent instead.
     """
 
-    _agent_name = "PG"
+    _agent_name = 'PG'
     _default_config = DEFAULT_CONFIG
 
     @classmethod
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
-        return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
+        return Resources(cpu=1, gpu=0, extra_cpu=cf['num_workers'])
 
     def _init(self):
         self.optimizer = LocalSyncOptimizer.make(
             evaluator_cls=PGEvaluator,
             evaluator_args=[self.registry, self.env_creator, self.config],
-            num_workers=self.config["num_workers"],
-            optimizer_config=self.config["optimizer"])
+            num_workers=self.config['num_workers'],
+            optimizer_config=self.config['optimizer'])
 
     def _train(self):
         self.optimizer.step()

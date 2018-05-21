@@ -22,13 +22,13 @@ from ray.core.generated.TaskExecutionDependencies import \
 
 # These prefixes must be kept up-to-date with the definitions in
 # ray_redis_module.cc.
-DB_CLIENT_PREFIX = "CL:"
-OBJECT_INFO_PREFIX = "OI:"
-OBJECT_LOCATION_PREFIX = "OL:"
-OBJECT_SUBSCRIBE_PREFIX = "OS:"
-TASK_PREFIX = "TT:"
-FUNCTION_PREFIX = "RemoteFunction:"
-OBJECT_CHANNEL_PREFIX = "OC:"
+DB_CLIENT_PREFIX = 'CL:'
+OBJECT_INFO_PREFIX = 'OI:'
+OBJECT_LOCATION_PREFIX = 'OL:'
+OBJECT_SUBSCRIBE_PREFIX = 'OS:'
+TASK_PREFIX = 'TT:'
+FUNCTION_PREFIX = 'RemoteFunction:'
+OBJECT_CHANNEL_PREFIX = 'OC:'
 
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
@@ -40,13 +40,13 @@ TASK_STATUS_DONE = 16
 TASK_STATUS_LOST = 32
 TASK_STATUS_RECONSTRUCTING = 64
 TASK_STATUS_MAPPING = {
-    TASK_STATUS_WAITING: "WAITING",
-    TASK_STATUS_SCHEDULED: "SCHEDULED",
-    TASK_STATUS_QUEUED: "QUEUED",
-    TASK_STATUS_RUNNING: "RUNNING",
-    TASK_STATUS_DONE: "DONE",
-    TASK_STATUS_LOST: "LOST",
-    TASK_STATUS_RECONSTRUCTING: "RECONSTRUCTING",
+    TASK_STATUS_WAITING: 'WAITING',
+    TASK_STATUS_SCHEDULED: 'SCHEDULED',
+    TASK_STATUS_QUEUED: 'QUEUED',
+    TASK_STATUS_RUNNING: 'RUNNING',
+    TASK_STATUS_DONE: 'DONE',
+    TASK_STATUS_LOST: 'LOST',
+    TASK_STATUS_RECONSTRUCTING: 'RECONSTRUCTING',
 }
 
 
@@ -76,12 +76,12 @@ class GlobalState(object):
                 yet.
         """
         if self.redis_client is None:
-            raise Exception("The ray.global_state API cannot be used before "
-                            "ray.init has been called.")
+            raise Exception('The ray.global_state API cannot be used before '
+                            'ray.init has been called.')
 
         if self.redis_clients is None:
-            raise Exception("The ray.global_state API cannot be used before "
-                            "ray.init has been called.")
+            raise Exception('The ray.global_state API cannot be used before '
+                            'ray.init has been called.')
 
     def _initialize_global_state(self,
                                  redis_ip_address,
@@ -110,21 +110,21 @@ class GlobalState(object):
 
         while time.time() - start_time < timeout:
             # Attempt to get the number of Redis shards.
-            num_redis_shards = self.redis_client.get("NumRedisShards")
+            num_redis_shards = self.redis_client.get('NumRedisShards')
             if num_redis_shards is None:
-                print("Waiting longer for NumRedisShards to be populated.")
+                print('Waiting longer for NumRedisShards to be populated.')
                 time.sleep(1)
                 continue
             num_redis_shards = int(num_redis_shards)
             if (num_redis_shards < 1):
-                raise Exception("Expected at least one Redis shard, found "
-                                "{}.".format(num_redis_shards))
+                raise Exception('Expected at least one Redis shard, found '
+                                '{}.'.format(num_redis_shards))
 
             # Attempt to get all of the Redis shards.
             ip_address_ports = self.redis_client.lrange(
-                "RedisShards", start=0, end=-1)
+                'RedisShards', start=0, end=-1)
             if len(ip_address_ports) != num_redis_shards:
-                print("Waiting longer for RedisShards to be populated.")
+                print('Waiting longer for RedisShards to be populated.')
                 time.sleep(1)
                 continue
 
@@ -133,15 +133,15 @@ class GlobalState(object):
 
         # Check to see if we timed out.
         if time.time() - start_time >= timeout:
-            raise Exception("Timed out while attempting to initialize the "
-                            "global state. num_redis_shards = {}, "
-                            "ip_address_ports = {}".format(
+            raise Exception('Timed out while attempting to initialize the '
+                            'global state. num_redis_shards = {}, '
+                            'ip_address_ports = {}'.format(
                                 num_redis_shards, ip_address_ports))
 
         # Get the rest of the information.
         self.redis_clients = []
         for ip_address_port in ip_address_ports:
-            shard_address, shard_port = ip_address_port.split(b":")
+            shard_address, shard_port = ip_address_port.split(b':')
             self.redis_clients.append(
                 redis.StrictRedis(host=shard_address, port=shard_port))
 
@@ -189,7 +189,7 @@ class GlobalState(object):
 
         # Return information about a single object ID.
         object_locations = self._execute_command(object_id,
-                                                 "RAY.OBJECT_TABLE_LOOKUP",
+                                                 'RAY.OBJECT_TABLE_LOOKUP',
                                                  object_id.id())
         if object_locations is not None:
             manager_ids = [
@@ -199,16 +199,16 @@ class GlobalState(object):
             manager_ids = None
 
         result_table_response = self._execute_command(
-            object_id, "RAY.RESULT_TABLE_LOOKUP", object_id.id())
+            object_id, 'RAY.RESULT_TABLE_LOOKUP', object_id.id())
         result_table_message = ResultTableReply.GetRootAsResultTableReply(
             result_table_response, 0)
 
         result = {
-            "ManagerIDs": manager_ids,
-            "TaskID": binary_to_hex(result_table_message.TaskId()),
-            "IsPut": bool(result_table_message.IsPut()),
-            "DataSize": result_table_message.DataSize(),
-            "Hash": binary_to_hex(result_table_message.Hash())
+            'ManagerIDs': manager_ids,
+            'TaskID': binary_to_hex(result_table_message.TaskId()),
+            'IsPut': bool(result_table_message.IsPut()),
+            'DataSize': result_table_message.DataSize(),
+            'Hash': binary_to_hex(result_table_message.Hash())
         }
 
         return result
@@ -230,8 +230,8 @@ class GlobalState(object):
             return self._object_table(object_id)
         else:
             # Return the entire object table.
-            object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
-            object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
+            object_info_keys = self._keys(OBJECT_INFO_PREFIX + '*')
+            object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + '*')
             object_ids_binary = set(
                 [key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys] + [
                     key[len(OBJECT_LOCATION_PREFIX):]
@@ -256,31 +256,31 @@ class GlobalState(object):
                 into a human-readable string.
         """
         task_table_response = self._execute_command(task_id,
-                                                    "RAY.TASK_TABLE_GET",
+                                                    'RAY.TASK_TABLE_GET',
                                                     task_id.id())
         if task_table_response is None:
-            raise Exception("There is no entry for task ID {} in the task "
-                            "table.".format(binary_to_hex(task_id.id())))
+            raise Exception('There is no entry for task ID {} in the task '
+                            'table.'.format(binary_to_hex(task_id.id())))
         task_table_message = TaskReply.GetRootAsTaskReply(
             task_table_response, 0)
         task_spec = task_table_message.TaskSpec()
         task_spec = ray.local_scheduler.task_from_string(task_spec)
 
         task_spec_info = {
-            "DriverID": binary_to_hex(task_spec.driver_id().id()),
-            "TaskID": binary_to_hex(task_spec.task_id().id()),
-            "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
-            "ParentCounter": task_spec.parent_counter(),
-            "ActorID": binary_to_hex(task_spec.actor_id().id()),
-            "ActorCreationID": binary_to_hex(
+            'DriverID': binary_to_hex(task_spec.driver_id().id()),
+            'TaskID': binary_to_hex(task_spec.task_id().id()),
+            'ParentTaskID': binary_to_hex(task_spec.parent_task_id().id()),
+            'ParentCounter': task_spec.parent_counter(),
+            'ActorID': binary_to_hex(task_spec.actor_id().id()),
+            'ActorCreationID': binary_to_hex(
                 task_spec.actor_creation_id().id()),
-            "ActorCreationDummyObjectID": binary_to_hex(
+            'ActorCreationDummyObjectID': binary_to_hex(
                 task_spec.actor_creation_dummy_object_id().id()),
-            "ActorCounter": task_spec.actor_counter(),
-            "FunctionID": binary_to_hex(task_spec.function_id().id()),
-            "Args": task_spec.arguments(),
-            "ReturnObjectIDs": task_spec.returns(),
-            "RequiredResources": task_spec.required_resources()
+            'ActorCounter': task_spec.actor_counter(),
+            'FunctionID': binary_to_hex(task_spec.function_id().id()),
+            'Args': task_spec.arguments(),
+            'ReturnObjectIDs': task_spec.returns(),
+            'RequiredResources': task_spec.required_resources()
         }
 
         execution_dependencies_message = (
@@ -298,14 +298,14 @@ class GlobalState(object):
         # ExecutionDependencies. However, it is currently used in monitor.py.
 
         return {
-            "State": task_table_message.State(),
-            "LocalSchedulerID": binary_to_hex(
+            'State': task_table_message.State(),
+            'LocalSchedulerID': binary_to_hex(
                 task_table_message.LocalSchedulerId()),
-            "ExecutionDependenciesString": task_table_message.
+            'ExecutionDependenciesString': task_table_message.
             ExecutionDependencies(),
-            "ExecutionDependencies": execution_dependencies,
-            "SpillbackCount": task_table_message.SpillbackCount(),
-            "TaskSpec": task_spec_info
+            'ExecutionDependencies': execution_dependencies,
+            'SpillbackCount': task_table_message.SpillbackCount(),
+            'TaskSpec': task_spec_info
         }
 
     def task_table(self, task_id=None):
@@ -324,7 +324,7 @@ class GlobalState(object):
             task_id = ray.ObjectID(hex_to_binary(task_id))
             return self._task_table(task_id)
         else:
-            task_table_keys = self._keys(TASK_PREFIX + "*")
+            task_table_keys = self._keys(TASK_PREFIX + '*')
             results = {}
             for key in task_table_keys:
                 task_id_binary = key[len(TASK_PREFIX):]
@@ -340,16 +340,16 @@ class GlobalState(object):
                 function.
         """
         self._check_connected()
-        function_table_keys = self.redis_client.keys(FUNCTION_PREFIX + "*")
+        function_table_keys = self.redis_client.keys(FUNCTION_PREFIX + '*')
         results = {}
         for key in function_table_keys:
             info = self.redis_client.hgetall(key)
             function_info_parsed = {
-                "DriverID": binary_to_hex(info[b"driver_id"]),
-                "Module": decode(info[b"module"]),
-                "Name": decode(info[b"name"])
+                'DriverID': binary_to_hex(info[b'driver_id']),
+                'Module': decode(info[b'module']),
+                'Name': decode(info[b'name'])
             }
-            results[binary_to_hex(info[b"function_id"])] = function_info_parsed
+            results[binary_to_hex(info[b'function_id'])] = function_info_parsed
         return results
 
     def client_table(self):
@@ -359,37 +359,37 @@ class GlobalState(object):
             Information about the Ray clients in the cluster.
         """
         self._check_connected()
-        db_client_keys = self.redis_client.keys(DB_CLIENT_PREFIX + "*")
+        db_client_keys = self.redis_client.keys(DB_CLIENT_PREFIX + '*')
         node_info = {}
         for key in db_client_keys:
             client_info = self.redis_client.hgetall(key)
-            node_ip_address = decode(client_info[b"node_ip_address"])
+            node_ip_address = decode(client_info[b'node_ip_address'])
             if node_ip_address not in node_info:
                 node_info[node_ip_address] = []
             client_info_parsed = {}
-            assert b"client_type" in client_info
-            assert b"deleted" in client_info
-            assert b"ray_client_id" in client_info
+            assert b'client_type' in client_info
+            assert b'deleted' in client_info
+            assert b'ray_client_id' in client_info
             for field, value in client_info.items():
-                if field == b"node_ip_address":
+                if field == b'node_ip_address':
                     pass
-                elif field == b"client_type":
-                    client_info_parsed["ClientType"] = decode(value)
-                elif field == b"deleted":
-                    client_info_parsed["Deleted"] = bool(int(decode(value)))
-                elif field == b"ray_client_id":
-                    client_info_parsed["DBClientID"] = binary_to_hex(value)
-                elif field == b"manager_address":
-                    client_info_parsed["AuxAddress"] = decode(value)
-                elif field == b"local_scheduler_socket_name":
-                    client_info_parsed["LocalSchedulerSocketName"] = (
+                elif field == b'client_type':
+                    client_info_parsed['ClientType'] = decode(value)
+                elif field == b'deleted':
+                    client_info_parsed['Deleted'] = bool(int(decode(value)))
+                elif field == b'ray_client_id':
+                    client_info_parsed['DBClientID'] = binary_to_hex(value)
+                elif field == b'manager_address':
+                    client_info_parsed['AuxAddress'] = decode(value)
+                elif field == b'local_scheduler_socket_name':
+                    client_info_parsed['LocalSchedulerSocketName'] = (
                         decode(value))
-                elif client_info[b"client_type"] == b"local_scheduler":
+                elif client_info[b'client_type'] == b'local_scheduler':
                     # The remaining fields are resource types.
-                    client_info_parsed[field.decode("ascii")] = float(
+                    client_info_parsed[field.decode('ascii')] = float(
                         decode(value))
                 else:
-                    client_info_parsed[field.decode("ascii")] = decode(value)
+                    client_info_parsed[field.decode('ascii')] = decode(value)
 
             node_info[node_ip_address].append(client_info_parsed)
 
@@ -401,19 +401,19 @@ class GlobalState(object):
         Returns:
             IP address to log file name to log file contents mappings.
         """
-        relevant_files = self.redis_client.keys("LOGFILE*")
+        relevant_files = self.redis_client.keys('LOGFILE*')
 
         ip_filename_file = {}
 
         for filename in relevant_files:
-            filename = filename.decode("ascii")
-            filename_components = filename.split(":")
+            filename = filename.decode('ascii')
+            filename_components = filename.split(':')
             ip_addr = filename_components[1]
 
             file = self.redis_client.lrange(filename, 0, -1)
             file_str = []
             for x in file:
-                y = x.decode("ascii")
+                y = x.decode('ascii')
                 file_str.append(y)
 
             if ip_addr not in ip_filename_file:
@@ -446,7 +446,7 @@ class GlobalState(object):
                 no task ID.
         """
         task_info = {}
-        event_log_sets = self.redis_client.keys("event_log*")
+        event_log_sets = self.redis_client.keys('event_log*')
 
         # The heap is used to maintain the set of x tasks that occurred the
         # most recently across all of the workers, where x is defined as the
@@ -458,22 +458,22 @@ class GlobalState(object):
         heap_size = 0
 
         # Set up a param dict to pass the redis command
-        params = {"withscores": True}
+        params = {'withscores': True}
         if start is not None:
-            params["min"] = start
+            params['min'] = start
         elif end is not None:
-            params["min"] = 0
+            params['min'] = 0
 
         if end is not None:
-            params["max"] = end
+            params['max'] = end
         elif start is not None:
-            params["max"] = time.time()
+            params['max'] = time.time()
 
         if start is None and end is None:
-            params["end"] = num_tasks - 1
+            params['end'] = num_tasks - 1
         else:
-            params["num"] = num_tasks
-        params["start"] = 0
+            params['num'] = num_tasks
+        params['start'] = 0
 
         # Parse through event logs to determine task start and end points.
         for event_log_set in event_log_sets:
@@ -494,49 +494,49 @@ class GlobalState(object):
 
             for (event, score) in event_list:
                 event_dict = json.loads(event.decode())
-                task_id = ""
+                task_id = ''
                 for event in event_dict:
-                    if "task_id" in event[3]:
-                        task_id = event[3]["task_id"]
+                    if 'task_id' in event[3]:
+                        task_id = event[3]['task_id']
                 task_info[task_id] = {}
-                task_info[task_id]["score"] = score
+                task_info[task_id]['score'] = score
                 # Add task to (min/max) heap by its start point.
                 # if fwd, we want to delete the largest elements, so -score
                 heapq.heappush(heap, (-score if fwd else score, task_id))
                 heap_size += 1
 
                 for event in event_dict:
-                    if event[1] == "ray:get_task" and event[2] == 1:
-                        task_info[task_id]["get_task_start"] = event[0]
-                    if event[1] == "ray:get_task" and event[2] == 2:
-                        task_info[task_id]["get_task_end"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
+                    if event[1] == 'ray:get_task' and event[2] == 1:
+                        task_info[task_id]['get_task_start'] = event[0]
+                    if event[1] == 'ray:get_task' and event[2] == 2:
+                        task_info[task_id]['get_task_end'] = event[0]
+                    if (event[1] == 'ray:import_remote_function'
                             and event[2] == 1):
-                        task_info[task_id]["import_remote_start"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
+                        task_info[task_id]['import_remote_start'] = event[0]
+                    if (event[1] == 'ray:import_remote_function'
                             and event[2] == 2):
-                        task_info[task_id]["import_remote_end"] = event[0]
-                    if event[1] == "ray:acquire_lock" and event[2] == 1:
-                        task_info[task_id]["acquire_lock_start"] = event[0]
-                    if event[1] == "ray:acquire_lock" and event[2] == 2:
-                        task_info[task_id]["acquire_lock_end"] = event[0]
-                    if event[1] == "ray:task:get_arguments" and event[2] == 1:
-                        task_info[task_id]["get_arguments_start"] = event[0]
-                    if event[1] == "ray:task:get_arguments" and event[2] == 2:
-                        task_info[task_id]["get_arguments_end"] = event[0]
-                    if event[1] == "ray:task:execute" and event[2] == 1:
-                        task_info[task_id]["execute_start"] = event[0]
-                    if event[1] == "ray:task:execute" and event[2] == 2:
-                        task_info[task_id]["execute_end"] = event[0]
-                    if event[1] == "ray:task:store_outputs" and event[2] == 1:
-                        task_info[task_id]["store_outputs_start"] = event[0]
-                    if event[1] == "ray:task:store_outputs" and event[2] == 2:
-                        task_info[task_id]["store_outputs_end"] = event[0]
-                    if "worker_id" in event[3]:
-                        task_info[task_id]["worker_id"] = event[3]["worker_id"]
-                    if "function_name" in event[3]:
-                        task_info[task_id]["function_name"] = (
-                            event[3]["function_name"])
+                        task_info[task_id]['import_remote_end'] = event[0]
+                    if event[1] == 'ray:acquire_lock' and event[2] == 1:
+                        task_info[task_id]['acquire_lock_start'] = event[0]
+                    if event[1] == 'ray:acquire_lock' and event[2] == 2:
+                        task_info[task_id]['acquire_lock_end'] = event[0]
+                    if event[1] == 'ray:task:get_arguments' and event[2] == 1:
+                        task_info[task_id]['get_arguments_start'] = event[0]
+                    if event[1] == 'ray:task:get_arguments' and event[2] == 2:
+                        task_info[task_id]['get_arguments_end'] = event[0]
+                    if event[1] == 'ray:task:execute' and event[2] == 1:
+                        task_info[task_id]['execute_start'] = event[0]
+                    if event[1] == 'ray:task:execute' and event[2] == 2:
+                        task_info[task_id]['execute_end'] = event[0]
+                    if event[1] == 'ray:task:store_outputs' and event[2] == 1:
+                        task_info[task_id]['store_outputs_start'] = event[0]
+                    if event[1] == 'ray:task:store_outputs' and event[2] == 2:
+                        task_info[task_id]['store_outputs_end'] = event[0]
+                    if 'worker_id' in event[3]:
+                        task_info[task_id]['worker_id'] = event[3]['worker_id']
+                    if 'function_name' in event[3]:
+                        task_info[task_id]['function_name'] = (
+                            event[3]['function_name'])
 
                 if heap_size > num_tasks:
                     min_task, task_id_hex = heapq.heappop(heap)
@@ -580,12 +580,12 @@ class GlobalState(object):
                 # TODO (hme): do something to correct slider here,
                 # slider should be correct to begin with, though.
                 task_table[task_id] = self.task_table(task_id)
-                task_table[task_id]["TaskSpec"]["Args"] = [
+                task_table[task_id]['TaskSpec']['Args'] = [
                     repr(arg)
-                    for arg in task_table[task_id]["TaskSpec"]["Args"]
+                    for arg in task_table[task_id]['TaskSpec']['Args']
                 ]
             except Exception as e:
-                print("Could not find task {}".format(task_id))
+                print('Could not find task {}'.format(task_id))
 
         # filter out tasks not in task_table
         task_info = {k: v for k, v in task_info.items() if k in task_table}
@@ -606,196 +606,196 @@ class GlobalState(object):
 
         full_trace = []
         for task_id, info in task_info.items():
-            worker = workers[info["worker_id"]]
+            worker = workers[info['worker_id']]
             task_t_info = task_table[task_id]
 
             # The total_info dictionary is what is displayed when selecting a
             # task in the timeline. We copy the task spec so that we don't
             # modify it in place since we will use the original values later.
-            total_info = copy.copy(task_table[task_id]["TaskSpec"])
-            total_info["Args"] = [
+            total_info = copy.copy(task_table[task_id]['TaskSpec'])
+            total_info['Args'] = [
                 oid.hex() if isinstance(oid, ray.ObjectID) else oid
-                for oid in task_t_info["TaskSpec"]["Args"]
+                for oid in task_t_info['TaskSpec']['Args']
             ]
-            total_info["ReturnObjectIDs"] = [
-                oid.hex() for oid in task_t_info["TaskSpec"]["ReturnObjectIDs"]
+            total_info['ReturnObjectIDs'] = [
+                oid.hex() for oid in task_t_info['TaskSpec']['ReturnObjectIDs']
             ]
-            total_info["LocalSchedulerID"] = task_t_info["LocalSchedulerID"]
-            total_info["get_arguments"] = (
-                info["get_arguments_end"] - info["get_arguments_start"])
-            total_info["execute"] = (
-                info["execute_end"] - info["execute_start"])
-            total_info["store_outputs"] = (
-                info["store_outputs_end"] - info["store_outputs_start"])
-            total_info["function_name"] = info["function_name"]
-            total_info["worker_id"] = info["worker_id"]
+            total_info['LocalSchedulerID'] = task_t_info['LocalSchedulerID']
+            total_info['get_arguments'] = (
+                info['get_arguments_end'] - info['get_arguments_start'])
+            total_info['execute'] = (
+                info['execute_end'] - info['execute_start'])
+            total_info['store_outputs'] = (
+                info['store_outputs_end'] - info['store_outputs_start'])
+            total_info['function_name'] = info['function_name']
+            total_info['worker_id'] = info['worker_id']
 
             parent_info = task_info.get(
-                task_table[task_id]["TaskSpec"]["ParentTaskID"])
-            worker = workers[info["worker_id"]]
+                task_table[task_id]['TaskSpec']['ParentTaskID'])
+            worker = workers[info['worker_id']]
             # The catapult trace format documentation can be found here:
             # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview  # noqa: E501
             if breakdowns:
-                if "get_arguments_end" in info:
+                if 'get_arguments_end' in info:
                     get_args_trace = {
-                        "cat": "get_arguments",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "id": task_id,
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":get_arguments",
-                        "args": total_info,
-                        "dur": micros(info["get_arguments_end"] -
-                                      info["get_arguments_start"]),
-                        "cname": "rail_idle"
+                        'cat': 'get_arguments',
+                        'pid': 'Node ' + worker['node_ip_address'],
+                        'tid': info['worker_id'],
+                        'id': task_id,
+                        'ts': micros_rel(info['get_arguments_start']),
+                        'ph': 'X',
+                        'name': info['function_name'] + ':get_arguments',
+                        'args': total_info,
+                        'dur': micros(info['get_arguments_end'] -
+                                      info['get_arguments_start']),
+                        'cname': 'rail_idle'
                     }
                     full_trace.append(get_args_trace)
 
-                if "store_outputs_end" in info:
+                if 'store_outputs_end' in info:
                     outputs_trace = {
-                        "cat": "store_outputs",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "id": task_id,
-                        "ts": micros_rel(info["store_outputs_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":store_outputs",
-                        "args": total_info,
-                        "dur": micros(info["store_outputs_end"] -
-                                      info["store_outputs_start"]),
-                        "cname": "thread_state_runnable"
+                        'cat': 'store_outputs',
+                        'pid': 'Node ' + worker['node_ip_address'],
+                        'tid': info['worker_id'],
+                        'id': task_id,
+                        'ts': micros_rel(info['store_outputs_start']),
+                        'ph': 'X',
+                        'name': info['function_name'] + ':store_outputs',
+                        'args': total_info,
+                        'dur': micros(info['store_outputs_end'] -
+                                      info['store_outputs_start']),
+                        'cname': 'thread_state_runnable'
                     }
                     full_trace.append(outputs_trace)
 
-                if "execute_end" in info:
+                if 'execute_end' in info:
                     execute_trace = {
-                        "cat": "execute",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "id": task_id,
-                        "ts": micros_rel(info["execute_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":execute",
-                        "args": total_info,
-                        "dur": micros(info["execute_end"] -
-                                      info["execute_start"]),
-                        "cname": "rail_animation"
+                        'cat': 'execute',
+                        'pid': 'Node ' + worker['node_ip_address'],
+                        'tid': info['worker_id'],
+                        'id': task_id,
+                        'ts': micros_rel(info['execute_start']),
+                        'ph': 'X',
+                        'name': info['function_name'] + ':execute',
+                        'args': total_info,
+                        'dur': micros(info['execute_end'] -
+                                      info['execute_start']),
+                        'cname': 'rail_animation'
                     }
                     full_trace.append(execute_trace)
 
             else:
                 if parent_info:
-                    parent_worker = workers[parent_info["worker_id"]]
+                    parent_worker = workers[parent_info['worker_id']]
                     parent_times = self._get_times(parent_info)
                     parent_profile = task_info.get(
-                        task_table[task_id]["TaskSpec"]["ParentTaskID"])
+                        task_table[task_id]['TaskSpec']['ParentTaskID'])
 
-                    _parent_id = parent_info["worker_id"] + str(
+                    _parent_id = parent_info['worker_id'] + str(
                         micros(min(parent_times)))
 
                     parent = {
-                        "cat": "submit_task",
-                        "pid": "Node " + parent_worker["node_ip_address"],
-                        "tid": parent_info["worker_id"],
-                        "ts": micros_rel(
+                        'cat': 'submit_task',
+                        'pid': 'Node ' + parent_worker['node_ip_address'],
+                        'tid': parent_info['worker_id'],
+                        'ts': micros_rel(
                             parent_profile
-                            and parent_profile["get_arguments_start"]
+                            and parent_profile['get_arguments_start']
                             or start_time),
-                        "ph": "s",
-                        "name": "SubmitTask",
-                        "args": {},
-                        "id": _parent_id,
+                        'ph': 's',
+                        'name': 'SubmitTask',
+                        'args': {},
+                        'id': _parent_id,
                     }
                     full_trace.append(parent)
 
-                    _id = info["worker_id"] + str(micros(min(parent_times)))
+                    _id = info['worker_id'] + str(micros(min(parent_times)))
 
                     task_trace = {
-                        "cat": "submit_task",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "f",
-                        "name": "SubmitTask",
-                        "args": {},
-                        "id": _id,
-                        "bp": "e",
-                        "cname": "olive"
+                        'cat': 'submit_task',
+                        'pid': 'Node ' + worker['node_ip_address'],
+                        'tid': info['worker_id'],
+                        'ts': micros_rel(info['get_arguments_start']),
+                        'ph': 'f',
+                        'name': 'SubmitTask',
+                        'args': {},
+                        'id': _id,
+                        'bp': 'e',
+                        'cname': 'olive'
                     }
                     full_trace.append(task_trace)
 
                 task = {
-                    "cat": "task",
-                    "pid": "Node " + worker["node_ip_address"],
-                    "tid": info["worker_id"],
-                    "id": task_id,
-                    "ts": micros_rel(info["get_arguments_start"]),
-                    "ph": "X",
-                    "name": info["function_name"],
-                    "args": total_info,
-                    "dur": micros(info["store_outputs_end"] -
-                                  info["get_arguments_start"]),
-                    "cname": "thread_state_runnable"
+                    'cat': 'task',
+                    'pid': 'Node ' + worker['node_ip_address'],
+                    'tid': info['worker_id'],
+                    'id': task_id,
+                    'ts': micros_rel(info['get_arguments_start']),
+                    'ph': 'X',
+                    'name': info['function_name'],
+                    'args': total_info,
+                    'dur': micros(info['store_outputs_end'] -
+                                  info['get_arguments_start']),
+                    'cname': 'thread_state_runnable'
                 }
                 full_trace.append(task)
 
             if task_dep:
                 if parent_info:
-                    parent_worker = workers[parent_info["worker_id"]]
+                    parent_worker = workers[parent_info['worker_id']]
                     parent_times = self._get_times(parent_info)
                     parent_profile = task_info.get(
-                        task_table[task_id]["TaskSpec"]["ParentTaskID"])
+                        task_table[task_id]['TaskSpec']['ParentTaskID'])
 
-                    _parent_id = parent_info["worker_id"] + str(
+                    _parent_id = parent_info['worker_id'] + str(
                         micros(min(parent_times)))
 
                     parent = {
-                        "cat": "submit_task",
-                        "pid": "Node " + parent_worker["node_ip_address"],
-                        "tid": parent_info["worker_id"],
-                        "ts": micros_rel(
+                        'cat': 'submit_task',
+                        'pid': 'Node ' + parent_worker['node_ip_address'],
+                        'tid': parent_info['worker_id'],
+                        'ts': micros_rel(
                             parent_profile
-                            and parent_profile["get_arguments_start"]
+                            and parent_profile['get_arguments_start']
                             or start_time),
-                        "ph": "s",
-                        "name": "SubmitTask",
-                        "args": {},
-                        "id": _parent_id,
+                        'ph': 's',
+                        'name': 'SubmitTask',
+                        'args': {},
+                        'id': _parent_id,
                     }
                     full_trace.append(parent)
 
-                    _id = info["worker_id"] + str(micros(min(parent_times)))
+                    _id = info['worker_id'] + str(micros(min(parent_times)))
 
                     task_trace = {
-                        "cat": "submit_task",
-                        "pid": "Node " + worker["node_ip_address"],
-                        "tid": info["worker_id"],
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "f",
-                        "name": "SubmitTask",
-                        "args": {},
-                        "id": _id,
-                        "bp": "e"
+                        'cat': 'submit_task',
+                        'pid': 'Node ' + worker['node_ip_address'],
+                        'tid': info['worker_id'],
+                        'ts': micros_rel(info['get_arguments_start']),
+                        'ph': 'f',
+                        'name': 'SubmitTask',
+                        'args': {},
+                        'id': _id,
+                        'bp': 'e'
                     }
                     full_trace.append(task_trace)
 
             if obj_dep:
-                args = task_table[task_id]["TaskSpec"]["Args"]
+                args = task_table[task_id]['TaskSpec']['Args']
                 for arg in args:
                     # Don't visualize arguments that are not object IDs.
                     if isinstance(arg, ray.ObjectID):
                         object_info = self._object_table(arg)
                         # Don't visualize objects that were created by calls to
                         # put.
-                        if not object_info["IsPut"]:
+                        if not object_info['IsPut']:
                             if arg not in seen_obj:
                                 seen_obj[arg] = 0
                             seen_obj[arg] += 1
-                            owner_task = self._object_table(arg)["TaskID"]
+                            owner_task = self._object_table(arg)['TaskID']
                             if owner_task in task_info:
                                 owner_worker = (workers[task_info[owner_task][
-                                    "worker_id"]])
+                                    'worker_id']])
                                 # Adding/subtracting 2 to the time associated
                                 # with the beginning/ending of the flow event
                                 # is necessary to make the flow events show up
@@ -809,39 +809,39 @@ class GlobalState(object):
                                 # duration event that it's associated with, and
                                 # the flow event therefore always gets drawn.
                                 owner = {
-                                    "cat": "obj_dependency",
-                                    "pid": ("Node " +
-                                            owner_worker["node_ip_address"]),
-                                    "tid": task_info[owner_task]["worker_id"],
-                                    "ts": micros_rel(task_info[owner_task]
-                                                     ["store_outputs_end"]) -
+                                    'cat': 'obj_dependency',
+                                    'pid': ('Node ' +
+                                            owner_worker['node_ip_address']),
+                                    'tid': task_info[owner_task]['worker_id'],
+                                    'ts': micros_rel(task_info[owner_task]
+                                                     ['store_outputs_end']) -
                                     2,
-                                    "ph": "s",
-                                    "name": "ObjectDependency",
-                                    "args": {},
-                                    "bp": "e",
-                                    "cname": "cq_build_attempt_failed",
-                                    "id": "obj" + str(arg) + str(seen_obj[arg])
+                                    'ph': 's',
+                                    'name': 'ObjectDependency',
+                                    'args': {},
+                                    'bp': 'e',
+                                    'cname': 'cq_build_attempt_failed',
+                                    'id': 'obj' + str(arg) + str(seen_obj[arg])
                                 }
                                 full_trace.append(owner)
 
                             dependent = {
-                                "cat": "obj_dependency",
-                                "pid": "Node " + worker["node_ip_address"],
-                                "tid": info["worker_id"],
-                                "ts": micros_rel(info["get_arguments_start"]) +
+                                'cat': 'obj_dependency',
+                                'pid': 'Node ' + worker['node_ip_address'],
+                                'tid': info['worker_id'],
+                                'ts': micros_rel(info['get_arguments_start']) +
                                 2,
-                                "ph": "f",
-                                "name": "ObjectDependency",
-                                "args": {},
-                                "cname": "cq_build_attempt_failed",
-                                "bp": "e",
-                                "id": "obj" + str(arg) + str(seen_obj[arg])
+                                'ph': 'f',
+                                'name': 'ObjectDependency',
+                                'args': {},
+                                'cname': 'cq_build_attempt_failed',
+                                'bp': 'e',
+                                'id': 'obj' + str(arg) + str(seen_obj[arg])
                             }
                             full_trace.append(dependent)
 
-        print("Creating JSON {}/{}".format(len(full_trace), len(task_info)))
-        with open(path, "w") as outfile:
+        print('Creating JSON {}/{}'.format(len(full_trace), len(task_info)))
+        with open(path, 'w') as outfile:
             json.dump(full_trace, outfile)
 
     def _get_times(self, data):
@@ -854,14 +854,14 @@ class GlobalState(object):
                 task_profiles function.
         """
         all_times = []
-        all_times.append(data["acquire_lock_start"])
-        all_times.append(data["acquire_lock_end"])
-        all_times.append(data["get_arguments_start"])
-        all_times.append(data["get_arguments_end"])
-        all_times.append(data["execute_start"])
-        all_times.append(data["execute_end"])
-        all_times.append(data["store_outputs_start"])
-        all_times.append(data["store_outputs_end"])
+        all_times.append(data['acquire_lock_start'])
+        all_times.append(data['acquire_lock_end'])
+        all_times.append(data['get_arguments_start'])
+        all_times.append(data['get_arguments_end'])
+        all_times.append(data['execute_start'])
+        all_times.append(data['execute_end'])
+        all_times.append(data['store_outputs_start'])
+        all_times.append(data['store_outputs_end'])
         return all_times
 
     def _add_missing_timestamps(self, info):
@@ -872,9 +872,9 @@ class GlobalState(object):
         """
 
         keys = [
-            "acquire_lock_start", "acquire_lock_end", "get_arguments_start",
-            "get_arguments_end", "execute_start", "execute_end",
-            "store_outputs_start", "store_outputs_end"
+            'acquire_lock_start', 'acquire_lock_end', 'get_arguments_start',
+            'get_arguments_end', 'execute_start', 'execute_end',
+            'store_outputs_start', 'store_outputs_end'
         ]
 
         latest_timestamp = 0
@@ -893,57 +893,57 @@ class GlobalState(object):
         local_schedulers = []
         for ip_address, client_list in clients.items():
             for client in client_list:
-                if (client["ClientType"] == "local_scheduler"
-                        and not client["Deleted"]):
+                if (client['ClientType'] == 'local_scheduler'
+                        and not client['Deleted']):
                     local_schedulers.append(client)
         return local_schedulers
 
     def workers(self):
         """Get a dictionary mapping worker ID to worker information."""
-        worker_keys = self.redis_client.keys("Worker*")
+        worker_keys = self.redis_client.keys('Worker*')
         workers_data = {}
 
         for worker_key in worker_keys:
             worker_info = self.redis_client.hgetall(worker_key)
-            worker_id = binary_to_hex(worker_key[len("Workers:"):])
+            worker_id = binary_to_hex(worker_key[len('Workers:'):])
 
             workers_data[worker_id] = {
-                "local_scheduler_socket": (
-                    worker_info[b"local_scheduler_socket"].decode("ascii")),
-                "node_ip_address": (worker_info[b"node_ip_address"]
-                                    .decode("ascii")),
-                "plasma_manager_socket": (worker_info[b"plasma_manager_socket"]
-                                          .decode("ascii")),
-                "plasma_store_socket": (worker_info[b"plasma_store_socket"]
-                                        .decode("ascii"))
+                'local_scheduler_socket': (
+                    worker_info[b'local_scheduler_socket'].decode('ascii')),
+                'node_ip_address': (worker_info[b'node_ip_address']
+                                    .decode('ascii')),
+                'plasma_manager_socket': (worker_info[b'plasma_manager_socket']
+                                          .decode('ascii')),
+                'plasma_store_socket': (worker_info[b'plasma_store_socket']
+                                        .decode('ascii'))
             }
-            if b"stderr_file" in worker_info:
-                workers_data[worker_id]["stderr_file"] = (
-                    worker_info[b"stderr_file"].decode("ascii"))
-            if b"stdout_file" in worker_info:
-                workers_data[worker_id]["stdout_file"] = (
-                    worker_info[b"stdout_file"].decode("ascii"))
+            if b'stderr_file' in worker_info:
+                workers_data[worker_id]['stderr_file'] = (
+                    worker_info[b'stderr_file'].decode('ascii'))
+            if b'stdout_file' in worker_info:
+                workers_data[worker_id]['stdout_file'] = (
+                    worker_info[b'stdout_file'].decode('ascii'))
         return workers_data
 
     def actors(self):
-        actor_keys = self.redis_client.keys("Actor:*")
+        actor_keys = self.redis_client.keys('Actor:*')
         actor_info = {}
         for key in actor_keys:
             info = self.redis_client.hgetall(key)
-            actor_id = key[len("Actor:"):]
+            actor_id = key[len('Actor:'):]
             assert len(actor_id) == 20
             actor_info[binary_to_hex(actor_id)] = {
-                "class_id": binary_to_hex(info[b"class_id"]),
-                "driver_id": binary_to_hex(info[b"driver_id"]),
-                "local_scheduler_id": binary_to_hex(
-                    info[b"local_scheduler_id"]),
-                "num_gpus": int(info[b"num_gpus"]),
-                "removed": decode(info[b"removed"]) == "True"
+                'class_id': binary_to_hex(info[b'class_id']),
+                'driver_id': binary_to_hex(info[b'driver_id']),
+                'local_scheduler_id': binary_to_hex(
+                    info[b'local_scheduler_id']),
+                'num_gpus': int(info[b'num_gpus']),
+                'removed': decode(info[b'removed']) == 'True'
             }
         return actor_info
 
     def _job_length(self):
-        event_log_sets = self.redis_client.keys("event_log*")
+        event_log_sets = self.redis_client.keys('event_log*')
         overall_smallest = sys.maxsize
         overall_largest = 0
         num_tasks = 0
@@ -978,8 +978,8 @@ class GlobalState(object):
         for local_scheduler in local_schedulers:
             for key, value in local_scheduler.items():
                 if key not in [
-                        "ClientType", "Deleted", "DBClientID", "AuxAddress",
-                        "LocalSchedulerSocketName"
+                        'ClientType', 'Deleted', 'DBClientID', 'AuxAddress',
+                        'LocalSchedulerSocketName'
                 ]:
                     resources[key] += value
 

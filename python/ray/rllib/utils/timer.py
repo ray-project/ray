@@ -27,7 +27,7 @@ class TimerStat(object):
         self.count = 0
 
     def __enter__(self):
-        assert self._start_time is None, "concurrent updates not supported"
+        assert self._start_time is None, 'concurrent updates not supported'
         self._start_time = time.time()
 
     def __exit__(self, type, value, tb):

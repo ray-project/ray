@@ -70,7 +70,7 @@ class HyperBandScheduler(FIFOScheduler):
                  time_attr='training_iteration',
                  reward_attr='episode_reward_mean',
                  max_t=81):
-        assert max_t > 0, "Max (time_attr) not valid!"
+        assert max_t > 0, 'Max (time_attr) not valid!'
         FIFOScheduler.__init__(self)
         self._eta = 3
         self._s_max_1 = 5
@@ -84,7 +84,7 @@ class HyperBandScheduler(FIFOScheduler):
         self._trial_info = {}  # Stores Trial -> Bracket, Band Iteration
 
         # Tracks state for new trial add
-        self._state = {"bracket": None, "band_idx": 0}
+        self._state = {'bracket': None, 'band_idx': 0}
         self._num_stopped = 0
         self._reward_attr = reward_attr
         self._time_attr = time_attr
@@ -97,8 +97,8 @@ class HyperBandScheduler(FIFOScheduler):
         create new bracket, add to current bracket.
         Else, create new iteration, create new bracket, add to bracket."""
 
-        cur_bracket = self._state["bracket"]
-        cur_band = self._hyperbands[self._state["band_idx"]]
+        cur_bracket = self._state['bracket']
+        cur_band = self._hyperbands[self._state['band_idx']]
         if cur_bracket is None or cur_bracket.filled():
             retry = True
             while retry:
@@ -106,13 +106,13 @@ class HyperBandScheduler(FIFOScheduler):
                 if self._cur_band_filled():
                     cur_band = []
                     self._hyperbands.append(cur_band)
-                    self._state["band_idx"] += 1
+                    self._state['band_idx'] += 1
 
                 # cur_band will always be less than s_max_1 or else filled
                 s = len(cur_band)
-                assert s < self._s_max_1, "Current band is filled!"
+                assert s < self._s_max_1, 'Current band is filled!'
                 if self._get_r0(s) == 0:
-                    print("Bracket too small - Retrying...")
+                    print('Bracket too small - Retrying...')
                     cur_bracket = None
                 else:
                     retry = False
@@ -120,17 +120,17 @@ class HyperBandScheduler(FIFOScheduler):
                                           self._get_r0(s), self._max_t_attr,
                                           self._eta, s)
                 cur_band.append(cur_bracket)
-                self._state["bracket"] = cur_bracket
+                self._state['bracket'] = cur_bracket
 
-        self._state["bracket"].add_trial(trial)
-        self._trial_info[trial] = cur_bracket, self._state["band_idx"]
+        self._state['bracket'].add_trial(trial)
+        self._trial_info[trial] = cur_bracket, self._state['band_idx']
 
     def _cur_band_filled(self):
         """Checks if the current band is filled.
 
         The size of the current band should be equal to s_max_1"""
 
-        cur_band = self._hyperbands[self._state["band_idx"]]
+        cur_band = self._hyperbands[self._state['band_idx']]
         return len(cur_band) == self._s_max_1
 
     def on_trial_result(self, trial_runner, trial, result):
@@ -177,12 +177,12 @@ class HyperBandScheduler(FIFOScheduler):
                     bracket.cleanup_trial(t)
                     action = TrialScheduler.STOP
                 else:
-                    raise Exception("Trial with unexpected status encountered")
+                    raise Exception('Trial with unexpected status encountered')
 
             # ready the good trials - if trial is too far ahead, don't continue
             for t in good:
                 if t.status not in [Trial.PAUSED, Trial.RUNNING]:
-                    raise Exception("Trial with unexpected status encountered")
+                    raise Exception('Trial with unexpected status encountered')
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
                         t.unpause()
@@ -242,13 +242,13 @@ class HyperBandScheduler(FIFOScheduler):
         "Completed" indicates an approximate progress metric. Some brackets,
         like ones that are unfilled, will not reach 100%.
         """
-        out = "Using HyperBand: "
-        out += "num_stopped={} total_brackets={}".format(
+        out = 'Using HyperBand: '
+        out += 'num_stopped={} total_brackets={}'.format(
             self._num_stopped, sum(len(band) for band in self._hyperbands))
         for i, band in enumerate(self._hyperbands):
-            out += "\nRound #{}:".format(i)
+            out += '\nRound #{}:'.format(i)
             for bracket in band:
-                out += "\n  {}".format(bracket)
+                out += '\n  {}'.format(bracket)
         return out
 
 
@@ -280,7 +280,7 @@ class Bracket():
 
         At a later iteration, a newly added trial will be given equal
         opportunity to catch up."""
-        assert not self.filled(), "Cannot add trial to filled bracket!"
+        assert not self.filled(), 'Cannot add trial to filled bracket!'
         self._live_trials[trial] = None
         self._all_trials.append(trial)
 
@@ -390,12 +390,12 @@ class Bracket():
         return work
 
     def __repr__(self):
-        status = ", ".join([
-            "Max Size (n)={}".format(self._n),
-            "Milestone (r)={}".format(self._cumul_r),
-            "completed={:.1%}".format(self.completion_percentage())
+        status = ', '.join([
+            'Max Size (n)={}'.format(self._n),
+            'Milestone (r)={}'.format(self._cumul_r),
+            'completed={:.1%}'.format(self.completion_percentage())
         ])
         counts = collections.Counter([t.status for t in self._all_trials])
-        trial_statuses = ", ".join(
-            sorted("{}: {}".format(k, v) for k, v in counts.items()))
-        return "Bracket({}): {{{}}} ".format(status, trial_statuses)
+        trial_statuses = ', '.join(
+            sorted('{}: {}'.format(k, v) for k, v in counts.items()))
+        return 'Bracket({}): {{{}}} '.format(status, trial_statuses)

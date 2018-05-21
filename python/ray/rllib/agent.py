@@ -32,10 +32,10 @@ def _deep_update(original, new_dict, new_keys_allowed, whitelist):
             the top level.
     """
     for k, value in new_dict.items():
-        if k not in original and k != "env":
+        if k not in original and k != 'env':
             if not new_keys_allowed:
                 raise Exception(
-                    "Unknown config parameter `{}` ".format(k))
+                    'Unknown config parameter `{}` '.format(k))
         if type(original.get(k)) is dict:
             if k in whitelist:
                 _deep_update(original[k], value, True, [])
@@ -66,10 +66,10 @@ class Agent(Trainable):
     @classmethod
     def resource_help(cls, config):
         return (
-            "\n\nYou can adjust the resource requests of RLlib agents by "
-            "setting `num_workers` and other configs. See the "
-            "DEFAULT_CONFIG defined by each agent for more info.\n\n"
-            "The config of this agent is: " + json.dumps(config))
+            '\n\nYou can adjust the resource requests of RLlib agents by '
+            'setting `num_workers` and other configs. See the '
+            'DEFAULT_CONFIG defined by each agent for more info.\n\n'
+            'The config of this agent is: ' + json.dumps(config))
 
     def __init__(
             self, config=None, env=None, registry=None,
@@ -89,13 +89,13 @@ class Agent(Trainable):
         config = config or {}
 
         # Agents allow env ids to be passed directly to the constructor.
-        self._env_id = env or config.get("env")
+        self._env_id = env or config.get('env')
         Trainable.__init__(self, config, registry, logger_creator)
 
     def _setup(self):
         env = self._env_id
         if env:
-            self.config["env"] = env
+            self.config['env'] = env
             if self.registry and self.registry.contains(ENV_CREATOR, env):
                 self.env_creator = self.registry.get(ENV_CREATOR, env)
             else:
@@ -147,10 +147,10 @@ class Agent(Trainable):
 class _MockAgent(Agent):
     """Mock agent for use in tests"""
 
-    _agent_name = "MockAgent"
+    _agent_name = 'MockAgent'
     _default_config = {
-        "mock_error": False,
-        "persistent_error": False,
+        'mock_error': False,
+        'persistent_error': False,
     }
 
     def _init(self):
@@ -158,15 +158,15 @@ class _MockAgent(Agent):
         self.restored = False
 
     def _train(self):
-        if self.config["mock_error"] and self.iteration == 1 \
-                and (self.config["persistent_error"] or not self.restored):
-            raise Exception("mock error")
+        if self.config['mock_error'] and self.iteration == 1 \
+                and (self.config['persistent_error'] or not self.restored):
+            raise Exception('mock error')
         return TrainingResult(
             episode_reward_mean=10, episode_len_mean=10,
             timesteps_this_iter=10, info={})
 
     def _save(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "mock_agent.pkl")
+        path = os.path.join(checkpoint_dir, 'mock_agent.pkl')
         with open(path, 'wb') as f:
             pickle.dump(self.info, f)
         return path
@@ -190,86 +190,86 @@ class _SigmoidFakeData(_MockAgent):
 
     This can be helpful for evaluating early stopping algorithms."""
 
-    _agent_name = "SigmoidFakeData"
+    _agent_name = 'SigmoidFakeData'
     _default_config = {
-        "width": 100,
-        "height": 100,
-        "offset": 0,
-        "iter_time": 10,
-        "iter_timesteps": 1,
+        'width': 100,
+        'height': 100,
+        'offset': 0,
+        'iter_time': 10,
+        'iter_timesteps': 1,
     }
 
     def _train(self):
-        i = max(0, self.iteration - self.config["offset"])
-        v = np.tanh(float(i) / self.config["width"])
-        v *= self.config["height"]
+        i = max(0, self.iteration - self.config['offset'])
+        v = np.tanh(float(i) / self.config['width'])
+        v *= self.config['height']
         return TrainingResult(
             episode_reward_mean=v, episode_len_mean=v,
-            timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"], info={})
+            timesteps_this_iter=self.config['iter_timesteps'],
+            time_this_iter_s=self.config['iter_time'], info={})
 
 
 class _ParameterTuningAgent(_MockAgent):
 
-    _agent_name = "ParameterTuningAgent"
+    _agent_name = 'ParameterTuningAgent'
     _default_config = {
-        "reward_amt": 10,
-        "dummy_param": 10,
-        "dummy_param2": 15,
-        "iter_time": 10,
-        "iter_timesteps": 1
+        'reward_amt': 10,
+        'dummy_param': 10,
+        'dummy_param2': 15,
+        'iter_time': 10,
+        'iter_timesteps': 1
     }
 
     def _train(self):
         return TrainingResult(
-            episode_reward_mean=self.config["reward_amt"] * self.iteration,
-            episode_len_mean=self.config["reward_amt"],
-            timesteps_this_iter=self.config["iter_timesteps"],
-            time_this_iter_s=self.config["iter_time"], info={})
+            episode_reward_mean=self.config['reward_amt'] * self.iteration,
+            episode_len_mean=self.config['reward_amt'],
+            timesteps_this_iter=self.config['iter_timesteps'],
+            time_this_iter_s=self.config['iter_time'], info={})
 
 
 def get_agent_class(alg):
     """Returns the class of a known agent given its name."""
 
-    if alg == "DDPG2":
+    if alg == 'DDPG2':
         from ray.rllib import ddpg2
         return ddpg2.DDPG2Agent
-    elif alg == "DDPG":
+    elif alg == 'DDPG':
         from ray.rllib import ddpg
         return ddpg.DDPGAgent
-    elif alg == "APEX_DDPG":
+    elif alg == 'APEX_DDPG':
         from ray.rllib import ddpg
         return ddpg.ApexDDPGAgent
-    elif alg == "PPO":
+    elif alg == 'PPO':
         from ray.rllib import ppo
         return ppo.PPOAgent
-    elif alg == "ES":
+    elif alg == 'ES':
         from ray.rllib import es
         return es.ESAgent
-    elif alg == "DQN":
+    elif alg == 'DQN':
         from ray.rllib import dqn
         return dqn.DQNAgent
-    elif alg == "APEX":
+    elif alg == 'APEX':
         from ray.rllib import dqn
         return dqn.ApexAgent
-    elif alg == "A3C":
+    elif alg == 'A3C':
         from ray.rllib import a3c
         return a3c.A3CAgent
-    elif alg == "BC":
+    elif alg == 'BC':
         from ray.rllib import bc
         return bc.BCAgent
-    elif alg == "PG":
+    elif alg == 'PG':
         from ray.rllib import pg
         return pg.PGAgent
-    elif alg == "script":
+    elif alg == 'script':
         from ray.tune import script_runner
         return script_runner.ScriptRunner
-    elif alg == "__fake":
+    elif alg == '__fake':
         return _MockAgent
-    elif alg == "__sigmoid_fake_data":
+    elif alg == '__sigmoid_fake_data':
         return _SigmoidFakeData
-    elif alg == "__parameter_tuning":
+    elif alg == '__parameter_tuning':
         return _ParameterTuningAgent
     else:
         raise Exception(
-            ("Unknown algorithm {}.").format(alg))
+            ('Unknown algorithm {}.').format(alg))

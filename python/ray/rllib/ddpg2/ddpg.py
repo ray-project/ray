@@ -12,54 +12,54 @@ from ray.tune.result import TrainingResult
 
 DEFAULT_CONFIG = {
     # Actor learning rate
-    "actor_lr": 0.0001,
+    'actor_lr': 0.0001,
     # Critic learning rate
-    "critic_lr": 0.001,
+    'critic_lr': 0.001,
     # Arguments to pass in to env creator
-    "env_config": {},
+    'env_config': {},
     # MDP Discount factor
-    "gamma": 0.99,
+    'gamma': 0.99,
     # Number of steps after which the rollout gets cut
-    "horizon": 500,
+    'horizon': 500,
 
     # Whether to include parameter noise
-    "noise_add": True,
+    'noise_add': True,
     # Linear decay of exploration policy
-    "noise_epsilon": 0.0002,
+    'noise_epsilon': 0.0002,
     # Parameters for noise process
-    "noise_parameters": {
-        "mu": 0,
-        "sigma": 0.2,
-        "theta": 0.15,
+    'noise_parameters': {
+        'mu': 0,
+        'sigma': 0.2,
+        'theta': 0.15,
     },
 
     # Number of local steps taken for each call to sample
-    "num_local_steps": 1,
+    'num_local_steps': 1,
     # Number of workers (excluding master)
-    "num_workers": 0,
+    'num_workers': 0,
 
-    "optimizer": {
+    'optimizer': {
         # Replay buffer size
-        "buffer_size": 10000,
+        'buffer_size': 10000,
         # Number of steps in warm-up phase before learning starts
-        "learning_starts": 500,
+        'learning_starts': 500,
         # Whether to clip rewards
-        "clip_rewards": False,
+        'clip_rewards': False,
         # Whether to use prioritized replay
-        "prioritized_replay": False,
+        'prioritized_replay': False,
         # Size of batch sampled from replay buffer
-        "train_batch_size": 64,
+        'train_batch_size': 64,
     },
 
     # Controls how fast target networks move
-    "tau": 0.001,
+    'tau': 0.001,
     # Number of steps taken per training iteration
-    "train_steps": 600,
+    'train_steps': 600,
 }
 
 
 class DDPG2Agent(Agent):
-    _agent_name = "DDPG2"
+    _agent_name = 'DDPG2'
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
@@ -68,13 +68,13 @@ class DDPG2Agent(Agent):
         self.remote_evaluators = [
             RemoteDDPGEvaluator.remote(
                 self.registry, self.env_creator, self.config)
-            for _ in range(self.config["num_workers"])]
+            for _ in range(self.config['num_workers'])]
         self.optimizer = LocalSyncReplayOptimizer(
-            self.config["optimizer"], self.local_evaluator,
+            self.config['optimizer'], self.local_evaluator,
             self.remote_evaluators)
 
     def _train(self):
-        for _ in range(self.config["train_steps"]):
+        for _ in range(self.config['train_steps']):
             self.optimizer.step()
             # update target
             if self.optimizer.num_steps_trained > 0:
@@ -86,7 +86,7 @@ class DDPG2Agent(Agent):
     def _fetch_metrics(self):
         episode_rewards = []
         episode_lengths = []
-        if self.config["num_workers"] > 0:
+        if self.config['num_workers'] > 0:
             metric_lists = [a.get_completed_rollout_metrics.remote()
                             for a in self.remote_evaluators]
             for metrics in metric_lists:

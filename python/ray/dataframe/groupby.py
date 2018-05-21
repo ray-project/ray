@@ -93,17 +93,17 @@ class DataFrameGroupBy(object):
 
     @property
     def plot(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def ohlc(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def __bytes__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     @property
     def tshift(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     @property
     def groups(self):
@@ -120,10 +120,10 @@ class DataFrameGroupBy(object):
         return self._index_grouped.ndim
 
     def shift(self, periods=1, freq=None, axis=0):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def nth(self, n, dropna=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def cumsum(self, axis=0, *args, **kwargs):
         return self._apply_agg_function(lambda df: df.cumsum(axis,
@@ -138,7 +138,7 @@ class DataFrameGroupBy(object):
         return self._apply_agg_function(lambda df: df.pct_change())
 
     def filter(self, func, dropna=True, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def cummax(self, axis=0, **kwargs):
         return self._apply_agg_function(lambda df: df.cummax(axis=axis,
@@ -166,7 +166,7 @@ class DataFrameGroupBy(object):
 
     def __getitem__(self, key):
         # This operation requires a SeriesGroupBy Object
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def cummin(self, axis=0, **kwargs):
         return self._apply_agg_function(lambda df: df.cummin(axis=axis,
@@ -205,10 +205,10 @@ class DataFrameGroupBy(object):
 
     @property
     def corrwith(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def pad(self, limit=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def max(self, **kwargs):
         return self._apply_agg_function(lambda df: df.max(**kwargs))
@@ -219,7 +219,7 @@ class DataFrameGroupBy(object):
                                                           **kwargs))
 
     def get_group(self, name, obj=None):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def __len__(self):
         return len(self._keys_and_values)
@@ -235,14 +235,14 @@ class DataFrameGroupBy(object):
                                         df.sum(axis=self._axis, **kwargs))
 
     def __unicode__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def describe(self, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def boxplot(self, grouped, subplots=True, column=None, fontsize=None,
                 rot=0, grid=True, ax=None, figsize=None, layout=None, **kwds):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def ngroup(self, ascending=True):
         return self._index_grouped.ngroup(ascending)
@@ -251,7 +251,7 @@ class DataFrameGroupBy(object):
         return self._apply_agg_function(lambda df: df.nunique(dropna))
 
     def resample(self, rule, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def median(self, **kwargs):
         return self._apply_agg_function(lambda df: df.median(**kwargs))
@@ -308,7 +308,7 @@ class DataFrameGroupBy(object):
                                                           **kwargs))
 
     def cumcount(self, ascending=True):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def tail(self, n=5):
         return self._apply_df_function(lambda df: df.tail(n))
@@ -316,13 +316,13 @@ class DataFrameGroupBy(object):
     # expanding and rolling are unique cases and need to likely be handled
     # separately. They do not appear to be commonly used.
     def expanding(self, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def rolling(self, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def hist(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def quantile(self, q=0.5, **kwargs):
         return self._apply_df_function(lambda df: df.quantile(q, **kwargs)) \
@@ -330,7 +330,7 @@ class DataFrameGroupBy(object):
             else self._apply_agg_function(lambda df: df.quantile(q, **kwargs))
 
     def diff(self):
-        raise NotImplementedError("Not Yet implemented.")
+        raise NotImplementedError('Not Yet implemented.')
 
     def take(self, **kwargs):
         return self._apply_df_function(lambda df: df.take(**kwargs))

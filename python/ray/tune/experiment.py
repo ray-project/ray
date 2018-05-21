@@ -44,22 +44,22 @@ class Experiment(object):
                  trial_resources=None,
                  repeat=1,
                  local_dir=None,
-                 upload_dir="",
+                 upload_dir='',
                  checkpoint_freq=0,
                  max_failures=3):
         spec = {
-            "run": run,
-            "stop": stop or {},
-            "config": config or {},
-            "trial_resources": trial_resources or {
-                "cpu": 1,
-                "gpu": 0
+            'run': run,
+            'stop': stop or {},
+            'config': config or {},
+            'trial_resources': trial_resources or {
+                'cpu': 1,
+                'gpu': 0
             },
-            "repeat": repeat,
-            "local_dir": local_dir or DEFAULT_RESULTS_DIR,
-            "upload_dir": upload_dir,
-            "checkpoint_freq": checkpoint_freq,
-            "max_failures": max_failures
+            'repeat': repeat,
+            'local_dir': local_dir or DEFAULT_RESULTS_DIR,
+            'upload_dir': upload_dir,
+            'checkpoint_freq': checkpoint_freq,
+            'max_failures': max_failures
         }
 
         self.name = name
@@ -73,9 +73,9 @@ class Experiment(object):
             name (str): Name of Experiment.
             spec (dict): JSON configuration of experiment.
         """
-        if "run" not in spec:
-            raise TuneError("No trainable specified!")
-        exp = cls(name, spec["run"])
+        if 'run' not in spec:
+            raise TuneError('No trainable specified!')
+        exp = cls(name, spec['run'])
         exp.name = name
         exp.spec = spec
         return exp

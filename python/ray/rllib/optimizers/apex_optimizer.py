@@ -61,8 +61,8 @@ class ReplayActor(object):
         with self.add_batch_timer:
             for row in batch.rows():
                 self.replay_buffer.add(
-                    row["obs"], row["actions"], row["rewards"], row["new_obs"],
-                    row["dones"], row["weights"])
+                    row['obs'], row['actions'], row['rewards'], row['new_obs'],
+                    row['dones'], row['weights'])
 
     def replay(self):
         with self.replay_timer:
@@ -75,9 +75,9 @@ class ReplayActor(object):
                     beta=self.prioritized_replay_beta)
 
             batch = SampleBatch({
-                "obs": obses_t, "actions": actions, "rewards": rewards,
-                "new_obs": obses_tp1, "dones": dones, "weights": weights,
-                "batch_indexes": batch_indexes})
+                'obs': obses_t, 'actions': actions, 'rewards': rewards,
+                'new_obs': obses_tp1, 'dones': dones, 'weights': weights,
+                'batch_indexes': batch_indexes})
             return batch
 
     def update_priorities(self, batch_indexes, td_errors):
@@ -88,11 +88,11 @@ class ReplayActor(object):
 
     def stats(self):
         stat = {
-            "add_batch_time_ms": round(
+            'add_batch_time_ms': round(
                 1000 * self.add_batch_timer.mean, 3),
-            "replay_time_ms": round(
+            'replay_time_ms': round(
                 1000 * self.replay_timer.mean, 3),
-            "update_priorities_time_ms": round(
+            'update_priorities_time_ms': round(
                 1000 * self.update_priorities_timer.mean, 3),
         }
         stat.update(self.replay_buffer.stats())
@@ -110,7 +110,7 @@ class LearnerThread(threading.Thread):
 
     def __init__(self, local_evaluator):
         threading.Thread.__init__(self)
-        self.learner_queue_size = WindowStat("size", 50)
+        self.learner_queue_size = WindowStat('size', 50)
         self.local_evaluator = local_evaluator
         self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
         self.outqueue = queue.Queue()
@@ -129,7 +129,7 @@ class LearnerThread(threading.Thread):
         if replay is not None:
             with self.grad_timer:
                 td_error = self.local_evaluator.compute_apply(replay)[
-                    "td_error"]
+                    'td_error']
             self.outqueue.put((ra, replay, td_error))
         self.learner_queue_size.push(self.inqueue.qsize())
         self.weights_updated = True
@@ -174,8 +174,8 @@ class ApexOptimizer(PolicyOptimizer):
 
         # Stats
         self.timers = {k: TimerStat() for k in [
-            "put_weights", "get_samples", "enqueue", "sample_processing",
-            "replay_processing", "update_priorities", "train", "sample"]}
+            'put_weights', 'get_samples', 'enqueue', 'sample_processing',
+            'replay_processing', 'update_priorities', 'train', 'sample']}
         self.num_weight_syncs = 0
         self.learning_started = False
 
@@ -201,13 +201,13 @@ class ApexOptimizer(PolicyOptimizer):
         start = time.time()
         sample_timesteps, train_timesteps = self._step()
         time_delta = time.time() - start
-        self.timers["sample"].push(time_delta)
-        self.timers["sample"].push_units_processed(sample_timesteps)
+        self.timers['sample'].push(time_delta)
+        self.timers['sample'].push_units_processed(sample_timesteps)
         if train_timesteps > 0:
             self.learning_started = True
         if self.learning_started:
-            self.timers["train"].push(time_delta)
-            self.timers["train"].push_units_processed(train_timesteps)
+            self.timers['train'].push(time_delta)
+            self.timers['train'].push_units_processed(train_timesteps)
         self.num_steps_sampled += sample_timesteps
         self.num_steps_trained += train_timesteps
 
@@ -215,7 +215,7 @@ class ApexOptimizer(PolicyOptimizer):
         sample_timesteps, train_timesteps = 0, 0
         weights = None
 
-        with self.timers["sample_processing"]:
+        with self.timers['sample_processing']:
             for ev, sample_batch in self.sample_tasks.completed():
                 sample_timesteps += self.sample_batch_size
 
@@ -230,7 +230,7 @@ class ApexOptimizer(PolicyOptimizer):
                     # updated to avoid excessive correlation between actors
                     if weights is None or self.learner.weights_updated:
                         self.learner.weights_updated = False
-                        with self.timers["put_weights"]:
+                        with self.timers['put_weights']:
                             weights = ray.put(
                                 self.local_evaluator.get_weights())
                     ev.set_weights.remote(weights)
@@ -240,18 +240,18 @@ class ApexOptimizer(PolicyOptimizer):
                 # Kick off another sample request
                 self.sample_tasks.add(ev, ev.sample.remote())
 
-        with self.timers["replay_processing"]:
+        with self.timers['replay_processing']:
             for ra, replay in self.replay_tasks.completed():
                 self.replay_tasks.add(ra, ra.replay.remote())
-                with self.timers["get_samples"]:
+                with self.timers['get_samples']:
                     samples = ray.get(replay)
-                with self.timers["enqueue"]:
+                with self.timers['enqueue']:
                     self.learner.inqueue.put((ra, samples))
 
-        with self.timers["update_priorities"]:
+        with self.timers['update_priorities']:
             while not self.learner.outqueue.empty():
                 ra, replay, td_error = self.learner.outqueue.get()
-                ra.update_priorities.remote(replay["batch_indexes"], td_error)
+                ra.update_priorities.remote(replay['batch_indexes'], td_error)
                 train_timesteps += self.train_batch_size
 
         return sample_timesteps, train_timesteps
@@ -259,25 +259,25 @@ class ApexOptimizer(PolicyOptimizer):
     def stats(self):
         replay_stats = ray.get(self.replay_actors[0].stats.remote())
         timing = {
-            "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
+            '{}_time_ms'.format(k): round(1000 * self.timers[k].mean, 3)
             for k in self.timers
         }
-        timing["learner_grad_time_ms"] = round(
+        timing['learner_grad_time_ms'] = round(
             1000 * self.learner.grad_timer.mean, 3)
-        timing["learner_dequeue_time_ms"] = round(
+        timing['learner_dequeue_time_ms'] = round(
             1000 * self.learner.queue_timer.mean, 3)
         stats = {
-            "sample_throughput": round(
-                self.timers["sample"].mean_throughput, 3),
-            "train_throughput": round(self.timers["train"].mean_throughput, 3),
-            "num_weight_syncs": self.num_weight_syncs,
+            'sample_throughput': round(
+                self.timers['sample'].mean_throughput, 3),
+            'train_throughput': round(self.timers['train'].mean_throughput, 3),
+            'num_weight_syncs': self.num_weight_syncs,
         }
         debug_stats = {
-            "replay_shard_0": replay_stats,
-            "timing_breakdown": timing,
-            "pending_sample_tasks": self.sample_tasks.count,
-            "pending_replay_tasks": self.replay_tasks.count,
-            "learner_queue": self.learner.learner_queue_size.stats(),
+            'replay_shard_0': replay_stats,
+            'timing_breakdown': timing,
+            'pending_sample_tasks': self.sample_tasks.count,
+            'pending_replay_tasks': self.replay_tasks.count,
+            'learner_queue': self.learner.learner_queue_size.stats(),
         }
         if self.debug:
             stats.update(debug_stats)

@@ -68,8 +68,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
     if custom_explore_fn:
         new_config = custom_explore_fn(new_config)
         assert new_config is not None, \
-            "Custom explore fn failed to return new config"
-    print("[explore] perturbed config from {} -> {}".format(
+            'Custom explore fn failed to return new config'
+    print('[explore] perturbed config from {} -> {}'.format(
         config, new_config))
     return new_config
 
@@ -79,8 +79,8 @@ def make_experiment_tag(orig_tag, config, mutations):
 
     resolved_vars = {}
     for k in mutations.keys():
-        resolved_vars[("config", k)] = config[k]
-    return "{}@perturbed[{}]".format(orig_tag, _format_vars(resolved_vars))
+        resolved_vars[('config', k)] = config[k]
+    return '{}@perturbed[{}]'.format(orig_tag, _format_vars(resolved_vars))
 
 
 class PopulationBasedTraining(FIFOScheduler):
@@ -148,16 +148,16 @@ class PopulationBasedTraining(FIFOScheduler):
     """
 
     def __init__(self,
-                 time_attr="time_total_s",
-                 reward_attr="episode_reward_mean",
+                 time_attr='time_total_s',
+                 reward_attr='episode_reward_mean',
                  perturbation_interval=60.0,
                  hyperparam_mutations={},
                  resample_probability=0.25,
                  custom_explore_fn=None):
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
-                "You must specify at least one of `hyperparam_mutations` or "
-                "`custom_explore_fn` to use PBT.")
+                'You must specify at least one of `hyperparam_mutations` or '
+                '`custom_explore_fn` to use PBT.')
         FIFOScheduler.__init__(self)
         self._reward_attr = reward_attr
         self._time_attr = time_attr
@@ -209,13 +209,13 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
         if not new_state.last_checkpoint:
-            print("[pbt] warn: no checkpoint for trial, skip exploit", trial)
+            print('[pbt] warn: no checkpoint for trial, skip exploit', trial)
             return
         new_config = explore(trial_to_clone.config, self._hyperparam_mutations,
                              self._resample_probability,
                              self._custom_explore_fn)
-        print("[exploit] transferring weights from trial "
-              "{} (score {}) -> {} (score {})".format(
+        print('[exploit] transferring weights from trial '
+              '{} (score {}) -> {} (score {})'.format(
                   trial_to_clone, new_state.last_score, trial,
                   trial_state.last_score))
         # TODO(ekl) restarting the trial is expensive. We should implement a
@@ -275,5 +275,5 @@ class PopulationBasedTraining(FIFOScheduler):
         return scores
 
     def debug_string(self):
-        return "PopulationBasedTraining: {} checkpoints, {} perturbs".format(
+        return 'PopulationBasedTraining: {} checkpoints, {} perturbs'.format(
             self._num_checkpoints, self._num_perturbations)

@@ -25,14 +25,14 @@ PLASMA_STORE_MEMORY = 1000000000
 ID_SIZE = 20
 NUM_CLUSTER_NODES = 2
 
-NIL_WORKER_ID = 20 * b"\xff"
-NIL_OBJECT_ID = 20 * b"\xff"
-NIL_ACTOR_ID = 20 * b"\xff"
+NIL_WORKER_ID = 20 * b'\xff'
+NIL_OBJECT_ID = 20 * b'\xff'
+NIL_ACTOR_ID = 20 * b'\xff'
 
 # These constants are an implementation detail of ray_redis_module.cc, so this
 # must be kept in sync with that file.
-DB_CLIENT_PREFIX = "CL:"
-TASK_PREFIX = "TT:"
+DB_CLIENT_PREFIX = 'CL:'
+TASK_PREFIX = 'TT:'
 
 
 def random_driver_id():
@@ -58,7 +58,7 @@ def new_port():
 class TestGlobalScheduler(unittest.TestCase):
     def setUp(self):
         # Start one Redis server and N pairs of (plasma, local_scheduler)
-        self.node_ip_address = "127.0.0.1"
+        self.node_ip_address = '127.0.0.1'
         redis_address, redis_shards = services.start_redis(
             self.node_ip_address)
         redis_port = services.get_port(redis_address)
@@ -87,7 +87,7 @@ class TestGlobalScheduler(unittest.TestCase):
                                                        redis_address)
             plasma_manager_name, p3, plasma_manager_port = manager_info
             self.plasma_manager_pids.append(p3)
-            plasma_address = "{}:{}".format(self.node_ip_address,
+            plasma_address = '{}:{}'.format(self.node_ip_address,
                                             plasma_manager_port)
             plasma_client = pa.plasma.connect(plasma_store_name,
                                               plasma_manager_name, 64)
@@ -98,7 +98,7 @@ class TestGlobalScheduler(unittest.TestCase):
                 plasma_manager_name=plasma_manager_name,
                 plasma_address=plasma_address,
                 redis_address=redis_address,
-                static_resources={"CPU": 10})
+                static_resources={'CPU': 10})
             # Connect to the scheduler.
             local_scheduler_client = local_scheduler.LocalSchedulerClient(
                 local_scheduler_name, NIL_WORKER_ID, False)
@@ -156,8 +156,8 @@ class TestGlobalScheduler(unittest.TestCase):
 
         client_list = self.state.client_table()[self.node_ip_address]
         for client in client_list:
-            if client["ClientType"] == "plasma_manager":
-                db_client_id = client["DBClientID"]
+            if client['ClientType'] == 'plasma_manager':
+                db_client_id = client['DBClientID']
                 break
 
         return db_client_id
@@ -166,17 +166,17 @@ class TestGlobalScheduler(unittest.TestCase):
         task1 = local_scheduler.Task(
             random_driver_id(), random_function_id(), [random_object_id()], 0,
             random_task_id(), 0)
-        self.assertEqual(task1.required_resources(), {"CPU": 1})
+        self.assertEqual(task1.required_resources(), {'CPU': 1})
         task2 = local_scheduler.Task(
             random_driver_id(), random_function_id(), [random_object_id()], 0,
             random_task_id(), 0, local_scheduler.ObjectID(NIL_ACTOR_ID),
             local_scheduler.ObjectID(NIL_OBJECT_ID),
             local_scheduler.ObjectID(NIL_ACTOR_ID),
             local_scheduler.ObjectID(NIL_ACTOR_ID), 0, 0, [], {
-                "CPU": 1,
-                "GPU": 2
+                'CPU': 1,
+                'GPU': 2
             })
-        self.assertEqual(task2.required_resources(), {"CPU": 1, "GPU": 2})
+        self.assertEqual(task2.required_resources(), {'CPU': 1, 'GPU': 2})
 
     def test_redis_only_single_task(self):
         # Tests global scheduler functionality by interacting with Redis and
@@ -227,7 +227,7 @@ class TestGlobalScheduler(unittest.TestCase):
             self.assertLessEqual(len(task_entries), 1)
             if len(task_entries) == 1:
                 task_id, task = task_entries.popitem()
-                task_status = task["State"]
+                task_status = task['State']
                 self.assertTrue(task_status in [
                     state.TASK_STATUS_WAITING, state.TASK_STATUS_SCHEDULED,
                     state.TASK_STATUS_QUEUED
@@ -236,7 +236,7 @@ class TestGlobalScheduler(unittest.TestCase):
                     break
                 else:
                     print(task_status)
-            print("The task has not been scheduled yet, trying again.")
+            print('The task has not been scheduled yet, trying again.')
             num_retries -= 1
             time.sleep(1)
 
@@ -281,7 +281,7 @@ class TestGlobalScheduler(unittest.TestCase):
             # First, check if all tasks made it to Redis.
             if len(task_entries) == num_tasks:
                 task_statuses = [
-                    task_entry["State"]
+                    task_entry['State']
                     for task_entry in task_entries.values()
                 ]
                 self.assertTrue(
@@ -294,9 +294,9 @@ class TestGlobalScheduler(unittest.TestCase):
                     state.TASK_STATUS_SCHEDULED)
                 num_tasks_waiting = task_statuses.count(
                     state.TASK_STATUS_WAITING)
-                print("tasks in Redis = {}, tasks waiting = {}, "
-                      "tasks scheduled = {}, "
-                      "tasks queued = {}, retries left = {}".format(
+                print('tasks in Redis = {}, tasks waiting = {}, '
+                      'tasks scheduled = {}, '
+                      'tasks queued = {}, retries left = {}'.format(
                           len(task_entries), num_tasks_waiting,
                           num_tasks_scheduled, num_tasks_done, num_retries))
                 if all(status == state.TASK_STATUS_QUEUED
@@ -325,12 +325,12 @@ class TestGlobalScheduler(unittest.TestCase):
         self.integration_many_tasks_helper(timesync=False)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     if len(sys.argv) > 1:
         # Pop the argument so we don't mess with unittest's own argument
         # parser.
-        if sys.argv[-1] == "valgrind":
+        if sys.argv[-1] == 'valgrind':
             arg = sys.argv.pop()
             USE_VALGRIND = True
-            print("Using valgrind for tests")
+            print('Using valgrind for tests')
     unittest.main(verbosity=2)

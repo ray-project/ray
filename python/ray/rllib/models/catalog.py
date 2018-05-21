@@ -20,20 +20,20 @@ from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
 MODEL_CONFIGS = [
     # === Built-in options ===
-    "conv_filters",  # Number of filters
-    "dim",  # Dimension for ATARI
-    "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
-    "zero_mean",  # Changes frame to range from [-1, 1] if true
-    "extra_frameskip",  # (int) for number of frames to skip
-    "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
-    "fcnet_hiddens",  # Number of hidden layers for fully connected net
-    "free_log_std",  # Documented in ray.rllib.models.Model
-    "channel_major",  # Pytorch conv requires images to be channel-major
+    'conv_filters',  # Number of filters
+    'dim',  # Dimension for ATARI
+    'grayscale',  # Converts ATARI frame to 1 Channel Grayscale image
+    'zero_mean',  # Changes frame to range from [-1, 1] if true
+    'extra_frameskip',  # (int) for number of frames to skip
+    'fcnet_activation',  # Nonlinearity for fully connected net (tanh, relu)
+    'fcnet_hiddens',  # Number of hidden layers for fully connected net
+    'free_log_std',  # Documented in ray.rllib.models.Model
+    'channel_major',  # Pytorch conv requires images to be channel-major
 
     # === Options for custom models ===
-    "custom_preprocessor",  # Name of a custom preprocessor to use
-    "custom_model",  # Name of a custom model to use
-    "custom_options",  # Extra options to pass to the custom classes
+    'custom_preprocessor',  # Name of a custom preprocessor to use
+    'custom_model',  # Name of a custom model to use
+    'custom_options',  # Extra options to pass to the custom classes
 ]
 
 
@@ -86,7 +86,7 @@ class ModelCatalog(object):
                            action_space=action_space), size
 
         raise NotImplementedError(
-            "Unsupported args: {} {}".format(action_space, dist_type))
+            'Unsupported args: {} {}'.format(action_space, dist_type))
 
     @staticmethod
     def get_action_placeholder(action_space):
@@ -119,8 +119,8 @@ class ModelCatalog(object):
             return tf.placeholder(
                 tf.int64 if all_discrete else tf.float32, shape=(None, size))
         else:
-            raise NotImplementedError("action space {}"
-                                      " not supported".format(action_space))
+            raise NotImplementedError('action space {}'
+                                      ' not supported'.format(action_space))
 
     @staticmethod
     def get_model(registry, inputs, num_outputs, options={}):
@@ -136,17 +136,17 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
 
-        if "custom_model" in options:
-            model = options["custom_model"]
-            print("Using custom model {}".format(model))
+        if 'custom_model' in options:
+            model = options['custom_model']
+            print('Using custom model {}'.format(model))
             return registry.get(RLLIB_MODEL, model)(
                 inputs, num_outputs, options)
 
         obs_rank = len(inputs.shape) - 1
 
         # num_outputs > 1 used to avoid hitting this with the value function
-        if isinstance(options.get("custom_options", {}).get(
-          "multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
+        if isinstance(options.get('custom_options', {}).get(
+          'multiagent_fcnet_hiddens', 1), list) and num_outputs > 1:
             return MultiAgentFullyConnectedNetwork(inputs,
                                                    num_outputs, options)
 
@@ -174,9 +174,9 @@ class ModelCatalog(object):
         from ray.rllib.models.pytorch.visionnet import (
             VisionNetwork as PyTorchVisionNet)
 
-        if "custom_model" in options:
-            model = options["custom_model"]
-            print("Using custom torch model {}".format(model))
+        if 'custom_model' in options:
+            model = options['custom_model']
+            print('Using custom torch model {}'.format(model))
             return registry.get(RLLIB_MODEL, model)(
                 input_shape, num_outputs, options)
 
@@ -202,12 +202,12 @@ class ModelCatalog(object):
         for k in options.keys():
             if k not in MODEL_CONFIGS:
                 raise Exception(
-                    "Unknown config key `{}`, all keys: {}".format(
+                    'Unknown config key `{}`, all keys: {}'.format(
                         k, MODEL_CONFIGS))
 
-        if "custom_preprocessor" in options:
-            preprocessor = options["custom_preprocessor"]
-            print("Using custom preprocessor {}".format(preprocessor))
+        if 'custom_preprocessor' in options:
+            preprocessor = options['custom_preprocessor']
+            print('Using custom preprocessor {}'.format(preprocessor))
             return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
 

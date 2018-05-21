@@ -24,7 +24,7 @@ def generate_metadata(length):
 
 
 def write_to_data_buffer(buff, length):
-    array = np.frombuffer(buff, dtype="uint8")
+    array = np.frombuffer(buff, dtype='uint8')
     if length > 0:
         array[0] = random.randint(0, 255)
         array[-1] = random.randint(0, 255)

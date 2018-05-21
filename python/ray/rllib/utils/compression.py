@@ -12,9 +12,9 @@ try:
     LZ4_ENABLED = True
 except ImportError:
     print(
-        "WARNING: lz4 not available, disabling sample compression. "
-        "This will significantly impact RLlib performance. "
-        "To install lz4, run `pip install lz4`.")
+        'WARNING: lz4 not available, disabling sample compression. '
+        'This will significantly impact RLlib performance. '
+        'To install lz4, run `pip install lz4`.')
     LZ4_ENABLED = False
 
 
@@ -46,7 +46,7 @@ def unpack(data):
 # Compression speed: 753.664 MB/s
 # Compression ratio: 87.4839812046
 # Decompression speed: 910.9504 MB/s
-if __name__ == "__main__":
+if __name__ == '__main__':
     size = 32 * 80 * 80 * 4
     data = np.ones(size).reshape((32, 80, 80, 4))
 
@@ -56,12 +56,12 @@ if __name__ == "__main__":
         pack(data)
         count += 1
     compressed = pack(data)
-    print("Compression speed: {} MB/s".format(count * size * 4 / 1e6))
-    print("Compression ratio: {}".format(round(size * 4 / len(compressed), 2)))
+    print('Compression speed: {} MB/s'.format(count * size * 4 / 1e6))
+    print('Compression ratio: {}'.format(round(size * 4 / len(compressed), 2)))
 
     count = 0
     start = time.time()
     while time.time() - start < 1:
         unpack(compressed)
         count += 1
-    print("Decompression speed: {} MB/s".format(count * size * 4 / 1e6))
+    print('Decompression speed: {} MB/s'.format(count * size * 4 / 1e6))

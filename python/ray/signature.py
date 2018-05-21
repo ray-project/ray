@@ -8,9 +8,9 @@ from funcsigs import Parameter
 
 from ray.utils import is_cython
 
-FunctionSignature = namedtuple("FunctionSignature", [
-    "arg_names", "arg_defaults", "arg_is_positionals", "keyword_names",
-    "function_name"
+FunctionSignature = namedtuple('FunctionSignature', [
+    'arg_names', 'arg_defaults', 'arg_is_positionals', 'keyword_names',
+    'function_name'
 ])
 """This class is used to represent a function signature.
 
@@ -51,7 +51,7 @@ def get_signature_params(func):
     # methods
     if is_cython(func):
         attrs = [
-            "__code__", "__annotations__", "__defaults__", "__kwdefaults__"
+            '__code__', '__annotations__', '__defaults__', '__kwdefaults__'
         ]
 
         if all(hasattr(func, attr) for attr in attrs):
@@ -63,7 +63,7 @@ def get_signature_params(func):
             for attr in attrs:
                 setattr(func, attr, getattr(original_func, attr))
         else:
-            raise TypeError("{!r} is not a Python function we can process"
+            raise TypeError('{!r} is not a Python function we can process'
                             .format(func))
 
     return list(funcsigs.signature(func).parameters.items())
@@ -96,17 +96,17 @@ def check_signature_supported(func, warn=False):
             has_kwonly_param = True
 
     if has_kwargs_param:
-        message = ("The function {} has a **kwargs argument, which is "
-                   "currently not supported.".format(function_name))
+        message = ('The function {} has a **kwargs argument, which is '
+                   'currently not supported.'.format(function_name))
         if warn:
             print(message)
         else:
             raise Exception(message)
 
     if has_kwonly_param:
-        message = ("The function {} has a keyword only argument "
-                   "(defined after * or *args), which is currently "
-                   "not supported.".format(function_name))
+        message = ('The function {} has a keyword only argument '
+                   '(defined after * or *args), which is currently '
+                   'not supported.'.format(function_name))
         if warn:
             print(message)
         else:
@@ -187,7 +187,7 @@ def extend_args(function_signature, args, kwargs):
     # Fill in the remaining arguments.
     for skipped_name in arg_names[0:len(args)]:
         if skipped_name in kwargs:
-            raise Exception("Positional and keyword value provided for the "
+            raise Exception('Positional and keyword value provided for the '
                             "argument '{}' for the function '{}'".format(
                                 keyword_name, function_name))
 
@@ -204,7 +204,7 @@ def extend_args(function_signature, args, kwargs):
                 # the last argument and it is a *args argument in which case it
                 # can be omitted.
                 if not is_positional:
-                    raise Exception("No value was provided for the argument "
+                    raise Exception('No value was provided for the argument '
                                     "'{}' for the function '{}'.".format(
                                         keyword_name, function_name))
 

@@ -75,7 +75,7 @@ class RunningStat(object):
     def push(self, x):
         x = np.asarray(x)
         # Unvectorized update of the running statistics.
-        assert x.shape == self._M.shape, ("x.shape = {}, self.shape = {}"
+        assert x.shape == self._M.shape, ('x.shape = {}, self.shape = {}'
                                           .format(x.shape, self._M.shape))
         n1 = self._n
         self._n += 1
@@ -266,12 +266,12 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
 def get_filter(filter_config, shape):
     # TODO(rliaw): move this into filter manager
-    if filter_config == "MeanStdFilter":
+    if filter_config == 'MeanStdFilter':
         return MeanStdFilter(shape, clip=None)
-    elif filter_config == "ConcurrentMeanStdFilter":
+    elif filter_config == 'ConcurrentMeanStdFilter':
         return ConcurrentMeanStdFilter(shape, clip=None)
-    elif filter_config == "NoFilter":
+    elif filter_config == 'NoFilter':
         return NoFilter()
     else:
-        raise Exception("Unknown observation_filter: " +
+        raise Exception('Unknown observation_filter: ' +
                         str(filter_config))

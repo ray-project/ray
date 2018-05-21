@@ -21,78 +21,78 @@ from ray.rllib.ppo.rollout import collect_samples
 
 DEFAULT_CONFIG = {
     # Discount factor of the MDP
-    "gamma": 0.995,
+    'gamma': 0.995,
     # Number of steps after which the rollout gets cut
-    "horizon": 2000,
+    'horizon': 2000,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-    "use_gae": True,
+    'use_gae': True,
     # GAE(lambda) parameter
-    "lambda": 1.0,
+    'lambda': 1.0,
     # Initial coefficient for KL divergence
-    "kl_coeff": 0.2,
+    'kl_coeff': 0.2,
     # Number of SGD iterations in each outer loop
-    "num_sgd_iter": 30,
+    'num_sgd_iter': 30,
     # Stepsize of SGD
-    "sgd_stepsize": 5e-5,
+    'sgd_stepsize': 5e-5,
     # TODO(pcm): Expose the choice between gpus and cpus
     # as a command line argument.
-    "devices": ["/cpu:%d" % i for i in range(4)],
-    "tf_session_args": {
-        "device_count": {"CPU": 4},
-        "log_device_placement": False,
-        "allow_soft_placement": True,
-        "intra_op_parallelism_threads": 1,
-        "inter_op_parallelism_threads": 2,
+    'devices': ['/cpu:%d' % i for i in range(4)],
+    'tf_session_args': {
+        'device_count': {'CPU': 4},
+        'log_device_placement': False,
+        'allow_soft_placement': True,
+        'intra_op_parallelism_threads': 1,
+        'inter_op_parallelism_threads': 2,
     },
     # Batch size for policy evaluations for rollouts
-    "rollout_batchsize": 1,
+    'rollout_batchsize': 1,
     # Total SGD batch size across all devices for SGD
-    "sgd_batchsize": 128,
+    'sgd_batchsize': 128,
     # Coefficient of the value function loss
-    "vf_loss_coeff": 1.0,
+    'vf_loss_coeff': 1.0,
     # Coefficient of the entropy regularizer
-    "entropy_coeff": 0.0,
+    'entropy_coeff': 0.0,
     # PPO clip parameter
-    "clip_param": 0.3,
+    'clip_param': 0.3,
     # Target value for KL divergence
-    "kl_target": 0.01,
+    'kl_target': 0.01,
     # Config params to pass to the model
-    "model": {"free_log_std": False},
+    'model': {'free_log_std': False},
     # Which observation filter to apply to the observation
-    "observation_filter": "MeanStdFilter",
+    'observation_filter': 'MeanStdFilter',
     # If >1, adds frameskip
-    "extra_frameskip": 1,
+    'extra_frameskip': 1,
     # Number of timesteps collected in each outer loop
-    "timesteps_per_batch": 4000,
+    'timesteps_per_batch': 4000,
     # Each tasks performs rollouts until at least this
     # number of steps is obtained
-    "min_steps_per_task": 200,
+    'min_steps_per_task': 200,
     # Number of actors used to collect the rollouts
-    "num_workers": 5,
+    'num_workers': 5,
     # Whether to allocate GPUs for workers (if > 0).
-    "num_gpus_per_worker": 0,
+    'num_gpus_per_worker': 0,
     # Whether to allocate CPUs for workers (if > 0).
-    "num_cpus_per_worker": 1,
+    'num_cpus_per_worker': 1,
     # Dump TensorFlow timeline after this many SGD minibatches
-    "full_trace_nth_sgd_batch": -1,
+    'full_trace_nth_sgd_batch': -1,
     # Whether to profile data loading
-    "full_trace_data_load": False,
+    'full_trace_data_load': False,
     # Outer loop iteration index when we drop into the TensorFlow debugger
-    "tf_debug_iteration": -1,
+    'tf_debug_iteration': -1,
     # If this is True, the TensorFlow debugger is invoked if an Inf or NaN
     # is detected
-    "tf_debug_inf_or_nan": False,
+    'tf_debug_inf_or_nan': False,
     # If True, we write tensorflow logs and checkpoints
-    "write_logs": True,
+    'write_logs': True,
     # Arguments to pass to the env creator
-    "env_config": {},
+    'env_config': {},
 }
 
 
 class PPOAgent(Agent):
-    _agent_name = "PPO"
-    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
+    _agent_name = 'PPO'
+    _allow_unknown_subkeys = ['model', 'tf_session_args', 'env_config']
     _default_config = DEFAULT_CONFIG
 
     @classmethod
@@ -100,25 +100,25 @@ class PPOAgent(Agent):
         cf = dict(cls._default_config, **config)
         return Resources(
             cpu=1,
-            gpu=len([d for d in cf["devices"] if "gpu" in d.lower()]),
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
+            gpu=len([d for d in cf['devices'] if 'gpu' in d.lower()]),
+            extra_cpu=cf['num_cpus_per_worker'] * cf['num_workers'],
+            extra_gpu=cf['num_gpus_per_worker'] * cf['num_workers'])
 
     def _init(self):
         self.global_step = 0
-        self.kl_coeff = self.config["kl_coeff"]
+        self.kl_coeff = self.config['kl_coeff']
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
         RemotePPOEvaluator = ray.remote(
-            num_cpus=self.config["num_cpus_per_worker"],
-            num_gpus=self.config["num_gpus_per_worker"])(PPOEvaluator)
+            num_cpus=self.config['num_cpus_per_worker'],
+            num_gpus=self.config['num_gpus_per_worker'])(PPOEvaluator)
         self.remote_evaluators = [
             RemotePPOEvaluator.remote(
                 self.registry, self.env_creator, self.config, self.logdir,
                 True)
-            for _ in range(self.config["num_workers"])]
+            for _ in range(self.config['num_workers'])]
         self.start_time = time.time()
-        if self.config["write_logs"]:
+        if self.config['write_logs']:
             self.file_writer = tf.summary.FileWriter(
                 self.logdir, self.local_evaluator.sess.graph)
         else:
@@ -130,15 +130,15 @@ class PPOAgent(Agent):
         config = self.config
         model = self.local_evaluator
 
-        if (config["num_workers"] * config["min_steps_per_task"] >
-                config["timesteps_per_batch"]):
+        if (config['num_workers'] * config['min_steps_per_task'] >
+                config['timesteps_per_batch']):
             print(
-                "WARNING: num_workers * min_steps_per_task > "
-                "timesteps_per_batch. This means that the output of some "
-                "tasks will be wasted. Consider decreasing "
-                "min_steps_per_task or increasing timesteps_per_batch.")
+                'WARNING: num_workers * min_steps_per_task > '
+                'timesteps_per_batch. This means that the output of some '
+                'tasks will be wasted. Consider decreasing '
+                'min_steps_per_task or increasing timesteps_per_batch.')
 
-        print("===> iteration", self.iteration)
+        print('===> iteration', self.iteration)
 
         iter_start = time.time()
         weights = ray.put(model.get_weights())
@@ -150,24 +150,24 @@ class PPOAgent(Agent):
             # to guard against the case where all values are equal
             return (value - value.mean()) / max(1e-4, value.std())
 
-        samples.data["advantages"] = standardized(samples["advantages"])
+        samples.data['advantages'] = standardized(samples['advantages'])
 
         rollouts_end = time.time()
-        print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
-              ", stepsize=" + str(config["sgd_stepsize"]) + "):")
+        print('Computing policy (iterations=' + str(config['num_sgd_iter']) +
+              ', stepsize=' + str(config['sgd_stepsize']) + '):')
         names = [
-            "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
-        print(("{:>15}" * len(names)).format(*names))
+            'iter', 'total loss', 'policy loss', 'vf loss', 'kl', 'entropy']
+        print(('{:>15}' * len(names)).format(*names))
         samples.shuffle()
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
-            samples, self.iteration == 0 and config["full_trace_data_load"])
+            samples, self.iteration == 0 and config['full_trace_data_load'])
         load_end = time.time()
         rollouts_time = rollouts_end - iter_start
         shuffle_time = shuffle_end - rollouts_end
         load_time = load_end - shuffle_end
         sgd_time = 0
-        for i in range(config["num_sgd_iter"]):
+        for i in range(config['num_sgd_iter']):
             sgd_start = time.time()
             batch_index = 0
             num_batches = (
@@ -175,12 +175,12 @@ class PPOAgent(Agent):
             loss, policy_loss, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
-            if self.iteration == config["tf_debug_iteration"]:
+            if self.iteration == config['tf_debug_iteration']:
                 model.sess = tf_debug.LocalCLIDebugWrapperSession(model.sess)
             while batch_index < num_batches:
                 full_trace = (
                     i == 0 and self.iteration == 0 and
-                    batch_index == config["full_trace_nth_sgd_batch"])
+                    batch_index == config['full_trace_nth_sgd_batch'])
                 batch_loss, batch_policy_loss, batch_vf_loss, batch_kl, \
                     batch_entropy = model.run_sgd_minibatch(
                         permutation[batch_index] * model.per_device_batch_size,
@@ -199,43 +199,43 @@ class PPOAgent(Agent):
             entropy = np.mean(entropy)
             sgd_end = time.time()
             print(
-                "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
+                '{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}'.format(
                     i, loss, policy_loss, vf_loss, kl, entropy))
 
             values = []
-            if i == config["num_sgd_iter"] - 1:
-                metric_prefix = "ppo/sgd/final_iter/"
+            if i == config['num_sgd_iter'] - 1:
+                metric_prefix = 'ppo/sgd/final_iter/'
                 values.append(tf.Summary.Value(
-                    tag=metric_prefix + "kl_coeff",
+                    tag=metric_prefix + 'kl_coeff',
                     simple_value=self.kl_coeff))
                 values.extend([
                     tf.Summary.Value(
-                        tag=metric_prefix + "mean_entropy",
+                        tag=metric_prefix + 'mean_entropy',
                         simple_value=entropy),
                     tf.Summary.Value(
-                        tag=metric_prefix + "mean_loss",
+                        tag=metric_prefix + 'mean_loss',
                         simple_value=loss),
                     tf.Summary.Value(
-                        tag=metric_prefix + "mean_kl",
+                        tag=metric_prefix + 'mean_kl',
                         simple_value=kl)])
                 if self.file_writer:
                     sgd_stats = tf.Summary(value=values)
                     self.file_writer.add_summary(sgd_stats, self.global_step)
             self.global_step += 1
             sgd_time += sgd_end - sgd_start
-        if kl > 2.0 * config["kl_target"]:
+        if kl > 2.0 * config['kl_target']:
             self.kl_coeff *= 1.5
-        elif kl < 0.5 * config["kl_target"]:
+        elif kl < 0.5 * config['kl_target']:
             self.kl_coeff *= 0.5
 
         info = {
-            "kl_divergence": kl,
-            "kl_coefficient": self.kl_coeff,
-            "rollouts_time": rollouts_time,
-            "shuffle_time": shuffle_time,
-            "load_time": load_time,
-            "sgd_time": sgd_time,
-            "sample_throughput": len(samples["obs"]) / sgd_time
+            'kl_divergence': kl,
+            'kl_coefficient': self.kl_coeff,
+            'rollouts_time': rollouts_time,
+            'shuffle_time': shuffle_time,
+            'load_time': load_time,
+            'sgd_time': sgd_time,
+            'sample_throughput': len(samples['obs']) / sgd_time
         }
 
         FilterManager.synchronize(
@@ -274,7 +274,7 @@ class PPOAgent(Agent):
     def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(
             self.local_evaluator.sess,
-            os.path.join(checkpoint_dir, "checkpoint"),
+            os.path.join(checkpoint_dir, 'checkpoint'),
             global_step=self.iteration)
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
@@ -283,12 +283,12 @@ class PPOAgent(Agent):
             self.global_step,
             self.kl_coeff,
             agent_state]
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+        pickle.dump(extra_data, open(checkpoint_path + '.extra_data', 'wb'))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
         self.saver.restore(self.local_evaluator.sess, checkpoint_path)
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        extra_data = pickle.load(open(checkpoint_path + '.extra_data', 'rb'))
         self.local_evaluator.restore(extra_data[0])
         self.global_step = extra_data[1]
         self.kl_coeff = extra_data[2]

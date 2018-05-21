@@ -59,7 +59,7 @@ class UnifiedLogger(Logger):
         self._loggers = []
         for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
             if cls is _TFLogger and tf is None:
-                print("TF not installed - cannot log with {}...".format(cls))
+                print('TF not installed - cannot log with {}...'.format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
         self._log_syncer = get_syncer(self.logdir, self.uri)
@@ -87,15 +87,15 @@ class NoopLogger(Logger):
 
 class _JsonLogger(Logger):
     def _init(self):
-        config_out = os.path.join(self.logdir, "params.json")
-        with open(config_out, "w") as f:
+        config_out = os.path.join(self.logdir, 'params.json')
+        with open(config_out, 'w') as f:
             json.dump(self.config, f, sort_keys=True, cls=_CustomEncoder)
-        local_file = os.path.join(self.logdir, "result.json")
-        self.local_out = open(local_file, "w")
+        local_file = os.path.join(self.logdir, 'result.json')
+        self.local_out = open(local_file, 'w')
 
     def on_result(self, result):
         json.dump(result._asdict(), self, cls=_CustomEncoder)
-        self.write("\n")
+        self.write('\n')
 
     def write(self, b):
         self.local_out.write(b)
@@ -112,7 +112,7 @@ def to_tf_values(result, path):
             if type(value) in [int, float]:
                 values.append(
                     tf.Summary.Value(
-                        tag="/".join(path + [attr]), simple_value=value))
+                        tag='/'.join(path + [attr]), simple_value=value))
             elif type(value) is dict:
                 values.extend(to_tf_values(value, path + [attr]))
     return values
@@ -125,10 +125,10 @@ class _TFLogger(Logger):
     def on_result(self, result):
         tmp = result._asdict()
         for k in [
-                "config", "pid", "timestamp", "time_total_s", "timesteps_total"
+                'config', 'pid', 'timestamp', 'time_total_s', 'timesteps_total'
         ]:
             del tmp[k]  # not useful to tf log these
-        values = to_tf_values(tmp, ["ray", "tune"])
+        values = to_tf_values(tmp, ['ray', 'tune'])
         train_stats = tf.Summary(value=values)
         self._file_writer.add_summary(train_stats, result.timesteps_total)
 
@@ -139,7 +139,7 @@ class _TFLogger(Logger):
 class _VisKitLogger(Logger):
     def _init(self):
         # Note that we assume params.json was already created by JsonLogger
-        self._file = open(os.path.join(self.logdir, "progress.csv"), "w")
+        self._file = open(os.path.join(self.logdir, 'progress.csv'), 'w')
         self._csv_out = csv.DictWriter(self._file, TrainingResult._fields)
         self._csv_out.writeheader()
 
@@ -151,7 +151,7 @@ class _VisKitLogger(Logger):
 
 
 class _CustomEncoder(json.JSONEncoder):
-    def __init__(self, nan_str="null", **kwargs):
+    def __init__(self, nan_str='null', **kwargs):
         super(_CustomEncoder, self).__init__(**kwargs)
         self.nan_str = nan_str
 

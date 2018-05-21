@@ -15,7 +15,7 @@ class AWSNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         config = Config(retries={'max_attempts': BOTO_MAX_RETRIES})
         self.ec2 = boto3.resource(
-            "ec2", region_name=provider_config["region"], config=config)
+            'ec2', region_name=provider_config['region'], config=config)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -28,18 +28,18 @@ class AWSNodeProvider(NodeProvider):
     def nodes(self, tag_filters):
         filters = [
             {
-                "Name": "instance-state-name",
-                "Values": ["pending", "running"],
+                'Name': 'instance-state-name',
+                'Values': ['pending', 'running'],
             },
             {
-                "Name": "tag:{}".format(TAG_RAY_CLUSTER_NAME),
-                "Values": [self.cluster_name],
+                'Name': 'tag:{}'.format(TAG_RAY_CLUSTER_NAME),
+                'Values': [self.cluster_name],
             },
         ]
         for k, v in tag_filters.items():
             filters.append({
-                "Name": "tag:{}".format(k),
-                "Values": [v],
+                'Name': 'tag:{}'.format(k),
+                'Values': [v],
             })
         instances = list(self.ec2.instances.filter(Filters=filters))
         self.cached_nodes = {i.id: i for i in instances}
@@ -47,18 +47,18 @@ class AWSNodeProvider(NodeProvider):
 
     def is_running(self, node_id):
         node = self._node(node_id)
-        return node.state["Name"] == "running"
+        return node.state['Name'] == 'running'
 
     def is_terminated(self, node_id):
         node = self._node(node_id)
-        state = node.state["Name"]
-        return state not in ["running", "pending"]
+        state = node.state['Name']
+        return state not in ['running', 'pending']
 
     def node_tags(self, node_id):
         node = self._node(node_id)
         tags = {}
         for tag in node.tags:
-            tags[tag["Key"]] = tag["Value"]
+            tags[tag['Key']] = tag['Value']
         return tags
 
     def external_ip(self, node_id):
@@ -84,28 +84,28 @@ class AWSNodeProvider(NodeProvider):
         tag_pairs = []
         for k, v in tags.items():
             tag_pairs.append({
-                "Key": k,
-                "Value": v,
+                'Key': k,
+                'Value': v,
             })
         node.create_tags(Tags=tag_pairs)
 
     def create_node(self, node_config, tags, count):
         conf = node_config.copy()
         tag_pairs = [{
-            "Key": TAG_RAY_CLUSTER_NAME,
-            "Value": self.cluster_name,
+            'Key': TAG_RAY_CLUSTER_NAME,
+            'Value': self.cluster_name,
         }]
         for k, v in tags.items():
             tag_pairs.append({
-                "Key": k,
-                "Value": v,
+                'Key': k,
+                'Value': v,
             })
         conf.update({
-            "MinCount": 1,
-            "MaxCount": count,
-            "TagSpecifications": conf.get("TagSpecifications", []) + [{
-                "ResourceType": "instance",
-                "Tags": tag_pairs,
+            'MinCount': 1,
+            'MaxCount': count,
+            'TagSpecifications': conf.get('TagSpecifications', []) + [{
+                'ResourceType': 'instance',
+                'Tags': tag_pairs,
             }]
         })
         self.ec2.create_instances(**conf)
@@ -118,5 +118,5 @@ class AWSNodeProvider(NodeProvider):
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
         matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
-        assert len(matches) == 1, "Invalid instance id {}".format(node_id)
+        assert len(matches) == 1, 'Invalid instance id {}'.format(node_id)
         return matches[0]

@@ -26,37 +26,37 @@ Note that -f overrides all other trial-specific command-line options.
 
 parser = make_parser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
-    description="Train a reinforcement learning agent.",
+    description='Train a reinforcement learning agent.',
     epilog=EXAMPLE_USAGE)
 
 # See also the base parser definition in ray/tune/config_parser.py
 parser.add_argument(
-    "--redis-address", default=None, type=str,
-    help="The Redis address of the cluster.")
+    '--redis-address', default=None, type=str,
+    help='The Redis address of the cluster.')
 parser.add_argument(
-    "--ray-num-cpus", default=None, type=int,
-    help="--num-cpus to pass to Ray. This only has an affect in local mode.")
+    '--ray-num-cpus', default=None, type=int,
+    help='--num-cpus to pass to Ray. This only has an affect in local mode.')
 parser.add_argument(
-    "--ray-num-gpus", default=None, type=int,
-    help="--num-gpus to pass to Ray. This only has an affect in local mode.")
+    '--ray-num-gpus', default=None, type=int,
+    help='--num-gpus to pass to Ray. This only has an affect in local mode.')
 parser.add_argument(
-    "--experiment-name", default="default", type=str,
-    help="Name of the subdirectory under `local_dir` to put results in.")
+    '--experiment-name', default='default', type=str,
+    help='Name of the subdirectory under `local_dir` to put results in.')
 parser.add_argument(
-    "--env", default=None, type=str, help="The gym environment to use.")
+    '--env', default=None, type=str, help='The gym environment to use.')
 parser.add_argument(
-    "--queue-trials", action='store_true',
+    '--queue-trials', action='store_true',
     help=(
-        "Whether to queue trials when the cluster does not currently have "
-        "enough resources to launch one. This should be set to True when "
-        "running on an autoscaling cluster to enable automatic scale-up."))
+        'Whether to queue trials when the cluster does not currently have '
+        'enough resources to launch one. This should be set to True when '
+        'running on an autoscaling cluster to enable automatic scale-up.'))
 parser.add_argument(
-    "-f", "--config-file", default=None, type=str,
-    help="If specified, use config options from this file. Note that this "
-    "overrides any trial-specific options set via flags above.")
+    '-f', '--config-file', default=None, type=str,
+    help='If specified, use config options from this file. Note that this '
+    'overrides any trial-specific options set via flags above.')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     args = parser.parse_args(sys.argv[1:])
     if args.config_file:
         with open(args.config_file) as f:
@@ -65,25 +65,25 @@ if __name__ == "__main__":
         # Note: keep this in sync with tune/config_parser.py
         experiments = {
             args.experiment_name: {  # i.e. log to ~/ray_results/default
-                "run": args.run,
-                "checkpoint_freq": args.checkpoint_freq,
-                "local_dir": args.local_dir,
-                "trial_resources": (
+                'run': args.run,
+                'checkpoint_freq': args.checkpoint_freq,
+                'local_dir': args.local_dir,
+                'trial_resources': (
                     args.trial_resources and
                     resources_to_json(args.trial_resources)),
-                "stop": args.stop,
-                "config": dict(args.config, env=args.env),
-                "restore": args.restore,
-                "repeat": args.repeat,
-                "upload_dir": args.upload_dir,
+                'stop': args.stop,
+                'config': dict(args.config, env=args.env),
+                'restore': args.restore,
+                'repeat': args.repeat,
+                'upload_dir': args.upload_dir,
             }
         }
 
     for exp in experiments.values():
-        if not exp.get("run"):
-            parser.error("the following arguments are required: --run")
-        if not exp.get("env") and not exp.get("config", {}).get("env"):
-            parser.error("the following arguments are required: --env")
+        if not exp.get('run'):
+            parser.error('the following arguments are required: --run')
+        if not exp.get('env') and not exp.get('config', {}).get('env'):
+            parser.error('the following arguments are required: --env')
 
     ray.init(
         redis_address=args.redis_address,

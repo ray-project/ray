@@ -65,9 +65,9 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
                 batch = self.local_evaluator.sample()
             for row in batch.rows():
                 self.replay_buffer.add(
-                    pack_if_needed(row["obs"]), row["actions"], row["rewards"],
-                    pack_if_needed(row["new_obs"]),
-                    row["dones"], row["weights"])
+                    pack_if_needed(row['obs']), row['actions'], row['rewards'],
+                    pack_if_needed(row['new_obs']),
+                    row['dones'], row['weights'])
 
         if len(self.replay_buffer) >= self.replay_starts:
             self._optimize()
@@ -88,28 +88,28 @@ class LocalSyncReplayOptimizer(PolicyOptimizer):
                 weights = np.ones_like(rewards)
                 batch_indexes = - np.ones_like(rewards)
             samples = SampleBatch({
-                "obs": obses_t, "actions": actions, "rewards": rewards,
-                "new_obs": obses_tp1, "dones": dones, "weights": weights,
-                "batch_indexes": batch_indexes})
+                'obs': obses_t, 'actions': actions, 'rewards': rewards,
+                'new_obs': obses_tp1, 'dones': dones, 'weights': weights,
+                'batch_indexes': batch_indexes})
 
         with self.grad_timer:
             info = self.local_evaluator.compute_apply(samples)
             if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
-                td_error = info["td_error"]
+                td_error = info['td_error']
                 new_priorities = (
                     np.abs(td_error) + self.prioritized_replay_eps)
                 self.replay_buffer.update_priorities(
-                    samples["batch_indexes"], new_priorities)
+                    samples['batch_indexes'], new_priorities)
             self.grad_timer.push_units_processed(samples.count)
 
         self.num_steps_trained += samples.count
 
     def stats(self):
         return dict(PolicyOptimizer.stats(self), **{
-            "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
-            "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
-            "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
-            "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
-            "opt_samples": round(self.grad_timer.mean_units_processed, 3),
+            'sample_time_ms': round(1000 * self.sample_timer.mean, 3),
+            'replay_time_ms': round(1000 * self.replay_timer.mean, 3),
+            'grad_time_ms': round(1000 * self.grad_timer.mean, 3),
+            'update_time_ms': round(1000 * self.update_weights_timer.mean, 3),
+            'opt_peak_throughput': round(self.grad_timer.mean_throughput, 3),
+            'opt_samples': round(self.grad_timer.mean_units_processed, 3),
         })

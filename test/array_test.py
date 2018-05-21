@@ -82,10 +82,10 @@ class DistributedArrayTest(unittest.TestCase):
         ray.worker._init(
             start_ray_local=True, num_local_schedulers=2, num_cpus=[10, 10])
 
-        x = da.zeros.remote([9, 25, 51], "float")
+        x = da.zeros.remote([9, 25, 51], 'float')
         assert_equal(ray.get(da.assemble.remote(x)), np.zeros([9, 25, 51]))
 
-        x = da.ones.remote([11, 25, 49], dtype_name="float")
+        x = da.ones.remote([11, 25, 49], dtype_name='float')
         assert_equal(ray.get(da.assemble.remote(x)), np.ones([11, 25, 49]))
 
         x = da.random.normal.remote([11, 25, 49])
@@ -93,7 +93,7 @@ class DistributedArrayTest(unittest.TestCase):
         assert_equal(
             ray.get(da.assemble.remote(x)), ray.get(da.assemble.remote(y)))
 
-        x = da.eye.remote(25, dtype_name="float")
+        x = da.eye.remote(25, dtype_name='float')
         assert_equal(ray.get(da.assemble.remote(x)), np.eye(25))
 
         x = da.random.normal.remote([25, 49])
@@ -165,7 +165,7 @@ class DistributedArrayTest(unittest.TestCase):
 
         # test da.linalg.modified_lu
         def test_modified_lu(d1, d2):
-            print("testing dist_modified_lu with d1 = " + str(d1) + ", d2 = " +
+            print('testing dist_modified_lu with d1 = ' + str(d1) + ', d2 = ' +
                   str(d2))
             assert d1 >= d2
             m = ra.random.normal.remote([d1, d2])
@@ -192,7 +192,7 @@ class DistributedArrayTest(unittest.TestCase):
 
         # test dist_tsqr_hr
         def test_dist_tsqr_hr(d1, d2):
-            print("testing dist_tsqr_hr with d1 = " + str(d1) + ", d2 = " +
+            print('testing dist_tsqr_hr with d1 = ' + str(d1) + ', d2 = ' +
                   str(d2))
             a = da.random.normal.remote([d1, d2])
             y, t, y_top, r = da.linalg.tsqr_hr.remote(a)
@@ -215,7 +215,7 @@ class DistributedArrayTest(unittest.TestCase):
             test_dist_tsqr_hr(d1, d2)
 
         def test_dist_qr(d1, d2):
-            print("testing qr with d1 = {}, and d2 = {}.".format(d1, d2))
+            print('testing qr with d1 = {}, and d2 = {}.'.format(d1, d2))
             a = da.random.normal.remote([d1, d2])
             K = min(d1, d2)
             q, r = da.linalg.qr.remote(a)
@@ -239,5 +239,5 @@ class DistributedArrayTest(unittest.TestCase):
             test_dist_qr(d1, d2)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main(verbosity=2)

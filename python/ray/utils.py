@@ -11,7 +11,7 @@ import uuid
 
 import ray.local_scheduler
 
-ERROR_KEY_PREFIX = b"Error:"
+ERROR_KEY_PREFIX = b'Error:'
 DRIVER_ID_LENGTH = 20
 
 
@@ -36,13 +36,13 @@ def format_error_message(exception_message, task_exception=False):
     Returns:
         A string of the formatted exception message.
     """
-    lines = exception_message.split("\n")
+    lines = exception_message.split('\n')
     if task_exception:
         # For errors that occur inside of tasks, remove lines 1 and 2 which are
         # always the same, they just contain information about the worker code.
         lines = lines[0:1] + lines[3:]
         pass
-    return "\n".join(lines)
+    return '\n'.join(lines)
 
 
 def push_error_to_driver(redis_client,
@@ -63,15 +63,15 @@ def push_error_to_driver(redis_client,
             will be serialized with json and stored in Redis.
     """
     if driver_id is None:
-        driver_id = DRIVER_ID_LENGTH * b"\x00"
-    error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
+        driver_id = DRIVER_ID_LENGTH * b'\x00'
+    error_key = ERROR_KEY_PREFIX + driver_id + b':' + _random_string()
     data = {} if data is None else data
     redis_client.hmset(error_key, {
-        "type": error_type,
-        "message": message,
-        "data": data
+        'type': error_type,
+        'message': message,
+        'data': data
     })
-    redis_client.rpush("ErrorKeys", error_key)
+    redis_client.rpush('ErrorKeys', error_key)
 
 
 def is_cython(obj):
@@ -82,11 +82,11 @@ def is_cython(obj):
     # TODO(suo): There doesn't appear to be a Cython function 'type' we can
     # check against via isinstance. Please correct me if I'm wrong.
     def check_cython(x):
-        return type(x).__name__ == "cython_function_or_method"
+        return type(x).__name__ == 'cython_function_or_method'
 
     # Check if function or method, respectively
     return check_cython(obj) or \
-        (hasattr(obj, "__func__") and check_cython(obj.__func__))
+        (hasattr(obj, '__func__') and check_cython(obj.__func__))
 
 
 def random_string():
@@ -118,7 +118,7 @@ def random_string():
 def decode(byte_str):
     """Make this unicode in Python 3, otherwise leave it as bytes."""
     if sys.version_info >= (3, 0):
-        return byte_str.decode("ascii")
+        return byte_str.decode('ascii')
     else:
         return byte_str
 
@@ -145,15 +145,15 @@ def get_cuda_visible_devices():
         if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
             the IDs of the GPUs. If it is not set, this returns None.
     """
-    gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    gpu_ids_str = os.environ.get('CUDA_VISIBLE_DEVICES', None)
 
     if gpu_ids_str is None:
         return None
 
-    if gpu_ids_str == "":
+    if gpu_ids_str == '':
         return []
 
-    return [int(i) for i in gpu_ids_str.split(",")]
+    return [int(i) for i in gpu_ids_str.split(',')]
 
 
 def set_cuda_visible_devices(gpu_ids):
@@ -162,7 +162,7 @@ def set_cuda_visible_devices(gpu_ids):
     Args:
         gpu_ids: This is a list of integers representing GPU IDs.
     """
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
+    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in gpu_ids])
 
 
 def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
@@ -194,18 +194,18 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
     else:
         resources = {}
 
-    if "CPU" in resources or "GPU" in resources:
-        raise ValueError("The resources dictionary must not "
+    if 'CPU' in resources or 'GPU' in resources:
+        raise ValueError('The resources dictionary must not '
                          "contain the key 'CPU' or 'GPU'")
 
     assert default_num_cpus is not None
-    resources["CPU"] = (default_num_cpus
+    resources['CPU'] = (default_num_cpus
                         if runtime_num_cpus is None else runtime_num_cpus)
 
     if runtime_num_gpus is not None:
-        resources["GPU"] = runtime_num_gpus
+        resources['GPU'] = runtime_num_gpus
     elif default_num_gpus is not None:
-        resources["GPU"] = default_num_gpus
+        resources['GPU'] = default_num_gpus
 
     return resources
 

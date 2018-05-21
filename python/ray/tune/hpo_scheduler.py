@@ -44,8 +44,8 @@ class HyperOptScheduler(FIFOScheduler):
         >>> run_experiments(config, scheduler=HyperOptScheduler())
     """
 
-    def __init__(self, max_concurrent=None, reward_attr="episode_reward_mean"):
-        assert hpo is not None, "HyperOpt must be installed!"
+    def __init__(self, max_concurrent=None, reward_attr='episode_reward_mean'):
+        assert hpo is not None, 'HyperOpt must be installed!'
         assert type(max_concurrent) in [type(None), int]
         if type(max_concurrent) is int:
             assert max_concurrent > 0
@@ -58,29 +58,29 @@ class HyperOptScheduler(FIFOScheduler):
 
         Will error if one tries to track multiple experiments.
         """
-        assert self._experiment is None, "HyperOpt only tracks one experiment!"
+        assert self._experiment is None, 'HyperOpt only tracks one experiment!'
         self._experiment = experiment
 
         self._output_path = experiment.name
         spec = copy.deepcopy(experiment.spec)
 
         # Set Scheduler field, as Tune Parser will default to FIFO
-        assert spec.get("scheduler") in [None, "HyperOpt"], "Incorrectly " \
-            "specified scheduler!"
-        spec["scheduler"] = "HyperOpt"
+        assert spec.get('scheduler') in [None, 'HyperOpt'], 'Incorrectly ' \
+            'specified scheduler!'
+        spec['scheduler'] = 'HyperOpt'
 
-        if "env" in spec:
-            spec["config"] = spec.get("config", {})
-            spec["config"]["env"] = spec["env"]
-            del spec["env"]
+        if 'env' in spec:
+            spec['config'] = spec.get('config', {})
+            spec['config']['env'] = spec['env']
+            del spec['env']
 
-        space = spec["config"]["space"]
-        del spec["config"]["space"]
+        space = spec['config']['space']
+        del spec['config']['space']
 
         self.parser = make_parser()
         self.args = self.parser.parse_args(to_argv(spec))
-        self.args.scheduler = "HyperOpt"
-        self.default_config = copy.deepcopy(spec["config"])
+        self.args.scheduler = 'HyperOpt'
+        self.default_config = copy.deepcopy(spec['config'])
 
         self.algo = hpo.tpe.suggest
         self.domain = hpo.Domain(lambda spc: spc, space)
@@ -107,16 +107,16 @@ class HyperOptScheduler(FIFOScheduler):
             self._hpopt_trials.insert_trial_docs(new_trials)
             self._hpopt_trials.refresh()
             new_trial = new_trials[0]
-            new_trial_id = new_trial["tid"]
-            suggested_config = hpo.base.spec_from_misc(new_trial["misc"])
+            new_trial_id = new_trial['tid']
+            suggested_config = hpo.base.spec_from_misc(new_trial['misc'])
             new_cfg.update(suggested_config)
 
-            kv_str = "_".join([
-                "{}={}".format(k,
+            kv_str = '_'.join([
+                '{}={}'.format(k,
                                str(v)[:5])
                 for k, v in sorted(suggested_config.items())
             ])
-            experiment_tag = "{}_{}".format(new_trial_id, kv_str)
+            experiment_tag = '{}_{}'.format(new_trial_id, kv_str)
 
             # Keep this consistent with tune.variant_generator
             trial = Trial(
@@ -146,7 +146,7 @@ class HyperOptScheduler(FIFOScheduler):
         ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-        ho_trial['misc']['error'] = (str(TuneError), "Tune Error")
+        ho_trial['misc']['error'] = (str(TuneError), 'Tune Error')
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
 
@@ -154,7 +154,7 @@ class HyperOptScheduler(FIFOScheduler):
         ho_trial = self._get_hyperopt_trial(self._tune_to_hp[trial])
         ho_trial['refresh_time'] = hpo.utils.coarse_utcnow()
         ho_trial['state'] = hpo.base.JOB_STATE_ERROR
-        ho_trial['misc']['error'] = (str(TuneError), "Tune Removed")
+        ho_trial['misc']['error'] = (str(TuneError), 'Tune Removed')
         self._hpopt_trials.refresh()
         del self._tune_to_hp[trial]
 
@@ -168,10 +168,10 @@ class HyperOptScheduler(FIFOScheduler):
         del self._tune_to_hp[trial]
 
     def _to_hyperopt_result(self, result):
-        return {"loss": -getattr(result, self._reward_attr), "status": "ok"}
+        return {'loss': -getattr(result, self._reward_attr), 'status': 'ok'}
 
     def _get_hyperopt_trial(self, tid):
-        return [t for t in self._hpopt_trials.trials if t["tid"] == tid][0]
+        return [t for t in self._hpopt_trials.trials if t['tid'] == tid][0]
 
     def choose_trial_to_run(self, trial_runner):
         self._add_new_trials_if_needed(trial_runner)
