@@ -29,9 +29,15 @@ class Model(nn.Module):
 class SlimConv2d(nn.Module):
     """Simple mock of tf.slim Conv2d"""
 
-    def __init__(self, in_channels, out_channels, kernel, stride, padding,
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel,
+                 stride,
+                 padding,
                  initializer=nn.init.xavier_uniform_,
-                 activation_fn=nn.ReLU, bias_init=0):
+                 activation_fn=nn.ReLU,
+                 bias_init=0):
         super(SlimConv2d, self).__init__()
         layers = []
         if padding:
@@ -53,8 +59,12 @@ class SlimConv2d(nn.Module):
 class SlimFC(nn.Module):
     """Simple PyTorch of `linear` function"""
 
-    def __init__(self, in_size, out_size, initializer=None,
-                 activation_fn=None, bias_init=0):
+    def __init__(self,
+                 in_size,
+                 out_size,
+                 initializer=None,
+                 activation_fn=None,
+                 bias_init=0):
         super(SlimFC, self).__init__()
         layers = []
         linear = nn.Linear(in_size, out_size)

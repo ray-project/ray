@@ -14,8 +14,13 @@ class TorchPolicy(Policy):
     The model is a separate object than the policy. This could be changed
     in the future."""
 
-    def __init__(self, registry, ob_space, action_space, config,
-                 name="local", summarize=True):
+    def __init__(self,
+                 registry,
+                 ob_space,
+                 action_space,
+                 config,
+                 name="local",
+                 summarize=True):
         self.registry = registry
         self.local_steps = 0
         self.config = config
