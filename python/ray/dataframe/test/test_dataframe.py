@@ -1939,13 +1939,13 @@ def test_fillna_datetime_columns(num_partitions=2):
 @pytest.fixture
 def test_filter(ray_df, pandas_df, by):
     assert ray_df_equals_pandas(ray_df.filter(items=by['items']),
-                         pandas_df.filter(items=by['items']))
+                                pandas_df.filter(items=by['items']))
 
     assert ray_df_equals_pandas(ray_df.filter(regex=by['regex']),
-                         pandas_df.filter(regex=by['regex']))
+                                pandas_df.filter(regex=by['regex']))
 
     assert ray_df_equals_pandas(ray_df.filter(like=by['like']),
-                         pandas_df.filter(like=by['like']))
+                                pandas_df.filter(like=by['like']))
 
 
 def test_first():
@@ -3030,9 +3030,9 @@ def test_to_xarray():
 @pytest.fixture
 def test_transform(ray_df, pandas_df):
     assert ray_df_equals_pandas(ray_df.transform(lambda df: df.isna()),
-                         pandas_df.transform(lambda df: df.isna()))
+                                pandas_df.transform(lambda df: df.isna()))
     assert ray_df_equals_pandas(ray_df.transform('isna'),
-                         pandas_df.transform('isna'))
+                                pandas_df.transform('isna'))
 
 
 def test_truediv():
