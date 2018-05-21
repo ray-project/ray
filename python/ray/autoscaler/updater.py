@@ -184,27 +184,59 @@ class NodeUpdater(object):
             self.ssh_cmd(cmd, verbose=True)
 
     def ssh_cmd(self, cmd, connect_timeout=120, redirect=None, verbose=False):
+        """Run ssh command on the host specified by self.ssh_ip.
+
+        First run the shell command using 'set -i', i.e. try to force the bash
+        into interactive mode. The 'set -i' command has been removed in
+        bash >= 4.4, and thus we will fallback to calling ssh again without
+        'set -i', if the first call's error code matches possible 'set -i'
+        error.
+
+        For the context, see:
+        - https://unix.stackexchange.com/q/364617
+        - https://github.com/ray-project/ray/issues/1444
+        - https://github.com/ray-project/ray/pull/2061#discussion_r188838635
+
+        TODO(hartikainen): Is forcing interactive shell really necessary? There
+        must exist a better solution for this.
+        """
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
                     pretty_cmd(cmd), self.ssh_ip),
                 file=self.stdout)
-        # TODO(hartikainen): ssh command used to begin with 'set -i', but
-        # was removed since bash >= 4.4 evaluates it incorrectly. Figure out a
-        # better way to handle this.
-        # For more, see:
-        # - https://unix.stackexchange.com/q/364617
-        # - https://github.com/ray-project/ray/pull/2061#discussion_r188838635
-        source_bashrc = "source ~/.bashrc && "
+
+
+        base_command = [
+            "ssh",
+            "-o", "ConnectTimeout={}s".format(connect_timeout),
+            "-o", "StrictHostKeyChecking=no",
+            "-i", self.ssh_private_key,
+            "{}@{}".format(self.ssh_user, self.ssh_ip),
+        ]
+
+        try:
+
+            interactive_setup = "set -i && source ~/.bashrc && "
+            interactive_command = base_command + [
+                "bash --login -c {}".format(quote(interactive_setup + cmd))
+            ]
+            self.process_runner.check_call(
+                interactive_command,
+                stdout=redirect or self.stdout,
+                stderr=redirect or self.stderr)
+            return
+        except subprocess.CalledProcessError as e:
+            if e.returncode != 2:
+                raise
+
+        non_interactive_setup = "source ~/.bashrc && "
+        non_interactive_command = base_command + [
+            "bash --login -c {}".format(quote(non_interactive_setup + cmd))
+        ]
+
         self.process_runner.check_call(
-            [
-                "ssh",
-                "-o", "ConnectTimeout={}s".format(connect_timeout),
-                "-o", "StrictHostKeyChecking=no",
-                "-i", self.ssh_private_key,
-                "{}@{}".format(self.ssh_user, self.ssh_ip),
-                "bash --login -c {}".format(quote(source_bashrc + cmd))
-            ],
+            non_interactive_command,
             stdout=redirect or self.stdout,
             stderr=redirect or self.stderr)
 
