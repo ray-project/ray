@@ -25,8 +25,6 @@ if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
   popd
 
   pushd "$TP_DIR/pkg/credis"
-    # git checkout 6be4a739ab5e795c98402b27c2e254f86e3524ea
-
     # 4/10/2018 credis/integrate branch.  With updated redis hacks.
     git checkout cbe8ade35d2278b1d94684fa5d00010cb015ef82
 

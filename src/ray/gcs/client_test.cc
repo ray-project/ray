@@ -144,18 +144,19 @@ void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> c
   test->Start();
 }
 
-#define TEST_TABLE_LOOKUP(FIXTURE)     \
-  TEST_F(FIXTURE, TestTableLookup) {   \
-    test = this;                       \
-    TestTableLookup(job_id_, client_); \
+// Convenient macro to test across {ae, asio} x {regular, chain} x {the tests}.
+// Undefined at the end.
+#define TEST_MACRO(FIXTURE, TEST) \
+  TEST_F(FIXTURE, TEST) {         \
+    test = this;                  \
+    TEST(job_id_, client_);       \
   }
 
-TEST_TABLE_LOOKUP(TestGcsWithAe);
-TEST_TABLE_LOOKUP(TestGcsWithAsio);
-
+TEST_MACRO(TestGcsWithAe, TestTableLookup);
+TEST_MACRO(TestGcsWithAsio, TestTableLookup);
 #if RAY_USE_NEW_GCS
-TEST_TABLE_LOOKUP(TestGcsWithChainAe);
-TEST_TABLE_LOOKUP(TestGcsWithChainAsio);
+TEST_MACRO(TestGcsWithChainAe, TestTableLookup);
+TEST_MACRO(TestGcsWithChainAsio, TestTableLookup);
 #endif
 
 void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -228,18 +229,11 @@ void TestTableLookupFailure(const JobID &job_id,
   test->Start();
 }
 
-#define TEST_TABLE_LOOKUP_FAILURE(FIXTURE)    \
-  TEST_F(FIXTURE, TestTableLookupFailure) {   \
-    test = this;                              \
-    TestTableLookupFailure(job_id_, client_); \
-  }
-
-TEST_TABLE_LOOKUP_FAILURE(TestGcsWithAe);
-TEST_TABLE_LOOKUP_FAILURE(TestGcsWithAsio);
-
+TEST_MACRO(TestGcsWithAe, TestTableLookupFailure);
+TEST_MACRO(TestGcsWithAsio, TestTableLookupFailure);
 #if RAY_USE_NEW_GCS
-TEST_TABLE_LOOKUP_FAILURE(TestGcsWithChainAe);
-TEST_TABLE_LOOKUP_FAILURE(TestGcsWithChainAsio);
+TEST_MACRO(TestGcsWithChainAe, TestTableLookupFailure);
+TEST_MACRO(TestGcsWithChainAsio, TestTableLookupFailure);
 #endif
 
 void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> client) {
@@ -371,18 +365,11 @@ void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
   test->Start();
 }
 
-#define TEST_TASK_TABLE(FIXTURE)     \
-  TEST_F(FIXTURE, TestTaskTable) {   \
-    test = this;                     \
-    TestTaskTable(job_id_, client_); \
-  }
-
-TEST_TASK_TABLE(TestGcsWithAe);
-TEST_TASK_TABLE(TestGcsWithAsio);
-
+TEST_MACRO(TestGcsWithAe, TestTaskTable);
+TEST_MACRO(TestGcsWithAsio, TestTaskTable);
 #if RAY_USE_NEW_GCS
-TEST_TASK_TABLE(TestGcsWithChainAe);
-TEST_TASK_TABLE(TestGcsWithChainAsio);
+TEST_MACRO(TestGcsWithChainAe, TestTaskTable);
+TEST_MACRO(TestGcsWithChainAsio, TestTaskTable);
 #endif
 
 void TestTableSubscribeAll(const JobID &job_id,
@@ -425,18 +412,11 @@ void TestTableSubscribeAll(const JobID &job_id,
   ASSERT_EQ(test->NumCallbacks(), task_specs.size());
 }
 
-#define TEST_TABLE_SUBSCRIBE_ALL(FIXTURE)    \
-  TEST_F(FIXTURE, TestTableSubscribeAll) {   \
-    test = this;                             \
-    TestTableSubscribeAll(job_id_, client_); \
-  }
-
-TEST_TABLE_SUBSCRIBE_ALL(TestGcsWithAe);
-TEST_TABLE_SUBSCRIBE_ALL(TestGcsWithAsio);
-
+TEST_MACRO(TestGcsWithAe, TestTableSubscribeAll);
+TEST_MACRO(TestGcsWithAsio, TestTableSubscribeAll);
 #if RAY_USE_NEW_GCS
-TEST_TABLE_SUBSCRIBE_ALL(TestGcsWithChainAe);
-TEST_TABLE_SUBSCRIBE_ALL(TestGcsWithChainAsio);
+TEST_MACRO(TestGcsWithChainAe, TestTableSubscribeAll);
+TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeAll);
 #endif
 
 void TestLogSubscribeAll(const JobID &job_id,
@@ -562,18 +542,11 @@ void TestTableSubscribeId(const JobID &job_id,
   ASSERT_EQ(test->NumCallbacks(), task_specs2.size());
 }
 
-#define TEST_TABLE_SUBSCRIBE_ID(FIXTURE)    \
-  TEST_F(FIXTURE, TestTableSubscribeId) {   \
-    test = this;                            \
-    TestTableSubscribeId(job_id_, client_); \
-  }
-
-TEST_TABLE_SUBSCRIBE_ID(TestGcsWithAe);
-TEST_TABLE_SUBSCRIBE_ID(TestGcsWithAsio);
-
+TEST_MACRO(TestGcsWithAe, TestTableSubscribeId);
+TEST_MACRO(TestGcsWithAsio, TestTableSubscribeId);
 #if RAY_USE_NEW_GCS
-TEST_TABLE_SUBSCRIBE_ID(TestGcsWithChainAe);
-TEST_TABLE_SUBSCRIBE_ID(TestGcsWithChainAsio);
+TEST_MACRO(TestGcsWithChainAe, TestTableSubscribeId);
+TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeId);
 #endif
 
 void TestLogSubscribeId(const JobID &job_id,
@@ -719,18 +692,11 @@ void TestTableSubscribeCancel(const JobID &job_id,
   ASSERT_EQ(test->NumCallbacks(), 2);
 }
 
-#define TEST_TABLE_SUBSCRIBE_CANCEL(FIXTURE)    \
-  TEST_F(FIXTURE, TestTableSubscribeCancel) {   \
-    test = this;                                \
-    TestTableSubscribeCancel(job_id_, client_); \
-  }
-
-TEST_TABLE_SUBSCRIBE_CANCEL(TestGcsWithAe);
-TEST_TABLE_SUBSCRIBE_CANCEL(TestGcsWithAsio);
-
+TEST_MACRO(TestGcsWithAe, TestTableSubscribeCancel);
+TEST_MACRO(TestGcsWithAsio, TestTableSubscribeCancel);
 #if RAY_USE_NEW_GCS
-TEST_TABLE_SUBSCRIBE_CANCEL(TestGcsWithChainAe);
-TEST_TABLE_SUBSCRIBE_CANCEL(TestGcsWithChainAsio);
+TEST_MACRO(TestGcsWithChainAe, TestTableSubscribeCancel);
+TEST_MACRO(TestGcsWithChainAsio, TestTableSubscribeCancel);
 #endif
 
 void TestLogSubscribeCancel(const JobID &job_id,
@@ -933,6 +899,8 @@ TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
   test = this;
   TestClientTableMarkDisconnected(job_id_, client_);
 }
+
+#undef TEST_MACRO
 
 }  // namespace gcs
 }  // namespace ray

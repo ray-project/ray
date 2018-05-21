@@ -636,8 +636,8 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx,
 ///
 /// \param table_prefix The prefix string for keys in this table.
 /// \param pubsub_channel The pubsub channel name that notifications for
-///        this key should be published to. When publishing to a specific
-///        client, the channel name should be <pubsub_channel>:<client_id>.
+///  this key should be published to. When publishing to a specific
+///  client, the channel name should be <pubsub_channel>:<client_id>.
 /// \param id The ID of the key to set.
 /// \param data The data to insert at the key.
 /// \return The current value at the key, or OK if there is no value.

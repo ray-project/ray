@@ -36,10 +36,6 @@ fi
 
 STORE_EXEC="$CORE_DIR/src/plasma/plasma_store"
 
-# echo "$STORE_EXEC"
-# echo "$REDIS_DIR/redis-server --loglevel warning --loadmodule $REDIS_MODULE --port 6379"
-# echo "$REDIS_DIR/redis-cli -p 6379 shutdown"
-
 # Allow cleanup commands to fail.
 $REDIS_DIR/redis-cli -p 6379 shutdown || true
 sleep 1s
