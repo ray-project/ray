@@ -345,7 +345,7 @@ def _create_project(project_id):
         }
     ).execute()
 
-    result = wait_for_operation(operation)
+    result = wait_for_crm_operation(operation)
 
     return result
 
