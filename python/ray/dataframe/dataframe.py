@@ -1069,7 +1069,8 @@ class DataFrame(object):
         elif axis == 0:
             new_index = ray.get(index[0])
             # This does not handle the Multi Index case
-            new_columns = pd.Index([i for j in ray.get(columns) for i in j])
+            new_columns = ray.get(columns)
+            new_columns = new_columns[0].append(new_columns[1:])
 
             return DataFrame(col_partitions=new_parts,
                              columns=new_columns,
@@ -1077,7 +1078,8 @@ class DataFrame(object):
         else:
             new_columns = ray.get(columns[0])
             # This does not handle the Multi Index case
-            new_index = pd.Index([i for j in ray.get(index) for i in j])
+            new_index = ray.get(index)
+            new_index = new_index[0].append(new_index[1:])
 
             return DataFrame(row_partitions=new_parts,
                              columns=new_columns,
