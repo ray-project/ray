@@ -1,8 +1,7 @@
-# Write the benchmarking functions here.
-# See "Writing benchmarks" in the asv docs for more information.
+from __future__ import print_function
 
 
-class TimeSuite:
+class TimeSuite(object):
     """
     An example benchmark that times the performance of various kinds
     of iterating over dictionaries in Python.
@@ -23,6 +22,6 @@ class TimeSuite:
 
 
 
-class MemSuite:
+class MemSuite(object):
     def mem_list(self):
         return [0] * 256
