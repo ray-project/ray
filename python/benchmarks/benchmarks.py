@@ -21,7 +21,6 @@ class TimeSuite(object):
             x = d[key]
 
 
-
 class MemSuite(object):
     def mem_list(self):
         return [0] * 256
