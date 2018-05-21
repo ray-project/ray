@@ -44,7 +44,8 @@ from .utils import (
     _match_partitioning,
     _concat_index,
     _correct_column_dtypes,
-    fix_blocks_dimensions)
+    fix_blocks_dimensions,
+    _compile_remote_dtypes)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 from .iterator import PartitionIterator
@@ -169,7 +170,7 @@ class DataFrame(object):
                                                 index=columns, axis=1)
 
         if self._dtypes_cache is None:
-            self._correct_dtypes()
+            self._get_remote_dtypes()
 
     def _get_frame_data(self):
         data = {}
@@ -455,23 +456,11 @@ class DataFrame(object):
         result.index = self.columns
         return result
 
-    def _correct_dtypes(self):
-        """Corrects dtypes by concatenating column blocks and then splitting them
-        apart back into the original blocks.
-
-        Also caches ObjectIDs for the dtypes of every column.
-
-        Args:
-            block_partitions: arglist of column blocks.
+    def _get_remote_dtypes(self):
+        """Finds and caches ObjectIDs for the dtypes of each column partition.
         """
-        if self._block_partitions.shape[0] > 1:
-            self._block_partitions = np.array(
-                    [_correct_column_dtypes._submit(
-                     args=column, num_return_vals=len(column))
-                     for column in self._block_partitions.T]).T
-
-        self._dtypes_cache = [_deploy_func.remote(lambda df: df.dtypes, pd_df)
-                              for pd_df in self._block_partitions[0]]
+        self._dtypes_cache = [_compile_remote_dtypes.remote(*column)
+                              for column in self._block_partitions.T]
 
     @property
     def dtypes(self):
@@ -584,7 +573,7 @@ class DataFrame(object):
                 self._block_partitions[:, 0], index=index, axis=0)
 
         # Update dtypes
-        self._correct_dtypes()
+        self._get_remote_dtypes()
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.

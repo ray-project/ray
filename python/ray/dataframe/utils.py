@@ -473,3 +473,9 @@ def fix_blocks_dimensions(blocks, axis):
     if blocks.ndim < 2:
         return np.expand_dims(blocks, axis=axis ^ 1)
     return blocks
+
+
+@ray.remote
+def _compile_remote_dtypes(*column_of_blocks):
+    small_dfs = [df.loc[0:0] for df in column_of_blocks]
+    return pd.concat(small_dfs, copy=False).dtypes
