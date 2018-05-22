@@ -82,7 +82,7 @@ def flush_task_and_object_metadata_unsafe():
 
 def _task_table_shard(shard_index):
     redis_client = ray.global_state.redis_clients[shard_index]
-    task_table_keys = redis_client.keys(TASK_PREFIX + b"*")
+    task_table_keys = redis_client.scan_iter(match=TASK_PREFIX + b"*")
     results = {}
     for key in task_table_keys:
         task_id_binary = key[len(TASK_PREFIX):]
@@ -94,7 +94,8 @@ def _task_table_shard(shard_index):
 
 def _object_table_shard(shard_index):
     redis_client = ray.global_state.redis_clients[shard_index]
-    object_table_keys = redis_client.keys(OBJECT_LOCATION_PREFIX + b"*")
+    object_table_keys = redis_client.scan_iter(match=OBJECT_LOCATION_PREFIX +
+                                               b"*")
     results = {}
     for key in object_table_keys:
         object_id_binary = key[len(OBJECT_LOCATION_PREFIX):]
