@@ -18,7 +18,7 @@ class TimeSuite(object):
     def time_range(self):
         d = self.d
         for key in range(500):
-            x = d[key]
+            d[key]
 
 
 class MemSuite(object):
