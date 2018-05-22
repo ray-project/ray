@@ -213,8 +213,7 @@ class ReconstructionTests(unittest.TestCase):
         # Determine the IDs of all local schedulers that had a task scheduled
         # or submitted.
         state = ray.experimental.state.GlobalState()
-        state._initialize_global_state(self.redis_ip_address, self.redis_port,
-                                       ray.worker.global_worker.use_raylet)
+        state._initialize_global_state(self.redis_ip_address, self.redis_port)
         if os.environ.get('RAY_USE_NEW_GCS', False):
             tasks = state.task_table()
             local_scheduler_ids = {

@@ -2054,8 +2054,7 @@ def connect(info,
                 [log_stdout_file, log_stderr_file])
 
     # Create an object for interfacing with the global state.
-    global_state._initialize_global_state(redis_ip_address, int(redis_port),
-                                          worker.use_raylet)
+    global_state._initialize_global_state(redis_ip_address, int(redis_port))
 
     # Register the worker with Redis.
     if mode in [SCRIPT_MODE, SILENT_MODE]:

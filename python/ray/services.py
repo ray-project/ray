@@ -465,6 +465,7 @@ def start_redis(node_ip_address,
                 redis_shard_ports=None,
                 num_redis_shards=1,
                 redis_max_clients=None,
+                use_raylet=False,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True):
@@ -482,6 +483,8 @@ def start_redis(node_ip_address,
             shard.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
+        use_raylet: True if the new raylet code path should be used. This is
+            not supported yet.
         redirect_output (bool): True if output should be redirected to a file
             and false otherwise.
         redirect_worker_output (bool): True if worker output should be
@@ -517,9 +520,13 @@ def start_redis(node_ip_address,
     port = assigned_port
     redis_address = address(node_ip_address, port)
 
+    redis_client = redis.StrictRedis(host=node_ip_address, port=port)
+
+    # Store whether we're using the raylet code path or not.
+    redis_client.set("UseRaylet", 1 if use_raylet else 0)
+
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
-    redis_client = redis.StrictRedis(host=node_ip_address, port=port)
     redis_client.set("NumRedisShards", str(num_redis_shards))
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
@@ -1325,6 +1332,7 @@ def start_ray_processes(address_info=None,
             redis_shard_ports=redis_shard_ports,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
+            use_raylet=use_raylet,
             redirect_output=True,
             redirect_worker_output=redirect_worker_output,
             cleanup=cleanup)

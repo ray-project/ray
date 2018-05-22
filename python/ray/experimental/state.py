@@ -21,6 +21,10 @@ from ray.core.generated.TaskExecutionDependencies import \
     TaskExecutionDependencies
 
 from ray.core.generated.ClientTableData import ClientTableData
+from ray.core.generated.GcsTableEntry import GcsTableEntry
+from ray.core.generated.HeartbeatTableData import HeartbeatTableData
+from ray.core.generated.ObjectTableData import ObjectTableData
+from ray.core.generated.TaskTableData import TaskTableData
 
 # These prefixes must be kept up-to-date with the definitions in
 # ray_redis_module.cc.
@@ -92,7 +96,6 @@ class GlobalState(object):
     def _initialize_global_state(self,
                                  redis_ip_address,
                                  redis_port,
-                                 use_raylet,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
 
@@ -104,14 +107,11 @@ class GlobalState(object):
             redis_ip_address: The IP address of the node that the Redis server
                 lives on.
             redis_port: The port that the Redis server is listening on.
-            use_raylet: True if we are using the raylet code path.
-            timeout: The maximum amount of time (in seconds) that we should
-                wait for the keys in Redis to be populated.
         """
         self.redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port)
 
-        self.use_raylet = use_raylet
+        self.use_raylet = int(self.redis_client.get("UseRaylet")) == 1
 
         start_time = time.time()
 
