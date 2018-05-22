@@ -1566,6 +1566,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  char redis_primary_addr[16];
   char *redis_addr = NULL;
   int redis_port = -1;
   if (!redis_primary_addr_port) {
@@ -1577,7 +1578,6 @@ int main(int argc, char *argv[]) {
                      << "the -r switch";
     }
   } else {
-    char redis_primary_addr[16];
     int redis_primary_port;
     /* Parse the primary Redis address into an IP address and a port. */
     if (parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
