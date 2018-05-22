@@ -31,7 +31,6 @@ import re
 
 from .utils import (
     _deploy_func,
-    _deploy_generic_func,
     _map_partitions,
     _partition_pandas_dataframe,
     to_pandas,
@@ -3347,24 +3346,12 @@ class DataFrame(object):
         elif labels is not None:
             columns = labels
 
-        def reindex_helper(old_index, new_index, axis, npartitions, *df):
-            df = pd.concat(df, axis=axis ^ 1)
-            if axis == 1:
-                df.index = old_index
-            else:
-                df.columns = old_index
-
-            df = df.reindex(new_index, copy=False, axis=axis ^ 1,
-                            method=method, fill_value=fill_value,
-                            limit=limit, tolerance=tolerance)
-            return create_blocks_helper(df, npartitions, axis)
-
         new_blocks = self._block_partitions
         if index is not None:
             old_index = self.index
-            new_blocks = np.array([_deploy_generic_func._submit(
-                args=(tuple([reindex_helper, old_index, index, 1,
-                      len(new_blocks)] + block.tolist())),
+            new_blocks = np.array([reindex_helper._submit(
+                args=(old_index, index, 1, len(new_blocks), method,
+                      fill_value, limit, tolerance) + tuple(block.tolist()),
                 num_return_vals=len(new_blocks))
                 for block in new_blocks.T]).T
         else:
@@ -3372,9 +3359,9 @@ class DataFrame(object):
 
         if columns is not None:
             old_columns = self.columns
-            new_blocks = np.array([_deploy_generic_func._submit(
-                args=tuple([reindex_helper, old_columns, columns, 0,
-                           new_blocks.shape[1]] + block.tolist()),
+            new_blocks = np.array([reindex_helper._submit(
+                args=(old_columns, columns, 0, new_blocks.shape[1], method,
+                      fill_value, limit, tolerance) + tuple(block.tolist()),
                 num_return_vals=new_blocks.shape[1])
                 for block in new_blocks])
         else:
@@ -5386,3 +5373,18 @@ def _where_helper(left, cond, other, left_columns, cond_columns,
         other.columns = other_columns
 
     return left.where(cond, other, *args)
+
+
+@ray.remote
+def reindex_helper(old_index, new_index, axis, npartitions, method, fill_value,
+                   limit, tolerance, *df):
+    df = pd.concat(df, axis=axis ^ 1)
+    if axis == 1:
+        df.index = old_index
+    else:
+        df.columns = old_index
+
+    df = df.reindex(new_index, copy=False, axis=axis ^ 1,
+                    method=method, fill_value=fill_value,
+                    limit=limit, tolerance=tolerance)
+    return create_blocks_helper(df, npartitions, axis)

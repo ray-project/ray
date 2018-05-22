@@ -205,20 +205,6 @@ def _deploy_func(func, dataframe, *args):
         return func(dataframe, *args)
 
 
-@ray.remote
-def _deploy_generic_func(func, *args):
-    """Deploys a function for the _map_partitions call.
-
-    Returns:
-        A futures object representing the return value of the function
-        provided.
-    """
-    if len(args) == 0:
-        return func()
-    else:
-        return func(*args)
-
-
 def _map_partitions(func, partitions, *argslists):
     """Apply a function across the specified axis
 
