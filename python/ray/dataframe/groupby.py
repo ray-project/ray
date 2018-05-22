@@ -384,7 +384,7 @@ class DataFrameGroupBy(object):
 
         if self._axis == 0:
             index_head = [v[:n] for k, v in self._keys_and_values]
-            flattened_index = set([i for j in index_head for i in j])
+            flattened_index = set(i for j in index_head for i in j)
             sorted_index = [i for i in self._index if i in flattened_index]
             new_df._block_partitions = np.array([_reindex_helper._submit(
                 args=tuple([new_df.index, sorted_index, 1,
@@ -439,7 +439,7 @@ class DataFrameGroupBy(object):
 
         if self._axis == 0:
             index_tail = [v[-n:] for k, v in self._keys_and_values]
-            flattened_index = set([i for j in index_tail for i in j])
+            flattened_index = set(i for j in index_tail for i in j)
             sorted_index = [i for i in self._index if i in flattened_index]
             new_df._block_partitions = np.array([_reindex_helper._submit(
                 args=tuple([new_df.index, sorted_index, 1,
