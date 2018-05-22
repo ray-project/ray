@@ -65,7 +65,8 @@ class TestGlobalScheduler(unittest.TestCase):
         time.sleep(0.1)
         # Create a client for the global state store.
         self.state = state.GlobalState()
-        self.state._initialize_global_state(self.node_ip_address, redis_port)
+        self.state._initialize_global_state(self.node_ip_address, redis_port,
+                                            False)
 
         # Start one global scheduler.
         self.p1 = global_scheduler.start_global_scheduler(

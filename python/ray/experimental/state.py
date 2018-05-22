@@ -20,6 +20,8 @@ from ray.core.generated.ResultTableReply import ResultTableReply
 from ray.core.generated.TaskExecutionDependencies import \
     TaskExecutionDependencies
 
+from ray.core.generated.ClientTableData import ClientTableData
+
 # These prefixes must be kept up-to-date with the definitions in
 # ray_redis_module.cc.
 DB_CLIENT_PREFIX = "CL:"
@@ -57,7 +59,9 @@ class GlobalState(object):
     # backend to cut down on # of request RPCs.
 
     Attributes:
-        redis_client: The redis client used to query the redis server.
+        redis_client: The Redis client used to query the primary redis server.
+        redis_clients: Redis clients for each of the Redis shards.
+        use_raylet: True if we are using the raylet code path.
     """
 
     def __init__(self):
@@ -65,8 +69,10 @@ class GlobalState(object):
         # The redis server storing metadata, such as function table, client
         # table, log files, event logs, workers/actions info.
         self.redis_client = None
-        # A list of redis shards, storing the object table & task table.
+        # Clients for the redis shards, storing the object table & task table.
         self.redis_clients = None
+        # True if we are using the raylet code path and false otherwise.
+        self.use_raylet = None
 
     def _check_connected(self):
         """Check that the object has been initialized before it is used.
@@ -86,6 +92,7 @@ class GlobalState(object):
     def _initialize_global_state(self,
                                  redis_ip_address,
                                  redis_port,
+                                 use_raylet,
                                  timeout=20):
         """Initialize the GlobalState object by connecting to Redis.
 
@@ -97,11 +104,14 @@ class GlobalState(object):
             redis_ip_address: The IP address of the node that the Redis server
                 lives on.
             redis_port: The port that the Redis server is listening on.
+            use_raylet: True if we are using the raylet code path.
             timeout: The maximum amount of time (in seconds) that we should
                 wait for the keys in Redis to be populated.
         """
         self.redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port)
+
+        self.use_raylet = use_raylet
 
         start_time = time.time()
 
@@ -359,41 +369,71 @@ class GlobalState(object):
             Information about the Ray clients in the cluster.
         """
         self._check_connected()
-        db_client_keys = self.redis_client.keys(DB_CLIENT_PREFIX + "*")
-        node_info = {}
-        for key in db_client_keys:
-            client_info = self.redis_client.hgetall(key)
-            node_ip_address = decode(client_info[b"node_ip_address"])
-            if node_ip_address not in node_info:
-                node_info[node_ip_address] = []
-            client_info_parsed = {}
-            assert b"client_type" in client_info
-            assert b"deleted" in client_info
-            assert b"ray_client_id" in client_info
-            for field, value in client_info.items():
-                if field == b"node_ip_address":
-                    pass
-                elif field == b"client_type":
-                    client_info_parsed["ClientType"] = decode(value)
-                elif field == b"deleted":
-                    client_info_parsed["Deleted"] = bool(int(decode(value)))
-                elif field == b"ray_client_id":
-                    client_info_parsed["DBClientID"] = binary_to_hex(value)
-                elif field == b"manager_address":
-                    client_info_parsed["AuxAddress"] = decode(value)
-                elif field == b"local_scheduler_socket_name":
-                    client_info_parsed["LocalSchedulerSocketName"] = (
-                        decode(value))
-                elif client_info[b"client_type"] == b"local_scheduler":
-                    # The remaining fields are resource types.
-                    client_info_parsed[field.decode("ascii")] = float(
-                        decode(value))
-                else:
-                    client_info_parsed[field.decode("ascii")] = decode(value)
+        if not self.use_raylet:
+            db_client_keys = self.redis_client.keys(DB_CLIENT_PREFIX + "*")
+            node_info = {}
+            for key in db_client_keys:
+                client_info = self.redis_client.hgetall(key)
+                node_ip_address = decode(client_info[b"node_ip_address"])
+                if node_ip_address not in node_info:
+                    node_info[node_ip_address] = []
+                client_info_parsed = {}
+                assert b"client_type" in client_info
+                assert b"deleted" in client_info
+                assert b"ray_client_id" in client_info
+                for field, value in client_info.items():
+                    if field == b"node_ip_address":
+                        pass
+                    elif field == b"client_type":
+                        client_info_parsed["ClientType"] = decode(value)
+                    elif field == b"deleted":
+                        client_info_parsed["Deleted"] = bool(
+                            int(decode(value)))
+                    elif field == b"ray_client_id":
+                        client_info_parsed["DBClientID"] = binary_to_hex(value)
+                    elif field == b"manager_address":
+                        client_info_parsed["AuxAddress"] = decode(value)
+                    elif field == b"local_scheduler_socket_name":
+                        client_info_parsed["LocalSchedulerSocketName"] = (
+                            decode(value))
+                    elif client_info[b"client_type"] == b"local_scheduler":
+                        # The remaining fields are resource types.
+                        client_info_parsed[field.decode("ascii")] = float(
+                            decode(value))
+                    else:
+                        client_info_parsed[field.decode("ascii")] = decode(
+                            value)
 
-            node_info[node_ip_address].append(client_info_parsed)
+                node_info[node_ip_address].append(client_info_parsed)
 
-        return node_info
+            return node_info
+
+        else:
+            # This is the raylet code path.
+            client_info = self.redis_client.zrange(b"CLIENT:" + 20 * b"\xff",
+                                                   0, -1)
+            node_info = []
+            for message in client_info:
+                client = ClientTableData.GetRootAsClientTableData(message, 0)
+                resources = {
+                    client.ResourcesTotalLabel(i).decode("ascii"):
+                    client.ResourcesTotalCapacity(i)
+                    for i in range(client.ResourcesTotalLabelLength())
+                }
+                node_info.append({
+                    "ClientID": client.ClientId().hex(),
+                    "IsInsertion": client.IsInsertion(),
+                    "NodeManagerAddress": client.NodeManagerAddress().decode(
+                        "ascii"),
+                    "NodeManagerPort": client.NodeManagerPort(),
+                    "ObjectManagerPort": client.ObjectManagerPort(),
+                    "ObjectStoreSocketName": client.ObjectStoreSocketName()
+                    .decode("ascii"),
+                    "RayletSocketName": client.RayletSocketName().decode(
+                        "ascii"),
+                    "Resources": resources
+                })
+            return node_info
 
     def log_files(self):
         """Fetch and return a dictionary of log file names to outputs.

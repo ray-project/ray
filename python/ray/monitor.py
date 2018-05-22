@@ -83,7 +83,8 @@ class Monitor(object):
     def __init__(self, redis_address, redis_port, autoscaling_config):
         # Initialize the Redis clients.
         self.state = ray.experimental.state.GlobalState()
-        self.state._initialize_global_state(redis_address, redis_port)
+        self.state._initialize_global_state(
+            redis_address, redis_port, ray.worker.global_worker.use_raylet)
         self.redis = redis.StrictRedis(
             host=redis_address, port=redis_port, db=0)
         # TODO(swang): Update pubsub client to use ray.experimental.state once
