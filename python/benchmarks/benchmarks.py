@@ -5,6 +5,7 @@ from __future__ import print_function
 
 class TimeSuite(object):
     """An example benchmark."""
+
     def setup(self):
         self.d = {}
         for x in range(500):
