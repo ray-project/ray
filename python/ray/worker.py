@@ -71,7 +71,6 @@ DEFAULT_ACTOR_CREATION_CPUS_SIMPLE_CASE = 0
 DEFAULT_ACTOR_METHOD_CPUS_SPECIFIED_CASE = 0
 DEFAULT_ACTOR_CREATION_CPUS_SPECIFIED_CASE = 1
 
-
 class RayTaskError(Exception):
     """An object used internally to represent a task that threw an exception.
 

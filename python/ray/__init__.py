@@ -58,6 +58,7 @@ from ray.worker import global_state  # noqa: E402
 # some functions in the worker.
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
+from ray.actor import actors
 
 # Ray version string. TODO(rkn): This is also defined separately in setup.py.
 # Fix this.
@@ -68,7 +69,7 @@ __all__ = [
     "remote", "log_event", "log_span", "flush_log", "actor", "method",
     "get_gpu_ids", "get_webui_url", "register_custom_serializer",
     "SCRIPT_MODE", "WORKER_MODE", "PYTHON_MODE", "SILENT_MODE", "global_state",
-    "ObjectID", "_config", "__version__"
+    "ObjectID", "_config", "__version__", "actors"
 ]
 
 import ctypes  # noqa: E402
