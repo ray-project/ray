@@ -1,11 +1,10 @@
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 
 class TimeSuite(object):
-    """
-    An example benchmark that times the performance of various kinds
-    of iterating over dictionaries in Python.
-    """
+    """An example benchmark."""
     def setup(self):
         self.d = {}
         for x in range(500):
