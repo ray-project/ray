@@ -20,7 +20,8 @@ class UniqueIdFromJByteArray {
     _env = env;
     _bytes = wid;
 
-    jbyte *b = reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, NULL));
+    jbyte *b =
+        reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, NULL));
     PID = reinterpret_cast<UniqueID *>(b);
   }
 
@@ -69,7 +70,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(
   // native private static void _submitTask(long client, /*Direct*/ByteBuffer
   // task);
   auto client = reinterpret_cast<LocalSchedulerConnection *>(c);
-  TaskSpec *task = reinterpret_cast<char *>(env->GetDirectBufferAddress(buff)) + pos;
+  TaskSpec *task =
+      reinterpret_cast<char *>(env->GetDirectBufferAddress(buff)) + pos;
   std::vector<ObjectID> execution_dependencies;
   if (cursorId != NULL) {
     UniqueIdFromJByteArray cursor_id(env, cursorId);
@@ -103,7 +105,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1getTaskTodo(JNIEnv *env,
   }
 
   // move from task spec structure to the java structure
-  env->SetByteArrayRegion(result, 0, task_size, reinterpret_cast<jbyte *>(spec));
+  env->SetByteArrayRegion(result, 0, task_size,
+                          reinterpret_cast<jbyte *>(spec));
 
   TaskSpec_free(spec);
   return result;
@@ -135,7 +138,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1computePutId(JNIEnv *env,
   }
 
   // move from task spec structure to the java structure
-  env->SetByteArrayRegion(result, 0, sizeof(ObjectID), reinterpret_cast<jbyte *>(&putId));
+  env->SetByteArrayRegion(result, 0, sizeof(ObjectID),
+                          reinterpret_cast<jbyte *>(&putId));
   return result;
 }
 

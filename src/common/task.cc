@@ -326,8 +326,7 @@ int TaskSpec_arg_id_count(TaskSpec *spec, int64_t arg_index) {
   auto ids = message->args()->Get(arg_index)->object_ids();
   if (ids == nullptr) {
     return 0;
-  }
-  else {
+  } else {
     return ids->size();
   }
 }
