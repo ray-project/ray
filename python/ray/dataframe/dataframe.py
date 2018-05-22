@@ -31,9 +31,11 @@ import re
 
 from .utils import (
     _deploy_func,
+    _deploy_generic_func,
     _map_partitions,
     _partition_pandas_dataframe,
     to_pandas,
+    create_blocks_helper,
     _blocks_to_col,
     _blocks_to_row,
     _create_block_partitions,
@@ -42,7 +44,8 @@ from .utils import (
     _co_op_helper,
     _match_partitioning,
     _concat_index,
-    _correct_column_dtypes)
+    _correct_column_dtypes,
+    fix_blocks_dimensions)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
 from .iterator import PartitionIterator
@@ -121,16 +124,8 @@ class DataFrame(object):
                 axis = 0
                 # put in numpy array here to make accesses easier since it's 2D
                 self._block_partitions = np.array(block_partitions)
-
-                # Sometimes we only get a single column or row, which is
-                # problematic for building blocks from the partitions, so we
-                # add whatever dimension we're missing from the input.
-                if self._block_partitions.ndim < 2:
-                    self._block_partitions = \
-                        np.expand_dims(self._block_partitions, axis=axis ^ 1)
-
-                assert self._block_partitions.ndim == 2, \
-                    "Block Partitions must be 2D."
+                self._block_partitions = \
+                    fix_blocks_dimensions(self._block_partitions, axis)
 
             else:
                 if row_partitions is not None:
@@ -153,6 +148,8 @@ class DataFrame(object):
                 self._block_partitions = \
                     _create_block_partitions(partitions, axis=axis,
                                              length=axis_length)
+
+        assert self._block_partitions.ndim == 2, "Block Partitions must be 2D."
 
         # Create the row and column index objects for using our partitioning.
         # If the objects haven't been inherited, then generate them
@@ -657,10 +654,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame resulting from the groupby.
         """
-        from .groupby import DataFrameGroupBy
-
         axis = pd.DataFrame()._get_axis_number(axis)
-
         if callable(by):
             by = by(self.index)
         elif isinstance(by, compat.string_types):
@@ -678,6 +672,7 @@ class DataFrame(object):
             elif mismatch:
                 raise KeyError(next(x for x in by if x not in self))
 
+        from .groupby import DataFrameGroupBy
         return DataFrameGroupBy(self, by, axis, level, as_index, sort,
                                 group_keys, squeeze, **kwargs)
 
@@ -3352,49 +3347,47 @@ class DataFrame(object):
         elif labels is not None:
             columns = labels
 
-        new_df = self
-        if index is not None:
-            old_index = new_df.index
-
-            def reindex_index_helper(df):
+        def reindex_helper(old_index, new_index, axis, npartitions, *df):
+            df = pd.concat(df, axis=axis ^ 1)
+            if axis == 1:
                 df.index = old_index
-                new_df = df.reindex(labels=index, axis=0, method=method,
-                                    fill_value=fill_value, limit=limit,
-                                    tolerance=tolerance)
-                new_df.reset_index(drop=True, inplace=True)
-                return new_df
+            else:
+                df.columns = old_index
 
-            new_cols = _map_partitions(reindex_index_helper,
-                                       new_df._col_partitions)
+            df = df.reindex(new_index, copy=False, axis=axis ^ 1,
+                            method=method, fill_value=fill_value,
+                            limit=limit, tolerance=tolerance)
+            return create_blocks_helper(df, npartitions, axis)
 
-            new_df = DataFrame(col_partitions=new_cols,
-                               columns=new_df.columns,
-                               index=pd.Index(index),
-                               col_metadata=new_df._col_metadata)
+        new_blocks = self._block_partitions
+        if index is not None:
+            old_index = self.index
+            new_blocks = np.array([_deploy_generic_func._submit(
+                args=(tuple([reindex_helper, old_index, index, 1,
+                      len(new_blocks)] + block.tolist())),
+                num_return_vals=len(new_blocks))
+                for block in new_blocks.T]).T
+        else:
+            index = self.index
 
         if columns is not None:
-            old_columns = new_df.columns
-
-            def reindex_column_helper(df):
-                df.columns = old_columns
-                new_df = df.reindex(labels=columns, axis=1, method=method,
-                                    fill_value=fill_value, limit=limit,
-                                    tolerance=tolerance)
-                new_df.columns = pd.RangeIndex(len(new_df.columns))
-                return new_df
-
-            new_rows = _map_partitions(reindex_column_helper,
-                                       new_df._row_partitions)
-
-            new_df = DataFrame(row_partitions=new_rows,
-                               columns=pd.Index(columns),
-                               index=new_df.index,
-                               row_metadata=new_df._row_metadata)
+            old_columns = self.columns
+            new_blocks = np.array([_deploy_generic_func._submit(
+                args=tuple([reindex_helper, old_columns, columns, 0,
+                           new_blocks.shape[1]] + block.tolist()),
+                num_return_vals=new_blocks.shape[1])
+                for block in new_blocks])
+        else:
+            columns = self.columns
 
         if copy:
-            return new_df
+            return DataFrame(block_partitions=new_blocks,
+                             index=index,
+                             columns=columns)
 
-        self._frame_data = new_df._frame_data
+        self._update_inplace(block_partitions=new_blocks,
+                             index=index,
+                             columns=columns)
 
     def reindex_axis(self, labels, axis=0, method=None, level=None, copy=True,
                      limit=None, fill_value=np.nan):

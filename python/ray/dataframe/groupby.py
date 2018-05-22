@@ -3,13 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
+import numpy as np
 import pandas.core.groupby
 from pandas.core.dtypes.common import is_list_like
 import pandas.core.common as com
 
 import ray
 
-from .utils import _inherit_docstrings
+from .utils import _inherit_docstrings, _reindex_helper
 from .concat import concat
 
 
@@ -199,8 +200,14 @@ class DataFrameGroupBy(object):
                 new_df.columns = self._columns
                 new_df.index = [k for k, v in self._iter]
             else:
-                new_df = concat(result)
-                new_df = new_df.reindex(self._index, axis=0)
+                new_df = concat(result, axis=self._axis)
+                new_df._block_partitions = np.array([_reindex_helper._submit(
+                    args=tuple([new_df.index, self._index, self._axis ^ 1,
+                                len(new_df._block_partitions)]
+                               + block.tolist()),
+                    num_return_vals=len(new_df._block_partitions))
+                    for block in new_df._block_partitions.T]).T
+                new_df.index = self._index
         else:
             if isinstance(result[0], pd.Series):
                 # Applied an aggregation function
@@ -208,9 +215,14 @@ class DataFrameGroupBy(object):
                 new_df.columns = [k for k, v in self._iter]
                 new_df.index = self._index
             else:
-                new_df = concat(result, axis=1)
-                new_df = new_df.reindex(self._columns, axis=1)
-
+                new_df = concat(result, axis=self._axis)
+                new_df._block_partitions = np.array([_reindex_helper._submit(
+                    args=tuple([new_df.columns, self._columns, self._axis ^ 1,
+                                new_df._block_partitions.shape[1]]
+                               + block.tolist()),
+                    num_return_vals=new_df._block_partitions.shape[1])
+                    for block in new_df._block_partitions])
+                new_df.columns = self._columns
         return new_df
 
     @property
@@ -371,8 +383,15 @@ class DataFrameGroupBy(object):
         new_df = concat(result, axis=self._axis)
 
         if self._axis == 0:
-            new_index = [v[:n] for k, v in self._keys_and_values]
-            new_df.index = [i for j in new_index for i in j]
+            index_head = [v[:n] for k, v in self._keys_and_values]
+            flattened_index = set([i for j in index_head for i in j])
+            sorted_index = [i for i in self._index if i in flattened_index]
+            new_df._block_partitions = np.array([_reindex_helper._submit(
+                args=tuple([new_df.index, sorted_index, 1,
+                            len(new_df._block_partitions)] + block.tolist()),
+                num_return_vals=len(new_df._block_partitions))
+                for block in new_df._block_partitions.T]).T
+            new_df.index = sorted_index
 
         return new_df
 
@@ -419,8 +438,15 @@ class DataFrameGroupBy(object):
         new_df = concat(result, axis=self._axis)
 
         if self._axis == 0:
-            new_index = [v[-n:] for k, v in self._keys_and_values]
-            new_df.index = [i for j in new_index for i in j]
+            index_tail = [v[-n:] for k, v in self._keys_and_values]
+            flattened_index = set([i for j in index_tail for i in j])
+            sorted_index = [i for i in self._index if i in flattened_index]
+            new_df._block_partitions = np.array([_reindex_helper._submit(
+                args=tuple([new_df.index, sorted_index, 1,
+                            len(new_df._block_partitions)] + block.tolist()),
+                num_return_vals=len(new_df._block_partitions))
+                for block in new_df._block_partitions.T]).T
+            new_df.index = sorted_index
 
         return new_df
 
@@ -484,9 +510,20 @@ class DataFrameGroupBy(object):
         new_df = concat(result, axis=concat_axis)
 
         if self._axis == 0:
-            new_df = new_df.reindex(self._index, axis=0)
+            new_df._block_partitions = np.array([_reindex_helper._submit(
+                args=tuple([new_df.index, self._index, 1,
+                            len(new_df._block_partitions)] + block.tolist()),
+                num_return_vals=len(new_df._block_partitions))
+                for block in new_df._block_partitions.T]).T
+            new_df.index = self._index
         else:
-            new_df = new_df.reindex(self._columns, axis=1)
+            new_df._block_partitions = np.array([_reindex_helper._submit(
+                args=tuple([new_df.columns, self._columns, 0,
+                            new_df._block_partitions.shape[1]]
+                           + block.tolist()),
+                num_return_vals=new_df._block_partitions.shape[1])
+                for block in new_df._block_partitions])
+            new_df.columns = self._columns
 
         return new_df
 

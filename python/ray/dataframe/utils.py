@@ -205,6 +205,21 @@ def _deploy_func(func, dataframe, *args):
         return func(dataframe, *args)
 
 
+@ray.remote
+def _deploy_generic_func(func, *args):
+    """Deploys a function for the _map_partitions call.
+    Args:
+        dataframe (pandas.DataFrame): The pandas DataFrame for this partition.
+    Returns:
+        A futures object representing the return value of the function
+        provided.
+    """
+    if len(args) == 0:
+        return func()
+    else:
+        return func(*args)
+
+
 def _map_partitions(func, partitions, *argslists):
     """Apply a function across the specified axis
 
@@ -276,11 +291,7 @@ def _create_block_partitions(partitions, axis=0, length=None):
     # Sometimes we only get a single column or row, which is
     # problematic for building blocks from the partitions, so we
     # add whatever dimension we're missing from the input.
-    if blocks.ndim < 2:
-        blocks = np.expand_dims(blocks, axis=axis ^ 1)
-    assert blocks.ndim == 2, "Block Partitions must be 2D."
-
-    return blocks
+    return fix_blocks_dimensions(blocks, axis)
 
 
 @ray.remote
@@ -308,6 +319,7 @@ def create_blocks_helper(df, npartitions, axis):
 
     for block in blocks:
         block.columns = pd.RangeIndex(0, len(block.columns))
+        block.reset_index(inplace=True, drop=True)
     return blocks
 
 
@@ -381,12 +393,10 @@ def _reindex_helper(old_index, new_index, axis, npartitions, *df):
     df = pd.concat(df, axis=axis ^ 1)
     if axis == 1:
         df.index = old_index
-        df = df.reindex(new_index, copy=False)
-        df.reset_index(inplace=True, drop=True)
     elif axis == 0:
         df.columns = old_index
-        df = df.reindex(columns=new_index, copy=False)
-        df.columns = pd.RangeIndex(len(df.columns))
+
+    df = df.reindex(new_index, copy=False, axis=axis ^ 1)
     return create_blocks_helper(df, npartitions, axis)
 
 
@@ -470,3 +480,11 @@ def _correct_column_dtypes(*column):
     """
     concat_column = pd.concat(column, copy=False)
     return create_blocks_helper(concat_column, len(column), 1)
+
+
+def fix_blocks_dimensions(blocks, axis):
+    """Checks that blocks is 2D, and adds a dimension if not.
+    """
+    if blocks.ndim < 2:
+        return np.expand_dims(blocks, axis=axis ^ 1)
+    return blocks

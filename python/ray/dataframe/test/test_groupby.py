@@ -19,28 +19,25 @@ if sys.version_info.major < 3:
 @pytest.fixture
 def ray_df_equals_pandas(ray_df, pandas_df):
     assert isinstance(ray_df, pd.DataFrame)
-    assert to_pandas(ray_df).sort_index().equals(pandas_df.sort_index())
+    assert to_pandas(ray_df).equals(pandas_df)
 
 
 @pytest.fixture
 def ray_df_almost_equals_pandas(ray_df, pandas_df):
     assert isinstance(ray_df, pd.DataFrame)
-    difference = to_pandas(ray_df).sort_index() - pandas_df.sort_index()
+    difference = to_pandas(ray_df) - pandas_df
     diff_max = difference.max().max()
-    assert to_pandas(ray_df).sort_index().equals(pandas_df.sort_index()) or \
-        diff_max < 0.01
+    assert to_pandas(ray_df).equals(pandas_df) or diff_max < 0.0001
 
 
 @pytest.fixture
 def ray_series_equals_pandas(ray_df, pandas_df):
-    assert ray_df.sort_index().equals(pandas_df.sort_index())
+    assert ray_df.equals(pandas_df)
 
 
 @pytest.fixture
 def ray_df_equals(ray_df1, ray_df2):
-    assert to_pandas(ray_df1).sort_index().equals(
-        to_pandas(ray_df2).sort_index()
-    )
+    assert to_pandas(ray_df1).equals(to_pandas(ray_df2))
 
 
 @pytest.fixture
