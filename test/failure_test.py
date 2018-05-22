@@ -64,6 +64,18 @@ class TaskStatusTest(unittest.TestCase):
                 # ray.get should throw an exception.
                 self.assertTrue(False)
 
+        @ray.remote
+        def f():
+            raise Exception("This function failed.")
+
+        try:
+            ray.get(f.remote())
+        except Exception as e:
+            self.assertIn("This function failed.", str(e))
+        else:
+            # ray.get should throw an exception.
+            self.assertTrue(False)
+
     def testFailImportingRemoteFunction(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
@@ -387,9 +399,8 @@ class PutErrorTest(unittest.TestCase):
             # on the one before it. The result of the first task should get
             # evicted.
             args = []
-            arg = single_dependency.remote(0,
-                                           np.zeros(
-                                               object_size, dtype=np.uint8))
+            arg = single_dependency.remote(
+                0, np.zeros(object_size, dtype=np.uint8))
             for i in range(num_objects):
                 arg = single_dependency.remote(i, arg)
                 args.append(arg)

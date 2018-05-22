@@ -90,8 +90,9 @@ void WorkerPool::RegisterWorker(std::shared_ptr<Worker> worker) {
   auto pid = worker->Pid();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid;
   registered_workers_.push_back(std::move(worker));
-  RAY_CHECK(started_worker_pids_.count(pid) > 0);
-  started_worker_pids_.erase(pid);
+  auto it = started_worker_pids_.find(pid);
+  RAY_CHECK(it != started_worker_pids_.end());
+  started_worker_pids_.erase(it);
 }
 
 std::shared_ptr<Worker> WorkerPool::GetRegisteredWorker(

@@ -1783,7 +1783,7 @@ def test_fillna_dtype_conversion(num_partitions=2):
     )
 
     # equiv of replace
-    df = pd.DataFrame(dict(A=[1, np.nan], B=[1., 2.]))
+    df = pd.DataFrame({'A': [1, np.nan], 'B': [1., 2.]})
     ray_df = from_pandas(df, num_partitions)
     for v in ['', 1, np.nan, 1.0]:
         assert ray_df_equals_pandas(
@@ -3272,6 +3272,12 @@ def test___delitem__(ray_df, pd_df):
     pd_df = pd_df.copy()
     ray_df.__delitem__('col1')
     pd_df.__delitem__('col1')
+    ray_df_equals_pandas(ray_df, pd_df)
+
+    # Issue 2027
+    last_label = pd_df.iloc[:, -1].name
+    ray_df.__delitem__(last_label)
+    pd_df.__delitem__(last_label)
     ray_df_equals_pandas(ray_df, pd_df)
 
 

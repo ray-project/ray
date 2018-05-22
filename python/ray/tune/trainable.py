@@ -203,10 +203,8 @@ class Trainable(object):
         out = io.BytesIO()
         with gzip.GzipFile(fileobj=out, mode="wb") as f:
             compressed = pickle.dumps({
-                "checkpoint_name":
-                os.path.basename(checkpoint_prefix),
-                "data":
-                data,
+                "checkpoint_name": os.path.basename(checkpoint_prefix),
+                "data": data,
             })
             if len(compressed) > 10e6:  # getting pretty large
                 print("Checkpoint size is {} bytes".format(len(compressed)))

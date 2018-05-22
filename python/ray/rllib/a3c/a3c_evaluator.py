@@ -45,7 +45,7 @@ class A3CEvaluator(PolicyEvaluator):
                         "rew_filter": self.rew_filter}
         self.sampler = AsyncSampler(env, self.policy, self.obs_filter,
                                     config["batch_size"])
-        if start_sampler and self.sampler.async:
+        if start_sampler and self.sampler._async:
             self.sampler.start()
         self.logdir = logdir
 

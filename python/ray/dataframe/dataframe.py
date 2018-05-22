@@ -46,9 +46,11 @@ from .utils import (
     _correct_column_dtypes)
 from . import get_npartitions
 from .index_metadata import _IndexMetadata
+from .iterator import PartitionIterator
 
 
-@_inherit_docstrings(pd.DataFrame)
+@_inherit_docstrings(pd.DataFrame,
+                     excluded=[pd.DataFrame, pd.DataFrame.__init__])
 class DataFrame(object):
 
     def __init__(self, data=None, index=None, columns=None, dtype=None,
@@ -61,7 +63,8 @@ class DataFrame(object):
             data (numpy ndarray (structured or homogeneous) or dict):
                 Dict can contain Series, arrays, constants, or list-like
                 objects.
-            index (pandas.Index or list): The row index for this dataframe.
+            index (pandas.Index, list, ObjectID): The row index for this
+                dataframe.
             columns (pandas.Index): The column names for this dataframe, in
                 pandas Index object.
             dtype: Data type to force. Only a single dtype is allowed.
@@ -78,6 +81,10 @@ class DataFrame(object):
             col_metadata (_IndexMetadata):
                 Metadata for the new dataframe's columns
         """
+        if isinstance(data, DataFrame):
+            self._frame_data = data._frame_data
+            return
+
         self._dtypes_cache = dtypes_cache
 
         # Check type of data and use appropriate constructor
@@ -166,6 +173,27 @@ class DataFrame(object):
 
         if self._dtypes_cache is None:
             self._correct_dtypes()
+
+    def _get_frame_data(self):
+        data = {}
+        data['blocks'] = self._block_partitions
+        data['col_metadata'] = self._col_metadata
+        data['row_metadata'] = self._row_metadata
+        data['columns'] = self.columns
+        data['index'] = self.index
+        data['dtypes'] = self._dtypes_cache
+
+        return data
+
+    def _set_frame_data(self, data):
+        self._block_partitions = data['blocks']
+        self._col_metadata = data['col_metadata']
+        self._row_metadata = data['row_metadata']
+        self.columns = data['columns']
+        self.index = data['index']
+        self._dtypes_cache = data['dtypes']
+
+    _frame_data = property(_get_frame_data, _set_frame_data)
 
     def _get_row_partitions(self):
         return [_blocks_to_row.remote(*part)
@@ -459,7 +487,7 @@ class DataFrame(object):
 
         if isinstance(self._dtypes_cache, list) and \
                 isinstance(self._dtypes_cache[0],
-                           ray.local_scheduler.ObjectID):
+                           ray.ObjectID):
             self._dtypes_cache = pd.concat(ray.get(self._dtypes_cache))
             self._dtypes_cache.index = self.columns
 
@@ -640,7 +668,7 @@ class DataFrame(object):
             mismatch = len(by) != len(self) if axis == 0 \
                 else len(by) != len(self.columns)
 
-            if all([obj in self for obj in by]) and mismatch:
+            if all(obj in self for obj in by) and mismatch:
                 raise NotImplementedError(
                     "Groupby with lists of columns not yet supported.")
             elif mismatch:
@@ -1820,7 +1848,8 @@ class DataFrame(object):
         columns = columns_copy.columns
 
         if inplace:
-            self._update_inplace(row_partitions=new_rows, columns=columns)
+            self._update_inplace(row_partitions=new_rows, columns=columns,
+                                 index=self.index)
         else:
             return DataFrame(columns=columns, row_partitions=new_rows)
 
@@ -2165,7 +2194,7 @@ class DataFrame(object):
             A Series with the index for each maximum value for the axis
                 specified.
         """
-        if not all([d != np.dtype('O') for d in self.dtypes]):
+        if not all(d != np.dtype('O') for d in self.dtypes):
             raise TypeError(
                 "reduction operation 'argmax' not allowed for this dtype")
 
@@ -2187,7 +2216,7 @@ class DataFrame(object):
             A Series with the index for each minimum value for the axis
                 specified.
         """
-        if not all([d != np.dtype('O') for d in self.dtypes]):
+        if not all(d != np.dtype('O') for d in self.dtypes):
             raise TypeError(
                 "reduction operation 'argmax' not allowed for this dtype")
 
@@ -2305,18 +2334,31 @@ class DataFrame(object):
         # Deploy insert function to specific column partition, and replace that
         # column
         def insert_col_part(df):
-            df.insert(index_within_partition, column, value, allow_duplicates)
+            if isinstance(value, pd.Series) and \
+                    isinstance(value.dtype,
+                               pd.core.dtypes.dtypes.DatetimeTZDtype):
+                # Need to set index to index of this dtype or inserted values
+                # become NaT
+                df.index = value
+                df.insert(index_within_partition, column,
+                          value, allow_duplicates)
+                df.index = pd.RangeIndex(0, len(df))
+            else:
+                df.insert(index_within_partition, column,
+                          value, allow_duplicates)
             return df
 
         new_obj = _deploy_func.remote(insert_col_part,
                                       self._col_partitions[partition])
+
         new_cols = [self._col_partitions[i]
                     if i != partition
                     else new_obj
                     for i in range(len(self._col_partitions))]
         new_col_names = self.columns.insert(loc, column)
 
-        self._update_inplace(col_partitions=new_cols, columns=new_col_names)
+        self._update_inplace(col_partitions=new_cols, columns=new_col_names,
+                             index=self.index)
 
     def interpolate(self, method='linear', axis=0, limit=None, inplace=False,
                     limit_direction='forward', downcast=None, **kwargs):
@@ -2328,50 +2370,53 @@ class DataFrame(object):
         """Iterate over DataFrame rows as (index, Series) pairs.
 
         Note:
-            Generators can't be pickeled so from the remote function
+            Generators can't be pickled so from the remote function
             we expand the generator into a list before getting it.
             This is not that ideal.
 
         Returns:
             A generator that iterates over the rows of the frame.
         """
-        def update_iterrow(series, i):
-            """Helper function to correct the columns + name of the Series."""
-            series.index = self.columns
-            series.name = list(self.index)[i]
-            return series
+        index_iter = (self._row_metadata.partition_series(i).index
+                      for i in range(len(self._row_partitions)))
 
-        iters = ray.get([_deploy_func.remote(
-            lambda df: list(df.iterrows()), part)
-            for part in self._row_partitions])
-        iters = itertools.chain.from_iterable(iters)
-        series = map(lambda s: update_iterrow(s[1][1], s[0]), enumerate(iters))
+        def iterrow_helper(part):
+            df = ray.get(part)
+            df.columns = self.columns
+            df.index = next(index_iter)
+            return df.iterrows()
 
-        return zip(self.index, series)
+        partition_iterator = PartitionIterator(self._row_partitions,
+                                               iterrow_helper)
+
+        for v in partition_iterator:
+            yield v
 
     def items(self):
         """Iterator over (column name, Series) pairs.
 
         Note:
-            Generators can't be pickeled so from the remote function
+            Generators can't be pickled so from the remote function
             we expand the generator into a list before getting it.
             This is not that ideal.
 
         Returns:
             A generator that iterates over the columns of the frame.
         """
-        iters = ray.get([_deploy_func.remote(
-            lambda df: list(df.items()), part)
-            for part in self._row_partitions])
+        col_iter = (self._col_metadata.partition_series(i).index
+                    for i in range(len(self._col_partitions)))
 
-        def concat_iters(iterables):
-            for partitions in enumerate(zip(*iterables)):
-                series = pd.concat([_series for _, _series in partitions[1]])
-                series.index = self.index
-                series.name = list(self.columns)[partitions[0]]
-                yield (series.name, series)
+        def items_helper(part):
+            df = ray.get(part)
+            df.columns = next(col_iter)
+            df.index = self.index
+            return df.items()
 
-        return concat_iters(iters)
+        partition_iterator = PartitionIterator(self._col_partitions,
+                                               items_helper)
+
+        for v in partition_iterator:
+            yield v
 
     def iteritems(self):
         """Iterator over (column name, Series) pairs.
@@ -2393,31 +2438,27 @@ class DataFrame(object):
             name (string, default "Pandas"): The name of the returned
             namedtuples or None to return regular tuples.
         Note:
-            Generators can't be pickeled so from the remote function
+            Generators can't be pickled so from the remote function
             we expand the generator into a list before getting it.
             This is not that ideal.
 
         Returns:
             A tuple representing row data. See args for varying tuples.
         """
-        iters = ray.get([
-            _deploy_func.remote(
-                lambda df: list(df.itertuples(index=index, name=name)),
-                part) for part in self._row_partitions])
-        iters = itertools.chain.from_iterable(iters)
+        index_iter = (self._row_metadata.partition_series(i).index
+                      for i in range(len(self._row_partitions)))
 
-        def _replace_index(row_tuple, idx):
-            # We need to use try-except here because
-            # isinstance(row_tuple, namedtuple) won't work.
-            try:
-                row_tuple = row_tuple._replace(Index=idx)
-            except AttributeError:  # Tuple not namedtuple
-                row_tuple = (idx,) + row_tuple[1:]
-            return row_tuple
+        def itertuples_helper(part):
+            df = ray.get(part)
+            df.columns = self.columns
+            df.index = next(index_iter)
+            return df.itertuples(index=index, name=name)
 
-        if index:
-            iters = itertools.starmap(_replace_index, zip(iters, self.index))
-        return iters
+        partition_iterator = PartitionIterator(self._row_partitions,
+                                               itertuples_helper)
+
+        for v in partition_iterator:
+            yield v
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
@@ -3155,9 +3196,9 @@ class DataFrame(object):
             """
             # This if call prevents ValueErrors with object only partitions
             if (numeric_only and
-                    all([dtype == np.dtype('O') or
-                         is_timedelta64_dtype(dtype)
-                         for dtype in df.dtypes])):
+                    all(dtype == np.dtype('O') or
+                        is_timedelta64_dtype(dtype)
+                        for dtype in df.dtypes)):
                 return base_object
             else:
                 return df.quantile(q=q, axis=axis, numeric_only=numeric_only,
@@ -3217,7 +3258,7 @@ class DataFrame(object):
                                    self._row_partitions)
 
         if inplace:
-            self._update_inplace(row_partitions=new_rows)
+            self._update_inplace(row_partitions=new_rows, index=self.index)
         else:
             return DataFrame(row_partitions=new_rows,
                              col_metadata=self._col_metadata)
@@ -4176,23 +4217,84 @@ class DataFrame(object):
         port_frame = to_pandas(self)
         port_frame.to_clipboard(excel, sep, **kwargs)
 
-    def to_csv(self, path_or_buf=None, sep=',', na_rep='', float_format=None,
+    def to_csv(self, path_or_buf=None, sep=",", na_rep="", float_format=None,
                columns=None, header=True, index=True, index_label=None,
-               mode='w', encoding=None, compression=None, quoting=None,
-               quotechar='"', line_terminator='\n', chunksize=None,
+               mode="w", encoding=None, compression=None, quoting=None,
+               quotechar='"', line_terminator="\n", chunksize=None,
                tupleize_cols=None, date_format=None, doublequote=True,
-               escapechar=None, decimal='.'):
+               escapechar=None, decimal="."):
 
-        warnings.warn("Defaulting to Pandas implementation",
-                      PendingDeprecationWarning)
+        kwargs = {
+            'path_or_buf': path_or_buf,
+            'sep': sep,
+            'na_rep': na_rep,
+            'float_format': float_format,
+            'columns': columns,
+            'header': header,
+            'index': index,
+            'index_label': index_label,
+            'mode': mode,
+            'encoding': encoding,
+            'compression': compression,
+            'quoting': quoting,
+            'quotechar': quotechar,
+            'line_terminator': line_terminator,
+            'chunksize': chunksize,
+            'tupleize_cols': tupleize_cols,
+            'date_format': date_format,
+            'doublequote': doublequote,
+            'escapechar': escapechar,
+            'decimal': decimal
+        }
 
-        port_frame = to_pandas(self)
-        port_frame.to_csv(path_or_buf, sep, na_rep, float_format,
-                          columns, header, index, index_label,
-                          mode, encoding, compression, quoting,
-                          quotechar, line_terminator, chunksize,
-                          tupleize_cols, date_format, doublequote,
-                          escapechar, decimal)
+        if compression is not None:
+            warnings.warn("Defaulting to Pandas implementation",
+                          PendingDeprecationWarning)
+            return to_pandas(self).to_csv(**kwargs)
+
+        if tupleize_cols is not None:
+            warnings.warn("The 'tupleize_cols' parameter is deprecated and "
+                          "will be removed in a future version",
+                          FutureWarning, stacklevel=2)
+        else:
+            tupleize_cols = False
+
+        remote_kwargs_id = ray.put(dict(kwargs, path_or_buf=None))
+        columns_id = ray.put(self.columns)
+
+        def get_csv_str(df, index, columns, header, kwargs):
+            df.index = index
+            df.columns = columns
+            kwargs["header"] = header
+            return df.to_csv(**kwargs)
+
+        idxs = [0] + np.cumsum(self._row_metadata._lengths).tolist()
+        idx_args = [self.index[idxs[i]:idxs[i+1]]
+                    for i in range(len(self._row_partitions))]
+        csv_str_ids = _map_partitions(
+                get_csv_str, self._row_partitions, idx_args,
+                [columns_id] * len(self._row_partitions),
+                [header] + [False] * (len(self._row_partitions) - 1),
+                [remote_kwargs_id] * len(self._row_partitions))
+
+        if path_or_buf is None:
+            buf = io.StringIO()
+        elif isinstance(path_or_buf, str):
+            buf = open(path_or_buf, mode)
+        else:
+            buf = path_or_buf
+
+        for csv_str_id in csv_str_ids:
+            buf.write(ray.get(csv_str_id))
+            buf.flush()
+
+        result = None
+        if path_or_buf is None:
+            result = buf.getvalue()
+            buf.close()
+        elif isinstance(path_or_buf, str):
+            buf.close()
+        return result
 
     def to_dense(self):
         raise NotImplementedError(
@@ -4643,9 +4745,13 @@ class DataFrame(object):
                              index=index)
         else:
             columns = self._col_metadata[key].index
-            indices_for_rows = \
-                [i for i, item in enumerate(self.columns)
-                 if item in set(columns)]
+            column_indices = {item: i for i, item in enumerate(self.columns)}
+            indices_for_rows = [column_indices[column] for column in columns]
+
+            def get_columns_partition(df):
+                result = df.__getitem__(indices_for_rows),
+                result.columns = pd.RangeIndex(0, len(result.columns))
+                return result
 
             new_parts = [_deploy_func.remote(
                 lambda df: df.__getitem__(indices_for_rows),
@@ -4811,10 +4917,6 @@ class DataFrame(object):
             df.columns = pd.RangeIndex(0, len(df.columns))
             return df
 
-        to_delete = self.columns.get_loc(key)
-        self._row_partitions = _map_partitions(
-            del_helper, self._row_partitions, to_delete)
-
         # This structure is used to get the correct index inside the partition.
         del_df = self._col_metadata[key]
 
@@ -4827,15 +4929,18 @@ class DataFrame(object):
         # Cast cols as pd.Series as duplicate columns mean result may be
         # np.int64 or pd.Series
         col_parts_to_del = \
-            pd.Series(self._col_metadata[key, 'partition']).unique()
+            pd.Series(del_df['partition'].copy()).unique()
         self._col_metadata.drop(key)
+
         for i in col_parts_to_del:
             # Compute the correct index inside the partition to delete.
             to_delete_in_partition = \
                 del_df[del_df['partition'] == i]['index_within_partition']
 
-            self._col_partitions[i] = _deploy_func.remote(
-                del_helper, self._col_partitions[i], to_delete_in_partition)
+            for j in range(self._block_partitions.shape[0]):
+                self._block_partitions[j, i] = _deploy_func.remote(
+                    del_helper, self._block_partitions[j, i],
+                    to_delete_in_partition)
 
         self._col_metadata.reset_partition_coords(col_parts_to_del)
 
@@ -5027,9 +5132,8 @@ class DataFrame(object):
         We currently support: single label, list array, slice object
         We do not support: boolean array, callable
         """
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        from .indexing import _Loc_Indexer
+        return _Loc_Indexer(self)
 
     @property
     def is_copy(self):
@@ -5054,9 +5158,8 @@ class DataFrame(object):
         We currently support: single label, list array, slice object
         We do not support: boolean array, callable
         """
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        from .indexing import _iLoc_Indexer
+        return _iLoc_Indexer(self)
 
     def _copartition(self, other, new_index):
         """Colocates the values of other with this for certain operations.
