@@ -19,16 +19,20 @@ DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 class ActorMap:
     """
     v1.0
-    A map supporting named actor fetching
-    It shall only support get_item and set_item operation for now
+    A map supporting named actor fetching.
+    It shall only support get_item and set_item operation for now.
 
-    Not sure if we shall provide an repr method
+    Not sure if we shall provide an repr method.
     """
 
     def __init__(self):
         self.worker = ray.worker.get_global_worker()
 
     def __getitem__(self, name):
+        """
+        Attempt to get an actor handle with the name.
+        The actor handle shall exist in the Redis database
+        """
         actor_key = self._calculate_key_(name)
         pickled_state = self.worker.redis_client.hmget(actor_key, name)
         assert len(pickled_state) == 1, \
@@ -39,6 +43,9 @@ class ActorMap:
         return handle
 
     def __setitem__(self, name, actor_handle):
+        """
+        Put an actor handle under a name as the key into the Redis database
+        """
         actor_key = self._calculate_key_(name)
         pickled_state = pickle.dumps(actor_handle)
         assert type(actor_handle) == ActorHandle, \
