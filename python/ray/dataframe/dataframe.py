@@ -584,7 +584,8 @@ class DataFrame(object):
         return DataFrame(block_partitions=self._block_partitions,
                          columns=new_cols,
                          col_metadata=self._col_metadata,
-                         row_metadata=self._row_metadata)
+                         row_metadata=self._row_metadata,
+                         dtypes_cache=self.dtypes)
 
     def add_suffix(self, suffix):
         """Add a suffix to each of the column names.
@@ -596,7 +597,8 @@ class DataFrame(object):
         return DataFrame(block_partitions=self._block_partitions,
                          columns=new_cols,
                          col_metadata=self._col_metadata,
-                         row_metadata=self._row_metadata)
+                         row_metadata=self._row_metadata,
+                         dtypes_cache=self.dtypes)
 
     def applymap(self, func):
         """Apply a function to a DataFrame elementwise.
@@ -682,7 +684,7 @@ class DataFrame(object):
         return self._arithmetic_helper(remote_func, axis, level)
 
     def abs(self):
-        """Apply an absolute value function to all numberic columns.
+        """Apply an absolute value function to all numeric columns.
 
         Returns:
             A new DataFrame with the applied absolute value.
@@ -698,7 +700,8 @@ class DataFrame(object):
 
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
-                         index=self.index)
+                         index=self.index,
+                         dtypes_cache=self.dtypes)
 
     def isin(self, values):
         """Fill a DataFrame with booleans for cells contained in values.
