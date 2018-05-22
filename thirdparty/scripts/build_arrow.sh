@@ -47,7 +47,7 @@ if [[ ! -d $TP_DIR/../python/ray/pyarrow_files/pyarrow ]]; then
     # The PR for this commit is https://github.com/apache/arrow/pull/XXXX. We
     # include the link here to make it easier to find the right commit because
     # Arrow often rewrites git history and invalidates certain commits.
-    git checkout e0a537ea7f96795a7b7e26a3bb6c522ce62975b4
+    git checkout 75163d0404086993ac8a7ad8b2bb7b9f882ddf88
 
     cd cpp
     if [ ! -d "build" ]; then
