@@ -250,7 +250,7 @@ bool LineageCache::FlushTask(const TaskID &task_id) {
         }
       }
       all_arguments_committed = false;
-      break;
+      task_children_[parent_id].insert(task_id);
     }
   }
   if (all_arguments_committed) {
@@ -278,16 +278,20 @@ bool LineageCache::FlushTask(const TaskID &task_id) {
   return all_arguments_committed;
 }
 
-void LineageCache::Flush() {
+ray::Status LineageCache::Flush() {
   // Iterate through all tasks that are READY.
   std::vector<TaskID> ready_task_ids;
-  for (const auto &task_id : uncommitted_ready_tasks_) {
-    bool flushed = FlushTask(task_id);
+  for (auto it = uncommitted_ready_tasks_.begin();
+       it != uncommitted_ready_tasks_.end();) {
+    bool flushed = FlushTask(*it);
+    // Erase the task from the cache of uncommitted ready tasks.
     if (flushed) {
-      // Erase the task from the cache of uncommitted ready tasks.
-      uncommitted_ready_tasks_.erase(task_id);
+      it = uncommitted_ready_tasks_.erase(it);
+    } else {
+      it++;
     }
   }
+  return ray::Status::OK();
 }
 
 void PopAncestorTasks(const UniqueID &task_id, Lineage &lineage) {
@@ -325,6 +329,24 @@ void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
   if (it != subscribed_tasks_.end()) {
     RAY_CHECK_OK(task_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
     subscribed_tasks_.erase(it);
+  }
+
+  auto children_entry = task_children_.find(task_id);
+  if (children_entry != task_children_.end()) {
+    // Get the children of the committed task that are uncommitted but ready.
+    auto children = std::move(children_entry->second);
+    task_children_.erase(children_entry);
+
+    // Try to flush the children.  If all of the child's parents are committed,
+    // then the child will be flushed here.
+    for (const auto &child_id : children) {
+      bool flushed = FlushTask(child_id);
+      // Erase the child task from the cache of uncommitted ready tasks.
+      if (flushed) {
+        auto erased = uncommitted_ready_tasks_.erase(child_id);
+        RAY_CHECK(erased == 1);
+      }
+    }
   }
 }
 

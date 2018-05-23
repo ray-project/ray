@@ -210,6 +210,9 @@ class LineageCache {
   void HandleEntryCommitted(const TaskID &task_id);
 
  private:
+  /// Try to flush a task that is in UNCOMMITTED_READY state. If the task has
+  /// parents that are not committed yet, then the child will be flushed once
+  /// the parents have been committed.
   bool FlushTask(const TaskID &task_id);
 
   /// The client ID, used to request notifications for specific tasks.
@@ -233,6 +236,10 @@ class LineageCache {
   /// The tasks that we've subscribed to notifications for from the pubsub
   /// storage system. We will receive a notification for these tasks on commit.
   std::unordered_set<TaskID> subscribed_tasks_;
+  /// A mapping from each task that hasn't been committed yet, to all dependent
+  /// children tasks that are in UNCOMMITTED_READY state. Once all parents of
+  /// the child task have been committed, the child task may be flushed.
+  std::unordered_map<TaskID, std::unordered_set<TaskID>> task_children_;
 };
 
 }  // namespace raylet
