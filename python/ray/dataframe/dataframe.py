@@ -43,7 +43,6 @@ from .utils import (
     _co_op_helper,
     _match_partitioning,
     _concat_index,
-    _correct_column_dtypes,
     fix_blocks_dimensions,
     _compile_remote_dtypes)
 from . import get_npartitions
