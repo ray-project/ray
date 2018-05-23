@@ -8,9 +8,6 @@ import ray.cloudpickle as pickle
 This file contains functions intended to implement the named actor
 """
 
-
-# global_worker = ray.worker.get_global_worker()
-
 def _calculate_key_(name):
     return b"Actor:" + str.encode(name)
 
