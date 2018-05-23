@@ -210,6 +210,8 @@ class LineageCache {
   void HandleEntryCommitted(const TaskID &task_id);
 
  private:
+  bool FlushTask(const TaskID &task_id);
+
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.
   ClientID client_id_;

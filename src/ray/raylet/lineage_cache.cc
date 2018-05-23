@@ -219,57 +219,46 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id) const {
   return uncommitted_lineage;
 }
 
-Status LineageCache::Flush() {
-  // Iterate through all tasks that are READY.
-  std::vector<TaskID> ready_task_ids;
-  for (const auto &task_id : uncommitted_ready_tasks_) {
-    auto entry = lineage_.GetEntry(task_id);
-    RAY_CHECK(entry);
-    RAY_CHECK(entry->GetStatus() == GcsStatus_UNCOMMITTED_READY);
+bool LineageCache::FlushTask(const TaskID &task_id) {
+  auto entry = lineage_.GetEntry(task_id);
+  RAY_CHECK(entry);
+  RAY_CHECK(entry->GetStatus() == GcsStatus_UNCOMMITTED_READY);
 
-    // Check if all arguments have been committed to the GCS before writing
-    // this task.
-    bool all_arguments_committed = true;
-    for (const auto &parent_id : entry->GetParentTaskIds()) {
-      auto parent = lineage_.GetEntry(parent_id);
-      // If a parent entry exists in the lineage cache but has not been
-      // committed yet, then as far as we know, it's still in flight to the
-      // GCS. Skip this task for now.
-      if (parent && parent->GetStatus() != GcsStatus_COMMITTED) {
-        RAY_CHECK(parent->GetStatus() != GcsStatus_UNCOMMITTED_WAITING)
-            << "Children should not become ready to flush before their parents.";
-        // Request notifications about the parent entry's commit in the GCS if
-        // the parent is remote. Otherwise, the parent is local and will
-        // eventually be flushed. In either case, once we receive a
-        // notification about the task's commit via HandleEntryCommitted, then
-        // this task will be ready to write on the next call to Flush().
-        if (parent->GetStatus() == GcsStatus_UNCOMMITTED_REMOTE) {
-          auto inserted = subscribed_tasks_.insert(parent_id);
-          if (inserted.second) {
-            // Only request notifications about the parent entry if we haven't
-            // already requested notifications for it.
-            RAY_CHECK_OK(
-                task_pubsub_.RequestNotifications(JobID::nil(), parent_id, client_id_));
-          }
+  // Check if all arguments have been committed to the GCS before writing
+  // this task.
+  bool all_arguments_committed = true;
+  for (const auto &parent_id : entry->GetParentTaskIds()) {
+    auto parent = lineage_.GetEntry(parent_id);
+    // If a parent entry exists in the lineage cache but has not been
+    // committed yet, then as far as we know, it's still in flight to the
+    // GCS. Skip this task for now.
+    if (parent && parent->GetStatus() != GcsStatus_COMMITTED) {
+      RAY_CHECK(parent->GetStatus() != GcsStatus_UNCOMMITTED_WAITING)
+          << "Children should not become ready to flush before their parents.";
+      // Request notifications about the parent entry's commit in the GCS if
+      // the parent is remote. Otherwise, the parent is local and will
+      // eventually be flushed. In either case, once we receive a
+      // notification about the task's commit via HandleEntryCommitted, then
+      // this task will be ready to write on the next call to Flush().
+      if (parent->GetStatus() == GcsStatus_UNCOMMITTED_REMOTE) {
+        auto inserted = subscribed_tasks_.insert(parent_id);
+        if (inserted.second) {
+          // Only request notifications about the parent entry if we haven't
+          // already requested notifications for it.
+          RAY_CHECK_OK(
+              task_pubsub_.RequestNotifications(JobID::nil(), parent_id, client_id_));
         }
-        all_arguments_committed = false;
-        break;
       }
-    }
-    if (all_arguments_committed) {
-      // All arguments have been committed to the GCS. Add this task to the
-      // list of tasks to write back to the GCS.
-      ready_task_ids.push_back(task_id);
+      all_arguments_committed = false;
+      break;
     }
   }
-
-  // Write back all ready tasks whose arguments have been committed to the GCS.
-  gcs::raylet::TaskTable::WriteCallback task_callback = [this](
-      ray::gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
-    HandleEntryCommitted(id);
-  };
-  for (const auto &ready_task_id : ready_task_ids) {
-    auto task = lineage_.GetEntry(ready_task_id);
+  if (all_arguments_committed) {
+    gcs::raylet::TaskTable::WriteCallback task_callback = [this](
+        ray::gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
+      HandleEntryCommitted(id);
+    };
+    auto task = lineage_.GetEntry(task_id);
     // TODO(swang): Make this better...
     flatbuffers::FlatBufferBuilder fbb;
     auto message = task->TaskData().ToFlatbuffer(fbb);
@@ -278,18 +267,27 @@ Status LineageCache::Flush() {
     auto root = flatbuffers::GetRoot<protocol::Task>(fbb.GetBufferPointer());
     root->UnPackTo(task_data.get());
     RAY_CHECK_OK(task_storage_.Add(task->TaskData().GetTaskSpecification().DriverId(),
-                                   ready_task_id, task_data, task_callback));
+                                   task_id, task_data, task_callback));
 
     // We successfully wrote the task, so mark it as committing.
     // TODO(swang): Use a batched interface and write with all object entries.
-    auto entry = lineage_.PopEntry(ready_task_id);
+    auto entry = lineage_.PopEntry(task_id);
     RAY_CHECK(entry->SetStatus(GcsStatus_COMMITTING));
     RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
-    // Erase the task from the cache of uncommitted ready tasks.
-    uncommitted_ready_tasks_.erase(ready_task_id);
   }
+  return all_arguments_committed;
+}
 
-  return ray::Status::OK();
+void LineageCache::Flush() {
+  // Iterate through all tasks that are READY.
+  std::vector<TaskID> ready_task_ids;
+  for (const auto &task_id : uncommitted_ready_tasks_) {
+    bool flushed = FlushTask(task_id);
+    if (flushed) {
+      // Erase the task from the cache of uncommitted ready tasks.
+      uncommitted_ready_tasks_.erase(task_id);
+    }
+  }
 }
 
 void PopAncestorTasks(const UniqueID &task_id, Lineage &lineage) {
