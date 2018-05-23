@@ -319,10 +319,7 @@ def test_from_csv_chunksize():
     rdf_reader = pd.read_csv(TEST_CSV_FILENAME, chunksize=1)
     pd_reader = pandas.read_csv(TEST_CSV_FILENAME, chunksize=1)
 
-    rdf_chunks = list(rdf_reader)
-    pd_chunks = list(pd_reader)
-
-    for ray_df, pd_df in zip(rdf_chunks, pd_chunks):
+    for ray_df, pd_df in zip(rdf_reader, pd_reader):
         assert ray_df_equals_pandas(ray_df, pd_df)
 
     # Tests that get_chunk works correctly
