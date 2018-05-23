@@ -250,7 +250,10 @@ bool LineageCache::FlushTask(const TaskID &task_id) {
         }
       }
       all_arguments_committed = false;
-      task_children_[parent_id].insert(task_id);
+      // Track the fact that this task is dependent on a parent that hasn't yet
+      // been committed, for fast lookup. Once all parents are committed, the
+      // child will be flushed.
+      uncommitted_ready_children_[parent_id].insert(task_id);
     }
   }
   if (all_arguments_committed) {
@@ -331,11 +334,11 @@ void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
     subscribed_tasks_.erase(it);
   }
 
-  auto children_entry = task_children_.find(task_id);
-  if (children_entry != task_children_.end()) {
+  auto children_entry = uncommitted_ready_children_.find(task_id);
+  if (children_entry != uncommitted_ready_children_.end()) {
     // Get the children of the committed task that are uncommitted but ready.
     auto children = std::move(children_entry->second);
-    task_children_.erase(children_entry);
+    uncommitted_ready_children_.erase(children_entry);
 
     // Try to flush the children.  If all of the child's parents are committed,
     // then the child will be flushed here.

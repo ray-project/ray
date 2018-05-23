@@ -230,16 +230,17 @@ class LineageCache {
   // UNCOMMITTED_READY, but that have dependencies that have not been committed
   // yet.
   std::unordered_set<TaskID> uncommitted_ready_tasks_;
+  /// A mapping from each task that hasn't been committed yet, to all dependent
+  /// children tasks that are in UNCOMMITTED_READY state. This is used when the
+  /// parent task is committed, for fast lookup of children that may now be
+  /// flushed.
+  std::unordered_map<TaskID, std::unordered_set<TaskID>> uncommitted_ready_children_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;
   /// The tasks that we've subscribed to notifications for from the pubsub
   /// storage system. We will receive a notification for these tasks on commit.
   std::unordered_set<TaskID> subscribed_tasks_;
-  /// A mapping from each task that hasn't been committed yet, to all dependent
-  /// children tasks that are in UNCOMMITTED_READY state. Once all parents of
-  /// the child task have been committed, the child task may be flushed.
-  std::unordered_map<TaskID, std::unordered_set<TaskID>> task_children_;
 };
 
 }  // namespace raylet
