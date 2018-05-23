@@ -735,9 +735,13 @@ class DataFrame(object):
         new_block_partitions = np.array([_map_partitions(
             lambda df: df.isna(), block) for block in self._block_partitions])
 
+        new_dtypes = pd.Series([np.dtype("bool")] * len(self.columns),
+                               index=self.columns)
+
         return DataFrame(block_partitions=new_block_partitions,
                          row_metadata=self._row_metadata,
-                         col_metadata=self._col_metadata)
+                         col_metadata=self._col_metadata,
+                         dtypes_cache=new_dtypes)
 
     def isnull(self):
         """Fill a DataFrame with booleans for cells containing a null value.
@@ -752,9 +756,13 @@ class DataFrame(object):
             lambda df: df.isnull(), block)
             for block in self._block_partitions])
 
+        new_dtypes = pd.Series([np.dtype("bool")] * len(self.columns),
+                               index=self.columns)
+
         return DataFrame(block_partitions=new_block_partitions,
                          row_metadata=self._row_metadata,
-                         col_metadata=self._col_metadata)
+                         col_metadata=self._col_metadata,
+                         dtypes_cache=new_dtypes)
 
     def keys(self):
         """Get the info axis for the DataFrame.
@@ -2175,7 +2183,8 @@ class DataFrame(object):
 
         return DataFrame(col_partitions=new_dfs,
                          col_metadata=self._col_metadata,
-                         index=index)
+                         index=index,
+                         dtypes_cache=self._dtypes_cache)
 
     def hist(self, data, column=None, by=None, grid=True, xlabelsize=None,
              xrot=None, ylabelsize=None, yrot=None, ax=None, sharex=False,
@@ -2985,9 +2994,13 @@ class DataFrame(object):
         new_block_partitions = np.array([_map_partitions(
             lambda df: df.notna(), block) for block in self._block_partitions])
 
+        new_dtypes = pd.Series([np.dtype("bool")] * len(self.columns),
+                               index=self.columns)
+
         return DataFrame(block_partitions=new_block_partitions,
                          row_metadata=self._row_metadata,
-                         col_metadata=self._col_metadata)
+                         col_metadata=self._col_metadata,
+                         dtypes_cache=new_dtypes)
 
     def notnull(self):
         """Perform notnull across the DataFrame.
@@ -3003,9 +3016,13 @@ class DataFrame(object):
             lambda df: df.notnull(), block)
             for block in self._block_partitions])
 
+        new_dtypes = pd.Series([np.dtype("bool")] * len(self.columns),
+                               index=self.columns)
+
         return DataFrame(block_partitions=new_block_partitions,
                          row_metadata=self._row_metadata,
-                         col_metadata=self._col_metadata)
+                         col_metadata=self._col_metadata,
+                         dtypes_cache=new_dtypes)
 
     def nsmallest(self, n, columns, keep='first'):
         raise NotImplementedError(
@@ -4149,7 +4166,8 @@ class DataFrame(object):
             return DataFrame(row_partitions=new_row_partitions,
                              col_partitions=new_column_partitions,
                              columns=new_columns,
-                             index=new_index)
+                             index=new_index,
+                             dtypes_cache=self._dtypes_cache)
 
     def sortlevel(self, level=0, axis=0, ascending=True, inplace=False,
                   sort_remaining=True):
@@ -4242,7 +4260,8 @@ class DataFrame(object):
         index = self._row_metadata.index[-n:]
         return DataFrame(col_partitions=new_dfs,
                          col_metadata=self._col_metadata,
-                         index=index)
+                         index=index,
+                         dtypes_cache=self._dtypes_cache)
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
         raise NotImplementedError(
