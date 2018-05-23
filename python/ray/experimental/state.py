@@ -36,6 +36,14 @@ TASK_PREFIX = "TT:"
 FUNCTION_PREFIX = "RemoteFunction:"
 OBJECT_CHANNEL_PREFIX = "OC:"
 
+# These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
+# TODO(rkn): We should use scoped enums, in which case we should be able to
+# just access the flatbuffer generated values.
+TablePrefix_TASK = 1
+TablePrefix_TASK_string = "TASK"
+TablePrefix_OBJECT = 4
+TablePrefix_OBJECT_string = "OBJECT"
+
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
 TASK_STATUS_WAITING = 1
@@ -198,28 +206,45 @@ class GlobalState(object):
             object_id = ray.ObjectID(hex_to_binary(object_id))
 
         # Return information about a single object ID.
-        object_locations = self._execute_command(object_id,
-                                                 "RAY.OBJECT_TABLE_LOOKUP",
-                                                 object_id.id())
-        if object_locations is not None:
-            manager_ids = [
-                binary_to_hex(manager_id) for manager_id in object_locations
-            ]
+        if not self.use_raylet:
+            # Use the non-raylet code path.
+            object_locations = self._execute_command(object_id,
+                                                     "RAY.OBJECT_TABLE_LOOKUP",
+                                                     object_id.id())
+            if object_locations is not None:
+                manager_ids = [
+                    binary_to_hex(manager_id) for manager_id in object_locations
+                ]
+            else:
+                manager_ids = None
+
+            result_table_response = self._execute_command(
+                object_id, "RAY.RESULT_TABLE_LOOKUP", object_id.id())
+            result_table_message = ResultTableReply.GetRootAsResultTableReply(
+                result_table_response, 0)
+
+            result = {
+                "ManagerIDs": manager_ids,
+                "TaskID": binary_to_hex(result_table_message.TaskId()),
+                "IsPut": bool(result_table_message.IsPut()),
+                "DataSize": result_table_message.DataSize(),
+                "Hash": binary_to_hex(result_table_message.Hash())
+            }
+
         else:
-            manager_ids = None
-
-        result_table_response = self._execute_command(
-            object_id, "RAY.RESULT_TABLE_LOOKUP", object_id.id())
-        result_table_message = ResultTableReply.GetRootAsResultTableReply(
-            result_table_response, 0)
-
-        result = {
-            "ManagerIDs": manager_ids,
-            "TaskID": binary_to_hex(result_table_message.TaskId()),
-            "IsPut": bool(result_table_message.IsPut()),
-            "DataSize": result_table_message.DataSize(),
-            "Hash": binary_to_hex(result_table_message.Hash())
-        }
+            # Use the raylet code path.
+            message = self.redis_client.execute_command("RAY.TABLE_LOOKUP",
+                                                        TablePrefix_OBJECT,
+                                                        "", object_id.id())
+            result = []
+            gcs_entry = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+            assert gcs_entry.EntriesLength() == 1
+            log_info = ObjectTableData.GetRootAsObjectTableData(
+                gcs_entry.Entries(0), 0)
+            result.append({"DataSize": log_info.ObjectSize(),
+                           "Manager": log_info.Manager(),
+                           "IsEviction": log_info.IsEviction(),
+                           "NumEvictions": log_info.NumEvictions()})
 
         return result
 
@@ -230,7 +255,6 @@ class GlobalState(object):
             object_id: An object ID to fetch information about. If this is
                 None, then the entire object table is fetched.
 
-
         Returns:
             Information from the object table.
         """
@@ -240,13 +264,21 @@ class GlobalState(object):
             return self._object_table(object_id)
         else:
             # Return the entire object table.
-            object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
-            object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
-            object_ids_binary = set(
-                [key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys] + [
-                    key[len(OBJECT_LOCATION_PREFIX):]
-                    for key in object_location_keys
-                ])
+            if not self.use_raylet:
+                object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
+                object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
+                object_ids_binary = set(
+                    [key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys] + [
+                        key[len(OBJECT_LOCATION_PREFIX):]
+                        for key in object_location_keys
+                    ])
+            else:
+                object_keys = self.redis_client.keys(
+                    TablePrefix_OBJECT_string + ":*")
+                object_ids_binary = set(
+                    [key[len(TablePrefix_OBJECT_string + ":"):]
+                     for key in object_keys])
+
             results = {}
             for object_id_binary in object_ids_binary:
                 results[binary_to_object_id(object_id_binary)] = (
