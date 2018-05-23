@@ -585,7 +585,7 @@ class DataFrame(object):
                          columns=new_cols,
                          col_metadata=self._col_metadata,
                          row_metadata=self._row_metadata,
-                         dtypes_cache=self.dtypes)
+                         dtypes_cache=self._dtypes_cache)
 
     def add_suffix(self, suffix):
         """Add a suffix to each of the column names.
@@ -598,7 +598,7 @@ class DataFrame(object):
                          columns=new_cols,
                          col_metadata=self._col_metadata,
                          row_metadata=self._row_metadata,
-                         dtypes_cache=self.dtypes)
+                         dtypes_cache=self._dtypes_cache)
 
     def applymap(self, func):
         """Apply a function to a DataFrame elementwise.
@@ -627,7 +627,7 @@ class DataFrame(object):
         return DataFrame(block_partitions=self._block_partitions,
                          columns=self.columns,
                          index=self.index,
-                         dtypes_cache=self.dtypes)
+                         dtypes_cache=self._dtypes_cache)
 
     def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
                 group_keys=True, squeeze=False, **kwargs):
@@ -701,7 +701,7 @@ class DataFrame(object):
         return DataFrame(block_partitions=new_block_partitions,
                          columns=self.columns,
                          index=self.index,
-                         dtypes_cache=self.dtypes)
+                         dtypes_cache=self._dtypes_cache)
 
     def isin(self, values):
         """Fill a DataFrame with booleans for cells contained in values.
