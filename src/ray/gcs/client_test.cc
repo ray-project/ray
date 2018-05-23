@@ -15,7 +15,7 @@ namespace ray {
 namespace gcs {
 
 namespace {
-const char *const kRandomId = "abcdefghijklmnopqrst";
+constexpr char kRandomId[] = "abcdefghijklmnopqrst";
 }  // namespace
 
 /* Flush redis. */

@@ -541,7 +541,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
                           stderr_file=None,
                           cleanup=True,
                           executable=REDIS_EXECUTABLE,
-                          modules=[REDIS_MODULE]):
+                          modules=None):
     """Start a single Redis server.
 
     Args:
@@ -561,7 +561,8 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
             Python process that imported services exits.
         executable (str): Full path tho the redis-server executable.
         modules (list of str): A list of pathnames, pointing to the redis
-            module(s) that will be loaded in this redis server.
+            module(s) that will be loaded in this redis server.  If None, load
+            the default Ray redis module.
 
     Returns:
         A tuple of the port used by Redis and a handle to the process that was
@@ -572,6 +573,8 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         Exception: An exception is raised if Redis could not be started.
     """
     assert os.path.isfile(executable)
+    if modules is None:
+        modules = [REDIS_MODULE]
     for module in modules:
         assert os.path.isfile(module)
     counter = 0
@@ -601,7 +604,8 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         port = new_port()
         counter += 1
     if counter == num_retries:
-        raise Exception("Couldn't start Redis.")
+        raise Exception("Couldn't start Redis. Check stderr file " +
+                        stderr_file)
 
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
