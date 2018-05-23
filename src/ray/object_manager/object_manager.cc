@@ -196,20 +196,19 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
   return ray::Status::OK();
 }
 
-ray::Status ObjectManager::Push(const ObjectID &object_id,
-                                const ClientID &client_id,
+ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id,
                                 int retry) {
   if (local_objects_.count(object_id) == 0) {
     if (retry < 0) {
       retry = config_.max_retries;
+    } else if (retry == 0) {
+      RAY_LOG(ERROR) << "Invalid Push request ObjectID: " << object_id.hex()
+                     << " after retrying " << config_.max_retries << " times.";
+      return ray::Status::OK();
     }
-    else if (retry == 0) {
-      return ray::Status::KeyError(std::string("Push with unknown Object ID: "
-                                               + object_id.hex()));
-    }
-    main_service_->post(
-        [this, object_id, client_id, retry]() {
-          RAY_CHECK_OK(Push(object_id, client_id, retry - 1)); });
+    main_service_->post([this, object_id, client_id, retry]() {
+      RAY_CHECK_OK(Push(object_id, client_id, retry - 1));
+    });
     return ray::Status::OK();
   }
 

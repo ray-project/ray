@@ -124,7 +124,7 @@ class TestObjectManagerBase : public ::testing::Test {
     int max_sends = 2;
     int max_receives = 2;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
-    int max_retries = 6;
+    int max_retries = 1000;
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());

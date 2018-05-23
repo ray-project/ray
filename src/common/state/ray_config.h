@@ -96,9 +96,7 @@ class RayConfig {
     return object_manager_max_receives_;
   }
 
-  int object_manager_max_retries() const {
-    return object_manager_max_retries_;
-  }
+  int object_manager_max_retries() const { return object_manager_max_retries_; }
 
   uint64_t object_manager_default_chunk_size() const {
     return object_manager_default_chunk_size_;
@@ -138,7 +136,7 @@ class RayConfig {
         object_manager_pull_timeout_ms_(20),
         object_manager_max_sends_(2),
         object_manager_max_receives_(2),
-        object_manager_max_retries_(6),
+        object_manager_max_retries_(1000),
         object_manager_default_chunk_size_(100000000) {}
 
   ~RayConfig() {}
