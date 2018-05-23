@@ -758,6 +758,27 @@ class APITest(unittest.TestCase):
         results = ray.get([object_ids[i] for i in indices])
         self.assertEqual(results, indices)
 
+    def testGetMultipleExperimental(self):
+        self.init_ray()
+        object_ids = [ray.put(i) for i in range(10)]
+
+        object_ids_tuple = tuple(object_ids)
+        self.assertEqual(ray.experimental.get(object_ids_tuple),
+                         list(range(10)))
+
+        object_ids_nparray = np.array(object_ids)
+        self.assertEqual(ray.experimental.get(object_ids_nparray),
+                         list(range(10)))
+
+    def testGetDict(self):
+        self.init_ray()
+        d = {str(i): ray.put(i) for i in range(5)}
+        for i in range(5, 10):
+            d[str(i)] = i
+        result = ray.experimental.get(d)
+        expected = {str(i): i for i in range(10)}
+        self.assertEqual(result, expected)
+
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
         "This test does not work with xray yet.")
@@ -825,6 +846,37 @@ class APITest(unittest.TestCase):
             ray.wait(1)
         with self.assertRaises(TypeError):
             ray.wait([1])
+
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
+    def testWaitIterables(self):
+        self.init_ray(num_cpus=1)
+
+        @ray.remote
+        def f(delay):
+            time.sleep(delay)
+            return 1
+
+        objectids = (
+            f.remote(1.0),
+            f.remote(0.5),
+            f.remote(0.5),
+            f.remote(0.5)
+        )
+        ready_ids, remaining_ids = ray.experimental.wait(objectids)
+        self.assertEqual(len(ready_ids), 1)
+        self.assertEqual(len(remaining_ids), 3)
+
+        objectids = np.array([
+            f.remote(1.0),
+            f.remote(0.5),
+            f.remote(0.5),
+            f.remote(0.5)
+        ])
+        ready_ids, remaining_ids = ray.experimental.wait(objectids)
+        self.assertEqual(len(ready_ids), 1)
+        self.assertEqual(len(remaining_ids), 3)
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",

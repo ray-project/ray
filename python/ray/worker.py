@@ -2478,7 +2478,7 @@ def get(object_ids, worker=global_worker):
             # In PYTHON_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
             return object_ids
-        if isinstance(object_ids, collections.Iterable):
+        if isinstance(object_ids, list):
             values = worker.get_object(object_ids)
             for i, value in enumerate(values):
                 if isinstance(value, RayTaskError):
