@@ -456,20 +456,15 @@ def _concat_index(*index_parts):
     return index_parts[0].append(index_parts[1:])
 
 
-@ray.remote
-def _correct_column_dtypes(*column):
-    """Corrects dtypes of a column by concatenating column partitions and
-    splitting the column back into partitions.
-
-    Args:
-    """
-    concat_column = pd.concat(column, copy=False)
-    return create_blocks_helper(concat_column, len(column), 1)
-
-
 def fix_blocks_dimensions(blocks, axis):
     """Checks that blocks is 2D, and adds a dimension if not.
     """
     if blocks.ndim < 2:
         return np.expand_dims(blocks, axis=axis ^ 1)
     return blocks
+
+
+@ray.remote
+def _compile_remote_dtypes(*column_of_blocks):
+    small_dfs = [df.loc[0:0] for df in column_of_blocks]
+    return pd.concat(small_dfs, copy=False).dtypes
