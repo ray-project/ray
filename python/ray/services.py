@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import binascii
 import json
@@ -605,7 +607,7 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
         counter += 1
     if counter == num_retries:
         raise Exception("Couldn't start Redis. Check stderr file " +
-                        stderr_file)
+                        stderr_file.name)
 
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
