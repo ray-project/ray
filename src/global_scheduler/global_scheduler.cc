@@ -336,6 +336,9 @@ void object_table_subscribe_callback(ObjectID object_id,
   for (size_t i = 0; i < managers.size(); i++) {
     obj_info_entry.object_locations.push_back(managers[i]);
   }
+  if (managers.size() == 0) {
+    state->scheduler_object_info_table.erase(object_id);
+  }
 }
 
 void local_scheduler_table_handler(DBClientID client_id,

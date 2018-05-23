@@ -765,12 +765,18 @@ TEST subscribe_object_not_present_test(void) {
 const char *subscribe_object_available_later_context =
     "subscribe_object_available_later";
 int subscribe_object_available_later_succeeded = 0;
+int subscribe_object_unavailable_later_succeeded = 0;
 
 void subscribe_object_available_later_object_available_callback(
     ObjectID object_id,
     int64_t data_size,
     const std::vector<DBClientID> &manager_vector,
     void *user_context) {
+  if (manager_vector.size() == 0) {
+    /* a notification which indicate object removed */
+    subscribe_object_unavailable_later_succeeded += 1;
+    return;
+  }
   subscribe_object_present_context_t *myctx =
       (subscribe_object_present_context_t *) user_context;
   RAY_CHECK(myctx->data_size == data_size);
@@ -877,6 +883,16 @@ TEST subscribe_object_available_subscribe_all(void) {
   /* Run the event loop to do the object table add. */
   event_loop_run(g_loop);
   /* At this point we assume that object table add completed. */
+  ASSERT_EQ(subscribe_object_available_later_succeeded, 1);
+  ASSERT_EQ(subscribe_object_unavailable_later_succeeded, 0);
+  object_table_remove(db, id, NULL, &retry, NULL, NULL);
+  /* Install handler to terminate event loop after 750ms. */
+  event_loop_add_timer(g_loop, 750,
+                       (event_loop_timer_handler) terminate_event_loop_callback,
+                       NULL);
+  /* Run the event loop to do the object table remove. */
+  event_loop_run(g_loop);
+  /* At this point we assume that object table remove completed. */
 
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
@@ -887,8 +903,10 @@ TEST subscribe_object_available_subscribe_all(void) {
          subscribe_object_available_later_succeeded);
   fflush(stdout);
   ASSERT_EQ(subscribe_object_available_later_succeeded, 1);
+  ASSERT_EQ(subscribe_object_unavailable_later_succeeded, 1);
   /* Reset the global variable before exiting this unit test. */
   subscribe_object_available_later_succeeded = 0;
+  subscribe_object_unavailable_later_succeeded = 0;
   PASS();
 }
 

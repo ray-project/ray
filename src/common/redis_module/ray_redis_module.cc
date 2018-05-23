@@ -401,7 +401,7 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
                                RedisModuleString *client_id,
                                RedisModuleString *object_id,
                                RedisModuleString *data_size,
-                               RedisModuleKey *key) {
+                               RedisModuleKey *key, bool deleted) {
   flatbuffers::FlatBufferBuilder fbb;
 
   long long data_size_value;
@@ -411,15 +411,17 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
   }
 
   std::vector<flatbuffers::Offset<flatbuffers::String>> manager_ids;
-  CHECK_ERROR(
-      RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
-                                        REDISMODULE_POSITIVE_INFINITE, 1, 1),
-      "Unable to initialize zset iterator");
-  /* Loop over the managers in the object table for this object ID. */
-  do {
-    RedisModuleString *curr = RedisModule_ZsetRangeCurrentElement(key, NULL);
-    manager_ids.push_back(RedisStringToFlatbuf(fbb, curr));
-  } while (RedisModule_ZsetRangeNext(key));
+  if (!deleted) {
+    CHECK_ERROR(
+        RedisModule_ZsetFirstInScoreRange(key, REDISMODULE_NEGATIVE_INFINITE,
+                                          REDISMODULE_POSITIVE_INFINITE, 1, 1),
+        "Unable to initialize zset iterator");
+    /* Loop over the managers in the object table for this object ID. */
+    do {
+      RedisModuleString *curr = RedisModule_ZsetRangeCurrentElement(key, NULL);
+      manager_ids.push_back(RedisStringToFlatbuf(fbb, curr));
+    } while (RedisModule_ZsetRangeNext(key));
+  }
 
   auto message = CreateSubscribeToNotificationsReply(
       fbb, RedisStringToFlatbuf(fbb, object_id), data_size_value,
@@ -908,6 +910,74 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   return result;
 }
 
+/* send notification to the subscribers */
+int sendObjectNotification(RedisModuleCtx *ctx,
+                           RedisModuleString *object_id,
+                           RedisModuleKey *table_key, 
+                           bool deleted) {
+  RedisModuleString *data_size;
+  if (deleted) {
+    data_size = RedisModule_CreateStringFromLongLong(ctx, 0);
+  } else {
+    RedisModuleKey *info_key;
+    info_key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
+                      REDISMODULE_READ | REDISMODULE_WRITE);
+    RedisModule_HashGet(info_key, REDISMODULE_HASH_CFIELDS, "data_size",
+          &data_size, NULL);
+    if (data_size == NULL) {
+      return REDISMODULE_ERR;
+    }
+  }
+
+  bool success = true;
+  /* broadcast channel */
+  RedisModuleString *bcast_client_str =
+      RedisModule_CreateString(ctx, OBJECT_BCAST, strlen(OBJECT_BCAST));
+
+  success = PublishObjectNotification(ctx, bcast_client_str, object_id,
+                 data_size, table_key, deleted);
+  if (!success) {
+    /* The publish failed somehow. */
+    return REDISMODULE_ERR;
+  }
+
+  /* Get the zset of clients that requested a notification about the
+   * availability of this object. */
+  RedisModuleKey *object_notification_key =
+      OpenPrefixedKey(ctx, OBJECT_NOTIFICATION_PREFIX, object_id,
+                      REDISMODULE_READ | REDISMODULE_WRITE);
+  /* If the zset exists, initialize the key to iterate over the zset. */
+  if (RedisModule_KeyType(object_notification_key) !=
+          REDISMODULE_KEYTYPE_EMPTY) {
+      CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
+                      object_notification_key, REDISMODULE_NEGATIVE_INFINITE,
+                      REDISMODULE_POSITIVE_INFINITE, 1, 1),
+                  "Unable to initialize zset iterator when send object notification");
+      /* Iterate over the list of clients that requested notifiations about the
+      * availability of this object, and publish notifications to their object
+      * notification channels. */
+      do {
+      RedisModuleString *client_id =
+        RedisModule_ZsetRangeCurrentElement(object_notification_key, NULL);
+      /* TODO(rkn): Some computation could be saved by batching the string
+       * constructions in the multiple calls to PublishObjectNotification
+       * together. */
+      success = PublishObjectNotification(ctx, client_id, object_id,
+               data_size, table_key, deleted);
+      if (!success) {
+        /* The publish failed somehow. */
+        return REDISMODULE_ERR;
+      }
+    } while (RedisModule_ZsetRangeNext(object_notification_key));
+    /* Now that the clients have been notified, remove the zset of clients
+     * waiting for notifications. */
+    CHECK_ERROR(RedisModule_DeleteKey(object_notification_key),
+                "Unable to delete zset key when send object notification.");
+  }
+
+  return REDISMODULE_OK;
+}
+
 /**
  * Add a new entry to the object table or update an existing one.
  *
@@ -976,48 +1046,8 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   /* Sets are not implemented yet, so we use ZSETs instead. */
   RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
 
-  RedisModuleString *bcast_client_str =
-      RedisModule_CreateString(ctx, OBJECT_BCAST, strlen(OBJECT_BCAST));
-  bool success = PublishObjectNotification(ctx, bcast_client_str, object_id,
-                                           data_size, table_key);
-  if (!success) {
-    /* The publish failed somehow. */
-    return RedisModule_ReplyWithError(ctx, "PUBLISH BCAST unsuccessful");
-  }
-
-  /* Get the zset of clients that requested a notification about the
-   * availability of this object. */
-  RedisModuleKey *object_notification_key =
-      OpenPrefixedKey(ctx, OBJECT_NOTIFICATION_PREFIX, object_id,
-                      REDISMODULE_READ | REDISMODULE_WRITE);
-  /* If the zset exists, initialize the key to iterate over the zset. */
-  if (RedisModule_KeyType(object_notification_key) !=
-      REDISMODULE_KEYTYPE_EMPTY) {
-    CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
-                    object_notification_key, REDISMODULE_NEGATIVE_INFINITE,
-                    REDISMODULE_POSITIVE_INFINITE, 1, 1),
-                "Unable to initialize zset iterator");
-    /* Iterate over the list of clients that requested notifiations about the
-     * availability of this object, and publish notifications to their object
-     * notification channels. */
-
-    do {
-      RedisModuleString *client_id =
-          RedisModule_ZsetRangeCurrentElement(object_notification_key, NULL);
-      /* TODO(rkn): Some computation could be saved by batching the string
-       * constructions in the multiple calls to PublishObjectNotification
-       * together. */
-      bool success = PublishObjectNotification(ctx, client_id, object_id,
-                                               data_size, table_key);
-      if (!success) {
-        /* The publish failed somehow. */
-        return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
-      }
-    } while (RedisModule_ZsetRangeNext(object_notification_key));
-    /* Now that the clients have been notified, remove the zset of clients
-     * waiting for notifications. */
-    CHECK_ERROR(RedisModule_DeleteKey(object_notification_key),
-                "Unable to delete zset key.");
+  if (sendObjectNotification(ctx, object_id, table_key, false) != REDISMODULE_OK) {
+    return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
   if (hash_mismatch) {
@@ -1064,6 +1094,12 @@ int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
   }
 
   RedisModule_ZsetRem(table_key, manager, NULL);
+  if (RedisModule_ZsetRangeCurrentElement(table_key, NULL) == NULL) {
+    sendObjectNotification(ctx, object_id, table_key, true);
+    RedisModule_DeleteKey(table_key);
+  } else {
+    sendObjectNotification(ctx, object_id, table_key, false);
+  }
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");
   return REDISMODULE_OK;
@@ -1134,7 +1170,7 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
       }
 
       bool success = PublishObjectNotification(ctx, client_id, object_id,
-                                               existing_data_size, key);
+                                               existing_data_size, key, false);
       if (!success) {
         /* The publish failed somehow. */
         return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
