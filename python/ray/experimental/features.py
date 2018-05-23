@@ -118,9 +118,10 @@ def _flush_finished_tasks_unsafe_shard(shard_index):
                                   ray.utils.hex_to_binary(task_id))
 
     num_task_keys_deleted = 0
-    if len(keys_to_delete) > 0:
-        num_task_keys_deleted = redis_client.execute_command(
-            "del", *keys_to_delete)
+    delete_batch_size = 100  # The number of keys to delete at a time.
+    for i in range(0, len(keys_to_delete), delete_batch_size):
+        num_task_keys_deleted += redis_client.execute_command(
+            "del", *keys_to_delete[i:(i + delete_batch_size)])
 
     print("Deleted {} finished tasks from Redis shard."
           .format(num_task_keys_deleted))
@@ -141,9 +142,10 @@ def _flush_evicted_objects_unsafe_shard(shard_index):
                                   ray.utils.hex_to_binary(object_id))
 
     num_object_keys_deleted = 0
-    if len(keys_to_delete) > 0:
-        num_object_keys_deleted = redis_client.execute_command(
-            "del", *keys_to_delete)
+    delete_batch_size = 100  # The number of keys to delete at a time.
+    for i in range(0, len(keys_to_delete), delete_batch_size):
+        num_object_keys_deleted += redis_client.execute_command(
+            "del", *keys_to_delete[i:(i + delete_batch_size)])
 
     print("Deleted {} keys for evicted objects from Redis."
           .format(num_object_keys_deleted))
