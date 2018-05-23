@@ -196,12 +196,12 @@ class LineageCache {
   /// includes the entry for the requested entry_id.
   Lineage GetUncommittedLineage(const TaskID &entry_id) const;
 
-  /// Asynchronously write any tasks that have been added since the last flush
-  /// to the GCS. When each write is acknowledged, its entry will be marked as
-  /// committed.
-  ///
-  /// \return Status.
-  Status Flush();
+  /// Asynchronously write any tasks that are in the UNCOMMITTED_READY state
+  /// and for which all parents have been committed to the GCS. These tasks
+  /// will be transitioned in this method to state COMMITTING. Once the write
+  /// is acknowledged, the task's state will be transitioned to state
+  /// COMMITTED.
+  void Flush();
 
   /// Handle the commit of a task entry in the GCS. This sets the task to
   /// COMMITTED and cleans up any ancestor tasks that are in the cache.

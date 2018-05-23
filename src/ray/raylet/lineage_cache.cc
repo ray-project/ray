@@ -283,7 +283,7 @@ bool LineageCache::FlushTask(const TaskID &task_id) {
   return all_arguments_committed;
 }
 
-ray::Status LineageCache::Flush() {
+void LineageCache::Flush() {
   // Iterate through all tasks that are READY.
   std::vector<TaskID> ready_task_ids;
   for (auto it = uncommitted_ready_tasks_.begin();
@@ -296,7 +296,6 @@ ray::Status LineageCache::Flush() {
       it++;
     }
   }
-  return ray::Status::OK();
 }
 
 void PopAncestorTasks(const UniqueID &task_id, Lineage &lineage) {

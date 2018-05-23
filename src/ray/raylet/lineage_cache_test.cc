@@ -184,7 +184,7 @@ TEST_F(LineageCacheTest, TestGetUncommittedLineage) {
 
 void CheckFlush(LineageCache &lineage_cache, MockGcs &mock_gcs,
                 size_t num_tasks_flushed) {
-  RAY_CHECK_OK(lineage_cache.Flush());
+  lineage_cache.Flush();
   ASSERT_EQ(mock_gcs.TaskTable().size(), num_tasks_flushed);
 }
 
