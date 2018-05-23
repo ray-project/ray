@@ -763,12 +763,12 @@ class APITest(unittest.TestCase):
         object_ids = [ray.put(i) for i in range(10)]
 
         object_ids_tuple = tuple(object_ids)
-        self.assertEqual(ray.experimental.get(object_ids_tuple),
-                         list(range(10)))
+        self.assertEqual(
+            ray.experimental.get(object_ids_tuple), list(range(10)))
 
         object_ids_nparray = np.array(object_ids)
-        self.assertEqual(ray.experimental.get(object_ids_nparray),
-                         list(range(10)))
+        self.assertEqual(
+            ray.experimental.get(object_ids_nparray), list(range(10)))
 
     def testGetDict(self):
         self.init_ray()
@@ -858,22 +858,17 @@ class APITest(unittest.TestCase):
             time.sleep(delay)
             return 1
 
-        objectids = (
-            f.remote(1.0),
-            f.remote(0.5),
-            f.remote(0.5),
-            f.remote(0.5)
-        )
+        objectids = (f.remote(1.0), f.remote(0.5), f.remote(0.5),
+                     f.remote(0.5))
         ready_ids, remaining_ids = ray.experimental.wait(objectids)
         self.assertEqual(len(ready_ids), 1)
         self.assertEqual(len(remaining_ids), 3)
 
-        objectids = np.array([
-            f.remote(1.0),
-            f.remote(0.5),
-            f.remote(0.5),
-            f.remote(0.5)
-        ])
+        objectids = np.array(
+            [f.remote(1.0),
+             f.remote(0.5),
+             f.remote(0.5),
+             f.remote(0.5)])
         ready_ids, remaining_ids = ray.experimental.wait(objectids)
         self.assertEqual(len(ready_ids), 1)
         self.assertEqual(len(remaining_ids), 3)

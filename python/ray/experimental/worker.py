@@ -66,8 +66,10 @@ def get(object_ids, worker=None):
                     raise RayGetError(object_ids[i], value)
             return values
         elif isinstance(object_ids, dict):
-            to_get = [t for t in object_ids.items()
-                      if isinstance(t[1], ray.ObjectID)]
+            to_get = [
+                t for t in object_ids.items()
+                if isinstance(t[1], ray.ObjectID)
+            ]
             keys, oids = [list(t) for t in zip(*to_get)]
             values = worker.get_object(oids)
             for i, value in enumerate(values):
