@@ -16,6 +16,46 @@ from ray.utils import _random_string, is_cython, push_error_to_driver
 
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
+class ActorMap:
+    """
+    v1.0
+    A map supporting named actor fetching.
+    It shall only support get_item and set_item operation for now.
+
+    Not sure if we shall provide an repr method.
+    """
+
+    def __init__(self):
+        self.worker = ray.worker.get_global_worker()
+
+    def __getitem__(self, name):
+        """
+        Attempt to get an actor handle with the name.
+        The actor handle shall exist in the Redis database
+        """
+        actor_key = self._calculate_key_(name)
+        pickled_state = self.worker.redis_client.hmget(actor_key, name)
+        assert len(pickled_state) == 1, \
+            "Error: Multiple actors under this name."
+        assert pickled_state[0] is not None, \
+            "Error: actor with name {} doesn't exist".format(name)
+        handle = pickle.loads(pickled_state[0])
+        return handle
+
+    def __setitem__(self, name, actor_handle):
+        """
+        Put an actor handle under a name as the key into the Redis database
+        """
+        actor_key = self._calculate_key_(name)
+        pickled_state = pickle.dumps(actor_handle)
+        assert type(actor_handle) == ActorHandle, \
+            "Error: you could only store named-actors."
+        self.worker.redis_client.hmset(actor_key, {name: pickled_state})
+
+    def _calculate_key_(self, name):
+        return b"Actor:" + str.encode(name)
+
+actors = ActorMap()
 
 def compute_actor_handle_id(actor_handle_id, num_forks):
     """Deterministically compute an actor handle ID.
@@ -899,6 +939,7 @@ class ActorHandle(object):
 
         # This is the driver ID of the driver that owns the actor, not
         # necessarily the driver that owns this actor handle.
+
         actor_driver_id = ray.ObjectID(state["actor_driver_id"])
 
         self.__init__(
