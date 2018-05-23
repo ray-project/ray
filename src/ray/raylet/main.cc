@@ -54,6 +54,8 @@ int main(int argc, char *argv[]) {
   object_manager_config.max_sends = RayConfig::instance().object_manager_max_sends();
   object_manager_config.max_receives =
       RayConfig::instance().object_manager_max_receives();
+  object_manager_config.max_retries =
+      RayConfig::instance().object_manager_max_retries();
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 

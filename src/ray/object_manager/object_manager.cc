@@ -23,6 +23,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
+  RAY_CHECK(config_.max_retries > 0);
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
       [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
@@ -46,6 +47,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
+  RAY_CHECK(config_.max_retries > 0);
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
@@ -194,11 +196,20 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
   return ray::Status::OK();
 }
 
-ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
+ray::Status ObjectManager::Push(const ObjectID &object_id,
+                                const ClientID &client_id,
+                                int retry) {
   if (local_objects_.count(object_id) == 0) {
-    // TODO(hme): Do not retry indefinitely...
+    if (retry < 0) {
+      retry = config_.max_retries;
+    }
+    else if (retry == 0) {
+      return ray::Status::KeyError(std::string("Push with unknown Object ID: "
+                                               + object_id.hex()));
+    }
     main_service_->post(
-        [this, object_id, client_id]() { RAY_CHECK_OK(Push(object_id, client_id)); });
+        [this, object_id, client_id, retry]() {
+          RAY_CHECK_OK(Push(object_id, client_id, retry - 1)); });
     return ray::Status::OK();
   }
 

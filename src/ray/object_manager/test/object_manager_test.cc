@@ -114,6 +114,7 @@ class TestObjectManager : public ::testing::Test {
     int max_sends = 2;
     int max_receives = 2;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
+    int max_retries = 6;
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
@@ -123,6 +124,7 @@ class TestObjectManager : public ::testing::Test {
     om_config_1.max_sends = max_sends;
     om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
+    om_config_1.max_retries = max_retries;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
@@ -133,6 +135,7 @@ class TestObjectManager : public ::testing::Test {
     om_config_2.max_sends = max_sends;
     om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
+    om_config_2.max_retries = max_retries;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
