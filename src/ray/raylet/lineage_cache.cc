@@ -187,12 +187,14 @@ void LineageCache::AddWaitingTask(const Task &task, const Lineage &uncommitted_l
 void LineageCache::AddReadyTask(const Task &task) {
   auto new_entry = LineageEntry(task, GcsStatus_UNCOMMITTED_READY);
   RAY_CHECK(lineage_.SetEntry(std::move(new_entry)));
-  // Add the task to the cache of tasks that may be flushed.
-  uncommitted_ready_tasks_.insert(task.GetTaskSpecification().TaskId());
-
-  // Try to flush the task to the GCS.
-  // TODO(swang): Allow a pluggable policy for when to flush.
-  RAY_CHECK_OK(Flush());
+  const TaskID task_id = task.GetTaskSpecification().TaskId();
+  // Attempt to flush the task.
+  bool flushed = FlushTask(task_id);
+  if (!flushed) {
+    // If we fail to flush the task here, due to uncommitted parents, then add
+    // the task to a cache to be flushed in the future.
+    uncommitted_ready_tasks_.insert(task_id);
+  }
 }
 
 void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
