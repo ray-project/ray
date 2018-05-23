@@ -47,7 +47,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *env,
   //     byte[] workerId, byte[] actorId, boolean isWorker, long numGpus);
   UniqueIdFromJByteArray worker_id(env, wid);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto client = 
+  auto client =
       LocalSchedulerConnection_init(nativeString, *worker_id.PID, isWorker);
   env->ReleaseStringUTFChars(sockName, nativeString);
   return reinterpret_cast<jlong>(client);
