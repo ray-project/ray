@@ -21,7 +21,7 @@ class UniqueIdFromJByteArray {
     _bytes = wid;
 
     jbyte *b =
-        reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, NULL));
+        reinterpret_cast<jbyte *>(_env->GetByteArrayElements(_bytes, nullptr));
     PID = reinterpret_cast<UniqueID *>(b);
   }
 
@@ -45,11 +45,12 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1init(JNIEnv *env,
                                                          jlong numGpus) {
   // 	native private static long _init(String localSchedulerSocket,
   //     byte[] workerId, byte[] actorId, boolean isWorker, long numGpus);
-  UniqueIdFromJByteArray w(env, wid), a(env, actorId);
+  UniqueIdFromJByteArray worker_id(env, wid);
   const char *nativeString = env->GetStringUTFChars(sockName, JNI_FALSE);
-  auto client = LocalSchedulerConnection_init(nativeString, *w.PID, isWorker);
+  auto client = 
+      LocalSchedulerConnection_init(nativeString, *worker_id.PID, isWorker);
   env->ReleaseStringUTFChars(sockName, nativeString);
-  return (jlong) client;
+  return reinterpret_cast<jlong>(client);
 }
 
 /*
@@ -73,7 +74,7 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1submitTask(
   TaskSpec *task =
       reinterpret_cast<char *>(env->GetDirectBufferAddress(buff)) + pos;
   std::vector<ObjectID> execution_dependencies;
-  if (cursorId != NULL) {
+  if (cursorId != nullptr) {
     UniqueIdFromJByteArray cursor_id(env, cursorId);
     execution_dependencies.push_back(*cursor_id.PID);
   }
@@ -100,8 +101,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1getTaskTodo(JNIEnv *env,
 
   jbyteArray result;
   result = env->NewByteArray(task_size);
-  if (result == NULL) {
-    return NULL; /* out of memory error thrown */
+  if (result == nullptr) {
+    return nullptr; /* out of memory error thrown */
   }
 
   // move from task spec structure to the java structure
@@ -133,8 +134,8 @@ Java_org_ray_spi_impl_DefaultLocalSchedulerClient__1computePutId(JNIEnv *env,
 
   jbyteArray result;
   result = env->NewByteArray(sizeof(ObjectID));
-  if (result == NULL) {
-    return NULL; /* out of memory error thrown */
+  if (result == nullptr) {
+    return nullptr; /* out of memory error thrown */
   }
 
   // move from task spec structure to the java structure
