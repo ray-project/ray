@@ -64,7 +64,7 @@ class RedisContext {
   /// \param length The length of the data to be added, if data is provided.
   /// \param prefix
   /// \param pubsub_channel
-  /// \param callback_index
+  /// \param redisCallback The Redis callback function.
   /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
   ///        at which the data must be appended. For all other commands, set to
   ///        -1 for unused. If set, then data must be provided.
