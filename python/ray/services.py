@@ -580,21 +580,23 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
     for module in modules:
         assert os.path.isfile(module)
     counter = 0
+    print('_start_redis_instance; modules:', modules, '; port', port)
     if port is not None:
         # If a port is specified, then try only once to connect.
         num_retries = 1
     else:
         port = new_port()
+    print(' port', port)
 
     load_module_args = []
     for module in modules:
         load_module_args += ["--loadmodule", module]
-    command = [executable, "--port",
-               str(port), "--loglevel", "warning"] + load_module_args
 
     while counter < num_retries:
         if counter > 0:
             print("Redis failed to start, retrying now.")
+        command = [executable, "--port",
+                   str(port), "--loglevel", "warning"] + load_module_args
         p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
         time.sleep(0.1)
         # Check if Redis successfully started (or at least if it the executable
@@ -604,10 +606,11 @@ def _start_redis_instance(node_ip_address="127.0.0.1",
                 all_processes[PROCESS_TYPE_REDIS_SERVER].append(p)
             break
         port = new_port()
+        print(' port', port)
         counter += 1
     if counter == num_retries:
-        raise Exception("Couldn't start Redis. Check stderr file " +
-                        stderr_file.name)
+        raise Exception("Couldn't start Redis. Check stdout file " +
+                        stdout_file.name)
 
     # Create a Redis client just for configuring Redis.
     redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
