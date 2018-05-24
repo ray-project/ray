@@ -2097,7 +2097,8 @@ def connect(info,
         worker.plasma_client = plasma.connect(info["store_socket_name"],
                                               info["manager_socket_name"], 64)
     else:
-        worker.plasma_client = plasma.connect(info["store_socket_name"], "",
+        worker.plasma_client = plasma.connect(info["store_socket_name"],
+                                              info["raylet_socket_name"],
                                               64)
 
     if not worker.use_raylet:
@@ -2526,9 +2527,6 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         A list of object IDs that are ready and a list of the remaining object
             IDs.
     """
-    if worker.use_raylet:
-        print("plasma_client.wait has not been implemented yet")
-        return
 
     if isinstance(object_ids, ray.ObjectID):
         raise TypeError(
