@@ -869,7 +869,8 @@ class ActorHandle(object):
             _ray_actor_creation_dummy_object_id.id(),
             "actor_method_cpus": self._ray_actor_method_cpus,
             "actor_driver_id": self._ray_actor_driver_id.id(),
-            "previous_actor_handle_id": self._ray_actor_handle_id.id(),
+            "previous_actor_handle_id": self._ray_actor_handle_id.id()
+            if self._ray_actor_handle_id else None,
             "ray_forking": ray_forking
         }
 

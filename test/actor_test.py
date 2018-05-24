@@ -1906,6 +1906,44 @@ class DistributedActorHandles(unittest.TestCase):
         # we should also test this from a different driver.
         ray.get(new_f.method.remote())
 
+    def testRegisterAndGetNamedActors(self):
+        # TODO(heyucongtom): We should test this from another driver.
+        ray.worker.init(num_workers=1)
+
+        @ray.remote
+        class Foo(object):
+            def __init__(self):
+                self.x = 0
+
+            def method(self):
+                self.x += 1
+                return self.x
+
+        f1 = Foo.remote()
+        # Test saving f.
+        ray.experimental.register_actor("f1", f1)
+        # Test getting f.
+        f2 = ray.experimental.get_actor("f1")
+        self.assertEqual(f1._actor_id, f2._actor_id)
+
+        # Test same name register shall raise error.
+        with self.assertRaises(ValueError):
+            ray.experimental.register_actor("f1", f2)
+
+        # Test register with wrong object type.
+        with self.assertRaises(TypeError):
+            ray.experimental.register_actor("f3", 1)
+
+        # Test getting a nonexistent actor.
+        with self.assertRaises(ValueError):
+            ray.experimental.get_actor("nonexistent")
+
+        # Test method
+        self.assertEqual(ray.get(f1.method.remote()), 1)
+        self.assertEqual(ray.get(f2.method.remote()), 2)
+        self.assertEqual(ray.get(f1.method.remote()), 3)
+        self.assertEqual(ray.get(f2.method.remote()), 4)
+
 
 class ActorPlacementAndResources(unittest.TestCase):
     def tearDown(self):
