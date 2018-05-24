@@ -466,8 +466,8 @@ class StandardAutoscaler(object):
         self.provider.create_node(
             self.config["worker_nodes"], {
                 TAG_RAY_NODE_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
-                TAG_RAY_NODE_TYPE: "Worker",
-                TAG_RAY_NODE_STATUS: "Uninitialized",
+                TAG_RAY_NODE_TYPE: "worker",
+                TAG_RAY_NODE_STATUS: "uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             }, count)
         if len(self.workers()) <= num_before:
@@ -475,7 +475,7 @@ class StandardAutoscaler(object):
 
     def workers(self):
         return self.provider.nodes(tag_filters={
-            TAG_RAY_NODE_TYPE: "Worker",
+            TAG_RAY_NODE_TYPE: "worker",
         })
 
     def debug_string(self, nodes=None):

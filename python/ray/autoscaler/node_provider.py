@@ -126,7 +126,7 @@ class NodeProvider(object):
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> provider.nodes({TAG_RAY_NODE_TYPE: "Worker"})
+            >>> provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
             ["node-1", "node-2"]
         """
         raise NotImplementedError
