@@ -33,6 +33,7 @@ def _deep_update(original, new_dict, new_keys_allowed, whitelist):
     for k, value in new_dict.items():
         if k not in original and k != "env":
             if not new_keys_allowed:
+                import ipdb; ipdb.set_trace()
                 raise Exception(
                     "Unknown config parameter `{}` ".format(k))
         if type(original.get(k)) is dict:
@@ -59,7 +60,7 @@ class Agent(Trainable):
             classes and objects by name.
     """
 
-    _allow_unknown_configs = False
+    _allow_unknown_configs = True
     _allow_unknown_subkeys = []
 
     def __init__(
@@ -246,6 +247,9 @@ def get_agent_class(alg):
     elif alg == "DDPG":
         from ray.rllib import ddpg
         return ddpg.DDPGAgent
+    elif alg == "ARS":
+        from ray.rllib import ars
+        return ars.ARSAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner
