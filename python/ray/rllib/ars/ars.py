@@ -13,7 +13,7 @@ import numpy as np
 import gym
 import ray
 from ray.rllib.es import utils
-from ray.rllib.es import optimizers
+from ray.rllib.ars import optimizers
 from ray.rllib import agent
 from collections import namedtuple
 from ray.rllib.ars.policies import *
@@ -29,32 +29,31 @@ Result = namedtuple("Result", [
 
 
 DEFAULT_CONFIG = dict(
-    n_directions=8,
-    deltas_used=8,
-    step_size=0.02,
-    delta_std=0.03,
-    n_workers=18,
-    episodes_per_batch=1000,
-    timesteps_per_batch=10000,
-    return_proc_mode="centered_rank",
-    num_workers=10,
-    observation_filter="MeanStdFilter",
-    noise_size=250000000,
-    env_config={},
+    policy_params=None,
+    num_workers=32,
+    num_deltas=320,
+    deltas_used=320,
+    delta_std=0.02,
+    logdir=None,
+    rollout_length=1000,
+    step_size=0.01,
     shift='constant zero',
-    seed=123
+    observation_filter='MeanStdFilter',
+    params=None,
+    seed=123,
+    env_config={}
 )
 
 
 @ray.remote
-def create_shared_noise(noise_size):
+def create_shared_noise():
     """
     Create a large array of noise to be shared by all workers. Used
     for avoiding the communication of the random perturbations delta.
     """
 
     seed = 12345
-    count = noise_size
+    count = 250000000
     noise = np.random.RandomState(seed).randn(count).astype(np.float64)
     return noise
 
@@ -101,15 +100,17 @@ class Worker(object):
         # with independent random streams for sampling
         # from the shared noise table. 
         self.deltas = SharedNoiseTable(deltas, env_seed + 7)
-        self.policy = LinearPolicy(policy_params)
 
         from ray.rllib import models
         self.preprocessor = models.ModelCatalog.get_preprocessor(
             registry, self.env)
-            
+
         self.delta_std = delta_std
         self.rollout_length = rollout_length
         self.sess = utils.make_session(single_threaded=True)
+        self.policy = LinearPolicy(
+            registry, self.sess, self.env.action_space, self.preprocessor,
+            config["observation_filter"])
 
         
     def get_weights_plus_stats(self):
@@ -209,9 +210,8 @@ class ARSAgent(agent.Agent):
     _default_config = DEFAULT_CONFIG
     _allow_unknown_subkeys = ["env_config"]
 
-    def __init__(self):
+    def _init(self):
 
-        import ipdb; ipdb.set_trace()
         env = self.env_creator(self.config["env_config"])
         from ray.rllib import models
         preprocessor = models.ModelCatalog.get_preprocessor(
@@ -234,7 +234,7 @@ class ARSAgent(agent.Agent):
 
         # Create the shared noise table.
         print("Creating shared noise table.")
-        noise_id = create_shared_noise.remote(self.config["noise_size"])
+        noise_id = create_shared_noise.remote()
         self.deltas = SharedNoiseTable(ray.get(noise_id), seed=seed + 3)
 
         # Create the actors.
@@ -258,7 +258,7 @@ class ARSAgent(agent.Agent):
 
             
         # initialize optimization algorithm
-        self.optimizer = optimizers.SGD(self.w_policy, self.step_size)        
+        self.optimizer = optimizers.SGD(self.w_policy, self.config["step_size"])
         print("Initialization of ARS complete.")
 
     def aggregate_rollouts(self, num_rollouts = None, evaluate = False):
@@ -493,15 +493,19 @@ if __name__ == '__main__':
     parser.add_argument('--filter', type=str, default='MeanStdFilter')
 
     local_ip = socket.gethostbyname(socket.gethostname())
-    ray.init(num_cpus=2, redirect_output=False) #redis_address= local_ip + ':6379')
+    ray.init(num_cpus=4, redirect_output=False) #redis_address= local_ip + ':6379')
 
     args = parser.parse_args()
     params = vars(args)
     #run_ars(params)
+    config = DEFAULT_CONFIG
+    config["step_size"] = grid_search([.02, .04])
     tune.run_experiments({
         "my_experiment": {
             "run": "ARS",
-            "stop": {"mean_accuracy": 99},
+            "stop": {
+                "training_iteration": 200
+            },
             "env": 'HalfCheetah-v2',
             # "config": {
             #     "env_name": params["env_name"],
@@ -518,6 +522,11 @@ if __name__ == '__main__':
             #     "dir_path": params["dir_path"],
             #     "filter": params["filter"]
             # }
-            "config": DEFAULT_CONFIG,
+            "config": config,
+            "trial_resources": {
+                "cpu": 1,
+                "gpu": 0,
+                "extra_cpu": 3 - 1,
+            }
         }
     })

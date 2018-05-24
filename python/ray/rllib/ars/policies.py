@@ -44,10 +44,9 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
 
 class LinearPolicy(object):
     def __init__(self, registry, sess, action_space, preprocessor,
-                 observation_filter, action_noise_std):
+                 observation_filter):
         self.sess = sess
         self.action_space = action_space
-        self.action_noise_std = action_noise_std
         self.preprocessor = preprocessor
         self.observation_filter = get_filter(
             observation_filter, self.preprocessor.shape)
