@@ -41,8 +41,8 @@ struct ObjectManagerConfig {
   uint64_t object_chunk_size;
   /// The stored socked name.
   std::string store_socket_name;
-  /// Maximun number of retries.
-  int max_retries;
+  /// Maximun number of push retries.
+  int max_push_retries;
 };
 
 class ObjectManagerInterface {

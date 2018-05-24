@@ -23,7 +23,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  RAY_CHECK(config_.max_retries > 0);
+  RAY_CHECK(config_.max_push_retries > 0);
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
       [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
@@ -47,7 +47,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  RAY_CHECK(config_.max_retries > 0);
+  RAY_CHECK(config_.max_push_retries > 0);
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
@@ -200,10 +200,10 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
                                 int retry) {
   if (local_objects_.count(object_id) == 0) {
     if (retry < 0) {
-      retry = config_.max_retries;
+      retry = config_.max_push_retries;
     } else if (retry == 0) {
-      RAY_LOG(ERROR) << "Invalid Push request ObjectID: " << object_id.hex()
-                     << " after retrying " << config_.max_retries << " times.";
+      RAY_LOG(ERROR) << "Invalid Push request ObjectID: " << object_id
+                     << " after retrying " << config_.max_push_retries << " times.";
       return ray::Status::OK();
     }
     main_service_->post([this, object_id, client_id, retry]() {
