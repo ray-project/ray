@@ -6,12 +6,9 @@ import pytest
 import numpy as np
 import pandas
 import pandas.util.testing as tm
-import ray.dataframe as pd
-from ray.dataframe.utils import (
-    from_pandas,
-    to_pandas)
-
 from pandas.tests.frame.common import TestData
+import ray.dataframe as pd
+from ray.dataframe.utils import to_pandas
 
 
 @pytest.fixture
@@ -45,7 +42,7 @@ def test_int_dataframe():
                                   'col3': [8, 9, 10, 11],
                                   'col4': [12, 13, 14, 15],
                                   'col5': [0, 0, 0, 0]})
-    ray_df = from_pandas(pandas_df, 2)
+    ray_df = pd.DataFrame(pandas_df)
 
     testfuncs = [lambda x: x + 1,
                  lambda x: str(x),
@@ -216,7 +213,7 @@ def test_float_dataframe():
                                   'col4': [12.0, 13.0, 14.0, 15.0],
                                   'col5': [0.0, 0.0, 0.0, 0.0]})
 
-    ray_df = from_pandas(pandas_df, 3)
+    ray_df = pd.DataFrame(pandas_df)
 
     testfuncs = [lambda x: x + 1,
                  lambda x: str(x),
@@ -387,7 +384,7 @@ def test_mixed_dtype_dataframe():
                                   'col3': [8.0, 9.4, 10.1, 11.3],
                                   'col4': ['a', 'b', 'c', 'd']})
 
-    ray_df = from_pandas(pandas_df, 2)
+    ray_df = pd.DataFrame(pandas_df)
 
     testfuncs = [lambda x: x + x,
                  lambda x: str(x),
@@ -555,7 +552,7 @@ def test_nan_dataframe():
                                   'col3': [8, np.nan, 10, 11],
                                   'col4': [np.nan, 13, 14, 15]})
 
-    ray_df = from_pandas(pandas_df, 2)
+    ray_df = pd.DataFrame(pandas_df)
 
     testfuncs = [lambda x: x + x,
                  lambda x: str(x),
@@ -1056,7 +1053,7 @@ def test_assign():
 
 def test_astype():
     td = TestData()
-    ray_df_frame = from_pandas(td.frame, 2)
+    ray_df_frame = pd.DataFrame(td.frame)
     our_df_casted = ray_df_frame.astype(np.int32)
     expected_df_casted = pandas.DataFrame(td.frame.values.astype(np.int32),
                                           index=td.frame.index,
@@ -1098,7 +1095,7 @@ def test_bfill(num_partitions=2):
     test_data = TestData()
     test_data.tsframe['A'][:5] = np.nan
     test_data.tsframe['A'][-5:] = np.nan
-    ray_df = from_pandas(test_data.tsframe, num_partitions)
+    ray_df = pd.DataFrame(test_data.tsframe)
     assert ray_df_equals_pandas(ray_df.bfill(), test_data.tsframe.bfill())
 
 
@@ -1109,7 +1106,7 @@ def test_bool(ray_df, pd_df):
         pd_df.bool()
 
     single_bool_pd_df = pandas.DataFrame([True])
-    single_bool_ray_df = from_pandas(single_bool_pd_df, 1)
+    single_bool_ray_df = pd.DataFrame(single_bool_pd_df)
 
     assert single_bool_pd_df.bool() == single_bool_ray_df.bool()
 
@@ -1255,7 +1252,7 @@ def test_dot():
 def test_drop():
     ray_df = create_test_dataframe()
     simple = pandas.DataFrame({"A": [1, 2, 3, 4], "B": [0, 1, 2, 3]})
-    ray_simple = from_pandas(simple, 2)
+    ray_simple = pd.DataFrame(simple)
     assert ray_df_equals_pandas(ray_simple.drop("A", axis=1), simple[['B']])
     assert ray_df_equals_pandas(ray_simple.drop(["A", "B"], axis='columns'),
                                 simple[[]])
@@ -1283,7 +1280,7 @@ def test_drop():
     nu_df = pandas.DataFrame(pandas.compat.lzip(range(3), range(-3, 1),
                                                 list('abc')),
                              columns=['a', 'a', 'b'])
-    ray_nu_df = from_pandas(nu_df, 3)
+    ray_nu_df = pd.DataFrame(nu_df)
     assert ray_df_equals_pandas(ray_nu_df.drop('a', axis=1), nu_df[['b']])
     assert ray_df_equals_pandas(ray_nu_df.drop('b', axis='columns'),
                                 nu_df['a'])
@@ -1291,7 +1288,7 @@ def test_drop():
 
     nu_df = nu_df.set_index(pandas.Index(['X', 'Y', 'X']))
     nu_df.columns = list('abc')
-    ray_nu_df = from_pandas(nu_df, 3)
+    ray_nu_df = pd.DataFrame(nu_df)
     assert ray_df_equals_pandas(ray_nu_df.drop('X', axis='rows'),
                                 nu_df.loc[["Y"], :])
     assert ray_df_equals_pandas(ray_nu_df.drop(['X', 'Y'], axis=0),
@@ -1300,7 +1297,7 @@ def test_drop():
     # inplace cache issue
     # GH 5628
     df = pandas.DataFrame(np.random.randn(10, 3), columns=list('abc'))
-    ray_df = from_pandas(df, 2)
+    ray_df = pd.DataFrame(df)
     expected = df[~(df.b > 0)]
     ray_df.drop(labels=df[df.b > 0].index, inplace=True)
     assert ray_df_equals_pandas(ray_df, expected)
@@ -1311,7 +1308,7 @@ def test_drop_api_equivalence():
     df = pandas.DataFrame([[1, 2, 3], [3, 4, 5], [5, 6, 7]],
                           index=['a', 'b', 'c'],
                           columns=['d', 'e', 'f'])
-    ray_df = from_pandas(df, 3)
+    ray_df = pd.DataFrame(df)
 
     res1 = ray_df.drop('a')
     res2 = ray_df.drop(index='a')
@@ -1450,14 +1447,14 @@ def test_eq():
 def test_equals():
     pandas_df1 = pandas.DataFrame({'col1': [2.9, 3, 3, 3],
                                    'col2': [2, 3, 4, 1]})
-    ray_df1 = from_pandas(pandas_df1, 2)
-    ray_df2 = from_pandas(pandas_df1, 3)
+    ray_df1 = pd.DataFrame(pandas_df1)
+    ray_df2 = pd.DataFrame(pandas_df1)
 
     assert ray_df1.equals(ray_df2)
 
     pandas_df2 = pandas.DataFrame({'col1': [2.9, 3, 3, 3],
                                    'col2': [2, 3, 5, 1]})
-    ray_df3 = from_pandas(pandas_df2, 4)
+    ray_df3 = pd.DataFrame(pandas_df2)
 
     assert not ray_df3.equals(ray_df1)
     assert not ray_df3.equals(ray_df2)
@@ -1466,7 +1463,7 @@ def test_equals():
 def test_eval_df_use_case():
     df = pandas.DataFrame({'a': np.random.randn(10),
                            'b': np.random.randn(10)})
-    ray_df = from_pandas(df, 2)
+    ray_df = pd.DataFrame(df)
     df.eval("e = arctan2(sin(a), b)",
             engine='python', parser='pandas', inplace=True)
     ray_df.eval("e = arctan2(sin(a), b)",
@@ -1479,7 +1476,7 @@ def test_eval_df_use_case():
 def test_eval_df_arithmetic_subexpression():
     df = pandas.DataFrame({'a': np.random.randn(10),
                            'b': np.random.randn(10)})
-    ray_df = from_pandas(df, 2)
+    ray_df = pd.DataFrame(df)
     df.eval("not_e = sin(a + b)",
             engine='python', parser='pandas', inplace=True)
     ray_df.eval("not_e = sin(a + b)",
@@ -1507,7 +1504,7 @@ def test_ffill(num_partitions=2):
     test_data = TestData()
     test_data.tsframe['A'][:5] = np.nan
     test_data.tsframe['A'][-5:] = np.nan
-    ray_df = from_pandas(test_data.tsframe, num_partitions)
+    ray_df = pd.DataFrame(test_data.tsframe)
 
     assert ray_df_equals_pandas(ray_df.ffill(), test_data.tsframe.ffill())
 
@@ -1543,12 +1540,11 @@ def test_fillna_sanity(num_partitions=2):
     tf.loc[tf.index[-5:], 'A'] = np.nan
 
     zero_filled = test_data.tsframe.fillna(0)
-    ray_df = from_pandas(test_data.tsframe, num_partitions).fillna(0)
+    ray_df = pd.DataFrame(test_data.tsframe).fillna(0)
     assert ray_df_equals_pandas(ray_df, zero_filled)
 
     padded = test_data.tsframe.fillna(method='pad')
-    ray_df = from_pandas(test_data.tsframe,
-                         num_partitions).fillna(method='pad')
+    ray_df = pd.DataFrame(test_data.tsframe).fillna(method='pad')
     assert ray_df_equals_pandas(ray_df, padded)
 
     # mixed type
@@ -1557,31 +1553,27 @@ def test_fillna_sanity(num_partitions=2):
     mf.loc[mf.index[-10:], 'A'] = np.nan
 
     result = test_data.mixed_frame.fillna(value=0)
-    ray_df = from_pandas(test_data.mixed_frame,
-                         num_partitions).fillna(value=0)
+    ray_df = pd.DataFrame(test_data.mixed_frame).fillna(value=0)
     assert ray_df_equals_pandas(ray_df, result)
 
     result = test_data.mixed_frame.fillna(method='pad')
-    ray_df = from_pandas(test_data.mixed_frame,
-                         num_partitions).fillna(method='pad')
+    ray_df = pd.DataFrame(test_data.mixed_frame).fillna(method='pad')
     assert ray_df_equals_pandas(ray_df, result)
 
     pytest.raises(ValueError, test_data.tsframe.fillna)
-    pytest.raises(ValueError, from_pandas(test_data.tsframe,
-                                          num_partitions).fillna)
+    pytest.raises(ValueError, pd.DataFrame(test_data.tsframe).fillna)
     with pytest.raises(ValueError):
-        from_pandas(test_data.tsframe, num_partitions).fillna(5,
-                                                              method='ffill')
+        pd.DataFrame(test_data.tsframe).fillna(5, method='ffill')
 
     # mixed numeric (but no float16)
     mf = test_data.mixed_float.reindex(columns=['A', 'B', 'D'])
     mf.loc[mf.index[-10:], 'A'] = np.nan
     result = mf.fillna(value=0)
-    ray_df = from_pandas(mf, num_partitions).fillna(value=0)
+    ray_df = pd.DataFrame(mf).fillna(value=0)
     assert ray_df_equals_pandas(ray_df, result)
 
     result = mf.fillna(method='pad')
-    ray_df = from_pandas(mf, num_partitions).fillna(method='pad')
+    ray_df = pd.DataFrame(mf).fillna(method='pad')
     assert ray_df_equals_pandas(ray_df, result)
 
     # TODO: Use this when Arrow issue resolves:
@@ -1597,11 +1589,11 @@ def test_fillna_sanity(num_partitions=2):
                             'b', 'b', np.nan, 'b'], ['c', 'c', np.nan, 'c']])
 
     result = df.fillna({2: 'foo'})
-    ray_df = from_pandas(df, num_partitions).fillna({2: 'foo'})
+    ray_df = pd.DataFrame(df).fillna({2: 'foo'})
 
     assert ray_df_equals_pandas(ray_df, result)
 
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     df.fillna({2: 'foo'}, inplace=True)
     ray_df.fillna({2: 'foo'}, inplace=True)
     assert ray_df_equals_pandas(ray_df, result)
@@ -1612,7 +1604,7 @@ def test_fillna_sanity(num_partitions=2):
     df.iloc[3:5, 2] = np.nan
 
     # result = df.fillna(999, limit=1)
-    # ray_df = from_pandas(df, num_partitions).fillna(999, limit=1)
+    # ray_df = pd.DataFrame(df).fillna(999, limit=1)
 
     # assert ray_df_equals_pandas(ray_df, result)
 
@@ -1622,7 +1614,7 @@ def test_fillna_sanity(num_partitions=2):
                            'Date2': [pandas.Timestamp("2013-1-1"),
                                      pandas.NaT]})
     result = df.fillna(value={'Date': df['Date2']})
-    ray_df = from_pandas(df, num_partitions).fillna(
+    ray_df = pd.DataFrame(df).fillna(
         value={'Date': df['Date2']})
     assert ray_df_equals_pandas(ray_df, result)
 
@@ -1633,13 +1625,13 @@ def test_fillna_sanity(num_partitions=2):
     """
     df = pandas.DataFrame({'A': [pandas.Timestamp('2012-11-11 00:00:00+01:00'),
                                  pandas.NaT]})
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     assert ray_df_equals_pandas(ray_df.fillna(method='pad'),
                                 df.fillna(method='pad'))
 
     df = pandas.DataFrame({
         'A': [pandas.NaT, pandas.Timestamp('2012-11-11 00:00:00+01:00')]})
-    ray_df = from_pandas(df, num_partitions).fillna(method='bfill')
+    ray_df = pd.DataFrame(df).fillna(method='bfill')
     assert ray_df_equals_pandas(ray_df, df.fillna(method='bfill'))
     """
 
@@ -1650,22 +1642,22 @@ def test_fillna_downcast(num_partitions=2):
     # infer int64 from float64
     df = pandas.DataFrame({'a': [1., np.nan]})
     result = df.fillna(0, downcast='infer')
-    ray_df = from_pandas(df, num_partitions).fillna(0, downcast='infer')
+    ray_df = pd.DataFrame(df).fillna(0, downcast='infer')
     assert ray_df_equals_pandas(ray_df, result)
 
     # infer int64 from float64 when fillna value is a dict
     df = pandas.DataFrame({'a': [1., np.nan]})
     result = df.fillna({'a': 0}, downcast='infer')
-    ray_df = from_pandas(df, num_partitions).fillna({'a': 0}, downcast='infer')
+    ray_df = pd.DataFrame(df).fillna({'a': 0}, downcast='infer')
     assert ray_df_equals_pandas(ray_df, result)
 
 
 @pytest.fixture
-def test_ffill2(num_partitions=2):
+def test_ffill2():
     test_data = TestData()
     test_data.tsframe['A'][:5] = np.nan
     test_data.tsframe['A'][-5:] = np.nan
-    ray_df = from_pandas(test_data.tsframe, num_partitions)
+    ray_df = pd.DataFrame(test_data.tsframe)
     assert ray_df_equals_pandas(ray_df.fillna(method='ffill'),
                                 test_data.tsframe.fillna(method='ffill'))
 
@@ -1675,7 +1667,7 @@ def test_bfill2(num_partitions=2):
     test_data = TestData()
     test_data.tsframe['A'][:5] = np.nan
     test_data.tsframe['A'][-5:] = np.nan
-    ray_df = from_pandas(test_data.tsframe, num_partitions)
+    ray_df = pd.DataFrame(test_data.tsframe)
     assert ray_df_equals_pandas(ray_df.fillna(method='bfill'),
                                 test_data.tsframe.fillna(method='bfill'))
 
@@ -1686,20 +1678,19 @@ def test_fillna_inplace(num_partitions=2):
     df[1][:4] = np.nan
     df[3][-4:] = np.nan
 
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     df.fillna(value=0, inplace=True)
     assert not ray_df_equals_pandas(ray_df, df)
 
     ray_df.fillna(value=0, inplace=True)
     assert ray_df_equals_pandas(ray_df, df)
 
-    ray_df = from_pandas(df, num_partitions).fillna(value={0: 0},
-                                                    inplace=True)
+    ray_df = pd.DataFrame(df).fillna(value={0: 0}, inplace=True)
     assert ray_df is None
 
     df[1][:4] = np.nan
     df[3][-4:] = np.nan
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     df.fillna(method='ffill', inplace=True)
 
     assert not ray_df_equals_pandas(ray_df, df)
@@ -1716,14 +1707,13 @@ def test_frame_fillna_limit(num_partitions=2):
     expected = df[:2].reindex(index)
     expected = expected.fillna(method='pad', limit=5)
 
-    ray_df = from_pandas(df[:2].reindex(index), num_partitions).fillna(
-        method='pad', limit=5)
+    ray_df = pd.DataFrame(df[:2].reindex(index)).fillna(method='pad', limit=5)
     assert ray_df_equals_pandas(ray_df, expected)
 
     expected = df[-2:].reindex(index)
     expected = expected.fillna(method='backfill', limit=5)
-    ray_df = from_pandas(df[-2:].reindex(index), num_partitions).fillna(
-        method='backfill', limit=5)
+    ray_df = pd.DataFrame(df[-2:].reindex(index)).fillna(method='backfill',
+                                                         limit=5)
     assert ray_df_equals_pandas(ray_df, expected)
 
 
@@ -1733,12 +1723,12 @@ def test_frame_pad_backfill_limit(num_partitions=2):
     df = pandas.DataFrame(np.random.randn(10, 4), index=index)
 
     result = df[:2].reindex(index)
-    ray_df = from_pandas(result, num_partitions)
+    ray_df = pd.DataFrame(result)
     assert ray_df_equals_pandas(ray_df.fillna(method='pad', limit=5),
                                 result.fillna(method='pad', limit=5))
 
     result = df[-2:].reindex(index)
-    ray_df = from_pandas(result, num_partitions)
+    ray_df = pd.DataFrame(result)
     assert ray_df_equals_pandas(ray_df.fillna(method='backfill', limit=5),
                                 result.fillna(method='backfill', limit=5))
 
@@ -1750,12 +1740,12 @@ def test_fillna_dtype_conversion(num_partitions=2):
 
     # empty block
     df = pandas.DataFrame(index=range(3), columns=['A', 'B'], dtype='float64')
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     assert ray_df_equals_pandas(ray_df.fillna('nan'), df.fillna('nan'))
 
     # equiv of replace
     df = pandas.DataFrame({'A': [1, np.nan], 'B': [1., 2.]})
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     for v in ['', 1, np.nan, 1.0]:
         assert ray_df_equals_pandas(ray_df.fillna(v), df.fillna(v))
 
@@ -1765,7 +1755,7 @@ def test_fillna_skip_certain_blocks(num_partitions=2):
     # don't try to fill boolean, int blocks
 
     df = pandas.DataFrame(np.random.randn(10, 4).astype(int))
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
 
     # it works!
     assert ray_df_equals_pandas(ray_df.fillna(np.nan), df.fillna(np.nan))
@@ -1776,7 +1766,7 @@ def test_fillna_dict_series(num_partitions=2):
     df = pandas.DataFrame({'a': [np.nan, 1, 2, np.nan, np.nan],
                            'b': [1, 2, 3, np.nan, np.nan],
                            'c': [np.nan, 1, 2, 3, 4]})
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
 
     assert ray_df_equals_pandas(ray_df.fillna({'a': 0, 'b': 5}),
                                 df.fillna({'a': 0, 'b': 5}))
@@ -1796,7 +1786,7 @@ def test_fillna_dataframe(num_partitions=2):
                            'b': [1, 2, 3, np.nan, np.nan],
                            'c': [np.nan, 1, 2, 3, 4]},
                           index=list('VWXYZ'))
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
 
     # df2 may have different index and columns
     df2 = pandas.DataFrame({'a': [np.nan, 10, 20, 30, 40],
@@ -1812,13 +1802,13 @@ def test_fillna_dataframe(num_partitions=2):
 def test_fillna_columns(num_partitions=2):
     df = pandas.DataFrame(np.random.randn(10, 10))
     df.values[:, ::2] = np.nan
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
 
     assert ray_df_equals_pandas(ray_df.fillna(method='ffill', axis=1),
                                 df.fillna(method='ffill', axis=1))
 
     df.insert(6, 'foo', 5)
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     assert ray_df_equals_pandas(ray_df.fillna(method='ffill', axis=1),
                                 df.fillna(method='ffill', axis=1))
 
@@ -1826,7 +1816,7 @@ def test_fillna_columns(num_partitions=2):
 @pytest.fixture
 def test_fillna_invalid_method(num_partitions=2):
     test_data = TestData()
-    ray_df = from_pandas(test_data.frame, num_partitions)
+    ray_df = pd.DataFrame(test_data.frame)
     with tm.assert_raises_regex(ValueError, 'ffil'):
         ray_df.fillna(method='ffil')
 
@@ -1834,7 +1824,7 @@ def test_fillna_invalid_method(num_partitions=2):
 @pytest.fixture
 def test_fillna_invalid_value(num_partitions=2):
     test_data = TestData()
-    ray_df = from_pandas(test_data.frame, num_partitions)
+    ray_df = pd.DataFrame(test_data.frame)
     # list
     pytest.raises(TypeError, ray_df.fillna, [1, 2])
     # tuple
@@ -1849,7 +1839,7 @@ def test_fillna_col_reordering(num_partitions=2):
     cols = ["COL." + str(i) for i in range(5, 0, -1)]
     data = np.random.rand(20, 5)
     df = pandas.DataFrame(index=range(20), columns=cols, data=data)
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     assert ray_df_equals_pandas(ray_df.fillna(method='ffill'),
                                 df.fillna(method='ffill'))
 
@@ -1865,7 +1855,7 @@ def test_fillna_datetime_columns(num_partitions=2):
                            'C': ['foo', 'bar', None],
                            'D': ['foo2', 'bar2', None]},
                       index=date_range('20130110', periods=3))
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     assert ray_df_equals_pandas(ray_df.fillna('?'), df.fillna('?'))
 
     df = pandas.DataFrame({'A': [-1, -2, np.nan],
@@ -1874,7 +1864,7 @@ def test_fillna_datetime_columns(num_partitions=2):
                            'C': ['foo', 'bar', None],
                            'D': ['foo2', 'bar2', None]},
                           index=date_range('20130110', periods=3))
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     assert ray_df_equals_pandas(ray_df.fillna('?'), df.fillna('?'))
 """
 
@@ -2394,12 +2384,12 @@ def test_rdiv():
 
 
 def test_reindex():
-    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3],
-                              'col2': [4, 5, 6, 7],
-                              'col3': [8, 9, 10, 11],
-                              'col4': [12, 13, 14, 15],
-                              'col5': [0, 0, 0, 0]})
-    ray_df = from_pandas(pandas_df, 2)
+    pandas_df = pandas.DataFrame({'col1': [0, 1, 2, 3],
+                                  'col2': [4, 5, 6, 7],
+                                  'col3': [8, 9, 10, 11],
+                                  'col4': [12, 13, 14, 15],
+                                  'col5': [0, 0, 0, 0]})
+    ray_df = pd.DataFrame(pandas_df)
 
     assert ray_df_equals_pandas(
         ray_df.reindex([0, 3, 2, 1]), pandas_df.reindex([0, 3, 2, 1]))
@@ -2448,18 +2438,18 @@ def test_rename():
 
 
 @pytest.fixture
-def test_rename_sanity(num_partitions=2):
+def test_rename_sanity():
     test_data = TestData()
     mapping = {'A': 'a', 'B': 'b', 'C': 'c', 'D': 'd'}
 
-    ray_df = from_pandas(test_data.frame, num_partitions)
+    ray_df = pd.DataFrame(test_data.frame)
     assert ray_df_equals_pandas(ray_df.rename(columns=mapping),
                                 test_data.frame.rename(columns=mapping))
 
     renamed2 = test_data.frame.rename(columns=str.lower)
     assert ray_df_equals_pandas(ray_df.rename(columns=str.lower), renamed2)
 
-    ray_df = from_pandas(renamed2, num_partitions)
+    ray_df = pd.DataFrame(renamed2)
     assert ray_df_equals_pandas(ray_df.rename(columns=str.upper),
                                 renamed2.rename(columns=str.upper))
 
@@ -2468,7 +2458,7 @@ def test_rename_sanity(num_partitions=2):
 
     # gets sorted alphabetical
     df = pandas.DataFrame(data)
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     tm.assert_index_equal(
         ray_df.rename(index={'foo': 'bar', 'bar': 'foo'}).index,
         df.rename(index={'foo': 'bar', 'bar': 'foo'}).index)
@@ -2481,7 +2471,7 @@ def test_rename_sanity(num_partitions=2):
 
     # partial columns
     renamed = test_data.frame.rename(columns={'C': 'foo', 'D': 'bar'})
-    ray_df = from_pandas(test_data.frame, num_partitions)
+    ray_df = pd.DataFrame(test_data.frame)
     tm.assert_index_equal(
         ray_df.rename(columns={'C': 'foo', 'D': 'bar'}).index,
         test_data.frame.rename(columns={'C': 'foo', 'D': 'bar'}).index)
@@ -2497,7 +2487,7 @@ def test_rename_sanity(num_partitions=2):
     index = pandas.Index(['foo', 'bar'], name='name')
     renamer = pandas.DataFrame(data, index=index)
 
-    ray_df = from_pandas(renamer, num_partitions)
+    ray_df = pd.DataFrame(renamer)
     renamed = renamer.rename(index={'foo': 'bar', 'bar': 'foo'})
     ray_renamed = ray_df.rename(index={'foo': 'bar', 'bar': 'foo'})
     tm.assert_index_equal(renamed.index, ray_renamed.index)
@@ -2513,7 +2503,7 @@ def test_rename_multiindex(num_partitions=2):
     columns = pandas.MultiIndex.from_tuples(
         tuples_columns, names=['fizz', 'buzz'])
     df = pandas.DataFrame([(0, 0), (1, 1)], index=index, columns=columns)
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
 
     #
     # without specifying level -> accross all levels
@@ -2580,7 +2570,7 @@ def test_rename_multiindex(num_partitions=2):
 @pytest.fixture
 def test_rename_nocopy(num_partitions=2):
     test_data = TestData().frame
-    ray_df = from_pandas(test_data, num_partitions)
+    ray_df = pd.DataFrame(test_data)
     ray_renamed = ray_df.rename(columns={'C': 'foo'}, copy=False)
     ray_renamed['foo'] = 1
     assert (ray_df['C'] == 1).all()
@@ -2589,7 +2579,7 @@ def test_rename_nocopy(num_partitions=2):
 @pytest.fixture
 def test_rename_inplace(num_partitions=2):
     test_data = TestData().frame
-    ray_df = from_pandas(test_data, num_partitions)
+    ray_df = pd.DataFrame(test_data)
 
     assert ray_df_equals_pandas(ray_df.rename(columns={'C': 'foo'}),
                                 test_data.rename(columns={'C': 'foo'}))
@@ -2607,7 +2597,7 @@ def test_rename_bug(num_partitions=2):
     # GH 5344
     # rename set ref_locs, and set_index was not resetting
     df = pandas.DataFrame({0: ['foo', 'bar'], 1: ['bah', 'bas'], 2: [1, 2]})
-    ray_df = from_pandas(df, num_partitions)
+    ray_df = pd.DataFrame(df)
     df = df.rename(columns={0: 'a'})
     df = df.rename(columns={1: 'b'})
     # TODO: Uncomment when set_index is implemented
@@ -2625,7 +2615,7 @@ def test_rename_bug(num_partitions=2):
 
 def test_rename_axis_inplace(num_partitions=2):
     test_frame = TestData().frame
-    ray_df = from_pandas(test_frame, num_partitions)
+    ray_df = pd.DataFrame(test_frame)
 
     # GH 15704
     result = test_frame.copy()
@@ -2744,7 +2734,7 @@ def test_select_dtypes():
                            'test6': list(range(5, 8))})
     include = np.float, 'integer'
     exclude = np.bool_,
-    rd = from_pandas(df, 2)
+    rd = pd.DataFrame(df)
     r = rd.select_dtypes(include=include, exclude=exclude)
 
     e = df[["test2", "test3", "test6"]]
