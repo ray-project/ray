@@ -11,7 +11,8 @@ def convert_batch(trajectory, has_features=False):
     """Convert trajectory from numpy to PT variable"""
     states = torch.from_numpy(trajectory["obs"]).float()
     acs = torch.from_numpy(trajectory["actions"])
-    advs = torch.from_numpy(trajectory["advantages"].copy()).float().reshape(-1)
+    advs = torch.from_numpy(
+        trajectory["advantages"].copy()).float().reshape(-1)
     rs = torch.from_numpy(trajectory["rewards"]).float().reshape(-1)
     if has_features:
         features = [torch.from_numpy(f) for f in trajectory["features"]]
@@ -21,7 +22,7 @@ def convert_batch(trajectory, has_features=False):
 
 
 def var_to_np(var):
-    return var.data.numpy()
+    return var.detach().numpy()
 
 
 def normc_initializer(std=1.0):

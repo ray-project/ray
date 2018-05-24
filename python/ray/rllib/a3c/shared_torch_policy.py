@@ -32,7 +32,7 @@ class SharedTorchPolicy(TorchPolicy):
         with self.lock:
             ob = torch.from_numpy(ob).float().unsqueeze(0)
             logits, values = self._model(ob)
-            samples = F.softmax(logits, dim=1).multinomial(1).squeeze()
+            samples = F.softmax(logits, dim=1).multinomial(1)
             values = values.squeeze()
             return var_to_np(samples), {"vf_preds": var_to_np(values)}
 

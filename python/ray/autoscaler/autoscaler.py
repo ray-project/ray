@@ -142,6 +142,7 @@ class LoadMetrics(object):
         def prune(mapping):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
+                print("Removed mapping", unwanted_key, mapping[unwanted_key])
                 del mapping[unwanted_key]
             if unwanted:
                 print("Removed {} stale ip mappings: {} not in {}".format(
@@ -181,19 +182,15 @@ class LoadMetrics(object):
             nodes_used += max_frac
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
         return {
-            "ResourceUsage":
-            ", ".join([
+            "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
                     round(resources_used[rid], 2),
                     round(resources_total[rid], 2), rid)
                 for rid in sorted(resources_used)
             ]),
-            "NumNodesConnected":
-            len(self.static_resources_by_ip),
-            "NumNodesUsed":
-            round(nodes_used, 2),
-            "NodeIdleSeconds":
-            "Min={} Mean={} Max={}".format(
+            "NumNodesConnected": len(self.static_resources_by_ip),
+            "NumNodesUsed": round(nodes_used, 2),
+            "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,
                 int(np.max(idle_times)) if idle_times else -1),
@@ -454,9 +451,8 @@ class StandardAutoscaler(object):
                 TAG_RAY_NODE_STATUS: "Uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             }, count)
-        # TODO(ekl) be less conservative in this check
-        assert len(self.workers()) > num_before, \
-            "Num nodes failed to increase after creating a new node"
+        if len(self.workers()) <= num_before:
+            print("Warning: Num nodes failed to increase after node creation")
 
     def workers(self):
         return self.provider.nodes(tag_filters={

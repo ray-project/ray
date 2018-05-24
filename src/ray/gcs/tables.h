@@ -44,7 +44,11 @@ class PubsubInterface {
 
 /// \class Log
 ///
-/// A GCS table where every entry is an append-only log.
+/// A GCS table where every entry is an append-only log. This class is not
+/// meant to be used directly. All log classes should derive from this class
+/// and override the prefix_ member with a unique prefix for that log, and the
+/// pubsub_channel_ member if pubsub is required.
+///
 /// Example tables backed by Log:
 ///   ObjectTable: Stores a log of which clients have added or evicted an
 ///                object.
@@ -171,10 +175,12 @@ class Log : virtual public PubsubInterface<ID> {
   /// The GCS client.
   AsyncGcsClient *client_;
   /// The pubsub channel to subscribe to for notifications about keys in this
-  /// table. If no notifications are required, this may be set to
-  /// TablePubsub_NO_PUBLISH.
+  /// table. If no notifications are required, this should be set to
+  /// TablePubsub_NO_PUBLISH. If notifications are required, then this must be
+  /// unique across all instances of Log.
   TablePubsub pubsub_channel_;
-  /// The prefix to use for keys in this table.
+  /// The prefix to use for keys in this table. This must be unique across all
+  /// instances of Log.
   TablePrefix prefix_;
   /// The index in the RedisCallbackManager for the callback that is called
   /// when we receive notifications. This is >= 0 iff we have subscribed to the
@@ -194,7 +200,11 @@ class TableInterface {
 
 /// \class Table
 ///
-/// A GCS table where every entry is a single data item.
+/// A GCS table where every entry is a single data item. This class is not
+/// meant to be used directly. All table classes should derive from this class
+/// and override the prefix_ member with a unique prefix for that table, and
+/// the pubsub_channel_ member if pubsub is required.
+///
 /// Example tables backed by Log:
 ///   TaskTable: Stores Task metadata needed for executing the task.
 template <typename ID, typename Data>
@@ -288,7 +298,7 @@ class ActorTable : public Log<ActorID, ActorTableData> {
   ActorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Log(context, client) {
     pubsub_channel_ = TablePubsub_ACTOR;
-    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+    prefix_ = TablePrefix_ACTOR;
   }
 };
 
@@ -297,8 +307,7 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
   TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
                         AsyncGcsClient *client)
       : Log(context, client) {
-    pubsub_channel_ = TablePubsub_ACTOR;
-    prefix_ = TablePrefix_ACTOR;
+    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
   }
 };
 

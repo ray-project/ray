@@ -10,6 +10,8 @@ import warnings
 
 from pyarrow.parquet import ParquetFile
 import pandas as pd
+from pandas.io.common import _infer_compression  # don't depend on internal API
+
 
 from .dataframe import ray, DataFrame
 from . import get_npartitions
@@ -82,21 +84,24 @@ def _split_df(pd_df, chunksize):
 
 
 # CSV
-def _compute_offset(fn, npartitions):
+def _compute_offset(fn, npartitions, ignore_first_line=False):
     """
     Calculate the currect bytes offsets for a csv file.
     Return a list of (start, end) tuple where the end == \n or EOF.
     """
     total_bytes = os.path.getsize(fn)
-    chunksize = total_bytes // npartitions
+    bio = open(fn, 'rb')
+    if ignore_first_line:
+        start = len(bio.readline())
+        chunksize = (total_bytes - start) // npartitions
+    else:
+        start = 0
+        chunksize = total_bytes // npartitions
     if chunksize == 0:
         chunksize = 1
 
-    bio = open(fn, 'rb')
-
     offsets = []
-    start = 0
-    while start <= total_bytes:
+    while start < total_bytes:
         bio.seek(chunksize, 1)  # Move forward {chunksize} bytes
         extend_line = bio.readline()  # Move after the next \n
         total_offset = chunksize + len(extend_line)
@@ -121,15 +126,26 @@ def _infer_column(first_line, kwargs={}):
 
 
 @ray.remote
-def _read_csv_with_offset(fn, start, end, header=b'', kwargs={}):
+def _read_csv_with_offset(fn, start, end, kwargs={}, header=b''):
+    kwargs["quoting"] = int(kwargs["quoting"])  # See issue #2078
+
     bio = open(fn, 'rb')
     bio.seek(start)
     to_read = header + bio.read(end - start)
     bio.close()
-    return pd.read_csv(BytesIO(to_read), **kwargs)
+    pd_df = pd.read_csv(BytesIO(to_read), **kwargs)
+    index = pd_df.index
+    # Partitions must have RangeIndex
+    pd_df.index = pd.RangeIndex(0, len(pd_df))
+    return pd_df, index
 
 
-def read_csv(filepath,
+@ray.remote
+def get_index(*partition_indices):
+    return partition_indices[0].append(partition_indices[1:])
+
+
+def read_csv(filepath_or_buffer,
              sep=',',
              delimiter=None,
              header='infer',
@@ -192,76 +208,110 @@ def read_csv(filepath,
         kwargs: Keyword arguments in pandas::from_csv
     """
 
-    kwargs = dict(
-        sep=sep,
-        delimiter=delimiter,
-        header=header,
-        names=names,
-        index_col=index_col,
-        usecols=usecols,
-        squeeze=squeeze,
-        prefix=prefix,
-        mangle_dupe_cols=mangle_dupe_cols,
-        dtype=dtype,
-        engine=engine,
-        converters=converters,
-        true_values=true_values,
-        false_values=false_values,
-        skipinitialspace=skipinitialspace,
-        skiprows=skiprows,
-        nrows=nrows,
-        na_values=na_values,
-        keep_default_na=keep_default_na,
-        na_filter=na_filter,
-        verbose=verbose,
-        skip_blank_lines=skip_blank_lines,
-        parse_dates=parse_dates,
-        infer_datetime_format=infer_datetime_format,
-        keep_date_col=keep_date_col,
-        date_parser=date_parser,
-        dayfirst=dayfirst,
-        iterator=iterator,
-        chunksize=chunksize,
-        compression=compression,
-        thousands=thousands,
-        decimal=decimal,
-        lineterminator=lineterminator,
-        quotechar=quotechar,
-        quoting=quoting,
-        escapechar=escapechar,
-        comment=comment,
-        encoding=encoding,
-        dialect=dialect,
-        tupleize_cols=tupleize_cols,
-        error_bad_lines=error_bad_lines,
-        warn_bad_lines=warn_bad_lines,
-        skipfooter=skipfooter,
-        skip_footer=skip_footer,
-        doublequote=doublequote,
-        delim_whitespace=delim_whitespace,
-        as_recarray=as_recarray,
-        compact_ints=compact_ints,
-        use_unsigned=use_unsigned,
-        low_memory=low_memory,
-        buffer_lines=buffer_lines,
-        memory_map=memory_map,
-        float_precision=float_precision)
+    kwargs = {
+        'sep': sep,
+        'delimiter': delimiter,
+        'header': header,
+        'names': names,
+        'index_col': index_col,
+        'usecols': usecols,
+        'squeeze': squeeze,
+        'prefix': prefix,
+        'mangle_dupe_cols': mangle_dupe_cols,
+        'dtype': dtype,
+        'engine': engine,
+        'converters': converters,
+        'true_values': true_values,
+        'false_values': false_values,
+        'skipinitialspace': skipinitialspace,
+        'skiprows': skiprows,
+        'nrows': nrows,
+        'na_values': na_values,
+        'keep_default_na': keep_default_na,
+        'na_filter': na_filter,
+        'verbose': verbose,
+        'skip_blank_lines': skip_blank_lines,
+        'parse_dates': parse_dates,
+        'infer_datetime_format': infer_datetime_format,
+        'keep_date_col': keep_date_col,
+        'date_parser': date_parser,
+        'dayfirst': dayfirst,
+        'iterator': iterator,
+        'chunksize': chunksize,
+        'compression': compression,
+        'thousands': thousands,
+        'decimal': decimal,
+        'lineterminator': lineterminator,
+        'quotechar': quotechar,
+        'quoting': quoting,
+        'escapechar': escapechar,
+        'comment': comment,
+        'encoding': encoding,
+        'dialect': dialect,
+        'tupleize_cols': tupleize_cols,
+        'error_bad_lines': error_bad_lines,
+        'warn_bad_lines': warn_bad_lines,
+        'skipfooter': skipfooter,
+        'skip_footer': skip_footer,
+        'doublequote': doublequote,
+        'delim_whitespace': delim_whitespace,
+        'as_recarray': as_recarray,
+        'compact_ints': compact_ints,
+        'use_unsigned': use_unsigned,
+        'low_memory': low_memory,
+        'buffer_lines': buffer_lines,
+        'memory_map': memory_map,
+        'float_precision': float_precision,
+    }
 
-    offsets = _compute_offset(filepath, get_npartitions())
+    # Default to Pandas read_csv for non-serializable objects
+    if not isinstance(filepath_or_buffer, str) or \
+            _infer_compression(filepath_or_buffer, compression) is not None:
 
+        warnings.warn("Defaulting to Pandas implementation",
+                      PendingDeprecationWarning)
+
+        pd_obj = pd.read_csv(filepath_or_buffer, **kwargs)
+        if isinstance(pd_obj, pd.DataFrame):
+            return from_pandas(pd_obj, get_npartitions())
+
+        return pd_obj
+
+    filepath = filepath_or_buffer
+
+    # TODO: handle case where header is a list of lines
     first_line = _get_firstline(filepath)
     columns = _infer_column(first_line, kwargs=kwargs)
+    if header is None or (header == "infer" and names is not None):
+        first_line = b""
+        ignore_first_line = False
+    else:
+        ignore_first_line = True
+
+    offsets = _compute_offset(filepath, get_npartitions(),
+                              ignore_first_line=ignore_first_line)
+
+    # Serialize objects to speed up later use in remote tasks
+    first_line_id = ray.put(first_line)
+    kwargs_id = ray.put(kwargs)
 
     df_obj_ids = []
+    index_obj_ids = []
     for start, end in offsets:
         if start != 0:
-            df = _read_csv_with_offset.remote(
-                filepath, start, end, header=first_line, kwargs=kwargs)
+            df, index = _read_csv_with_offset._submit(
+                args=(filepath, start, end, kwargs_id, first_line_id),
+                num_return_vals=2)
         else:
-            df = _read_csv_with_offset.remote(
-                filepath, start, end, kwargs=kwargs)
+            df, index = _read_csv_with_offset._submit(
+                args=(filepath, start, end, kwargs_id),
+                num_return_vals=2)
         df_obj_ids.append(df)
-    return DataFrame(row_partitions=df_obj_ids, columns=columns)
+        index_obj_ids.append(index)
+
+    index = get_index.remote(*index_obj_ids) if index_col is not None else None
+
+    return DataFrame(row_partitions=df_obj_ids, columns=columns, index=index)
 
 
 def read_json(path_or_buf=None,

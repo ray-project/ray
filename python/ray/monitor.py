@@ -97,7 +97,7 @@ class Monitor(object):
         self.dead_plasma_managers = set()
         # Keep a mapping from local scheduler client ID to IP address to use
         # for updating the load metrics.
-        self.local_scheduler_id_to_ip_map = dict()
+        self.local_scheduler_id_to_ip_map = {}
         self.load_metrics = LoadMetrics()
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
@@ -189,10 +189,9 @@ class Monitor(object):
                 if manager in self.dead_plasma_managers:
                     # If the object was on a dead plasma manager, remove that
                     # location entry.
-                    ok = self.state._execute_command(object_id,
-                                                     "RAY.OBJECT_TABLE_REMOVE",
-                                                     object_id.id(),
-                                                     hex_to_binary(manager))
+                    ok = self.state._execute_command(
+                        object_id, "RAY.OBJECT_TABLE_REMOVE", object_id.id(),
+                        hex_to_binary(manager))
                     if ok != b"OK":
                         log.warn("Failed to remove object location for dead "
                                  "plasma manager.")
@@ -504,11 +503,13 @@ class Monitor(object):
             self.cleanup_task_table()
         if len(self.dead_plasma_managers) > 0:
             self.cleanup_object_table()
+
+        num_plasma_managers = len(self.live_plasma_managers) + len(
+            self.dead_plasma_managers)
+
         log.debug("{} dead local schedulers, {} plasma managers total, {} "
                   "dead plasma managers".format(
-                      len(self.dead_local_schedulers),
-                      (len(self.live_plasma_managers) +
-                       len(self.dead_plasma_managers)),
+                      len(self.dead_local_schedulers), num_plasma_managers,
                       len(self.dead_plasma_managers)))
 
         # Handle messages from the subscription channels.

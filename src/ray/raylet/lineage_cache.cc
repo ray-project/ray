@@ -236,14 +236,21 @@ Status LineageCache::Flush() {
       // committed yet, then as far as we know, it's still in flight to the
       // GCS. Skip this task for now.
       if (parent && parent->GetStatus() != GcsStatus_COMMITTED) {
-        // Request notifications about the parent entry's commit in the GCS.
-        // Once we receive a notification about the task's commit via
-        // HandleEntryCommitted, then this task will be ready to write on the
-        // next call to Flush().
-        auto inserted = subscribed_tasks_.insert(parent_id);
-        if (inserted.second) {
-          RAY_CHECK_OK(
-              task_pubsub_.RequestNotifications(JobID::nil(), parent_id, client_id_));
+        RAY_CHECK(parent->GetStatus() != GcsStatus_UNCOMMITTED_WAITING)
+            << "Children should not become ready to flush before their parents.";
+        // Request notifications about the parent entry's commit in the GCS if
+        // the parent is remote. Otherwise, the parent is local and will
+        // eventually be flushed. In either case, once we receive a
+        // notification about the task's commit via HandleEntryCommitted, then
+        // this task will be ready to write on the next call to Flush().
+        if (parent->GetStatus() == GcsStatus_UNCOMMITTED_REMOTE) {
+          auto inserted = subscribed_tasks_.insert(parent_id);
+          if (inserted.second) {
+            // Only request notifications about the parent entry if we haven't
+            // already requested notifications for it.
+            RAY_CHECK_OK(
+                task_pubsub_.RequestNotifications(JobID::nil(), parent_id, client_id_));
+          }
         }
         all_arguments_committed = false;
         break;
@@ -300,6 +307,7 @@ void PopAncestorTasks(const UniqueID &task_id, Lineage &lineage) {
 void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
   RAY_LOG(DEBUG) << "task committed: " << task_id;
   auto entry = lineage_.PopEntry(task_id);
+  RAY_CHECK(entry);
   for (const auto &parent_id : entry->GetParentTaskIds()) {
     PopAncestorTasks(parent_id, lineage_);
   }

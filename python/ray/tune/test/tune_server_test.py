@@ -63,7 +63,10 @@ class TuneServerSuite(unittest.TestCase):
             "stop": {
                 "training_iteration": 3
             },
-            "trial_resources": dict(cpu=1, gpu=1),
+            "trial_resources": {
+                'cpu': 1,
+                'gpu': 1
+            },
         }
         client.add_trial("test", spec)
         runner.step()
