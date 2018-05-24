@@ -28,7 +28,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_NODE_STATUS,
     TAG_RAY_NODE_TYPE,
-    TAG_NAME)
+    TAG_RAY_NODE_NAME)
 import ray.services as services
 
 REQUIRED, OPTIONAL = True, False
@@ -465,7 +465,7 @@ class StandardAutoscaler(object):
         num_before = len(self.workers())
         self.provider.create_node(
             self.config["worker_nodes"], {
-                TAG_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
+                TAG_RAY_NODE_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
                 TAG_RAY_NODE_TYPE: "Worker",
                 TAG_RAY_NODE_STATUS: "Uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,

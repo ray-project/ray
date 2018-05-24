@@ -7,7 +7,7 @@ import time
 from googleapiclient import discovery
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_NAME
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
 from ray.ray_constants import BOTO_MAX_RETRIES
 
@@ -152,7 +152,7 @@ class GCPNodeProvider(NodeProvider):
         availability_zone = self.provider_config['availability_zone']
 
         config = base_config.copy()
-        config['name'] = labels[TAG_NAME]
+        config['name'] = labels[TAG_RAY_NODE_NAME]
         config['machineType'] = (
             'zones/{zone}/machineTypes/{machine_type}'
             ''.format(zone=availability_zone,
