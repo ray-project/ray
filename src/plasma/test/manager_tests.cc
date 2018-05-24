@@ -77,9 +77,9 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
     mock->write_conn =
         get_manager_connection(remote_mock->state, manager_addr, mock->port);
     wait_for_pollin(mock->manager_remote_fd);
-    mock->read_conn =
-        ClientConnection_listen(mock->loop, mock->manager_remote_fd,
-                                mock->state, PLASMA_DEFAULT_RELEASE_DELAY);
+    mock->read_conn = ClientConnection_listen(
+        mock->loop, mock->manager_remote_fd, mock->state,
+        plasma::kPlasmaDefaultReleaseDelay);
   } else {
     mock->write_conn = NULL;
     mock->read_conn = NULL;
@@ -269,24 +269,22 @@ TEST object_notifications_test(void) {
   ASSERT(!is_local);
 
   /* Check that the object is local after receiving an object notification. */
-  uint8_t *notification = plasma::create_object_info_buffer(&info);
-  int64_t size = *((int64_t *) notification);
-  send(fd[1], notification, sizeof(int64_t) + size, 0);
+  auto notification = plasma::create_object_info_buffer(&info);
+  int64_t size = *((int64_t *) notification.get());
+  send(fd[1], notification.get(), sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, object_id);
   ASSERT(is_local);
-  delete[] notification;
 
   /* Check that the object is not local after receiving a notification about
    * the object deletion. */
   info.is_deletion = true;
   notification = plasma::create_object_info_buffer(&info);
-  size = *((int64_t *) notification);
-  send(fd[1], notification, sizeof(int64_t) + size, 0);
+  size = *((int64_t *) notification.get());
+  send(fd[1], notification.get(), sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, object_id);
   ASSERT(!is_local);
-  delete[] notification;
 
   /* Clean up. */
   close(fd[0]);
