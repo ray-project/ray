@@ -46,6 +46,8 @@ def register_actor(name, actor_handle):
        actor_handle: The actor object to be associated with this name
    """
     worker = ray.worker.get_global_worker()
+    if not isinstance(name, str):
+        raise TypeError("The name argument must be a string.")
     if not isinstance(actor_handle, ray.actor.ActorHandle):
         raise TypeError("The actor_handle argument must be an ActorHandle "
                         "object.")
