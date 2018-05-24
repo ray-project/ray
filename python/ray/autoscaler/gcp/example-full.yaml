@@ -109,9 +109,10 @@ setup_commands:
       python
     # Install Anaconda.
     - >-
-      wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
+      wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh -O ~/anaconda3.sh
       || true
-    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
+    - bash ~/anaconda3.sh -b -p ~/anaconda3 || true
+    - rm ~/anaconda3.sh
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
 
     # Build Ray.
