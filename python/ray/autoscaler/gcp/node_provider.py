@@ -7,7 +7,7 @@ import time
 from googleapiclient import discovery
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.gcp.tags import TAG_KEYS, TAG_VALUES
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
 from ray.ray_constants import BOTO_MAX_RETRIES
 
@@ -40,9 +40,6 @@ class GCPNodeProvider(NodeProvider):
 
         self.compute = discovery.build('compute', 'v1')
 
-        self.tag_keys = TAG_KEYS.copy()
-        self.tag_values = TAG_VALUES.copy()
-
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
         self.cached_nodes = {}
@@ -67,8 +64,7 @@ class GCPNodeProvider(NodeProvider):
 
         cluster_name_filter_expr = (
             '(labels.{key} = {value})'
-            ''.format(key=self.tag_keys['cluster-name'],
-                      value=self.cluster_name))
+            ''.format(key=TAG_RAY_CLUSTER_NAME, value=self.cluster_name))
 
         not_empty_filters = [
             f for f in [
@@ -156,7 +152,7 @@ class GCPNodeProvider(NodeProvider):
         availability_zone = self.provider_config['availability_zone']
 
         config = base_config.copy()
-        config['name'] = labels[self.tag_keys['node-name']]
+        config['name'] = labels[TAG_NAME]
         config['machineType'] = (
             'zones/{zone}/machineTypes/{machine_type}'
             ''.format(zone=availability_zone,
@@ -165,7 +161,7 @@ class GCPNodeProvider(NodeProvider):
         config['labels'] = dict(
             config.get('labels', {}),
             **labels,
-            **{self.tag_keys['cluster-name']: self.cluster_name})
+            **{TAG_RAY_CLUSTER_NAME: self.cluster_name})
 
         if count != 1:
             print("WARNING: Requested to create {} nodes. GCPNodeProvider"

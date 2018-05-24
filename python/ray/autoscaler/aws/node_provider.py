@@ -6,7 +6,7 @@ import boto3
 from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.aws.tags import TAG_KEYS, TAG_VALUES
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 from ray.ray_constants import BOTO_MAX_RETRIES
 
 
@@ -16,9 +16,6 @@ class AWSNodeProvider(NodeProvider):
         config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
         self.ec2 = boto3.resource(
             "ec2", region_name=provider_config["region"], config=config)
-
-        self.tag_keys = TAG_KEYS.copy()
-        self.tag_values = TAG_VALUES.copy()
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -35,7 +32,7 @@ class AWSNodeProvider(NodeProvider):
                 "Values": ["pending", "running"],
             },
             {
-                "Name": "tag:{}".format(self.tag_keys['cluster-name']),
+                "Name": "tag:{}".format(TAG_RAY_CLUSTER_NAME),
                 "Values": [self.cluster_name],
             },
         ]
@@ -95,7 +92,7 @@ class AWSNodeProvider(NodeProvider):
     def create_node(self, node_config, tags, count):
         conf = node_config.copy()
         tag_pairs = [{
-            "Key": self.tag_keys['cluster-name'],
+            "Key": TAG_RAY_CLUSTER_NAME,
             "Value": self.cluster_name,
         }]
         for k, v in tags.items():

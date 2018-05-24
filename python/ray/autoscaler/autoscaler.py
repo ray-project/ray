@@ -23,6 +23,12 @@ from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
 from ray.autoscaler.updater import NodeUpdaterProcess
 from ray.autoscaler.docker import dockerize_if_needed
+from ray.autoscaler.tags import (
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_RUNTIME_CONFIG,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_NODE_TYPE,
+    TAG_NAME)
 import ray.services as services
 
 REQUIRED, OPTIONAL = True, False
@@ -382,14 +388,13 @@ class StandardAutoscaler(object):
 
     def launch_config_ok(self, node_id):
         launch_conf = self.provider.node_tags(node_id).get(
-            self.provider.tag_keys['launch-config'])
+            TAG_RAY_LAUNCH_CONFIG)
         if self.launch_hash != launch_conf:
             return False
         return True
 
     def files_up_to_date(self, node_id):
-        applied = self.provider.node_tags(node_id).get(
-            self.provider.tag_keys['runtime-config'])
+        applied = self.provider.node_tags(node_id).get(TAG_RAY_RUNTIME_CONFIG)
         if applied != self.runtime_hash:
             print(
                 "StandardAutoscaler: {} has runtime state {}, want {}".format(
@@ -460,19 +465,17 @@ class StandardAutoscaler(object):
         num_before = len(self.workers())
         self.provider.create_node(
             self.config["worker_nodes"], {
-                self.provider.tag_keys['node-name']: (
-                    "ray-{}-worker-{}".format(
-                        self.config["cluster_name"], uuid.uuid4().hex)),
-                self.provider.tag_keys['node-type']: self.provider.tag_values["worker"],
-                self.provider.tag_keys['node-status']: self.provider.tag_values["uninitialized"],
-                self.provider.tag_keys['launch-config']: self.launch_hash,
+                TAG_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
+                TAG_RAY_NODE_TYPE: "Worker",
+                TAG_RAY_NODE_STATUS: "Uninitialized",
+                TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             }, count)
         if len(self.workers()) <= num_before:
             print("Warning: Num nodes failed to increase after node creation")
 
     def workers(self):
         return self.provider.nodes(tag_filters={
-            self.provider.tag_keys['node-type']: self.provider.tag_values["worker"],
+            TAG_RAY_NODE_TYPE: "Worker",
         })
 
     def debug_string(self, nodes=None):
