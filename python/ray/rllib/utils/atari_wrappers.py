@@ -2,7 +2,6 @@ import numpy as np
 from collections import deque
 import gym
 from gym import spaces
-cv2.ocl.setUseOpenCL(False)
 
 
 class NoopResetEnv(gym.Wrapper):
