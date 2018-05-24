@@ -78,9 +78,9 @@ def wait_for_compute_global_operation(project_name, operation):
     return result
 
 
-def key_pair_name(i, region, ssh_user):
+def key_pair_name(i, region, project_id, ssh_user):
     """Returns the ith default gcp_key_pair_name."""
-    key_name = "{}_gcp_{}_{}_{}".format(RAY, region, ssh_user, i)
+    key_name = "{}_gcp_{}_{}_{}".format(RAY, region, project_id, ssh_user, i)
     return key_name
 
 
@@ -227,7 +227,11 @@ def _configure_key_pair(config):
     # Try a few times to get or create a good key pair.
     key_found = False
     for i in range(10):
-        key_name = key_pair_name(i, config["provider"]["region"], ssh_user)
+        key_name = key_pair_name(
+            i,
+            config["provider"]["region"],
+            config["provider"]["project_id"],
+            ssh_user)
         public_key_path, private_key_path = key_pair_paths(key_name)
 
         for ssh_key in ssh_keys:
