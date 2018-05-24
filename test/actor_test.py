@@ -1907,10 +1907,7 @@ class DistributedActorHandles(unittest.TestCase):
         ray.get(new_f.method.remote())
 
     def testRegisterAndGetNamedActors(self):
-        # TODO(heyucongtom): We may want to test this from another driver?
-        # One viable way might be setting up another ray process here, connecting to the
-        # redis_address, sending the objectID back, and compare
-
+        # TODO(heyucongtom): We should test this from another driver.
         ray.worker.init(num_workers=1)
 
         @ray.remote
@@ -1923,23 +1920,23 @@ class DistributedActorHandles(unittest.TestCase):
                 return self.x
 
         f1 = Foo.remote()
-        # Test saving f
+        # Test saving f.
         ray.experimental.register_actor("f1", f1)
-        # Test getting f
+        # Test getting f.
         f2 = ray.experimental.get_actor("f1")
         self.assertEqual(f1._actor_id, f2._actor_id)
 
-        # Test same name register shall raise error
+        # Test same name register shall raise error.
         with self.assertRaises(ValueError):
             ray.experimental.register_actor("f1", f2)
 
-        # Test register with wrong object type
+        # Test register with wrong object type.
         with self.assertRaises(TypeError):
             ray.experimental.register_actor("f3", 1)
 
-        # Test getting an unexist actor
+        # Test getting a nonexistent actor.
         with self.assertRaises(ValueError):
-            err = ray.experimental.get_actor("nonexistent")
+            ray.experimental.get_actor("nonexistent")
 
         # Test method
         self.assertEqual(ray.get(f1.method.remote()), 1)
