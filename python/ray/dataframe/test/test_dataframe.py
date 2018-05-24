@@ -22,6 +22,11 @@ def ray_series_equals_pandas(ray_df, pandas_df):
 
 
 @pytest.fixture
+def ray_df_equals(ray_df1, ray_df2):
+    return to_pandas(ray_df1).equals(to_pandas(ray_df2))
+
+
+@pytest.fixture
 def create_test_dataframe():
     return pd.DataFrame({'col1': [0, 1, 2, 3],
                          'col2': [4, 5, 6, 7],
@@ -1306,23 +1311,23 @@ def test_drop_api_equivalence():
 
     ray_df1 = ray_df.drop('a')
     ray_df2 = ray_df.drop(index='a')
-    assert ray_df1.equals(ray_df2)
+    assert ray_df_equals(ray_df1, ray_df2)
 
     ray_df1 = ray_df.drop('d', 1)
     ray_df2 = ray_df.drop(columns='d')
-    assert ray_df1.equals(ray_df2)
+    assert ray_df_equals(ray_df1, ray_df2)
 
     ray_df1 = ray_df.drop(labels='e', axis=1)
     ray_df2 = ray_df.drop(columns='e')
-    assert ray_df1.equals(ray_df2)
+    assert ray_df_equals(ray_df1, ray_df2)
 
     ray_df1 = ray_df.drop(['a'], axis=0)
     ray_df2 = ray_df.drop(index=['a'])
-    assert ray_df1.equals(ray_df2)
+    assert ray_df_equals(ray_df1, ray_df2)
 
     ray_df1 = ray_df.drop(['a'], axis=0).drop(['d'], axis=1)
     ray_df2 = ray_df.drop(index=['a'], columns=['d'])
-    assert ray_df1.equals(ray_df2)
+    assert ray_df_equals(ray_df1, ray_df2)
 
     with pytest.raises(ValueError):
         ray_df.drop(labels='a', index='b')
@@ -1576,7 +1581,7 @@ def test_fillna_sanity():
     #     df.x.fillna(method=m, inplace=True)
     #     df.x.fillna(method=m)
 
-    # with different dtype (GH3386)
+    # with different dtype
     frame_data = [['a', 'a', np.nan, 'a'],
                   ['b', 'b', np.nan, 'b'],
                   ['c', 'c', np.nan, 'c']]
@@ -2281,8 +2286,10 @@ def test_pipe(ray_df, pandas_df):
     def f(x, arg2=0, arg3=0):
         return x.drop([arg2, arg3])
 
-    assert f(g(h(ray_df), arg1=a), arg2=b, arg3=c).equals(
-        (ray_df.pipe(h).pipe(g, arg1=a).pipe(f, arg2=b, arg3=c)))
+    assert ray_df_equals(f(g(h(ray_df), arg1=a), arg2=b, arg3=c),
+                         (ray_df.pipe(h)
+                                .pipe(g, arg1=a)
+                                .pipe(f, arg2=b, arg3=c)))
 
     assert ray_df_equals_pandas((ray_df.pipe(h)
                                 .pipe(g, arg1=a)
@@ -2467,7 +2474,7 @@ def test_rename_sanity():
     # index with name
     index = pandas.Index(['foo', 'bar'], name='name')
     renamer = pandas.DataFrame(data, index=index)
-    ray_df = pd.DataFrame(data)
+    ray_df = pd.DataFrame(data, index=index)
 
     renamed = renamer.rename(index={'foo': 'bar', 'bar': 'foo'})
     ray_renamed = ray_df.rename(index={'foo': 'bar', 'bar': 'foo'})
@@ -2486,7 +2493,7 @@ def test_rename_multiindex():
 
     frame_data = [(0, 0), (1, 1)]
     df = pandas.DataFrame(frame_data, index=index, columns=columns)
-    ray_df = pd.DataFrame(frame_data)
+    ray_df = pd.DataFrame(frame_data, index=index, columns=columns)
 
     #
     # without specifying level -> accross all levels
@@ -2503,7 +2510,7 @@ def test_rename_multiindex():
     assert renamed.columns.names == ray_renamed.columns.names
 
     #
-    # with specifying a level (GH13766)
+    # with specifying a level
 
     # dict
     renamed = df.rename(columns={'fizz1': 'fizz3', 'buzz2': 'buzz3'},
@@ -2984,7 +2991,7 @@ def test_update():
                              [3.6, 2, 3],
                              [1.5, np.nan, 3],
                              [1.5, np.nan, 7.]])
-    assert df.equals(expected)
+    assert ray_df_equals(df, expected)
 
 
 @pytest.fixture
