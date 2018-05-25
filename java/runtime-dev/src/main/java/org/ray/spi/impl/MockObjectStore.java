@@ -101,4 +101,10 @@ public class MockObjectStore implements ObjectStoreLink {
   public void release(byte[] objectId) {
     return;
   }
+
+  @Override
+  public boolean contains(byte[] objectId) {
+
+    return data_.containsKey(new UniqueID(objectId));
+  }
 }

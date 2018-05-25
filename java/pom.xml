@@ -16,6 +16,7 @@
     <module>runtime-native</module>
     <module>runtime-dev</module>
     <module>test</module>
+    <module>example</module>
   </modules>
 
   <properties>
