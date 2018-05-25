@@ -233,7 +233,7 @@ class RayConfig {
   /// Maximum number of concurrent receives allowed by the object manager.
   int object_manager_max_receives_;
 
-  /// Maximum push retry times allowed by the object manager.
+  /// Maximum push retries allowed by the object manager.
   int object_manager_max_push_retries_;
 
   /// Default chunk size for multi-chunk transfers to use in the object manager.
