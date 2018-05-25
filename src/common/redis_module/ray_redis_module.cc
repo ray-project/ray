@@ -517,8 +517,8 @@ int PublishTaskTableAdd(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    RAY_CHECK(num_clients <= 1)
-        << "Published to " << num_clients << " clients.";
+    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
+                                << " clients.";
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
@@ -959,8 +959,9 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   bool do_update = data->scheduling_state() & update->test_state_bitmask();
 
   if (!is_nil(update->test_scheduler_id()->str())) {
-    do_update = do_update && update->test_scheduler_id()->str() ==
-                                 data->scheduler_id()->str();
+    do_update =
+        do_update &&
+        update->test_scheduler_id()->str() == data->scheduler_id()->str();
   }
 
   if (do_update) {
@@ -1494,8 +1495,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    RAY_CHECK(num_clients <= 1)
-        << "Published to " << num_clients << " clients.";
+    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
+                                << " clients.";
 
     if (reply == NULL) {
       return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");

@@ -177,8 +177,8 @@ void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
 
   // Check that lookup returns the added object entries.
   auto lookup_callback = [object_id, managers](
-                             gcs::AsyncGcsClient *client, const ObjectID &id,
-                             const std::vector<ObjectTableDataT> &data) {
+      gcs::AsyncGcsClient *client, const ObjectID &id,
+      const std::vector<ObjectTableDataT> &data) {
     ASSERT_EQ(id, object_id);
     for (const auto &entry : data) {
       ASSERT_EQ(entry.manager, managers[test->NumCallbacks()]);
@@ -377,9 +377,8 @@ void TestTableSubscribeAll(const JobID &job_id,
   TaskID task_id = TaskID::from_random();
   std::vector<std::string> task_specs = {"abc", "def", "ghi"};
   // Callback for a notification.
-  auto notification_callback = [task_id, task_specs](gcs::AsyncGcsClient *client,
-                                                     const UniqueID &id,
-                                                     const protocol::TaskT &data) {
+  auto notification_callback = [task_id, task_specs](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const protocol::TaskT &data) {
     ASSERT_EQ(id, task_id);
     // Check that we get notifications in the same order as the writes.
     ASSERT_EQ(data.task_specification, task_specs[test->NumCallbacks()]);
@@ -428,8 +427,8 @@ void TestLogSubscribeAll(const JobID &job_id,
   }
   // Callback for a notification.
   auto notification_callback = [object_ids, managers](
-                                   gcs::AsyncGcsClient *client, const UniqueID &id,
-                                   const std::vector<ObjectTableDataT> data) {
+      gcs::AsyncGcsClient *client, const UniqueID &id,
+      const std::vector<ObjectTableDataT> data) {
     ASSERT_EQ(id, object_ids[test->NumCallbacks()]);
     // Check that we get notifications in the same order as the writes.
     for (const auto &entry : data) {
@@ -493,9 +492,8 @@ void TestTableSubscribeId(const JobID &job_id,
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto notification_callback = [task_id2, task_specs2](gcs::AsyncGcsClient *client,
-                                                       const TaskID &id,
-                                                       const protocol::TaskT &data) {
+  auto notification_callback = [task_id2, task_specs2](
+      gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, task_id2);
     // Check that we get notifications in the same order as the writes.
@@ -568,8 +566,8 @@ void TestLogSubscribeId(const JobID &job_id,
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
   auto notification_callback = [object_id2, managers2](
-                                   gcs::AsyncGcsClient *client, const ObjectID &id,
-                                   const std::vector<ObjectTableDataT> &data) {
+      gcs::AsyncGcsClient *client, const ObjectID &id,
+      const std::vector<ObjectTableDataT> &data) {
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, object_id2);
     // Check that we get notifications in the same order as the writes.
@@ -639,9 +637,8 @@ void TestTableSubscribeCancel(const JobID &job_id,
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
-  auto notification_callback = [task_id, task_specs](gcs::AsyncGcsClient *client,
-                                                     const TaskID &id,
-                                                     const protocol::TaskT &data) {
+  auto notification_callback = [task_id, task_specs](
+      gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
     ASSERT_EQ(id, task_id);
     // Check that we only get notifications for the first and last writes,
     // since notifications are canceled in between.
@@ -711,8 +708,8 @@ void TestLogSubscribeCancel(const JobID &job_id,
   // The callback for a notification from the object table. This should only be
   // received for the object that we requested notifications for.
   auto notification_callback = [object_id, managers](
-                                   gcs::AsyncGcsClient *client, const ObjectID &id,
-                                   const std::vector<ObjectTableDataT> &data) {
+      gcs::AsyncGcsClient *client, const ObjectID &id,
+      const std::vector<ObjectTableDataT> &data) {
     ASSERT_EQ(id, object_id);
     // Check that we get a duplicate notification for the first write. We get a
     // duplicate notification because the log is append-only and notifications
@@ -886,12 +883,11 @@ void TestClientTableMarkDisconnected(const JobID &job_id,
   RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_client_id));
   // Make sure we only get a notification for the removal of the client we
   // marked as dead.
-  client->client_table().RegisterClientRemovedCallback(
-      [dead_client_id](gcs::AsyncGcsClient *client, const UniqueID &id,
-                       const ClientTableDataT &data) {
-        ASSERT_EQ(ClientID::from_binary(data.client_id), dead_client_id);
-        test->Stop();
-      });
+  client->client_table().RegisterClientRemovedCallback([dead_client_id](
+      gcs::AsyncGcsClient *client, const UniqueID &id, const ClientTableDataT &data) {
+    ASSERT_EQ(ClientID::from_binary(data.client_id), dead_client_id);
+    test->Stop();
+  });
   test->Start();
 }
 
