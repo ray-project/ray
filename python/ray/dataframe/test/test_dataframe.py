@@ -1615,7 +1615,7 @@ def test_fillna_sanity():
     assert ray_df_equals_pandas(ray_df.fillna(method='pad'),
                                 df.fillna(method='pad'))
 
-    frame_data = {'A': [pandas.NaT, 
+    frame_data = {'A': [pandas.NaT,
                         pandas.Timestamp('2012-11-11 00:00:00+01:00')]}
     df = pandas.DataFrame(frame_data)
     ray_df = pd.DataFrame(frame_data).fillna(method='bfill')
