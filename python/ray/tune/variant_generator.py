@@ -10,6 +10,17 @@ from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
 
 
+def to_argv(config):
+    argv = []
+    for k, v in config.items():
+        argv.append("--{}".format(k.replace("_", "-")))
+        if isinstance(v, str):
+            argv.append(v)
+        else:
+            argv.append(json.dumps(v))
+    return argv
+
+
 def generate_trials(unresolved_spec, output_path=''):
     """Wraps `generate_variants()` to return a Trial object for each variant.
 
@@ -23,17 +34,6 @@ def generate_trials(unresolved_spec, output_path=''):
 
     if "run" not in unresolved_spec:
         raise TuneError("Must specify `run` in {}".format(unresolved_spec))
-
-    def to_argv(config):
-        argv = []
-        for k, v in config.items():
-            argv.append("--{}".format(k.replace("_", "-")))
-            if isinstance(v, str):
-                argv.append(v)
-            else:
-                argv.append(json.dumps(v))
-        return argv
-
     parser = make_parser()
     i = 0
     for _ in range(unresolved_spec.get("repeat", 1)):
@@ -53,12 +53,16 @@ def generate_trials(unresolved_spec, output_path=''):
             else:
                 experiment_tag = str(i)
             i += 1
+            if "trial_resources" in spec:
+                resources = json_to_resources(spec["trial_resources"])
+            else:
+                resources = None
             yield Trial(
                 trainable_name=spec["run"],
                 config=spec.get("config", {}),
                 local_dir=os.path.join(args.local_dir, output_path),
                 experiment_tag=experiment_tag,
-                resources=json_to_resources(spec.get("resources", {})),
+                resources=resources,
                 stopping_criterion=spec.get("stop", {}),
                 checkpoint_freq=args.checkpoint_freq,
                 restore_path=spec.get("restore"),
@@ -118,7 +122,7 @@ _MAX_RESOLUTION_PASSES = 20
 def _format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
-        if path[0] in ["run", "env", "resources"]:
+        if path[0] in ["run", "env", "trial_resources"]:
             continue  # TrialRunner already has these in the experiment_tag
         pieces = []
         last_string = True
@@ -163,8 +167,8 @@ def _generate_variants(spec):
             for path, value in grid_vars:
                 resolved_vars[path] = _get_value(spec, path)
             for k, v in resolved.items():
-                if (k in resolved_vars and v != resolved_vars[k] and
-                        _is_resolved(resolved_vars[k])):
+                if (k in resolved_vars and v != resolved_vars[k]
+                        and _is_resolved(resolved_vars[k])):
                     raise ValueError(
                         "The variable `{}` could not be unambiguously "
                         "resolved to a single value. Consider simplifying "
@@ -262,16 +266,16 @@ def _unresolved_values(spec):
     for k, v in spec.items():
         resolved, v = _try_resolve(v)
         if not resolved:
-            found[(k,)] = v
+            found[(k, )] = v
         elif isinstance(v, dict):
             # Recurse into a dict
             for (path, value) in _unresolved_values(v).items():
-                found[(k,) + path] = value
+                found[(k, ) + path] = value
         elif isinstance(v, list):
             # Recurse into a list
             for i, elem in enumerate(v):
                 for (path, value) in _unresolved_values({i: elem}).items():
-                    found[(k,) + path] = value
+                    found[(k, ) + path] = value
     return found
 
 

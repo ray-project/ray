@@ -47,13 +47,20 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
+  pushd /tmp
+    # Install latest version of pip to avoid brownouts
+    curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
+  popd
+
   pushd python
+    # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
+    $PIP_CMD install --upgrade setuptools
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
     $PIP_CMD install -q setuptools_scm
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install -q numpy==1.10.4 cython
+    $PIP_CMD install -q numpy==1.10.4 cython==0.27.3
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Add the correct Python to the path and build the wheel. This is only

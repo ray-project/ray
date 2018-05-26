@@ -3,12 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
-import collections
-import json
+import hashlib
 import numpy as np
 import os
-import redis
 import sys
+import uuid
 
 import ray.local_scheduler
 
@@ -17,7 +16,11 @@ DRIVER_ID_LENGTH = 20
 
 
 def _random_string():
-    return np.random.bytes(20)
+    id_hash = hashlib.sha1()
+    id_hash.update(uuid.uuid4().bytes)
+    id_bytes = id_hash.digest()
+    assert len(id_bytes) == 20
+    return id_bytes
 
 
 def format_error_message(exception_message, task_exception=False):
@@ -35,14 +38,17 @@ def format_error_message(exception_message, task_exception=False):
     """
     lines = exception_message.split("\n")
     if task_exception:
-        # For errors that occur inside of tasks, remove lines 1, 2, 3, and 4,
-        # which are always the same, they just contain information about the
-        # main loop.
-        lines = lines[0:1] + lines[5:]
+        # For errors that occur inside of tasks, remove lines 1 and 2 which are
+        # always the same, they just contain information about the worker code.
+        lines = lines[0:1] + lines[3:]
+        pass
     return "\n".join(lines)
 
 
-def push_error_to_driver(redis_client, error_type, message, driver_id=None,
+def push_error_to_driver(redis_client,
+                         error_type,
+                         message,
+                         driver_id=None,
                          data=None):
     """Push an error message to the driver to be printed in the background.
 
@@ -60,9 +66,11 @@ def push_error_to_driver(redis_client, error_type, message, driver_id=None,
         driver_id = DRIVER_ID_LENGTH * b"\x00"
     error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
-    redis_client.hmset(error_key, {"type": error_type,
-                                   "message": message,
-                                   "data": data})
+    redis_client.hmset(error_key, {
+        "type": error_type,
+        "message": message,
+        "data": data
+    })
     redis_client.rpush("ErrorKeys", error_key)
 
 
@@ -116,7 +124,7 @@ def decode(byte_str):
 
 
 def binary_to_object_id(binary_object_id):
-    return ray.local_scheduler.ObjectID(binary_object_id)
+    return ray.ObjectID(binary_object_id)
 
 
 def binary_to_hex(identifier):
@@ -128,13 +136,6 @@ def binary_to_hex(identifier):
 
 def hex_to_binary(hex_identifier):
     return binascii.unhexlify(hex_identifier)
-
-
-FunctionProperties = collections.namedtuple("FunctionProperties",
-                                            ["num_return_vals",
-                                             "resources",
-                                             "max_calls"])
-"""FunctionProperties: A named tuple storing remote functions information."""
 
 
 def get_cuda_visible_devices():
@@ -164,190 +165,53 @@ def set_cuda_visible_devices(gpu_ids):
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
 
 
-def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
-                            redis_client):
-    """Attempt to acquire GPUs on a particular local scheduler for an actor.
+def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
+                                      default_resources, runtime_num_cpus,
+                                      runtime_num_gpus, runtime_resources):
+    """Determine a task's resource requirements.
 
     Args:
-        num_gpus: The number of GPUs to acquire.
-        driver_id: The ID of the driver responsible for creating the actor.
-        local_scheduler: Information about the local scheduler.
-        redis_client: The redis client to use for interacting with Redis.
+        default_num_cpus: The default number of CPUs required by this function
+            or actor method.
+        default_num_gpus: The default number of GPUs required by this function
+            or actor method.
+        default_resources: The default custom resources required by this
+            function or actor method.
+        runtime_num_cpus: The number of CPUs requested when the task was
+            invoked.
+        runtime_num_gpus: The number of GPUs requested when the task was
+            invoked.
+        runtime_resources: The custom resources requested when the task was
+            invoked.
 
     Returns:
-        True if the GPUs were successfully reserved and false otherwise.
+        A dictionary of the resource requirements for the task.
     """
-    assert num_gpus != 0
-    local_scheduler_id = local_scheduler["DBClientID"]
-    local_scheduler_total_gpus = int(local_scheduler["GPU"])
+    if runtime_resources is not None:
+        resources = runtime_resources.copy()
+    elif default_resources is not None:
+        resources = default_resources.copy()
+    else:
+        resources = {}
 
-    success = False
+    if "CPU" in resources or "GPU" in resources:
+        raise ValueError("The resources dictionary must not "
+                         "contain the key 'CPU' or 'GPU'")
 
-    # Attempt to acquire GPU IDs atomically.
-    with redis_client.pipeline() as pipe:
-        while True:
-            try:
-                # If this key is changed before the transaction below (the
-                # multi/exec block), then the transaction will not take place.
-                pipe.watch(local_scheduler_id)
+    assert default_num_cpus is not None
+    resources["CPU"] = (default_num_cpus
+                        if runtime_num_cpus is None else runtime_num_cpus)
 
-                # Figure out which GPUs are currently in use.
-                result = redis_client.hget(local_scheduler_id, "gpus_in_use")
-                gpus_in_use = dict() if result is None else json.loads(
-                    result.decode("ascii"))
-                num_gpus_in_use = 0
-                for key in gpus_in_use:
-                    num_gpus_in_use += gpus_in_use[key]
-                assert num_gpus_in_use <= local_scheduler_total_gpus
+    if runtime_num_gpus is not None:
+        resources["GPU"] = runtime_num_gpus
+    elif default_num_gpus is not None:
+        resources["GPU"] = default_num_gpus
 
-                pipe.multi()
-
-                if local_scheduler_total_gpus - num_gpus_in_use >= num_gpus:
-                    # There are enough available GPUs, so try to reserve some.
-                    # We use the hex driver ID in hex as a dictionary key so
-                    # that the dictionary is JSON serializable.
-                    driver_id_hex = binary_to_hex(driver_id)
-                    if driver_id_hex not in gpus_in_use:
-                        gpus_in_use[driver_id_hex] = 0
-                    gpus_in_use[driver_id_hex] += num_gpus
-
-                    # Stick the updated GPU IDs back in Redis
-                    pipe.hset(local_scheduler_id, "gpus_in_use",
-                              json.dumps(gpus_in_use))
-                    success = True
-
-                pipe.execute()
-                # If a WatchError is not raised, then the operations should
-                # have gone through atomically.
-                break
-            except redis.WatchError:
-                # Another client must have changed the watched key between the
-                # time we started WATCHing it and the pipeline's execution. We
-                # should just retry.
-                success = False
-                continue
-
-    return success
+    return resources
 
 
-def release_gpus_in_use(driver_id, local_scheduler_id, gpu_ids, redis_client):
-    """Release the GPUs that a given worker was using.
-
-    Note that this does not affect the local scheduler's bookkeeping. It only
-    affects the GPU allocations which are recorded in the primary Redis shard,
-    which are redundant with the local scheduler bookkeeping.
-
-    Args:
-        driver_id: The ID of the driver that is releasing some GPUs.
-        local_scheduler_id: The ID of the local scheduler that owns the GPUs
-            being released.
-        gpu_ids: The IDs of the GPUs being released.
-        redis_client: A client for the primary Redis shard.
-    """
-    # Attempt to release GPU IDs atomically.
-    with redis_client.pipeline() as pipe:
-        while True:
-            try:
-                # If this key is changed before the transaction below (the
-                # multi/exec block), then the transaction will not take place.
-                pipe.watch(local_scheduler_id)
-
-                # Figure out which GPUs are currently in use.
-                result = redis_client.hget(local_scheduler_id, "gpus_in_use")
-                gpus_in_use = dict() if result is None else json.loads(
-                    result.decode("ascii"))
-
-                assert driver_id in gpus_in_use
-                assert gpus_in_use[driver_id] >= len(gpu_ids)
-
-                gpus_in_use[driver_id] -= len(gpu_ids)
-
-                pipe.multi()
-
-                pipe.hset(local_scheduler_id, "gpus_in_use",
-                          json.dumps(gpus_in_use))
-
-                pipe.execute()
-                # If a WatchError is not raised, then the operations should
-                # have gone through atomically.
-                break
-            except redis.WatchError:
-                # Another client must have changed the watched key between the
-                # time we started WATCHing it and the pipeline's execution. We
-                # should just retry.
-                continue
-
-
-def select_local_scheduler(driver_id, local_schedulers, num_gpus,
-                           redis_client):
-    """Select a local scheduler to assign this actor to.
-
-    Args:
-        driver_id: The ID of the driver who the actor is for.
-        local_schedulers: A list of dictionaries of information about the local
-            schedulers.
-        num_gpus (int): The number of GPUs that must be reserved for this
-            actor.
-        redis_client: The Redis client to use for interacting with Redis.
-
-    Returns:
-        The ID of the local scheduler that has been chosen.
-
-    Raises:
-        Exception: An exception is raised if no local scheduler can be found
-            with sufficient resources.
-    """
-    local_scheduler_id = None
-    # Loop through all of the local schedulers in a random order.
-    local_schedulers = np.random.permutation(local_schedulers)
-    for local_scheduler in local_schedulers:
-        if local_scheduler["CPU"] < 1:
-            continue
-        if local_scheduler.get("GPU", 0) < num_gpus:
-            continue
-        if num_gpus == 0:
-            local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
-            break
-        else:
-            # Try to reserve enough GPUs on this local scheduler.
-            success = attempt_to_reserve_gpus(num_gpus, driver_id,
-                                              local_scheduler, redis_client)
-            if success:
-                local_scheduler_id = hex_to_binary(
-                                         local_scheduler["DBClientID"])
-                break
-
-    if local_scheduler_id is None:
-        raise Exception("Could not find a node with enough GPUs or other "
-                        "resources to create this actor. The local scheduler "
-                        "information is {}.".format(local_schedulers))
-
-    return local_scheduler_id
-
-
-def publish_actor_creation(actor_id, driver_id, local_scheduler_id,
-                           reconstruct, redis_client):
-    """Publish a notification that an actor should be created.
-
-    This broadcast will be received by all of the local schedulers. The local
-    scheduler whose ID is being broadcast will create the actor. Any other
-    local schedulers that have already created the actor will kill it. All
-    local schedulers will update their internal data structures to redirect
-    tasks for this actor to the new local scheduler.
-
-    Args:
-        actor_id: The ID of the actor involved.
-        driver_id: The ID of the driver responsible for the actor.
-        local_scheduler_id: The ID of the local scheduler that is suposed to
-            create the actor.
-        reconstruct: True if the actor should be created in "reconstruct" mode.
-        redis_client: The client used to interact with Redis.
-    """
-    reconstruct_bit = b"1" if reconstruct else b"0"
-    # Really we should encode this message as a flatbuffer object. However,
-    # we're having trouble getting that to work. It almost works, but in Python
-    # 2.7, builder.CreateString fails on byte strings that contain characters
-    # outside range(128).
-    redis_client.publish("actor_notifications",
-                         actor_id + driver_id + local_scheduler_id +
-                         reconstruct_bit)
+def merge_dicts(d1, d2):
+    """Merge two dicts and return a new dict that's their union."""
+    d = d1.copy()
+    d.update(d2)
+    return d

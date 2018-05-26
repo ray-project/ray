@@ -123,7 +123,7 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(registry, inputs, num_outputs, options=dict()):
+    def get_model(registry, inputs, num_outputs, options={}):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -156,7 +156,7 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def get_torch_model(registry, input_shape, num_outputs, options=dict()):
+    def get_torch_model(registry, input_shape, num_outputs, options={}):
         """Returns a PyTorch suitable model. This is currently only supported
         in A3C.
 
@@ -188,7 +188,7 @@ class ModelCatalog(object):
         return PyTorchFCNet(input_shape[0], num_outputs, options)
 
     @staticmethod
-    def get_preprocessor(registry, env, options=dict()):
+    def get_preprocessor(registry, env, options={}):
         """Returns a suitable processor for the given environment.
 
         Args:
@@ -215,7 +215,7 @@ class ModelCatalog(object):
         return preprocessor(env.observation_space, options)
 
     @staticmethod
-    def get_preprocessor_as_wrapper(registry, env, options=dict()):
+    def get_preprocessor_as_wrapper(registry, env, options={}):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
@@ -266,7 +266,8 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
         self.preprocessor = preprocessor
 
         from gym.spaces.box import Box
-        self.observation_space = Box(-1.0, 1.0, preprocessor.shape)
+        self.observation_space = Box(
+            -1.0, 1.0, preprocessor.shape, dtype=np.float32)
 
-    def _observation(self, observation):
+    def observation(self, observation):
         return self.preprocessor.transform(observation)

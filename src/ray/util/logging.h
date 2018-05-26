@@ -25,14 +25,28 @@ namespace ray {
 #define RAY_ERROR 2
 #define RAY_FATAL 3
 
-#define RAY_LOG_INTERNAL(level) ::ray::internal::CerrLog(level)
+#define RAY_LOG_INTERNAL(level) \
+  ::ray::internal::CerrLog(level) << __FILE__ << ":" << __LINE__ << ": "
+
 #define RAY_LOG(level) RAY_LOG_INTERNAL(RAY_##level)
 #define RAY_IGNORE_EXPR(expr) ((void) (expr));
 
 #define RAY_CHECK(condition)                             \
   (condition) ? 0 : ::ray::internal::FatalLog(RAY_FATAL) \
-                        << __FILE__ << __LINE__          \
+                        << __FILE__ << ":" << __LINE__   \
                         << " Check failed: " #condition " "
+
+#ifdef NDEBUG
+
+#define RAY_DCHECK(condition) \
+  RAY_IGNORE_EXPR(condition)  \
+  while (false) ::ray::internal::NullLog()
+
+#else
+
+#define RAY_DCHECK(condition) RAY_CHECK(condition)
+
+#endif  // NDEBUG
 
 namespace internal {
 
@@ -40,6 +54,7 @@ class NullLog {
  public:
   template <class T>
   NullLog &operator<<(const T &t) {
+    RAY_IGNORE_EXPR(t);
     return *this;
   }
 };
@@ -54,8 +69,14 @@ class CerrLog {
     if (has_logged_) {
       std::cerr << std::endl;
     }
+    // This code is duplicated in the FatalLog class.
     if (severity_ == RAY_FATAL) {
-      std::exit(1);
+#if defined(_EXECINFO_H) || !defined(_WIN32)
+      void *buffer[255];
+      const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
+      backtrace_symbols_fd(buffer, calls, 1);
+#endif
+      std::abort();
     }
   }
 

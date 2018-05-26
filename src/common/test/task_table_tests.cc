@@ -27,13 +27,13 @@ void lookup_nil_fail_callback(UniqueID id,
                               void *user_context,
                               void *user_data) {
   /* The fail callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 void lookup_nil_success_callback(Task *task, void *context) {
   lookup_nil_success = 1;
-  CHECK(task == NULL);
-  CHECK(context == (void *) lookup_nil_context);
+  RAY_CHECK(task == NULL);
+  RAY_CHECK(context == (void *) lookup_nil_context);
   event_loop_stop(g_loop);
 }
 
@@ -70,18 +70,18 @@ void add_lookup_fail_callback(UniqueID id,
                               void *user_context,
                               void *user_data) {
   /* The fail callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 void lookup_success_callback(Task *task, void *context) {
   lookup_success = 1;
-  CHECK(Task_equals(task, add_lookup_task));
+  RAY_CHECK(Task_equals(task, add_lookup_task));
   event_loop_stop(g_loop);
 }
 
 void add_success_callback(TaskID task_id, void *context) {
   add_success = 1;
-  CHECK(TaskID_equal(task_id, Task_task_id(add_lookup_task)));
+  RAY_CHECK(TaskID_equal(task_id, Task_task_id(add_lookup_task)));
 
   DBHandle *db = (DBHandle *) context;
   RetryInfo retry = {
@@ -137,12 +137,12 @@ int subscribe_failed = 0;
 
 void subscribe_done_callback(TaskID task_id, void *user_context) {
   /* The done callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 void subscribe_fail_callback(UniqueID id, void *user_context, void *user_data) {
   subscribe_failed = 1;
-  CHECK(user_context == (void *) subscribe_timeout_context);
+  RAY_CHECK(user_context == (void *) subscribe_timeout_context);
   event_loop_stop(g_loop);
 }
 
@@ -180,12 +180,12 @@ int publish_failed = 0;
 
 void publish_done_callback(TaskID task_id, void *user_context) {
   /* The done callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 void publish_fail_callback(UniqueID id, void *user_context, void *user_data) {
   publish_failed = 1;
-  CHECK(user_context == (void *) publish_timeout_context);
+  RAY_CHECK(user_context == (void *) publish_timeout_context);
   event_loop_stop(g_loop);
 }
 
@@ -249,7 +249,7 @@ const char *subscribe_retry_context = "subscribe_retry";
 int subscribe_retry_succeeded = 0;
 
 void subscribe_retry_done_callback(ObjectID object_id, void *user_context) {
-  CHECK(user_context == (void *) subscribe_retry_context);
+  RAY_CHECK(user_context == (void *) subscribe_retry_context);
   subscribe_retry_succeeded = 1;
 }
 
@@ -257,7 +257,7 @@ void subscribe_retry_fail_callback(UniqueID id,
                                    void *user_context,
                                    void *user_data) {
   /* The fail callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 TEST subscribe_retry_test(void) {
@@ -299,7 +299,7 @@ const char *publish_retry_context = "publish_retry";
 int publish_retry_succeeded = 0;
 
 void publish_retry_done_callback(ObjectID object_id, void *user_context) {
-  CHECK(user_context == (void *) publish_retry_context);
+  RAY_CHECK(user_context == (void *) publish_retry_context);
   publish_retry_succeeded = 1;
 }
 
@@ -307,7 +307,7 @@ void publish_retry_fail_callback(UniqueID id,
                                  void *user_context,
                                  void *user_data) {
   /* The fail callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 TEST publish_retry_test(void) {
@@ -355,13 +355,13 @@ int subscribe_late_failed = 0;
 void subscribe_late_fail_callback(UniqueID id,
                                   void *user_context,
                                   void *user_data) {
-  CHECK(user_context == (void *) subscribe_late_context);
+  RAY_CHECK(user_context == (void *) subscribe_late_context);
   subscribe_late_failed = 1;
 }
 
 void subscribe_late_done_callback(TaskID task_id, void *user_context) {
   /* This function should never be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 TEST subscribe_late_test(void) {
@@ -400,13 +400,13 @@ int publish_late_failed = 0;
 void publish_late_fail_callback(UniqueID id,
                                 void *user_context,
                                 void *user_data) {
-  CHECK(user_context == (void *) publish_late_context);
+  RAY_CHECK(user_context == (void *) publish_late_context);
   publish_late_failed = 1;
 }
 
 void publish_late_done_callback(TaskID task_id, void *user_context) {
   /* This function should never be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 TEST publish_late_test(void) {

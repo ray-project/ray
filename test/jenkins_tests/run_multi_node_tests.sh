@@ -110,14 +110,14 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --env CartPole-v0 \
     --run DQN \
     --stop '{"training_iteration": 2}' \
-    --config '{"async_updates": true, "num_workers": 2}'
+    --config '{"num_workers": 2}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
-    --run DQN \
+    --run APEX \
     --stop '{"training_iteration": 2}' \
-    --config '{"multi_gpu": true, "optimizer": {"sgd_batch_size": 4}}'
+    --config '{"num_workers": 2, "timesteps_per_iteration": 1000, "gpu": false}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
@@ -156,6 +156,13 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
+    --run DQN \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
     --run PG \
     --stop '{"training_iteration": 2}' \
     --config '{"batch_size": 500, "num_workers": 1}'
@@ -173,6 +180,20 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     --run PG \
     --stop '{"training_iteration": 2}' \
     --config '{"batch_size": 500, "num_workers": 1}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env Pendulum-v0 \
+    --run DDPG \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 1}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env MountainCarContinuous-v0 \
+    --run DDPG \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 1}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     sh /ray/test/jenkins_tests/multi_node_tests/test_rllib_eval.sh
@@ -193,6 +214,22 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/tune/examples/hyperband_example.py \
+    --smoke-test
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/async_hyperband_example.py \
+    --smoke-test
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/tune_mnist_ray_hyperband.py \
+    --smoke-test
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/tune_mnist_async_hyperband.py \
+    --smoke-test
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/hyperopt_example.py \
     --smoke-test
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \

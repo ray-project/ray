@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import gym
 from gym.spaces import Discrete, Box
 from gym.envs.registration import EnvSpec
@@ -22,14 +23,15 @@ class SimpleCorridor(gym.Env):
         self.end_pos = config["corridor_length"]
         self.cur_pos = 0
         self.action_space = Discrete(2)
-        self.observation_space = Box(0.0, self.end_pos, shape=(1,))
+        self.observation_space = Box(
+            0.0, self.end_pos, shape=(1,), dtype=np.float32)
         self._spec = EnvSpec("SimpleCorridor-{}-v0".format(self.end_pos))
 
-    def _reset(self):
+    def reset(self):
         self.cur_pos = 0
         return [self.cur_pos]
 
-    def _step(self, action):
+    def step(self, action):
         assert action in [0, 1]
         if action == 0 and self.cur_pos > 0:
             self.cur_pos -= 1

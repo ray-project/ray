@@ -38,13 +38,13 @@ void new_object_done_callback(ObjectID object_id,
                               bool is_put,
                               void *user_context) {
   new_object_succeeded = 1;
-  CHECK(object_id == new_object_id);
-  CHECK(task_id == new_object_task_id);
+  RAY_CHECK(object_id == new_object_id);
+  RAY_CHECK(task_id == new_object_task_id);
   event_loop_stop(g_loop);
 }
 
 void new_object_lookup_callback(ObjectID object_id, void *user_context) {
-  CHECK(object_id == new_object_id);
+  RAY_CHECK(object_id == new_object_id);
   RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -109,7 +109,7 @@ void new_object_no_task_callback(ObjectID object_id,
                                  bool is_put,
                                  void *user_context) {
   new_object_succeeded = 1;
-  CHECK(task_id.is_nil());
+  RAY_CHECK(task_id.is_nil());
   event_loop_stop(g_loop);
 }
 
@@ -150,12 +150,12 @@ void lookup_done_callback(ObjectID object_id,
                           const std::vector<DBClientID> &manager_vector,
                           void *context) {
   /* The done callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 void lookup_fail_callback(UniqueID id, void *user_context, void *user_data) {
   lookup_failed = 1;
-  CHECK(user_context == (void *) lookup_timeout_context);
+  RAY_CHECK(user_context == (void *) lookup_timeout_context);
   event_loop_stop(g_loop);
 }
 
@@ -189,12 +189,12 @@ int add_failed = 0;
 
 void add_done_callback(ObjectID object_id, bool success, void *user_context) {
   /* The done callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 void add_fail_callback(UniqueID id, void *user_context, void *user_data) {
   add_failed = 1;
-  CHECK(user_context == (void *) add_timeout_context);
+  RAY_CHECK(user_context == (void *) add_timeout_context);
   event_loop_stop(g_loop);
 }
 
@@ -230,7 +230,7 @@ void subscribe_done_callback(ObjectID object_id,
                              const std::vector<DBClientID> &manager_vector,
                              void *user_context) {
   /* The done callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 void subscribe_fail_callback(UniqueID id, void *user_context, void *user_data) {
@@ -277,7 +277,7 @@ int64_t reconnect_context_callback(event_loop *loop,
   db->sync_context = redisConnect("127.0.0.1", 6379);
   /* Re-attach the database to the event loop (the file descriptor changed). */
   db_attach(db, loop, true);
-  LOG_DEBUG("Reconnected to Redis");
+  RAY_LOG(DEBUG) << "Reconnected to Redis";
   return EVENT_LOOP_TIMER_DONE;
 }
 
@@ -297,7 +297,7 @@ void lookup_retry_fail_callback(UniqueID id,
                                 void *user_context,
                                 void *user_data) {
   /* The fail callback should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 /* === Test add retry === */
@@ -312,15 +312,15 @@ void add_lookup_done_callback(ObjectID object_id,
                               const std::vector<DBClientID> &manager_ids,
                               void *context) {
   DBHandle *db = (DBHandle *) context;
-  CHECK(manager_ids.size() == 1);
+  RAY_CHECK(manager_ids.size() == 1);
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(db, manager_ids);
-  CHECK(managers.at(0) == "127.0.0.1:11235");
+  RAY_CHECK(managers.at(0) == "127.0.0.1:11235");
   lookup_retry_succeeded = 1;
 }
 
 void add_lookup_callback(ObjectID object_id, bool success, void *user_context) {
-  CHECK(success);
+  RAY_CHECK(success);
   DBHandle *db = (DBHandle *) user_context;
   RetryInfo retry = {
       .num_retries = 5,
@@ -366,15 +366,15 @@ void add_remove_lookup_done_callback(
     bool never_created,
     const std::vector<DBClientID> &manager_vector,
     void *context) {
-  CHECK(context == (void *) lookup_retry_context);
-  CHECK(manager_vector.size() == 0);
+  RAY_CHECK(context == (void *) lookup_retry_context);
+  RAY_CHECK(manager_vector.size() == 0);
   lookup_retry_succeeded = 1;
 }
 
 void add_remove_lookup_callback(ObjectID object_id,
                                 bool success,
                                 void *user_context) {
-  CHECK(success);
+  RAY_CHECK(success);
   DBHandle *db = (DBHandle *) user_context;
   RetryInfo retry = {
       .num_retries = 5,
@@ -387,7 +387,7 @@ void add_remove_lookup_callback(ObjectID object_id,
 }
 
 void add_remove_callback(ObjectID object_id, bool success, void *user_context) {
-  CHECK(success);
+  RAY_CHECK(success);
   DBHandle *db = (DBHandle *) user_context;
   RetryInfo retry = {
       .num_retries = 5,
@@ -433,7 +433,7 @@ int lookup_late_failed = 0;
 void lookup_late_fail_callback(UniqueID id,
                                void *user_context,
                                void *user_data) {
-  CHECK(user_context == (void *) lookup_late_context);
+  RAY_CHECK(user_context == (void *) lookup_late_context);
   lookup_late_failed = 1;
 }
 
@@ -442,7 +442,7 @@ void lookup_late_done_callback(ObjectID object_id,
                                const std::vector<DBClientID> &manager_vector,
                                void *context) {
   /* This function should never be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 TEST lookup_late_test(void) {
@@ -478,7 +478,7 @@ const char *add_late_context = "add_late";
 int add_late_failed = 0;
 
 void add_late_fail_callback(UniqueID id, void *user_context, void *user_data) {
-  CHECK(user_context == (void *) add_late_context);
+  RAY_CHECK(user_context == (void *) add_late_context);
   add_late_failed = 1;
 }
 
@@ -486,7 +486,7 @@ void add_late_done_callback(ObjectID object_id,
                             bool success,
                             void *user_context) {
   /* This function should never be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 TEST add_late_test(void) {
@@ -522,7 +522,7 @@ int subscribe_late_failed = 0;
 void subscribe_late_fail_callback(UniqueID id,
                                   void *user_context,
                                   void *user_data) {
-  CHECK(user_context == (void *) subscribe_late_context);
+  RAY_CHECK(user_context == (void *) subscribe_late_context);
   subscribe_late_failed = 1;
 }
 
@@ -531,7 +531,7 @@ void subscribe_late_done_callback(ObjectID object_id,
                                   const std::vector<DBClientID> &manager_vector,
                                   void *user_context) {
   /* This function should never be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 TEST subscribe_late_test(void) {
@@ -573,7 +573,7 @@ void subscribe_success_fail_callback(UniqueID id,
                                      void *user_context,
                                      void *user_data) {
   /* This function should never be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 void subscribe_success_done_callback(
@@ -594,9 +594,9 @@ void subscribe_success_object_available_callback(
     int64_t data_size,
     const std::vector<DBClientID> &manager_vector,
     void *user_context) {
-  CHECK(user_context == (void *) subscribe_success_context);
-  CHECK(object_id == subscribe_id);
-  CHECK(manager_vector.size() == 1);
+  RAY_CHECK(user_context == (void *) subscribe_success_context);
+  RAY_CHECK(object_id == subscribe_id);
+  RAY_CHECK(manager_vector.size() == 1);
   subscribe_success_succeeded = 1;
 }
 
@@ -656,15 +656,15 @@ void subscribe_object_present_object_available_callback(
     void *user_context) {
   subscribe_object_present_context_t *ctx =
       (subscribe_object_present_context_t *) user_context;
-  CHECK(ctx->data_size == data_size);
-  CHECK(strcmp(subscribe_object_present_str, ctx->teststr) == 0);
+  RAY_CHECK(ctx->data_size == data_size);
+  RAY_CHECK(strcmp(subscribe_object_present_str, ctx->teststr) == 0);
   subscribe_object_present_succeeded = 1;
-  CHECK(manager_vector.size() == 1);
+  RAY_CHECK(manager_vector.size() == 1);
 }
 
 void fatal_fail_callback(UniqueID id, void *user_context, void *user_data) {
   /* This function should never be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 TEST subscribe_object_present_test(void) {
@@ -723,7 +723,7 @@ void subscribe_object_not_present_object_available_callback(
     const std::vector<DBClientID> &manager_vector,
     void *user_context) {
   /* This should not be called. */
-  CHECK(0);
+  RAY_CHECK(0);
 }
 
 TEST subscribe_object_not_present_test(void) {
@@ -773,11 +773,12 @@ void subscribe_object_available_later_object_available_callback(
     void *user_context) {
   subscribe_object_present_context_t *myctx =
       (subscribe_object_present_context_t *) user_context;
-  CHECK(myctx->data_size == data_size);
-  CHECK(strcmp(myctx->teststr, subscribe_object_available_later_context) == 0);
+  RAY_CHECK(myctx->data_size == data_size);
+  RAY_CHECK(strcmp(myctx->teststr, subscribe_object_available_later_context) ==
+            0);
   /* Make sure the callback is only called once. */
   subscribe_object_available_later_succeeded += 1;
-  CHECK(manager_vector.size() == 1);
+  RAY_CHECK(manager_vector.size() == 1);
 }
 
 TEST subscribe_object_available_later_test(void) {

@@ -226,3 +226,13 @@ function(ADD_RAY_TEST REL_TEST_NAME)
   endif()
   set_tests_properties(${TEST_NAME} PROPERTIES LABELS "unittest")
 endfunction()
+
+# A wrapper for target_link_libraries() that is compatible with NO_TESTS.
+function(RAY_TEST_LINK_LIBRARIES REL_TEST_NAME)
+  if(NO_TESTS)
+    return()
+  endif()
+  get_filename_component(TEST_NAME ${REL_TEST_NAME} NAME_WE)
+
+  target_link_libraries(${TEST_NAME} ${ARGN})
+endfunction()

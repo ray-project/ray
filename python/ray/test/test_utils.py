@@ -5,6 +5,8 @@ from __future__ import print_function
 import json
 import os
 import redis
+import subprocess
+import tempfile
 import time
 
 import ray
@@ -46,8 +48,8 @@ def _wait_for_nodes_to_join(num_nodes, timeout=20):
         if num_ready_nodes > num_nodes:
             # Too many nodes have joined. Something must be wrong.
             raise Exception("{} nodes have joined the cluster, but we were "
-                            "expecting {} nodes.".format(num_ready_nodes,
-                                                         num_nodes))
+                            "expecting {} nodes.".format(
+                                num_ready_nodes, num_nodes))
         time.sleep(0.1)
 
     # If we get here then we timed out.
@@ -93,7 +95,7 @@ def _wait_for_event(event_name, redis_address, extra_buffer=0):
     redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
     while True:
         event_infos = redis_client.lrange(EVENT_KEY, 0, -1)
-        events = dict()
+        events = {}
         for event_info in event_infos:
             name, data = json.loads(event_info)
             if name in events:
@@ -130,3 +132,13 @@ def wait_for_pid_to_exit(pid, timeout=20):
             return
         time.sleep(0.1)
     raise Exception("Timed out while waiting for process to exit.")
+
+
+def run_and_get_output(command):
+    with tempfile.NamedTemporaryFile() as tmp:
+        p = subprocess.Popen(command, stdout=tmp)
+        if p.wait() != 0:
+            raise RuntimeError("ray start did not terminate properly")
+        with open(tmp.name, 'r') as f:
+            result = f.readlines()
+            return "\n".join(result)

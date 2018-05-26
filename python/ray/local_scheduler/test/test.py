@@ -18,7 +18,6 @@ USE_VALGRIND = False
 ID_SIZE = 20
 
 NIL_WORKER_ID = 20 * b"\xff"
-NIL_ACTOR_ID = 20 * b"\xff"
 
 
 def random_object_id():
@@ -38,7 +37,6 @@ def random_function_id():
 
 
 class TestLocalSchedulerClient(unittest.TestCase):
-
     def setUp(self):
         # Start Plasma store.
         plasma_store_name, self.p1 = plasma.start_plasma_store()
@@ -48,7 +46,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
             plasma_store_name, use_valgrind=USE_VALGRIND)
         # Connect to the scheduler.
         self.local_scheduler_client = local_scheduler.LocalSchedulerClient(
-            scheduler_name, NIL_WORKER_ID, NIL_ACTOR_ID, False, 0)
+            scheduler_name, NIL_WORKER_ID, False)
 
     def tearDown(self):
         # Check that the processes are still alive.
@@ -75,34 +73,17 @@ class TestLocalSchedulerClient(unittest.TestCase):
             self.plasma_client.create(pa.plasma.ObjectID(object_id.id()), 0)
             self.plasma_client.seal(pa.plasma.ObjectID(object_id.id()))
         # Define some arguments to use for the tasks.
-        args_list = [
-            [],
-            [{}],
-            [()],
-            1 * [1],
-            10 * [1],
-            100 * [1],
-            1000 * [1],
-            1 * ["a"],
-            10 * ["a"],
-            100 * ["a"],
-            1000 * ["a"],
-            [1, 1.3, 1 << 100, "hi", u"hi", [1, 2]],
-            object_ids[:1],
-            object_ids[:2],
-            object_ids[:3],
-            object_ids[:4],
-            object_ids[:5],
-            object_ids[:10],
-            object_ids[:100],
-            object_ids[:256],
-            [1, object_ids[0]],
-            [object_ids[0], "a"],
-            [1, object_ids[0], "a"],
-            [object_ids[0], 1, object_ids[1], "a"],
-            object_ids[:3] + [1, "hi", 2.3] + object_ids[:5],
-            object_ids + 100 * ["a"] + object_ids
-        ]
+        args_list = [[], [{}], [()], 1 * [1], 10 * [1], 100 * [1], 1000 * [1],
+                     1 * ["a"], 10 * ["a"], 100 * ["a"], 1000 * ["a"], [
+                         1, 1.3, 1 << 100, "hi", u"hi", [1, 2]
+                     ], object_ids[:1], object_ids[:2], object_ids[:3],
+                     object_ids[:4], object_ids[:5], object_ids[:10],
+                     object_ids[:100], object_ids[:256], [1, object_ids[0]], [
+                         object_ids[0], "a"
+                     ], [1, object_ids[0], "a"], [
+                         object_ids[0], 1, object_ids[1], "a"
+                     ], object_ids[:3] + [1, "hi", 2.3] + object_ids[:5],
+                     object_ids + 100 * ["a"] + object_ids]
 
         for args in args_list:
             for num_return_vals in [0, 1, 2, 3, 5, 10, 100]:
@@ -147,6 +128,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Launch a thread to get the task.
         def get_task():
             self.local_scheduler_client.get_task()
+
         t = threading.Thread(target=get_task)
         t.start()
         # Sleep to give the thread time to call get_task.
@@ -171,6 +153,7 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Launch a thread to get the task.
         def get_task():
             self.local_scheduler_client.get_task()
+
         t = threading.Thread(target=get_task)
         t.start()
 

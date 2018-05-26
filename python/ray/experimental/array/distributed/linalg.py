@@ -77,8 +77,8 @@ def tsqr(a):
                 upper = [2 * a.shape[1], core.BLOCK_SIZE]
             ith_index //= 2
             q_block_current = ra.dot.remote(
-                q_block_current, ra.subarray.remote(q_tree[ith_index, j],
-                                                    lower, upper))
+                q_block_current,
+                ra.subarray.remote(q_tree[ith_index, j], lower, upper))
         q_result.objectids[i] = q_block_current
     r = current_rs[0]
     return q_result, ray.get(r)
@@ -196,8 +196,8 @@ def qr(a):
         if a.shape[0] > a.shape[1]:
             # in this case, R needs to be square
             R_shape = ray.get(ra.shape.remote(R))
-            eye_temp = ra.eye.remote(R_shape[1], R_shape[0],
-                                     dtype_name=result_dtype)
+            eye_temp = ra.eye.remote(
+                R_shape[1], R_shape[0], dtype_name=result_dtype)
             r_res.objectids[i, i] = ra.dot.remote(eye_temp, R)
         else:
             r_res.objectids[i, i] = R
@@ -220,7 +220,8 @@ def qr(a):
     for i in range(len(Ts))[::-1]:
         y_col_block = core.subblocks.remote(y_res, [], [i])
         q = core.subtract.remote(
-            q, core.dot.remote(
+            q,
+            core.dot.remote(
                 y_col_block,
                 core.dot.remote(
                     Ts[i],

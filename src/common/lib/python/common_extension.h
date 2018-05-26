@@ -8,6 +8,7 @@
 #include "structmember.h"
 
 #include "common.h"
+#include "ray/raylet/task_spec.h"
 
 typedef char TaskSpec;
 class TaskBuilder;
@@ -23,7 +24,10 @@ typedef struct {
 typedef struct {
   PyObject_HEAD
   int64_t size;
+  // The task spec to use in the non-raylet case.
   TaskSpec *spec;
+  // The task spec to use in the raylet case.
+  ray::raylet::TaskSpecification *task_spec;
   std::vector<ray::ObjectID> *execution_dependencies;
 } PyTask;
 // clang-format on
@@ -32,10 +36,14 @@ extern PyTypeObject PyObjectIDType;
 
 extern PyTypeObject PyTaskType;
 
+bool use_raylet(PyTask *task);
+
 /* Python module for pickling. */
 extern PyObject *pickle_module;
 extern PyObject *pickle_dumps;
 extern PyObject *pickle_loads;
+
+int init_numpy_module(void);
 
 void init_pickle_module(void);
 

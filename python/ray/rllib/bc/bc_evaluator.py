@@ -9,10 +9,10 @@ import ray
 from ray.rllib.bc.experience_dataset import ExperienceDataset
 from ray.rllib.bc.policy import BCPolicy
 from ray.rllib.models import ModelCatalog
-from ray.rllib.optimizers import Evaluator
+from ray.rllib.optimizers import PolicyEvaluator
 
 
-class BCEvaluator(Evaluator):
+class BCEvaluator(PolicyEvaluator):
     def __init__(self, registry, env_creator, config, logdir):
         env = ModelCatalog.get_preprocessor_as_wrapper(registry, env_creator(
             config["env_config"]), config["model"])
@@ -31,7 +31,7 @@ class BCEvaluator(Evaluator):
         gradient, info = self.policy.compute_gradients(samples)
         self.metrics_queue.put(
             {"num_samples": info["num_samples"], "loss": info["loss"]})
-        return gradient
+        return gradient, {}
 
     def apply_gradients(self, grads):
         self.policy.apply_gradients(grads)

@@ -64,6 +64,18 @@ class TaskStatusTest(unittest.TestCase):
                 # ray.get should throw an exception.
                 self.assertTrue(False)
 
+        @ray.remote
+        def f():
+            raise Exception("This function failed.")
+
+        try:
+            ray.get(f.remote())
+        except Exception as e:
+            self.assertIn("This function failed.", str(e))
+        else:
+            # ray.get should throw an exception.
+            self.assertTrue(False)
+
     def testFailImportingRemoteFunction(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
@@ -108,6 +120,7 @@ def temporary_helper_function():
         def f(worker):
             if ray.worker.global_worker.mode == ray.WORKER_MODE:
                 raise Exception("Function to run failed.")
+
         ray.worker.global_worker.run_function_on_all_workers(f)
         wait_for_errors(b"function_to_run", 2)
         # Check that the error message is in the task info.
@@ -256,6 +269,9 @@ class WorkerDeath(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testWorkerRaisingException(self):
         ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
 
@@ -271,6 +287,9 @@ class WorkerDeath(unittest.TestCase):
         wait_for_errors(b"worker_died", 1)
         self.assertEqual(len(ray.error_info()), 2)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -284,9 +303,12 @@ class WorkerDeath(unittest.TestCase):
         wait_for_errors(b"worker_died", 1)
 
         self.assertEqual(len(ray.error_info()), 1)
-        self.assertIn("A worker died or was killed while executing a task.",
+        self.assertIn("died or was killed while executing the task",
                       ray.error_info()[0][b"message"].decode("ascii"))
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -305,6 +327,9 @@ class WorkerDeath(unittest.TestCase):
         self.assertRaises(Exception, lambda: ray.get(consume.remote(obj)))
         wait_for_errors(b"worker_died", 1)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorWorkerDyingFutureTasks(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -327,6 +352,9 @@ class WorkerDeath(unittest.TestCase):
 
         wait_for_errors(b"worker_died", 1)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testActorWorkerDyingNothingInProgress(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -348,12 +376,14 @@ class PutErrorTest(unittest.TestCase):
         ray.worker.cleanup()
 
     def testPutError1(self):
-        store_size = 10 ** 6
-        ray.worker._init(start_ray_local=True, driver_mode=ray.SILENT_MODE,
-                         object_store_memory=store_size)
+        store_size = 10**6
+        ray.worker._init(
+            start_ray_local=True,
+            driver_mode=ray.SILENT_MODE,
+            object_store_memory=store_size)
 
         num_objects = 3
-        object_size = 4 * 10 ** 5
+        object_size = 4 * 10**5
 
         # Define a task with a single dependency, a numpy array, that returns
         # another array.
@@ -369,8 +399,8 @@ class PutErrorTest(unittest.TestCase):
             # on the one before it. The result of the first task should get
             # evicted.
             args = []
-            arg = single_dependency.remote(0, np.zeros(object_size,
-                                                       dtype=np.uint8))
+            arg = single_dependency.remote(
+                0, np.zeros(object_size, dtype=np.uint8))
             for i in range(num_objects):
                 arg = single_dependency.remote(i, arg)
                 args.append(arg)
@@ -393,12 +423,14 @@ class PutErrorTest(unittest.TestCase):
 
     def testPutError2(self):
         # This is the same as the previous test, but it calls ray.put directly.
-        store_size = 10 ** 6
-        ray.worker._init(start_ray_local=True, driver_mode=ray.SILENT_MODE,
-                         object_store_memory=store_size)
+        store_size = 10**6
+        ray.worker._init(
+            start_ray_local=True,
+            driver_mode=ray.SILENT_MODE,
+            object_store_memory=store_size)
 
         num_objects = 3
-        object_size = 4 * 10 ** 5
+        object_size = 4 * 10**5
 
         # Define a task with a single dependency, a numpy array, that returns
         # another array.

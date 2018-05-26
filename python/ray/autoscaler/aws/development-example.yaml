@@ -13,6 +13,7 @@ max_workers: 2
 # usage. For example, if a cluster of 10 nodes is 100% busy and
 # target_utilization is 0.8, it would resize the cluster to 13. This fraction
 # can be decreased to increase the aggressiveness of upscaling.
+# This value must be less than 1.0 for scaling to happen.
 target_utilization_fraction: 0.8
 
 # If a node is idle for this many minutes, it will be removed.
@@ -44,7 +45,7 @@ head_node:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 25
+              VolumeSize: 50
 
     # Additional options in the boto docs.
 
@@ -60,7 +61,7 @@ worker_nodes:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 25
+              VolumeSize: 50
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -80,16 +81,20 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
+    # Consider uncommenting these if you run into dpkg locking issues
+    # - sudo pkill -9 apt-get || true
+    # - sudo pkill -9 dpkg || true
+    # - sudo dpkg --configure -a
     # Install basics.
     - sudo apt-get update
-    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python
+    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison python
     # Install Anaconda.
     - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
     - git clone https://github.com/ray-project/ray || true
-    - pip install boto3==1.4.8
+    - pip install boto3==1.4.8 cython==0.27.3
     - cd ray/python; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.
@@ -101,9 +106,9 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 65536; ray start --head --num-redis-shards=10 --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ray start --redis-address=$RAY_HEAD_IP:6379
+    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379

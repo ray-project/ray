@@ -3,14 +3,12 @@
 
 #include "common/task.h"
 #include "local_scheduler_shared.h"
+#include "ray/raylet/task_spec.h"
 
 struct LocalSchedulerConnection {
   /** File descriptor of the Unix domain socket that connects to local
    *  scheduler. */
   int conn;
-  /** The actor ID of this client. If this client is not an actor, then this
-   *  should be NIL_ACTOR_ID. */
-  ActorID actor_id;
   /** The IDs of the GPUs that this client can use. */
   std::vector<int> gpu_ids;
 };
@@ -20,20 +18,14 @@ struct LocalSchedulerConnection {
  *
  * @param local_scheduler_socket The name of the socket to use to connect to the
  *        local scheduler.
- * @param actor_id The ID of the actor running on this worker. If no actor is
- *        running on this actor, this should be NIL_ACTOR_ID.
  * @param is_worker Whether this client is a worker. If it is a worker, an
  *        additional message will be sent to register as one.
- * @param num_gpus The number of GPUs required by this worker. This is only
- *        used if the worker is an actor.
  * @return The connection information.
  */
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID worker_id,
-    ActorID actor_id,
-    bool is_worker,
-    int64_t num_gpus);
+    bool is_worker);
 
 /**
  * Disconnect from the local scheduler.
@@ -53,6 +45,17 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
  */
 void local_scheduler_submit(LocalSchedulerConnection *conn,
                             TaskExecutionSpec &execution_spec);
+
+/// Submit a task using the raylet code path.
+///
+/// \param The connection information.
+/// \param The execution dependencies.
+/// \param The task specification.
+/// \return Void.
+void local_scheduler_submit_raylet(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &execution_dependencies,
+    ray::raylet::TaskSpecification task_spec);
 
 /**
  * Notify the local scheduler that this client is disconnecting gracefully. This

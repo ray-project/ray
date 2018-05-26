@@ -91,7 +91,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
       connect_ipc_sock_retry(plasma_store_socket_name, 5, 100);
   std::string local_scheduler_socket_name = bind_ipc_sock_retry(
       local_scheduler_socket_name_format, &mock->local_scheduler_fd);
-  CHECK(mock->plasma_store_fd >= 0 && mock->local_scheduler_fd >= 0);
+  RAY_CHECK(mock->plasma_store_fd >= 0 && mock->local_scheduler_fd >= 0);
 
   /* Construct worker command */
   std::stringstream worker_command_ss;
@@ -124,9 +124,8 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
       std::thread(register_clients, num_mock_workers, mock);
 
   for (int i = 0; i < num_mock_workers; ++i) {
-    mock->conns[i] =
-        LocalSchedulerConnection_init(local_scheduler_socket_name.c_str(),
-                                      WorkerID::nil(), ActorID::nil(), true, 0);
+    mock->conns[i] = LocalSchedulerConnection_init(
+        local_scheduler_socket_name.c_str(), WorkerID::nil(), true);
   }
 
   background_thread.join();
@@ -411,7 +410,7 @@ TaskExecutionSpec *object_reconstruction_suppression_spec;
 void object_reconstruction_suppression_callback(ObjectID object_id,
                                                 bool success,
                                                 void *user_context) {
-  CHECK(success);
+  RAY_CHECK(success);
   /* Submit the task after adding the object to the object table. */
   LocalSchedulerConnection *worker = (LocalSchedulerConnection *) user_context;
   local_scheduler_submit(worker, *object_reconstruction_suppression_spec);
@@ -666,7 +665,7 @@ TEST start_kill_workers_test(void) {
             static_cast<size_t>(num_workers - 1));
 
   /* Start a worker after the local scheduler has been initialized. */
-  start_worker(local_scheduler->local_scheduler_state, ActorID::nil(), false);
+  start_worker(local_scheduler->local_scheduler_state);
   /* Accept the workers as clients to the plasma manager. */
   int new_worker_fd = accept_client(local_scheduler->plasma_manager_fd);
   /* The new worker should register its process ID. */

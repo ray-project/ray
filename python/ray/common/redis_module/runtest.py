@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import redis
 import sys
 import time
@@ -25,7 +26,7 @@ OBJECT_CHANNEL_PREFIX = "OC:"
 def integerToAsciiHex(num, numbytes):
     retstr = b""
     # Support 32 and 64 bit architecture.
-    assert(numbytes == 4 or numbytes == 8)
+    assert (numbytes == 4 or numbytes == 8)
     for i in range(numbytes):
         curbyte = num & 0xff
         if sys.version_info >= (3, 0):
@@ -50,10 +51,11 @@ def get_next_message(pubsub_client, timeout_seconds=10):
 
 
 class TestGlobalStateStore(unittest.TestCase):
-
     def setUp(self):
-        redis_port, _ = ray.services.start_redis_instance()
-        self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)
+        unused_primary_redis_addr, redis_shards = ray.services.start_redis(
+            "localhost", use_credis="RAY_USE_NEW_GCS" in os.environ)
+        self.redis = redis.StrictRedis(
+            host="localhost", port=redis_shards[0].split(":")[-1], db=0)
 
     def tearDown(self):
         ray.services.cleanup()
@@ -192,16 +194,16 @@ class TestGlobalStateStore(unittest.TestCase):
         # notifications.
         def check_object_notification(notification_message, object_id,
                                       object_size, manager_ids):
-            notification_object = (SubscribeToNotificationsReply
-                                   .GetRootAsSubscribeToNotificationsReply(
+            notification_object = (SubscribeToNotificationsReply.
+                                   GetRootAsSubscribeToNotificationsReply(
                                        notification_message, 0))
             self.assertEqual(notification_object.ObjectId(), object_id)
             self.assertEqual(notification_object.ObjectSize(), object_size)
             self.assertEqual(notification_object.ManagerIdsLength(),
                              len(manager_ids))
             for i in range(len(manager_ids)):
-                self.assertEqual(notification_object.ManagerIds(i),
-                                 manager_ids[i])
+                self.assertEqual(
+                    notification_object.ManagerIds(i), manager_ids[i])
 
         data_size = 0xf1f0
         p = self.redis.pubsub()
@@ -215,10 +217,9 @@ class TestGlobalStateStore(unittest.TestCase):
         self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS",
                                    "manager_id1", "object_id1")
         # Verify that the notification is correct.
-        check_object_notification(get_next_message(p)["data"],
-                                  b"object_id1",
-                                  data_size,
-                                  [b"manager_id2"])
+        check_object_notification(
+            get_next_message(p)["data"], b"object_id1", data_size,
+            [b"manager_id2"])
 
         # Request a notification for an object that isn't there. Then add the
         # object and receive the data. Only the first call to
@@ -232,26 +233,22 @@ class TestGlobalStateStore(unittest.TestCase):
         self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id3",
                                    data_size, "hash1", "manager_id3")
         # Verify that the notification is correct.
-        check_object_notification(get_next_message(p)["data"],
-                                  b"object_id3",
-                                  data_size,
-                                  [b"manager_id1"])
+        check_object_notification(
+            get_next_message(p)["data"], b"object_id3", data_size,
+            [b"manager_id1"])
         self.redis.execute_command("RAY.OBJECT_TABLE_ADD", "object_id2",
                                    data_size, "hash1", "manager_id3")
         # Verify that the notification is correct.
-        check_object_notification(get_next_message(p)["data"],
-                                  b"object_id2",
-                                  data_size,
-                                  [b"manager_id3"])
+        check_object_notification(
+            get_next_message(p)["data"], b"object_id2", data_size,
+            [b"manager_id3"])
         # Request notifications for object_id3 again.
         self.redis.execute_command("RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS",
                                    "manager_id1", "object_id3")
         # Verify that the notification is correct.
-        check_object_notification(get_next_message(p)["data"],
-                                  b"object_id3",
-                                  data_size,
-                                  [b"manager_id1", b"manager_id2",
-                                   b"manager_id3"])
+        check_object_notification(
+            get_next_message(p)["data"], b"object_id3", data_size,
+            [b"manager_id1", b"manager_id2", b"manager_id3"])
 
     def testResultTableAddAndLookup(self):
         def check_result_table_entry(message, task_id, is_put):
@@ -349,8 +346,7 @@ class TestGlobalStateStore(unittest.TestCase):
         # update happens, and the response is still the same task.
         task_args = [task_args[0]] + task_args
         response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
-                                              "task_id",
-                                              *task_args[:3])
+                                              "task_id", *task_args[:3])
         check_task_reply(response, task_args[1:], updated=True)
         # Check that the task entry is still the same.
         get_response = self.redis.execute_command("RAY.TASK_TABLE_GET",
@@ -362,8 +358,7 @@ class TestGlobalStateStore(unittest.TestCase):
         # task.
         task_args[1] = TASK_STATUS_QUEUED
         response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
-                                              "task_id",
-                                              *task_args[:3])
+                                              "task_id", *task_args[:3])
         check_task_reply(response, task_args[1:], updated=True)
         # Check that the update happened.
         get_response = self.redis.execute_command("RAY.TASK_TABLE_GET",
@@ -375,8 +370,7 @@ class TestGlobalStateStore(unittest.TestCase):
         new_task_args = task_args[:]
         new_task_args[1] = TASK_STATUS_WAITING
         response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
-                                              "task_id",
-                                              *new_task_args[:3])
+                                              "task_id", *new_task_args[:3])
         check_task_reply(response, task_args[1:], updated=False)
         # Check that the update did not happen.
         get_response2 = self.redis.execute_command("RAY.TASK_TABLE_GET",
@@ -388,8 +382,7 @@ class TestGlobalStateStore(unittest.TestCase):
         task_args = new_task_args
         task_args[0] = TASK_STATUS_SCHEDULED | TASK_STATUS_QUEUED
         response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
-                                              "task_id",
-                                              *task_args[:3])
+                                              "task_id", *task_args[:3])
         check_task_reply(response, task_args[1:], updated=True)
 
         # If the test value is a bitmask that does not match the current value,
@@ -399,8 +392,7 @@ class TestGlobalStateStore(unittest.TestCase):
         new_task_args[0] = TASK_STATUS_SCHEDULED
         old_response = response
         response = self.redis.execute_command("RAY.TASK_TABLE_TEST_AND_UPDATE",
-                                              "task_id",
-                                              *new_task_args[:3])
+                                              "task_id", *new_task_args[:3])
         check_task_reply(response, task_args[1:], updated=False)
         # Check that the update did not happen.
         get_response = self.redis.execute_command("RAY.TASK_TABLE_GET",
@@ -409,8 +401,10 @@ class TestGlobalStateStore(unittest.TestCase):
         check_task_reply(get_response, task_args[1:])
 
     def check_task_subscription(self, p, scheduling_state, local_scheduler_id):
-        task_args = [b"task_id", scheduling_state,
-                     local_scheduler_id.encode("ascii"), b"", 0, b"task_spec"]
+        task_args = [
+            b"task_id", scheduling_state,
+            local_scheduler_id.encode("ascii"), b"", 0, b"task_spec"
+        ]
         self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
         # Receive the data.
         message = get_next_message(p)["data"]
@@ -418,8 +412,7 @@ class TestGlobalStateStore(unittest.TestCase):
         notification_object = TaskReply.GetRootAsTaskReply(message, 0)
         self.assertEqual(notification_object.TaskId(), task_args[0])
         self.assertEqual(notification_object.State(), task_args[1])
-        self.assertEqual(notification_object.LocalSchedulerId(),
-                         task_args[2])
+        self.assertEqual(notification_object.LocalSchedulerId(), task_args[2])
         self.assertEqual(notification_object.ExecutionDependencies(),
                          task_args[3])
         self.assertEqual(notification_object.TaskSpec(), task_args[-1])

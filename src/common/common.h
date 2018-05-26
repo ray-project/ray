@@ -25,6 +25,7 @@ extern "C" {
 #include "arrow/util/macros.h"
 #include "plasma/common.h"
 #include "ray/id.h"
+#include "ray/util/logging.h"
 
 #include "state/ray_config.h"
 
@@ -43,69 +44,6 @@ extern "C" {
 #ifndef RAY_COMMON_LOG_LEVEL
 #define RAY_COMMON_LOG_LEVEL RAY_COMMON_INFO
 #endif
-
-/**
- * Macros to enable each level of Ray logging statements depending on the
- * current logging level. */
-#if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_DEBUG)
-#define LOG_DEBUG(M, ...)
-#else
-#define LOG_DEBUG(M, ...) \
-  fprintf(stderr, "[DEBUG] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
-#endif
-
-#if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_INFO)
-#define LOG_INFO(M, ...)
-#else
-#define LOG_INFO(M, ...) \
-  fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
-#endif
-
-#if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_WARNING)
-#define LOG_WARN(M, ...)
-#else
-#define LOG_WARN(M, ...) \
-  fprintf(stderr, "[WARN] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
-#endif
-
-#if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_ERROR)
-#define LOG_ERROR(M, ...)
-#else
-#define LOG_ERROR(M, ...)                                                   \
-  fprintf(stderr, "[ERROR] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, \
-          errno == 0 ? "None" : strerror(errno), ##__VA_ARGS__)
-#endif
-
-#if (RAY_COMMON_LOG_LEVEL > RAY_COMMON_FATAL)
-#define LOG_FATAL(M, ...)
-#elif defined(_EXECINFO_H) || !defined(_WIN32)
-#define LOG_FATAL(M, ...)                                                     \
-  do {                                                                        \
-    fprintf(stderr, "[FATAL] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, \
-            errno == 0 ? "None" : strerror(errno), ##__VA_ARGS__);            \
-    void *buffer[255];                                                        \
-    const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));     \
-    backtrace_symbols_fd(buffer, calls, 1);                                   \
-    abort();                                                                  \
-  } while (0)
-#else
-#define LOG_FATAL(M, ...)                                                     \
-  do {                                                                        \
-    fprintf(stderr, "[FATAL] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, \
-            errno == 0 ? "None" : strerror(errno), ##__VA_ARGS__);            \
-    exit(-1);                                                                 \
-  } while (0)
-#endif
-
-/** Assertion definitions, with optional logging. */
-#define CHECKM(COND, M, ...)                                   \
-  if (!(COND)) {                                               \
-    LOG_FATAL("Check failure: %s \n" M, #COND, ##__VA_ARGS__); \
-  }
-
-#define CHECK(COND) CHECKM(COND, "")
-
-#define RAY_DCHECK(COND) CHECK(COND)
 
 /* These are exit codes for common errors that can occur in Ray components. */
 #define EXIT_COULD_NOT_BIND_PORT -2

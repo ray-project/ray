@@ -76,14 +76,12 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param actor_id The ID of the actor being created.
- * @param reconstruct True if the actor is being created in "reconstruct" mode.
  * @return Void.
  */
 void handle_actor_creation_notification(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id,
-    bool reconstruct);
+    ActorID actor_id);
 
 /**
  * This function will be called when a task is assigned by the global scheduler
@@ -177,13 +175,17 @@ void handle_actor_worker_available(LocalSchedulerState *state,
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param actor_id The ID of the actor running on the worker.
- * @param worker The worker that was connected.
+ * @param initial_execution_dependency The dummy object ID of the actor
+ *        creation task.
+ * @param worker The worker that was converted to an actor.
  * @return Void.
  */
-void handle_actor_worker_connect(LocalSchedulerState *state,
-                                 SchedulingAlgorithmState *algorithm_state,
-                                 ActorID actor_id,
-                                 LocalSchedulerClient *worker);
+void handle_convert_worker_to_actor(
+    LocalSchedulerState *state,
+    SchedulingAlgorithmState *algorithm_state,
+    const ActorID &actor_id,
+    const ObjectID &initial_execution_dependency,
+    LocalSchedulerClient *worker);
 
 /**
  * Handle the fact that a worker running an actor has disconnected.
@@ -292,6 +294,19 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
 int reconstruct_object_timeout_handler(event_loop *loop,
                                        timer_id id,
                                        void *context);
+
+/// This function initiates reconstruction for the actor creation tasks
+/// corresponding to the actor tasks cached in the local scheduler.
+///
+/// \param loop The local scheduler's event loop.
+/// \param id The ID of the timer that triggers this function.
+/// \param context The function's context.
+/// \return An integer representing the time interval in seconds before the
+/// next invocation of the function.
+int rerun_actor_creation_tasks_timeout_handler(event_loop *loop,
+                                               timer_id id,
+                                               void *context);
+
 /**
  * Check whether an object, including actor dummy objects, is locally
  * available.
@@ -347,9 +362,9 @@ void print_worker_info(const char *message,
  * @return A map from handle ID to the number of tasks submitted by that handle
  *         that have executed so far.
  */
-std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
-get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
-                        ActorID actor_id);
+std::unordered_map<ActorHandleID, int64_t> get_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id);
 
 /**
  * Set the number of tasks, per actor handle, that have been executed on an
@@ -366,8 +381,7 @@ get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
 void set_actor_task_counters(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
-        &task_counters);
+    const std::unordered_map<ActorHandleID, int64_t> &task_counters);
 
 /**
  * Get the actor's frontier of task dependencies.
@@ -380,7 +394,7 @@ void set_actor_task_counters(
  * @return A map from handle ID to execution dependency for the earliest
  *         runnable task submitted through that handle.
  */
-std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
+std::unordered_map<ActorHandleID, ObjectID> get_actor_frontier(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id);
 
@@ -399,8 +413,7 @@ void set_actor_frontier(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    const std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
-        &frontier_dependencies);
+    const std::unordered_map<ActorHandleID, ObjectID> &frontier_dependencies);
 
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST

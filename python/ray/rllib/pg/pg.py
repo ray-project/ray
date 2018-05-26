@@ -6,9 +6,11 @@ import numpy as np
 
 import ray
 from ray.rllib.optimizers import LocalSyncOptimizer
-from ray.rllib.pg.pg_evaluator import PGEvaluator, RemotePGEvaluator
+from ray.rllib.pg.pg_evaluator import PGEvaluator
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
+from ray.tune.trial import Resources
+
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
@@ -22,10 +24,7 @@ DEFAULT_CONFIG = {
     # Learning rate
     "lr": 0.0004,
     # Arguments to pass to the rllib optimizer
-    "optimizer": {
-        # Number of gradients applied for each `train` step
-        "grads_per_step": 1,
-    },
+    "optimizer": {},
     # Model parameters
     "model": {"fcnet_hiddens": [128, 128]},
     # Arguments to pass to the env creator
@@ -44,16 +43,17 @@ class PGAgent(Agent):
     _agent_name = "PG"
     _default_config = DEFAULT_CONFIG
 
+    @classmethod
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        return Resources(cpu=1, gpu=0, extra_cpu=cf["num_workers"])
+
     def _init(self):
-        self.local_evaluator = PGEvaluator(
-            self.registry, self.env_creator, self.config)
-        self.remote_evaluators = [
-            RemotePGEvaluator.remote(
-                self.registry, self.env_creator, self.config)
-            for _ in range(self.config["num_workers"])]
-        self.optimizer = LocalSyncOptimizer(
-            self.config["optimizer"], self.local_evaluator,
-            self.remote_evaluators)
+        self.optimizer = LocalSyncOptimizer.make(
+            evaluator_cls=PGEvaluator,
+            evaluator_args=[self.registry, self.env_creator, self.config],
+            num_workers=self.config["num_workers"],
+            optimizer_config=self.config["optimizer"])
 
     def _train(self):
         self.optimizer.step()
@@ -61,7 +61,7 @@ class PGAgent(Agent):
         episode_rewards = []
         episode_lengths = []
         metric_lists = [a.get_completed_rollout_metrics.remote()
-                        for a in self.remote_evaluators]
+                        for a in self.optimizer.remote_evaluators]
         for metrics in metric_lists:
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
@@ -79,5 +79,5 @@ class PGAgent(Agent):
         return result
 
     def compute_action(self, obs):
-        action, info = self.local_evaluator.policy.compute(obs)
+        action, info = self.optimizer.local_evaluator.policy.compute(obs)
         return action

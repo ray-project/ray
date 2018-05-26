@@ -26,11 +26,12 @@ class LogMonitor(object):
         log_file_handles: A dictionary mapping the name of a log file to a file
             handle for that file.
     """
+
     def __init__(self, redis_ip_address, redis_port, node_ip_address):
         """Initialize the log monitor object."""
         self.node_ip_address = node_ip_address
-        self.redis_client = redis.StrictRedis(host=redis_ip_address,
-                                              port=redis_port)
+        self.redis_client = redis.StrictRedis(
+            host=redis_ip_address, port=redis_port)
         self.log_files = {}
         self.log_file_handles = {}
         self.files_to_ignore = set()
@@ -78,8 +79,8 @@ class LogMonitor(object):
             # Try to open this file for the first time.
             else:
                 try:
-                    self.log_file_handles[log_filename] = open(log_filename,
-                                                               "r")
+                    self.log_file_handles[log_filename] = open(
+                        log_filename, "r")
                 except IOError as e:
                     if e.errno == os.errno.EMFILE:
                         print("Warning: Ignoring {} because there are too "
@@ -106,13 +107,20 @@ class LogMonitor(object):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=("Parse Redis server for the "
-                                                  "log monitor to connect "
-                                                  "to."))
-    parser.add_argument("--redis-address", required=True, type=str,
-                        help="The address to use for Redis.")
-    parser.add_argument("--node-ip-address", required=True, type=str,
-                        help="The IP address of the node this process is on.")
+    parser = argparse.ArgumentParser(
+        description=("Parse Redis server for the "
+                     "log monitor to connect "
+                     "to."))
+    parser.add_argument(
+        "--redis-address",
+        required=True,
+        type=str,
+        help="The address to use for Redis.")
+    parser.add_argument(
+        "--node-ip-address",
+        required=True,
+        type=str,
+        help="The IP address of the node this process is on.")
     args = parser.parse_args()
 
     redis_ip_address = get_ip_address(args.redis_address)

@@ -1,13 +1,25 @@
-#include "redismodule.h"
 #include <string.h>
-
-#include "redis_string.h"
 
 #include "common_protocol.h"
 #include "format/common_generated.h"
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/id.h"
+#include "redis_string.h"
+#include "redismodule.h"
 #include "task.h"
+
+#if RAY_USE_NEW_GCS
+// Under this flag, ray-project/credis will be loaded.  Specifically, via
+// "path/redis-server --loadmodule <credis module> --loadmodule <current
+// libray_redis_module>" (dlopen() under the hood) will a definition of "module"
+// be supplied.
+//
+// All commands in this file that depend on "module" must be wrapped by "#if
+// RAY_USE_NEW_GCS", until we switch to this launch configuration as the
+// default.
+#include "chain_module.h"
+extern RedisChainModule module;
+#endif
 
 // Various tables are maintained in redis:
 //
@@ -49,15 +61,104 @@
     return RedisModule_ReplyWithError(ctx, (MESSAGE)); \
   }
 
+// NOTE(swang): The order of prefixes here must match the TablePrefix enum
+// defined in src/ray/gcs/format/gcs.fbs.
+static const char *table_prefixes[] = {
+    NULL,         "TASK:",  "TASK:",     "CLIENT:",
+    "OBJECT:",    "ACTOR:", "FUNCTION:", "TASK_RECONSTRUCTION:",
+    "HEARTBEAT:",
+};
+
+/// Parse a Redis string into a TablePubsub channel.
+TablePubsub ParseTablePubsub(const RedisModuleString *pubsub_channel_str) {
+  long long pubsub_channel_long;
+  RAY_CHECK(RedisModule_StringToLongLong(
+                pubsub_channel_str, &pubsub_channel_long) == REDISMODULE_OK)
+      << "Pubsub channel must be a valid TablePubsub";
+  auto pubsub_channel = static_cast<TablePubsub>(pubsub_channel_long);
+  RAY_CHECK(pubsub_channel >= TablePubsub_MIN &&
+            pubsub_channel <= TablePubsub_MAX)
+      << "Pubsub channel must be a valid TablePubsub";
+  return pubsub_channel;
+}
+
+/// Format a pubsub channel for a specific key. pubsub_channel_str should
+/// contain a valid TablePubsub.
+RedisModuleString *FormatPubsubChannel(
+    RedisModuleCtx *ctx,
+    const RedisModuleString *pubsub_channel_str,
+    const RedisModuleString *id) {
+  // Format the pubsub channel enum to a string. TablePubsub_MAX should be more
+  // than enough digits, but add 1 just in case for the null terminator.
+  char pubsub_channel[TablePubsub_MAX + 1];
+  sprintf(pubsub_channel, "%d", ParseTablePubsub(pubsub_channel_str));
+  return RedisString_Format(ctx, "%s:%S", pubsub_channel, id);
+}
+
+// TODO(swang): This helper function should be deprecated by the version below,
+// which uses enums for table prefixes.
+RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
+                                const char *prefix,
+                                RedisModuleString *keyname,
+                                int mode,
+                                RedisModuleString **mutated_key_str) {
+  RedisModuleString *prefixed_keyname =
+      RedisString_Format(ctx, "%s%S", prefix, keyname);
+  // Pass out the key being mutated, should the caller request so.
+  if (mutated_key_str != nullptr) {
+    *mutated_key_str = prefixed_keyname;
+  }
+  RedisModuleKey *key =
+      (RedisModuleKey *) RedisModule_OpenKey(ctx, prefixed_keyname, mode);
+  return key;
+}
+
+RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
+                                RedisModuleString *prefix_enum,
+                                RedisModuleString *keyname,
+                                int mode,
+                                RedisModuleString **mutated_key_str) {
+  long long prefix_long;
+  RAY_CHECK(RedisModule_StringToLongLong(prefix_enum, &prefix_long) ==
+            REDISMODULE_OK)
+      << "Prefix must be a valid TablePrefix";
+  auto prefix = static_cast<TablePrefix>(prefix_long);
+  RAY_CHECK(prefix != TablePrefix_UNUSED)
+      << "This table has no prefix registered";
+  RAY_CHECK(prefix >= TablePrefix_MIN && prefix <= TablePrefix_MAX)
+      << "Prefix must be a valid TablePrefix";
+  return OpenPrefixedKey(ctx, table_prefixes[prefix], keyname, mode,
+                         mutated_key_str);
+}
+
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
                                 const char *prefix,
                                 RedisModuleString *keyname,
                                 int mode) {
+  return OpenPrefixedKey(ctx, prefix, keyname, mode,
+                         /*mutated_key_str=*/nullptr);
+}
+
+RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
+                                RedisModuleString *prefix_enum,
+                                RedisModuleString *keyname,
+                                int mode) {
+  return OpenPrefixedKey(ctx, prefix_enum, keyname, mode,
+                         /*mutated_key_str=*/nullptr);
+}
+
+/// Open the key used to store the channels that should be published to when an
+/// update happens at the given keyname.
+RedisModuleKey *OpenBroadcastKey(RedisModuleCtx *ctx,
+                                 RedisModuleString *pubsub_channel_str,
+                                 RedisModuleString *keyname,
+                                 int mode) {
+  RedisModuleString *channel =
+      FormatPubsubChannel(ctx, pubsub_channel_str, keyname);
   RedisModuleString *prefixed_keyname =
-      RedisString_Format(ctx, "%s%S", prefix, keyname);
+      RedisString_Format(ctx, "BCAST:%S", channel);
   RedisModuleKey *key =
       (RedisModuleKey *) RedisModule_OpenKey(ctx, prefixed_keyname, mode);
-  RedisModule_FreeString(ctx, prefixed_keyname);
   return key;
 }
 
@@ -128,8 +229,6 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
   /* Publish the client info on the db client channel. */
   RedisModuleCallReply *reply;
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, client_info);
-  RedisModule_FreeString(ctx, channel_name);
-  RedisModule_FreeString(ctx, client_info);
   return (reply != NULL);
 }
 
@@ -156,6 +255,8 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
 int Connect_RedisCommand(RedisModuleCtx *ctx,
                          RedisModuleString **argv,
                          int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc < 4) {
     return RedisModule_WrongArity(ctx);
   }
@@ -196,9 +297,6 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
     }
   }
   /* Clean up. */
-  RedisModule_FreeString(ctx, deleted);
-  RedisModule_FreeString(ctx, manager_address_key);
-  RedisModule_CloseKey(db_client_table_key);
   if (!PublishDBClientNotification(ctx, ray_client_id, client_type,
                                    manager_address, true)) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
@@ -223,6 +321,8 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
 int Disconnect_RedisCommand(RedisModuleCtx *ctx,
                             RedisModuleString **argv,
                             int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc != 2) {
     return RedisModule_WrongArity(ctx);
   }
@@ -238,9 +338,7 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
                       &deleted_string, NULL);
   long long deleted;
   int parsed = RedisModule_StringToLongLong(deleted_string, &deleted);
-  RedisModule_FreeString(ctx, deleted_string);
   if (parsed != REDISMODULE_OK) {
-    RedisModule_CloseKey(db_client_table_key);
     return RedisModule_ReplyWithError(ctx, "Unable to parse deleted field");
   }
 
@@ -251,7 +349,6 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
         RedisModule_CreateString(ctx, "1", strlen("1"));
     RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
                         "deleted", deleted, NULL);
-    RedisModule_FreeString(ctx, deleted);
 
     RedisModuleString *client_type;
     RedisModuleString *manager_address;
@@ -262,13 +359,7 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
     /* Publish the deletion notification on the db client channel. */
     published = PublishDBClientNotification(ctx, ray_client_id, client_type,
                                             manager_address, false);
-    if (manager_address != NULL) {
-      RedisModule_FreeString(ctx, manager_address);
-    }
-    RedisModule_FreeString(ctx, client_type);
   }
-
-  RedisModule_CloseKey(db_client_table_key);
 
   if (!published) {
     /* Return an error message if we weren't able to publish the deletion
@@ -295,6 +386,8 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
 int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
                                    int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc != 2) {
     return RedisModule_WrongArity(ctx);
   }
@@ -324,9 +417,6 @@ int ObjectTableLookup_RedisCommand(RedisModuleCtx *ctx,
     num_results += 1;
   } while (RedisModule_ZsetRangeNext(key));
   RedisModule_ReplySetArrayLength(ctx, num_results);
-
-  /* Clean up. */
-  RedisModule_CloseKey(key);
 
   return REDISMODULE_OK;
 }
@@ -381,41 +471,27 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
 
   RedisModuleCallReply *reply;
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, payload);
-  RedisModule_FreeString(ctx, channel_name);
-  RedisModule_FreeString(ctx, payload);
   if (reply == NULL) {
     return false;
   }
   return true;
 }
 
-// This is a temporary redis command that will be removed once
+// NOTE(pcmoritz): This is a temporary redis command that will be removed once
 // the GCS uses https://github.com/pcmoritz/credis.
-int TableAdd_RedisCommand(RedisModuleCtx *ctx,
-                          RedisModuleString **argv,
-                          int argc) {
-  if (argc != 3) {
-    return RedisModule_WrongArity(ctx);
-  }
-
-  RedisModuleString *id = argv[1];
-  RedisModuleString *data = argv[2];
-
-  // Set the keys in the table
-  RedisModuleKey *key =
-      OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
-  RedisModule_StringSet(key, data);
-  RedisModule_CloseKey(key);
-
-  size_t len = 0;
-  const char *buf = RedisModule_StringPtrLen(data, &len);
-
+int PublishTaskTableAdd(RedisModuleCtx *ctx,
+                        RedisModuleString *id,
+                        RedisModuleString *data) {
+  const char *buf = RedisModule_StringPtrLen(data, NULL);
   auto message = flatbuffers::GetRoot<TaskTableData>(buf);
+  RAY_CHECK(message != nullptr);
 
   if (message->scheduling_state() == SchedulingState_WAITING ||
       message->scheduling_state() == SchedulingState_SCHEDULED) {
-    /* Build the PUBLISH topic and message for task table subscribers. The topic
-     * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>". The
+    /* Build the PUBLISH topic and message for task table subscribers. The
+     * topic
+     * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>".
+     * The
      * message is a serialized SubscribeToTasksReply flatbuffer object. */
     std::string state = std::to_string(message->scheduling_state());
     RedisModuleString *publish_topic = RedisString_Format(
@@ -441,39 +517,407 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    CHECKM(num_clients <= 1, "Published to %lld clients.", num_clients);
-
-    RedisModule_FreeString(ctx, publish_message);
-    RedisModule_FreeString(ctx, publish_topic);
+    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
+                                << " clients.";
   }
-
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
-// This is a temporary redis command that will be removed once
-// the GCS uses https://github.com/pcmoritz/credis.
-int TableLookup_RedisCommand(RedisModuleCtx *ctx,
+/// Publish a notification for a new entry at a key. This publishes a
+/// notification to all subscribers of the table, as well as every client that
+/// has requested notifications for this key.
+///
+/// \param pubsub_channel_str The pubsub channel name that notifications for
+///        this key should be published to. When publishing to a specific
+///        client, the channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key that the notification is about.
+/// \param data The data to publish.
+/// \return OK if there is no error during a publish.
+int PublishTableAdd(RedisModuleCtx *ctx,
+                    RedisModuleString *pubsub_channel_str,
+                    RedisModuleString *id,
+                    RedisModuleString *data) {
+  // Serialize the notification to send.
+  flatbuffers::FlatBufferBuilder fbb;
+  auto data_flatbuf = RedisStringToFlatbuf(fbb, data);
+  auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, id),
+                                     fbb.CreateVector(&data_flatbuf, 1));
+  fbb.Finish(message);
+
+  // Write the data back to any subscribers that are listening to all table
+  // notifications.
+  RedisModuleCallReply *reply =
+      RedisModule_Call(ctx, "PUBLISH", "sb", pubsub_channel_str,
+                       fbb.GetBufferPointer(), fbb.GetSize());
+  if (reply == NULL) {
+    return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+  }
+
+  // Publish the data to any clients who requested notifications on this key.
+  RedisModuleKey *notification_key = OpenBroadcastKey(
+      ctx, pubsub_channel_str, id, REDISMODULE_READ | REDISMODULE_WRITE);
+  if (RedisModule_KeyType(notification_key) != REDISMODULE_KEYTYPE_EMPTY) {
+    // NOTE(swang): Sets are not implemented yet, so we use ZSETs instead.
+    CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
+                    notification_key, REDISMODULE_NEGATIVE_INFINITE,
+                    REDISMODULE_POSITIVE_INFINITE, 1, 1),
+                "Unable to initialize zset iterator");
+    for (; !RedisModule_ZsetRangeEndReached(notification_key);
+         RedisModule_ZsetRangeNext(notification_key)) {
+      RedisModuleString *client_channel =
+          RedisModule_ZsetRangeCurrentElement(notification_key, NULL);
+      RedisModuleCallReply *reply =
+          RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
+                           fbb.GetBufferPointer(), fbb.GetSize());
+      if (reply == NULL) {
+        return RedisModule_ReplyWithError(ctx, "error during PUBLISH");
+      }
+    }
+  }
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
+}
+
+// RAY.TABLE_ADD:
+//   TableAdd_RedisCommand: the actual command handler.
+//   (helper) TableAdd_DoWrite: performs the write to redis state.
+//   (helper) TableAdd_DoPublish: performs a publish after the write.
+//   ChainTableAdd_RedisCommand: the same command, chain-enabled.
+
+int TableAdd_DoWrite(RedisModuleCtx *ctx,
+                     RedisModuleString **argv,
+                     int argc,
+                     RedisModuleString **mutated_key_str) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ | REDISMODULE_WRITE,
+                      mutated_key_str);
+  RedisModule_StringSet(key, data);
+  return REDISMODULE_OK;
+}
+
+int TableAdd_DoPublish(RedisModuleCtx *ctx,
+                       RedisModuleString **argv,
+                       int argc) {
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+
+  TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
+
+  if (pubsub_channel == TablePubsub_TASK) {
+    // Publish the task to its subscribers.
+    // TODO(swang): This is only necessary for legacy Ray and should be removed
+    // once we switch to using the new GCS API for the task table.
+    return PublishTaskTableAdd(ctx, id, data);
+  } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+    // All other pubsub channels write the data back directly onto the channel.
+    return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+  } else {
+    return RedisModule_ReplyWithSimpleString(ctx, "OK");
+  }
+}
+
+/// Add an entry at a key. This overwrites any existing data at the key.
+/// Publishes a notification about the update to all subscribers, if a pubsub
+/// channel is provided.
+///
+/// This is called from a client with the command:
+///
+///    RAY.TABLE_ADD <table_prefix> <pubsub_channel> <id> <data>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for
+///  this key should be published to. When publishing to a specific
+///  client, the channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key to set.
+/// \param data The data to insert at the key.
+/// \return The current value at the key, or OK if there is no value.
+int TableAdd_RedisCommand(RedisModuleCtx *ctx,
+                          RedisModuleString **argv,
+                          int argc) {
+  RedisModule_AutoMemory(ctx);
+  TableAdd_DoWrite(ctx, argv, argc, /*mutated_key_str=*/nullptr);
+  return TableAdd_DoPublish(ctx, argv, argc);
+}
+
+#if RAY_USE_NEW_GCS
+int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx,
+                               RedisModuleString **argv,
+                               int argc) {
+  return module.ChainReplicate(ctx, argv, argc, /*node_func=*/TableAdd_DoWrite,
+                               /*tail_func=*/TableAdd_DoPublish);
+}
+#endif
+
+/// Append an entry to the log stored at a key. Publishes a notification about
+/// the update to all subscribers, if a pubsub channel is provided.
+///
+/// This is called from a client with the command:
+//
+///    RAY.TABLE_APPEND <table_prefix> <pubsub_channel> <id> <data>
+///                     <index (optional)>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for
+///        this key should be published to. When publishing to a specific
+///        client, the channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key to append to.
+/// \param data The data to append to the key.
+/// \param index If this is set, then the data must be appended at this index.
+///        If the current log is shorter or longer than the requested index,
+///        then the append will fail and an error message will be returned as a
+///        string.
+/// \return OK if the append succeeds, or an error message string if the append
+///         fails.
+int TableAppend_RedisCommand(RedisModuleCtx *ctx,
                              RedisModuleString **argv,
                              int argc) {
-  if (argc != 2) {
+  RedisModule_AutoMemory(ctx);
+
+  if (argc < 5 || argc > 6) {
     return RedisModule_WrongArity(ctx);
   }
 
-  RedisModuleString *id = argv[1];
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *data = argv[4];
+  RedisModuleString *index_str = nullptr;
+  if (argc == 6) {
+    index_str = argv[5];
+  }
 
-  RedisModuleKey *key = OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ);
-  size_t len = 0;
-  const char *buf = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
+  // Set the keys in the table.
+  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
+                                        REDISMODULE_READ | REDISMODULE_WRITE);
+  // Determine the index at which the data should be appended. If no index is
+  // requested, then is the current length of the log.
+  size_t index = RedisModule_ValueLength(key);
+  if (index_str != nullptr) {
+    // Parse the requested index.
+    long long requested_index;
+    RAY_CHECK(RedisModule_StringToLongLong(index_str, &requested_index) ==
+              REDISMODULE_OK);
+    RAY_CHECK(requested_index >= 0);
+    index = static_cast<size_t>(requested_index);
+  }
+  // Only perform the append if the requested index matches the current length
+  // of the log, or if no index was requested.
+  if (index == RedisModule_ValueLength(key)) {
+    // The requested index matches the current length of the log or no index
+    // was requested. Perform the append.
+    int flags = REDISMODULE_ZADD_NX;
+    RedisModule_ZsetAdd(key, index, data, &flags);
+    // Check that we actually add a new entry during the append. This is only
+    // necessary since we implement the log with a sorted set, so all entries
+    // must be unique, or else we will have gaps in the log.
+    RAY_CHECK(flags == REDISMODULE_ZADD_ADDED) << "Appended a duplicate entry";
+    // Publish a message on the requested pubsub channel if necessary.
+    TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
+    if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+      // All other pubsub channels write the data back directly onto the
+      // channel.
+      return PublishTableAdd(ctx, pubsub_channel_str, id, data);
+    } else {
+      return RedisModule_ReplyWithSimpleString(ctx, "OK");
+    }
+  } else {
+    // The requested index did not match the current length of the log. Return
+    // an error message as a string.
+    const char *reply = "ERR entry exists";
+    return RedisModule_ReplyWithStringBuffer(ctx, reply, strlen(reply));
+  }
+}
 
-  RedisModule_ReplyWithStringBuffer(ctx, buf, len);
+/// A helper function to create and finish a GcsTableEntry, based on the
+/// current value or values at the given key.
+void TableEntryToFlatbuf(RedisModuleKey *table_key,
+                         RedisModuleString *entry_id,
+                         flatbuffers::FlatBufferBuilder &fbb) {
+  auto key_type = RedisModule_KeyType(table_key);
+  switch (key_type) {
+  case REDISMODULE_KEYTYPE_STRING: {
+    // Build the flatbuffer from the string data.
+    size_t data_len = 0;
+    char *data_buf =
+        RedisModule_StringDMA(table_key, &data_len, REDISMODULE_READ);
+    auto data = fbb.CreateString(data_buf, data_len);
+    auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, entry_id),
+                                       fbb.CreateVector(&data, 1));
+    fbb.Finish(message);
+  } break;
+  case REDISMODULE_KEYTYPE_ZSET: {
+    // Build the flatbuffer from the set of log entries.
+    RAY_CHECK(RedisModule_ZsetFirstInScoreRange(
+                  table_key, REDISMODULE_NEGATIVE_INFINITE,
+                  REDISMODULE_POSITIVE_INFINITE, 1, 1) == REDISMODULE_OK);
+    std::vector<flatbuffers::Offset<flatbuffers::String>> data;
+    for (; !RedisModule_ZsetRangeEndReached(table_key);
+         RedisModule_ZsetRangeNext(table_key)) {
+      data.push_back(RedisStringToFlatbuf(
+          fbb, RedisModule_ZsetRangeCurrentElement(table_key, NULL)));
+    }
+    auto message = CreateGcsTableEntry(fbb, RedisStringToFlatbuf(fbb, entry_id),
+                                       fbb.CreateVector(data));
+    fbb.Finish(message);
+  } break;
+  default:
+    RAY_LOG(FATAL) << "Invalid Redis type during lookup: " << key_type;
+  }
+}
 
-  RedisModule_CloseKey(key);
+/// Lookup the current value or values at a key. Returns the current value or
+/// values at the key.
+///
+/// This is called from a client with the command:
+//
+///    RAY.TABLE_LOOKUP <table_prefix> <pubsub_channel> <id>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for
+///        this key should be published to. This field is unused for lookups.
+/// \param id The ID of the key to lookup.
+/// \return nil if the key is empty, the current value if the key type is a
+///         string, or an array of the current values if the key type is a set.
+int TableLookup_RedisCommand(RedisModuleCtx *ctx,
+                             RedisModuleString **argv,
+                             int argc) {
+  RedisModule_AutoMemory(ctx);
 
+  if (argc < 4) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *id = argv[3];
+
+  // Lookup the data at the key.
+  RedisModuleKey *table_key =
+      OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
+  if (table_key == nullptr) {
+    RedisModule_ReplyWithNull(ctx);
+  } else {
+    // Serialize the data to a flatbuffer to return to the client.
+    flatbuffers::FlatBufferBuilder fbb;
+    TableEntryToFlatbuf(table_key, id, fbb);
+    RedisModule_ReplyWithStringBuffer(
+        ctx, reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+        fbb.GetSize());
+  }
+  return REDISMODULE_OK;
+}
+
+/// Request notifications for changes to a key. Returns the current value or
+/// values at the key. Notifications will be sent to the requesting client for
+/// every subsequent TABLE_ADD to the key.
+///
+/// This is called from a client with the command:
+//
+///    RAY.TABLE_REQUEST_NOTIFICATIONS <table_prefix> <pubsub_channel> <id>
+///        <client_id>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for
+///        this key should be published to. When publishing to a specific
+///        client, the channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key to publish notifications for.
+/// \param client_id The ID of the client that is being notified.
+/// \return nil if the key is empty, the current value if the key type is a
+///         string, or an array of the current values if the key type is a set.
+int TableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
+                                           RedisModuleString **argv,
+                                           int argc) {
+  RedisModule_AutoMemory(ctx);
+
+  if (argc != 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *client_id = argv[4];
+  RedisModuleString *client_channel =
+      FormatPubsubChannel(ctx, pubsub_channel_str, client_id);
+
+  // Add this client to the set of clients that should be notified when there
+  // are changes to the key.
+  RedisModuleKey *notification_key = OpenBroadcastKey(
+      ctx, pubsub_channel_str, id, REDISMODULE_READ | REDISMODULE_WRITE);
+  CHECK_ERROR(RedisModule_ZsetAdd(notification_key, 0.0, client_channel, NULL),
+              "ZsetAdd failed.");
+
+  // Lookup the current value at the key.
+  RedisModuleKey *table_key =
+      OpenPrefixedKey(ctx, prefix_str, id, REDISMODULE_READ);
+  if (table_key != nullptr) {
+    // Publish the current value at the key to the client that is requesting
+    // notifications.
+    flatbuffers::FlatBufferBuilder fbb;
+    TableEntryToFlatbuf(table_key, id, fbb);
+    RedisModule_Call(ctx, "PUBLISH", "sb", client_channel,
+                     reinterpret_cast<const char *>(fbb.GetBufferPointer()),
+                     fbb.GetSize());
+  }
+
+  return RedisModule_ReplyWithNull(ctx);
+}
+
+/// Cancel notifications for changes to a key. The client will no longer
+/// receive notifications for this key. This does not check if the client
+/// first requested notifications before canceling them.
+///
+/// This is called from a client with the command:
+//
+///    RAY.TABLE_CANCEL_NOTIFICATIONS <table_prefix> <pubsub_channel> <id>
+///        <client_id>
+///
+/// \param table_prefix The prefix string for keys in this table.
+/// \param pubsub_channel The pubsub channel name that notifications for
+///        this key should be published to. If publishing to a specific client,
+///        then the channel name should be <pubsub_channel>:<client_id>.
+/// \param id The ID of the key to publish notifications for.
+/// \param client_id The ID of the client to cancel notifications for.
+/// \return OK.
+int TableCancelNotifications_RedisCommand(RedisModuleCtx *ctx,
+                                          RedisModuleString **argv,
+                                          int argc) {
+  RedisModule_AutoMemory(ctx);
+
+  if (argc < 5) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *pubsub_channel_str = argv[2];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *client_id = argv[4];
+  RedisModuleString *client_channel =
+      FormatPubsubChannel(ctx, pubsub_channel_str, client_id);
+
+  // Remove this client from the set of clients that should be notified when
+  // there are changes to the key.
+  RedisModuleKey *notification_key = OpenBroadcastKey(
+      ctx, pubsub_channel_str, id, REDISMODULE_READ | REDISMODULE_WRITE);
+  if (RedisModule_KeyType(notification_key) != REDISMODULE_KEYTYPE_EMPTY) {
+    RAY_CHECK(RedisModule_ZsetRem(notification_key, client_channel, NULL) ==
+              REDISMODULE_OK);
+  }
+
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
   return REDISMODULE_OK;
 }
 
 bool is_nil(const std::string &data) {
-  CHECK(data.size() == kUniqueIDSize);
+  RAY_CHECK(data.size() == kUniqueIDSize);
   const uint8_t *d = reinterpret_cast<const uint8_t *>(data.data());
   for (int i = 0; i < kUniqueIDSize; ++i) {
     if (d[i] != 255) {
@@ -489,14 +933,17 @@ bool is_nil(const std::string &data) {
 int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                     RedisModuleString **argv,
                                     int argc) {
-  if (argc != 3) {
+  RedisModule_AutoMemory(ctx);
+
+  if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
-  RedisModuleString *id = argv[1];
-  RedisModuleString *update_data = argv[2];
+  RedisModuleString *prefix_str = argv[1];
+  RedisModuleString *id = argv[3];
+  RedisModuleString *update_data = argv[4];
 
-  RedisModuleKey *key =
-      OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
+  RedisModuleKey *key = OpenPrefixedKey(ctx, prefix_str, id,
+                                        REDISMODULE_READ | REDISMODULE_WRITE);
 
   size_t value_len = 0;
   char *value_buf = RedisModule_StringDMA(key, &value_len, REDISMODULE_READ);
@@ -518,13 +965,11 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   }
 
   if (do_update) {
-    CHECK(data->mutate_scheduling_state(update->update_state()));
+    RAY_CHECK(data->mutate_scheduling_state(update->update_state()));
   }
-  CHECK(data->mutate_updated(do_update));
+  RAY_CHECK(data->mutate_updated(do_update));
 
   int result = RedisModule_ReplyWithStringBuffer(ctx, value_buf, value_len);
-
-  RedisModule_CloseKey(key);
 
   return result;
 }
@@ -548,6 +993,8 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,
                                 int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
@@ -580,14 +1027,12 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
       /* Check whether the new hash value matches the old one. If not, we will
        * later return the "hash mismatch" error. */
       hash_mismatch = (RedisModule_StringCompare(existing_hash, new_hash) != 0);
-      RedisModule_FreeString(ctx, existing_hash);
     }
   }
 
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "hash", new_hash, NULL);
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "data_size", data_size,
                       NULL);
-  RedisModule_CloseKey(key);
 
   /* Add the location in the object location table. */
   RedisModuleKey *table_key;
@@ -605,7 +1050,6 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
     /* The publish failed somehow. */
     return RedisModule_ReplyWithError(ctx, "PUBLISH BCAST unsuccessful");
   }
-  RedisModule_FreeString(ctx, bcast_client_str);
 
   /* Get the zset of clients that requested a notification about the
    * availability of this object. */
@@ -633,7 +1077,6 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                                data_size, table_key);
       if (!success) {
         /* The publish failed somehow. */
-        RedisModule_CloseKey(object_notification_key);
         return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
       }
     } while (RedisModule_ZsetRangeNext(object_notification_key));
@@ -641,10 +1084,8 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
      * waiting for notifications. */
     CHECK_ERROR(RedisModule_DeleteKey(object_notification_key),
                 "Unable to delete zset key.");
-    RedisModule_CloseKey(object_notification_key);
   }
 
-  RedisModule_CloseKey(table_key);
   if (hash_mismatch) {
     return RedisModule_ReplyWithError(ctx, "hash mismatch");
   } else {
@@ -671,6 +1112,8 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
 int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
                                    int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc != 3) {
     return RedisModule_WrongArity(ctx);
   }
@@ -683,12 +1126,10 @@ int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
   table_key = OpenPrefixedKey(ctx, OBJECT_LOCATION_PREFIX, object_id,
                               REDISMODULE_READ | REDISMODULE_WRITE);
   if (RedisModule_KeyType(table_key) == REDISMODULE_KEYTYPE_EMPTY) {
-    RedisModule_CloseKey(table_key);
     return RedisModule_ReplyWithError(ctx, "object not found");
   }
 
   RedisModule_ZsetRem(table_key, manager, NULL);
-  RedisModule_CloseKey(table_key);
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");
   return REDISMODULE_OK;
@@ -715,6 +1156,8 @@ int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
 int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
                                                  RedisModuleString **argv,
                                                  int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc < 3) {
     return RedisModule_WrongArity(ctx);
   }
@@ -739,7 +1182,6 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
       CHECK_ERROR(
           RedisModule_ZsetAdd(object_notification_key, 0.0, client_id, NULL),
           "ZsetAdd failed.");
-      RedisModule_CloseKey(object_notification_key);
     } else {
       /* Publish a notification to the client's object notification channel. */
       /* Extract the data_size first. */
@@ -747,31 +1189,23 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
       object_info_key =
           OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
       if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
-        RedisModule_CloseKey(object_info_key);
-        RedisModule_CloseKey(key);
         return RedisModule_ReplyWithError(ctx, "requested object not found");
       }
       RedisModuleString *existing_data_size;
       RedisModule_HashGet(object_info_key, REDISMODULE_HASH_CFIELDS,
                           "data_size", &existing_data_size, NULL);
-      RedisModule_CloseKey(object_info_key); /* No longer needed. */
       if (existing_data_size == NULL) {
-        RedisModule_CloseKey(key);
         return RedisModule_ReplyWithError(ctx,
                                           "no data_size field in object info");
       }
 
       bool success = PublishObjectNotification(ctx, client_id, object_id,
                                                existing_data_size, key);
-      RedisModule_FreeString(ctx, existing_data_size);
       if (!success) {
         /* The publish failed somehow. */
-        RedisModule_CloseKey(key);
         return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
       }
     }
-    /* Clean up. */
-    RedisModule_CloseKey(key);
   }
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");
@@ -781,7 +1215,8 @@ int ObjectTableRequestNotifications_RedisCommand(RedisModuleCtx *ctx,
 int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx,
                                      RedisModuleString **argv,
                                      int argc) {
-  REDISMODULE_NOT_USED(ctx);
+  RedisModule_AutoMemory(ctx);
+
   REDISMODULE_NOT_USED(argv);
   REDISMODULE_NOT_USED(argc);
   return REDISMODULE_OK;
@@ -804,6 +1239,8 @@ int ObjectInfoSubscribe_RedisCommand(RedisModuleCtx *ctx,
 int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
                                 RedisModuleString **argv,
                                 int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc != 4) {
     return RedisModule_WrongArity(ctx);
   }
@@ -827,8 +1264,6 @@ int ResultTableAdd_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "task", task_id, "is_put",
                       is_put, NULL);
 
-  /* Clean up. */
-  RedisModule_CloseKey(key);
   RedisModule_ReplyWithSimpleString(ctx, "OK");
 
   return REDISMODULE_OK;
@@ -869,7 +1304,6 @@ int ReplyWithTask(RedisModuleCtx *ctx,
         execution_dependencies == NULL || task_spec == NULL ||
         spillback_count == NULL) {
       /* We must have either all fields or no fields. */
-      RedisModule_CloseKey(key);
       return RedisModule_ReplyWithError(
           ctx, "Missing fields in the task table entry");
     }
@@ -882,12 +1316,6 @@ int ReplyWithTask(RedisModuleCtx *ctx,
         (RedisModule_StringToLongLong(spillback_count, &spillback_count_val) !=
          REDISMODULE_OK) ||
         (spillback_count_val < 0)) {
-      RedisModule_CloseKey(key);
-      RedisModule_FreeString(ctx, state);
-      RedisModule_FreeString(ctx, local_scheduler_id);
-      RedisModule_FreeString(ctx, execution_dependencies);
-      RedisModule_FreeString(ctx, task_spec);
-      RedisModule_FreeString(ctx, spillback_count);
       return RedisModule_ReplyWithError(
           ctx, "Found invalid scheduling state or spillback count.");
     }
@@ -903,18 +1331,10 @@ int ReplyWithTask(RedisModuleCtx *ctx,
     RedisModuleString *reply = RedisModule_CreateString(
         ctx, (char *) fbb.GetBufferPointer(), fbb.GetSize());
     RedisModule_ReplyWithString(ctx, reply);
-
-    RedisModule_FreeString(ctx, state);
-    RedisModule_FreeString(ctx, local_scheduler_id);
-    RedisModule_FreeString(ctx, execution_dependencies);
-    RedisModule_FreeString(ctx, task_spec);
-    RedisModule_FreeString(ctx, spillback_count);
   } else {
     /* If the key does not exist, return nil. */
     RedisModule_ReplyWithNull(ctx);
   }
-
-  RedisModule_CloseKey(key);
 
   return REDISMODULE_OK;
 }
@@ -933,6 +1353,8 @@ int ReplyWithTask(RedisModuleCtx *ctx,
 int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
                                    RedisModuleString **argv,
                                    int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc != 2) {
     return RedisModule_WrongArity(ctx);
   }
@@ -944,7 +1366,6 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id, REDISMODULE_READ);
 
   if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
-    RedisModule_CloseKey(key);
     return RedisModule_ReplyWithNull(ctx);
   }
 
@@ -954,7 +1375,6 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *hash;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, "is_put",
                       &is_put, "data_size", &data_size, "hash", &hash, NULL);
-  RedisModule_CloseKey(key);
 
   if (task_id == NULL || is_put == NULL) {
     return RedisModule_ReplyWithNull(ctx);
@@ -964,8 +1384,6 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   long long is_put_integer;
   if (RedisModule_StringToLongLong(is_put, &is_put_integer) != REDISMODULE_OK ||
       (is_put_integer != 0 && is_put_integer != 1)) {
-    RedisModule_FreeString(ctx, is_put);
-    RedisModule_FreeString(ctx, task_id);
     return RedisModule_ReplyWithError(
         ctx, "The is_put field must be either a 0 or a 1.");
   }
@@ -978,8 +1396,8 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
     data_size_value = -1;
   } else {
     RedisModule_StringToLongLong(data_size, &data_size_value);
-    CHECK(RedisModule_StringToLongLong(data_size, &data_size_value) ==
-          REDISMODULE_OK);
+    RAY_CHECK(RedisModule_StringToLongLong(data_size, &data_size_value) ==
+              REDISMODULE_OK);
   }
 
   flatbuffers::Offset<flatbuffers::String> hash_str;
@@ -997,19 +1415,6 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *reply = RedisModule_CreateString(
       ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
   RedisModule_ReplyWithString(ctx, reply);
-
-  /* Clean up. */
-  RedisModule_FreeString(ctx, reply);
-  RedisModule_FreeString(ctx, is_put);
-  RedisModule_FreeString(ctx, task_id);
-
-  if (data_size != NULL) {
-    RedisModule_FreeString(ctx, data_size);
-  }
-
-  if (hash != NULL) {
-    RedisModule_FreeString(ctx, hash);
-  }
 
   return REDISMODULE_OK;
 }
@@ -1045,7 +1450,6 @@ int TaskTableWrite(RedisModuleCtx *ctx,
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "TaskSpec",
                         &existing_task_spec, NULL);
     if (existing_task_spec == NULL) {
-      RedisModule_CloseKey(key);
       return RedisModule_ReplyWithError(
           ctx, "Cannot update a task that doesn't exist yet");
     }
@@ -1055,13 +1459,13 @@ int TaskTableWrite(RedisModuleCtx *ctx,
         local_scheduler_id, "execution_dependencies", execution_dependencies,
         "TaskSpec", task_spec, "spillback_count", spillback_count, NULL);
   }
-  RedisModule_CloseKey(key);
 
   if (state_value == TASK_STATUS_WAITING ||
       state_value == TASK_STATUS_SCHEDULED) {
-    /* Build the PUBLISH topic and message for task table subscribers. The topic
-     * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>". The
-     * message is a serialized SubscribeToTasksReply flatbuffer object. */
+    /* Build the PUBLISH topic and message for task table subscribers. The
+     * topic is a string in the format
+     * "TASK_PREFIX:<local scheduler ID>:<state>". The message is a serialized
+     * SubscribeToTasksReply flatbuffer object. */
     RedisModuleString *publish_topic = RedisString_Format(
         ctx, "%s%S:%S", TASK_PREFIX, local_scheduler_id, state);
 
@@ -1091,13 +1495,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    CHECKM(num_clients <= 1, "Published to %lld clients.", num_clients);
-
-    RedisModule_FreeString(ctx, publish_message);
-    RedisModule_FreeString(ctx, publish_topic);
-    if (existing_task_spec != NULL) {
-      RedisModule_FreeString(ctx, existing_task_spec);
-    }
+    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
+                                << " clients.";
 
     if (reply == NULL) {
       return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
@@ -1140,6 +1539,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
                                   RedisModuleString **argv,
                                   int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc != 7) {
     return RedisModule_WrongArity(ctx);
   }
@@ -1169,6 +1570,8 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
 int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
                                  RedisModuleString **argv,
                                  int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc != 6) {
     return RedisModule_WrongArity(ctx);
   }
@@ -1203,6 +1606,8 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
 int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                         RedisModuleString **argv,
                                         int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc < 5 || argc > 6) {
     return RedisModule_WrongArity(ctx);
   }
@@ -1218,7 +1623,6 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleKey *key = OpenPrefixedKey(ctx, TASK_PREFIX, task_id,
                                         REDISMODULE_READ | REDISMODULE_WRITE);
   if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
-    RedisModule_CloseKey(key);
     return RedisModule_ReplyWithNull(ctx);
   }
 
@@ -1235,13 +1639,11 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   }
 
   if (current_state_integer < 0) {
-    RedisModule_CloseKey(key);
     return RedisModule_ReplyWithError(ctx, "Found invalid scheduling state.");
   }
   long long test_state_bitmask;
   int status = RedisModule_StringToLongLong(test_state, &test_state_bitmask);
   if (status != REDISMODULE_OK) {
-    RedisModule_CloseKey(key);
     return RedisModule_ReplyWithError(
         ctx, "Invalid test value for scheduling state");
   }
@@ -1271,8 +1673,6 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                         "local_scheduler_id", local_scheduler_id, NULL);
   }
 
-  /* Clean up. */
-  RedisModule_CloseKey(key);
   /* Construct a reply by getting the task from the task ID. */
   return ReplyWithTask(ctx, task_id, update);
 }
@@ -1293,6 +1693,8 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 int TaskTableGet_RedisCommand(RedisModuleCtx *ctx,
                               RedisModuleString **argv,
                               int argc) {
+  RedisModule_AutoMemory(ctx);
+
   if (argc != 2) {
     return RedisModule_WrongArity(ctx);
   }
@@ -1327,13 +1729,31 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.table_add", TableAdd_RedisCommand,
-                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_append",
+                                TableAppend_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.table_lookup",
                                 TableLookup_RedisCommand, "readonly", 0, 0,
                                 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_request_notifications",
+                                TableRequestNotifications_RedisCommand,
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_cancel_notifications",
+                                TableCancelNotifications_RedisCommand,
+                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
@@ -1408,6 +1828,15 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
                                 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
+
+#if RAY_USE_NEW_GCS
+  // Chain-enabled commands that depend on ray-project/credis.
+  if (RedisModule_CreateCommand(ctx, "ray.chain.table_add",
+                                ChainTableAdd_RedisCommand, "write pubsub", 0,
+                                0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+#endif
 
   return REDISMODULE_OK;
 }

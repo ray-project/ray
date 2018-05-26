@@ -31,7 +31,7 @@ void wait_for_pollin(int fd) {
   poll_list[0].fd = fd;
   poll_list[0].events = POLLIN;
   int retval = poll(poll_list, (unsigned long) 1, -1);
-  CHECK(retval > 0);
+  RAY_CHECK(retval > 0);
 }
 
 int test_done_handler(event_loop *loop, timer_id id, void *context) {
@@ -66,7 +66,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   std::string manager_socket_name = bind_ipc_sock_retry(
       plasma_manager_socket_name_format, &mock->manager_local_fd);
 
-  CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
+  RAY_CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
 
   mock->state = PlasmaManagerState_init(plasma_store_socket_name,
                                         manager_socket_name.c_str(),
@@ -77,9 +77,9 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
     mock->write_conn =
         get_manager_connection(remote_mock->state, manager_addr, mock->port);
     wait_for_pollin(mock->manager_remote_fd);
-    mock->read_conn =
-        ClientConnection_listen(mock->loop, mock->manager_remote_fd,
-                                mock->state, PLASMA_DEFAULT_RELEASE_DELAY);
+    mock->read_conn = ClientConnection_listen(
+        mock->loop, mock->manager_remote_fd, mock->state,
+        plasma::kPlasmaDefaultReleaseDelay);
   } else {
     mock->write_conn = NULL;
     mock->read_conn = NULL;
@@ -252,7 +252,7 @@ TEST object_notifications_test(void) {
   int fd[2];
   socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
   int flags = fcntl(fd[1], F_GETFL, 0);
-  CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
+  RAY_CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
 
   ObjectID object_id = ObjectID::from_random();
   ObjectInfoT info;
@@ -269,24 +269,22 @@ TEST object_notifications_test(void) {
   ASSERT(!is_local);
 
   /* Check that the object is local after receiving an object notification. */
-  uint8_t *notification = plasma::create_object_info_buffer(&info);
-  int64_t size = *((int64_t *) notification);
-  send(fd[1], notification, sizeof(int64_t) + size, 0);
+  auto notification = plasma::create_object_info_buffer(&info);
+  int64_t size = *((int64_t *) notification.get());
+  send(fd[1], notification.get(), sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, object_id);
   ASSERT(is_local);
-  delete[] notification;
 
   /* Check that the object is not local after receiving a notification about
    * the object deletion. */
   info.is_deletion = true;
   notification = plasma::create_object_info_buffer(&info);
-  size = *((int64_t *) notification);
-  send(fd[1], notification, sizeof(int64_t) + size, 0);
+  size = *((int64_t *) notification.get());
+  send(fd[1], notification.get(), sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, object_id);
   ASSERT(!is_local);
-  delete[] notification;
 
   /* Clean up. */
   close(fd[0]);
