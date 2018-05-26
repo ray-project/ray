@@ -2068,7 +2068,7 @@ class GlobalStateAPI(unittest.TestCase):
         os.environ.get("RAY_USE_XRAY") == "1",
         "This test does not work with xray yet.")
     def testTaskProfileAPI(self):
-        ray.init(redirect_output=True, num_cpus=8)
+        ray.init(redirect_output=True, num_cpus=2)
 
         @ray.remote
         def f():
@@ -2129,7 +2129,7 @@ class GlobalStateAPI(unittest.TestCase):
         os.environ.get("RAY_USE_XRAY") == "1",
         "This test does not work with xray yet.")
     def testDumpTraceFile(self):
-        ray.init(redirect_output=True, num_cpus=16)
+        ray.init(redirect_output=True, num_cpus=2)
 
         @ray.remote
         def f(*xs):
