@@ -22,6 +22,17 @@ matrix:
 
     - os: linux
       dist: trusty
+      env:
+        - JDK='Oracle JDK 8'
+        - PYTHON=3.5
+      install:
+        - ./.travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+      script:
+      - ./java/test.sh
+
+    - os: linux
+      dist: trusty
       env: LINT=1
       before_install:
         # In case we ever want to use a different version of clang-format:
