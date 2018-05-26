@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from uuid import uuid4
 import time
 
 from googleapiclient import discovery
@@ -11,6 +12,9 @@ from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
 from ray.ray_constants import BOTO_MAX_RETRIES
 
+
+INSTANCE_NAME_MAX_LEN = 64
+INSTANCE_NAME_UUID_LEN = 8
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
     """TODO: This seems unnecessary. Figure out if we can get rid of this"""
@@ -152,16 +156,26 @@ class GCPNodeProvider(NodeProvider):
         availability_zone = self.provider_config['availability_zone']
 
         config = base_config.copy()
-        config['name'] = labels[TAG_RAY_NODE_NAME]
-        config['machineType'] = (
-            'zones/{zone}/machineTypes/{machine_type}'
-            ''.format(zone=availability_zone,
-                      machine_type=base_config['machineType']))
 
-        config['labels'] = dict(
-            config.get('labels', {}),
-            **labels,
-            **{TAG_RAY_CLUSTER_NAME: self.cluster_name})
+        name_label = labels[TAG_RAY_NODE_NAME]
+        assert (
+            len(name_label)
+            <= (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)
+        ), (name_label, len(name_label))
+
+        config.update({
+            "name": ("{name_label}-{uuid}".format(
+                name_label=name_label,
+                uuid=uuid4().hex[:INSTANCE_NAME_UUID_LEN])),
+            "machineType": (
+                'zones/{zone}/machineTypes/{machine_type}'
+                ''.format(zone=availability_zone,
+                          machine_type=base_config['machineType'])),
+            "labels": dict(
+                config.get('labels', {}),
+                **labels,
+                **{TAG_RAY_CLUSTER_NAME: self.cluster_name}),
+        })
 
         if count != 1:
             print("WARNING: Requested to create {} nodes. GCPNodeProvider"
