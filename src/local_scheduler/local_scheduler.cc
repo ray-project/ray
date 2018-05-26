@@ -364,12 +364,12 @@ LocalSchedulerState *LocalSchedulerState_init(
   /* Connect to Plasma. This method will retry if Plasma hasn't started yet. */
   state->plasma_conn = new plasma::PlasmaClient();
   if (plasma_manager_socket_name != NULL) {
-    ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name,
-                                               plasma_manager_socket_name,
-                                               PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(state->plasma_conn->Connect(
+        plasma_store_socket_name, plasma_manager_socket_name,
+        plasma::kPlasmaDefaultReleaseDelay));
   } else {
-    ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name, "",
-                                               PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(state->plasma_conn->Connect(
+        plasma_store_socket_name, "", plasma::kPlasmaDefaultReleaseDelay));
   }
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd;
@@ -1566,6 +1566,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  char redis_primary_addr[16];
   char *redis_addr = NULL;
   int redis_port = -1;
   if (!redis_primary_addr_port) {
@@ -1577,7 +1578,6 @@ int main(int argc, char *argv[]) {
                      << "the -r switch";
     }
   } else {
-    char redis_primary_addr[16];
     int redis_primary_port;
     /* Parse the primary Redis address into an IP address and a port. */
     if (parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,

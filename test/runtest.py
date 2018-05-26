@@ -1066,6 +1066,10 @@ class APITest(unittest.TestCase):
             ray.get(3)
 
 
+@unittest.skipIf(
+    os.environ.get('RAY_USE_NEW_GCS', False),
+    "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
+    "supports 1-node chain for that shard only.")
 class APITestSharded(APITest):
     def init_ray(self, **kwargs):
         if kwargs is None:
