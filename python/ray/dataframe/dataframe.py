@@ -22,6 +22,7 @@ from pandas.core.indexing import check_bool_indexer
 from pandas.errors import MergeError
 
 import warnings
+import functools
 import numpy as np
 import ray
 import itertools
@@ -1630,16 +1631,8 @@ class DataFrame(object):
             # leaves the coords df in an inconsistent state.
             if axis == 'index':
                 try:
-                    coords = obj._row_metadata[label]
-                    if isinstance(coords, pd.DataFrame):
-                        partitions = list(coords['partition'])
-                        indexes = list(coords['index_within_partition'])
-                    else:
-                        partitions, indexes = coords
-                        partitions = [partitions]
-                        indexes = [indexes]
-
-                    for part, index in zip(partitions, indexes):
+                    for part, index in obj._row_metadata\
+                                          .local_index_iterator(label):
                         x = _deploy_func.remote(
                             lambda df: df.drop(labels=index, axis=axis,
                                                errors='ignore'),
@@ -1659,16 +1652,8 @@ class DataFrame(object):
                     return obj
             else:
                 try:
-                    coords = obj._col_metadata[label]
-                    if isinstance(coords, pd.DataFrame):
-                        partitions = list(coords['partition'])
-                        indexes = list(coords['index_within_partition'])
-                    else:
-                        partitions, indexes = coords
-                        partitions = [partitions]
-                        indexes = [indexes]
-
-                    for part, index in zip(partitions, indexes):
+                    for part, index in obj._col_metadata\
+                                          .local_index_iterator(label):
                         x = _deploy_func.remote(
                             lambda df: df.drop(labels=index, axis=axis,
                                                errors='ignore'),
@@ -1717,14 +1702,128 @@ class DataFrame(object):
             self._block_partitions = obj._block_partitions
 
     def drop_duplicates(self, subset=None, keep='first', inplace=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Return DataFrame with duplicate rows removed, optionally only
+        considering certain columns
+
+        Args:
+            subset: column label or sequence of labels, optional
+                Only consider certain columns for identifying duplicates, by
+                default use all of the columns
+            keep: {'first', 'last', False}, default 'first'
+            inplace: Whether to drop duplicates in place or to return a copy
+
+        Returns:
+            deduplicated: DataFrame
+        """
+        duplicated_array = self.duplicated(subset, keep).tolist()
+        dropped_rows = self.index.values[duplicated_array]
+        return self.drop(dropped_rows, inplace=inplace)
 
     def duplicated(self, subset=None, keep='first'):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        """Return boolean Series denoting duplicate rows, optionally only
+        considering certain columns
+
+        Args:
+            subset: column label or sequence of labels, optional
+                Only consider certain columns for identifying duplicates, by
+                default use all of the columns
+            keep: {'first', 'last', False}, default 'first'
+
+        Returns:
+            duplicated: Series
+        """
+        pd.DataFrame(columns=self.columns).duplicated(subset=subset, keep=keep)
+
+        # ensure subset is a valid itterable
+        if subset is None:
+            subset = self.columns
+        elif (not np.iterable(subset) or
+              isinstance(subset, compat.string_types) or
+              isinstance(subset, tuple) and subset in self.columns):
+            subset = (subset,)
+
+        if not isinstance(subset, list):
+            subset = list(set(subset))
+
+        # get dict of selected cols where k=partition #, v=local idx #
+        local_subsets = self._col_metadata.local_index_dict(subset)
+
+        def _duplicated_helper(df, subset):
+            """Create initial sets of indices of duplicate rows"""
+            if all([(c not in subset) for c in df.columns]):
+                return None  # partition not in subset, so don't consider
+
+            # ensure that None and np.nan get collected in groupby
+            df = df.fillna(value='None')
+
+            # get the duplicated bool series for col partition
+            mask = df.duplicated(subset, keep)
+
+            # groupby to collect idx set of duplicate values on each col
+            g = df.groupby(subset)
+            ret = df.set_index(subset).index.map(
+                lambda ind:
+                    set(g.indices[ind])
+                    if ind is not None else set()
+            ).values
+
+            # mask all rows which are not duplicates
+            ret[~mask] = set()
+            return ret
+
+        def _arr_reducer(*args):
+            """Finds intersection of all corresponding duplicate idx sets"""
+            arr_list = [x for x in args if x is not None]
+            if len(arr_list) == 0:
+                return None  # indicates partition not in subset
+            return functools.reduce(
+                lambda x, y: [x[i] & y[i] for i in range(len(x))],
+                arr_list
+            )
+
+        # for each partition, list of sets of duplicate row idxs
+        duplicated_array = [
+            _deploy_func.remote(
+                lambda df: _duplicated_helper(df, local_subsets[i]),
+                self._col_partitions[i]
+            ) for i in range(len(self._col_partitions))
+        ]
+
+        # reduce by finding intersection of each set in the lists
+        # since, to be a duplicate, a row must be the same along
+        # all its selected col values
+        while len(duplicated_array) > 1:
+            n = len(duplicated_array)
+            k = max(len(self.columns) // len(self._block_partitions), 2)
+
+            new_duplicated_array = [
+                _deploy_func.remote(
+                    _arr_reducer,
+                    *duplicated_array[i:i + k]
+                )
+                for i in range(0, n // k * k - 1, k)
+            ]
+            if n % k != 0:
+                new_duplicated_array.append(
+                    _deploy_func.remote(
+                        _arr_reducer,
+                        *duplicated_array[n // k * k:]
+                    )
+                )
+            duplicated_array = new_duplicated_array
+        mask = ray.get(duplicated_array[0])
+
+        ret = [True] * len(self.index)
+        if mask is not None:
+            for i in range(len(ret)):
+                # mark as non-dup if less than 2 rows were considered
+                # duplicates on the ith row accross all col partitions
+                # or, if row is first or last occurance of duplicate
+                if len(mask[i]) < 2 or\
+                   keep == 'first' and sorted(mask[i])[0] == i or\
+                   keep == 'last' and sorted(mask[i], reverse=True)[0] == i:
+                    ret[i] = False
+        return pd.Series(ret)
 
     def eq(self, other, axis='columns', level=None):
         """Checks element-wise that this is equal to other.
