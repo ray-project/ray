@@ -5,6 +5,13 @@ Aurelia Guy
 Benjamin Recht 
 '''
 
+# FIXME(ev) make reward reporting structure compliant with RLLIB
+# FIXME(ev) make the shift part actually work
+# FIXME(ev) rewrite config in normal RLlib style
+# FIXME(ev) test this code on a few examples
+# FIXME(ev) implement both v2 and v1
+# FIXME(ev) import Linear Models in a way compliant with RLlib
+
 import parser
 import time
 import os
@@ -30,14 +37,14 @@ Result = namedtuple("Result", [
 
 DEFAULT_CONFIG = dict(
     policy_params=None,
-    num_workers=32,
-    num_deltas=320,
-    deltas_used=320,
+    num_workers=2,
+    num_deltas=20, #320
+    deltas_used=20, #320
     delta_std=0.02,
     logdir=None,
-    rollout_length=1000,
+    rollout_length=200,
     step_size=0.01,
-    shift='constant zero',
+    shift=0,
     observation_filter='MeanStdFilter',
     params=None,
     seed=123,
@@ -59,7 +66,7 @@ def create_shared_noise():
 
 
 class SharedNoiseTable(object):
-    def __init__(self, noise, seed = 11):
+    def __init__(self, noise, seed=11):
 
         self.rg = np.random.RandomState(seed)
         self.noise = noise
@@ -112,13 +119,6 @@ class Worker(object):
             registry, self.sess, self.env.action_space, self.preprocessor,
             config["observation_filter"])
 
-        
-    def get_weights_plus_stats(self):
-        """ 
-        Get current policy weights and current statistics of past states.
-        """
-        return self.policy.get_weights_plus_stats()
-    
 
     def rollout(self, shift = 0., rollout_length = None):
         """ 
@@ -136,6 +136,7 @@ class Worker(object):
         for i in range(rollout_length):
             action = self.policy.compute(ob)
             ob, reward, done, _ = self.env.step(action)
+            ob = np.reshape(ob, -1)
             steps += 1
             total_reward += (reward - shift)
             if done:
@@ -156,9 +157,6 @@ class Worker(object):
             if evaluate:
                 self.policy.set_weights(w_policy)
                 deltas_idx.append(-1)
-                
-                # set to false so that evaluation rollouts are not used for updating state statistics
-                self.policy.update_filter = False
 
                 # for evaluation we do not shift the rewards (shift = 0) and we use the
                 # default rollout length (1000 for the MuJoCo locomotion tasks)
@@ -170,9 +168,6 @@ class Worker(object):
              
                 delta = (self.delta_std * delta).reshape(w_policy.shape)
                 deltas_idx.append(idx)
-
-                # set to true so that state statistics are updated 
-                self.policy.update_filter = True
 
                 # compute reward and number of timesteps used for positive perturbation rollout
                 self.policy.set_weights(w_policy + delta)
@@ -186,20 +181,10 @@ class Worker(object):
                 rollout_rewards.append([pos_reward, neg_reward])
                             
         return {'deltas_idx': deltas_idx, 'rollout_rewards': rollout_rewards, "steps" : steps}
-    
-    def stats_increment(self):
-        self.policy.observation_filter.stats_increment()
-        return
+
 
     def get_weights(self):
         return self.policy.get_weights()
-    
-    def get_filter(self):
-        return self.policy.observation_filter
-
-    def sync_filter(self, other):
-        self.policy.observation_filter.sync(other)
-        return
 
     
 class ARSAgent(agent.Agent):
@@ -256,7 +241,6 @@ class ARSAgent(agent.Agent):
         self.config["observation_filter"])
         self.w_policy = self.policy.get_weights()
 
-            
         # initialize optimization algorithm
         self.optimizer = optimizers.SGD(self.w_policy, self.config["step_size"])
         print("Initialization of ARS complete.")
@@ -283,6 +267,7 @@ class ARSAgent(agent.Agent):
                                                  shift = self.shift,
                                                  evaluate=evaluate) for worker in self.workers]
 
+        # FIXME(ev) why would you do this? Struggling to make sense of this
         rollout_ids_two = [worker.do_rollouts.remote(policy_id,
                                                  num_rollouts = 1,
                                                  shift = self.shift,
@@ -318,10 +303,14 @@ class ARSAgent(agent.Agent):
             return rollout_rewards
 
         # select top performing directions if deltas_used < num_deltas
-        max_rewards = np.max(rollout_rewards, axis = 1)
+        max_rewards = np.max(rollout_rewards, axis=1)
         if self.deltas_used > self.num_deltas:
             self.deltas_used = self.num_deltas
-            
+
+        #FIXME(ev) what is this supposed to be doing?
+        # max_rewards is the bigger of each of the two delta pairs
+        # this is trying to keep things about the xth percentile
+        # ohhh, so evaluate the indices for which this
         idx = np.arange(max_rewards.size)[max_rewards >= np.percentile(max_rewards, 100*(1 - (self.deltas_used / self.num_deltas)))]
         deltas_idx = deltas_idx[idx]
         rollout_rewards = rollout_rewards[idx,:]
@@ -353,95 +342,70 @@ class ARSAgent(agent.Agent):
 
     def _train(self):
 
-        start = time.time()
-        for i in range(self.n_iter):
-            
-            t1 = time.time()
-            self.train_step()
-            t2 = time.time()
-            print('total time of one step', t2 - t1)           
-            print('iter ', i,' done')
 
-            # record statistics every 10 iterations
-            if ((i + 1) % 10 == 0):
-                
-                rewards = self.aggregate_rollouts(num_rollouts = 100, evaluate = True)
-                w = ray.get(self.workers[0].get_weights_plus_stats.remote())
-                np.savez(self.logdir + "/lin_policy_plus", w)
-                
-                # print(sorted(self.params.items()))
-                # logz.log_tabular("Time", time.time() - start)
-                # logz.log_tabular("Iteration", i + 1)
-                # logz.log_tabular("AverageReward", np.mean(rewards))
-                # logz.log_tabular("StdRewards", np.std(rewards))
-                # logz.log_tabular("MaxRewardRollout", np.max(rewards))
-                # logz.log_tabular("MinRewardRollout", np.min(rewards))
-                # logz.log_tabular("timesteps", self.timesteps)
-                # logz.dump_tabular()
+        t1 = time.time()
+        self.train_step()
+        t2 = time.time()
+        print('total time of one step', t2 - t1)
 
-                step_tend = time.time()
-                tlogger.record_tabular("EvalEpRewMean", np.mean(rewards))
-                tlogger.record_tabular("EvalEpRewStd", np.std(rewards))
-                # tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
-                #
-                # tlogger.record_tabular("EpRewMean", noisy_returns.mean())
-                # tlogger.record_tabular("EpRewStd", noisy_returns.std())
-                # tlogger.record_tabular("EpLenMean", noisy_lengths.mean())
-                #
-                # tlogger.record_tabular("Norm", float(np.square(theta).sum()))
-                # tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
-                # tlogger.record_tabular("UpdateRatio", float(update_ratio))
-                #
-                # tlogger.record_tabular("EpisodesThisIter", noisy_lengths.size)
-                # tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
-                # tlogger.record_tabular("TimestepsThisIter", noisy_lengths.sum())
-                # tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
-                #
-                # tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
-                # tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
-                tlogger.dump_tabular()
+        # record statistics every 10 iterations
 
-                info = {
-                    "weights_norm": 0,#np.square(theta).sum(),
-                    "grad_norm": 0,#np.square(g).sum(),
-                    "update_ratio": 0,#update_ratio,
-                    "episodes_this_iter": 0,#noisy_lengths.size,
-                    "episodes_so_far": 0,#self.episodes_so_far,
-                    "timesteps_this_iter": 0,#noisy_lengths.sum(),
-                    "timesteps_so_far": 0,#self.timesteps_so_far,
-                    "time_elapsed_this_iter": 0,#step_tend - step_tstart,
-                    "time_elapsed": 0,#step_tend - self.tstart
-                }
+        rewards = self.aggregate_rollouts(num_rollouts = 100, evaluate = True)
+        #w = ray.get(self.workers[0].get_weights.remote())
+        #np.savez(self.logdir + "/lin_policy_plus", w)
 
-                result = ray.tune.result.TrainingResult(
-                    episode_reward_mean=np.mean(rewards),#eval_returns.mean(),
-                    episode_len_mean=100,#eval_lengths.mean(),
-                    timesteps_this_iter=100,#noisy_lengths.sum(),
-                    info=info)
+        # print(sorted(self.params.items()))
+        # logz.log_tabular("Time", time.time() - start)
+        # logz.log_tabular("Iteration", i + 1)
+        # logz.log_tabular("AverageReward", np.mean(rewards))
+        # logz.log_tabular("StdRewards", np.std(rewards))
+        # logz.log_tabular("MaxRewardRollout", np.max(rewards))
+        # logz.log_tabular("MinRewardRollout", np.min(rewards))
+        # logz.log_tabular("timesteps", self.timesteps)
+        # logz.dump_tabular()
 
-                return result
-                
-            t1 = time.time()
-            # get statistics from all workers
-            for j in range(self.num_workers):
-                self.policy.observation_filter.update(ray.get(self.workers[j].get_filter.remote()))
-            self.policy.observation_filter.stats_increment()
+        # FIXME(ev) make this compliant with the rest or RLlib
+        step_tend = time.time()
+        tlogger.record_tabular("EvalEpRewMean", np.mean(rewards))
+        tlogger.record_tabular("EvalEpRewStd", np.std(rewards))
+        # tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
+        #
+        # tlogger.record_tabular("EpRewMean", noisy_returns.mean())
+        # tlogger.record_tabular("EpRewStd", noisy_returns.std())
+        # tlogger.record_tabular("EpLenMean", noisy_lengths.mean())
+        #
+        # tlogger.record_tabular("Norm", float(np.square(theta).sum()))
+        # tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
+        # tlogger.record_tabular("UpdateRatio", float(update_ratio))
+        #
+        # tlogger.record_tabular("EpisodesThisIter", noisy_lengths.size)
+        # tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
+        # tlogger.record_tabular("TimestepsThisIter", noisy_lengths.sum())
+        # tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
+        #
+        # tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
+        # tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
+        tlogger.dump_tabular()
 
-            # make sure master filter buffer is clear
-            self.policy.observation_filter.clear_buffer()
-            # sync all workers
-            filter_id = ray.put(self.policy.observation_filter)
-            setting_filters_ids = [worker.sync_filter.remote(filter_id) for worker in self.workers]
-            # waiting for sync of all workers
-            ray.get(setting_filters_ids)
-         
-            increment_filters_ids = [worker.stats_increment.remote() for worker in self.workers]
-            # waiting for increment of all workers
-            ray.get(increment_filters_ids)            
-            t2 = time.time()
-            print('Time to sync statistics:', t2 - t1)
-                        
-        return
+        info = {
+            "weights_norm": 0,#np.square(theta).sum(),
+            "grad_norm": 0,#np.square(g).sum(),
+            "update_ratio": 0,#update_ratio,
+            "episodes_this_iter": 0,#noisy_lengths.size,
+            "episodes_so_far": 0,#self.episodes_so_far,
+            "timesteps_this_iter": 0,#noisy_lengths.sum(),
+            "timesteps_so_far": 0,#self.timesteps_so_far,
+            "time_elapsed_this_iter": 0,#step_tend - step_tstart,
+            "time_elapsed": 0,#step_tend - self.tstart
+        }
+
+        result = ray.tune.result.TrainingResult(
+            episode_reward_mean=np.mean(rewards),#eval_returns.mean(),
+            episode_len_mean=100,#eval_lengths.mean(),
+            timesteps_this_iter=100,#noisy_lengths.sum(),
+            info=info)
+
+        return result
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
@@ -470,63 +434,25 @@ class ARSAgent(agent.Agent):
 
 
 if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--env_name', type=str, default='HalfCheetah-v2')
-    parser.add_argument('--n_iter', '-n', type=int, default=[1000])
-    parser.add_argument('--n_directions', '-nd', type=int, default=[8])
-    parser.add_argument('--deltas_used', '-du', type=int, default=[8])
-    parser.add_argument('--step_size', '-s', type=float, default=[0.02])
-    parser.add_argument('--delta_std', '-std', type=float, default=[.03])
-    parser.add_argument('--n_workers', '-e', type=int, default=[18])
-    parser.add_argument('--rollout_length', '-r', type=int, default=[1000])
-
-    # for Swimmer-v1 and HalfCheetah-v1 use shift = 0
-    # for Hopper-v1, Walker2d-v1, and Ant-v1 use shift = 1
-    # for Humanoid-v1 used shift = 5
-    parser.add_argument('--shift', type=float, default=0)
-    parser.add_argument('--seed', type=int, default=[237])
-    parser.add_argument('--policy_type', type=str, default='linear')
-    parser.add_argument('--dir_path', type=str, default='data')
-
-    # for ARS V1 use filter = 'NoFilter'
-    parser.add_argument('--filter', type=str, default='MeanStdFilter')
 
     local_ip = socket.gethostbyname(socket.gethostname())
-    ray.init(num_cpus=4, redirect_output=False) #redis_address= local_ip + ':6379')
+    ray.init(num_cpus=2, redirect_output=False) #redis_address= local_ip + ':6379')
 
-    args = parser.parse_args()
-    params = vars(args)
     #run_ars(params)
     config = DEFAULT_CONFIG
-    config["step_size"] = grid_search([.02, .04])
+    config["step_size"] = grid_search([.02])
     tune.run_experiments({
         "my_experiment": {
             "run": "ARS",
             "stop": {
-                "training_iteration": 200
+                "training_iteration": 10
             },
             "env": 'HalfCheetah-v2',
-            # "config": {
-            #     "env_name": params["env_name"],
-            #     "n_iter": tune.grid_search(params["n_iter"]),
-            #     "n_directions": tune.grid_search(params["n_directions"]),
-            #     "deltas_used": tune.grid_search(params["deltas_used"]),
-            #     "step_size": tune.grid_search(params["step_size"]),
-            #     "delta_std": tune.grid_search(params["delta_std"]),
-            #     "n_workers": tune.grid_search(params["n_workers"]),
-            #     "rollout_length": tune.grid_search(params["rollout_length"]),
-            #     "shift": params["shift"],
-            #     "seed": tune.grid_search(params["seed"]),
-            #     "policy_type": params["policy_type"],
-            #     "dir_path": params["dir_path"],
-            #     "filter": params["filter"]
-            # }
             "config": config,
             "trial_resources": {
                 "cpu": 1,
                 "gpu": 0,
-                "extra_cpu": 3 - 1,
+                "extra_cpu": 1,
             }
         }
     })
