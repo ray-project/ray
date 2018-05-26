@@ -178,7 +178,7 @@ class NodeUpdater(object):
                 "NodeUpdater: running {} on {}...".format(
                     pretty_cmd(cmd), self.ssh_ip),
                 file=self.stdout)
-        force_interactive = "set -i && source ~/.bashrc && "
+        force_interactive = "set -i || true && source ~/.bashrc && "
         self.process_runner.check_call(
             [
                 "ssh",
