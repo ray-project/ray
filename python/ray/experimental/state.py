@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
 import copy
 from collections import defaultdict
 import heapq
@@ -507,7 +508,7 @@ class GlobalState(object):
                     for i in range(client.ResourcesTotalLabelLength())
                 }
                 node_info.append({
-                    "ClientID": client.ClientId().hex(),
+                    "ClientID": binascii.hexlify(client.ClientId()),
                     "IsInsertion": client.IsInsertion(),
                     "NodeManagerAddress": client.NodeManagerAddress().decode(
                         "ascii"),
@@ -1017,11 +1018,16 @@ class GlobalState(object):
         """
         clients = self.client_table()
         local_schedulers = []
-        for ip_address, client_list in clients.items():
-            for client in client_list:
-                if (client["ClientType"] == "local_scheduler"
-                        and not client["Deleted"]):
+        if self.use_raylet:
+            for client in clients:
+                if "Resources" in client:
                     local_schedulers.append(client)
+        else:
+            for ip_address, client_list in clients.items():
+                for client in client_list:
+                    if (client["ClientType"] == "local_scheduler"
+                            and not client["Deleted"]):
+                        local_schedulers.append(client)
         return local_schedulers
 
     def workers(self):
