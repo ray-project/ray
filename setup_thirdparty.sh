@@ -13,8 +13,6 @@ else
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
-$TP_DIR/thirdparty/scripts/setup.sh $PYTHON_EXECUTABLE
-
 LANGUAGE="python"
 if [[ -n  "$2" ]]; then
   LANGUAGE=$2

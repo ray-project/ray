@@ -112,11 +112,7 @@ public class RayNativeRuntime extends RayRuntime {
       int release_delay = RayRuntime.configReader
           .getIntegerValue("ray", "plasma_default_release_delay", 0,
               "how many release requests should be delayed in plasma client");
-      ObjectStoreLink pLink = new PlasmaClient(
-          configReader.filePath(),
-          overwrites,
-          params.object_store_name,
-          params.object_store_manager_name, release_delay);
+      ObjectStoreLink pLink = new PlasmaClient(params.object_store_name, params.object_store_manager_name, release_delay);
 
       LocalSchedulerLink sLink = new DefaultLocalSchedulerClient(
           params.local_scheduler_name,
