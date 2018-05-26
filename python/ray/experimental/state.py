@@ -237,15 +237,17 @@ class GlobalState(object):
                 "RAY.TABLE_LOOKUP", TablePrefix_OBJECT, "", object_id.id())
             result = []
             gcs_entry = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
-            assert gcs_entry.EntriesLength() == 1
-            log_info = ObjectTableData.GetRootAsObjectTableData(
-                gcs_entry.Entries(0), 0)
-            result.append({
-                "DataSize": log_info.ObjectSize(),
-                "Manager": log_info.Manager(),
-                "IsEviction": log_info.IsEviction(),
-                "NumEvictions": log_info.NumEvictions()
-            })
+
+            for i in range(gcs_entry.EntriesLength()):
+                entry = ObjectTableData.GetRootAsObjectTableData(
+                            gcs_entry.Entries(i), 0)
+                object_info = {
+                    "DataSize": entry.ObjectSize(),
+                    "Manager": entry.Manager(),
+                    "IsEviction": entry.IsEviction(),
+                    "NumEvictions": entry.NumEvictions()
+                }
+                result.append(object_info)
 
         return result
 
