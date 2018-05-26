@@ -164,9 +164,6 @@ class GCPNodeProvider(NodeProvider):
         ), (name_label, len(name_label))
 
         config.update({
-            "name": ("{name_label}-{uuid}".format(
-                name_label=name_label,
-                uuid=uuid4().hex[:INSTANCE_NAME_UUID_LEN])),
             "machineType": (
                 'zones/{zone}/machineTypes/{machine_type}'
                 ''.format(zone=availability_zone,
@@ -177,22 +174,26 @@ class GCPNodeProvider(NodeProvider):
                 **{TAG_RAY_CLUSTER_NAME: self.cluster_name}),
         })
 
-        if count != 1:
-            print("WARNING: Requested to create {} nodes. GCPNodeProvider"
-                  " currently only support creating one node at a time. This"
-                  " possible discrepancy should already be handled in the"
-                  " autoscaling loop.".format(count))
+        operations = [
+            self.compute.instances().insert(
+                project=project_id,
+                zone=availability_zone,
+                body=dict(config, **{
+                    "name": ("{name_label}-{uuid}".format(
+                        name_label=name_label,
+                        uuid=uuid4().hex[:INSTANCE_NAME_UUID_LEN]))
+                })
+            ).execute()
+            for i in range(count)
+        ]
 
-        operation = self.compute.instances().insert(
-            project=project_id,
-            zone=availability_zone,
-            body=config
-        ).execute()
+        results = [
+            wait_for_compute_zone_operation(
+                self.compute, project_id, operation, availability_zone)
+            for operation in operations
+        ]
 
-        result = wait_for_compute_zone_operation(
-            self.compute, project_id, operation, availability_zone)
-
-        return result
+        return results
 
     def terminate_node(self, node_id):
         project_id = self.provider_config['project_id']
