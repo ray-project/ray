@@ -41,6 +41,8 @@ OBJECT_CHANNEL_PREFIX = "OC:"
 # just access the flatbuffer generated values.
 TablePrefix_TASK = 1
 TablePrefix_TASK_string = "TASK"
+TablePrefix_CLIENT = 3
+TablePrefix_CLIENT_string = "CLIENT"
 TablePrefix_OBJECT = 4
 TablePrefix_OBJECT_string = "OBJECT"
 
@@ -240,7 +242,7 @@ class GlobalState(object):
 
             for i in range(gcs_entry.EntriesLength()):
                 entry = ObjectTableData.GetRootAsObjectTableData(
-                            gcs_entry.Entries(i), 0)
+                    gcs_entry.Entries(i), 0)
                 object_info = {
                     "DataSize": entry.ObjectSize(),
                     "Manager": entry.Manager(),
@@ -361,40 +363,49 @@ class GlobalState(object):
             # Use the raylet code path.
             message = self.redis_client.execute_command(
                 "RAY.TABLE_LOOKUP", TablePrefix_TASK, "", task_id.id())
-            task_message = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
-            assert task_message.EntriesLength() == 1
-            task_table_message = Task.GetRootAsTask(task_message.Entries(0), 0)
-            execution_spec = task_table_message.TaskExecutionSpec()
-            task_spec = task_table_message.TaskSpecification()
-            task_spec = ray.local_scheduler.task_from_string(task_spec)
-            task_spec_info = {
-                "DriverID": binary_to_hex(task_spec.driver_id().id()),
-                "TaskID": binary_to_hex(task_spec.task_id().id()),
-                "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
-                "ParentCounter": task_spec.parent_counter(),
-                "ActorID": binary_to_hex(task_spec.actor_id().id()),
-                "ActorCreationID": binary_to_hex(
-                    task_spec.actor_creation_id().id()),
-                "ActorCreationDummyObjectID": binary_to_hex(
-                    task_spec.actor_creation_dummy_object_id().id()),
-                "ActorCounter": task_spec.actor_counter(),
-                "FunctionID": binary_to_hex(task_spec.function_id().id()),
-                "Args": task_spec.arguments(),
-                "ReturnObjectIDs": task_spec.returns(),
-                "RequiredResources": task_spec.required_resources()
-            }
+            gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
 
-            return {
-                "ExecutionSpec": {
-                    "Dependencies": [
-                        execution_spec.Dependencies(i)
-                        for i in range(execution_spec.DependenciesLength())
-                    ],
-                    "LastTimestamp": execution_spec.LastTimestamp(),
-                    "NumForwards": execution_spec.NumForwards()
-                },
-                "TaskSpec": task_spec_info
-            }
+            info = []
+            for i in range(gcs_entries.EntriesLength()):
+                task_table_message = Task.GetRootAsTask(
+                    gcs_entries.Entries(i), 0)
+
+                task_table_message = Task.GetRootAsTask(
+                    gcs_entries.Entries(0), 0)
+                execution_spec = task_table_message.TaskExecutionSpec()
+                task_spec = task_table_message.TaskSpecification()
+                task_spec = ray.local_scheduler.task_from_string(task_spec)
+                task_spec_info = {
+                    "DriverID": binary_to_hex(task_spec.driver_id().id()),
+                    "TaskID": binary_to_hex(task_spec.task_id().id()),
+                    "ParentTaskID": binary_to_hex(
+                        task_spec.parent_task_id().id()),
+                    "ParentCounter": task_spec.parent_counter(),
+                    "ActorID": binary_to_hex(task_spec.actor_id().id()),
+                    "ActorCreationID": binary_to_hex(
+                        task_spec.actor_creation_id().id()),
+                    "ActorCreationDummyObjectID": binary_to_hex(
+                        task_spec.actor_creation_dummy_object_id().id()),
+                    "ActorCounter": task_spec.actor_counter(),
+                    "FunctionID": binary_to_hex(task_spec.function_id().id()),
+                    "Args": task_spec.arguments(),
+                    "ReturnObjectIDs": task_spec.returns(),
+                    "RequiredResources": task_spec.required_resources()
+                }
+
+                info.append({
+                    "ExecutionSpec": {
+                        "Dependencies": [
+                            execution_spec.Dependencies(i)
+                            for i in range(execution_spec.DependenciesLength())
+                        ],
+                        "LastTimestamp": execution_spec.LastTimestamp(),
+                        "NumForwards": execution_spec.NumForwards()
+                    },
+                    "TaskSpec": task_spec_info
+                })
+
+            return info
 
     def task_table(self, task_id=None):
         """Fetch and parse the task table information for one or more task IDs.
@@ -498,18 +509,23 @@ class GlobalState(object):
 
         else:
             # This is the raylet code path.
-            client_info = self.redis_client.zrange(b"CLIENT:" + 20 * b"\xff",
-                                                   0, -1)
+            NIL_CLIENT_ID = 20 * b"\xff"
+            message = self.redis_client.execute_command(
+                "RAY.TABLE_LOOKUP", TablePrefix_CLIENT, "", NIL_CLIENT_ID)
             node_info = []
-            for message in client_info:
-                client = ClientTableData.GetRootAsClientTableData(message, 0)
+            gcs_entry = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
+
+            for i in range(gcs_entry.EntriesLength()):
+                client = ClientTableData.GetRootAsClientTableData(
+                    gcs_entry.Entries(i), 0)
+
                 resources = {
                     client.ResourcesTotalLabel(i).decode("ascii"):
                     client.ResourcesTotalCapacity(i)
                     for i in range(client.ResourcesTotalLabelLength())
                 }
                 node_info.append({
-                    "ClientID": client.ClientId().hex(),
+                    "ClientID": ray.utils.binary_to_hex(client.ClientId()),
                     "IsInsertion": client.IsInsertion(),
                     "NodeManagerAddress": client.NodeManagerAddress().decode(
                         "ascii"),
