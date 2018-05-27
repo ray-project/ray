@@ -18,8 +18,6 @@ crm = discovery.build("cloudresourcemanager", "v1")
 iam = discovery.build("iam", "v1")
 compute = discovery.build("compute", "v1")
 
-# https://cloud.google.com/docs/compare/aws/
-
 VERSION = "v1"
 
 RAY = "ray-autoscaler"

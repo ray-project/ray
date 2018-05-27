@@ -149,9 +149,7 @@ class GCPNodeProvider(NodeProvider):
         return ip
 
     def create_node(self, base_config, tags, count):
-        # NOTE: gcp uses "labels" instead of aws "tags"
-        # https://cloud.google.com/compute/docs/instances/create-start-instance#startinginstancwithimage
-        labels = tags
+        labels = tags  # gcp uses "labels" instead of aws "tags"
         project_id = self.provider_config["project_id"]
         availability_zone = self.provider_config["availability_zone"]
 
