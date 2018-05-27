@@ -23,7 +23,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  RAY_CHECK(config_.max_push_retries > 0);
+  RAY_CHECK(config_.push_timeout_ms > 0);
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
       [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
@@ -47,7 +47,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  RAY_CHECK(config_.max_push_retries > 0);
+  RAY_CHECK(config_.push_timeout_ms > 0);
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
@@ -90,6 +90,15 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
+  auto iter = unfulfilled_push_tasks_.find(object_id);
+  if (iter != unfulfilled_push_tasks_.end()) {
+    for (auto &pair : iter->second) {
+      main_service_->post(
+          [this, object_id, pair]() { RAY_CHECK_OK(Push(object_id, pair.first)); });
+      pair.second->cancel();
+    }
+    unfulfilled_push_tasks_.erase(iter);
+  }
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -196,19 +205,34 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
   return ray::Status::OK();
 }
 
-ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id,
-                                int retry) {
-  if (local_objects_.count(object_id) == 0) {
-    if (retry < 0) {
-      retry = config_.max_push_retries;
-    } else if (retry == 0) {
-      RAY_LOG(ERROR) << "Invalid Push request ObjectID: " << object_id
-                     << " after retrying " << config_.max_push_retries << " times.";
-      return ray::Status::OK();
+void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
+                                          const ClientID &client_id) {
+  RAY_LOG(ERROR) << "Invalid Push request ObjectID: " << object_id
+                 << " after waiting for " << config_.push_timeout_ms << " ms.";
+  auto iter = unfulfilled_push_tasks_.find(object_id);
+  if (iter != unfulfilled_push_tasks_.end()) {
+    iter->second.erase(client_id);
+    if (iter->second.size() == 0) {
+      unfulfilled_push_tasks_.erase(iter);
     }
-    main_service_->post([this, object_id, client_id, retry]() {
-      RAY_CHECK_OK(Push(object_id, client_id, retry - 1));
-    });
+  }
+}
+
+ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
+  if (local_objects_.count(object_id) == 0) {
+    // Put the task into a queue and wait for the notification of Object added.
+    auto timer = std::shared_ptr<boost::asio::deadline_timer>(
+        new boost::asio::deadline_timer(*main_service_));
+    auto clean_push_period = boost::posix_time::milliseconds(config_.push_timeout_ms);
+    timer->expires_from_now(clean_push_period);
+    timer->async_wait(
+        [this, object_id, client_id](const boost::system::error_code &error) {
+          // Only handle the timeout event and skip all other events.
+          if (!error) {
+            HandlePushTaskTimeout(object_id, client_id);
+          }
+        });
+    unfulfilled_push_tasks_[object_id].emplace(client_id, timer);
     return ray::Status::OK();
   }
 
