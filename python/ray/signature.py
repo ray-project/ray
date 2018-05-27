@@ -5,7 +5,6 @@ from __future__ import print_function
 from collections import namedtuple
 import funcsigs
 from funcsigs import Parameter
-import inspect
 
 from ray.utils import is_cython
 
