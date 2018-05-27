@@ -20,8 +20,8 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 # Map from (logdir, remote_dir) -> syncer
 _syncers = {}
 
-S3_PREFIX = 's3://'
-GCS_PREFIX = 'gs://'
+S3_PREFIX = "s3://"
+GCS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GCS_PREFIX)
 
 def get_syncer(local_dir, remote_dir=None):

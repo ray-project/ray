@@ -22,6 +22,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 NODE_START_WAIT_S = 300
 SSH_CHECK_INTERVAL = 5
 
+
 def pretty_cmd(cmd_str):
     return "\n\n\t{}\n\n".format(cmd_str)
 
