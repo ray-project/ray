@@ -1116,15 +1116,22 @@ class GlobalState(object):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
-        local_schedulers = self.local_schedulers()
         resources = defaultdict(lambda: 0)
+        if not self.use_raylet:
+            local_schedulers = self.local_schedulers()
 
-        for local_scheduler in local_schedulers:
-            for key, value in local_scheduler.items():
-                if key not in [
-                        "ClientType", "Deleted", "DBClientID", "AuxAddress",
-                        "LocalSchedulerSocketName"
-                ]:
+            for local_scheduler in local_schedulers:
+                for key, value in local_scheduler.items():
+                    if key not in [
+                            "ClientType", "Deleted", "DBClientID", "AuxAddress",
+                            "LocalSchedulerSocketName"
+                    ]:
+                        resources[key] += value
+
+        else:
+            clients = self.client_table()
+            for client in clients:
+                for key, value in client["Resources"].items():
                     resources[key] += value
 
         return dict(resources)
