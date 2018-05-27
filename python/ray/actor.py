@@ -213,6 +213,8 @@ def make_actor_method_executor(worker, method_name, method, actor_imported):
             internal state to record the executed method.
     """
 
+    is_classmethod = inspect.ismethod(method)
+
     def actor_method_executor(dummy_return_id, actor, *args):
         # Update the actor's task counter to reflect the task we're about to
         # execute.
@@ -242,7 +244,10 @@ def make_actor_method_executor(worker, method_name, method, actor_imported):
 
         # Execute the assigned method and save a checkpoint if necessary.
         try:
-            method_returns = method(actor, *args)
+            if is_classmethod:
+                method_returns = method(*args)
+            else:
+                method_returns = method(actor, *args)
         except Exception:
             # Save the checkpoint before allowing the method exception to be
             # thrown.
@@ -500,7 +505,7 @@ class ActorClass(object):
             # don't support, there may not be much the user can do about it.
             signature.check_signature_supported(method, warn=True)
             self._method_signatures[method_name] = signature.extract_signature(
-                method, ignore_first=True)
+                method, ignore_first=not inspect.ismethod(method))
 
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_return_vals__"):
