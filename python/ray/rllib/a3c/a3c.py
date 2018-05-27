@@ -78,13 +78,15 @@ class A3CAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
-        self.local_evaluator = A3CEvaluator(
-            self.registry, self.env_creator, self.config, self.logdir,
-            start_sampler=False)
-        if self.config["use_gpu_for_workers"]:
-            remote_cls = GPURemoteA3CEvaluator
+        if self.config["use_pytorch"]:
+            self.policy_creator = A3CTorchPolicy
         else:
-            remote_cls = RemoteA3CEvaluator
+            self.policy_creator = A3CTFPolicy
+        self.local_policy = self.policy_creator()
+        if self.config["use_gpu_for_workers"]:
+            remote_cls = PolicyEvaluator.as_remote(num_gpus=1)
+        else:
+            remote_cls = PolicyEvaluator.as_remote()
         self.remote_evaluators = [
             remote_cls.remote(
                 self.registry, self.env_creator, self.config, self.logdir)
