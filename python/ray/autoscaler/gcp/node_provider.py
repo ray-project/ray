@@ -17,7 +17,7 @@ INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
 
 def wait_for_compute_zone_operation(compute, project_name, operation, zone):
-    """TODO: This seems unnecessary. Figure out if we can get rid of this"""
+    """Poll for compute zone operation until finished."""
     print('Waiting for operation {} to finish...'.format(operation['name']))
 
     for _ in range(MAX_POLLS):
@@ -130,7 +130,7 @@ class GCPNodeProvider(NodeProvider):
         if node_id in self.external_ip_cache:
             return self.external_ip_cache[node_id]
         node = self._node(node_id)
-        # TODO: Isn't there better and more reliable way to do this?
+        # TODO: Is there a better and more reliable way to do this?
         ip = (node
               .get('networkInterfaces', [{}])[0]
               .get('accessConfigs', [{}])[0]

@@ -14,7 +14,6 @@ from googleapiclient import discovery, errors
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 
-# TODO.gcp: Make sure that these are thread safe
 crm = discovery.build('cloudresourcemanager', 'v1')
 iam = discovery.build('iam', 'v1')
 compute = discovery.build('compute', 'v1')
@@ -43,6 +42,7 @@ POLL_INTERVAL = 5
 
 
 def wait_for_crm_operation(operation):
+    """Poll for cloud resource manager operation until finished."""
     print("Waiting for operation {} to finish...".format(operation))
 
     for _ in range(MAX_POLLS):
@@ -59,6 +59,7 @@ def wait_for_crm_operation(operation):
     return result
 
 def wait_for_compute_global_operation(project_name, operation):
+    """Poll for global compute operation until finished."""
     print('Waiting for operation {} to finish...'.format(operation['name']))
 
     for _ in range(MAX_POLLS):
@@ -167,7 +168,6 @@ def _configure_iam_role(config):
         print('Creating new service account {}'.format(
             DEFAULT_SERVICE_ACCOUNT_ID))
 
-        #  TODO: Allow service account parameters to be configured?
         service_account = _create_service_account(
             DEFAULT_SERVICE_ACCOUNT_ID, DEFAULT_SERVICE_ACCOUNT_CONFIG, config)
 
@@ -384,11 +384,7 @@ def _create_service_account(account_id, account_config, config):
 
 
 def _add_iam_policy_binding(service_account, roles):
-    """Add new IAM roles for the service account
-
-    TODO: is there a way to directly patch the roles instead of first having
-    to pull and then manually combine them?
-    """
+    """Add new IAM roles for the service account."""
     project_id = service_account['projectId']
     email = service_account['email']
     member_id = 'serviceAccount:' + email
