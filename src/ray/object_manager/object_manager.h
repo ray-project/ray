@@ -39,8 +39,10 @@ struct ObjectManagerConfig {
   int max_receives;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
-  // TODO(hme): Implement num retries (to avoid infinite retries).
+  /// The stored socked name.
   std::string store_socket_name;
+  /// Maximun number of push retries.
+  int max_push_retries;
 };
 
 class ObjectManagerInterface {
@@ -97,8 +99,9 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param object_id The object's object id.
   /// \param client_id The remote node's client id.
+  /// \param retry The count down retries, -1 means the default maximum retries.
   /// \return Status of whether the push request successfully initiated.
-  ray::Status Push(const ObjectID &object_id, const ClientID &client_id);
+  ray::Status Push(const ObjectID &object_id, const ClientID &client_id, int retry = -1);
 
   /// Pull an object from ClientID. Returns UniqueID asociated with
   /// an invocation of this method.

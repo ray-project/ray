@@ -3,9 +3,9 @@
 #include <unistd.h>
 
 extern "C" {
+#include "hiredis/adapters/ae.h"
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
-#include "hiredis/adapters/ae.h"
 }
 
 // TODO(pcm): Integrate into the C++ tree.
@@ -55,9 +55,13 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
   case (REDIS_REPLY_ERROR): {
     RAY_LOG(ERROR) << "Redis error " << reply->str;
   } break;
+  case (REDIS_REPLY_INTEGER): {
+    data = std::to_string(reply->integer);
+    break;
+  }
   default:
-    RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type
-                   << " and with string " << reply->str;
+    RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type << " and with string "
+                   << reply->str;
   }
   ProcessCallback(callback_index, data);
 }
@@ -99,9 +103,8 @@ void SubscribeRedisCallback(void *c, void *r, void *privdata) {
 }
 
 int64_t RedisCallbackManager::add(const RedisCallback &function) {
-  num_callbacks += 1;
-  callbacks_.emplace(num_callbacks, function);
-  return num_callbacks;
+  callbacks_.emplace(num_callbacks_, function);
+  return num_callbacks_++;
 }
 
 RedisCallback &RedisCallbackManager::get(int64_t callback_index) {
@@ -134,14 +137,13 @@ Status RedisContext::Connect(const std::string &address, int port) {
   int connection_attempts = 0;
   context_ = redisConnect(address.c_str(), port);
   while (context_ == nullptr || context_->err) {
-    if (connection_attempts >=
-        RayConfig::instance().redis_db_connect_retries()) {
+    if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       if (context_ == nullptr) {
         RAY_LOG(FATAL) << "Could not allocate redis context.";
       }
       if (context_->err) {
-        RAY_LOG(FATAL) << "Could not establish connection to redis " << address
-                       << ":" << port;
+        RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":"
+                       << port;
       }
       break;
     }
@@ -159,8 +161,8 @@ Status RedisContext::Connect(const std::string &address, int port) {
   // Connect to async context
   async_context_ = redisAsyncConnect(address.c_str(), port);
   if (async_context_ == nullptr || async_context_->err) {
-    RAY_LOG(FATAL) << "Could not establish connection to redis " << address
-                   << ":" << port;
+    RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":"
+                   << port;
   }
   // Connect to subscribe context
   subscribe_context_ = redisAsyncConnect(address.c_str(), port);
