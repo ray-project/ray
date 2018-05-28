@@ -1,3 +1,4 @@
+from ray.rllib.optimizers.impala_optimizer import ImpalaOptimizer
 from ray.rllib.optimizers.apex_optimizer import ApexOptimizer
 from ray.rllib.optimizers.async_optimizer import AsyncOptimizer
 from ray.rllib.optimizers.local_sync import LocalSyncOptimizer
@@ -9,6 +10,6 @@ from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator, \
 
 
 __all__ = [
-    "ApexOptimizer", "AsyncOptimizer", "LocalSyncOptimizer",
-    "LocalSyncReplayOptimizer", "LocalMultiGPUOptimizer", "SampleBatch",
-    "PolicyEvaluator", "TFMultiGPUSupport"]
+    "ImpalaOptimizer", "ApexOptimizer", "AsyncOptimizer",
+    "LocalSyncOptimizer", "LocalSyncReplayOptimizer", "LocalMultiGPUOptimizer",
+     "SampleBatch", "PolicyEvaluator", "TFMultiGPUSupport"]
