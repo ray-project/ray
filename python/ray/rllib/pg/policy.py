@@ -16,7 +16,6 @@ class PGPolicy(TFPolicy):
         self.registry = registry
         self._setup_graph(obs_space, action_space)
         self._setup_loss(action_space)
-        self._setup_gradients()
         self.sess = tf.Session()
         self.loss_in = [
             ("obs", self.x),
@@ -37,9 +36,6 @@ class PGPolicy(TFPolicy):
                         options=self.config["model"])
         self.action_logits = self.model.outputs  # logit for each action
         self.dist = dist_class(self.action_logits)
-        self.sample = self.dist.sample()
-        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                          tf.get_variable_scope().name)
 
     def _setup_loss(self, action_space):
         self.ac = ModelCatalog.get_action_placeholder(action_space)
@@ -49,12 +45,6 @@ class PGPolicy(TFPolicy):
 
         # policy loss
         self.loss = -tf.reduce_mean(log_prob * self.adv)
-
-    def _setup_gradients(self):
-        self.grads = tf.gradients(self.loss, self.var_list)
-        grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = tf.train.AdamOptimizer(self.config["lr"])
-        self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         return process_rollout(
