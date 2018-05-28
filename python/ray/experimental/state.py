@@ -281,10 +281,10 @@ class GlobalState(object):
             else:
                 object_keys = self.redis_client.keys(
                     TablePrefix_OBJECT_string + ":*")
-                object_ids_binary = set([
+                object_ids_binary = {
                     key[len(TablePrefix_OBJECT_string + ":"):]
                     for key in object_keys
-                ])
+                }
 
             results = {}
             for object_id_binary in object_ids_binary:
