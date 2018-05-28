@@ -13,9 +13,20 @@ class PGPolicy(TFPolicy):
 
     def __init__(self, registry, obs_space, action_space, config):
         self.config = config
-        self.registry = registry
-        self._setup_graph(obs_space, action_space)
-        self._setup_loss(action_space)
+
+        # setup policy
+        self.x = tf.placeholder(tf.float32, shape=[None]+list(obs_space.shape))
+        dist_class, self.logit_dim = ModelCatalog.get_action_dist(action_space)
+        self.model = ModelCatalog.get_model(
+            registry, self.x, self.logit_dim, options=self.config["model"])
+        self.dist = dist_class(self.model.outputs)  # logit for each action
+
+        # setup policy loss
+        self.ac = ModelCatalog.get_action_placeholder(action_space)
+        self.adv = tf.placeholder(tf.float32, [None], name="adv")
+        self.loss = -tf.reduce_mean(self.dist.logp(self.ac) * self.adv)
+
+        # initialize TFPolicy
         self.sess = tf.Session()
         self.loss_in = [
             ("obs", self.x),
@@ -27,24 +38,6 @@ class PGPolicy(TFPolicy):
             self, self.sess, self.x, self.dist, self.loss, self.loss_in,
             self.is_training)
         self.sess.run(tf.global_variables_initializer())
-
-    def _setup_graph(self, obs_space, action_space):
-        self.x = tf.placeholder(tf.float32, shape=[None]+list(obs_space.shape))
-        dist_class, self.logit_dim = ModelCatalog.get_action_dist(action_space)
-        self.model = ModelCatalog.get_model(
-                        self.registry, self.x, self.logit_dim,
-                        options=self.config["model"])
-        self.action_logits = self.model.outputs  # logit for each action
-        self.dist = dist_class(self.action_logits)
-
-    def _setup_loss(self, action_space):
-        self.ac = ModelCatalog.get_action_placeholder(action_space)
-        self.adv = tf.placeholder(tf.float32, [None], name="adv")
-
-        log_prob = self.dist.logp(self.ac)
-
-        # policy loss
-        self.loss = -tf.reduce_mean(log_prob * self.adv)
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         return process_rollout(
