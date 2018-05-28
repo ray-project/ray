@@ -43,6 +43,8 @@ DEFAULT_CONFIG = {
     "entropy_coeff": -0.01,
     # Whether to place workers on GPUs
     "use_gpu_for_workers": False,
+    # Whether to emit extra summary stats
+    "summarize": False,
     # Model and preprocessor options
     "model": {
         # (Image statespace) - Converts image to Channels = 1

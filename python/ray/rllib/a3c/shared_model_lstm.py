@@ -10,16 +10,6 @@ from ray.rllib.models.lstm import LSTM
 
 
 class SharedModelLSTM(A3CTFPolicy):
-    """
-    Attributes:
-        other_output (list): Other than `action`, the other return values from
-            `compute_gradients`.
-        is_recurrent (bool): True if is a recurrent network (requires features
-            to be tracked).
-    """
-
-    other_output = ["vf_preds", "features"]
-    is_recurrent = True
 
     def __init__(self, registry, ob_space, ac_space, config, **kwargs):
         super(SharedModelLSTM, self).__init__(

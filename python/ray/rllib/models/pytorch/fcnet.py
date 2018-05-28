@@ -52,5 +52,5 @@ class FullyConnectedNetwork(Model):
             value: value function for each state"""
         res = self.hidden_layers(obs)
         logits = self.logits(res)
-        value = self.value_branch(res)
+        value = self.value_branch(res).reshape(-1)
         return logits, value

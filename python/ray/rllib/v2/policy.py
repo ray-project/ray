@@ -26,7 +26,18 @@ class Policy(object):
         raise NotImplementedError
 
     def compute_single_action(self, obs, state, is_training=False):
-        """Unbatched version of compute_actions."""
+        """Unbatched version of compute_actions.
+
+        Arguments:
+            obs (obj): single observation
+            state_batches (list): list of recurrent state inputs, if any
+            is_training (bool): whether we are training the policy
+
+        Returns:
+            actions (obj): single action
+            state_outs (list): list of recurrent state outputs, if any
+            info (dict): dictionary of extra features, if any
+        """
 
         [action], state_out, info = self.compute_actions(
             [obs], [[s] for s in state], is_training)
@@ -51,9 +62,19 @@ class Policy(object):
         raise NotImplementedError
 
     def get_weights(self):
+        """Returns model weights.
+
+        Returns:
+            weights (obj): Serializable copy or view of model weights
+        """
         raise NotImplementedError
 
     def set_weights(self, weights):
+        """Sets model weights.
+
+        Arguments:
+            weights (obj): Serializable copy or view of model weights
+        """
         raise NotImplementedError
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
@@ -68,3 +89,7 @@ class Policy(object):
             SampleBatch: postprocessed sample batch.
         """
         return sample_batch
+
+    def get_initial_state(self):
+        """Returns initial RNN state for the current policy."""
+        return []

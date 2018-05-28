@@ -12,12 +12,11 @@ from ray.rllib.v2.tf_policy import TFPolicy
 class A3CTFPolicy(TFPolicy):
     """The TF policy base class."""
 
-    def __init__(self, registry, ob_space, action_space, config,
-                 name="local", summarize=True):
+    def __init__(self, registry, ob_space, action_space, config):
         self.registry = registry
         self.local_steps = 0
         self.config = config
-        self.summarize = summarize
+        self.summarize = config.get("summarize")
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
 
         self._setup_graph(ob_space, action_space)

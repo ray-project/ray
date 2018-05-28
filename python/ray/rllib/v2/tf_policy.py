@@ -3,13 +3,17 @@ from ray.rllib.v2.policy import Policy
 
 
 class TFPolicy(Policy):
-    """An agent policy that supports TF-specific optimizations.
+    """An agent policy implemented in TensorFlow.
+
+    Extending this class enables RLlib to perform TensorFlow specific
+    optimizations on the policy graph, e.g., parallelization across gpus or
+    fusing multiple graphs together in the multi-agent setting.
 
     All input and output tensors are of shape [BATCH_DIM, ...].
 
     Examples:
         >>> policy = TFPolicySubclass(
-            sess, obs_ph, action_dist, loss, loss_inputs, is_training)
+            sess, obs_input, action_dist, loss, loss_inputs, is_training)
 
         >>> print(policy.compute_actions([1, 0, 2]))
         (array([0, 1, 1]), [], {})
@@ -115,9 +119,6 @@ class TFPolicy(Policy):
 
     def extra_apply_grad_fetches(self):
         return {} # e.g., batch norm updates
-
-    def get_initial_state(self):
-        return []
 
     def optimizer(self):
         return tf.train.AdamOptimizer()

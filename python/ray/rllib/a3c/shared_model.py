@@ -10,9 +10,6 @@ from ray.rllib.models.catalog import ModelCatalog
 
 class SharedModel(A3CTFPolicy):
 
-    other_output = ["vf_preds"]
-    is_recurrent = False
-
     def __init__(self, registry, ob_space, ac_space, config, **kwargs):
         super(SharedModel, self).__init__(
             registry, ob_space, ac_space, config, **kwargs)

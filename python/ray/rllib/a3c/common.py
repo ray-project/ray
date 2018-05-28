@@ -8,7 +8,7 @@ def get_policy_cls(config):
         from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
         policy_cls = SharedModelLSTM
     elif config["use_pytorch"]:
-        from ray.rllib.a3c.shared_torch_policy import SharedTorchPolicy
+        from ray.rllib.a3c.a3c_torch_policy import SharedTorchPolicy
         policy_cls = SharedTorchPolicy
     else:
         from ray.rllib.a3c.shared_model import SharedModel
