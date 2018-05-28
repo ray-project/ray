@@ -4,11 +4,11 @@ from __future__ import print_function
 
 import tensorflow as tf
 from ray.rllib.models.misc import linear, normc_initializer
-from ray.rllib.a3c.tfpolicy import TFPolicy
+from ray.rllib.a3c.tfpolicy import A3CTFPolicy
 from ray.rllib.models.catalog import ModelCatalog
 
 
-class SharedModel(TFPolicy):
+class SharedModel(A3CTFPolicy):
 
     other_output = ["vf_preds"]
     is_recurrent = False
@@ -18,16 +18,16 @@ class SharedModel(TFPolicy):
             registry, ob_space, ac_space, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
-        self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
+        self.x = tf.placeholder(tf.float32, [None] + list(ob_space.shape))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = ModelCatalog.get_model(
             self.registry, self.x, self.logit_dim, self.config["model"])
         self.logits = self._model.outputs
-        self.curr_dist = dist_class(self.logits)
+        self.action_dist = dist_class(self.logits)
         self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
                                     normc_initializer(1.0)), [-1])
 
-        self.sample = self.curr_dist.sample()
+        self.sample = self.action_dist.sample()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
         self.global_step = tf.get_variable(
@@ -35,28 +35,21 @@ class SharedModel(TFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def compute_gradients(self, samples):
-        info = {}
-        feed_dict = {
-            self.x: samples["obs"],
-            self.ac: samples["actions"],
-            self.adv: samples["advantages"],
-            self.r: samples["value_targets"],
-        }
-        self.grads = [g for g in self.grads if g is not None]
-        self.local_steps += 1
-        if self.summarize:
-            grad, summ = self.sess.run([self.grads, self.summary_op],
-                                       feed_dict=feed_dict)
-            info['summary'] = summ
-        else:
-            grad = self.sess.run(self.grads, feed_dict=feed_dict)
-        return grad, info
+        self.state_init = []
+        self.state_in = []
+        self.state_out = []
 
-    def compute(self, ob, *args):
-        action, vf = self.sess.run([self.sample, self.vf],
-                                   {self.x: [ob]})
-        return action[0], {"vf_preds": vf[0]}
+    def setup_loss(self, action_space):
+        A3CTFPolicy.setup_loss(self, action_space)
+        self.loss_in = [
+            ("obs", self.x),
+            ("actions", self.ac),
+            ("advantages", self.adv),
+            ("value_targets", self.r),
+        ]
+
+    def extra_compute_action_fetches(self):
+        return {"vf_preds": self.vf}
 
     def value(self, ob, *args):
         vf = self.sess.run(self.vf, {self.x: [ob]})

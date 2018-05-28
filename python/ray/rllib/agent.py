@@ -12,6 +12,7 @@ import tensorflow as tf
 from ray.tune.registry import ENV_CREATOR
 from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
+from ray.rllib.models.catalog import ModelCatalog
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -46,6 +47,16 @@ def _deep_update(original, new_dict, new_keys_allowed, whitelist):
     return original
 
 
+def _add_preprocessor(env_creator, registry, model_config):
+
+    def wrapped(env_config):
+        env = ModelCatalog.get_preprocessor_as_wrapper(
+            registry, env_creator(env_config), model_config)
+        return env
+
+    return wrapped
+
+
 class Agent(Trainable):
     """All RLlib agents extend this base class.
 
@@ -61,7 +72,7 @@ class Agent(Trainable):
     """
 
     _allow_unknown_configs = False
-    _allow_unknown_subkeys = []
+    _allow_unknown_subkeys = ["env_config", "model", "optimizer"]
 
     @classmethod
     def resource_help(cls, config):
@@ -101,6 +112,8 @@ class Agent(Trainable):
             else:
                 import gym  # soft dependency
                 self.env_creator = lambda env_config: gym.make(env)
+            self.env_creator = _add_preprocessor(
+                self.env_creator, self.registry, self.config.get("model", {}))
         else:
             self.env_creator = lambda env_config: None
 

@@ -10,8 +10,8 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import AsyncOptimizer
 from ray.rllib.utils import FilterManager
-from ray.rllib.a3c.a3c_evaluator import A3CEvaluator, RemoteA3CEvaluator, \
-    GPURemoteA3CEvaluator
+from ray.rllib.v2.policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.a3c.common import get_policy_cls
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
@@ -78,19 +78,25 @@ class A3CAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
-        if self.config["use_pytorch"]:
-            self.policy_creator = A3CTorchPolicy
-        else:
-            self.policy_creator = A3CTFPolicy
-        self.local_policy = self.policy_creator()
-        if self.config["use_gpu_for_workers"]:
-            remote_cls = PolicyEvaluator.as_remote(num_gpus=1)
-        else:
-            remote_cls = PolicyEvaluator.as_remote()
+        policy_cls = get_policy_cls(self.config)
+        self.policy_creator = lambda obs_space, act_space: policy_cls(
+            self.registry, obs_space, act_space, self.config)
+
+        configured_env = lambda: self.env_creator(self.config["env_config"])
+        self.local_evaluator = CommonPolicyEvaluator(
+            configured_env, self.policy_creator,
+            min_batch_steps=self.config["batch_size"],
+            batch_mode="truncate_episodes")
+
+        remote_cls = CommonPolicyEvaluator.as_remote(
+            num_gpus=1 if self.config["use_gpu_for_workers"] else 0)
         self.remote_evaluators = [
             remote_cls.remote(
-                self.registry, self.env_creator, self.config, self.logdir)
+                configured_env, self.policy_creator,
+                min_batch_steps=self.config["batch_size"],
+                batch_mode="truncate_episodes", sample_async=True)
             for i in range(self.config["num_workers"])]
+
         self.optimizer = AsyncOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
