@@ -420,6 +420,32 @@ class ActorMethods(unittest.TestCase):
         c2.increase.remote()
         self.assertEqual(ray.get(c2.value.remote()), 2)
 
+    def testActorClassMethods(self):
+        ray.init()
+
+        class Foo(object):
+            x = 2
+
+            @classmethod
+            def as_remote(cls):
+                return ray.remote(cls)
+
+            @classmethod
+            def f(cls):
+                return cls.x
+
+            @classmethod
+            def g(cls, y):
+                return cls.x + y
+
+            def echo(self, value):
+                return value
+
+        a = Foo.as_remote().remote()
+        self.assertEqual(ray.get(a.echo.remote(2)), 2)
+        self.assertEqual(ray.get(a.f.remote()), 2)
+        self.assertEqual(ray.get(a.g.remote(2)), 4)
+
     def testMultipleActors(self):
         # Create a bunch of actors and call a bunch of methods on all of them.
         ray.init(num_workers=0)
