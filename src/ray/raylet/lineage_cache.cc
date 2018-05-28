@@ -285,7 +285,6 @@ bool LineageCache::FlushTask(const TaskID &task_id) {
 
 void LineageCache::Flush() {
   // Iterate through all tasks that are READY.
-  std::vector<TaskID> ready_task_ids;
   for (auto it = uncommitted_ready_tasks_.begin();
        it != uncommitted_ready_tasks_.end();) {
     bool flushed = FlushTask(*it);
@@ -335,6 +334,8 @@ void LineageCache::HandleEntryCommitted(const UniqueID &task_id) {
     subscribed_tasks_.erase(it);
   }
 
+  // Try to flush the children of the committed task. These are the tasks that
+  // have a dependency on the committed task.
   auto children_entry = uncommitted_ready_children_.find(task_id);
   if (children_entry != uncommitted_ready_children_.end()) {
     // Get the children of the committed task that are uncommitted but ready.
