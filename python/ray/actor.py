@@ -17,6 +17,12 @@ from ray.utils import _random_string, is_cython, push_error_to_driver
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
 
+def is_classmethod(f):
+    """Returns whether the given method is a classmethod."""
+
+    return hasattr(f, "__self__") and f.__self__ is not None
+
+
 def compute_actor_handle_id(actor_handle_id, num_forks):
     """Deterministically compute an actor handle ID.
 
@@ -213,8 +219,6 @@ def make_actor_method_executor(worker, method_name, method, actor_imported):
             internal state to record the executed method.
     """
 
-    is_classmethod = inspect.ismethod(method)
-
     def actor_method_executor(dummy_return_id, actor, *args):
         # Update the actor's task counter to reflect the task we're about to
         # execute.
@@ -244,7 +248,7 @@ def make_actor_method_executor(worker, method_name, method, actor_imported):
 
         # Execute the assigned method and save a checkpoint if necessary.
         try:
-            if is_classmethod:
+            if is_classmethod(method):
                 method_returns = method(*args)
             else:
                 method_returns = method(actor, *args)
@@ -505,7 +509,7 @@ class ActorClass(object):
             # don't support, there may not be much the user can do about it.
             signature.check_signature_supported(method, warn=True)
             self._method_signatures[method_name] = signature.extract_signature(
-                method, ignore_first=not inspect.ismethod(method))
+                method, ignore_first=not is_classmethod(method))
 
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_return_vals__"):
