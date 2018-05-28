@@ -6,6 +6,7 @@ import copy
 from collections import defaultdict
 import heapq
 import json
+import os
 import redis
 import sys
 import time
@@ -121,8 +122,6 @@ class GlobalState(object):
         self.redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port)
 
-        self.use_raylet = int(self.redis_client.get("UseRaylet")) == 1
-
         start_time = time.time()
 
         num_redis_shards = None
@@ -157,6 +156,16 @@ class GlobalState(object):
                             "global state. num_redis_shards = {}, "
                             "ip_address_ports = {}".format(
                                 num_redis_shards, ip_address_ports))
+
+        use_raylet = self.redis_client.get("UseRaylet")
+        if use_raylet is not None:
+            self.use_raylet = int(use_raylet) == 1
+        elif os.environ.get("RAY_USE_XRAY") == "1":
+            # This environment variable is used in our testing setup.
+            print("Detected environment variable 'RAY_USE_XRAY'.")
+            self.use_raylet = True
+        else:
+            self.use_raylet = False
 
         # Get the rest of the information.
         self.redis_clients = []
