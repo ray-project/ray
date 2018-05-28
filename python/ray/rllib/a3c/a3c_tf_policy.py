@@ -5,7 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 import gym
 from ray.rllib.utils.process_rollout import process_rollout
-from ray.rllib.v2.tf_policy import TFPolicy
+from ray.rllib.utils.tf_policy import TFPolicy
 
 
 class A3CTFPolicy(TFPolicy):

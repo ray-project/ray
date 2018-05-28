@@ -5,10 +5,10 @@ from __future__ import print_function
 import numpy as np
 
 import ray
+from ray.rllib.agent import Agent
 from ray.rllib.optimizers import LocalSyncOptimizer
 from ray.rllib.pg.policy import PGPolicy
-from ray.rllib.v2.common_policy_evaluator import CommonPolicyEvaluator
-from ray.rllib.agent import Agent
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 

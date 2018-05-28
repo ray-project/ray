@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 import ray
-from ray.rllib.v2.policy import Policy
+from ray.rllib.utils.policy import Policy
 
 
 class TFPolicy(Policy):
