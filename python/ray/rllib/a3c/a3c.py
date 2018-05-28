@@ -80,19 +80,19 @@ class A3CAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
-        self.policy_creator = get_policy_cls(self.config)
+        self.policy_cls = get_policy_cls(self.config)
 
         remote_cls = CommonPolicyEvaluator.as_remote(
             num_gpus=1 if self.config["use_gpu_for_workers"] else 0)
         self.local_evaluator = CommonPolicyEvaluator(
-            self.env_creator, self.policy_creator,
+            self.env_creator, self.policy_cls,
             min_batch_steps=self.config["batch_size"],
             batch_mode="truncate_episodes",
             registry=self.registry, env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config)
         self.remote_evaluators = [
             remote_cls.remote(
-                self.env_creator, self.policy_creator,
+                self.env_creator, self.policy_cls,
                 min_batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes", sample_async=True,
                 registry=self.registry, env_config=self.config["env_config"],

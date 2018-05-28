@@ -27,7 +27,7 @@ class PGPolicy(TFPolicy):
         self.loss = -tf.reduce_mean(self.dist.logp(self.ac) * self.adv)
 
         # initialize TFPolicy
-        self.sess = tf.Session()
+        self.sess = tf.get_default_session()
         self.loss_in = [
             ("obs", self.x),
             ("actions", self.ac),

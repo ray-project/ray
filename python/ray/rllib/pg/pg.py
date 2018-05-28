@@ -51,16 +51,15 @@ class PGAgent(Agent):
     def _init(self):
         self.optimizer = LocalSyncOptimizer.make(
             evaluator_cls=CommonPolicyEvaluator,
-            evaluator_args={
-                "env_creator": self.env_creator,
-                "policy_creator": PGPolicy,
-                "min_batch_steps": self.config["batch_size"],
-                "batch_mode": "truncate_episodes",
-                "registry": self.registry,
-                "model_config": self.config["model"],
-                "env_config": self.config["env_config"],
-                "policy_config": self.config,
-            },
+            evaluator_args=dict(
+                env_creator=self.env_creator,
+                policy_cls=PGPolicy,
+                min_batch_steps=self.config["batch_size"],
+                batch_mode="truncate_episodes",
+                registry=self.registry,
+                model_config=self.config["model"],
+                env_config=self.config["env_config"],
+                policy_config=self.config),
             num_workers=self.config["num_workers"],
             optimizer_config=self.config["optimizer"])
 

@@ -1,18 +1,19 @@
 import ray
 
 import pickle
+import tensorflow as tf
 
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
+from ray.rllib.utils.tf_policy import TFPolicy
 from ray.tune.registry import get_registry
 
 
 class CommonPolicyEvaluator(PolicyEvaluator):
     """Policy evaluator implementation that operates on a rllib.Policy.
 
-    TODO: create TF sessions
     TODO: vector env
     TODO: multi-agent
     TODO: consumer buffering
@@ -24,19 +25,21 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         return ray.remote(num_cpus=num_cpus, num_gpus=num_gpus)(cls)
 
     def __init__(
-            self, env_creator, policy_creator, min_batch_steps=100,
-            batch_mode="complete_episodes", sample_async=False,
-            compress_observations=False, consumer_buffer_size=0,
-            observation_filter="NoFilter", registry=None,
-            env_config=None, model_config=None, policy_config=None):
+            self, env_creator, policy_cls, tf_session_creator=None,
+            min_batch_steps=100, batch_mode="complete_episodes",
+            sample_async=False, compress_observations=False,
+            consumer_buffer_size=0, observation_filter="NoFilter",
+            registry=None, env_config=None, model_config=None,
+            policy_config=None):
         """Initialize a policy evaluator.
 
         Arguments:
             env_creator (func): Function that returns a gym.Env given an
                 env config dict.
-            policy_creator (func|dict): Either a function that returns an
-                object implementing rllib.Policy, or a mapping of policy names
-                to functions that return rllib.Policy.
+            policy_cls (class): A function that returns an
+                object implementing rllib.Policy or rllib.TFPolicy.
+            tf_session_creator (func): A function that returns a TF session.
+                This is optional and only useful with TFPolicy.
             min_batch_steps (int): The minimum number of env steps to include
                 in each sample batch returned from this evaluator.
             batch_mode (str): One of "complete_episodes", "truncate_episodes".
@@ -58,7 +61,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         assert batch_mode in ["complete_episodes", "truncate_episodes"]
         self.env_creator = env_creator
-        self.policy_creator = policy_creator
+        self.policy_cls = policy_cls
         self.min_batch_steps = min_batch_steps
         self.batch_mode = batch_mode
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
@@ -67,15 +70,24 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.vectorized = hasattr(self.env, "vector_reset")
         self.policy_map = {}
 
-        if type(policy_creator) is dict:
-            raise NotImplementedError("Multi-agent envs not yet supported")
-        else:
-            self.policy_map = {
-                "default":
-                    policy_creator(
+        if issubclass(policy_cls, TFPolicy):
+            with tf.Graph().as_default():
+                if tf_session_creator:
+                    sess = tf_session_creator()
+                else:
+                    sess = tf.Session(config=tf.ConfigProto(
+                        gpu_options=tf.GPUOptions(allow_growth=True)))
+                with sess.as_default():
+                    policy = policy_cls(
                         registry, self.env.observation_space,
                         self.env.action_space, policy_config)
-            }
+        else:
+            policy = policy_cls(
+                registry, self.env.observation_space, self.env.action_space,
+                policy_config)
+        self.policy_map = {
+            "default": policy
+        }
 
         self.obs_filter = get_filter(
             observation_filter, self.env.observation_space.shape)

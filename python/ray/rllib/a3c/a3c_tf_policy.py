@@ -23,9 +23,7 @@ class A3CTFPolicy(TFPolicy):
         print("Setting up loss")
         self.setup_loss(action_space)
         self.is_training = tf.placeholder_with_default(True, ())
-        self.sess = tf.Session(config=tf.ConfigProto(
-            intra_op_parallelism_threads=1, inter_op_parallelism_threads=2,
-            gpu_options=tf.GPUOptions(allow_growth=True)))
+        self.sess = tf.get_default_session()
 
         TFPolicy.__init__(
             self, self.sess, self.x, self.action_dist, self.loss,
