@@ -37,7 +37,7 @@ def compute_function_id(function):
         pass
     # Compute the function ID.
     function_id = function_id_hash.digest()
-    assert len(function_id) == 20
+    assert len(function_id) == ray._RAY_ID_SIZE
     function_id = ray.ObjectID(function_id)
 
     return function_id

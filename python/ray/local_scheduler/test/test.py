@@ -15,25 +15,24 @@ import ray.plasma as plasma
 import pyarrow as pa
 
 USE_VALGRIND = False
-ID_SIZE = 20
 
-NIL_WORKER_ID = 20 * b"\xff"
+NIL_WORKER_ID = ray._RAY_ID_SIZE * b"\xff"
 
 
 def random_object_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray._RAY_ID_SIZE))
 
 
 def random_driver_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray._RAY_ID_SIZE))
 
 
 def random_task_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray._RAY_ID_SIZE))
 
 
 def random_function_id():
-    return local_scheduler.ObjectID(np.random.bytes(ID_SIZE))
+    return local_scheduler.ObjectID(np.random.bytes(ray._RAY_ID_SIZE))
 
 
 class TestLocalSchedulerClient(unittest.TestCase):

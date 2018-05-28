@@ -931,7 +931,7 @@ class GlobalState(object):
         for key in actor_keys:
             info = self.redis_client.hgetall(key)
             actor_id = key[len("Actor:"):]
-            assert len(actor_id) == 20
+            assert len(actor_id) == ray._RAY_ID_SIZE
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
