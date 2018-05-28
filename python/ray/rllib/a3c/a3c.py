@@ -78,23 +78,23 @@ class A3CAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
-        policy_cls = get_policy_cls(self.config)
-        self.policy_creator = lambda obs_space, act_space: policy_cls(
-            self.registry, obs_space, act_space, self.config)
-
-        configured_env = lambda: self.env_creator(self.config["env_config"])
-        self.local_evaluator = CommonPolicyEvaluator(
-            configured_env, self.policy_creator,
-            min_batch_steps=self.config["batch_size"],
-            batch_mode="truncate_episodes")
+        self.policy_creator = get_policy_cls(self.config)
 
         remote_cls = CommonPolicyEvaluator.as_remote(
             num_gpus=1 if self.config["use_gpu_for_workers"] else 0)
+        self.local_evaluator = CommonPolicyEvaluator(
+            self.env_creator, self.policy_creator,
+            min_batch_steps=self.config["batch_size"],
+            batch_mode="truncate_episodes",
+            registry=self.registry, env_config=self.config["env_config"],
+            model_config=self.config["model"], policy_config=self.config)
         self.remote_evaluators = [
             remote_cls.remote(
-                configured_env, self.policy_creator,
+                self.env_creator, self.policy_creator,
                 min_batch_steps=self.config["batch_size"],
-                batch_mode="truncate_episodes", sample_async=True)
+                batch_mode="truncate_episodes", sample_async=True,
+                registry=self.registry, env_config=self.config["env_config"],
+                model_config=self.config["model"], policy_config=self.config)
             for i in range(self.config["num_workers"])]
 
         self.optimizer = AsyncOptimizer(

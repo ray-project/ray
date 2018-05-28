@@ -4,6 +4,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
+from ray.tune.registry import get_registry
 
 
 class CommonPolicyEvaluator(PolicyEvaluator):
@@ -17,11 +18,13 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             self, env_creator, policy_creator, min_batch_steps=100,
             batch_mode="complete_episodes", sample_async=False,
             compress_observations=False, consumer_buffer_size=0,
-            observation_filter="NoFilter", reward_filter="NoFilter"):
+            observation_filter="NoFilter", registry=None,
+            env_config=None, model_config=None, policy_config=None):
         """Initialize a policy evaluator.
 
         Arguments:
-            env_creator (func): Function that returns a gym.Env.
+            env_creator (func): Function that returns a gym.Env given an
+                env config dict.
             policy_creator (func|dict): Either a function that returns an
                 object implementing rllib.Policy, or a mapping of policy names
                 to functions that return rllib.Policy. The function takes
@@ -40,12 +43,19 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 by multiple consumers. This only makes sense in multi-agent.
         """
 
+        registry = registry or get_registry()
+        env_config = env_config or {}
+        policy_config = policy_config or {}
+        model_config = model_config or {}
+
         assert batch_mode in ["complete_episodes", "truncate_episodes"]
         self.env_creator = env_creator
         self.policy_creator = policy_creator
         self.min_batch_steps = min_batch_steps
         self.batch_mode = batch_mode
-        self.env = env_creator()
+        self.env = ModelCatalog.get_preprocessor_as_wrapper(
+            registry, env_creator(env_config), model_config)
+
         self.vectorized = hasattr(self.env, "vector_reset")
         self.policy_map = {}
 
@@ -55,14 +65,13 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             self.policy_map = {
                 "default":
                     policy_creator(
-                        self.env.observation_space, self.env.action_space)
+                        registry, self.env.observation_space,
+                        self.env.action_space, policy_config)
             }
 
         self.obs_filter = get_filter(
             observation_filter, self.env.observation_space.shape)
-        self.rew_filter = get_filter(reward_filter, ())
-        self.filters = {"obs_filter": self.obs_filter,
-                        "rew_filter": self.rew_filter}
+        self.filters = {"obs_filter": self.obs_filter}
 
         if self.vectorized:
             raise NotImplementedError("Vector envs not yet supported")
@@ -73,6 +82,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 self.sampler = AsyncSampler(
                     self.env, self.policy_map["default"], self.obs_filter,
                     min_batch_steps)
+                self.sampler.start()
             else:
                 self.sampler = SyncSampler(
                     self.env, self.policy_map["default"], self.obs_filter,
@@ -119,7 +129,18 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 f.clear_buffer()
         return return_filters
 
+    def get_weights(self):
+        return self.policy_map["default"].get_weights()
+
+    def set_weights(self, weights):
+        return self.policy_map["default"].set_weights(weights)
+
+    def compute_gradients(self, samples):
+        return self.policy_map["default"].compute_gradients(samples)
+
+    def apply_gradients(self, grads):
+        return self.policy_map["default"].apply_gradients(grads)
+
     def apply(self, func):
         """Apply the given function to this evaluator instance."""
-
         return func(self)
