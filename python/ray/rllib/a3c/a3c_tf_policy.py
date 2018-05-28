@@ -5,13 +5,13 @@ from __future__ import print_function
 import tensorflow as tf
 import ray
 import gym
-from ray.rllib.a3c.policy import Policy
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.v2.tf_policy import TFPolicy
 
 
 class A3CTFPolicy(TFPolicy):
-    """The policy base class."""
+    """The TF policy base class."""
+
     def __init__(self, registry, ob_space, action_space, config,
                  name="local", summarize=True):
         self.registry = registry
@@ -25,11 +25,26 @@ class A3CTFPolicy(TFPolicy):
                    for attr in ["vf", "logits", "x", "var_list"])
         print("Setting up loss")
         self.setup_loss(action_space)
-        self.initialize()
         self.is_training = tf.placeholder_with_default(True, ())
+        self.sess = tf.Session(config=tf.ConfigProto(
+            intra_op_parallelism_threads=1, inter_op_parallelism_threads=2,
+            gpu_options=tf.GPUOptions(allow_growth=True)))
 
         TFPolicy.__init__(
-            self, self.sess, self.x, self.is_training, self.state_in)
+            self, self.sess, self.x, self.action_dist, self.loss,
+            self.loss_in, self.is_training, self.state_in, self.state_out)
+
+        # TODO(ekl) move session creation and init to CommonPolicyEvaluator
+        self.sess.run(tf.global_variables_initializer())
+
+        if self.summarize:
+            bs = tf.to_float(tf.shape(self.x)[0])
+            tf.summary.scalar("model/policy_loss", self.pi_loss / bs)
+            tf.summary.scalar("model/value_loss", self.vf_loss / bs)
+            tf.summary.scalar("model/entropy", self.entropy / bs)
+            tf.summary.scalar("model/grad_gnorm", tf.global_norm(self._grads))
+            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
+            self.summary_op = tf.summary.merge_all()
 
     def _setup_graph(self, ob_space, ac_space):
         raise NotImplementedError
@@ -71,33 +86,21 @@ class A3CTFPolicy(TFPolicy):
         clipped_grads = list(zip(self.grads, self.var_list))
         return clipped_grads
 
-    def initialize(self):
+    def extra_compute_grad_fetches(self):
         if self.summarize:
-            bs = tf.to_float(tf.shape(self.x)[0])
-            tf.summary.scalar("model/policy_loss", self.pi_loss / bs)
-            tf.summary.scalar("model/value_loss", self.vf_loss / bs)
-            tf.summary.scalar("model/entropy", self.entropy / bs)
-#            tf.summary.scalar("model/grad_gnorm", tf.global_norm(self.grads))
-            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
-            self.summary_op = tf.summary.merge_all()
-
-        # TODO(rliaw): Can consider exposing these parameters
-        self.sess = tf.Session(config=tf.ConfigProto(
-            intra_op_parallelism_threads=1, inter_op_parallelism_threads=2,
-            gpu_options=tf.GPUOptions(allow_growth=True)))
-        self.variables = ray.experimental.TensorFlowVariables(self.loss,
-                                                              self.sess)
-        self.sess.run(tf.global_variables_initializer())
+            return {"summary": self.summary_op}
+        else:
+            return {}
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         completed = sample_batch["dones"][-1]
         if completed:
             last_r = 0.0
         else:
-            last_r = self.value(
-                sample_batch["new_obs"][-1],
-                sample_batch["state_0"][-1],
-                sample_batch["state_1"][-1])
-        reward_filter = lambda x: x  # TODO(ekl) where should this live?
-        return process_rollout(
+            next_state = []
+            for i in range(len(self.state_in)):
+                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
+            last_r = self.value(sample_batch["new_obs"][-1], *next_state)
+        out = process_rollout(
             sample_batch, last_r, self.config["gamma"], self.config["lambda"])
+        return out

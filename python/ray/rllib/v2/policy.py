@@ -10,29 +10,44 @@ class Policy(object):
     graphs and multi-GPU support.
     """
 
-    def __init__(self, observation_space, action_space):
-        self.observation_space = observation_space
-        self.action_space = action_space
-
-    def compute_actions(self, obs_batch, state_batch, is_training=False):
+    def compute_actions(self, obs_batch, state_batches, is_training=False):
         """Compute actions for the current policy.
 
         Arguments:
             obs_batch (np.ndarray): batch of observations
-            state_batch (np.ndarray): batch of recurrent state inputs
+            state_batches (list): list of recurrent state input batches, if any
+            is_training (bool): whether we are training the policy
 
         Returns:
             actions (np.ndarray): batch of output actions
-            states (np.ndarray): batch of recurrent state outputs
-
-        TODO(ekl): support tuple and dict inputs / outputs
+            state_outs (list): list of recurrent state output batches, if any
+            info (dict): dictionary of extra feature batches, if any
         """
         raise NotImplementedError
 
+    def compute_single_action(self, obs, state, is_training=False):
+        """Unbatched version of compute_actions."""
+
+        [action], state_out, info = self.compute_actions(
+            [obs], [[s] for s in state], is_training)
+        return action, [s[0] for s in state_out], \
+            {k: v[0] for k, v in info.items()}
+
     def compute_gradients(self, postprocessed_batch):
+        """Computes gradients against a batch of experiences.
+
+        Returns:
+            grads (list): List of gradient output values
+            info (dict): Extra policy-specific values
+        """
         raise NotImplementedError
 
     def apply_gradients(self, gradients):
+        """Applies previously computed gradients.
+
+        Returns:
+            info (dict): Extra policy-specific values
+        """
         raise NotImplementedError
 
     def get_weights(self):

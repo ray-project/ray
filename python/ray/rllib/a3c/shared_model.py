@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 from ray.rllib.models.misc import linear, normc_initializer
-from ray.rllib.a3c.tfpolicy import A3CTFPolicy
+from ray.rllib.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.models.catalog import ModelCatalog
 
 
@@ -35,7 +35,6 @@ class SharedModel(A3CTFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-        self.state_init = []
         self.state_in = []
         self.state_out = []
 

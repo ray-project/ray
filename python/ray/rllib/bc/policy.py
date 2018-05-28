@@ -6,7 +6,7 @@ import tensorflow as tf
 import gym
 
 import ray
-from ray.rllib.a3c.policy import Policy
+from ray.rllib.v2.policy import Policy
 from ray.rllib.models.catalog import ModelCatalog
 
 

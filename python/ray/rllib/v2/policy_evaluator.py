@@ -1,5 +1,7 @@
 import ray
 
+import pickle
+
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator
 from ray.rllib.utils.filter import get_filter
@@ -101,7 +103,13 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             SampleBatch from evaluating the current policies.
         """
 
-        return self.sampler.get_data()
+        return self.policy_map["default"].postprocess_trajectory(
+            self.sampler.get_data())
+
+    def apply(self, func):
+        """Apply the given function to this evaluator instance."""
+
+        return func(self)
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
@@ -141,6 +149,12 @@ class CommonPolicyEvaluator(PolicyEvaluator):
     def apply_gradients(self, grads):
         return self.policy_map["default"].apply_gradients(grads)
 
-    def apply(self, func):
-        """Apply the given function to this evaluator instance."""
-        return func(self)
+    def save(self):
+        filters = self.get_filters(flush_after=True)
+        weights = self.policy_map["default"].get_weights()
+        return pickle.dumps({"filters": filters, "weights": weights})
+
+    def restore(self, objs):
+        objs = pickle.loads(objs)
+        self.sync_filters(objs["filters"])
+        self.policy_map["default"].set_weights(objs["weights"])

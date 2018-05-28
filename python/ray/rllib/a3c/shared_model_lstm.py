@@ -5,7 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.a3c.tfpolicy import TFPolicy
+from ray.rllib.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.models.lstm import LSTM
 
 
@@ -30,7 +30,6 @@ class SharedModelLSTM(A3CTFPolicy):
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = LSTM(self.x, self.logit_dim, {})
 
-        self.state_init = self._model.state_init
         self.state_in = self._model.state_in
         self.state_out = self._model.state_out
 
@@ -49,6 +48,9 @@ class SharedModelLSTM(A3CTFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
+    def get_initial_state(self):
+        return self._model.state_init
+
     def setup_loss(self, action_space):
         A3CTFPolicy.setup_loss(self, action_space)
         self.loss_in = [
@@ -56,8 +58,8 @@ class SharedModelLSTM(A3CTFPolicy):
             ("actions", self.ac),
             ("advantages", self.adv),
             ("value_targets", self.r),
-            ("state_0", self.state_in[0]),
-            ("state_1", self.state_in[1]),
+            ("state_in_0", self.state_in[0]),
+            ("state_in_1", self.state_in[1]),
         ]
 
     def extra_compute_action_fetches(self):

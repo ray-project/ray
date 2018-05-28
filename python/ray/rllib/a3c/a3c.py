@@ -111,7 +111,7 @@ class A3CAgent(Agent):
     def _fetch_metrics_from_remote_evaluators(self):
         episode_rewards = []
         episode_lengths = []
-        metric_lists = [a.get_completed_rollout_metrics.remote()
+        metric_lists = [a.apply.remote(lambda ev: ev.sampler.get_metrics())
                         for a in self.remote_evaluators]
         for metrics in metric_lists:
             for episode in ray.get(metrics):
@@ -154,7 +154,7 @@ class A3CAgent(Agent):
                 self.remote_evaluators, extra_data["remote_state"])])
         self.local_evaluator.restore(extra_data["local_state"])
 
-    def compute_action(self, observation):
+    def compute_action(self, observation, state=[]):
         obs = self.local_evaluator.obs_filter(observation, update=False)
-        action, info = self.local_evaluator.policy.compute(obs)
-        return action
+        return self.local_evaluator.policy.compute_single_action(
+            observation, state, is_training=False)

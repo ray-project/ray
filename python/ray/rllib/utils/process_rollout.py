@@ -32,16 +32,15 @@ def process_rollout(rollout, last_r, gamma, lambda_=1.0, use_gae=True):
 
     if use_gae:
         assert "vf_preds" in rollout, "Values not found!"
-        vpred_t = np.stack(rollout["vf_preds"] +
-                           [np.array(last_r)]).squeeze()
+        vpred_t = np.concatenate([rollout["vf_preds"], np.array([last_r])])
         delta_t = traj["rewards"] + gamma * vpred_t[1:] - vpred_t[:-1]
         # This formula for the advantage comes
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
         traj["advantages"] = discount(delta_t, gamma * lambda_)
         traj["value_targets"] = traj["advantages"] + traj["vf_preds"]
     else:
-        rewards_plus_v = np.stack(rollout["rewards"] +
-                                  [np.array(last_r)]).squeeze()
+        rewards_plus_v = np.concatenate(
+            [rollout["rewards"], np.array([last_r])])
         traj["advantages"] = discount(rewards_plus_v, gamma)[:-1]
 
     for i in range(traj["advantages"].shape[0]):
