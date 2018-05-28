@@ -922,28 +922,19 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
  * @param object_id The object ID of interest.
  * @param table_key The opened key for the entry in the object table corresponding
  *        to the object ID of interest.
- * @param deleted The flag which indicates that the object has been removed. Maybe
- *        some entries about this object have been deleted. In this case, some fields
- *        of the notification protocol message will be filled in NULL or zero, instead of
- *        getting some meta in db (E.g data size or object manager list).
  * @return True if the publish was successful and false otherwise.
  */
-int sendObjectNotification(RedisModuleCtx *ctx,
+int SendObjectNotification(RedisModuleCtx *ctx,
                            RedisModuleString *object_id,
-                           RedisModuleKey *table_key, 
-                           bool deleted) {
+                           RedisModuleKey *table_key) {
   RedisModuleString *data_size;
-  if (deleted) {
-    data_size = RedisModule_CreateStringFromLongLong(ctx, 0);
-  } else {
-    RedisModuleKey *info_key;
-    info_key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
-                      REDISMODULE_READ | REDISMODULE_WRITE);
-    RedisModule_HashGet(info_key, REDISMODULE_HASH_CFIELDS, "data_size",
-          &data_size, NULL);
-    if (data_size == NULL) {
-      return REDISMODULE_ERR;
-    }
+  RedisModuleKey *info_key;
+  info_key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
+                    REDISMODULE_READ | REDISMODULE_WRITE);
+  RedisModule_HashGet(info_key, REDISMODULE_HASH_CFIELDS, "data_size",
+        &data_size, NULL);
+  if (data_size == NULL) {
+    return REDISMODULE_ERR;
   }
 
   bool success = true;
@@ -1064,7 +1055,7 @@ int ObjectTableAdd_RedisCommand(RedisModuleCtx *ctx,
   /* Sets are not implemented yet, so we use ZSETs instead. */
   RedisModule_ZsetAdd(table_key, 0.0, manager, NULL);
 
-  if (sendObjectNotification(ctx, object_id, table_key, false) != REDISMODULE_OK) {
+  if (SendObjectNotification(ctx, object_id, table_key) != REDISMODULE_OK) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
@@ -1113,10 +1104,10 @@ int ObjectTableRemove_RedisCommand(RedisModuleCtx *ctx,
 
   RedisModule_ZsetRem(table_key, manager, NULL);
   if (RedisModule_ZsetRangeCurrentElement(table_key, NULL) == NULL) {
-    sendObjectNotification(ctx, object_id, table_key, true);
+    SendObjectNotification(ctx, object_id, table_key);
     RedisModule_DeleteKey(table_key);
   } else {
-    sendObjectNotification(ctx, object_id, table_key, false);
+    SendObjectNotification(ctx, object_id, table_key);
   }
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");
