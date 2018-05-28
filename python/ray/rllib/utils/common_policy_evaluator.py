@@ -102,8 +102,12 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         if consumer_buffer_size:
             raise NotImplementedError("Sample buffering not yet supported")
 
-    def sample(self, last_batch_id=None):
+    def sample(self, consumer_uuid=None):
         """Evaluate the current policies and return a batch of experiences.
+
+        Arguments:
+            consumer_uuid (str): Unique id for the consumer. This enables the
+                sharing of experiences across multiple consumers.
 
         Return:
             SampleBatch from evaluating the current policies.
