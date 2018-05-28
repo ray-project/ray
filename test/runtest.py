@@ -1947,27 +1947,36 @@ class GlobalStateAPI(unittest.TestCase):
                              driver_task_id)
             self.assertEqual(task_table[driver_task_id]["TaskSpec"]["ActorID"],
                              ID_SIZE * "ff")
-            self.assertEqual(task_table[driver_task_id]["TaskSpec"]["Args"], [])
-            self.assertEqual(task_table[driver_task_id]["TaskSpec"]["DriverID"],
-                             driver_id)
-            self.assertEqual(task_table[driver_task_id]["TaskSpec"]["FunctionID"],
-                             ID_SIZE * "ff")
+            self.assertEqual(task_table[driver_task_id]["TaskSpec"]["Args"],
+                             [])
             self.assertEqual(
-                (task_table[driver_task_id]["TaskSpec"]["ReturnObjectIDs"]), [])
+                task_table[driver_task_id]["TaskSpec"]["DriverID"], driver_id)
+            self.assertEqual(
+                task_table[driver_task_id]["TaskSpec"]["FunctionID"],
+                ID_SIZE * "ff")
+            self.assertEqual(
+                (task_table[driver_task_id]["TaskSpec"]["ReturnObjectIDs"]),
+                [])
 
         else:
             self.assertEqual(len(task_table[driver_task_id]), 1)
-            self.assertEqual(task_table[driver_task_id][0]["TaskSpec"]["TaskID"],
-                             driver_task_id)
-            self.assertEqual(task_table[driver_task_id][0]["TaskSpec"]["ActorID"],
-                             ID_SIZE * "ff")
-            self.assertEqual(task_table[driver_task_id][0]["TaskSpec"]["Args"], [])
-            self.assertEqual(task_table[driver_task_id][0]["TaskSpec"]["DriverID"],
-                             driver_id)
-            self.assertEqual(task_table[driver_task_id][0]["TaskSpec"]["FunctionID"],
-                             ID_SIZE * "ff")
             self.assertEqual(
-                (task_table[driver_task_id][0]["TaskSpec"]["ReturnObjectIDs"]), [])
+                task_table[driver_task_id][0]["TaskSpec"]["TaskID"],
+                driver_task_id)
+            self.assertEqual(
+                task_table[driver_task_id][0]["TaskSpec"]["ActorID"],
+                ID_SIZE * "ff")
+            self.assertEqual(task_table[driver_task_id][0]["TaskSpec"]["Args"],
+                             [])
+            self.assertEqual(
+                task_table[driver_task_id][0]["TaskSpec"]["DriverID"],
+                driver_id)
+            self.assertEqual(
+                task_table[driver_task_id][0]["TaskSpec"]["FunctionID"],
+                ID_SIZE * "ff")
+            self.assertEqual(
+                (task_table[driver_task_id][0]["TaskSpec"]["ReturnObjectIDs"]),
+                [])
 
         client_table = ray.global_state.client_table()
         node_ip_address = ray.worker.global_worker.node_ip_address

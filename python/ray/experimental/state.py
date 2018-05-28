@@ -1123,8 +1123,8 @@ class GlobalState(object):
             for local_scheduler in local_schedulers:
                 for key, value in local_scheduler.items():
                     if key not in [
-                            "ClientType", "Deleted", "DBClientID", "AuxAddress",
-                            "LocalSchedulerSocketName"
+                            "ClientType", "Deleted", "DBClientID",
+                            "AuxAddress", "LocalSchedulerSocketName"
                     ]:
                         resources[key] += value
 

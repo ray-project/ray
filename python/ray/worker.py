@@ -2147,8 +2147,8 @@ def connect(info,
         if not worker.use_raylet:
             global_state._execute_command(
                 driver_task.task_id(), "RAY.TASK_TABLE_ADD",
-                driver_task.task_id().id(),
-                TASK_STATUS_RUNNING, NIL_LOCAL_SCHEDULER_ID,
+                driver_task.task_id().id(), TASK_STATUS_RUNNING,
+                NIL_LOCAL_SCHEDULER_ID,
                 driver_task.execution_dependencies_string(), 0,
                 ray.local_scheduler.task_to_string(driver_task))
         else:
