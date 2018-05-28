@@ -1,3 +1,5 @@
+import tensorflow as tf
+
 import ray
 from ray.rllib.v2.policy import Policy
 
@@ -55,7 +57,7 @@ class TFPolicy(Policy):
         self._variables = ray.experimental.TensorFlowVariables(
             self._loss, self._sess)
 
-        assert len(state_inputs) == len(state_outputs) == \
+        assert len(self._state_inputs) == len(self._state_outputs) == \
             len(self.get_initial_state())
 
     def compute_actions(self, obs_batch, state_batches=None, is_training=False):

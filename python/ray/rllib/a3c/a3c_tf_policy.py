@@ -100,6 +100,5 @@ class A3CTFPolicy(TFPolicy):
             for i in range(len(self.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
             last_r = self.value(sample_batch["new_obs"][-1], *next_state)
-        out = process_rollout(
+        return process_rollout(
             sample_batch, last_r, self.config["gamma"], self.config["lambda"])
-        return out

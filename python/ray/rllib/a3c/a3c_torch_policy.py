@@ -109,6 +109,5 @@ class SharedTorchPolicy(Policy):
             last_r = 0.0
         else:
             last_r = self.value(sample_batch["new_obs"][-1])
-        out = process_rollout(
+        return process_rollout(
             sample_batch, last_r, self.config["gamma"], self.config["lambda"])
-        return out

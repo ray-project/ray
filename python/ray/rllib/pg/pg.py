@@ -6,7 +6,8 @@ import numpy as np
 
 import ray
 from ray.rllib.optimizers import LocalSyncOptimizer
-from ray.rllib.pg.pg_evaluator import PGEvaluator
+from ray.rllib.pg.policy import PGPolicy
+from ray.rllib.v2.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
@@ -33,7 +34,6 @@ DEFAULT_CONFIG = {
 
 
 class PGAgent(Agent):
-
     """Simple policy gradient agent.
 
     This is an example agent to show how to implement algorithms in RLlib.
@@ -50,8 +50,17 @@ class PGAgent(Agent):
 
     def _init(self):
         self.optimizer = LocalSyncOptimizer.make(
-            evaluator_cls=PGEvaluator,
-            evaluator_args=[self.registry, self.env_creator, self.config],
+            evaluator_cls=CommonPolicyEvaluator,
+            evaluator_args={
+                "env_creator": self.env_creator,
+                "policy_creator": PGPolicy,
+                "min_batch_steps": self.config["batch_size"],
+                "batch_mode": "truncate_episodes",
+                "registry": self.registry,
+                "model_config": self.config["model"],
+                "env_config": self.config["env_config"],
+                "policy_config": self.config,
+            },
             num_workers=self.config["num_workers"],
             optimizer_config=self.config["optimizer"])
 
@@ -60,7 +69,7 @@ class PGAgent(Agent):
 
         episode_rewards = []
         episode_lengths = []
-        metric_lists = [a.get_completed_rollout_metrics.remote()
+        metric_lists = [a.apply.remote(lambda ev: ev.sampler.get_metrics())
                         for a in self.optimizer.remote_evaluators]
         for metrics in metric_lists:
             for episode in ray.get(metrics):

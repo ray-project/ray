@@ -1,11 +1,11 @@
 class Policy(object):
-    """An agent policy, i.e., a TFPolicy or ImperativePolicy subclass.
+    """An agent policy, i.e., a TFPolicy or other Policy subclass.
     
     The policy object defines how to act in the environment, and also losses
     used to improve the policy based on its experiences.
 
-    All agents can be implemented as ImperativePolicy, however TensorFlow users
-    may find TFPolicy simpler to implement. TFPolicy also enables RLlib to
+    All agents can directly extend Policy, however TensorFlow users may find
+    TFPolicy simpler to implement. TFPolicy also enables RLlib to
     apply TensorFlow-specific optimizations such as fusing multiple policy
     graphs and multi-GPU support.
     """
@@ -44,6 +44,19 @@ class Policy(object):
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+        """Implements algorithm-specific trajectory postprocessing.
+
+        Arguments:
+            sample_batch (SampleBatch): batch of experiences for the policy
+            other_agent_batches (dict): In a multi-agent env, this contains the
+                experience batches seen by other agents.
+        
+        Returns:
+            SampleBatch: postprocessed sample batch.
+        """
+        return sample_batch
+
     def compute_gradients(self, postprocessed_batch):
         """Computes gradients against a batch of experiences.
 
@@ -61,6 +74,10 @@ class Policy(object):
         """
         raise NotImplementedError
 
+    def get_initial_state(self):
+        """Returns initial RNN state for the current policy."""
+        return []
+
     def get_weights(self):
         """Returns model weights.
 
@@ -76,20 +93,3 @@ class Policy(object):
             weights (obj): Serializable copy or view of model weights
         """
         raise NotImplementedError
-
-    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
-        """Implements algorithm-specific trajectory postprocessing.
-
-        Arguments:
-            sample_batch (SampleBatch): batch of experiences for the policy
-            other_agent_batches (dict): In a multi-agent env, this contains the
-                experience batches seen by other agents.
-        
-        Returns:
-            SampleBatch: postprocessed sample batch.
-        """
-        return sample_batch
-
-    def get_initial_state(self):
-        """Returns initial RNN state for the current policy."""
-        return []

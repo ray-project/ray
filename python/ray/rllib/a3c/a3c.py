@@ -10,7 +10,7 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import AsyncOptimizer
 from ray.rllib.utils import FilterManager
-from ray.rllib.v2.policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.v2.common_policy_evaluator import CommonPolicyEvaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources

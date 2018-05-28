@@ -6,26 +6,33 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.v2.tf_policy import TFPolicy
+from ray.rllib.utils.process_rollout import process_rollout
 
 
-class PGPolicy():
+class PGPolicy(TFPolicy):
 
-    other_output = []
-    is_recurrent = False
-
-    def __init__(self, registry, ob_space, ac_space, config):
+    def __init__(self, registry, obs_space, action_space, config):
         self.config = config
         self.registry = registry
-        with tf.variable_scope("local"):
-            self._setup_graph(ob_space, ac_space)
-        print("Setting up loss")
-        self._setup_loss(ac_space)
+        self._setup_graph(obs_space, action_space)
+        self._setup_loss(action_space)
         self._setup_gradients()
-        self.initialize()
+        self.sess = tf.Session()
+        self.loss_in = [
+            ("obs", self.x),
+            ("actions", self.ac),
+            ("advantages", self.adv),
+        ]
+        self.is_training = tf.placeholder_with_default(True, ())
+        TFPolicy.__init__(
+            self, self.sess, self.x, self.dist, self.loss, self.loss_in,
+            self.is_training)
+        self.sess.run(tf.global_variables_initializer())
 
-    def _setup_graph(self, ob_space, ac_space):
-        self.x = tf.placeholder(tf.float32, shape=[None]+list(ob_space.shape))
-        dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
+    def _setup_graph(self, obs_space, action_space):
+        self.x = tf.placeholder(tf.float32, shape=[None]+list(obs_space.shape))
+        dist_class, self.logit_dim = ModelCatalog.get_action_dist(action_space)
         self.model = ModelCatalog.get_model(
                         self.registry, self.x, self.logit_dim,
                         options=self.config["model"])
@@ -50,33 +57,6 @@ class PGPolicy():
         opt = tf.train.AdamOptimizer(self.config["lr"])
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
-    def initialize(self):
-        self.sess = tf.Session()
-        self.variables = ray.experimental.TensorFlowVariables(
-                            self.loss, self.sess)
-        self.sess.run(tf.global_variables_initializer())
-
-    def compute_gradients(self, samples):
-        info = {}
-        feed_dict = {
-            self.x: samples["obs"],
-            self.ac: samples["actions"],
-            self.adv: samples["advantages"],
-        }
-        self.grads = [g for g in self.grads if g is not None]
-        grad = self.sess.run(self.grads, feed_dict=feed_dict)
-        return grad, info
-
-    def apply_gradients(self, grads):
-        feed_dict = dict(zip(self.grads, grads))
-        self.sess.run(self._apply_gradients, feed_dict=feed_dict)
-
-    def get_weights(self):
-        return self.variables.get_weights()
-
-    def set_weights(self, weights):
-        self.variables.set_weights(weights)
-
-    def compute(self, ob, *args):
-        action = self.sess.run(self.sample, {self.x: [ob]})
-        return action[0], {}
+    def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
+        return process_rollout(
+            sample_batch, 0.0, self.config["gamma"], use_gae=False)

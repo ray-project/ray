@@ -10,11 +10,7 @@ from ray.tune.registry import get_registry
 
 
 class CommonPolicyEvaluator(PolicyEvaluator):
-    """Policy evaluator implementation that operates on a rllib.Policy.
-    
-    TODO: vector env support
-    TODO: multi-agent support
-    """
+    """Policy evaluator implementation that operates on a rllib.Policy."""
 
     @classmethod
     def as_remote(cls, num_cpus=None, num_gpus=None):
