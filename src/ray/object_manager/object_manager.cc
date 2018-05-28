@@ -222,14 +222,14 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
 
 ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   if (local_objects_.count(object_id) == 0) {
-    // Avoid setting duplicated timer for the same object andn clinet pair.
-    auto &pair = unfulfilled_push_tasks_[object_id];
-    if (pair.count(client_id) == 0) {
-      // If onfig_.push_timeout_ms < 0, we give an empty timer
+    // Avoid setting duplicated timer for the same object and client pair.
+    auto &clients = unfulfilled_push_tasks_[object_id];
+    if (clients.count(client_id) == 0) {
+      // If config_.push_timeout_ms < 0, we give an empty timer
       // and the task will be kept infinitely.
       auto timer = std::shared_ptr<boost::asio::deadline_timer>();
       if (config_.push_timeout_ms == 0) {
-        // The Push request fails directly when onfig_.push_timeout_ms == 0.
+        // The Push request fails directly when config_.push_timeout_ms == 0.
         RAY_LOG(ERROR) << "Invalid Push request ObjectID: " << object_id
                        << " due to direct failure setting. ";
         return ray::Status::OK();
@@ -247,7 +247,7 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
               }
             });
       }
-      pair.emplace(client_id, timer);
+      clients.emplace(client_id, timer);
     }
     return ray::Status::OK();
   }
