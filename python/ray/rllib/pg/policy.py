@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-import ray
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.v2.tf_policy import TFPolicy
 from ray.rllib.utils.process_rollout import process_rollout

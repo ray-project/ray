@@ -159,7 +159,6 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
     rollout_number = 0
 
     while True:
-        terminal_end = False
         batch_builder = SampleBatchBuilder()
 
         for _ in range(num_local_steps):
@@ -195,11 +194,10 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
             last_features = features
 
             if terminal:
-                terminal_end = True
                 yield CompletedRollout(length, rewards)
 
-                if (length >= horizon
-                        or not env.metadata.get("semantics.autoreset")):
+                if (length >= horizon or
+                        not env.metadata.get("semantics.autoreset")):
                     last_observation = obs_filter(env.reset())
                     last_features = policy.get_initial_state()
                     rollout_number += 1

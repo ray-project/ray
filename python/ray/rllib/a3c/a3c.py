@@ -159,4 +159,4 @@ class A3CAgent(Agent):
     def compute_action(self, observation, state=[]):
         obs = self.local_evaluator.obs_filter(observation, update=False)
         return self.local_evaluator.policy.compute_single_action(
-            observation, state, is_training=False)
+            obs, state, is_training=False)

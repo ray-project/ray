@@ -1,6 +1,6 @@
 class Policy(object):
     """An agent policy, i.e., a TFPolicy or other Policy subclass.
-    
+
     The policy object defines how to act in the environment, and also losses
     used to improve the policy based on its experiences.
 
@@ -51,7 +51,7 @@ class Policy(object):
             sample_batch (SampleBatch): batch of experiences for the policy
             other_agent_batches (dict): In a multi-agent env, this contains the
                 experience batches seen by other agents.
-        
+
         Returns:
             SampleBatch: postprocessed sample batch.
         """

@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-import ray
 import gym
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.v2.tf_policy import TFPolicy
@@ -17,7 +16,6 @@ class A3CTFPolicy(TFPolicy):
         self.local_steps = 0
         self.config = config
         self.summarize = config.get("summarize")
-        worker_device = "/job:localhost/replica:0/task:0/cpu:0"
 
         self._setup_graph(ob_space, action_space)
         assert all(hasattr(self, attr)

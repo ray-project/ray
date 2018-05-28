@@ -10,7 +10,14 @@ from ray.tune.registry import get_registry
 
 
 class CommonPolicyEvaluator(PolicyEvaluator):
-    """Policy evaluator implementation that operates on a rllib.Policy."""
+    """Policy evaluator implementation that operates on a rllib.Policy.
+
+    TODO: create TF sessions
+    TODO: vector env
+    TODO: multi-agent
+    TODO: consumer buffering
+    TODO: complete episode batch mode
+    """
 
     @classmethod
     def as_remote(cls, num_cpus=None, num_gpus=None):
@@ -88,7 +95,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 self.sampler = SyncSampler(
                     self.env, self.policy_map["default"], self.obs_filter,
                     min_batch_steps)
-        
+
         if compress_observations:
             raise NotImplementedError("Sample compression not yet supported")
 

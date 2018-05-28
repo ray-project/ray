@@ -60,7 +60,8 @@ class TFPolicy(Policy):
         assert len(self._state_inputs) == len(self._state_outputs) == \
             len(self.get_initial_state())
 
-    def compute_actions(self, obs_batch, state_batches=None, is_training=False):
+    def compute_actions(
+            self, obs_batch, state_batches=None, is_training=False):
         state_batches = state_batches or []
         assert len(self._state_inputs) == len(state_batches), \
             (self._state_inputs, state_batches)
@@ -120,7 +121,7 @@ class TFPolicy(Policy):
         return {}
 
     def extra_apply_grad_fetches(self):
-        return {} # e.g., batch norm updates
+        return {}  # e.g., batch norm updates
 
     def optimizer(self):
         return tf.train.AdamOptimizer()
