@@ -39,8 +39,8 @@ OBJECT_CHANNEL_PREFIX = "OC:"
 # These prefixes must be kept up-to-date with the TablePrefix enum in gcs.fbs.
 # TODO(rkn): We should use scoped enums, in which case we should be able to
 # just access the flatbuffer generated values.
-TablePrefix_TASK = 1
-TablePrefix_TASK_string = "TASK"
+TablePrefix_RAYLET_TASK = 2
+TablePrefix_RAYLET_TASK_string = "TASK"
 TablePrefix_CLIENT = 3
 TablePrefix_CLIENT_string = "CLIENT"
 TablePrefix_OBJECT = 4
@@ -362,7 +362,7 @@ class GlobalState(object):
         else:
             # Use the raylet code path.
             message = self.redis_client.execute_command(
-                "RAY.TABLE_LOOKUP", TablePrefix_TASK, "", task_id.id())
+                "RAY.TABLE_LOOKUP", TablePrefix_RAYLET_TASK, "", task_id.id())
             gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(message, 0)
 
             info = []
@@ -429,9 +429,9 @@ class GlobalState(object):
                 ]
             else:
                 task_table_keys = self.redis_client.keys(
-                    TablePrefix_TASK_string + ":*")
+                    TablePrefix_RAYLET_TASK_string + ":*")
                 task_ids_binary = [
-                    key[len(TablePrefix_TASK_string + ":"):]
+                    key[len(TablePrefix_RAYLET_TASK_string + ":"):]
                     for key in task_table_keys
                 ]
 

@@ -2142,12 +2142,59 @@ def connect(info,
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter, False, [], {"CPU": 0}, worker.use_raylet)
-        global_state._execute_command(
-            driver_task.task_id(), "RAY.TASK_TABLE_ADD",
-            driver_task.task_id().id(),
-            TASK_STATUS_RUNNING, NIL_LOCAL_SCHEDULER_ID,
-            driver_task.execution_dependencies_string(), 0,
-            ray.local_scheduler.task_to_string(driver_task))
+
+        # Add the driver task to the task table.
+        if not worker.use_raylet:
+            global_state._execute_command(
+                driver_task.task_id(), "RAY.TASK_TABLE_ADD",
+                driver_task.task_id().id(),
+                TASK_STATUS_RUNNING, NIL_LOCAL_SCHEDULER_ID,
+                driver_task.execution_dependencies_string(), 0,
+                ray.local_scheduler.task_to_string(driver_task))
+        else:
+            # TODO(rkn): When we shard the GCS in xray, we will need to change
+            # this to use _execute_command.
+
+
+            # import ray.core.generated.ray.protocol.Task as Task
+            # import ray.core.generated.ray.protocol.TaskExecutionSpecification as TaskExecutionSpecification
+            #
+            # import flatbuffers
+            #
+            # builder = flatbuffers.Builder(0)
+            #
+            # TaskExecutionSpecification.TaskExecutionSpecificationStartDependenciesVector(builder, 0)
+            # execution_dependencies = builder.EndVector(0)
+            # TaskExecutionSpecification.TaskExecutionSpecificationStart(builder)
+            # TaskExecutionSpecification.TaskExecutionSpecificationAddDependencies(builder, execution_dependencies)
+            # TaskExecutionSpecification.TaskExecutionSpecificationAddLastTimestamp(builder, time.time())
+            # TaskExecutionSpecification.TaskExecutionSpecificationAddNumForwards(builder, 0)
+            # execution_spec = TaskExecutionSpecification.TaskExecutionSpecificationEnd(builder)
+            #
+            # task_spec = ray.local_scheduler.task_to_string(driver_task)
+            #
+            # task_spec_string = builder.CreateString(task_spec)
+            #
+            # Task.TaskStart(builder)
+            # Task.TaskAddTaskSpecification(builder, task_spec_string)
+            # Task.TaskAddTaskExecutionSpec(builder, execution_spec)
+            # task = Task.TaskEnd(builder)
+            #
+            # builder.Finish(task)
+            #
+            TablePubsub_RAYLET_TASK = 2
+
+            # global_state.redis_client.execute_command(
+            #     "RAY.TABLE_ADD", state.TablePrefix_RAYLET_TASK,
+            #     TablePubsub_RAYLET_TASK,
+            #     driver_task.task_id().id(), bytes(builder.Bytes))
+
+            global_state.redis_client.execute_command(
+                "RAY.TABLE_ADD", state.TablePrefix_RAYLET_TASK,
+                TablePubsub_RAYLET_TASK,
+                driver_task.task_id().id(),
+                driver_task._serialized_raylet_task())
+
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
         worker.current_task_id = driver_task.task_id()
