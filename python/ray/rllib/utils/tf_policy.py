@@ -37,7 +37,7 @@ class TFPolicy(Policy):
                 input argument. Each placeholder name must correspond to a
                 SampleBatch column key returned by postprocess_trajectory().
             is_training (Tensor): whether we are training the policy.
-            state_inputs (list): list of recurrent state output Tensors.
+            state_inputs (list): list of RNN state output Tensors.
             state_outputs (list): list of initial state values.
         """
 

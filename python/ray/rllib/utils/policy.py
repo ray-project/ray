@@ -15,12 +15,12 @@ class Policy(object):
 
         Arguments:
             obs_batch (np.ndarray): batch of observations
-            state_batches (list): list of recurrent state input batches, if any
+            state_batches (list): list of RNN state input batches, if any
             is_training (bool): whether we are training the policy
 
         Returns:
             actions (np.ndarray): batch of output actions
-            state_outs (list): list of recurrent state output batches, if any
+            state_outs (list): list of RNN state output batches, if any
             info (dict): dictionary of extra feature batches, if any
         """
         raise NotImplementedError
@@ -30,12 +30,12 @@ class Policy(object):
 
         Arguments:
             obs (obj): single observation
-            state_batches (list): list of recurrent state inputs, if any
+            state_batches (list): list of RNN state inputs, if any
             is_training (bool): whether we are training the policy
 
         Returns:
             actions (obj): single action
-            state_outs (list): list of recurrent state outputs, if any
+            state_outs (list): list of RNN state outputs, if any
             info (dict): dictionary of extra features, if any
         """
 
@@ -74,10 +74,6 @@ class Policy(object):
         """
         raise NotImplementedError
 
-    def get_initial_state(self):
-        """Returns initial RNN state for the current policy."""
-        return []
-
     def get_weights(self):
         """Returns model weights.
 
@@ -93,3 +89,7 @@ class Policy(object):
             weights (obj): Serializable copy or view of model weights
         """
         raise NotImplementedError
+
+    def get_initial_state(self):
+        """Returns initial RNN state for the current policy."""
+        return []
