@@ -252,8 +252,8 @@ class TensorFlowTest(unittest.TestCase):
                 for _ in range(2)
             ])
             mean_grads = [
-                sum([gradients[i]
-                     for gradients in gradients_list]) / len(gradients_list)
+                sum(gradients[i]
+                    for gradients in gradients_list) / len(gradients_list)
                 for i in range(len(gradients_list[0]))
             ]
             feed_dict = {

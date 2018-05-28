@@ -180,14 +180,15 @@ LIST_OBJECTS = [[obj] for obj in BASE_OBJECTS]
 TUPLE_OBJECTS = [(obj, ) for obj in BASE_OBJECTS]
 # The check that type(obj).__module__ != "numpy" should be unnecessary, but
 # otherwise this seems to fail on Mac OS X on Travis.
-DICT_OBJECTS = ([{
-    obj: obj
-} for obj in PRIMITIVE_OBJECTS if (
-    obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
-        0: obj
-    } for obj in BASE_OBJECTS] + [{
-        Foo(123): Foo(456)
-    }])
+DICT_OBJECTS = (
+    [{
+        obj: obj
+    } for obj in PRIMITIVE_OBJECTS
+     if (obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
+         0: obj
+     } for obj in BASE_OBJECTS] + [{
+         Foo(123): Foo(456)
+     }])
 
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
@@ -720,8 +721,8 @@ class APITest(unittest.TestCase):
         assert ray.get([id1, id2, id3]) == [0, 1, 2]
         assert ray.get(
             g._submit(
-                args=[], num_cpus=1, num_gpus=1, resources={"Custom":
-                                                            1})) == [0]
+                args=[], num_cpus=1, num_gpus=1,
+                resources={"Custom": 1})) == [0]
         infeasible_id = g._submit(args=[], resources={"NonexistentCustom": 1})
         ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=50)
         assert len(ready_ids) == 0
@@ -1065,6 +1066,10 @@ class APITest(unittest.TestCase):
             ray.get(3)
 
 
+@unittest.skipIf(
+    os.environ.get('RAY_USE_NEW_GCS', False),
+    "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
+    "supports 1-node chain for that shard only.")
 class APITestSharded(APITest):
     def init_ray(self, **kwargs):
         if kwargs is None:
@@ -1828,7 +1833,7 @@ class SchedulingAlgorithm(unittest.TestCase):
             counts = [locations.count(name) for name in names]
             print("Counts are {}.".format(counts))
             if (len(names) == num_local_schedulers
-                    and all([count >= minimum_count for count in counts])):
+                    and all(count >= minimum_count for count in counts)):
                 break
             attempts += 1
         self.assertLess(attempts, num_attempts)
@@ -1923,7 +1928,7 @@ class GlobalStateAPI(unittest.TestCase):
         resources = {"CPU": 5, "GPU": 3, "CustomResource": 1}
         assert ray.global_state.cluster_resources() == resources
 
-        self.assertEqual(ray.global_state.object_table(), dict())
+        self.assertEqual(ray.global_state.object_table(), {})
 
         ID_SIZE = 20
 

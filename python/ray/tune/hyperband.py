@@ -397,5 +397,5 @@ class Bracket():
         ])
         counts = collections.Counter([t.status for t in self._all_trials])
         trial_statuses = ", ".join(
-            sorted(["{}: {}".format(k, v) for k, v in counts.items()]))
+            sorted("{}: {}".format(k, v) for k, v in counts.items()))
         return "Bracket({}): {{{}}} ".format(status, trial_statuses)

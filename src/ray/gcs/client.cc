@@ -6,20 +6,25 @@ namespace ray {
 
 namespace gcs {
 
-AsyncGcsClient::AsyncGcsClient(const ClientID &client_id) {
+AsyncGcsClient::AsyncGcsClient(const ClientID &client_id, CommandType command_type) {
   context_ = std::make_shared<RedisContext>();
   client_table_.reset(new ClientTable(context_, this, client_id));
   object_table_.reset(new ObjectTable(context_, this));
   actor_table_.reset(new ActorTable(context_, this));
-  task_table_.reset(new TaskTable(context_, this));
-  raylet_task_table_.reset(new raylet::TaskTable(context_, this));
+  task_table_.reset(new TaskTable(context_, this, command_type));
+  raylet_task_table_.reset(new raylet::TaskTable(context_, this, command_type));
   task_reconstruction_log_.reset(new TaskReconstructionLog(context_, this));
   heartbeat_table_.reset(new HeartbeatTable(context_, this));
+  command_type_ = command_type;
 }
 
-AsyncGcsClient::AsyncGcsClient() : AsyncGcsClient(ClientID::from_random()) {}
+AsyncGcsClient::AsyncGcsClient(const ClientID &client_id)
+    : AsyncGcsClient(client_id, CommandType::kRegular) {}
 
-AsyncGcsClient::~AsyncGcsClient() {}
+AsyncGcsClient::AsyncGcsClient(CommandType command_type)
+    : AsyncGcsClient(ClientID::from_random(), command_type) {}
+
+AsyncGcsClient::AsyncGcsClient() : AsyncGcsClient(ClientID::from_random()) {}
 
 Status AsyncGcsClient::Connect(const std::string &address, int port) {
   RAY_RETURN_NOT_OK(context_->Connect(address, port));

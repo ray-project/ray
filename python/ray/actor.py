@@ -491,8 +491,8 @@ class ActorClass(object):
         # Extract the signatures of each of the methods. This will be used
         # to catch some errors if the methods are called with inappropriate
         # arguments.
-        self._method_signatures = dict()
-        self._actor_method_num_return_vals = dict()
+        self._method_signatures = {}
+        self._actor_method_num_return_vals = {}
         for method_name, method in self._actor_methods:
             # Print a warning message if the method signature is not
             # supported. We don't raise an exception because if the actor
@@ -857,32 +857,21 @@ class ActorHandle(object):
             A dictionary of the information needed to reconstruct the object.
         """
         state = {
-            "actor_id":
-            self._ray_actor_id.id(),
-            "class_name":
-            self._ray_class_name,
-            "actor_forks":
-            self._ray_actor_forks,
-            "actor_cursor":
-            self._ray_actor_cursor.id(),
-            "actor_counter":
-            0,  # Reset the actor counter.
-            "actor_method_names":
-            self._ray_actor_method_names,
-            "method_signatures":
-            self._ray_method_signatures,
-            "method_num_return_vals":
-            self._ray_method_num_return_vals,
-            "actor_creation_dummy_object_id":
-            self._ray_actor_creation_dummy_object_id.id(),
-            "actor_method_cpus":
-            self._ray_actor_method_cpus,
-            "actor_driver_id":
-            self._ray_actor_driver_id.id(),
-            "previous_actor_handle_id":
-            self._ray_actor_handle_id.id(),
-            "ray_forking":
-            ray_forking
+            "actor_id": self._ray_actor_id.id(),
+            "class_name": self._ray_class_name,
+            "actor_forks": self._ray_actor_forks,
+            "actor_cursor": self._ray_actor_cursor.id(),
+            "actor_counter": 0,  # Reset the actor counter.
+            "actor_method_names": self._ray_actor_method_names,
+            "method_signatures": self._ray_method_signatures,
+            "method_num_return_vals": self._ray_method_num_return_vals,
+            "actor_creation_dummy_object_id": self.
+            _ray_actor_creation_dummy_object_id.id(),
+            "actor_method_cpus": self._ray_actor_method_cpus,
+            "actor_driver_id": self._ray_actor_driver_id.id(),
+            "previous_actor_handle_id": self._ray_actor_handle_id.id()
+            if self._ray_actor_handle_id else None,
+            "ray_forking": ray_forking
         }
 
         if ray_forking:

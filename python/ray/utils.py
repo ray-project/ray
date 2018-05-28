@@ -38,10 +38,10 @@ def format_error_message(exception_message, task_exception=False):
     """
     lines = exception_message.split("\n")
     if task_exception:
-        # For errors that occur inside of tasks, remove lines 1, 2, 3, and 4,
-        # which are always the same, they just contain information about the
-        # main loop.
-        lines = lines[0:1] + lines[5:]
+        # For errors that occur inside of tasks, remove lines 1 and 2 which are
+        # always the same, they just contain information about the worker code.
+        lines = lines[0:1] + lines[3:]
+        pass
     return "\n".join(lines)
 
 
@@ -208,3 +208,10 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
         resources["GPU"] = default_num_gpus
 
     return resources
+
+
+def merge_dicts(d1, d2):
+    """Merge two dicts and return a new dict that's their union."""
+    d = d1.copy()
+    d.update(d2)
+    return d

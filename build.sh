@@ -79,7 +79,7 @@ if [[ -z  "$PYTHON_EXECUTABLE" ]]; then
 fi
 echo "Using Python executable $PYTHON_EXECUTABLE."
 
-bash $ROOT_DIR/setup_thirdparty.sh $PYTHON_EXECUTABLE
+bash $ROOT_DIR/setup_thirdparty.sh $PYTHON_EXECUTABLE $LANGUAGE
 
 # Now we build everything.
 if [[ "$LANGUAGE" == "java" ]]; then
