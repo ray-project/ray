@@ -31,7 +31,7 @@ namespace ray {
 
 struct ObjectManagerConfig {
   /// The time in milliseconds to wait before retrying a pull
-  /// that failed due to client id lookup.
+  /// that fails due to client id lookup.
   uint pull_timeout_ms;
   /// Maximum number of sends allowed.
   int max_sends;
@@ -42,7 +42,9 @@ struct ObjectManagerConfig {
   /// The stored socked name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
-  /// failed due to unsatisfied local object.
+  /// fails due to unsatisfied local object. Special value:
+  /// Negative: waiting infinitely.
+  /// 0: failing directly.
   int push_timeout_ms;
 };
 

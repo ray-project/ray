@@ -235,7 +235,10 @@ class RayConfig {
   /// ObjectManager.
   int object_manager_pull_timeout_ms_;
 
-  /// Timeout, in milliseconds, to wait until the Push request failed.
+  /// Timeout, in milliseconds, to wait until the Push request fails.
+  /// Special value:
+  /// Negative: waiting infinitely.
+  /// 0: failing directly.
   int object_manager_push_timeout_ms_;
 
   /// Maximum number of concurrent sends allowed by the object manager.
