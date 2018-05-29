@@ -24,21 +24,25 @@ S3_PREFIX = "s3://"
 GCS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GCS_PREFIX)
 
+
 def get_syncer(local_dir, remote_dir=None):
     if remote_dir:
-        if not any(remote_dir.startswith(prefix)
-                   for prefix in ALLOWED_REMOTE_PREFIXES):
+        if not any(
+                remote_dir.startswith(prefix)
+                for prefix in ALLOWED_REMOTE_PREFIXES):
             raise TuneError("Upload uri must start with one of: {}"
                             "".format(ALLOWED_REMOTE_PREFIXES))
 
         if (remote_dir.startswith(S3_PREFIX)
-            and not distutils.spawn.find_executable("aws")):
-            raise TuneError("Upload uri starting with '{}' requires awscli tool"
-                            " to be installed".format(S3_PREFIX))
+                and not distutils.spawn.find_executable("aws")):
+            raise TuneError(
+                "Upload uri starting with '{}' requires awscli tool"
+                " to be installed".format(S3_PREFIX))
         elif (remote_dir.startswith(GCS_PREFIX)
               and not distutils.spawn.find_executable("gsutil")):
-            raise TuneError("Upload uri starting with '{}' requires gsutil tool"
-                            " to be installed".format(GCS_PREFIX))
+            raise TuneError(
+                "Upload uri starting with '{}' requires gsutil tool"
+                " to be installed".format(GCS_PREFIX))
 
         if local_dir.startswith(DEFAULT_RESULTS_DIR + "/"):
             rel_path = os.path.relpath(local_dir, DEFAULT_RESULTS_DIR)

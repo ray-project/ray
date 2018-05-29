@@ -10,7 +10,6 @@ from googleapiclient import discovery
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL
-from ray.ray_constants import BOTO_MAX_RETRIES
 
 INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
@@ -22,10 +21,8 @@ def wait_for_compute_zone_operation(compute, project_name, operation, zone):
 
     for _ in range(MAX_POLLS):
         result = compute.zoneOperations().get(
-            project=project_name,
-            operation=operation["name"],
-            zone=zone
-        ).execute()
+            project=project_name, operation=operation["name"],
+            zone=zone).execute()
         if "error" in result:
             raise Exception(result["error"])
 
@@ -131,10 +128,8 @@ class GCPNodeProvider(NodeProvider):
             return self.external_ip_cache[node_id]
         node = self._node(node_id)
         # TODO: Is there a better and more reliable way to do this?
-        ip = (node
-              .get("networkInterfaces", [{}])[0]
-              .get("accessConfigs", [{}])[0]
-              .get("natIP", None))
+        ip = (node.get("networkInterfaces", [{}])[0].get(
+            "accessConfigs", [{}])[0].get("natIP", None))
         if ip:
             self.external_ip_cache[node_id] = ip
         return ip
@@ -156,19 +151,17 @@ class GCPNodeProvider(NodeProvider):
         config = base_config.copy()
 
         name_label = labels[TAG_RAY_NODE_NAME]
-        assert (
-            len(name_label)
-            <= (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)
-        ), (name_label, len(name_label))
+        assert (len(name_label) <=
+                (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)), (
+                    name_label, len(name_label))
 
         config.update({
-            "machineType": (
-                "zones/{zone}/machineTypes/{machine_type}"
-                "".format(zone=availability_zone,
-                          machine_type=base_config["machineType"])),
+            "machineType": ("zones/{zone}/machineTypes/{machine_type}"
+                            "".format(
+                                zone=availability_zone,
+                                machine_type=base_config["machineType"])),
             "labels": dict(
-                config.get("labels", {}),
-                **labels,
+                config.get("labels", {}), **labels,
                 **{TAG_RAY_CLUSTER_NAME: self.cluster_name}),
         })
 
@@ -176,13 +169,12 @@ class GCPNodeProvider(NodeProvider):
             self.compute.instances().insert(
                 project=project_id,
                 zone=availability_zone,
-                body=dict(config, **{
-                    "name": ("{name_label}-{uuid}".format(
-                        name_label=name_label,
-                        uuid=uuid4().hex[:INSTANCE_NAME_UUID_LEN]))
-                })
-            ).execute()
-            for i in range(count)
+                body=dict(
+                    config, **{
+                        "name": ("{name_label}-{uuid}".format(
+                            name_label=name_label,
+                            uuid=uuid4().hex[:INSTANCE_NAME_UUID_LEN]))
+                    })).execute() for i in range(count)
         ]
 
         results = [

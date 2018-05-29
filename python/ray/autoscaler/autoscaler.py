@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import json
 import hashlib
-import uuid
 import os
 import subprocess
 import time
@@ -23,12 +22,9 @@ from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
 from ray.autoscaler.updater import NodeUpdaterProcess
 from ray.autoscaler.docker import dockerize_if_needed
-from ray.autoscaler.tags import (
-    TAG_RAY_LAUNCH_CONFIG,
-    TAG_RAY_RUNTIME_CONFIG,
-    TAG_RAY_NODE_STATUS,
-    TAG_RAY_NODE_TYPE,
-    TAG_RAY_NODE_NAME)
+from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
+                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
+                                 TAG_RAY_NODE_NAME)
 import ray.services as services
 
 REQUIRED, OPTIONAL = True, False
@@ -410,8 +406,7 @@ class StandardAutoscaler(object):
             node_id,
             self.config["provider"],
             self.config["auth"],
-            self.config["cluster_name"],
-            {},
+            self.config["cluster_name"], {},
             with_head_node_ip(self.config["worker_start_ray_commands"]),
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
@@ -461,14 +456,11 @@ class StandardAutoscaler(object):
         num_before = len(self.workers())
         self.provider.create_node(
             self.config["worker_nodes"], {
-                TAG_RAY_NODE_NAME:
-                    "ray-{}-worker".format(self.config["cluster_name"]),
-                TAG_RAY_NODE_TYPE:
-                    "worker",
-                TAG_RAY_NODE_STATUS:
-                    "uninitialized",
-                TAG_RAY_LAUNCH_CONFIG:
-                    self.launch_hash,
+                TAG_RAY_NODE_NAME: "ray-{}-worker".format(
+                    self.config["cluster_name"]),
+                TAG_RAY_NODE_TYPE: "worker",
+                TAG_RAY_NODE_STATUS: "uninitialized",
+                TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             }, count)
         if len(self.workers()) <= num_before:
             print("Warning: Num nodes failed to increase after node creation")

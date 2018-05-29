@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
-import logging
 import os
 import time
 
@@ -12,7 +10,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from googleapiclient import discovery, errors
 
-from ray.ray_constants import BOTO_MAX_RETRIES
 
 crm = discovery.build("cloudresourcemanager", "v1")
 iam = discovery.build("iam", "v1")
@@ -131,7 +128,7 @@ def _configure_project(config):
 
     if project is None:
         #  Project not found, try creating it
-        result = _create_project(project_id)
+        _create_project(project_id)
         project = _get_project(project_id)
 
     assert project is not None, "Failed to create project"
@@ -168,8 +165,8 @@ def _configure_iam_role(config):
 
     assert service_account is not None, "Failed to create service account"
 
-    policy = _add_iam_policy_binding(service_account,
-                                     DEFAULT_SERVICE_ACCOUNT_ROLES)
+    _add_iam_policy_binding(service_account,
+                            DEFAULT_SERVICE_ACCOUNT_ROLES)
 
     config["head_node"]["serviceAccounts"] = [{
         "email": service_account["email"],
@@ -224,7 +221,8 @@ def _configure_key_pair(config):
 
         for ssh_key in ssh_keys:
             key_parts = ssh_key.split(" ")
-            if len(key_parts) != 3: continue
+            if len(key_parts) != 3:
+                continue
 
             if key_parts[2] == ssh_user and os.path.exists(private_key_path):
                 # Found a key
@@ -281,8 +279,7 @@ def _configure_subnet(config):
 
     if "networkInterfaces" not in config["head_node"]:
         config["head_node"]["networkInterfaces"] = [{
-            "subnetwork":
-                default_subnet["selfLink"],
+            "subnetwork": default_subnet["selfLink"],
             "accessConfigs": [{
                 "name": "External NAT",
                 "type": "ONE_TO_ONE_NAT",
@@ -291,8 +288,7 @@ def _configure_subnet(config):
 
     if "networkInterfaces" not in config["worker_nodes"]:
         config["worker_nodes"]["networkInterfaces"] = [{
-            "subnetwork":
-                default_subnet["selfLink"],
+            "subnetwork": default_subnet["selfLink"],
             "accessConfigs": [{
                 "name": "External NAT",
                 "type": "ONE_TO_ONE_NAT",
@@ -324,7 +320,8 @@ def _get_project(project_id):
     try:
         project = crm.projects().get(projectId=project_id).execute()
     except errors.HttpError as e:
-        if e.resp.status != 403: raise
+        if e.resp.status != 403:
+            raise
         project = None
 
     return project
@@ -349,7 +346,8 @@ def _get_service_account(account, config):
         service_account = iam.projects().serviceAccounts().get(
             name=full_name).execute()
     except errors.HttpError as e:
-        if e.resp.status != 404: raise
+        if e.resp.status != 404:
+            raise
         service_account = None
 
     return service_account
