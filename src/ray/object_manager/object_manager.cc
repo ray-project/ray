@@ -95,6 +95,7 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
     for (auto &pair : iter->second) {
       main_service_->post(
           [this, object_id, pair]() { RAY_CHECK_OK(Push(object_id, pair.first)); });
+      // When push timeout is set to -1, there will be an empty timer in pair.second.
       if (pair.second != nullptr) {
         pair.second->cancel();
       }
@@ -209,7 +210,7 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
                                           const ClientID &client_id) {
-  RAY_LOG(ERROR) << "Invalid Push request ObjectID: " << object_id
+  RAY_LOG(DEBUG) << "Invalid Push request ObjectID: " << object_id
                  << " after waiting for " << config_.push_timeout_ms << " ms.";
   auto iter = unfulfilled_push_tasks_.find(object_id);
   if (iter != unfulfilled_push_tasks_.end()) {
@@ -230,9 +231,8 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
       auto timer = std::shared_ptr<boost::asio::deadline_timer>();
       if (config_.push_timeout_ms == 0) {
         // The Push request fails directly when config_.push_timeout_ms == 0.
-        RAY_LOG(ERROR) << "Invalid Push request ObjectID: " << object_id
-                       << " due to direct failure setting. ";
-        return ray::Status::OK();
+        RAY_LOG(DEBUG) << "Invalid Push request ObjectID " << object_id
+                       << " due to direct timeout setting. ";
       } else if (config_.push_timeout_ms > 0) {
         // Put the task into a queue and wait for the notification of Object added.
         timer.reset(new boost::asio::deadline_timer(*main_service_));
@@ -247,7 +247,9 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
               }
             });
       }
-      clients.emplace(client_id, timer);
+      if (config_.push_timeout_ms != 0) {
+        clients.emplace(client_id, timer);
+      }
     }
     return ray::Status::OK();
   }

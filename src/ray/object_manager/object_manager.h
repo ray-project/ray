@@ -44,7 +44,7 @@ struct ObjectManagerConfig {
   /// The time in milliseconds to wait until a Push request
   /// fails due to unsatisfied local object. Special value:
   /// Negative: waiting infinitely.
-  /// 0: failing directly.
+  /// 0: giving up retrying immediately.
   int push_timeout_ms;
 };
 
