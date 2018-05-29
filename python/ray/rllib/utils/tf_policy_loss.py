@@ -31,7 +31,7 @@ class TFPolicyLoss(PolicyLoss):
 
         Arguments:
             obs_input (Tensor): input placeholder for observations.
-            action_sampler (Tensor): tensor for sampling an action.
+            action_sampler (Tensor): Tensor for sampling an action.
             loss (Tensor): scalar policy loss output tensor.
             loss_inputs (list): a (name, placeholder) tuple for each loss
                 input argument. Each placeholder name must correspond to a
@@ -43,7 +43,7 @@ class TFPolicyLoss(PolicyLoss):
 
         self._sess = sess
         self._obs_input = obs_input
-        self._sampler = self.action_sampler
+        self._sampler = action_sampler
         self._loss = loss
         self._loss_inputs = loss_inputs
         self._is_training = is_training

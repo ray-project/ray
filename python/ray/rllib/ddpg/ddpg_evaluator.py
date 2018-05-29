@@ -12,7 +12,7 @@ from ray.rllib.ddpg import models
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.optimizers import SampleBatch, PolicyEvaluator
 from ray.rllib.utils.compression import pack
-from ray.rllib.dqn.dqn_evaluator import adjust_nstep
+from ray.rllib.dqn.dqn_policy_loss import adjust_nstep
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 
 

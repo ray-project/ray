@@ -10,12 +10,10 @@ import tensorflow as tf
 
 import ray
 from ray.rllib import optimizers
-from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
-from ray.rllib.dqn.models import DQNPolicy
+from ray.rllib.dqn.dqn_policy_loss import DQNPolicyLoss
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
 from ray.rllib.agent import Agent
-from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
 
@@ -121,9 +119,6 @@ DEFAULT_CONFIG = {
 }
 
 
-def wrap_env_creator(env_creator, config):
-
-
 class DQNAgent(Agent):
     _agent_name = "DQN"
     _allow_unknown_subkeys = [
@@ -142,7 +137,7 @@ class DQNAgent(Agent):
         adjusted_batch_size = (
             self.config["sample_batch_size"] + self.config["n_step"] - 1)
         self.local_evaluator = CommonPolicyEvaluator(
-            env_creator, DQNPolicy,
+            env_creator, DQNPolicyLoss,
             min_batch_steps=adjusted_batch_size,
             batch_mode="truncate_episodes", preprocessor_pref="deepmind",
             compress_observations=True,
@@ -153,7 +148,7 @@ class DQNAgent(Agent):
             num_gpus=self.config["num_gpus_per_worker"])
         self.remote_evaluators = [
             remote_cls.remote(
-                env_creator, DQNPolicy,
+                env_creator, DQNPolicyLoss,
                 min_batch_steps=adjusted_batch_size,
                 batch_mode="truncate_episodes", preprocessor_pref="deepmind",
                 compress_observations=True,

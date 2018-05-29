@@ -45,7 +45,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
         del arr[new_len:]
 
 
-class DQNPolicy(TFPolicyLoss):
+class DQNPolicyLoss(TFPolicyLoss):
     def __init__(self, registry, obs_space, action_space, config):
         self.config = config
         self.cur_epsilon = 1.0

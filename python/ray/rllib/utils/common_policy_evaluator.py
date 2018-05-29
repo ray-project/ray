@@ -1,6 +1,7 @@
 import ray
 
 import pickle
+import numpy as np
 import tensorflow as tf
 
 from ray.rllib.models import ModelCatalog
@@ -26,11 +27,11 @@ def collect_metrics(local_evaluator, remote_evaluators):
             episode_lengths.append(episode.episode_length)
             episode_rewards.append(episode.episode_reward)
     if episode_rewards:
-        min_reward = np.minimum(episode_rewards)
-        max_reward = np.maximum(episode_rewards)
+        min_reward = min(episode_rewards)
+        max_reward = max(episode_rewards)
     else:
-        min_reward = -1
-        max_reward = -1
+        min_reward = float('nan')
+        max_reward = float('nan')
     avg_reward = np.mean(episode_rewards)
     avg_length = np.mean(episode_lengths)
     timesteps = np.sum(episode_lengths)
@@ -118,7 +119,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.compress_observations = compress_observations
 
         self.env = env_creator(env_config)
-        is_atari = hasattr(env.unwrapped, "ale")
+        is_atari = hasattr(self.env.unwrapped, "ale")
         if is_atari and "custom_preprocessor" not in model_config and \
                 preprocessor_pref == "deepmind":
             self.env = wrap_deepmind(self.env, dim=model_config.get("dim", 80))
