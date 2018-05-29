@@ -145,12 +145,12 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                         gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.sess.as_default():
                     policy = policy_cls(
-                        registry, self.env.observation_space,
-                        self.env.action_space, policy_config)
+                        self.env.observation_space, self.env.action_space,
+                        registry, policy_config)
         else:
             policy = policy_cls(
-                registry, self.env.observation_space, self.env.action_space,
-                policy_config)
+                self.env.observation_space, self.env.action_space,
+                registry, policy_config)
         self.policy_map = {
             "default": policy
         }

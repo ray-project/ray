@@ -11,7 +11,7 @@ from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
 class A3CTFPolicyLoss(TFPolicyLoss):
     """The TF policy base class."""
 
-    def __init__(self, registry, ob_space, action_space, config):
+    def __init__(self, ob_space, action_space, registry, config):
         self.registry = registry
         self.local_steps = 0
         self.config = config

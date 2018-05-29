@@ -46,7 +46,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 
 
 class DQNPolicyLoss(TFPolicyLoss):
-    def __init__(self, registry, observation_space, action_space, config):
+    def __init__(self, observation_space, action_space, registry, config):
         self.config = config
         self.cur_epsilon = 1.0
         num_actions = action_space.n
@@ -155,14 +155,14 @@ class DQNPolicyLoss(TFPolicyLoss):
 
     def gradients(self, optimizer):
         if self.config["grad_norm_clipping"] is not None:
-            self.grads_and_vars = _minimize_and_clip(
+            grads_and_vars = _minimize_and_clip(
                 optimizer, self.loss, var_list=self.q_func_vars,
                 clip_val=self.config["grad_norm_clipping"])
         else:
-            self.grads_and_vars = optimizer.compute_gradients(
+            grads_and_vars = optimizer.compute_gradients(
                 self.loss, var_list=self.q_func_vars)
         grads_and_vars = [
-            (g, v) for (g, v) in self.grads_and_vars if g is not None]
+            (g, v) for (g, v) in grads_and_vars if g is not None]
         return grads_and_vars
 
     def extra_compute_action_feed_dict(self):
@@ -177,33 +177,7 @@ class DQNPolicyLoss(TFPolicyLoss):
         }
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
-        obs, actions, rewards, new_obs, dones = [
-            list(x) for x in sample_batch.columns(
-                ["obs", "actions", "rewards", "new_obs", "dones"])]
-
-        # N-step Q adjustments
-        if self.config["n_step"] > 1:
-            adjust_nstep(
-                self.config["n_step"], self.config["gamma"],
-                obs, actions, rewards, new_obs, dones)
-
-        batch = SampleBatch({
-            "obs": obs, "actions": actions, "rewards": rewards,
-            "new_obs": new_obs, "dones": dones,
-            "weights": np.ones_like(rewards)})
-        assert batch.count == self.config["sample_batch_size"], \
-            (batch.count, self.config["sample_batch_size"])
-
-        # Prioritize on the worker side
-        if self.config["worker_side_prioritization"]:
-            td_errors = self.compute_td_error(
-                batch["obs"], batch["actions"], batch["rewards"],
-                batch["new_obs"], batch["dones"], batch["weights"])
-            new_priorities = (
-                np.abs(td_errors) + self.config["prioritized_replay_eps"])
-            batch.data["weights"] = new_priorities
-
-        return batch
+        return _postprocess_dqn(self, sample_batch)
 
     def compute_td_error(
             self, obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
@@ -224,6 +198,36 @@ class DQNPolicyLoss(TFPolicyLoss):
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
+
+
+def _postprocess_dqn(policy_loss, sample_batch):
+    obs, actions, rewards, new_obs, dones = [
+        list(x) for x in sample_batch.columns(
+            ["obs", "actions", "rewards", "new_obs", "dones"])]
+
+    # N-step Q adjustments
+    if policy_loss.config["n_step"] > 1:
+        adjust_nstep(
+            policy_loss.config["n_step"], policy_loss.config["gamma"],
+            obs, actions, rewards, new_obs, dones)
+
+    batch = SampleBatch({
+        "obs": obs, "actions": actions, "rewards": rewards,
+        "new_obs": new_obs, "dones": dones,
+        "weights": np.ones_like(rewards)})
+    assert batch.count == policy_loss.config["sample_batch_size"], \
+        (batch.count, policy_loss.config["sample_batch_size"])
+
+    # Prioritize on the worker side
+    if policy_loss.config["worker_side_prioritization"]:
+        td_errors = policy_loss.compute_td_error(
+            batch["obs"], batch["actions"], batch["rewards"],
+            batch["new_obs"], batch["dones"], batch["weights"])
+        new_priorities = (
+            np.abs(td_errors) + policy_loss.config["prioritized_replay_eps"])
+        batch.data["weights"] = new_priorities
+
+    return batch
 
 
 def _build_q_network(registry, inputs, num_actions, config):

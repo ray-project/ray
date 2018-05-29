@@ -10,7 +10,7 @@ from ray.rllib.models.catalog import ModelCatalog
 
 class SharedModel(A3CTFPolicyLoss):
 
-    def __init__(self, registry, ob_space, ac_space, config, **kwargs):
+    def __init__(self, ob_space, ac_space, registry, config, **kwargs):
         super(SharedModel, self).__init__(
             registry, ob_space, ac_space, config, **kwargs)
 

@@ -11,7 +11,7 @@ from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
 
 class PGPolicyLoss(TFPolicyLoss):
 
-    def __init__(self, registry, obs_space, action_space, config):
+    def __init__(self, obs_space, action_space, registry, config):
         self.config = config
 
         # setup policy

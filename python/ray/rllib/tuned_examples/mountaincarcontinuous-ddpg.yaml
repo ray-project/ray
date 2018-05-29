@@ -13,7 +13,6 @@ mountaincarcontinuous-ddpg:
         tau: 0.01
         l2_reg: 0.00001
         buffer_size: 50000
-        random_starts: False
         clip_rewards: False
         learning_starts: 1000
         #model:

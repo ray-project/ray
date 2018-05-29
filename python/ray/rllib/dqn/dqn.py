@@ -25,97 +25,84 @@ OPTIMIZER_SHARED_CONFIGS = [
 DEFAULT_CONFIG = {
     # === Model ===
     # Whether to use dueling dqn
-    'dueling': True,
+    "dueling": True,
     # Whether to use double dqn
-    'double_q': True,
+    "double_q": True,
     # Hidden layer sizes of the state and action value networks
-    'hiddens': [256],
+    "hiddens": [256],
     # N-step Q learning
-    'n_step': 1,
+    "n_step": 1,
     # Config options to pass to the model constructor
-    'model': {},
+    "model": {},
     # Discount factor for the MDP
-    'gamma': 0.99,
+    "gamma": 0.99,
     # Arguments to pass to the env creator
-    'env_config': {},
+    "env_config": {},
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
     # 1.0 to exploration_fraction over this number of timesteps scaled by
     # exploration_fraction
-    'schedule_max_timesteps': 100000,
+    "schedule_max_timesteps": 100000,
     # Number of env steps to optimize for before returning
-    'timesteps_per_iteration': 1000,
+    "timesteps_per_iteration": 1000,
     # Fraction of entire training period over which the exploration rate is
     # annealed
-    'exploration_fraction': 0.1,
+    "exploration_fraction": 0.1,
     # Final value of random action probability
-    'exploration_final_eps': 0.02,
+    "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
-    'target_network_update_freq': 500,
+    "target_network_update_freq": 500,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
-    'buffer_size': 50000,
+    "buffer_size": 50000,
     # If True prioritized replay buffer will be used.
-    'prioritized_replay': True,
+    "prioritized_replay": True,
     # Alpha parameter for prioritized replay buffer.
-    'prioritized_replay_alpha': 0.6,
+    "prioritized_replay_alpha": 0.6,
     # Beta parameter for sampling from prioritized replay buffer.
-    'prioritized_replay_beta': 0.4,
+    "prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
-    'prioritized_replay_eps': 1e-6,
+    "prioritized_replay_eps": 1e-6,
     # Whether to clip rewards to [-1, 1] prior to adding to the replay buffer.
-    'clip_rewards': True,
+    "clip_rewards": True,
 
     # === Optimization ===
     # Learning rate for adam optimizer
-    'lr': 5e-4,
+    "lr": 5e-4,
     # If not None, clip gradients during optimization at this value
-    'grad_norm_clipping': 40,
+    "grad_norm_clipping": 40,
     # How many steps of the model to sample before learning starts.
-    'learning_starts': 1000,
+    "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    'sample_batch_size': 4,
+    "sample_batch_size": 4,
     # Size of a batched sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
-    'train_batch_size': 32,
-
-    # === Tensorflow ===
-    # Arguments to pass to tensorflow
-    'tf_session_args': {
-        "device_count": {"CPU": 2},
-        "log_device_placement": False,
-        "allow_soft_placement": True,
-        "gpu_options": {
-            "allow_growth": True
-        },
-        "inter_op_parallelism_threads": 1,
-        "intra_op_parallelism_threads": 1,
-    },
+    "train_batch_size": 32,
 
     # === Parallelism ===
     # Whether to use a GPU for local optimization.
-    'gpu': False,
+    "gpu": False,
     # Number of workers for collecting samples with. This only makes sense
     # to increase if your environment is particularly slow to sample, or if
-    # you're using the Async or Ape-X optimizers.
-    'num_workers': 0,
+    # you"re using the Async or Ape-X optimizers.
+    "num_workers": 0,
     # Whether to allocate GPUs for workers (if > 0).
-    'num_gpus_per_worker': 0,
+    "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
-    'num_cpus_per_worker': 1,
+    "num_cpus_per_worker": 1,
     # Optimizer class to use.
-    'optimizer_class': "LocalSyncReplayOptimizer",
+    "optimizer_class": "LocalSyncReplayOptimizer",
     # Config to pass to the optimizer.
-    'optimizer_config': {},
+    "optimizer_config": {},
     # Whether to use a distribution of epsilons across workers for exploration.
-    'per_worker_exploration': False,
+    "per_worker_exploration": False,
     # Whether to compute priorities on workers.
-    'worker_side_prioritization': False
+    "worker_side_prioritization": False
 }
 
 
@@ -124,6 +111,7 @@ class DQNAgent(Agent):
     _allow_unknown_subkeys = [
         "model", "optimizer", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
+    _policy_loss = DQNPolicyLoss
 
     @classmethod
     def default_resource_request(cls, config):
@@ -137,7 +125,7 @@ class DQNAgent(Agent):
         adjusted_batch_size = (
             self.config["sample_batch_size"] + self.config["n_step"] - 1)
         self.local_evaluator = CommonPolicyEvaluator(
-            self.env_creator, DQNPolicyLoss,
+            self.env_creator, self._policy_loss,
             batch_steps=adjusted_batch_size,
             batch_mode="pack_episodes", preprocessor_pref="deepmind",
             compress_observations=True,
@@ -148,7 +136,7 @@ class DQNAgent(Agent):
             num_gpus=self.config["num_gpus_per_worker"])
         self.remote_evaluators = [
             remote_cls.remote(
-                self.env_creator, DQNPolicyLoss,
+                self.env_creator, self._policy_loss,
                 batch_steps=adjusted_batch_size,
                 batch_mode="pack_episodes", preprocessor_pref="deepmind",
                 compress_observations=True,
