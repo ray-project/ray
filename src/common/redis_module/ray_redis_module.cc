@@ -1,5 +1,5 @@
-#include "redismodule.h"
 #include <string.h>
+#include "redismodule.h"
 
 #include "redis_string.h"
 
@@ -423,7 +423,6 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
       manager_ids.push_back(RedisStringToFlatbuf(fbb, curr));
     }
   } while (RedisModule_ZsetRangeNext(key));
-  
 
   auto message = CreateSubscribeToNotificationsReply(
       fbb, RedisStringToFlatbuf(fbb, object_id), data_size_value,
@@ -485,9 +484,8 @@ int TaskTableAdd(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
-                                << " clients.";
-
+    RAY_CHECK(num_clients <= 1)
+        << "Published to " << num_clients << " clients.";
   }
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
@@ -897,9 +895,8 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   bool do_update = data->scheduling_state() & update->test_state_bitmask();
 
   if (!is_nil(update->test_scheduler_id()->str())) {
-    do_update =
-        do_update &&
-        update->test_scheduler_id()->str() == data->scheduler_id()->str();
+    do_update = do_update && update->test_scheduler_id()->str() ==
+                                 data->scheduler_id()->str();
   }
 
   if (do_update) {
@@ -914,14 +911,14 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
 /**
  * Send notifications to the clients which subcribe this object. This function
- * is divided into two parts: publishing notifications in broadcast channel and 
- * publishing notifications in unicast channel. This function should be called 
+ * is divided into two parts: publishing notifications in broadcast channel and
+ * publishing notifications in unicast channel. This function should be called
  * when add an object, delete an object, or the object manager list changed.
  *
  * @param ctx The Redis context.
  * @param object_id The object ID of interest.
- * @param table_key The opened key for the entry in the object table corresponding
- *        to the object ID of interest.
+ * @param table_key The opened key for the entry in the object table
+ * corresponding to the object ID of interest.
  * @return True if the publish was successful and false otherwise.
  */
 int SendObjectNotification(RedisModuleCtx *ctx,
@@ -930,9 +927,9 @@ int SendObjectNotification(RedisModuleCtx *ctx,
   RedisModuleString *data_size;
   RedisModuleKey *info_key;
   info_key = OpenPrefixedKey(ctx, OBJECT_INFO_PREFIX, object_id,
-                    REDISMODULE_READ | REDISMODULE_WRITE);
+                             REDISMODULE_READ | REDISMODULE_WRITE);
   RedisModule_HashGet(info_key, REDISMODULE_HASH_CFIELDS, "data_size",
-        &data_size, NULL);
+                      &data_size, NULL);
   if (data_size == NULL) {
     return REDISMODULE_ERR;
   }
@@ -943,7 +940,7 @@ int SendObjectNotification(RedisModuleCtx *ctx,
       RedisModule_CreateString(ctx, OBJECT_BCAST, strlen(OBJECT_BCAST));
 
   success = PublishObjectNotification(ctx, bcast_client_str, object_id,
-                 data_size, table_key);
+                                      data_size, table_key);
   if (!success) {
     /* The publish failed somehow. */
     return REDISMODULE_ERR;
@@ -957,22 +954,23 @@ int SendObjectNotification(RedisModuleCtx *ctx,
                       REDISMODULE_READ | REDISMODULE_WRITE);
   /* If the zset exists, initialize the key to iterate over the zset. */
   if (RedisModule_KeyType(object_notification_key) !=
-          REDISMODULE_KEYTYPE_EMPTY) {
-      CHECK_ERROR(RedisModule_ZsetFirstInScoreRange(
-                      object_notification_key, REDISMODULE_NEGATIVE_INFINITE,
-                      REDISMODULE_POSITIVE_INFINITE, 1, 1),
-                  "Unable to initialize zset iterator when send object notification");
-      /* Iterate over the list of clients that requested notifiations about the
-       * availability of this object, and publish notifications to their object
-       * notification channels. */
-      do {
+      REDISMODULE_KEYTYPE_EMPTY) {
+    CHECK_ERROR(
+        RedisModule_ZsetFirstInScoreRange(object_notification_key,
+                                          REDISMODULE_NEGATIVE_INFINITE,
+                                          REDISMODULE_POSITIVE_INFINITE, 1, 1),
+        "Unable to initialize zset iterator when send object notification");
+    /* Iterate over the list of clients that requested notifiations about the
+     * availability of this object, and publish notifications to their object
+     * notification channels. */
+    do {
       RedisModuleString *client_id =
-        RedisModule_ZsetRangeCurrentElement(object_notification_key, NULL);
+          RedisModule_ZsetRangeCurrentElement(object_notification_key, NULL);
       /* TODO(rkn): Some computation could be saved by batching the string
        * constructions in the multiple calls to PublishObjectNotification
        * together. */
-      success = PublishObjectNotification(ctx, client_id, object_id,
-               data_size, table_key);
+      success = PublishObjectNotification(ctx, client_id, object_id, data_size,
+                                          table_key);
       if (!success) {
         /* The publish failed somehow. */
         return REDISMODULE_ERR;
@@ -1474,8 +1472,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
     /* See how many clients received this publish. */
     long long num_clients = RedisModule_CallReplyInteger(reply);
-    RAY_CHECK(num_clients <= 1) << "Published to " << num_clients
-                                << " clients.";
+    RAY_CHECK(num_clients <= 1)
+        << "Published to " << num_clients << " clients.";
 
     if (reply == NULL) {
       return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
