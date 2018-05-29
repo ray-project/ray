@@ -448,6 +448,31 @@ void NodeManager::ProcessClientMessage(
     }
   } break;
   case protocol::MessageType_PlasmaWaitRequest: {
+    // Block the worker.
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker && !worker->IsBlocked()) {
+      RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+      auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
+      const auto &task = tasks.front();
+      // Get the CPU resources required by the running task.
+      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+      double required_cpus = 0;
+      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      const std::unordered_map<std::string, double> cpu_resources = {
+          {kCPU_ResourceLabel, required_cpus}};
+      // Release the CPU resources.
+      RAY_CHECK(
+          cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+              ResourceSet(cpu_resources)));
+      // Mark the task as blocked.
+      local_queues_.QueueBlockedTasks(tasks);
+      worker->MarkBlocked();
+
+      // Try to dispatch more tasks since the blocked worker released some
+      // resources.
+      DispatchTasks();
+    }
+
     // Read the data.
     auto message = flatbuffers::GetRoot<protocol::PlasmaWaitRequest>(message_data);
     auto object_requests = message->object_requests();
@@ -466,6 +491,31 @@ void NodeManager::ProcessClientMessage(
 
     object_manager_.Wait(object_ids, wait_ms, num_required_objects, false,
     [this, client](int64_t time_taken, std::unordered_set<ObjectID> found, std::unordered_set<ObjectID> remaining){
+      // Unblock the worker.
+      std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+      if (worker && !worker->IsBlocked()) {
+        RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
+        auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
+        const auto &task = tasks.front();
+        // Get the CPU resources required by the running task.
+        const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+        double required_cpus = 0;
+        RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+        const std::unordered_map<std::string, double> cpu_resources = {
+            {kCPU_ResourceLabel, required_cpus}};
+        // Release the CPU resources.
+        RAY_CHECK(
+            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+                ResourceSet(cpu_resources)));
+        // Mark the task as blocked.
+        local_queues_.QueueBlockedTasks(tasks);
+        worker->MarkBlocked();
+
+        // Try to dispatch more tasks since the blocked worker released some
+        // resources.
+        DispatchTasks();
+      }
+
       // Write the data.
       flatbuffers::FlatBufferBuilder fbb;
       std::vector<flatbuffers::Offset<protocol::ObjectReply>> object_replies;
