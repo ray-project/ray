@@ -211,6 +211,28 @@ void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
   // one.
   entry->ResetStatus(GcsStatus_UNCOMMITTED_REMOTE);
   RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
+
+  // Try to evict a task and its uncommitted lineage if the uncommitted lineage
+  // exceeds the maximum size.
+  // NOTE(swang): We may end up requesting notifications for too many tasks
+  // from the GCS if we do not receive a notification for this task fast
+  // enough, since every dependent and waiting task that gets removed
+  // afterwards will also have an uncommitted lineage that's too large. If this
+  // becomes an issue, we can be smarter about which tasks to request by either
+  // storing the dependency depth as part of the task specs, or storing that
+  // information as a data structure in the lineage cache.
+  const auto uncommitted_lineage = GetUncommittedLineage(task_id);
+  if (uncommitted_lineage.GetEntries().size() > max_lineage_size_) {
+    auto inserted = subscribed_tasks_.insert(task_id);
+    // Tasks should only be subscribed if they are remote or in the process of
+    // being committed. Since this task was in state WAITING, we should not be
+    // subscribed to it already.
+    RAY_CHECK(inserted.second);
+    // Request a notification for the newly remote task so that the task and
+    // its uncommitted lineage can be evicted once the commit notification is
+    // received.
+    RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID::nil(), task_id, client_id_));
+  }
 }
 
 Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id) const {
