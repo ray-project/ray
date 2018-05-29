@@ -66,5 +66,6 @@ class PGAgent(Agent):
             self.optimizer.local_evaluator, self.optimizer.remote_evaluators)
 
     def compute_action(self, observation, state=[]):
-        return self.local_evaluator.policy.compute_single_action(
-            observation, state, is_training=False)
+        return self.local_evaluator.for_policy(
+            lambda p: p.compute_single_action(
+                observation, state, is_training=False)[0])

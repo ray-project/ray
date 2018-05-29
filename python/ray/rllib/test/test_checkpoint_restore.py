@@ -28,7 +28,7 @@ CONFIGS = {
 }
 
 
-def test(use_object_store, alg_name):
+def test(use_object_store, alg_name, failures):
     cls = get_agent_class(alg_name)
     if alg_name == "DDPG":
         alg1 = cls(config=CONFIGS[name], env="Pendulum-v0")
@@ -55,12 +55,15 @@ def test(use_object_store, alg_name):
         a1 = get_mean_action(alg1, obs)
         a2 = get_mean_action(alg2, obs)
         print("Checking computed actions", alg1, obs, a1, a2)
-        assert abs(a1 - a2) < .1, (a1, a2)
+        if abs(a1 - a2) > .1:
+            failures.append((alg_name, [a1, a2]))
 
 
 if __name__ == "__main__":
+    failures = []
     for use_object_store in [False, True]:
         for name in ["ES", "DQN", "DDPG", "PPO", "A3C"]:
-            test(use_object_store, name)
+            test(use_object_store, name, failures)
 
+    assert not failures, failures
     print("All checkpoint restore tests passed!")

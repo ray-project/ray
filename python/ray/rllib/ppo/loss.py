@@ -82,11 +82,14 @@ class ProximalPolicyLoss(object):
             self.policy_results = [
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
-    def compute(self, observation):
+    def compute_single_action(self, observation, features, is_training):
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})
-        return action[0], {"vf_preds": vf[0], "logprobs": logprobs[0]}
+        return action[0], [], {"vf_preds": vf[0], "logprobs": logprobs[0]}
+
+    def get_initial_state(self):
+        return []
 
     def loss(self):
         return self.loss

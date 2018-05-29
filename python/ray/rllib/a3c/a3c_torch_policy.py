@@ -16,7 +16,7 @@ from ray.rllib.utils.policy_loss import PolicyLoss
 class SharedTorchPolicy(PolicyLoss):
     """A simple, non-recurrent PyTorch policy example."""
 
-    def __init__(self, registry, obs_space, action_space, config):
+    def __init__(self, obs_space, action_space, registry, config):
         self.registry = registry
         self.local_steps = 0
         self.config = config

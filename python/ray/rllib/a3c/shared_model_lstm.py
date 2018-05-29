@@ -13,7 +13,7 @@ class SharedModelLSTM(A3CTFPolicyLoss):
 
     def __init__(self, ob_space, ac_space, registry, config, **kwargs):
         super(SharedModelLSTM, self).__init__(
-            registry, ob_space, ac_space, config, **kwargs)
+            ob_space, ac_space, registry, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space.shape))

@@ -245,5 +245,6 @@ class DQNAgent(Agent):
         self.last_target_update_ts = extra_data[4]
 
     def compute_action(self, observation, state=[]):
-        return self.local_evaluator.policy.compute_single_action(
-            observation, state, is_training=False)
+        return self.local_evaluator.for_policy(
+            lambda p: p.compute_single_action(
+                observation, state, is_training=False)[0])
