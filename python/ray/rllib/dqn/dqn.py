@@ -5,8 +5,6 @@ from __future__ import print_function
 import pickle
 import os
 
-import tensorflow as tf
-
 import ray
 from ray.rllib import optimizers
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
@@ -157,8 +155,6 @@ class DQNAgent(Agent):
             self.config["optimizer_config"], self.local_evaluator,
             self.remote_evaluators)
 
-        with self.local_evaluator.sess.graph.as_default():
-            self.saver = tf.train.Saver(max_to_keep=None)
         self.last_target_update_ts = 0
         self.num_target_updates = 0
 
@@ -220,10 +216,8 @@ class DQNAgent(Agent):
             ev.__ray_terminate__.remote()
 
     def _save(self, checkpoint_dir):
-        checkpoint_path = self.saver.save(
-            self.local_evaluator.sess,
-            os.path.join(checkpoint_dir, "checkpoint"),
-            global_step=self.iteration)
+        checkpoint_path = os.path.join(
+            checkpoint_dir, "checkpoint-{}".format(self.iteration))
         extra_data = [
             self.local_evaluator.save(),
             ray.get([e.save.remote() for e in self.remote_evaluators]),
@@ -234,7 +228,6 @@ class DQNAgent(Agent):
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.saver.restore(self.local_evaluator.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.local_evaluator.restore(extra_data[0])
         ray.get([

@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.dqn.dqn import DQNAgent
 from ray.rllib.ddpg.ddpg_policy_loss import DDPGPolicyLoss
 
@@ -115,3 +116,19 @@ class DDPGAgent(DQNAgent):
         "model", "optimizer", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
     _policy_loss = DDPGPolicyLoss
+
+    def _make_exploration_schedule(self, worker_index):
+        # Override DQN's schedule to take into account `noise_scale`
+        if self.config["per_worker_exploration"]:
+            assert self.config["num_workers"] > 1, \
+                "This requires multiple workers"
+            return ConstantSchedule(
+                self.config["noise_scale"] * 0.4 **
+                (1 + worker_index / float(self.config["num_workers"] - 1) * 7))
+        else:
+            return LinearSchedule(
+                schedule_timesteps=int(self.config["exploration_fraction"] *
+                                       self.config["schedule_max_timesteps"]),
+                initial_p=self.config["noise_scale"] * 1.0,
+                final_p=self.config["noise_scale"] *
+                self.config["exploration_final_eps"])

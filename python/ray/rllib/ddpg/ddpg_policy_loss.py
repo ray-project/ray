@@ -7,6 +7,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
+import ray
 from ray.rllib.dqn.dqn_policy_loss import _huber_loss, _minimize_and_clip, \
     _scope_vars, _postprocess_dqn
 from ray.rllib.models import ModelCatalog
@@ -239,6 +240,14 @@ class DDPGPolicyLoss(TFPolicyLoss):
             self.loss, self.loss_inputs, self.is_training)
         self.sess.run(tf.global_variables_initializer())
 
+        # Note that this encompasses both the policy and Q-value networks and
+        # their corresponding target networks
+        self.variables = ray.experimental.TensorFlowVariables(
+            tf.group(q_tp0, q_tp1), self.sess)
+
+        # Hard initial update
+        self.update_target(tau=1.0)
+
     def gradients(self, optimizer):
         if self.config["grad_norm_clipping"] is not None:
             actor_grads_and_vars = _minimize_and_clip(
@@ -302,3 +311,16 @@ class DDPGPolicyLoss(TFPolicyLoss):
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
+
+    def get_weights(self):
+        return self.variables.get_weights()
+
+    def set_weights(self, weights):
+        self.variables.set_weights(weights)
+
+    def get_state(self):
+        return [TFPolicyLoss.get_state(self), self.cur_epsilon]
+
+    def set_state(self, state):
+        TFPolicyLoss.set_state(self, state[0])
+        self.set_epsilon(state[1])

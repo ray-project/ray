@@ -250,10 +250,10 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
     def save(self):
         filters = self.get_filters(flush_after=True)
-        weights = self.policy_map["default"].get_weights()
-        return pickle.dumps({"filters": filters, "weights": weights})
+        state = self.policy_map["default"].get_state()
+        return pickle.dumps({"filters": filters, "state": state})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
-        self.policy_map["default"].set_weights(objs["weights"])
+        self.policy_map["default"].set_state(objs["state"])

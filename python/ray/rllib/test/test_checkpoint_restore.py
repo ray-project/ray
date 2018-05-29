@@ -17,14 +17,15 @@ def get_mean_action(alg, obs):
     return np.mean(out)
 
 
-ray.init()
+ray.init(num_cpus=10)
 
 CONFIGS = {
-    "ES": {"episodes_per_batch": 10, "timesteps_per_batch": 100},
+    "ES": {"episodes_per_batch": 10, "timesteps_per_batch": 100,
+           "num_workers": 2},
     "DQN": {},
-    "DDPG": {"noise_scale": 0.0},
-    "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000},
-    "A3C": {"use_lstm": False},
+    "DDPG": {"noise_scale": 0.0, "timesteps_per_iteration": 100},
+    "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000, "num_workers": 2},
+    "A3C": {"use_lstm": False, "num_workers": 1},
 }
 
 

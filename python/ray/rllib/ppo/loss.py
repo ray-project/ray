@@ -82,7 +82,7 @@ class ProximalPolicyLoss(object):
             self.policy_results = [
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
-    def compute_single_action(self, observation, features, is_training):
+    def compute_single_action(self, observation, features, is_training=False):
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})

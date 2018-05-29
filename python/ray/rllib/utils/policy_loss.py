@@ -1,8 +1,10 @@
 class PolicyLoss(object):
     """An agent policy and loss, i.e., a TFPolicyLoss or other subclass.
 
-    The policy object defines how to act in the environment, and also losses
-    used to improve the policy based on its experiences.
+    This object defines how to act in the environment, and also losses used to
+    improve the policy based on its experiences. Note that both policy and
+    loss are defined together for convenience, though the policy itself is
+    logically separate.
 
     All policies can directly extend PolicyLoss, however TensorFlow users may
     find TFPolicyLoss simpler to implement. TFPolicyLoss also enables RLlib to
@@ -93,3 +95,18 @@ class PolicyLoss(object):
     def get_initial_state(self):
         """Returns initial RNN state for the current policy."""
         return []
+
+    def get_state(self):
+        """Saves all local state.
+
+        Returns:
+            state (obj): Serialized local state.
+        """
+        return self.get_weights()
+
+    def set_state(self, state):
+        """Restores all local state.
+
+        Arguments:
+            state (obj): Serialized local state."""
+        self.set_weights(state)

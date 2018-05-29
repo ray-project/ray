@@ -89,18 +89,18 @@ class DQNPolicyLoss(TFPolicyLoss):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            self.q_t = _build_q_network(
+            q_t = _build_q_network(
                 registry, self.obs_t, num_actions, config)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            self.q_tp1 = _build_q_network(
+            q_tp1 = _build_q_network(
                 registry, self.obs_tp1, num_actions, config)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
         q_t_selected = tf.reduce_sum(
-            self.q_t * tf.one_hot(self.act_t, num_actions), 1)
+            q_t * tf.one_hot(self.act_t, num_actions), 1)
 
         # compute estimate of best possible value starting from state at t + 1
         if config["double_q"]:
@@ -109,10 +109,10 @@ class DQNPolicyLoss(TFPolicyLoss):
                     registry, self.obs_tp1, num_actions, config)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
-                self.q_tp1 * tf.one_hot(
+                q_tp1 * tf.one_hot(
                     q_tp1_best_using_online_net, num_actions), 1)
         else:
-            q_tp1_best = tf.reduce_max(self.q_tp1, 1)
+            q_tp1_best = tf.reduce_max(q_tp1, 1)
         q_tp1_best_masked = (1.0 - self.done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
@@ -198,6 +198,13 @@ class DQNPolicyLoss(TFPolicyLoss):
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
+
+    def get_state(self):
+        return [TFPolicyLoss.get_state(self), self.cur_epsilon]
+
+    def set_state(self, state):
+        TFPolicyLoss.set_state(self, state[0])
+        self.set_epsilon(state[1])
 
 
 def _postprocess_dqn(policy_loss, sample_batch):
