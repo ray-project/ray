@@ -5,11 +5,11 @@ from __future__ import print_function
 import tensorflow as tf
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.a3c.a3c_tf_policy import A3CTFPolicy
+from ray.rllib.a3c.a3c_tf_policy import A3CTFPolicyLoss
 from ray.rllib.models.lstm import LSTM
 
 
-class SharedModelLSTM(A3CTFPolicy):
+class SharedModelLSTM(A3CTFPolicyLoss):
 
     def __init__(self, registry, ob_space, ac_space, config, **kwargs):
         super(SharedModelLSTM, self).__init__(
@@ -42,7 +42,7 @@ class SharedModelLSTM(A3CTFPolicy):
         return self._model.state_init
 
     def setup_loss(self, action_space):
-        A3CTFPolicy.setup_loss(self, action_space)
+        A3CTFPolicyLoss.setup_loss(self, action_space)
         self.loss_in = [
             ("obs", self.x),
             ("actions", self.ac),

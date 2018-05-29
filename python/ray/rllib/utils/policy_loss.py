@@ -1,11 +1,11 @@
-class Policy(object):
-    """An agent policy, i.e., a TFPolicy or other Policy subclass.
+class PolicyLoss(object):
+    """An agent policy and loss, i.e., a TFPolicyLoss or other subclass.
 
     The policy object defines how to act in the environment, and also losses
     used to improve the policy based on its experiences.
 
-    All agents can directly extend Policy, however TensorFlow users may find
-    TFPolicy simpler to implement. TFPolicy also enables RLlib to
+    All policies can directly extend PolicyLoss, however TensorFlow users may
+    find TFPolicyLoss simpler to implement. TFPolicyLoss also enables RLlib to
     apply TensorFlow-specific optimizations such as fusing multiple policy
     graphs and multi-GPU support.
     """

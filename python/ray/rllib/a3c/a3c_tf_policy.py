@@ -5,10 +5,10 @@ from __future__ import print_function
 import tensorflow as tf
 import gym
 from ray.rllib.utils.process_rollout import process_rollout
-from ray.rllib.utils.tf_policy import TFPolicy
+from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
 
 
-class A3CTFPolicy(TFPolicy):
+class A3CTFPolicyLoss(TFPolicyLoss):
     """The TF policy base class."""
 
     def __init__(self, registry, ob_space, action_space, config):
@@ -25,8 +25,8 @@ class A3CTFPolicy(TFPolicy):
         self.is_training = tf.placeholder_with_default(True, ())
         self.sess = tf.get_default_session()
 
-        TFPolicy.__init__(
-            self, self.sess, self.x, self.action_dist, self.loss,
+        TFPolicyLoss.__init__(
+            self, self.sess, self.x, self.action_dist.sample(), self.loss,
             self.loss_in, self.is_training, self.state_in, self.state_out)
 
         # TODO(ekl) move session creation and init to CommonPolicyEvaluator

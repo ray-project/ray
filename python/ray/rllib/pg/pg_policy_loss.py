@@ -6,10 +6,10 @@ import tensorflow as tf
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.process_rollout import process_rollout
-from ray.rllib.utils.tf_policy import TFPolicy
+from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
 
 
-class PGPolicy(TFPolicy):
+class PGPolicyLoss(TFPolicyLoss):
 
     def __init__(self, registry, obs_space, action_space, config):
         self.config = config
@@ -26,7 +26,7 @@ class PGPolicy(TFPolicy):
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
         self.loss = -tf.reduce_mean(self.dist.logp(self.ac) * self.adv)
 
-        # initialize TFPolicy
+        # initialize TFPolicyLoss
         self.sess = tf.get_default_session()
         self.loss_in = [
             ("obs", self.x),
@@ -34,9 +34,9 @@ class PGPolicy(TFPolicy):
             ("advantages", self.adv),
         ]
         self.is_training = tf.placeholder_with_default(True, ())
-        TFPolicy.__init__(
-            self, self.sess, self.x, self.dist, self.loss, self.loss_in,
-            self.is_training)
+        TFPolicyLoss.__init__(
+            self, self.sess, self.x, self.dist.sample(), self.loss,
+            self.loss_in, self.is_training)
         self.sess.run(tf.global_variables_initializer())
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):

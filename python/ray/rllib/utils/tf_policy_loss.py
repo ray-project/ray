@@ -1,11 +1,11 @@
 import tensorflow as tf
 
 import ray
-from ray.rllib.utils.policy import Policy
+from ray.rllib.utils.policy_loss import PolicyLoss
 
 
-class TFPolicy(Policy):
-    """An agent policy implemented in TensorFlow.
+class TFPolicyLoss(PolicyLoss):
+    """An agent policy and loss implemented in TensorFlow.
 
     Extending this class enables RLlib to perform TensorFlow specific
     optimizations on the policy graph, e.g., parallelization across gpus or
@@ -14,8 +14,8 @@ class TFPolicy(Policy):
     All input and output tensors are of shape [BATCH_DIM, ...].
 
     Examples:
-        >>> policy = TFPolicySubclass(
-            sess, obs_input, action_dist, loss, loss_inputs, is_training)
+        >>> policy = TFPolicyLossSubclass(
+            sess, obs_input, action_sampler, loss, loss_inputs, is_training)
 
         >>> print(policy.compute_actions([1, 0, 2]))
         (array([0, 1, 1]), [], {})
@@ -25,13 +25,13 @@ class TFPolicy(Policy):
     """
 
     def __init__(
-            self, sess, obs_input, action_dist, loss, loss_inputs, is_training,
-            state_inputs=None, state_outputs=None):
+            self, sess, obs_input, action_sampler, loss, loss_inputs,
+            is_training, state_inputs=None, state_outputs=None):
         """Initialize the policy.
 
         Arguments:
             obs_input (Tensor): input placeholder for observations.
-            action_dist (ActionDistribution): output policy action dist.
+            action_sampler (Tensor): tensor for sampling an action.
             loss (Tensor): scalar policy loss output tensor.
             loss_inputs (list): a (name, placeholder) tuple for each loss
                 input argument. Each placeholder name must correspond to a
@@ -43,8 +43,7 @@ class TFPolicy(Policy):
 
         self._sess = sess
         self._obs_input = obs_input
-        self._action_dist = action_dist
-        self._sampler = self._action_dist.sample()
+        self._sampler = self.action_sampler
         self._loss = loss
         self._loss_inputs = loss_inputs
         self._is_training = is_training
@@ -75,8 +74,8 @@ class TFPolicy(Policy):
              [self.extra_compute_action_fetches()]), feed_dict=feed_dict)
         return fetches[0], fetches[1:-1], fetches[-1]
 
-    def compute_gradients(self, postprocessed_batch):
-        feed_dict = self.extra_compute_grad_feed_dict()
+    def _get_loss_inputs_dict(self, postprocessed_batch):
+        feed_dict = {}
         for key, ph in self._loss_inputs:
             # TODO(ekl) fix up handling of RNN inputs so that we can batch
             # across multiple rollouts
@@ -84,6 +83,12 @@ class TFPolicy(Policy):
                 feed_dict[ph] = postprocessed_batch[key][:1]  # in state only
             else:
                 feed_dict[ph] = postprocessed_batch[key]
+        return feed_dict
+
+    def compute_gradients(self, postprocessed_batch):
+        feed_dict = self.extra_compute_grad_feed_dict()
+        feed_dict[self._is_training] = True
+        feed_dict.update(self._get_loss_inputs_dict(postprocessed_batch))
         fetches = self._sess.run(
             [self._grads, self.extra_compute_grad_fetches()],
             feed_dict=feed_dict)
@@ -92,12 +97,25 @@ class TFPolicy(Policy):
     def apply_gradients(self, gradients):
         assert len(gradients) == len(self._grads), (gradients, self._grads)
         feed_dict = self.extra_apply_grad_feed_dict()
+        feed_dict[self._is_training] = True
         for ph, value in zip(self._grads, gradients):
             feed_dict[ph] = value
         fetches = self.sess.run(
             [self._apply_op, self.extra_apply_grad_fetches()],
             feed_dict=feed_dict)
         return fetches[1]
+
+    def compute_apply(self, postprocessed_batch):
+        assert len(gradients) == len(self._grads), (gradients, self._grads)
+        feed_dict = self.extra_compute_grad_feed_dict()
+        feed_dict.update(self.extra_apply_grad_feed_dict())
+        feed_dict.update(self._get_loss_inputs_dict(postprocessed_batch))
+        feed_dict[self._is_training] = True
+        fetches = self._sess.run(
+            [self._apply_op, self.extra_compute_grad_fetches(),
+             self.extra_apply_grad_fetches()],
+            feed_dict=feed_dict)
+        return fetches[1], fetches[2]
 
     def get_weights(self):
         return self._variables.get_flat()

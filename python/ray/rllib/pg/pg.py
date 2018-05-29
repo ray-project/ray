@@ -7,8 +7,9 @@ import numpy as np
 import ray
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import LocalSyncOptimizer
-from ray.rllib.pg.policy import PGPolicy
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.pg.pg_policy_loss import PGPolicyLoss
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
+    collect_metrics
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
@@ -53,7 +54,7 @@ class PGAgent(Agent):
             evaluator_cls=CommonPolicyEvaluator,
             evaluator_args=dict(
                 env_creator=self.env_creator,
-                policy_cls=PGPolicy,
+                policy_cls=PGPolicyLoss,
                 min_batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes",
                 registry=self.registry,
@@ -65,27 +66,8 @@ class PGAgent(Agent):
 
     def _train(self):
         self.optimizer.step()
+        return collect_metrics(self.local_evaluators, self.remote_evaluators)
 
-        episode_rewards = []
-        episode_lengths = []
-        metric_lists = [a.apply.remote(lambda ev: ev.sampler.get_metrics())
-                        for a in self.optimizer.remote_evaluators]
-        for metrics in metric_lists:
-            for episode in ray.get(metrics):
-                episode_lengths.append(episode.episode_length)
-                episode_rewards.append(episode.episode_reward)
-        avg_reward = np.mean(episode_rewards)
-        avg_length = np.mean(episode_lengths)
-        timesteps = np.sum(episode_lengths)
-
-        result = TrainingResult(
-            episode_reward_mean=avg_reward,
-            episode_len_mean=avg_length,
-            timesteps_this_iter=timesteps,
-            info={})
-
-        return result
-
-    def compute_action(self, obs):
-        action, info = self.optimizer.local_evaluator.policy.compute(obs)
-        return action
+    def compute_action(self, observation, state=[]):
+        return self.local_evaluator.policy.compute_single_action(
+            observation, state, is_training=False)

@@ -11,6 +11,9 @@ import tensorflow as tf
 import ray
 from ray.rllib import optimizers
 from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
+from ray.rllib.dqn.models import DQNPolicy
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
+    collect_metrics
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
@@ -52,8 +55,6 @@ DEFAULT_CONFIG = {
     'exploration_final_eps': 0.02,
     # Update the target network every `target_network_update_freq` steps.
     'target_network_update_freq': 500,
-    # Whether to start with random actions instead of noops.
-    'random_starts': True,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -84,8 +85,6 @@ DEFAULT_CONFIG = {
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     'train_batch_size': 32,
-    # Smooth the current average reward over this many previous episodes.
-    'smoothing_num_episodes': 100,
 
     # === Tensorflow ===
     # Arguments to pass to tensorflow
@@ -122,6 +121,9 @@ DEFAULT_CONFIG = {
 }
 
 
+def wrap_env_creator(env_creator, config):
+
+
 class DQNAgent(Agent):
     _agent_name = "DQN"
     _allow_unknown_subkeys = [
@@ -137,16 +139,31 @@ class DQNAgent(Agent):
             extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def _init(self):
-        self.local_evaluator = DQNEvaluator(
-            self.registry, self.env_creator, self.config, self.logdir, 0)
-        remote_cls = ray.remote(
+        adjusted_batch_size = (
+            self.config["sample_batch_size"] + self.config["n_step"] - 1)
+        self.local_evaluator = CommonPolicyEvaluator(
+            env_creator, DQNPolicy,
+            min_batch_steps=adjusted_batch_size,
+            batch_mode="truncate_episodes", preprocessor_pref="deepmind",
+            compress_observations=True,
+            registry=self.registry, env_config=self.config["env_config"],
+            model_config=self.config["model"], policy_config=self.config)
+        remote_cls = CommonPolicyEvaluator.as_remote(
             num_cpus=self.config["num_cpus_per_worker"],
-            num_gpus=self.config["num_gpus_per_worker"])(
-            DQNEvaluator)
+            num_gpus=self.config["num_gpus_per_worker"])
         self.remote_evaluators = [
             remote_cls.remote(
-                self.registry, self.env_creator, self.config, self.logdir,
-                i)
+                env_creator, DQNPolicy,
+                min_batch_steps=adjusted_batch_size,
+                batch_mode="truncate_episodes", preprocessor_pref="deepmind",
+                compress_observations=True,
+                registry=self.registry, env_config=self.config["env_config"],
+                model_config=self.config["model"], policy_config=self.config)
+            for _ in range(self.config["num_workers"])]
+
+        self.exploration0 = self._make_exploration_schedule(i)
+        self.explorations = [
+            self._make_exploration_schedule(i)
             for i in range(self.config["num_workers"])]
 
         for k in OPTIMIZER_SHARED_CONFIGS:
@@ -160,6 +177,22 @@ class DQNAgent(Agent):
         self.saver = tf.train.Saver(max_to_keep=None)
         self.last_target_update_ts = 0
         self.num_target_updates = 0
+    
+    def _make_exploration_schedule(self, worker_index):
+        # Use either a different `eps` per worker, or a linear schedule.
+        if self.config["per_worker_exploration"]:
+            assert self.config["num_workers"] > 1, \
+                "This requires multiple workers"
+            return ConstantSchedule(
+                0.4 ** (
+                    1 + worker_index / float(
+                        self.config["num_workers"] - 1) * 7))
+        return LinearSchedule(
+            schedule_timesteps=int(
+                self.config["exploration_fraction"] *
+                self.config["schedule_max_timesteps"]),
+            initial_p=1.0,
+            final_p=self.config["exploration_final_eps"])
 
     @property
     def global_timestep(self):
@@ -168,7 +201,7 @@ class DQNAgent(Agent):
     def update_target_if_needed(self):
         if self.global_timestep - self.last_target_update_ts > \
                 self.config["target_network_update_freq"]:
-            self.local_evaluator.update_target()
+            self.local_evaluator.foreach_policy(lambda p: p.update_target())
             self.last_target_update_ts = self.global_timestep
             self.num_target_updates += 1
 
@@ -181,54 +214,23 @@ class DQNAgent(Agent):
             self.optimizer.step()
             self.update_target_if_needed()
 
-        self.local_evaluator.set_global_timestep(self.global_timestep)
-        for e in self.remote_evaluators:
-            e.set_global_timestep.remote(self.global_timestep)
+        self.local_evaluator.foreach_policy(
+            lambda p: p.set_epsilon(
+                self.exploration0.value(self.global_timestep)))
+        exp_vals = []
+        for i, e in enumerate(self.remote_evaluators):
+            exp_val = self.exploration(i).value(self.global_timestep)
+            e.foreach_policy(lambda p: p.set_epsilon(exp_val))
+            exp_vals.append(exp_val)
 
-        return self._train_stats(start_timestep)
-
-    def _train_stats(self, start_timestep):
-        if self.remote_evaluators:
-            stats = ray.get([
-                e.stats.remote() for e in self.remote_evaluators])
-        else:
-            stats = self.local_evaluator.stats()
-            if not isinstance(stats, list):
-                stats = [stats]
-
-        mean_100ep_reward = 0.0
-        mean_100ep_length = 0.0
-        num_episodes = 0
-        explorations = []
-
-        if self.config["per_worker_exploration"]:
-            # Return stats from workers with the lowest 20% of exploration
-            test_stats = stats[-int(max(1, len(stats)*0.2)):]
-        else:
-            test_stats = stats
-
-        for s in test_stats:
-            mean_100ep_reward += s["mean_100ep_reward"] / len(test_stats)
-            mean_100ep_length += s["mean_100ep_length"] / len(test_stats)
-
-        for s in stats:
-            num_episodes += s["num_episodes"]
-            explorations.append(s["exploration"])
-
-        opt_stats = self.optimizer.stats()
-
-        result = TrainingResult(
-            episode_reward_mean=mean_100ep_reward,
-            episode_len_mean=mean_100ep_length,
-            episodes_total=num_episodes,
-            timesteps_this_iter=self.global_timestep - start_timestep,
+        result = collect_metrics(
+            self.local_evaluator, self.remote_evaluators)
+        result.copy(
             info=dict({
-                "min_exploration": min(explorations),
-                "max_exploration": max(explorations),
+                "min_exploration": min(exp_vals),
+                "max_exploration": max(exp_vals),
                 "num_target_updates": self.num_target_updates,
-            }, **opt_stats))
-
-        return result
+            }, **self.optimizer.stats()))
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
@@ -260,6 +262,6 @@ class DQNAgent(Agent):
         self.num_target_updates = extra_data[3]
         self.last_target_update_ts = extra_data[4]
 
-    def compute_action(self, observation):
-        return self.local_evaluator.dqn_graph.act(
-            self.local_evaluator.sess, np.array(observation)[None], 0.0)[0]
+    def compute_action(self, observation, state=[]):
+        return self.local_evaluator.policy.compute_single_action(
+            observation, state, is_training=False)

@@ -10,9 +10,9 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import AsyncOptimizer
 from ray.rllib.utils import FilterManager
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
+    collect_metrics
 from ray.rllib.a3c.common import get_policy_cls
-from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
 
@@ -107,31 +107,7 @@ class A3CAgent(Agent):
         self.optimizer.step()
         FilterManager.synchronize(
             self.local_evaluator.filters, self.remote_evaluators)
-        res = self._fetch_metrics_from_remote_evaluators()
-        return res
-
-    def _fetch_metrics_from_remote_evaluators(self):
-        episode_rewards = []
-        episode_lengths = []
-        metric_lists = [a.apply.remote(lambda ev: ev.sampler.get_metrics())
-                        for a in self.remote_evaluators]
-        for metrics in metric_lists:
-            for episode in ray.get(metrics):
-                episode_lengths.append(episode.episode_length)
-                episode_rewards.append(episode.episode_reward)
-        avg_reward = (
-            np.mean(episode_rewards) if episode_rewards else float('nan'))
-        avg_length = (
-            np.mean(episode_lengths) if episode_lengths else float('nan'))
-        timesteps = np.sum(episode_lengths) if episode_lengths else 0
-
-        result = TrainingResult(
-            episode_reward_mean=avg_reward,
-            episode_len_mean=avg_length,
-            timesteps_this_iter=timesteps,
-            info={})
-
-        return result
+        return collect_metrics(self.local_evaluator, self.remote_evaluators)
 
     def _stop(self):
         # workaround for https://github.com/ray-project/ray/issues/1516

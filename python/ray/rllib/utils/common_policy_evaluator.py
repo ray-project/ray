@@ -5,14 +5,47 @@ import tensorflow as tf
 
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers.policy_evaluator import PolicyEvaluator
+from ray.rllib.utils.atari_wrappers import wrap_deepmind
+from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
-from ray.rllib.utils.tf_policy import TFPolicy
+from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
 from ray.tune.registry import get_registry
+from ray.tune.result import TrainingResult
+
+
+def collect_metrics(local_evaluator, remote_evaluators):
+    episode_rewards = []
+    episode_lengths = []
+    metric_lists = ray.get(
+        [a.apply.remote(lambda ev: ev.sampler.get_metrics())
+         for a in remote_evaluators])
+    metric_lists.append(local_evaluator.sampler.get_metrics())
+    for metrics in metric_lists:
+        for episode in metrics:
+            episode_lengths.append(episode.episode_length)
+            episode_rewards.append(episode.episode_reward)
+    if episode_rewards:
+        min_reward = np.minimum(episode_rewards)
+        max_reward = np.maximum(episode_rewards)
+    else:
+        min_reward = -1
+        max_reward = -1
+    avg_reward = np.mean(episode_rewards)
+    avg_length = np.mean(episode_lengths)
+    timesteps = np.sum(episode_lengths)
+
+    return TrainingResult(
+        episode_reward_max=max_reward,
+        episode_reward_min=min_reward,
+        episode_reward_mean=avg_reward,
+        episode_len_mean=avg_length,
+        episodes_total=len(episode_lengths),
+        timesteps_this_iter=timesteps)
 
 
 class CommonPolicyEvaluator(PolicyEvaluator):
-    """Policy evaluator implementation that operates on a rllib.Policy.
+    """Policy evaluator implementation that operates on a rllib.PolicyLoss.
 
     TODO: vector env
     TODO: multi-agent
@@ -25,11 +58,20 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         return ray.remote(num_cpus=num_cpus, num_gpus=num_gpus)(cls)
 
     def __init__(
-            self, env_creator, policy_cls, tf_session_creator=None,
-            min_batch_steps=100, batch_mode="complete_episodes",
-            sample_async=False, compress_observations=False,
-            consumer_buffer_size=0, observation_filter="NoFilter",
-            registry=None, env_config=None, model_config=None,
+            self,
+            env_creator,
+            policy_cls,
+            tf_session_creator=None,
+            min_batch_steps=100,
+            batch_mode="complete_episodes",
+            preprocessor_pref="rllib",
+            sample_async=False,
+            compress_observations=False,
+            consumer_buffer_size=0,
+            observation_filter="NoFilter",
+            registry=None,
+            env_config=None,
+            model_config=None,
             policy_config=None):
         """Initialize a policy evaluator.
 
@@ -37,13 +79,15 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             env_creator (func): Function that returns a gym.Env given an
                 env config dict.
             policy_cls (class): A function that returns an
-                object implementing rllib.Policy or rllib.TFPolicy.
+                object implementing rllib.PolicyLoss or rllib.TFPolicyLoss.
             tf_session_creator (func): A function that returns a TF session.
-                This is optional and only useful with TFPolicy.
+                This is optional and only useful with TFPolicyLoss.
             min_batch_steps (int): The minimum number of env steps to include
                 in each sample batch returned from this evaluator.
             batch_mode (str): One of "complete_episodes", "truncate_episodes".
                 This determines whether episodes are cut during sampling.
+            preprocessor_pref (str): Whether to prefer RLlib preprocessors
+                ("rllib") or deepmind ("deepmind") when applicable.
             sample_async (bool): Whether to compute samples asynchronously in
                 the background, which improves throughput but can cause samples
                 to be slightly off-policy.
@@ -52,6 +96,13 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             consumer_buffer_size (int): If non-zero, buffers up to N sample
                 batches in-memory for use so that they can be retrieved
                 by multiple consumers. This only makes sense in multi-agent.
+            observation_filter (str): Name of observation filter to use.
+            registry (tune.Registry): Tune object registry. Pass in the value
+                from tune.registry.get_registry() if you're having trouble
+                resolving objects registered in tune.
+            env_config (dict): Config to pass to the env creator.
+            model_config (dict): Config to use when creating the policy model.
+            policy_config (dict): Config to pass to the policy.
         """
 
         registry = registry or get_registry()
@@ -64,20 +115,28 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.policy_cls = policy_cls
         self.min_batch_steps = min_batch_steps
         self.batch_mode = batch_mode
-        self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(env_config), model_config)
+        self.compress_observations = compress_observations
+
+        self.env = env_creator(env_config)
+        is_atari = hasattr(env.unwrapped, "ale")
+        if is_atari and "custom_preprocessor" not in model_config and \
+                preprocessor_pref == "deepmind":
+            self.env = wrap_deepmind(self.env, dim=model_config.get("dim", 80))
+        else:
+            self.env = ModelCatalog.get_preprocessor_as_wrapper(
+                registry, self.env, model_config)
 
         self.vectorized = hasattr(self.env, "vector_reset")
         self.policy_map = {}
 
-        if issubclass(policy_cls, TFPolicy):
+        if issubclass(policy_cls, TFPolicyLoss):
             with tf.Graph().as_default():
                 if tf_session_creator:
-                    sess = tf_session_creator()
+                    self.sess = tf_session_creator()
                 else:
-                    sess = tf.Session(config=tf.ConfigProto(
+                    self.sess = tf.Session(config=tf.ConfigProto(
                         gpu_options=tf.GPUOptions(allow_growth=True)))
-                with sess.as_default():
+                with self.sess.as_default():
                     policy = policy_cls(
                         registry, self.env.observation_space,
                         self.env.action_space, policy_config)
@@ -108,12 +167,6 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                     self.env, self.policy_map["default"], self.obs_filter,
                     min_batch_steps)
 
-        if compress_observations:
-            raise NotImplementedError("Sample compression not yet supported")
-
-        if consumer_buffer_size:
-            raise NotImplementedError("Sample buffering not yet supported")
-
     def sample(self, consumer_uuid=None):
         """Evaluate the current policies and return a batch of experiences.
 
@@ -125,13 +178,24 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             SampleBatch from evaluating the current policies.
         """
 
-        return self.policy_map["default"].postprocess_trajectory(
+        batch = self.policy_map["default"].postprocess_trajectory(
             self.sampler.get_data())
+
+        if self.compress_observations:
+            batch["obs"] = [pack(o) for o in batch["obs"]]
+            batch["new_obs"] = [pack(o) for o in batch["new_obs"]]
+
+        return batch
 
     def apply(self, func):
         """Apply the given function to this evaluator instance."""
 
         return func(self)
+
+    def foreach_policy(self, func):
+        """Apply the given function to each of this evaluator's policies."""
+
+        return [func(p) for p in self.policy_map.values()]
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
@@ -170,6 +234,11 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
     def apply_gradients(self, grads):
         return self.policy_map["default"].apply_gradients(grads)
+
+    def compute_apply(self, samples):
+        grad_fetch, apply_fetch = self.policy_map["default"].compute_apply(
+            samples)
+        return grad_fetch
 
     def save(self):
         filters = self.get_filters(flush_after=True)
