@@ -5,7 +5,7 @@ from __future__ import print_function
 import numpy as np
 
 import ray
-from ray.rllib.impala.models import ImpalaModel
+from ray.rllib.impala.shadow_model import ShadowModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import PolicyEvaluator
 from ray.rllib.utils.filter import NoFilter
@@ -20,23 +20,23 @@ class ImpalaEvaluator(PolicyEvaluator):
             registry, env_creator(config["env_config"]))
 
         # contains model, target_model
-        self.model = ImpalaModel(registry, self.env, config)
+        self.policy = ShadowModel(
+            registry, self.env.observation_space.shape, self.env.action_space, config)
+        self.config = config
 
+        self.obs_filter = get_filter(
+            config["observation_filter"], self.env.observation_space.shape)
+        self.rew_filter = get_filter(
+            config["reward_filter"], self.)
         self.sampler = SyncSampler(
-                        self.env, self.model.model, NoFilter(),
+                        self.env, self.model.model, self.obs_filter,
                         config["num_local_steps"], horizon=config["horizon"])
 
     def sample(self):
-        """Returns a batch of samples."""
-
         rollout = self.sampler.get_data()
-
-        # since each sample is one step, no discounting needs to be applied;
-        # this does not involve config["gamma"]
         samples = process_rollout(
-                    rollout, NoFilter(),
-                    gamma=1.0, use_gae=False)
-
+                    rollout, self.rew_filter, self.config["gamma"],
+                    self.config["lambda"], use_gae=False)
         return samples
 
     def compute_gradients(self, samples):

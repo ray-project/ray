@@ -14,15 +14,23 @@ DEFAULT_CONFIG = {
     # learning rate
     "lr": 0.0006,
     # If not None, clip gradients during optimization at this value
-    'grad_norm_clipping': 40,
+    'grad_norm_clipping': 40.0,
     # Baseline loss scaling
-    "baseline_weight": 0.5,
+    "vf_loss_coeff": 0.5,
     # Entropy regularizater
-    "entropy_weight": 0.01,
+    "entropy_coeff": -0.01,
     # Arguments to pass in to env creator
     "env_config": {},
+    # N-step v-trace learning
+    'n_step': 3,
     # MDP Discount factor
     "gamma": 0.99,
+    # importance weight truncation ruo
+    "avg_ruo": 10.0
+    # importance weight truncation c
+    "avg_c": 5.0
+    # scaling truction c
+    "lambda": 0.9,
     # Number of steps after which the rollout gets cut
     "horizon": None,
 
@@ -31,11 +39,17 @@ DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     "num_workers": 24,
 
+    # Which observation filter to apply to the observation
+    "observation_filter": "NoFilter",
+    # Which reward filter to apply to the reward
+    "reward_filter": "NoFilter",
+
     "optimizer": {
         # Whether to clip rewards
         "clip_rewards": True,
         # Size of batch sampled from replay buffer
         "train_batch_size": 32,
+        # add 'n_step' to 'optimizer'
     },
 
     # Number of steps taken per training iteration
@@ -50,10 +64,13 @@ class ImpalaAgent(Agent):
     def _init(self):
         self.local_evaluator = ImpalaEvaluator(
             self.registry, self.env_creator, self.config)
+
         self.remote_evaluators = [
             RemoteImpalaEvaluator.remote(
                 self.registry, self.env_creator, self.config)
             for _ in range(self.config["num_workers"])]
+
+        self.config["optimizer"]["min_batch_size"] = self.config["n_step"]
         self.optimizer = ImpalaOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)

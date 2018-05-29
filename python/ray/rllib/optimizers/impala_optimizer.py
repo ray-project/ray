@@ -1,6 +1,6 @@
-"""Implements Distributed Prioritized Experience Replay.
+"""Implements Impala: a Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures
 
-https://arxiv.org/abs/1803.00933"""
+https://arxiv.org/abs/1802.01561"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -45,7 +45,7 @@ class LearnerThread(threading.Thread):
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.daemon = True
-        self.weights_updated = False
+        self.weights_updated = 0
 
     def run(self):
         while True:
@@ -54,12 +54,13 @@ class LearnerThread(threading.Thread):
     def step(self):
         with self.queue_timer:
             ra, replay = self.inqueue.get()
+        
         if replay is not None:
             with self.grad_timer:
                 self.local_evaluator.compute_apply(replay)
+                self.weights_updated += 1
             self.outqueue.put(True)
         self.learner_queue_size.push(self.inqueue.qsize())
-        self.weights_updated = True
 
 
 class ImpalaOptimizer(PolicyOptimizer):
@@ -68,17 +69,15 @@ class ImpalaOptimizer(PolicyOptimizer):
     This class coordinates the data transfers between the learner thread
     and remote evaluators (Impala actors).
 
-    This optimizer requires that policy evaluators return an additional
-    "vtrace importance weight" array in the info return of compute_gradients(). This weight
-    term will be used for sample re-weighting."""
+    """
 
     def _init(
             self, train_batch_size=512, sample_batch_size=50,
-            max_weight_sync_delay=400,
-            clip_rewards=True, debug=False):
+            min_batch_size=3, clip_rewards=True, debug=False):
 
         self.debug = debug
         self.learning_started = False
+        self.min_batch_size = min_batch_size
         self.train_batch_size = train_batch_size
         self.sample_batch_size = sample_batch_size
         self.max_weight_sync_delay = max_weight_sync_delay
@@ -123,10 +122,11 @@ class ImpalaOptimizer(PolicyOptimizer):
 
         with self.timers["sample_processing"]:
             for ev, sample_batch in self.sample_tasks.completed():
-                sample_timesteps += self.sample_batch_size
+                sample_timesteps += self.sample_batch.count
 
+                # trajectory whose length < n_step can NOT provide v-trace estimation
                 with self.timers["enqueue"]:
-                    self.learner.inqueue.put((ev, samples))
+                    self.learner.inqueue.put((ev, sample_batch))
 
                 # Note that it's important to pull new weights once
                 # updated to avoid excessive correlation between actors
