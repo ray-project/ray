@@ -164,8 +164,8 @@ def get_or_create_head_node(config, no_restart, yes):
 
     monitor_str = "tail -f /tmp/raylogs/monitor-*"
     for s in init_commands:
-        if ("ray start" in s and "docker exec" in s
-                and "--autoscaling-config" in s):
+        if ("ray start" in s and "docker exec" in s and
+                "--autoscaling-config" in s):
             monitor_str = "docker exec {} /bin/sh -c {}".format(
                 config["docker"]["container_name"], quote(monitor_str))
     print("To monitor auto-scaling activity, you can run:\n\n"

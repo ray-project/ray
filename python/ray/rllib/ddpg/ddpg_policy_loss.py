@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from gym.spaces import Discrete
+from gym.spaces import Box
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
@@ -81,7 +81,7 @@ def _build_q_network(registry, inputs, action_inputs, config):
 
 class DDPGPolicyLoss(TFPolicyLoss):
     def __init__(self, observation_space, action_space, registry, config):
-        if isinstance(action_space, Discrete):
+        if not isinstance(action_space, Box):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DDPG.".format(
                     action_space))

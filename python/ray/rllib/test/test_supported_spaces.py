@@ -111,8 +111,7 @@ class ModelSupportedSpaces(unittest.TestCase):
         num_unexpected_errors = 0
         for (alg, a_name, o_name), stat in sorted(stats.items()):
             if stat not in ["ok", "unsupported"]:
-                if (alg, a_name, o_name) not in KNOWN_FAILURES:
-                    num_unexpected_errors += 1
+                num_unexpected_errors += 1
             print(
                 alg, "action_space", a_name, "obs_space", o_name,
                 "result", stat)
