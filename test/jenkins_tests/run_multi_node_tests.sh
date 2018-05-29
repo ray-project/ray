@@ -155,7 +155,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
-    --env CartPole-v- \
+    --env CartPole-v1 \
     --run A3C \
     --stop '{"training_iteration": 2}' \
     --config '{"num_workers": 2, "use_lstm": false, "use_pytorch": true}'
