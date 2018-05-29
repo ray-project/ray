@@ -190,8 +190,9 @@ class PPOEvaluator(PolicyEvaluator):
 
         while num_steps_so_far < self.config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
+            last_r = 0.0  # note: not needed since we don't truncate rollouts
             samples = process_rollout(
-                rollout, self.rew_filter, self.config["gamma"],
+                rollout, last_r, self.config["gamma"],
                 self.config["lambda"], use_gae=self.config["use_gae"])
             num_steps_so_far += samples.count
             all_samples.append(samples)
