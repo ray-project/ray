@@ -144,7 +144,6 @@ class DQNPolicyLoss(TFPolicyLoss):
             ("dones", self.done_mask),
             ("weights", self.importance_weights),
         ]
-
         self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyLoss.__init__(
             self, self.sess, self.cur_observations, self.output_actions,
