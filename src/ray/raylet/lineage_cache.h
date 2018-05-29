@@ -164,7 +164,7 @@ class LineageCache {
   /// TODO(swang): Pass in the policy (interface?).
   LineageCache(const ClientID &client_id,
                gcs::TableInterface<TaskID, protocol::Task> &task_storage,
-               gcs::PubsubInterface<TaskID> &task_pubsub);
+               gcs::PubsubInterface<TaskID> &task_pubsub, uint64_t max_lineage_size);
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
   /// These entries will not be written to the GCS until set to ready.
@@ -223,6 +223,11 @@ class LineageCache {
   /// The pubsub storage system for task information. This can be used to
   /// request notifications for the commit of a task entry.
   gcs::PubsubInterface<TaskID> &task_pubsub_;
+  /// The maximum size that a remote task's uncommitted lineage can get to. If
+  /// a remote task's uncommitted lineage exceeds this size, then a
+  /// notification will be requested from the pubsub storage system so that
+  /// the task and its lineage can be evicted from the stash.
+  uint64_t max_lineage_size_;
   /// The set of tasks that are in UNCOMMITTED_READY state. This is a cache of
   /// the tasks that may be flushable.
   // TODO(swang): As an optimization, we may also want to further distinguish

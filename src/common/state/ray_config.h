@@ -20,6 +20,8 @@ class RayConfig {
 
   int64_t get_timeout_milliseconds() const { return get_timeout_milliseconds_; }
 
+  uint64_t max_lineage_size() const { return max_lineage_size_; }
+
   int64_t worker_get_request_size() const { return worker_get_request_size_; }
 
   int64_t worker_fetch_request_size() const {
@@ -112,6 +114,7 @@ class RayConfig {
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
         worker_fetch_request_size_(10000),
+        max_lineage_size_(1000),
         actor_max_dummy_objects_(1000),
         num_connect_attempts_(50),
         connect_timeout_milliseconds_(100),
@@ -159,6 +162,11 @@ class RayConfig {
   int64_t get_timeout_milliseconds_;
   int64_t worker_get_request_size_;
   int64_t worker_fetch_request_size_;
+
+  /// This is used to bound the size of the Raylet's lineage cache. This is
+  /// the maximum uncommitted lineage size that any remote task in the cache
+  /// can have before eviction will be attempted.
+  uint64_t max_lineage_size_;
 
   /// This is a temporary constant used by actors to determine how many dummy
   /// objects to store.
