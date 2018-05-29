@@ -196,12 +196,12 @@ class LineageCache {
   /// includes the entry for the requested entry_id.
   Lineage GetUncommittedLineage(const TaskID &entry_id) const;
 
-  /// Asynchronously write any tasks that have been added since the last flush
-  /// to the GCS. When each write is acknowledged, its entry will be marked as
-  /// committed.
-  ///
-  /// \return Status.
-  Status Flush();
+  /// Asynchronously write any tasks that are in the UNCOMMITTED_READY state
+  /// and for which all parents have been committed to the GCS. These tasks
+  /// will be transitioned in this method to state COMMITTING. Once the write
+  /// is acknowledged, the task's state will be transitioned to state
+  /// COMMITTED.
+  void Flush();
 
   /// Handle the commit of a task entry in the GCS. This sets the task to
   /// COMMITTED and cleans up any ancestor tasks that are in the cache.
@@ -210,6 +210,11 @@ class LineageCache {
   void HandleEntryCommitted(const TaskID &task_id);
 
  private:
+  /// Try to flush a task that is in UNCOMMITTED_READY state. If the task has
+  /// parents that are not committed yet, then the child will be flushed once
+  /// the parents have been committed.
+  bool FlushTask(const TaskID &task_id);
+
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.
   ClientID client_id_;
@@ -225,6 +230,11 @@ class LineageCache {
   // UNCOMMITTED_READY, but that have dependencies that have not been committed
   // yet.
   std::unordered_set<TaskID> uncommitted_ready_tasks_;
+  /// A mapping from each task that hasn't been committed yet, to all dependent
+  /// children tasks that are in UNCOMMITTED_READY state. This is used when the
+  /// parent task is committed, for fast lookup of children that may now be
+  /// flushed.
+  std::unordered_map<TaskID, std::unordered_set<TaskID>> uncommitted_ready_children_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;
