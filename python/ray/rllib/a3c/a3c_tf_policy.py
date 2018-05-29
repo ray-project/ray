@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import gym
+from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
 
@@ -51,9 +52,9 @@ class A3CTFPolicyLoss(TFPolicyLoss):
         elif isinstance(action_space, gym.spaces.Discrete):
             self.ac = tf.placeholder(tf.int64, [None], name="ac")
         else:
-            raise NotImplementedError(
-                "action space" + str(type(action_space)) +
-                "currently not supported")
+            raise UnsupportedSpaceException(
+                "Action space {} is not supported for A3C.".format(
+                    action_space))
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
         self.r = tf.placeholder(tf.float32, [None], name="r")
 

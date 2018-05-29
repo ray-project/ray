@@ -47,14 +47,14 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 
 class DQNPolicyLoss(TFPolicyLoss):
     def __init__(self, observation_space, action_space, registry, config):
-        self.config = config
-        self.cur_epsilon = 1.0
-        num_actions = action_space.n
-
         if not isinstance(action_space, Discrete):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DQN.".format(
                     action_space))
+
+        self.config = config
+        self.cur_epsilon = 1.0
+        num_actions = action_space.n
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")

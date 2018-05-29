@@ -81,6 +81,11 @@ def _build_q_network(registry, inputs, action_inputs, config):
 
 class DDPGPolicyLoss(TFPolicyLoss):
     def __init__(self, observation_space, action_space, registry, config):
+        if isinstance(action_space, Discrete):
+            raise UnsupportedSpaceException(
+                "Action space {} is not supported for DDPG.".format(
+                    action_space))
+
         self.config = config
         self.cur_epsilon = 1.0
         dim_actions = action_space.shape[0]
@@ -90,11 +95,6 @@ class DDPGPolicyLoss(TFPolicyLoss):
             learning_rate=config["actor_lr"])
         self.critic_optimizer = tf.train.AdamOptimizer(
             learning_rate=config["critic_lr"])
-
-        if isinstance(action_space, Discrete):
-            raise UnsupportedSpaceException(
-                "Action space {} is not supported for DDPG.".format(
-                    action_space))
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
