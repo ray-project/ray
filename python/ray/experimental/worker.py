@@ -33,8 +33,7 @@ def get(object_ids, worker=None):
             ray.get(list(object_ids), worker)
     elif isinstance(object_ids, dict):
         to_get = [
-            t for t in object_ids.items()
-            if isinstance(t[1], ray.ObjectID)
+            t for t in object_ids.items() if isinstance(t[1], ray.ObjectID)
         ]
         keys, oids = [list(t) for t in zip(*to_get)]
         values = ray.get(oids) if worker is None else ray.get(oids, worker)
