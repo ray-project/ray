@@ -36,7 +36,8 @@ class TFPolicyLoss(PolicyLoss):
             loss_inputs (list): a (name, placeholder) tuple for each loss
                 input argument. Each placeholder name must correspond to a
                 SampleBatch column key returned by postprocess_trajectory().
-            is_training (Tensor): whether we are training the policy.
+            is_training (Tensor): input placeholder for whether we are
+                currently training the policy.
             state_inputs (list): list of RNN state output Tensors.
             state_outputs (list): list of initial state values.
         """

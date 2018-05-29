@@ -27,8 +27,10 @@ class A3CTFPolicyLoss(TFPolicyLoss):
         self.sess = tf.get_default_session()
 
         TFPolicyLoss.__init__(
-            self, self.sess, self.x, self.action_dist.sample(), self.loss,
-            self.loss_in, self.is_training, self.state_in, self.state_out)
+            self, self.sess, obs_input=self.x,
+            action_sampler=self.action_dist.sample(), loss=self.loss,
+            loss_inputs=self.loss_in, is_training=self.is_training,
+            state_inputs=self.state_in, state_outputs=self.state_out)
 
         # TODO(ekl) move session creation and init to CommonPolicyEvaluator
         self.sess.run(tf.global_variables_initializer())

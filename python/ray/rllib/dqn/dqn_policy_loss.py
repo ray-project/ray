@@ -146,8 +146,9 @@ class DQNPolicyLoss(TFPolicyLoss):
         ]
         self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyLoss.__init__(
-            self, self.sess, self.cur_observations, self.output_actions,
-            self.loss, self.loss_inputs, self.is_training)
+            self, self.sess, obs_input=self.cur_observations,
+            action_sampler=self.output_actions, loss=self.loss,
+            loss_inputs=self.loss_inputs, is_training=self.is_training)
         self.sess.run(tf.global_variables_initializer())
 
     def optimizer(self):

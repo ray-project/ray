@@ -35,8 +35,9 @@ class PGPolicyLoss(TFPolicyLoss):
         ]
         self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyLoss.__init__(
-            self, self.sess, self.x, self.dist.sample(), self.loss,
-            self.loss_in, self.is_training)
+            self, self.sess, obs_input=self.x,
+            action_sampler=self.dist.sample(), loss=self.loss,
+            loss_inputs=self.loss_in, is_training=self.is_training)
         self.sess.run(tf.global_variables_initializer())
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
