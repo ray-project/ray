@@ -93,8 +93,9 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   auto iter = unfulfilled_push_tasks_.find(object_id);
   if (iter != unfulfilled_push_tasks_.end()) {
     for (auto &pair : iter->second) {
+      auto &client_id = pair.first;
       main_service_->post(
-          [this, object_id, pair]() { RAY_CHECK_OK(Push(object_id, pair.first)); });
+          [this, object_id, client_id]() { RAY_CHECK_OK(Push(object_id, client_id)); });
       // When push timeout is set to -1, there will be an empty timer in pair.second.
       if (pair.second != nullptr) {
         pair.second->cancel();
@@ -210,8 +211,8 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
                                           const ClientID &client_id) {
-  RAY_LOG(DEBUG) << "Invalid Push request ObjectID: " << object_id
-                 << " after waiting for " << config_.push_timeout_ms << " ms.";
+  RAY_LOG(WARNING) << "Invalid Push request ObjectID: " << object_id
+                   << " after waiting for " << config_.push_timeout_ms << " ms.";
   auto iter = unfulfilled_push_tasks_.find(object_id);
   if (iter != unfulfilled_push_tasks_.end()) {
     iter->second.erase(client_id);
@@ -228,11 +229,11 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
     if (clients.count(client_id) == 0) {
       // If config_.push_timeout_ms < 0, we give an empty timer
       // and the task will be kept infinitely.
-      auto timer = std::shared_ptr<boost::asio::deadline_timer>();
+      auto timer = std::unique_ptr<boost::asio::deadline_timer>();
       if (config_.push_timeout_ms == 0) {
         // The Push request fails directly when config_.push_timeout_ms == 0.
-        RAY_LOG(DEBUG) << "Invalid Push request ObjectID " << object_id
-                       << " due to direct timeout setting. ";
+        RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
+                         << " due to direct timeout setting. ";
       } else if (config_.push_timeout_ms > 0) {
         // Put the task into a queue and wait for the notification of Object added.
         timer.reset(new boost::asio::deadline_timer(*main_service_));
@@ -248,7 +249,7 @@ ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &clien
             });
       }
       if (config_.push_timeout_ms != 0) {
-        clients.emplace(client_id, timer);
+        clients.emplace(client_id, std::move(timer));
       }
     }
     return ray::Status::OK();

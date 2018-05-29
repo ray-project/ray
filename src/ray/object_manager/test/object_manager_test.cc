@@ -228,8 +228,8 @@ class TestObjectManagerCommands : public TestObjectManager {
   ObjectID created_object_id3;
   ObjectID created_object_id4;
 
-  std::shared_ptr<boost::asio::deadline_timer> timer1;
-  std::shared_ptr<boost::asio::deadline_timer> timer2;
+  std::unique_ptr<boost::asio::deadline_timer> timer1;
+  std::unique_ptr<boost::asio::deadline_timer> timer2;
 
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();

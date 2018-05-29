@@ -200,7 +200,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// The timer is for removing a push task due to unsatisfied local object.
   std::unordered_map<
       ObjectID,
-      std::unordered_map<ClientID, std::shared_ptr<boost::asio::deadline_timer>>>
+      std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_tasks_;
 
   /// Handle starting, running, and stopping asio io_service.
