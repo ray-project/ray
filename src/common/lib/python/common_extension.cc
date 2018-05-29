@@ -706,8 +706,10 @@ static PyObject *PyTask_execution_dependencies_string(PyTask *self) {
 static PyObject *PyTask_to_serialized_flatbuf(PyTask *self) {
   RAY_CHECK(use_raylet(self));
 
-  const std::vector<ObjectID> execution_dependencies(*self->execution_dependencies);
-  auto const execution_spec = ray::raylet::TaskExecutionSpecification(std::move(execution_dependencies));
+  const std::vector<ObjectID> execution_dependencies(
+      *self->execution_dependencies);
+  auto const execution_spec = ray::raylet::TaskExecutionSpecification(
+      std::move(execution_dependencies));
   auto const task = ray::raylet::Task(execution_spec, *self->task_spec);
 
   flatbuffers::FlatBufferBuilder fbb;
