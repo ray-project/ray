@@ -200,10 +200,10 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         return func(self)
 
-    def foreach_policy(self, func):
-        """Apply the given function to each of this evaluator's policies."""
+    def for_policy(self, func):
+        """Apply the given function to this evaluator's default policy."""
 
-        return [func(p) for p in self.policy_map.values()]
+        return func(self.policy_map["default"])
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.

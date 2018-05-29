@@ -198,7 +198,7 @@ class DQNPolicyLoss(TFPolicyLoss):
         # Prioritize on the worker side
         if self.config["worker_side_prioritization"]:
             td_errors = self.compute_td_error(
-                self.sess, batch["obs"], batch["actions"], batch["rewards"],
+                batch["obs"], batch["actions"], batch["rewards"],
                 batch["new_obs"], batch["dones"], batch["weights"])
             new_priorities = (
                 np.abs(td_errors) + self.config["prioritized_replay_eps"])
