@@ -280,26 +280,28 @@ TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
   ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
 }
 
-TEST_F(LineageCacheTest, TestForwardTaskRoundTrip) {
+TEST_F(LineageCacheTest, TestForwardTasksRoundTrip) {
   // Insert a chain of dependent tasks.
+  uint64_t lineage_size = max_lineage_size_ + 1;
   std::vector<Task> tasks;
   auto return_values1 =
-      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+      InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
 
-  // Simulate removing the task and forwarding it to another node.
-  auto forwarded_task = tasks[1];
-  auto task_id_to_remove = forwarded_task.GetTaskSpecification().TaskId();
-  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id_to_remove);
-  lineage_cache_.RemoveWaitingTask(task_id_to_remove);
-
-  // Simulate receiving the task again.
-  flatbuffers::FlatBufferBuilder fbb;
-  auto uncommitted_lineage_message =
-      uncommitted_lineage.ToFlatbuffer(fbb, task_id_to_remove);
-  fbb.Finish(uncommitted_lineage_message);
-  uncommitted_lineage = Lineage(
-      *flatbuffers::GetRoot<protocol::ForwardTaskRequest>(fbb.GetBufferPointer()));
-  lineage_cache_.AddWaitingTask(forwarded_task, uncommitted_lineage);
+  // Simulate removing each task, forwarding it to another node, then
+  // receiving the task back again.
+  for (auto it = tasks.begin(); it != tasks.end(); it++) {
+    const auto task_id = it->GetTaskSpecification().TaskId();
+    // Simulate removing the task and forwarding it to another node.
+    auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(task_id);
+    lineage_cache_.RemoveWaitingTask(task_id);
+    // Simulate receiving the task again. Make sure we can add the task back.
+    flatbuffers::FlatBufferBuilder fbb;
+    auto uncommitted_lineage_message = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
+    fbb.Finish(uncommitted_lineage_message);
+    uncommitted_lineage = Lineage(
+        *flatbuffers::GetRoot<protocol::ForwardTaskRequest>(fbb.GetBufferPointer()));
+    lineage_cache_.AddWaitingTask(*it, uncommitted_lineage);
+  }
 }
 
 TEST_F(LineageCacheTest, TestForwardTask) {
@@ -346,10 +348,10 @@ TEST_F(LineageCacheTest, TestForwardTask) {
 
 TEST_F(LineageCacheTest, TestEviction) {
   // Insert a chain of dependent tasks.
+  uint64_t lineage_size = max_lineage_size_ + 1;
   size_t num_tasks_flushed = 0;
   std::vector<Task> tasks;
-  InsertTaskChain(lineage_cache_, tasks, max_lineage_size_ + 1, std::vector<ObjectID>(),
-                  1);
+  InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
 
   // Simulate forwarding the chain of tasks to a remote node.
   for (const auto &task : tasks) {
@@ -361,7 +363,7 @@ TEST_F(LineageCacheTest, TestEviction) {
   // uncommitted lineage.
   const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
   auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
-  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), max_lineage_size_ + 1);
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
   // Simulate executing the first task on a remote node and adding it to the
   // GCS.
@@ -375,11 +377,61 @@ TEST_F(LineageCacheTest, TestEviction) {
   CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
   // Check that the last task in the chain still has all tasks in its
   // uncommitted lineage.
-  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), max_lineage_size_ + 1);
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
 
   // Simulate executing the rest of the tasks on a remote node and adding them
   // to the GCS.
   for (; it != tasks.end(); it++) {
+    RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
+    // Check that the remote task is flushed.
+    num_tasks_flushed++;
+    mock_gcs_.Flush();
+    CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  }
+  // All tasks have now been flushed. Check that enough lineage has been
+  // evicted that the uncommitted lineage is now less than the maximum size.
+  uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
+}
+
+TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
+  // Insert a chain of dependent tasks that is more than twice as long as the
+  // maximum lineage size. This will ensure that we request notifications for
+  // at least 2 remote tasks.
+  uint64_t lineage_size = (2 * max_lineage_size_) + 1;
+  size_t num_tasks_flushed = 0;
+  std::vector<Task> tasks;
+  InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
+
+  // Simulate forwarding the chain of tasks to a remote node.
+  for (const auto &task : tasks) {
+    auto task_id = task.GetTaskSpecification().TaskId();
+    lineage_cache_.RemoveWaitingTask(task_id);
+  }
+
+  // Check that the last task in the chain still has all tasks in its
+  // uncommitted lineage.
+  const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
+
+  // Simulate executing the tasks at the remote node and receiving the
+  // notifications from the GCS in reverse order of execution.
+  auto task_data = std::make_shared<protocol::TaskT>();
+  auto it = tasks.rbegin();
+  RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
+  it++;
+  // Check that the remote task is flushed.
+  num_tasks_flushed++;
+  mock_gcs_.Flush();
+  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  // Check that the last task in the chain still has all tasks in its
+  // uncommitted lineage.
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), lineage_size);
+
+  // Simulate executing the rest of the tasks on a remote node and receiving
+  // the notifications from the GCS in reverse order of execution.
+  for (; it != tasks.rend(); it++) {
     RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
     // Check that the remote task is flushed.
     num_tasks_flushed++;
