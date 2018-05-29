@@ -5,12 +5,13 @@ Aurelia Guy
 Benjamin Recht 
 '''
 
-# FIXME(ev) make reward reporting structure compliant with RLLIB
+# FIXME(ev) implement reward normalization
 # FIXME(ev) make the shift part actually work
 # FIXME(ev) rewrite config in normal RLlib style
 # FIXME(ev) test this code on a few examples
 # FIXME(ev) implement both v2 and v1
 # FIXME(ev) import Linear Models in a way compliant with RLlib
+# FIXME(ev) doesn't work for pendulum yet
 
 import parser
 import time
@@ -39,7 +40,7 @@ DEFAULT_CONFIG = dict(
     policy_params=None,
     num_workers=2,
     num_deltas=20, #320
-    deltas_used=20, #320
+    deltas_used=10, #320
     delta_std=0.02,
     logdir=None,
     rollout_length=200,
@@ -180,7 +181,7 @@ class Worker(object):
 
                 rollout_rewards.append([pos_reward, neg_reward])
                             
-        return {'deltas_idx': deltas_idx, 'rollout_rewards': rollout_rewards, "steps" : steps}
+        return {'deltas_idx': deltas_idx, 'rollout_rewards': rollout_rewards, "steps": steps}
 
 
     def get_weights(self):
@@ -245,6 +246,7 @@ class ARSAgent(agent.Agent):
         self.optimizer = optimizers.SGD(self.w_policy, self.config["step_size"])
         print("Initialization of ARS complete.")
 
+    # FIXME(ev) should return the rewards and some other statistics
     def aggregate_rollouts(self, num_rollouts = None, evaluate = False):
         """ 
         Aggregate update step from rollouts generated in parallel.
@@ -267,30 +269,36 @@ class ARSAgent(agent.Agent):
                                                  shift = self.shift,
                                                  evaluate=evaluate) for worker in self.workers]
 
-        # FIXME(ev) why would you do this? Struggling to make sense of this
+        # handle the remainder of num_delta/num_workers
         rollout_ids_two = [worker.do_rollouts.remote(policy_id,
                                                  num_rollouts = 1,
                                                  shift = self.shift,
-                                                 evaluate=evaluate) for worker in self.workers[:(num_deltas % self.num_workers)]]
+                                                 evaluate=evaluate)
+                           for worker in self.workers[:(num_deltas % self.num_workers)]]
 
         # gather results 
         results_one = ray.get(rollout_ids_one)
         results_two = ray.get(rollout_ids_two)
 
-        rollout_rewards, deltas_idx = [], [] 
+        rollout_rewards, deltas_idx, steps = [], [], []
 
         for result in results_one:
             if not evaluate:
                 self.timesteps += result["steps"]
             deltas_idx += result['deltas_idx']
             rollout_rewards += result['rollout_rewards']
+            steps += [result['steps']]
 
         for result in results_two:
             if not evaluate:
                 self.timesteps += result["steps"]
             deltas_idx += result['deltas_idx']
             rollout_rewards += result['rollout_rewards']
+            steps += [result['steps']]
 
+        info_dict = {'deltas_idx': deltas_idx,
+                     'rollout_rewards': rollout_rewards,
+                     'steps': steps}
         deltas_idx = np.array(deltas_idx)
         rollout_rewards = np.array(rollout_rewards, dtype = np.float64)
         
@@ -307,10 +315,6 @@ class ARSAgent(agent.Agent):
         if self.deltas_used > self.num_deltas:
             self.deltas_used = self.num_deltas
 
-        #FIXME(ev) what is this supposed to be doing?
-        # max_rewards is the bigger of each of the two delta pairs
-        # this is trying to keep things about the xth percentile
-        # ohhh, so evaluate the indices for which this
         idx = np.arange(max_rewards.size)[max_rewards >= np.percentile(max_rewards, 100*(1 - (self.deltas_used / self.num_deltas)))]
         deltas_idx = deltas_idx[idx]
         rollout_rewards = rollout_rewards[idx,:]
@@ -327,7 +331,7 @@ class ARSAgent(agent.Agent):
         g_hat /= deltas_idx.size
         t2 = time.time()
         print('time to aggregate rollouts', t2 - t1)
-        return g_hat
+        return g_hat, info_dict
         
 
     def train_step(self):
@@ -335,23 +339,24 @@ class ARSAgent(agent.Agent):
         Perform one update step of the policy weights.
         """
         
-        g_hat = self.aggregate_rollouts()                    
+        g_hat, info_dict = self.aggregate_rollouts()
         print("Euclidean norm of update step:", np.linalg.norm(g_hat))
         self.w_policy -= self.optimizer._compute_step(g_hat).reshape(self.w_policy.shape)
-        return
+        return g_hat ,info_dict
 
     def _train(self):
 
 
+        # perform the training
         t1 = time.time()
-        self.train_step()
+        g_hat, info_dict = self.train_step()
         t2 = time.time()
         print('total time of one step', t2 - t1)
 
         # record statistics every 10 iterations
 
-        rewards = self.aggregate_rollouts(num_rollouts = 100, evaluate = True)
-        #w = ray.get(self.workers[0].get_weights.remote())
+        rewards = self.aggregate_rollouts(num_rollouts=10, evaluate = True)
+        w = ray.get(self.workers[0].get_weights.remote())
         #np.savez(self.logdir + "/lin_policy_plus", w)
 
         # print(sorted(self.params.items()))
@@ -364,46 +369,19 @@ class ARSAgent(agent.Agent):
         # logz.log_tabular("timesteps", self.timesteps)
         # logz.dump_tabular()
 
-        # FIXME(ev) make this compliant with the rest or RLlib
         step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewMean", np.mean(rewards))
-        tlogger.record_tabular("EvalEpRewStd", np.std(rewards))
-        # tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
-        #
-        # tlogger.record_tabular("EpRewMean", noisy_returns.mean())
-        # tlogger.record_tabular("EpRewStd", noisy_returns.std())
-        # tlogger.record_tabular("EpLenMean", noisy_lengths.mean())
-        #
-        # tlogger.record_tabular("Norm", float(np.square(theta).sum()))
-        # tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
-        # tlogger.record_tabular("UpdateRatio", float(update_ratio))
-        #
-        # tlogger.record_tabular("EpisodesThisIter", noisy_lengths.size)
-        # tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
-        # tlogger.record_tabular("TimestepsThisIter", noisy_lengths.sum())
-        # tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
-        #
-        # tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
-        # tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
+        tlogger.record_tabular("AverageReward", np.mean(rewards))
+        tlogger.record_tabular("StdRewards", np.std(rewards))
+        tlogger.record_tabular("WeightNorm", float(np.square(w).sum()))
+        tlogger.record_tabular("GradNorm", float(np.square(g_hat).sum()))
+        tlogger.record_tabular("MaxRewardRollout", np.max(rewards))
+        tlogger.record_tabular("MinRewardRollout", np.min(rewards))
         tlogger.dump_tabular()
-
-        info = {
-            "weights_norm": 0,#np.square(theta).sum(),
-            "grad_norm": 0,#np.square(g).sum(),
-            "update_ratio": 0,#update_ratio,
-            "episodes_this_iter": 0,#noisy_lengths.size,
-            "episodes_so_far": 0,#self.episodes_so_far,
-            "timesteps_this_iter": 0,#noisy_lengths.sum(),
-            "timesteps_so_far": 0,#self.timesteps_so_far,
-            "time_elapsed_this_iter": 0,#step_tend - step_tstart,
-            "time_elapsed": 0,#step_tend - self.tstart
-        }
 
         result = ray.tune.result.TrainingResult(
             episode_reward_mean=np.mean(rewards),#eval_returns.mean(),
             episode_len_mean=100,#eval_lengths.mean(),
-            timesteps_this_iter=100,#noisy_lengths.sum(),
-            info=info)
+            timesteps_this_iter=np.sum(info_dict['steps']))
 
         return result
 
