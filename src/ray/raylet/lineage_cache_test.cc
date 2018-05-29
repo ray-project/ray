@@ -344,6 +344,54 @@ TEST_F(LineageCacheTest, TestForwardTask) {
   ASSERT_EQ(mock_gcs_.SubscribedTasks().size(), 0);
 }
 
+TEST_F(LineageCacheTest, TestEviction) {
+  // Insert a chain of dependent tasks.
+  size_t num_tasks_flushed = 0;
+  std::vector<Task> tasks;
+  InsertTaskChain(lineage_cache_, tasks, max_lineage_size_ + 1, std::vector<ObjectID>(),
+                  1);
+
+  // Simulate forwarding the chain of tasks to a remote node.
+  for (const auto &task : tasks) {
+    auto task_id = task.GetTaskSpecification().TaskId();
+    lineage_cache_.RemoveWaitingTask(task_id);
+  }
+
+  // Check that the last task in the chain still has all tasks in its
+  // uncommitted lineage.
+  const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
+  auto uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), max_lineage_size_ + 1);
+
+  // Simulate executing the first task on a remote node and adding it to the
+  // GCS.
+  auto task_data = std::make_shared<protocol::TaskT>();
+  auto it = tasks.begin();
+  RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
+  it++;
+  // Check that the remote task is flushed.
+  num_tasks_flushed++;
+  mock_gcs_.Flush();
+  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  // Check that the last task in the chain still has all tasks in its
+  // uncommitted lineage.
+  ASSERT_EQ(uncommitted_lineage.GetEntries().size(), max_lineage_size_ + 1);
+
+  // Simulate executing the rest of the tasks on a remote node and adding them
+  // to the GCS.
+  for (; it != tasks.end(); it++) {
+    RAY_CHECK_OK(mock_gcs_.RemoteAdd(it->GetTaskSpecification().TaskId(), task_data));
+    // Check that the remote task is flushed.
+    num_tasks_flushed++;
+    mock_gcs_.Flush();
+    CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  }
+  // All tasks have now been flushed. Check that enough lineage has been
+  // evicted that the uncommitted lineage is now less than the maximum size.
+  uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
+  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
+}
+
 }  // namespace raylet
 
 }  // namespace ray
