@@ -2,15 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-import ray
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import LocalSyncOptimizer
 from ray.rllib.pg.pg_policy_loss import PGPolicyLoss
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
-from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
 
@@ -55,7 +51,7 @@ class PGAgent(Agent):
             evaluator_args=dict(
                 env_creator=self.env_creator,
                 policy_cls=PGPolicyLoss,
-                min_batch_steps=self.config["batch_size"],
+                batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes",
                 registry=self.registry,
                 model_config=self.config["model"],
@@ -66,7 +62,8 @@ class PGAgent(Agent):
 
     def _train(self):
         self.optimizer.step()
-        return collect_metrics(self.local_evaluators, self.remote_evaluators)
+        return collect_metrics(
+            self.optimizer.local_evaluator, self.optimizer.remote_evaluators)
 
     def compute_action(self, observation, state=[]):
         return self.local_evaluator.policy.compute_single_action(

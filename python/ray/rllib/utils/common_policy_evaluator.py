@@ -63,8 +63,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             env_creator,
             policy_cls,
             tf_session_creator=None,
-            min_batch_steps=100,
-            batch_mode="complete_episodes",
+            batch_steps=100,
+            batch_mode="truncate_episodes",
             preprocessor_pref="rllib",
             sample_async=False,
             compress_observations=False,
@@ -83,10 +83,15 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 object implementing rllib.PolicyLoss or rllib.TFPolicyLoss.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicyLoss.
-            min_batch_steps (int): The minimum number of env steps to include
+            batch_steps (int): The target number of env transitions to include
                 in each sample batch returned from this evaluator.
-            batch_mode (str): One of "complete_episodes", "truncate_episodes".
-                This determines whether episodes are cut during sampling.
+            batch_mode (str): One of the following choices:
+                complete_episodes: each batch will be at least batch_steps
+                    in size, and will include one or more complete episodes.
+                truncate_episodes: each batch will be around batch_steps
+                    in size, and include transitions from one episode only.
+                pack_episodes: each batch will be exactly batch_steps in
+                    size, and may include transitions from multiple episodes.
             preprocessor_pref (str): Whether to prefer RLlib preprocessors
                 ("rllib") or deepmind ("deepmind") when applicable.
             sample_async (bool): Whether to compute samples asynchronously in
@@ -111,10 +116,11 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         policy_config = policy_config or {}
         model_config = model_config or {}
 
-        assert batch_mode in ["complete_episodes", "truncate_episodes"]
+        assert batch_mode in [
+            "complete_episodes", "truncate_episodes", "pack_episodes"]
         self.env_creator = env_creator
         self.policy_cls = policy_cls
-        self.min_batch_steps = min_batch_steps
+        self.batch_steps = batch_steps
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
 
@@ -156,17 +162,18 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         if self.vectorized:
             raise NotImplementedError("Vector envs not yet supported")
         else:
-            if batch_mode != "truncate_episodes":
+            if batch_mode not in ["pack_episodes", "truncate_episodes"]:
                 raise NotImplementedError("Batch mode not yet supported")
+            pack = batch_mode == "pack_episodes"
             if sample_async:
                 self.sampler = AsyncSampler(
                     self.env, self.policy_map["default"], self.obs_filter,
-                    min_batch_steps)
+                    batch_steps, pack=pack)
                 self.sampler.start()
             else:
                 self.sampler = SyncSampler(
                     self.env, self.policy_map["default"], self.obs_filter,
-                    min_batch_steps)
+                    batch_steps, pack=pack)
 
     def sample(self, consumer_uuid=None):
         """Evaluate the current policies and return a batch of experiences.

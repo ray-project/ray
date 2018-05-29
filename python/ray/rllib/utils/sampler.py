@@ -23,7 +23,9 @@ class SyncSampler(object):
     thread."""
     _async = False
 
-    def __init__(self, env, policy, obs_filter, num_local_steps, horizon=None):
+    def __init__(
+            self, env, policy, obs_filter, num_local_steps, horizon=None,
+            pack=False):
         self.num_local_steps = num_local_steps
         self.horizon = horizon
         self.env = env
@@ -31,7 +33,7 @@ class SyncSampler(object):
         self._obs_filter = obs_filter
         self.rollout_provider = _env_runner(self.env, self.policy,
                                             self.num_local_steps, self.horizon,
-                                            self._obs_filter)
+                                            self._obs_filter, pack)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -59,7 +61,9 @@ class AsyncSampler(threading.Thread):
     accumulate and the gradient can be calculated on up to 5 batches."""
     _async = True
 
-    def __init__(self, env, policy, obs_filter, num_local_steps, horizon=None):
+    def __init__(
+            self, env, policy, obs_filter, num_local_steps, horizon=None,
+            pack=False):
         assert getattr(
             obs_filter, "is_concurrent",
             False), ("Observation Filter must support concurrent updates.")
@@ -73,6 +77,7 @@ class AsyncSampler(threading.Thread):
         self._obs_filter = obs_filter
         self.started = False
         self.daemon = True
+        self.pack = pack
 
     def run(self):
         self.started = True
@@ -85,7 +90,7 @@ class AsyncSampler(threading.Thread):
     def _run(self):
         rollout_provider = _env_runner(self.env, self.policy,
                                        self.num_local_steps, self.horizon,
-                                       self._obs_filter)
+                                       self._obs_filter, self.pack)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -126,7 +131,7 @@ class AsyncSampler(threading.Thread):
         return completed
 
 
-def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
+def _env_runner(env, policy, num_local_steps, horizon, obs_filter, pack):
     """This implements the logic of the thread runner.
 
     It continually runs the policy, and as long as the rollout exceeds a
@@ -140,6 +145,8 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
             to be included in `SampleBatch`
         num_local_steps: Number of steps before `SampleBatch` is yielded.
         obs_filter: Filter used to process observations.
+        pack: Whether to pack multiple episodes into each batch. This
+            guarantees batches will be exactly `num_local_steps` in size.
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
@@ -203,7 +210,8 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                     rollout_number += 1
                     length = 0
                     rewards = 0
-                    break
+                    if not pack:
+                        break
 
         # Once we have enough experience, yield it, and have the ThreadRunner
         # place it on a queue.

@@ -106,7 +106,6 @@ class TFPolicyLoss(PolicyLoss):
         return fetches[1]
 
     def compute_apply(self, postprocessed_batch):
-        assert len(gradients) == len(self._grads), (gradients, self._grads)
         feed_dict = self.extra_compute_grad_feed_dict()
         feed_dict.update(self.extra_apply_grad_feed_dict())
         feed_dict.update(self._get_loss_inputs_dict(postprocessed_batch))

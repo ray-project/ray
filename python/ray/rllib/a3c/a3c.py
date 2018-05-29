@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import pickle
 import os
 
@@ -86,14 +85,14 @@ class A3CAgent(Agent):
             num_gpus=1 if self.config["use_gpu_for_workers"] else 0)
         self.local_evaluator = CommonPolicyEvaluator(
             self.env_creator, self.policy_cls,
-            min_batch_steps=self.config["batch_size"],
+            batch_steps=self.config["batch_size"],
             batch_mode="truncate_episodes",
             registry=self.registry, env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config)
         self.remote_evaluators = [
             remote_cls.remote(
                 self.env_creator, self.policy_cls,
-                min_batch_steps=self.config["batch_size"],
+                batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes", sample_async=True,
                 registry=self.registry, env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config)

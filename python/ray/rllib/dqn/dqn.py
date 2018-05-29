@@ -5,11 +5,11 @@ from __future__ import print_function
 import pickle
 import os
 
-import numpy as np
 import tensorflow as tf
 
 import ray
 from ray.rllib import optimizers
+from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.dqn.dqn_policy_loss import DQNPolicyLoss
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
@@ -137,9 +137,9 @@ class DQNAgent(Agent):
         adjusted_batch_size = (
             self.config["sample_batch_size"] + self.config["n_step"] - 1)
         self.local_evaluator = CommonPolicyEvaluator(
-            env_creator, DQNPolicyLoss,
-            min_batch_steps=adjusted_batch_size,
-            batch_mode="truncate_episodes", preprocessor_pref="deepmind",
+            self.env_creator, DQNPolicyLoss,
+            batch_steps=adjusted_batch_size,
+            batch_mode="pack_episodes", preprocessor_pref="deepmind",
             compress_observations=True,
             registry=self.registry, env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config)
@@ -148,15 +148,15 @@ class DQNAgent(Agent):
             num_gpus=self.config["num_gpus_per_worker"])
         self.remote_evaluators = [
             remote_cls.remote(
-                env_creator, DQNPolicyLoss,
-                min_batch_steps=adjusted_batch_size,
-                batch_mode="truncate_episodes", preprocessor_pref="deepmind",
+                self.env_creator, DQNPolicyLoss,
+                batch_steps=adjusted_batch_size,
+                batch_mode="pack_episodes", preprocessor_pref="deepmind",
                 compress_observations=True,
                 registry=self.registry, env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config)
             for _ in range(self.config["num_workers"])]
 
-        self.exploration0 = self._make_exploration_schedule(i)
+        self.exploration0 = self._make_exploration_schedule(0)
         self.explorations = [
             self._make_exploration_schedule(i)
             for i in range(self.config["num_workers"])]
@@ -169,10 +169,11 @@ class DQNAgent(Agent):
             self.config["optimizer_config"], self.local_evaluator,
             self.remote_evaluators)
 
-        self.saver = tf.train.Saver(max_to_keep=None)
+        with self.local_evaluator.sess.graph.as_default():
+            self.saver = tf.train.Saver(max_to_keep=None)
         self.last_target_update_ts = 0
         self.num_target_updates = 0
-    
+
     def _make_exploration_schedule(self, worker_index):
         # Use either a different `eps` per worker, or a linear schedule.
         if self.config["per_worker_exploration"]:
@@ -205,14 +206,12 @@ class DQNAgent(Agent):
 
         while (self.global_timestep - start_timestep <
                self.config["timesteps_per_iteration"]):
-
             self.optimizer.step()
             self.update_target_if_needed()
 
+        exp_vals = [self.exploration0.value(self.global_timestep)]
         self.local_evaluator.foreach_policy(
-            lambda p: p.set_epsilon(
-                self.exploration0.value(self.global_timestep)))
-        exp_vals = []
+            lambda p: p.set_epsilon(exp_vals[0]))
         for i, e in enumerate(self.remote_evaluators):
             exp_val = self.exploration(i).value(self.global_timestep)
             e.foreach_policy(lambda p: p.set_epsilon(exp_val))
@@ -220,7 +219,7 @@ class DQNAgent(Agent):
 
         result = collect_metrics(
             self.local_evaluator, self.remote_evaluators)
-        result.copy(
+        return result._replace(
             info=dict({
                 "min_exploration": min(exp_vals),
                 "max_exploration": max(exp_vals),

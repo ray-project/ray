@@ -8,7 +8,7 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 from ray.rllib.models import ModelCatalog
-from ray.rllib.optimizers.multi_gpu_impl import TOWER_SCOPE_NAME
+from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
 
@@ -46,15 +46,15 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 
 
 class DQNPolicyLoss(TFPolicyLoss):
-    def __init__(self, registry, obs_space, action_space, config):
+    def __init__(self, registry, observation_space, action_space, config):
         self.config = config
         self.cur_epsilon = 1.0
         num_actions = action_space.n
 
-        if not isinstance(env.action_space, Discrete):
+        if not isinstance(action_space, Discrete):
             raise UnsupportedSpaceException(
                 "Action space {} is not supported for DQN.".format(
-                    env.action_space))
+                    action_space))
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
@@ -89,46 +89,48 @@ class DQNPolicyLoss(TFPolicyLoss):
 
         # q network evaluation
         with tf.variable_scope(Q_SCOPE, reuse=True):
-            self.q_t = _build_q_network(registry, obs_t, num_actions, config)
+            self.q_t = _build_q_network(
+                registry, self.obs_t, num_actions, config)
 
         # target q network evalution
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
             self.q_tp1 = _build_q_network(
-                registry, obs_tp1, num_actions, config)
+                registry, self.obs_tp1, num_actions, config)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
         q_t_selected = tf.reduce_sum(
-            self.q_t * tf.one_hot(act_t, num_actions), 1)
+            self.q_t * tf.one_hot(self.act_t, num_actions), 1)
 
         # compute estimate of best possible value starting from state at t + 1
         if config["double_q"]:
             with tf.variable_scope(Q_SCOPE, reuse=True):
                 q_tp1_using_online_net = _build_q_network(
-                    registry, obs_tp1, num_actions, config)
+                    registry, self.obs_tp1, num_actions, config)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
                 self.q_tp1 * tf.one_hot(
                     q_tp1_best_using_online_net, num_actions), 1)
         else:
             q_tp1_best = tf.reduce_max(self.q_tp1, 1)
-        q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
+        q_tp1_best_masked = (1.0 - self.done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
         q_t_selected_target = (
-            rew_t + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
+            self.rew_t +
+            config["gamma"] ** config["n_step"] * q_tp1_best_masked)
 
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
-        errors = _huber_loss(self.td_error)
-        self.loss = tf.reduce_mean(importance_weights * errors)
+        self.loss = tf.reduce_mean(
+            self.importance_weights * _huber_loss(self.td_error))
 
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
         update_target_expr = []
         for var, var_target in zip(
             sorted(self.q_func_vars, key=lambda v: v.name),
-                sorted(target_q_func_vars, key=lambda v: v.name)):
+                sorted(self.target_q_func_vars, key=lambda v: v.name)):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
@@ -155,11 +157,11 @@ class DQNPolicyLoss(TFPolicyLoss):
     def gradients(self, optimizer):
         if self.config["grad_norm_clipping"] is not None:
             self.grads_and_vars = _minimize_and_clip(
-                optimizer, self.weighted_error, var_list=q_func_vars,
-                clip_val=config["grad_norm_clipping"])
+                optimizer, self.loss, var_list=self.q_func_vars,
+                clip_val=self.config["grad_norm_clipping"])
         else:
             self.grads_and_vars = optimizer.compute_gradients(
-                weighted_error, var_list=q_func_vars)
+                self.loss, var_list=self.q_func_vars)
         grads_and_vars = [
             (g, v) for (g, v) in self.grads_and_vars if g is not None]
         return grads_and_vars
@@ -190,7 +192,8 @@ class DQNPolicyLoss(TFPolicyLoss):
             "obs": obs, "actions": actions, "rewards": rewards,
             "new_obs": new_obs, "dones": dones,
             "weights": np.ones_like(rewards)})
-        assert (batch.count == self.config["sample_batch_size"])
+        assert batch.count == self.config["sample_batch_size"], \
+            (batch.count, self.config["sample_batch_size"])
 
         # Prioritize on the worker side
         if self.config["worker_side_prioritization"]:
@@ -217,8 +220,8 @@ class DQNPolicyLoss(TFPolicyLoss):
             })
         return td_err
 
-    def update_target(self, sess):
-        return sess.run(self.update_target_expr)
+    def update_target(self):
+        return self.sess.run(self.update_target_expr)
 
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
