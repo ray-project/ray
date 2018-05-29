@@ -714,6 +714,44 @@ def test_nan_dataframe():
     test_transform(ray_df, pandas_df)
 
 
+def test_empty_df():
+    df = pd.DataFrame(index=['a', 'b'])
+    test_is_empty(df)
+    tm.assert_index_equal(df.index, pd.Index(['a', 'b']))
+    assert len(df.columns) == 0
+
+    df = pd.DataFrame(columns=['a', 'b'])
+    test_is_empty(df)
+    assert len(df.index) == 0
+    tm.assert_index_equal(df.columns, pd.Index(['a', 'b']))
+
+    df = pd.DataFrame()
+    test_is_empty(df)
+    assert len(df.index) == 0
+    assert len(df.columns) == 0
+
+    df = pd.DataFrame(index=['a', 'b'])
+    test_is_empty(df)
+    tm.assert_index_equal(df.index, pd.Index(['a', 'b']))
+    assert len(df.columns) == 0
+
+    df = pd.DataFrame(columns=['a', 'b'])
+    test_is_empty(df)
+    assert len(df.index) == 0
+    tm.assert_index_equal(df.columns, pd.Index(['a', 'b']))
+
+    df = pd.DataFrame()
+    test_is_empty(df)
+    assert len(df.index) == 0
+    assert len(df.columns) == 0
+
+
+@pytest.fixture
+def test_is_empty(df):
+    assert df.size == 0 and df.empty
+    assert df.shape[0] == 0 or df.shape[1] == 0
+
+
 def test_dense_nan_df():
     frame_data = [[np.nan, 2, np.nan, 0],
                   [3, 4, np.nan, 1],
