@@ -292,9 +292,10 @@ bool LineageCache::FlushTask(const TaskID &task_id) {
     }
   }
   if (all_arguments_committed) {
-    gcs::raylet::TaskTable::WriteCallback task_callback =
-        [this](ray::gcs::AsyncGcsClient *client, const TaskID &id,
-               const protocol::TaskT &data) { HandleEntryCommitted(id); };
+    gcs::raylet::TaskTable::WriteCallback task_callback =[this](
+        ray::gcs::AsyncGcsClient *client, const TaskID &id, const protocol::TaskT &data) {
+      HandleEntryCommitted(id);
+    };
     auto task = lineage_.GetEntry(task_id);
     // TODO(swang): Make this better...
     flatbuffers::FlatBufferBuilder fbb;
