@@ -2,11 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import ray
 import ray.test.test_functions as test_functions
 
 def setup():
-    ray.init(num_workers=3)
+    if os.getenv("RAY_ASV_USE_RAYLET", 0):
+        ray.init(num_workers=3, use_raylet=True)
+    else:
+        ray.init(num_workers=3)
 
 class TimeSuite(object):
     """An example benchmark."""
