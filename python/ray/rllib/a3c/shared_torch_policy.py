@@ -32,8 +32,8 @@ class SharedTorchPolicy(TorchPolicy):
         with self.lock:
             ob = torch.from_numpy(ob).float().unsqueeze(0)
             logits, values = self._model(ob)
-            # TODO(alok): Support non-categorical distributions. Multinomial is only
-            # for categorical.
+            # TODO(alok): Support non-categorical distributions. Multinomial
+            # is only for categorical.
             sampled_actions = F.softmax(logits, dim=1).multinomial(1).squeeze()
             values = values.squeeze()
             return var_to_np(sampled_actions), {"vf_preds": var_to_np(values)}
