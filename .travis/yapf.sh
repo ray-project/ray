@@ -9,43 +9,32 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT"
 
+YAPF_FLAGS="--style $ROOT/.style.yapf --in-place --recursive --parallel"
+
+YAPF_EXCLUDES="--exclude 'python/ray/cloudpickle' \
+--exclude 'python/ray/dataframe' \
+--exclude 'python/ray/rllib' \
+--exclude 'python/build' \
+--exclude 'python/ray/pyarrow_files' \
+--exclude 'python/ray/core/src/ray/gcs' \
+--exclude 'python/ray/common/thirdparty'"
+
+UPSTREAM_MASTER=${RAY_UPSTREAM_BRANCH:-upstream/master}
+
 # Format specified files
 format() {
-    yapf \
-        --style "$ROOT/.style.yapf" \
-        --in-place --recursive --parallel \
-        -- \
-        "$@"
+    yapf $YAPF_FLAGS -- "$@"
 }
 
 # Format files that differ from main branch
 format_changed() {
-    # Formats python files that changed in last commit. Only runs if there are
-    # python files that differ from main branch.
-    if ! git diff --quiet --exit-code master HEAD -- '*.py'; then
-        git diff --name-only master HEAD -- '*.py' | xargs -P 5 \
-            yapf \
-            --style "$ROOT/.style.yapf" \
-            --in-place --recursive --parallel
-    fi
-
+    FILES=`git diff --name-only $UPSTREAM_MASTER -- '*.py'`
+    yapf $YAPF_FLAGS $YAPF_EXCLUDES -- $FILES
 }
 
 # Format all files
 format_all() {
-
-    yapf \
-        --style "$ROOT/.style.yapf" \
-        --in-place --recursive --parallel \
-        --exclude 'python/ray/cloudpickle' \
-        --exclude 'python/ray/dataframe' \
-        --exclude 'python/ray/rllib' \
-        --exclude 'python/build' \
-        --exclude 'python/ray/pyarrow_files' \
-        --exclude 'python/ray/core/src/ray/gcs' \
-        --exclude 'python/ray/common/thirdparty' \
-        -- \
-        test python
+    yapf $YAPF_FLAGS $YAPF_EXCLUDES python
 }
 
 # This flag formats individual files. --files *must* be the first command line
@@ -57,13 +46,12 @@ if [[ "$1" == '--files' ]]; then
 elif [[ "$1" == '--all' ]]; then
     format_all
 else
-    # Format only the files that changed in last commit. Ignores uncommitted
-    # files.
+    # Format only the files that changed in last commit.
     format_changed
 fi
 
 if ! git diff --quiet; then
-    echo 'Reformatted staged files. Please review and stage the changes.'
+    echo 'Reformatted changed files. Please review and stage the changes.'
     echo 'Files updated:'
     echo
 
