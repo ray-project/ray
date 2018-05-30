@@ -189,12 +189,11 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
                         &wait_local)) {
     return NULL;
   }
-  // Convert to milliseconds.
+  // Convert object ids.
   PyObject *iter = PyObject_GetIter(py_object_ids);
   if (!iter) {
     return NULL;
   }
-  // Convert object ids.
   std::vector<ObjectID> object_ids;
   while (true) {
     PyObject *next = PyIter_Next(iter);

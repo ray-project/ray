@@ -18,10 +18,13 @@ void ObjectDirectory::RegisterBackend() {
     }
     // Update entries for this object.
     auto &location_client_id_set = object_id_listener_pair->second.location_client_ids;
-    // object_location_ids has the history of locations of the object:
-    // client1.is_eviction = false
-    // client1.is_eviction = true
-    // client2.is_eviction = false
+    // object_location_ids contains the history of locations of the object (it is a log),
+    // which might look like the following:
+    //   client1.is_eviction = false
+    //   client1.is_eviction = true
+    //   client2.is_eviction = false
+    // In such a scenario, we want to indicate client2 is the only client that contains
+    // the object, which the following code achieves.
     for (const auto &object_table_data : object_location_ids) {
       ClientID client_id = ClientID::from_binary(object_table_data.manager);
       if (!object_table_data.is_eviction) {

@@ -315,10 +315,9 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
     return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
   }
 
-  if (num_required_objects == 0) {
-    // TODO: Confirm this is the default value for waiting for all objects.
-    num_required_objects = object_ids.size();
-  }
+  RAY_CHECK(object_ids.size() != 0);
+  RAY_CHECK(num_required_objects != 0);
+  RAY_CHECK(num_required_objects <= object_ids.size());
 
   // Initialize fields.
   active_wait_requests_.emplace(wait_id, WaitState(*main_service_, wait_ms, callback));
@@ -375,9 +374,9 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
             });
       }
       // Set timeout.
-      // TODO (hme): If we need to just wait for all objects independent of time,
-      // determine what the value of wait_ms should be and skip this call.
-      // WaitComplete will be invoked when all objects have locations.
+      // TODO (hme): If we need to just wait for all objects independent of time
+      // (i.e. infinite wait time), determine what the value of wait_ms should be and
+      // skip this call. WaitComplete will be invoked when all objects have locations.
       wait_state.timeout_timer->async_wait(
           [this, wait_id](const boost::system::error_code &error_code) {
             if (error_code.value() != 0) {
