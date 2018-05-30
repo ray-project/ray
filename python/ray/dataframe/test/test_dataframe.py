@@ -23,7 +23,7 @@ def ray_series_equals_pandas(ray_df, pandas_df):
 
 @pytest.fixture
 def ray_df_equals(ray_df1, ray_df2):
-    return to_pandas(ray_df1).equals(to_pandas(ray_df2))
+    return ray_df1.equals(ray_df2)
 
 
 @pytest.fixture
