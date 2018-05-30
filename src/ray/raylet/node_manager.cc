@@ -447,94 +447,34 @@ void NodeManager::ProcessClientMessage(
       worker->MarkUnblocked();
     }
   } break;
-  case protocol::MessageType_PlasmaWaitRequest: {
-    // Block the worker.
-    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-    if (worker && !worker->IsBlocked()) {
-      RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
-      auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
-      const auto &task = tasks.front();
-      // Get the CPU resources required by the running task.
-      const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      double required_cpus = 0;
-      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
-      const std::unordered_map<std::string, double> cpu_resources = {
-          {kCPU_ResourceLabel, required_cpus}};
-      // Release the CPU resources.
-      RAY_CHECK(
-          cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-              ResourceSet(cpu_resources)));
-      // Mark the task as blocked.
-      local_queues_.QueueBlockedTasks(tasks);
-      worker->MarkBlocked();
-
-      // Try to dispatch more tasks since the blocked worker released some
-      // resources.
-      DispatchTasks();
-    }
-
+  case protocol::MessageType_WaitRequest: {
     // Read the data.
-    auto message = flatbuffers::GetRoot<protocol::PlasmaWaitRequest>(message_data);
-    auto object_requests = message->object_requests();
-    int num_requests = object_requests->size();
+    auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
+    auto object_id_strings = message->object_ids();
+    int num_requests = object_id_strings->size();
     std::vector<ObjectID> object_ids;
-    // Does it make sense to specify local/non-local for each object?
-    std::vector<bool> wait_local;
     for (int i = 0; i < num_requests; i++) {
-      ObjectID object_id = ObjectID::from_binary(
-          message->object_requests()->Get(i)->object_id()->str());
+      ObjectID object_id = ObjectID::from_binary(object_id_strings->Get(i)->str());
       object_ids.push_back(object_id);
-      wait_local.push_back(message->object_requests()->Get(i)->type() == 1);
     }
     int64_t wait_ms = message->timeout();
     uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
+    bool wait_local = message->wait_local();
 
-    object_manager_.Wait(object_ids, wait_ms, num_required_objects, false,
-    [this, client](int64_t time_taken, std::unordered_set<ObjectID> found, std::unordered_set<ObjectID> remaining){
-      // Unblock the worker.
-      std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-      if (worker && !worker->IsBlocked()) {
-        RAY_CHECK(!worker->GetAssignedTaskId().is_nil());
-        auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
-        const auto &task = tasks.front();
-        // Get the CPU resources required by the running task.
-        const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-        double required_cpus = 0;
-        RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
-        const std::unordered_map<std::string, double> cpu_resources = {
-            {kCPU_ResourceLabel, required_cpus}};
-        // Release the CPU resources.
-        RAY_CHECK(
-            cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-                ResourceSet(cpu_resources)));
-        // Mark the task as blocked.
-        local_queues_.QueueBlockedTasks(tasks);
-        worker->MarkBlocked();
-
-        // Try to dispatch more tasks since the blocked worker released some
-        // resources.
-        DispatchTasks();
-      }
-
-      // Write the data.
-      flatbuffers::FlatBufferBuilder fbb;
-      std::vector<flatbuffers::Offset<protocol::ObjectReply>> object_replies;
-      for (const auto &object_id : found) {
-        object_replies.push_back(protocol::CreateObjectReply(
-            fbb, fbb.CreateString(object_id.binary()),
-            protocol::ObjectStatus_Remote));
-      }
-      for (const auto &object_id : remaining) {
-        object_replies.push_back(protocol::CreateObjectReply(
-            fbb, fbb.CreateString(object_id.binary()),
-            protocol::ObjectStatus_Nonexistent));
-      }
-      auto send_message = protocol::CreatePlasmaWaitReply(
-          fbb, fbb.CreateVector(object_replies.data(), found.size()), static_cast<int32_t>(found.size()));
-      fbb.Finish(send_message);
-      client->WriteMessage(protocol::MessageType_PlasmaWaitReply,
-                           fbb.GetSize(), fbb.GetBufferPointer());
-    });
+    object_manager_.Wait(
+        object_ids, wait_ms, num_required_objects, wait_local,
+        [this, client](int64_t time_taken, std::unordered_set<ObjectID> found,
+                       std::unordered_set<ObjectID> remaining) {
+          // Write the data.
+          std::vector<ObjectID> found_vec(found.begin(), found.end());
+          std::vector<ObjectID> remaining_vec(remaining.begin(), remaining.end());
+          flatbuffers::FlatBufferBuilder fbb;
+          flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
+              fbb, to_flatbuf(fbb, found_vec), to_flatbuf(fbb, remaining_vec));
+          fbb.Finish(wait_reply);
+          client->WriteMessage(protocol::MessageType_WaitReply, fbb.GetSize(),
+                               fbb.GetBufferPointer());
+        });
   } break;
 
   default:

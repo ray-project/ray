@@ -179,6 +179,56 @@ static PyObject *PyLocalSchedulerClient_set_actor_frontier(PyObject *self,
   Py_RETURN_NONE;
 }
 
+static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
+  int timeout_ms;
+  int num_returns;
+  bool wait_local;
+  PyObject *py_object_ids;
+  if (!PyArg_ParseTuple(args, "Oiip", &py_object_ids, &timeout_ms, &num_returns,
+                        &wait_local)) {
+    return NULL;
+  }
+  // Convert to milliseconds.
+  timeout_ms *= 1000;
+  PyObject *iter = PyObject_GetIter(py_object_ids);
+  if (!iter) {
+    return NULL;
+  }
+  // Convert object ids.
+  std::vector<ObjectID> object_ids;
+  while (true) {
+    PyObject *next = PyIter_Next(iter);
+    ObjectID object_id;
+    if (!next) {
+      break;
+    }
+    if (!PyObjectToUniqueID(next, &object_id)) {
+      // Error parsing object id.
+      return NULL;
+    }
+    object_ids.push_back(object_id);
+  }
+
+  // Invoke wait.
+  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result =
+      local_scheduler_wait(
+          ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
+          object_ids, num_returns, timeout_ms, wait_local);
+
+  // Convert result to py object.
+  PyObject *py_found =
+      PyList_New((Py_ssize_t) result.first.size());
+  for (uint i = 0; i < result.first.size(); ++i) {
+    PyList_SetItem(py_found, i, PyObjectID_make(result.first[i]));
+  }
+  PyObject *py_remaining =
+      PyList_New((Py_ssize_t) result.second.size());
+  for (uint i = 0; i < result.second.size(); ++i) {
+    PyList_SetItem(py_remaining, i, PyObjectID_make(result.second[i]));
+  }
+  return Py_BuildValue("(OO)", py_found, py_remaining);
+}
+
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"disconnect", (PyCFunction) PyLocalSchedulerClient_disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
@@ -201,6 +251,9 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      (PyCFunction) PyLocalSchedulerClient_get_actor_frontier, METH_VARARGS, ""},
     {"set_actor_frontier",
      (PyCFunction) PyLocalSchedulerClient_set_actor_frontier, METH_VARARGS, ""},
+    {"wait",
+     (PyCFunction) PyLocalSchedulerClient_wait, METH_VARARGS,
+     "Wait for a list of objects to be created."},
     {NULL} /* Sentinel */
 };
 

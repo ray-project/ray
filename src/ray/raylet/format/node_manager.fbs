@@ -54,10 +54,9 @@ enum MessageType:int {
   SetActorFrontier,
   // A node manager request to process a task forwarded from another node manager.
   ForwardTaskRequest,
-
   // Wait for objects to be ready either from local or remote Plasma stores.
-  PlasmaWaitRequest=20,
-  PlasmaWaitReply=21
+  WaitRequest,
+  WaitReply
 }
 
 table TaskExecutionSpecification {
@@ -122,47 +121,20 @@ table ReconstructObject {
   object_id: string;
 }
 
-enum ObjectStatus:int {
-  // Object is stored in the local Plasma Store.
-  Local = 1,
-  // Object is stored on a remote Plasma store, and it is not stored on the
-  // local Plasma Store.
-  Remote,
-  // Object is not stored in the system.
-  Nonexistent,
-  // Object is currently transferred from a remote Plasma store to the local
-  // Plasma Store.
-  Transfer
-}
-
-table ObjectRequestSpec {
-  // ID of the object.
-  object_id: string;
-  // The type of the object. This specifies whether we
-  // will be waiting for an object store in the local or
-  // global Plasma store.
-  type: int;
-}
-
-table PlasmaWaitRequest {
-  // Array of object requests whose status we are asking for.
-  object_requests: [ObjectRequestSpec];
+table WaitRequest {
+  // List of object ids we'll be waiting on.
+  object_ids: [string];
   // Number of objects expected to be returned, if available.
   num_ready_objects: int;
   // timeout
   timeout: long;
+  // Whether to wait until objects appear locally.
+  wait_local: bool;
 }
 
-table ObjectReply {
-  // ID of the object.
-  object_id: string;
-  // The object status. This specifies where the object is stored.
-  status: int;
-}
-
-table PlasmaWaitReply {
-  // Array of object requests being returned.
-  object_requests: [ObjectReply];
-  // Number of objects expected to be returned, if available.
-  num_ready_objects: int;
+table WaitReply {
+  // List of object ids found.
+  found: [string];
+  // List of object ids not found.
+  remaining: [string];
 }

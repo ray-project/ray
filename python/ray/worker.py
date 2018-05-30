@@ -2097,8 +2097,7 @@ def connect(info,
         worker.plasma_client = plasma.connect(info["store_socket_name"],
                                               info["manager_socket_name"], 64)
     else:
-        worker.plasma_client = plasma.connect(info["store_socket_name"],
-                                              info["raylet_socket_name"],
+        worker.plasma_client = plasma.connect(info["store_socket_name"], "",
                                               64)
 
     if not worker.use_raylet:
@@ -2558,18 +2557,23 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         if len(object_ids) == 0:
             return [], []
 
-        object_id_strs = [
-            plasma.ObjectID(object_id.id()) for object_id in object_ids
-        ]
-        timeout = timeout if timeout is not None else 2**30
-        ready_ids, remaining_ids = worker.plasma_client.wait(
-            object_id_strs, timeout, num_returns)
-        ready_ids = [
-            ray.ObjectID(object_id.binary()) for object_id in ready_ids
-        ]
-        remaining_ids = [
-            ray.ObjectID(object_id.binary()) for object_id in remaining_ids
-        ]
+        if worker.use_raylet:
+            timeout = timeout if timeout is not None else 2**30
+            ready_ids, remaining_ids = worker.local_scheduler_client.wait(
+                object_ids, timeout, num_returns, False)
+        else:
+            object_id_strs = [
+                plasma.ObjectID(object_id.id()) for object_id in object_ids
+            ]
+            timeout = timeout if timeout is not None else 2**30
+            ready_ids, remaining_ids = worker.plasma_client.wait(
+                object_id_strs, timeout, num_returns)
+            ready_ids = [
+                ray.ObjectID(object_id.binary()) for object_id in ready_ids
+            ]
+            remaining_ids = [
+                ray.ObjectID(object_id.binary()) for object_id in remaining_ids
+            ]
         return ready_ids, remaining_ids
 
 
