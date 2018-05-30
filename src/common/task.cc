@@ -324,7 +324,11 @@ int TaskSpec_arg_id_count(TaskSpec *spec, int64_t arg_index) {
   RAY_CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   auto ids = message->args()->Get(arg_index)->object_ids();
-  return ids->size();
+  if (ids == nullptr) {
+    return 0;
+  } else {
+    return ids->size();
+  }
 }
 
 ObjectID TaskSpec_arg_id(TaskSpec *spec, int64_t arg_index, int64_t id_index) {
@@ -426,7 +430,7 @@ TaskExecutionSpec::TaskExecutionSpec(TaskExecutionSpec *other)
   spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
 }
 
-std::vector<ObjectID> TaskExecutionSpec::ExecutionDependencies() const {
+const std::vector<ObjectID> &TaskExecutionSpec::ExecutionDependencies() const {
   return execution_dependencies_;
 }
 

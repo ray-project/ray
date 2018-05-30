@@ -27,15 +27,13 @@ int64_t current_time_ms() {
 class MockServer {
  public:
   MockServer(boost::asio::io_service &main_service,
-             std::unique_ptr<boost::asio::io_service> object_manager_service,
              const ObjectManagerConfig &object_manager_config,
              std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
       : object_manager_acceptor_(
             main_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0)),
         object_manager_socket_(main_service),
         gcs_client_(gcs_client),
-        object_manager_(main_service, std::move(object_manager_service),
-                        object_manager_config, gcs_client) {
+        object_manager_(main_service, object_manager_config, gcs_client) {
     RAY_CHECK_OK(RegisterGcs(main_service));
     // Start listening for clients.
     DoAcceptObjectManager();
@@ -56,7 +54,9 @@ class MockServer {
     client_info.node_manager_address = ip;
     client_info.node_manager_port = object_manager_port;
     client_info.object_manager_port = object_manager_port;
-    return gcs_client_->client_table().Connect(client_info);
+    ray::Status status = gcs_client_->client_table().Connect(client_info);
+    object_manager_.RegisterGcs();
+    return status;
   }
 
   void DoAcceptObjectManager() {
@@ -67,9 +67,7 @@ class MockServer {
 
   void HandleAcceptObjectManager(const boost::system::error_code &error) {
     ClientHandler<boost::asio::ip::tcp> client_handler =
-        [this](std::shared_ptr<TcpClientConnection> client) {
-          object_manager_.ProcessNewClient(client);
-        };
+        [this](TcpClientConnection &client) { object_manager_.ProcessNewClient(client); };
     MessageHandler<boost::asio::ip::tcp> message_handler = [this](
         std::shared_ptr<TcpClientConnection> client, int64_t message_type,
         const uint8_t *message) {
@@ -118,9 +116,6 @@ class TestObjectManagerBase : public ::testing::Test {
   void SetUp() {
     flushall_redis();
 
-    object_manager_service_1.reset(new boost::asio::io_service());
-    object_manager_service_2.reset(new boost::asio::io_service());
-
     // start store
     store_id_1 = StartStore(UniqueID::from_random().hex());
     store_id_2 = StartStore(UniqueID::from_random().hex());
@@ -129,6 +124,7 @@ class TestObjectManagerBase : public ::testing::Test {
     int max_sends = 2;
     int max_receives = 2;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
+    int max_push_retries = 1000;
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
@@ -138,8 +134,8 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.max_sends = max_sends;
     om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
-    server1.reset(new MockServer(main_service, std::move(object_manager_service_1),
-                                 om_config_1, gcs_client_1));
+    om_config_1.max_push_retries = max_push_retries;
+    server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
@@ -149,12 +145,12 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.max_sends = max_sends;
     om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
-    server2.reset(new MockServer(main_service, std::move(object_manager_service_2),
-                                 om_config_2, gcs_client_2));
+    om_config_2.max_push_retries = max_push_retries;
+    server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_id_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
-    ARROW_CHECK_OK(client2.Connect(store_id_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client1.Connect(store_id_1, "", plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(client2.Connect(store_id_2, "", plasma::kPlasmaDefaultReleaseDelay));
   }
 
   void TearDown() {
@@ -188,8 +184,6 @@ class TestObjectManagerBase : public ::testing::Test {
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::unique_ptr<boost::asio::io_service> object_manager_service_1;
-  std::unique_ptr<boost::asio::io_service> object_manager_service_2;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
   std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
   std::unique_ptr<MockServer> server1;
@@ -305,9 +299,9 @@ class StressTestObjectManager : public TestObjectManagerBase {
     plasma::ObjectBuffer object_buffer_2 = GetObject(client2, object_id_2);
     uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
     uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->data());
-    ASSERT_EQ(object_buffer_1.data->size(), object_buffer_2.data_size);
-    ASSERT_EQ(object_buffer_1.metadata_size, object_buffer_2.metadata_size);
-    int64_t total_size = object_buffer_1.data->size() + object_buffer_1.metadata_size;
+    ASSERT_EQ(object_buffer_1.data->size(), object_buffer_2.data->size());
+    ASSERT_EQ(object_buffer_1.metadata->size(), object_buffer_2.metadata->size());
+    int64_t total_size = object_buffer_1.data->size() + object_buffer_1.metadata->size();
     RAY_LOG(DEBUG) << "total_size " << total_size;
     for (int i = -1; ++i < total_size;) {
       ASSERT_TRUE(data_1[i] == data_2[i]);

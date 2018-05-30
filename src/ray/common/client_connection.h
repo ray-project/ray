@@ -62,7 +62,7 @@ template <typename T>
 class ClientConnection;
 
 template <typename T>
-using ClientHandler = std::function<void(std::shared_ptr<ClientConnection<T>>)>;
+using ClientHandler = std::function<void(ClientConnection<T> &)>;
 template <typename T>
 using MessageHandler =
     std::function<void(std::shared_ptr<ClientConnection<T>>, int64_t, const uint8_t *)>;
@@ -78,8 +78,8 @@ class ClientConnection : public ServerConnection<T>,
  public:
   /// Allocate a new node client connection.
   ///
-  /// \param ClientManager A reference to the manager that will process a
-  /// message from this client.
+  /// \param new_client_handler A reference to the client handler.
+  /// \param message_handler A reference to the message handler.
   /// \param socket The client socket.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection<T>> Create(

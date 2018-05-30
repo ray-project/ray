@@ -3,26 +3,34 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.dqn.dqn import DQNAgent, DEFAULT_CONFIG as DQN_CONFIG
+from ray.tune.trial import Resources
+from ray.utils import merge_dicts
 
-APEX_DEFAULT_CONFIG = dict(DQN_CONFIG, **dict(
-    optimizer_class="ApexOptimizer",
-    optimizer_config=dict(DQN_CONFIG["optimizer_config"], **dict(
-        max_weight_sync_delay=400,
-        num_replay_buffer_shards=4,
-        debug=False,
-    )),
-    n_step=3,
-    num_workers=32,
-    buffer_size=2000000,
-    learning_starts=50000,
-    train_batch_size=512,
-    sample_batch_size=50,
-    max_weight_sync_delay=400,
-    target_network_update_freq=500000,
-    timesteps_per_iteration=25000,
-    per_worker_exploration=True,
-    worker_side_prioritization=True,
-))
+APEX_DEFAULT_CONFIG = merge_dicts(
+    DQN_CONFIG,
+    {
+        'optimizer_class': 'ApexOptimizer',
+        'optimizer_config':
+            merge_dicts(
+                DQN_CONFIG['optimizer_config'], {
+                    'max_weight_sync_delay': 400,
+                    'num_replay_buffer_shards': 4,
+                    'debug': False
+                }),
+        'n_step': 3,
+        'gpu': True,
+        'num_workers': 32,
+        'buffer_size': 2000000,
+        'learning_starts': 50000,
+        'train_batch_size': 512,
+        'sample_batch_size': 50,
+        'max_weight_sync_delay': 400,
+        'target_network_update_freq': 500000,
+        'timesteps_per_iteration': 25000,
+        'per_worker_exploration': True,
+        'worker_side_prioritization': True,
+    },
+)
 
 
 class ApexAgent(DQNAgent):
@@ -34,6 +42,15 @@ class ApexAgent(DQNAgent):
 
     _agent_name = "APEX"
     _default_config = APEX_DEFAULT_CONFIG
+
+    @classmethod
+    def default_resource_request(cls, config):
+        cf = dict(cls._default_config, **config)
+        return Resources(
+            cpu=1 + cf["optimizer_config"]["num_replay_buffer_shards"],
+            gpu=cf["gpu"] and 1 or 0,
+            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
+            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"])
 
     def update_target_if_needed(self):
         # Ape-X updates based on num steps trained, not sampled

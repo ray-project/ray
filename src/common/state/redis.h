@@ -48,7 +48,7 @@ struct DBHandle {
   int64_t db_index;
   /** Cache for the IP addresses of db clients. This is an unordered map mapping
    *  client IDs to addresses. */
-  std::unordered_map<DBClientID, DBClient, UniqueIDHasher> db_client_cache;
+  std::unordered_map<DBClientID, DBClient> db_client_cache;
   /** Redis context for synchronous connections. This should only be used very
    *  rarely, it is not asynchronous. */
   redisContext *sync_context;

@@ -221,20 +221,20 @@ struct PlasmaManagerState {
   int port;
   /** Unordered map of outstanding fetch requests. The key is the object ID. The
    *  value is the data needed to perform the fetch. */
-  std::unordered_map<ObjectID, FetchRequest *, UniqueIDHasher> fetch_requests;
+  std::unordered_map<ObjectID, FetchRequest *> fetch_requests;
   /** Unordered map of outstanding wait requests. The key is the object ID. The
    *  value is the vector of wait requests that are waiting for the object to
    *  arrive locally. */
-  std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher>
+  std::unordered_map<ObjectID, std::vector<WaitRequest *>>
       object_wait_requests_local;
   /** Unordered map of outstanding wait requests. The key is the object ID. The
    *  value is the vector of wait requests that are waiting for the object to
    *  be available somewhere in the system. */
-  std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher>
+  std::unordered_map<ObjectID, std::vector<WaitRequest *>>
       object_wait_requests_remote;
   /** Initialize an empty unordered set for the cache of local available object.
    */
-  std::unordered_set<ObjectID, UniqueIDHasher> local_available_objects;
+  std::unordered_set<ObjectID> local_available_objects;
   /** The time (in milliseconds since the Unix epoch) when the most recent
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
@@ -247,7 +247,7 @@ struct PlasmaManagerState {
    *  object is removed. If object transfers between managers is parallelized,
    *  then all objects being received from a remote manager will need to be
    *  removed if the connection to the remote manager fails. */
-  std::unordered_set<ObjectID, UniqueIDHasher> receives_in_progress;
+  std::unordered_set<ObjectID> receives_in_progress;
 };
 
 PlasmaManagerState *g_manager_state = NULL;
@@ -265,8 +265,7 @@ struct ClientConnection {
   /* A set of object IDs which are queued in the transfer_queue and waiting to
    * be sent. This is used to avoid sending the same object ID to the same
    * manager multiple times. */
-  std::unordered_map<ObjectID, PlasmaRequestBuffer *, UniqueIDHasher>
-      pending_object_transfers;
+  std::unordered_map<ObjectID, PlasmaRequestBuffer *> pending_object_transfers;
   /** Buffer used to receive transfers (data fetches) we want to ignore */
   PlasmaRequestBuffer *ignore_buffer;
   /** File descriptor for the socket connected to the other
@@ -317,7 +316,7 @@ bool ClientConnection_request_finished(ClientConnection *client_conn) {
   return client_conn->cursor == -1;
 }
 
-std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher> &
+std::unordered_map<ObjectID, std::vector<WaitRequest *>> &
 object_wait_requests_from_type(PlasmaManagerState *manager_state, int type) {
   /* We use different types of hash tables for different requests. */
   RAY_CHECK(type == plasma::PLASMA_QUERY_LOCAL ||
@@ -469,8 +468,8 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   PlasmaManagerState *state = new PlasmaManagerState();
   state->loop = event_loop_create();
   state->plasma_conn = new plasma::PlasmaClient();
-  ARROW_CHECK_OK(state->plasma_conn->Connect(store_socket_name, "",
-                                             PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(state->plasma_conn->Connect(
+      store_socket_name, "", plasma::kPlasmaDefaultReleaseDelay));
   if (redis_primary_addr) {
     /* Get the manager port as a string. */
     std::string manager_address_str =
@@ -1334,7 +1333,7 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
         log_object_hash_mismatch_error_task_callback(task, user_context);
         Task_free(task);
       },
-      [user_context](gcs::AsyncGcsClient *, const TaskID &) {
+      [](gcs::AsyncGcsClient *, const TaskID &) {
         // TODO(pcmoritz): Handle failure.
       }));
 #endif

@@ -23,7 +23,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
   }
 
   Status Add(const JobID &job_id, const TaskID &task_id,
-             std::shared_ptr<protocol::TaskT> task_data,
+             std::shared_ptr<protocol::TaskT> &task_data,
              const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
     task_table_[task_id] = task_data;
     callbacks_.push_back(
@@ -38,7 +38,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
     bool send_notification = (subscribed_tasks_.count(task_id) == 1);
     auto callback = [this, send_notification](ray::gcs::AsyncGcsClient *client,
                                               const TaskID &task_id,
-                                              std::shared_ptr<protocol::TaskT> data) {
+                                              const protocol::TaskT &data) {
       if (send_notification) {
         notification_callback_(client, task_id, data);
       }
@@ -62,27 +62,24 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
   }
 
   void Flush() {
-    for (const auto &callback : callbacks_) {
-      callback.first(NULL, callback.second, task_table_[callback.second]);
-    }
+    auto callbacks = std::move(callbacks_);
     callbacks_.clear();
+    for (const auto &callback : callbacks) {
+      callback.first(NULL, callback.second, *task_table_[callback.second]);
+    }
   }
 
-  const std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
-      &TaskTable() const {
+  const std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> &TaskTable() const {
     return task_table_;
   }
 
-  const std::unordered_set<TaskID, UniqueIDHasher> &SubscribedTasks() const {
-    return subscribed_tasks_;
-  }
+  const std::unordered_set<TaskID> &SubscribedTasks() const { return subscribed_tasks_; }
 
  private:
-  std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>, UniqueIDHasher>
-      task_table_;
+  std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> task_table_;
   std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
   gcs::raylet::TaskTable::WriteCallback notification_callback_;
-  std::unordered_set<TaskID, UniqueIDHasher> subscribed_tasks_;
+  std::unordered_set<TaskID> subscribed_tasks_;
 };
 
 class LineageCacheTest : public ::testing::Test {
@@ -90,7 +87,7 @@ class LineageCacheTest : public ::testing::Test {
   LineageCacheTest()
       : mock_gcs_(), lineage_cache_(ClientID::from_random(), mock_gcs_, mock_gcs_) {
     mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
-                               std::shared_ptr<ray::protocol::TaskT> data) {
+                               const ray::protocol::TaskT &data) {
       lineage_cache_.HandleEntryCommitted(task_id);
     });
   }
@@ -187,7 +184,7 @@ TEST_F(LineageCacheTest, TestGetUncommittedLineage) {
 
 void CheckFlush(LineageCache &lineage_cache, MockGcs &mock_gcs,
                 size_t num_tasks_flushed) {
-  RAY_CHECK_OK(lineage_cache.Flush());
+  lineage_cache.Flush();
   ASSERT_EQ(mock_gcs.TaskTable().size(), num_tasks_flushed);
 }
 
@@ -223,15 +220,16 @@ TEST_F(LineageCacheTest, TestWritebackOrder) {
   auto return_values1 =
       InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
 
-  // Mark all tasks as ready.
+  // Mark all tasks as ready. The first task, which has no dependencies, should
+  // be flushed.
   for (const auto &task : tasks) {
     lineage_cache_.AddReadyTask(task);
   }
   // Check that we write back the tasks in order of data dependencies.
   for (size_t i = 0; i < tasks.size(); i++) {
     num_tasks_flushed++;
-    CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-    // Flush acknowledgements. The next task should be able to be written.
+    ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
+    // Flush acknowledgements. The next task should have been flushed.
     mock_gcs_.Flush();
   }
 }
@@ -257,29 +255,26 @@ TEST_F(LineageCacheTest, TestWritebackPartiallyReady) {
   lineage_cache_.AddWaitingTask(task2, Lineage());
   lineage_cache_.AddWaitingTask(dependent_task, Lineage());
 
-  // Mark one of the independent tasks and the dependent task as ready.
+  // Flush one of the independent tasks.
   lineage_cache_.AddReadyTask(task1);
-  lineage_cache_.AddReadyTask(dependent_task);
-  // Check that only the first independent task is flushed.
   num_tasks_flushed++;
   CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-
-  // Flush acknowledgements. The dependent task should still not be flushed
-  // since task2 is not committed yet.
+  // Flush acknowledgements. The lineage cache should receive the commit for
+  // the first task.
   mock_gcs_.Flush();
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-
-  // Mark the other independent task as ready.
+  // Mark the other independent task and the dependent as ready.
   lineage_cache_.AddReadyTask(task2);
-  // Check that the other independent task gets flushed.
+  lineage_cache_.AddReadyTask(dependent_task);
+  // Two tasks are ready, but only the independent task should be flushed. The
+  // dependent task should only be flushed once commits for both independent
+  // tasks are received.
   num_tasks_flushed++;
   CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
-
-  // Flush acknowledgements. The dependent task should now be able to be
-  // written.
+  // Flush acknowledgements. Both independent tasks should now be committed.
   mock_gcs_.Flush();
+  // The dependent task should now be flushed.
   num_tasks_flushed++;
-  CheckFlush(lineage_cache_, mock_gcs_, num_tasks_flushed);
+  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
 }
 
 TEST_F(LineageCacheTest, TestForwardTaskRoundTrip) {

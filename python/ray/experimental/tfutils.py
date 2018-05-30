@@ -49,7 +49,7 @@ class TensorFlowVariables(object):
         self.sess = sess
         queue = deque([loss])
         variable_names = []
-        explored_inputs = set([loss])
+        explored_inputs = {loss}
 
         # We do a BFS on the dependency graph of the input function to find
         # the variables.
@@ -84,8 +84,8 @@ class TensorFlowVariables(object):
         for v in variable_list:
             self.variables[v.op.node_def.name] = v
 
-        self.placeholders = dict()
-        self.assignment_nodes = dict()
+        self.placeholders = {}
+        self.assignment_nodes = {}
 
         # Create new placeholders to put in custom weights.
         for k, var in self.variables.items():
@@ -109,9 +109,8 @@ class TensorFlowVariables(object):
         Returns:
             The length of all flattened variables concatenated.
         """
-        return sum([
-            np.prod(v.get_shape().as_list()) for v in self.variables.values()
-        ])
+        return sum(
+            np.prod(v.get_shape().as_list()) for v in self.variables.values())
 
     def _check_sess(self):
         """Checks if the session is set, and if not throw an error message."""

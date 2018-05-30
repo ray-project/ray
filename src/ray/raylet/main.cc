@@ -6,15 +6,16 @@
 
 #ifndef RAYLET_TEST
 int main(int argc, char *argv[]) {
-  RAY_CHECK(argc == 8);
+  RAY_CHECK(argc == 9);
 
   const std::string raylet_socket_name = std::string(argv[1]);
   const std::string store_socket_name = std::string(argv[2]);
   const std::string node_ip_address = std::string(argv[3]);
   const std::string redis_address = std::string(argv[4]);
   int redis_port = std::stoi(argv[5]);
-  const std::string worker_command = std::string(argv[6]);
-  const std::string static_resource_list = std::string(argv[7]);
+  int num_initial_workers = std::stoi(argv[6]);
+  const std::string worker_command = std::string(argv[7]);
+  const std::string static_resource_list = std::string(argv[8]);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -33,7 +34,7 @@ int main(int argc, char *argv[]) {
       ray::raylet::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(INFO) << "Starting raylet with static resource configuration: "
                 << node_manager_config.resource_config.ToString();
-  node_manager_config.num_initial_workers = 0;
+  node_manager_config.num_initial_workers = num_initial_workers;
   // Use a default worker that can execute empty tasks with dependencies.
 
   std::stringstream worker_command_stream(worker_command);
@@ -53,6 +54,8 @@ int main(int argc, char *argv[]) {
   object_manager_config.max_sends = RayConfig::instance().object_manager_max_sends();
   object_manager_config.max_receives =
       RayConfig::instance().object_manager_max_receives();
+  object_manager_config.max_push_retries =
+      RayConfig::instance().object_manager_max_push_retries();
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
@@ -63,13 +66,10 @@ int main(int argc, char *argv[]) {
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
-  std::unique_ptr<boost::asio::io_service> object_manager_service;
 
-  object_manager_service.reset(new boost::asio::io_service());
-  ray::raylet::Raylet server(main_service, std::move(object_manager_service),
-                             raylet_socket_name, node_ip_address, redis_address,
-                             redis_port, node_manager_config, object_manager_config,
-                             gcs_client);
+  ray::raylet::Raylet server(main_service, raylet_socket_name, node_ip_address,
+                             redis_address, redis_port, node_manager_config,
+                             object_manager_config, gcs_client);
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop

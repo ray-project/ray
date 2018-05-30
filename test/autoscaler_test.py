@@ -365,14 +365,6 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.assertRaises(Exception, autoscaler.update)
 
-    def testAbortOnCreationFailures(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        self.provider.fail_creates = True
-        autoscaler = StandardAutoscaler(
-            config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
-        self.assertRaises(AssertionError, autoscaler.update)
-
     def testLaunchNewNodeOnOutOfBandTerminate(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()

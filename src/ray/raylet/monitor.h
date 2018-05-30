@@ -44,9 +44,9 @@ class Monitor {
   boost::asio::deadline_timer heartbeat_timer_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks
   /// that may pass before the Raylet will be declared dead.
-  std::unordered_map<ClientID, int64_t, UniqueIDHasher> heartbeats_;
+  std::unordered_map<ClientID, int64_t> heartbeats_;
   /// The Raylets that have been marked as dead in the client table.
-  std::unordered_set<ClientID, UniqueIDHasher> dead_clients_;
+  std::unordered_set<ClientID> dead_clients_;
 };
 
 }  // namespace raylet

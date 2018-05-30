@@ -19,6 +19,7 @@ class RAY_EXPORT UniqueID {
   static UniqueID from_random();
   static UniqueID from_binary(const std::string &binary);
   static const UniqueID nil();
+  size_t hash() const;
   bool is_nil() const;
   bool operator==(const UniqueID &rhs) const;
   const uint8_t *data() const;
@@ -34,15 +35,6 @@ class RAY_EXPORT UniqueID {
 
 static_assert(std::is_standard_layout<UniqueID>::value,
               "UniqueID must be standard");
-
-struct UniqueIDHasher {
-  // ID hashing function.
-  size_t operator()(const UniqueID &id) const {
-    size_t result;
-    std::memcpy(&result, id.data(), sizeof(size_t));
-    return result;
-  }
-};
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id);
 
@@ -71,7 +63,7 @@ const TaskID FinishTaskId(const TaskID &task_id);
 /// Compute the object ID of an object returned by the task.
 ///
 /// \param task_id The task ID of the task that created the object.
-/// \param put_index What number return value this object is in the task.
+/// \param return_index What number return value this object is in the task.
 /// \return The computed object ID.
 const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index);
 
@@ -98,4 +90,15 @@ int64_t ComputeObjectIndex(const ObjectID &object_id);
 
 }  // namespace ray
 
+namespace std {
+template <>
+struct hash<::ray::UniqueID> {
+  size_t operator()(const ::ray::UniqueID &id) const { return id.hash(); }
+};
+
+template <>
+struct hash<const ::ray::UniqueID> {
+  size_t operator()(const ::ray::UniqueID &id) const { return id.hash(); }
+};
+}
 #endif  // RAY_ID_H_

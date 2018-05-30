@@ -19,12 +19,24 @@ add_custom_command(
 
 add_custom_target(gen_node_manager_fbs DEPENDS ${NODE_MANAGER_FBS_OUTPUT_FILES})
 
+# Generate Python bindings for the flatbuffers objects.
+set(PYTHON_OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated/)
+add_custom_command(
+    TARGET gen_node_manager_fbs
+    COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} ${NODE_MANAGER_FBS_SRC}
+    DEPENDS ${FBS_DEPENDS}
+    COMMENT "Running flatc compiler on ${NODE_MANAGER_FBS_SRC}"
+    VERBATIM)
+
+add_dependencies(gen_node_manager_fbs flatbuffers_ep)
+
 ADD_RAY_TEST(object_manager_integration_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})
 
 ADD_RAY_TEST(worker_pool_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
 
 ADD_RAY_TEST(task_test STATIC_LINK_LIBS ray_static gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
 ADD_RAY_TEST(lineage_cache_test STATIC_LINK_LIBS ray_static gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
+ADD_RAY_TEST(task_dependency_manager_test STATIC_LINK_LIBS ray_static gtest gtest_main gmock_main pthread ${Boost_SYSTEM_LIBRARY})
 
 add_library(rayletlib raylet.cc ${NODE_MANAGER_FBS_OUTPUT_FILES})
 target_link_libraries(rayletlib ray_static ${Boost_SYSTEM_LIBRARY})

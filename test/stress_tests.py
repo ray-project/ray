@@ -71,6 +71,9 @@ class TaskTests(unittest.TestCase):
                 self.assertTrue(ray.services.all_processes_alive())
                 ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testSubmittingManyTasks(self):
         ray.init()
 
@@ -118,6 +121,9 @@ class TaskTests(unittest.TestCase):
         self.assertTrue(ray.services.all_processes_alive())
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testWait(self):
         for num_local_schedulers in [1, 4]:
             for num_workers_per_scheduler in [4]:
@@ -210,8 +216,10 @@ class ReconstructionTests(unittest.TestCase):
         state._initialize_global_state(self.redis_ip_address, self.redis_port)
         if os.environ.get('RAY_USE_NEW_GCS', False):
             tasks = state.task_table()
-            local_scheduler_ids = set(
-                task["LocalSchedulerID"] for task in tasks.values())
+            local_scheduler_ids = {
+                task["LocalSchedulerID"]
+                for task in tasks.values()
+            }
 
         # Make sure that all nodes in the cluster were used by checking that
         # the set of local scheduler IDs that had a task scheduled or submitted

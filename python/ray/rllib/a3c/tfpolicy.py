@@ -21,8 +21,8 @@ class TFPolicy(Policy):
         with self.g.as_default(), tf.device(worker_device):
             with tf.variable_scope(name):
                 self._setup_graph(ob_space, action_space)
-                assert all([hasattr(self, attr)
-                            for attr in ["vf", "logits", "x", "var_list"]])
+                assert all(hasattr(self, attr)
+                           for attr in ["vf", "logits", "x", "var_list"])
             print("Setting up loss")
             self.setup_loss(action_space)
             self.setup_gradients()

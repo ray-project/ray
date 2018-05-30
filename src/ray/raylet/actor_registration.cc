@@ -23,7 +23,7 @@ const ObjectID ActorRegistration::GetExecutionDependency() const {
   return execution_dependency_;
 }
 
-const std::unordered_map<ActorHandleID, ActorRegistration::FrontierLeaf, UniqueIDHasher>
+const std::unordered_map<ActorHandleID, ActorRegistration::FrontierLeaf>
     &ActorRegistration::GetFrontier() const {
   return frontier_;
 }

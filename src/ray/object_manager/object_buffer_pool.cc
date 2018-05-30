@@ -51,7 +51,7 @@ std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::Ge
     RAY_CHECK(object_buffer.metadata->data() ==
               object_buffer.data->data() + object_buffer.data->size());
     RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data->size() +
-                                                 object_buffer.metadata_size));
+                                                 object_buffer.metadata->size()));
     auto *data = const_cast<uint8_t *>(object_buffer.data->data());
     uint64_t num_chunks = GetNumChunks(data_size);
     get_buffer_state_.emplace(

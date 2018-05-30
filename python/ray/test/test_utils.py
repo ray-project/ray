@@ -95,7 +95,7 @@ def _wait_for_event(event_name, redis_address, extra_buffer=0):
     redis_client = redis.StrictRedis(host=redis_host, port=int(redis_port))
     while True:
         event_infos = redis_client.lrange(EVENT_KEY, 0, -1)
-        events = dict()
+        events = {}
         for event_info in event_infos:
             name, data = json.loads(event_info)
             if name in events:

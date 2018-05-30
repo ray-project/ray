@@ -32,14 +32,16 @@ MOCK_MODULES = ["gym",
                 "tensorflow.python",
                 "tensorflow.python.client",
                 "tensorflow.python.util",
-                "smart_open",
                 "ray.local_scheduler",
                 "ray.plasma",
                 "ray.core.generated.TaskInfo",
                 "ray.core.generated.TaskReply",
                 "ray.core.generated.ResultTableReply",
                 "ray.core.generated.TaskExecutionDependencies",
-                "ray.core.generated.ClientTableData"]
+                "ray.core.generated.ClientTableData",
+                "ray.core.generated.GcsTableEntry",
+                "ray.core.generated.ObjectTableData",
+                "ray.core.generated.ray.protocol.Task"]
 for mod_name in MOCK_MODULES:
   sys.modules[mod_name] = mock.Mock()
 

@@ -18,14 +18,13 @@ struct aeEventLoop;
 namespace ray {
 
 namespace gcs {
+/// Every callback should take in a vector of the results from the Redis
+/// operation and return a bool indicating whether the callback should be
+/// deleted once called.
+using RedisCallback = std::function<bool(const std::string &)>;
 
 class RedisCallbackManager {
  public:
-  /// Every callback should take in a vector of the results from the Redis
-  /// operation and return a bool indicating whether the callback should be
-  /// deleted once called.
-  using RedisCallback = std::function<bool(const std::string &)>;
-
   static RedisCallbackManager &instance() {
     static RedisCallbackManager instance;
     return instance;
@@ -39,12 +38,12 @@ class RedisCallbackManager {
   void remove(int64_t callback_index);
 
  private:
-  RedisCallbackManager() : num_callbacks(0){};
+  RedisCallbackManager() : num_callbacks_(0){};
 
   ~RedisCallbackManager() { printf("shut down callback manager\n"); }
 
-  int64_t num_callbacks;
-  std::unordered_map<int64_t, std::unique_ptr<RedisCallback>> callbacks_;
+  int64_t num_callbacks_ = 0;
+  std::unordered_map<int64_t, RedisCallback> callbacks_;
 };
 
 class RedisContext {
@@ -64,17 +63,17 @@ class RedisContext {
   /// \param length The length of the data to be added, if data is provided.
   /// \param prefix
   /// \param pubsub_channel
-  /// \param callback_index
+  /// \param redisCallback The Redis callback function.
   /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
   ///        at which the data must be appended. For all other commands, set to
   ///        -1 for unused. If set, then data must be provided.
   Status RunAsync(const std::string &command, const UniqueID &id, const uint8_t *data,
                   int64_t length, const TablePrefix prefix,
-                  const TablePubsub pubsub_channel, int64_t callback_index,
+                  const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
 
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
-                        int64_t callback_index);
+                        const RedisCallback &redisCallback);
   redisAsyncContext *async_context() { return async_context_; }
   redisAsyncContext *subscribe_context() { return subscribe_context_; };
 

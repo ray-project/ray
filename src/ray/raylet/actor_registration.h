@@ -63,8 +63,7 @@ class ActorRegistration {
   ///
   /// \return The actor frontier, a map from handle ID to execution state for
   /// that handle.
-  const std::unordered_map<ActorHandleID, FrontierLeaf, UniqueIDHasher> &GetFrontier()
-      const;
+  const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
 
   /// Extend the frontier of the actor by a single task. This should be called
   /// whenever the actor executes a task.
@@ -86,7 +85,7 @@ class ActorRegistration {
   /// The execution frontier of the actor, which represents which tasks have
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
-  std::unordered_map<ActorHandleID, FrontierLeaf, UniqueIDHasher> frontier_;
+  std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
 };
 
 }  // namespace raylet
