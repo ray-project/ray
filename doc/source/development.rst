@@ -60,7 +60,7 @@ helpful.
    to git's ``pre-push`` hook, so that you never have to worry about
    your code formatting ever again. Note that RLlib is not currently
    autoformatted, though running ``yapf`` over the individual files you
-   edit with ``yapf -i -p -r <file1> <file2> <...>`` is a good idea.
+   edit with ``.travis/yapf.sh --files <file1> <file2> <...>`` is a good idea.
 
 6. **Inspecting Redis shards by hand:** To inspect the primary Redis shard by
    hand, you can query it with commands like the following.
