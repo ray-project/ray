@@ -1746,33 +1746,22 @@ class DataFrame(object):
         Returns:
             Boolean: True if equal, otherwise False
         """
-        # TODO(kunalgosar): Implement Copartition and use to implement equals
-        def helper(df, index, other_series):
-            return df.iloc[index['index_within_partition']] \
-                        .equals(other_series)
 
-        results = []
-        other_partition = None
-        other_df = None
-        # TODO: Make the appropriate coord df accessor methods for this fxn
-        for i, idx in other._row_metadata._coord_df.iterrows():
-            if idx['partition'] != other_partition:
-                other_df = ray.get(other._row_partitions[idx['partition']])
-                other_partition = idx['partition']
-            # TODO: group series here into full df partitions to reduce
-            # the number of remote calls to helper
-            other_series = other_df.iloc[idx['index_within_partition']]
-            curr_index = self._row_metadata._coord_df.loc[i]
-            curr_df = self._row_partitions[int(curr_index['partition'])]
-            results.append(_deploy_func.remote(helper,
-                                               curr_df,
-                                               curr_index,
-                                               other_series))
+        if not self.index.equals(other.index) or not \
+                self.columns.equals(other.columns):
+            return False
 
-        for r in results:
-            if not ray.get(r):
-                return False
-        return True
+        # We are going to use row partitions to perform the equals so we have
+        # to make sure they match up.
+        repartitioned_other = np.array([_match_partitioning._submit(
+            args=(df, self._row_metadata._lengths, other.index),
+            num_return_vals=len(self._row_metadata._lengths))
+            for df in other._col_partitions]).T
+
+        # We are using innocent until proven guilty strategy
+        return next((False for left, right in zip(self._row_partitions,
+                                              repartitioned_other)
+                     if not ray.get(_equals_helper(left, right))), True)
 
     def eval(self, expr, inplace=False, **kwargs):
         """Evaluate a Python expression as a string using various backends.
@@ -5376,3 +5365,8 @@ def reindex_helper(old_index, new_index, axis, npartitions, method, fill_value,
                     method=method, fill_value=fill_value,
                     limit=limit, tolerance=tolerance)
     return create_blocks_helper(df, npartitions, axis)
+
+
+@ray.remote
+def _equals_helper(left, right):
+    return left.equals(right)
