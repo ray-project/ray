@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import pandas as pd
 import numpy as np
 import ray
@@ -10,6 +11,36 @@ from . import get_npartitions
 
 
 _NAN_BLOCKS = {}
+_MEMOIZER_CAPACITY = 1000  # Capacity per function
+
+
+class LRUCache:
+    """A LRUCache implemented with collections.OrderedDict
+    """
+
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.cache = collections.OrderedDict()
+
+    def __contains__(self, key):
+        return key in self.cache
+
+    def __getitem__(self, key):
+        """Retrieve item from cache and re-insert it to the back of the queue
+        """
+        value = self.cache.pop(key)
+        self.cache[key] = value
+        return value
+
+    def __setitem__(self, key, value):
+        if key in self.cache:
+            self.cache.pop(key)
+
+        if len(self.cache) >= self.capacity:
+            # Pop oldest items at the beginning of the queue
+            self.cache.popitem(last=False)
+
+        self.cache[key] = value
 
 
 class memoize:
@@ -21,8 +52,7 @@ class memoize:
 
     def __init__(self, f):
         self.old_remote_func = f.remote
-        self.cache = {}
-        self.object_table = ray.global_state.object_table
+        self.cache = LRUCache(capacity=_MEMOIZER_CAPACITY)
 
     def remote(self, *args):
         """Return cached result if the arguments are cached
