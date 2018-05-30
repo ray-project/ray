@@ -56,12 +56,12 @@ helpful.
 
 5. **Autoformatting code**. We use ``yapf`` https://github.com/google/yapf for
    linting, and the config file is located at ``.style.yapf``. We recommend
-   adding ``bash .travis/yapf.sh`` to your git ``pre-push`` hooks, so that you
+   adding ``bash scripts/yapf.sh`` to your git ``pre-push`` hooks, so that you
    never have to worry about your code formatting ever again. This will format
    all python files modified in the last commit. If you want to format *all*
-   python files, use ``.travis/yapf.sh --all``. Note that RLlib is not
+   python files, use ``scripts/yapf.sh --all``. Note that RLlib is not
    currently autoformatted, though running ``yapf`` over the individual files
-   you edit with ``.travis/yapf.sh --files <file1> <file2> <...>`` will do so
+   you edit with ``scripts/yapf.sh --files <file1> <file2> <...>`` will do so
    (and is a good idea).
 
 6. **Inspecting Redis shards by hand:** To inspect the primary Redis shard by
