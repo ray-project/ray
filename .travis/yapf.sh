@@ -9,7 +9,7 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT"
 
-lint() {
+format() {
     yapf \
         --style "$ROOT/.style.yapf" \
         --in-place --recursive --parallel \
@@ -17,7 +17,16 @@ lint() {
         "$@"
 }
 
-lint_all() {
+format_changed() {
+    # Formats python files that changed in last commit
+    git diff --name-only HEAD~1 HEAD | grep '\.py$' | xargs -P 5 \
+        yapf \
+        --style "$ROOT/.style.yapf" \
+        --in-place --recursive --parallel
+
+}
+
+format_all() {
 
     yapf \
         --style "$ROOT/.style.yapf" \
@@ -29,12 +38,18 @@ lint_all() {
         test python
 }
 
-# This flag lints individual files. --files *must* be the first command line
+# This flag formats individual files. --files *must* be the first command line
 # arg to use this option.
 if [[ "$1" == '--files' ]]; then
-    lint "${@:2}"
+    format "${@:2}"
+    # If `--all` is passed, then any further arguments are ignored and the
+    # entire python directory is formatted.
+elif [[ "$1" == '--all' ]]; then
+    format_all 'test' 'python'
 else
-    lint_all 'test' 'python'
+    # Format only the files that changed in last commit. Ignores uncommitted
+    # files.
+    format_changed
 fi
 
 if ! git diff --quiet; then
