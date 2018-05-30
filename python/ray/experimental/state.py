@@ -1042,8 +1042,6 @@ class GlobalState(object):
         Returns:
             A list of the live local schedulers.
         """
-        if self.use_raylet:
-            raise Exception("The local_schedulers() method is deprecated.")
         clients = self.client_table()
         local_schedulers = []
         if self.use_raylet:
