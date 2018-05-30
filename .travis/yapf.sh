@@ -9,21 +9,26 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT"
 
-YAPF_FLAGS="--style $ROOT/.style.yapf --in-place --recursive --parallel"
+YAPF_FLAGS=(
+    "--style $ROOT/.style.yapf"
+    '--in-place'
+    '--recursive'
+    '--parallel')
 
-YAPF_EXCLUDES="--exclude 'python/ray/cloudpickle' \
---exclude 'python/ray/dataframe' \
---exclude 'python/ray/rllib' \
---exclude 'python/build' \
---exclude 'python/ray/pyarrow_files' \
---exclude 'python/ray/core/src/ray/gcs' \
---exclude 'python/ray/common/thirdparty'"
+YAPF_EXCLUDES=(
+    '--exclude python/ray/dataframe'
+    '--exclude python/ray/rllib'
+    '--exclude python/ray/cloudpickle'
+    '--exclude python/build'
+    '--exclude python/ray/pyarrow_files'
+    '--exclude python/ray/core/src/ray/gcs'
+    '--exclude python/ray/common/thirdparty')
 
 UPSTREAM_MASTER=${RAY_UPSTREAM_BRANCH:-origin/master}
 
 # Format specified files
 format() {
-    yapf $YAPF_FLAGS -- "$@"
+    yapf "${YAPF_FLAGS[@]}" -- "$@"
 }
 
 # Format files that differ from main branch
@@ -34,7 +39,7 @@ format_changed() {
 
 # Format all files
 format_all() {
-    yapf $YAPF_FLAGS $YAPF_EXCLUDES python
+    yapf "${YAPF_FLAGS[@]}" "${YAPF_EXCLUDES[@]}" python
 }
 
 # This flag formats individual files. --files *must* be the first command line
