@@ -758,9 +758,6 @@ class APITest(unittest.TestCase):
         results = ray.get([object_ids[i] for i in indices])
         self.assertEqual(results, indices)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testWait(self):
         self.init_ray(num_cpus=1)
 

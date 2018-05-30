@@ -192,7 +192,7 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     LocalSchedulerConnection *conn,
     const std::vector<ObjectID> &object_ids,
     int num_returns,
-    int timeout,
+    int64_t timeout,
     bool wait_local) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;

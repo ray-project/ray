@@ -461,7 +461,7 @@ void NodeManager::ProcessClientMessage(
     uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
     bool wait_local = message->wait_local();
 
-    object_manager_.Wait(
+    ray::Status status = object_manager_.Wait(
         object_ids, wait_ms, num_required_objects, wait_local,
         [this, client](int64_t time_taken, std::unordered_set<ObjectID> found,
                        std::unordered_set<ObjectID> remaining) {
@@ -475,6 +475,7 @@ void NodeManager::ProcessClientMessage(
           client->WriteMessage(protocol::MessageType_WaitReply, fbb.GetSize(),
                                fbb.GetBufferPointer());
         });
+    RAY_CHECK_OK(status);
   } break;
 
   default:

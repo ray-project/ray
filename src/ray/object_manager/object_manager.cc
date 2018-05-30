@@ -116,7 +116,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
   ray::Status status_code = object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
-        RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_, object_id));
+        RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
+            object_directory_pull_callback_id_, object_id));
         GetLocationsSuccess(client_ids, object_id);
       });
   return status_code;
@@ -402,9 +403,11 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   // will do nothing on non-zero error codes.
   wait_state.timeout_timer->cancel();
   // Invoke the wait handler.
-  int64_t time_taken = wait_state.wait_ms == 0? 0 :
-      (boost::posix_time::second_clock::local_time() - wait_state.start_time)
-          .total_milliseconds();
+  int64_t time_taken =
+      wait_state.wait_ms == 0
+          ? 0
+          : (boost::posix_time::second_clock::local_time() - wait_state.start_time)
+                .total_milliseconds();
   wait_state.callback(time_taken, wait_state.found, wait_state.remaining);
 }
 

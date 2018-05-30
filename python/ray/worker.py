@@ -2558,9 +2558,18 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
             return [], []
 
         if worker.use_raylet:
+            if len(object_ids) != len(set(object_ids)):
+                raise Exception("Wait requires a list of unique object IDs.")
+            if len(object_ids) <= 0:
+                raise Exception("Invalid number of objects %d." % len(object_ids))
+            if num_returns <= 0:
+                raise Exception("Invalid number of objects to return %d." % num_returns)
+            if num_returns > len(object_ids):
+                raise Exception("num_returns cannot be greater than the number "
+                                "of objects provided to ray.wait.")
             timeout = timeout if timeout is not None else 2**30
             ready_ids, remaining_ids = worker.local_scheduler_client.wait(
-                object_ids, timeout, num_returns, False)
+                object_ids, num_returns, timeout, False)
         else:
             object_id_strs = [
                 plasma.ObjectID(object_id.id()) for object_id in object_ids
