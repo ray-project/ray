@@ -10,7 +10,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from googleapiclient import discovery, errors
 
-
 crm = discovery.build("cloudresourcemanager", "v1")
 iam = discovery.build("iam", "v1")
 compute = discovery.build("compute", "v1")
@@ -165,8 +164,7 @@ def _configure_iam_role(config):
 
     assert service_account is not None, "Failed to create service account"
 
-    _add_iam_policy_binding(service_account,
-                            DEFAULT_SERVICE_ACCOUNT_ROLES)
+    _add_iam_policy_binding(service_account, DEFAULT_SERVICE_ACCOUNT_ROLES)
 
     config["head_node"]["serviceAccounts"] = [{
         "email": service_account["email"],

@@ -82,9 +82,9 @@ class NodeUpdater(object):
             self.provider.set_node_tags(self.node_id,
                                         {TAG_RAY_NODE_STATUS: "update-failed"})
             if self.logfile is not None:
-                print("----- BEGIN REMOTE LOGS -----\n" +
-                      open(self.logfile.name).read() +
-                      "\n----- END REMOTE LOGS -----")
+                print("----- BEGIN REMOTE LOGS -----\n" + open(
+                    self.logfile.name).read() + "\n----- END REMOTE LOGS -----"
+                      )
             raise e
         self.provider.set_node_tags(
             self.node_id, {
@@ -182,10 +182,8 @@ class NodeUpdater(object):
         force_interactive = "set -i || true && source ~/.bashrc && "
         self.process_runner.check_call(
             [
-                "ssh",
-                "-o", "ConnectTimeout={}s".format(connect_timeout),
-                "-o", "StrictHostKeyChecking=no",
-                "-i", self.ssh_private_key,
+                "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
+                "-o", "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
                 "{}@{}".format(self.ssh_user, self.ssh_ip),
                 "bash --login -c {}".format(quote(force_interactive + cmd))
             ],
