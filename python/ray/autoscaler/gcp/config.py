@@ -118,11 +118,11 @@ def _configure_project(config):
     buckets, users, and instances under projects. This is different from
     aws ec2 where everything is global.
     """
-    if "project_id" not in config["provider"]:
-        print("config.provider.project_id not defined."
-              " Using default project_id: {}".format(DEFAULT_PROJECT_ID))
+    project_id = config["provider"].get("project_id")
+    assert config["provider"]["project_id"] is not None, (
+        "'project_id' must be set in the 'provider' section of the autoscaler"
+        " config. Notice that the project id must be globally unique.")
 
-    project_id = config["provider"].get("project_id", DEFAULT_PROJECT_ID)
     project = _get_project(project_id)
 
     if project is None:

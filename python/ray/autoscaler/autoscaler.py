@@ -59,7 +59,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "availability_zone": (str, OPTIONAL),  # e.g. us-east-1a
             "module": (str,
                        OPTIONAL),  # module, if using external node provider
-            "project_id": (str, OPTIONAL),  # gcp project id, if using gcp
+            "project_id": (None, OPTIONAL),  # gcp project id, if using gcp
         },
         REQUIRED),
 

@@ -10,7 +10,7 @@ provider:
     type: gcp
     region: us-west1
     availability_zone: us-west1-a
-    project_id: ray-autoscaler-v1
+    project_id: null # Globally unique project id
 
 # How Ray will authenticate with newly launched nodes.
 auth:
