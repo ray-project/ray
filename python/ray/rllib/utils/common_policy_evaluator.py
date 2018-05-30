@@ -19,6 +19,8 @@ from ray.tune.result import TrainingResult
 
 
 def collect_metrics(local_evaluator, remote_evaluators):
+    """Gathers episode metrics from CommonPolicyEvaluator instances."""
+
     episode_rewards = []
     episode_lengths = []
     metric_lists = ray.get(
