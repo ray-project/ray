@@ -13,7 +13,7 @@ from ray.rllib.utils.atari_wrappers import wrap_deepmind
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
-from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.tune.registry import get_registry
 from ray.tune.result import TrainingResult
 
@@ -49,7 +49,7 @@ def collect_metrics(local_evaluator, remote_evaluators):
 
 
 class CommonPolicyEvaluator(PolicyEvaluator):
-    """Policy evaluator implementation that operates on a rllib.PolicyLoss.
+    """Policy evaluator implementation that operates on a rllib.PolicyGraph.
 
     TODO: vector env
     TODO: multi-agent
@@ -83,9 +83,9 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             env_creator (func): Function that returns a gym.Env given an
                 env config dict.
             policy_cls (class): A function that returns an
-                object implementing rllib.PolicyLoss or rllib.TFPolicyLoss.
+                object implementing rllib.PolicyGraph or rllib.TFPolicyGraph.
             tf_session_creator (func): A function that returns a TF session.
-                This is optional and only useful with TFPolicyLoss.
+                This is optional and only useful with TFPolicyGraph.
             batch_steps (int): The target number of env transitions to include
                 in each sample batch returned from this evaluator.
             batch_mode (str): One of the following choices:
@@ -139,7 +139,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.vectorized = hasattr(self.env, "vector_reset")
         self.policy_map = {}
 
-        if issubclass(policy_cls, TFPolicyLoss):
+        if issubclass(policy_cls, TFPolicyGraph):
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.sess = tf_session_creator()

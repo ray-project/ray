@@ -6,10 +6,10 @@ import tensorflow as tf
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.process_rollout import process_rollout
-from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
-class PGPolicyLoss(TFPolicyLoss):
+class PGPolicyGraph(TFPolicyGraph):
 
     def __init__(self, obs_space, action_space, registry, config):
         self.config = config
@@ -26,7 +26,7 @@ class PGPolicyLoss(TFPolicyLoss):
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
         self.loss = -tf.reduce_mean(self.dist.logp(self.ac) * self.adv)
 
-        # initialize TFPolicyLoss
+        # initialize TFPolicyGraph
         self.sess = tf.get_default_session()
         self.loss_in = [
             ("obs", self.x),
@@ -34,7 +34,7 @@ class PGPolicyLoss(TFPolicyLoss):
             ("advantages", self.adv),
         ]
         self.is_training = tf.placeholder_with_default(True, ())
-        TFPolicyLoss.__init__(
+        TFPolicyGraph.__init__(
             self, self.sess, obs_input=self.x,
             action_sampler=self.dist.sample(), loss=self.loss,
             loss_inputs=self.loss_in, is_training=self.is_training)

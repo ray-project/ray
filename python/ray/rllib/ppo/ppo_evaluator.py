@@ -17,7 +17,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
-from ray.rllib.ppo.loss import ProximalPolicyLoss
+from ray.rllib.ppo.loss import ProximalPolicyGraph
 
 
 # TODO(rliaw): Move this onto LocalMultiGPUOptimizer
@@ -86,7 +86,7 @@ class PPOEvaluator(PolicyEvaluator):
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
         def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
-            return ProximalPolicyLoss(
+            return ProximalPolicyGraph(
                 self.env.observation_space, self.env.action_space,
                 obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
                 self.kl_coeff, self.distribution_class, self.config,
@@ -107,9 +107,9 @@ class PPOEvaluator(PolicyEvaluator):
             self.mean_loss = tf.reduce_mean(
                 tf.stack(values=[
                     policy.loss for policy in policies]), 0)
-            self.mean_policy_loss = tf.reduce_mean(
+            self.mean_policy_graph = tf.reduce_mean(
                 tf.stack(values=[
-                    policy.mean_policy_loss for policy in policies]), 0)
+                    policy.mean_policy_graph for policy in policies]), 0)
             self.mean_vf_loss = tf.reduce_mean(
                 tf.stack(values=[
                     policy.mean_vf_loss for policy in policies]), 0)
@@ -153,7 +153,7 @@ class PPOEvaluator(PolicyEvaluator):
             self.sess,
             batch_index,
             extra_ops=[
-                self.mean_loss, self.mean_policy_loss, self.mean_vf_loss,
+                self.mean_loss, self.mean_policy_graph, self.mean_vf_loss,
                 self.mean_kl, self.mean_entropy],
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)

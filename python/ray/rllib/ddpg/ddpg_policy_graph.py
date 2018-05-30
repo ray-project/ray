@@ -8,11 +8,11 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 import ray
-from ray.rllib.dqn.dqn_policy_loss import _huber_loss, _minimize_and_clip, \
+from ray.rllib.dqn.dqn_policy_graph import _huber_loss, _minimize_and_clip, \
     _scope_vars, _postprocess_dqn
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
 A_SCOPE = "a_func"
@@ -80,7 +80,7 @@ def _build_q_network(registry, inputs, action_inputs, config):
     return q_scores
 
 
-class DDPGPolicyLoss(TFPolicyLoss):
+class DDPGPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, registry, config):
         if not isinstance(action_space, Box):
             raise UnsupportedSpaceException(
@@ -235,7 +235,7 @@ class DDPGPolicyLoss(TFPolicyLoss):
             ("weights", self.importance_weights),
         ]
         self.is_training = tf.placeholder_with_default(True, ())
-        TFPolicyLoss.__init__(
+        TFPolicyGraph.__init__(
             self, self.sess, obs_input=self.cur_observations,
             action_sampler=self.output_actions, loss=self.loss,
             loss_inputs=self.loss_inputs, is_training=self.is_training)
@@ -320,8 +320,8 @@ class DDPGPolicyLoss(TFPolicyLoss):
         self.variables.set_weights(weights)
 
     def get_state(self):
-        return [TFPolicyLoss.get_state(self), self.cur_epsilon]
+        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
 
     def set_state(self, state):
-        TFPolicyLoss.set_state(self, state[0])
+        TFPolicyGraph.set_state(self, state[0])
         self.set_epsilon(state[1])

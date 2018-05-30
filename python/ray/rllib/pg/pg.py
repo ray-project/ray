@@ -4,7 +4,7 @@ from __future__ import print_function
 
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import LocalSyncOptimizer
-from ray.rllib.pg.pg_policy_loss import PGPolicyLoss
+from ray.rllib.pg.pg_policy_graph import PGPolicyGraph
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
 from ray.tune.trial import Resources
@@ -50,7 +50,7 @@ class PGAgent(Agent):
             evaluator_cls=CommonPolicyEvaluator,
             evaluator_args=dict(
                 env_creator=self.env_creator,
-                policy_cls=PGPolicyLoss,
+                policy_cls=PGPolicyGraph,
                 batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes",
                 registry=self.registry,

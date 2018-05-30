@@ -10,10 +10,10 @@ import torch.nn.functional as F
 from ray.rllib.models.pytorch.misc import var_to_np, convert_batch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.process_rollout import process_rollout
-from ray.rllib.utils.policy_loss import PolicyLoss
+from ray.rllib.utils.policy_graph import PolicyGraph
 
 
-class SharedTorchPolicy(PolicyLoss):
+class SharedTorchPolicy(PolicyGraph):
     """A simple, non-recurrent PyTorch policy example."""
 
     def __init__(self, obs_space, action_space, registry, config):

@@ -8,7 +8,7 @@ import os
 import ray
 from ray.rllib import optimizers
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
-from ray.rllib.dqn.dqn_policy_loss import DQNPolicyLoss
+from ray.rllib.dqn.dqn_policy_graph import DQNPolicyGraph
 from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
     collect_metrics
 from ray.rllib.agent import Agent
@@ -109,7 +109,7 @@ class DQNAgent(Agent):
     _allow_unknown_subkeys = [
         "model", "optimizer", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
-    _policy_loss = DQNPolicyLoss
+    _policy_graph = DQNPolicyGraph
 
     @classmethod
     def default_resource_request(cls, config):
@@ -123,7 +123,7 @@ class DQNAgent(Agent):
         adjusted_batch_size = (
             self.config["sample_batch_size"] + self.config["n_step"] - 1)
         self.local_evaluator = CommonPolicyEvaluator(
-            self.env_creator, self._policy_loss,
+            self.env_creator, self._policy_graph,
             batch_steps=adjusted_batch_size,
             batch_mode="pack_episodes", preprocessor_pref="deepmind",
             compress_observations=True,
@@ -134,7 +134,7 @@ class DQNAgent(Agent):
             num_gpus=self.config["num_gpus_per_worker"])
         self.remote_evaluators = [
             remote_cls.remote(
-                self.env_creator, self._policy_loss,
+                self.env_creator, self._policy_graph,
                 batch_steps=adjusted_batch_size,
                 batch_mode="pack_episodes", preprocessor_pref="deepmind",
                 compress_observations=True,

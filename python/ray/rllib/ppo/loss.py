@@ -7,7 +7,7 @@ import tensorflow as tf
 from ray.rllib.models import ModelCatalog
 
 
-class ProximalPolicyLoss(object):
+class ProximalPolicyGraph(object):
 
     other_output = ["vf_preds", "logprobs"]
     is_recurrent = False
@@ -49,7 +49,7 @@ class ProximalPolicyLoss(object):
         self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
                                       1 + config["clip_param"]) * advantages
         self.surr = tf.minimum(self.surr1, self.surr2)
-        self.mean_policy_loss = tf.reduce_mean(-self.surr)
+        self.mean_policy_graph = tf.reduce_mean(-self.surr)
 
         if config["use_gae"]:
             # We use a huber loss here to be more robust against outliers,

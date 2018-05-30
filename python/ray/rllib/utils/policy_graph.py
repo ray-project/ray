@@ -3,17 +3,17 @@ from __future__ import division
 from __future__ import print_function
 
 
-class PolicyLoss(object):
-    """An agent policy and loss, i.e., a TFPolicyLoss or other subclass.
+class PolicyGraph(object):
+    """An agent policy and loss, i.e., a TFPolicyGraph or other subclass.
 
     This object defines how to act in the environment, and also losses used to
     improve the policy based on its experiences. Note that both policy and
     loss are defined together for convenience, though the policy itself is
     logically separate.
 
-    All policies can directly extend PolicyLoss, however TensorFlow users may
-    find TFPolicyLoss simpler to implement. TFPolicyLoss also enables RLlib to
-    apply TensorFlow-specific optimizations such as fusing multiple policy
+    All policies can directly extend PolicyGraph, however TensorFlow users may
+    find TFPolicyGraph simpler to implement. TFPolicyGraph also enables RLlib
+    to apply TensorFlow-specific optimizations such as fusing multiple policy
     graphs and multi-GPU support.
     """
 

@@ -10,7 +10,7 @@ import tensorflow.contrib.layers as layers
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
 Q_SCOPE = "q_func"
@@ -45,7 +45,7 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
         del arr[new_len:]
 
 
-class DQNPolicyLoss(TFPolicyLoss):
+class DQNPolicyGraph(TFPolicyGraph):
     def __init__(self, observation_space, action_space, registry, config):
         if not isinstance(action_space, Discrete):
             raise UnsupportedSpaceException(
@@ -134,7 +134,7 @@ class DQNPolicyLoss(TFPolicyLoss):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
-        # initialize TFPolicyLoss
+        # initialize TFPolicyGraph
         self.sess = tf.get_default_session()
         self.loss_inputs = [
             ("obs", self.obs_t),
@@ -145,7 +145,7 @@ class DQNPolicyLoss(TFPolicyLoss):
             ("weights", self.importance_weights),
         ]
         self.is_training = tf.placeholder_with_default(True, ())
-        TFPolicyLoss.__init__(
+        TFPolicyGraph.__init__(
             self, self.sess, obs_input=self.cur_observations,
             action_sampler=self.output_actions, loss=self.loss,
             loss_inputs=self.loss_inputs, is_training=self.is_training)
@@ -201,38 +201,38 @@ class DQNPolicyLoss(TFPolicyLoss):
         self.cur_epsilon = epsilon
 
     def get_state(self):
-        return [TFPolicyLoss.get_state(self), self.cur_epsilon]
+        return [TFPolicyGraph.get_state(self), self.cur_epsilon]
 
     def set_state(self, state):
-        TFPolicyLoss.set_state(self, state[0])
+        TFPolicyGraph.set_state(self, state[0])
         self.set_epsilon(state[1])
 
 
-def _postprocess_dqn(policy_loss, sample_batch):
+def _postprocess_dqn(policy_graph, sample_batch):
     obs, actions, rewards, new_obs, dones = [
         list(x) for x in sample_batch.columns(
             ["obs", "actions", "rewards", "new_obs", "dones"])]
 
     # N-step Q adjustments
-    if policy_loss.config["n_step"] > 1:
+    if policy_graph.config["n_step"] > 1:
         adjust_nstep(
-            policy_loss.config["n_step"], policy_loss.config["gamma"],
+            policy_graph.config["n_step"], policy_graph.config["gamma"],
             obs, actions, rewards, new_obs, dones)
 
     batch = SampleBatch({
         "obs": obs, "actions": actions, "rewards": rewards,
         "new_obs": new_obs, "dones": dones,
         "weights": np.ones_like(rewards)})
-    assert batch.count == policy_loss.config["sample_batch_size"], \
-        (batch.count, policy_loss.config["sample_batch_size"])
+    assert batch.count == policy_graph.config["sample_batch_size"], \
+        (batch.count, policy_graph.config["sample_batch_size"])
 
     # Prioritize on the worker side
-    if policy_loss.config["worker_side_prioritization"]:
-        td_errors = policy_loss.compute_td_error(
+    if policy_graph.config["worker_side_prioritization"]:
+        td_errors = policy_graph.compute_td_error(
             batch["obs"], batch["actions"], batch["rewards"],
             batch["new_obs"], batch["dones"], batch["weights"])
         new_priorities = (
-            np.abs(td_errors) + policy_loss.config["prioritized_replay_eps"])
+            np.abs(td_errors) + policy_graph.config["prioritized_replay_eps"])
         batch.data["weights"] = new_priorities
 
     return batch

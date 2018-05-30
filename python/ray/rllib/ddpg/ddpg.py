@@ -4,7 +4,7 @@ from __future__ import print_function
 
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.dqn.dqn import DQNAgent
-from ray.rllib.ddpg.ddpg_policy_loss import DDPGPolicyLoss
+from ray.rllib.ddpg.ddpg_policy_graph import DDPGPolicyGraph
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
@@ -115,7 +115,7 @@ class DDPGAgent(DQNAgent):
     _allow_unknown_subkeys = [
         "model", "optimizer", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
-    _policy_loss = DDPGPolicyLoss
+    _policy_graph = DDPGPolicyGraph
 
     def _make_exploration_schedule(self, worker_index):
         # Override DQN's schedule to take into account `noise_scale`

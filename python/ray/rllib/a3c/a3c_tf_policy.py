@@ -6,10 +6,10 @@ import tensorflow as tf
 import gym
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.process_rollout import process_rollout
-from ray.rllib.utils.tf_policy_loss import TFPolicyLoss
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
-class A3CTFPolicyLoss(TFPolicyLoss):
+class A3CTFPolicyGraph(TFPolicyGraph):
     """The TF policy base class."""
 
     def __init__(self, ob_space, action_space, registry, config):
@@ -26,7 +26,7 @@ class A3CTFPolicyLoss(TFPolicyLoss):
         self.is_training = tf.placeholder_with_default(True, ())
         self.sess = tf.get_default_session()
 
-        TFPolicyLoss.__init__(
+        TFPolicyGraph.__init__(
             self, self.sess, obs_input=self.x,
             action_sampler=self.action_dist.sample(), loss=self.loss,
             loss_inputs=self.loss_in, is_training=self.is_training,
@@ -37,7 +37,7 @@ class A3CTFPolicyLoss(TFPolicyLoss):
 
         if self.summarize:
             bs = tf.to_float(tf.shape(self.x)[0])
-            tf.summary.scalar("model/policy_loss", self.pi_loss / bs)
+            tf.summary.scalar("model/policy_graph", self.pi_loss / bs)
             tf.summary.scalar("model/value_loss", self.vf_loss / bs)
             tf.summary.scalar("model/entropy", self.entropy / bs)
             tf.summary.scalar("model/grad_gnorm", tf.global_norm(self._grads))

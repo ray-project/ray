@@ -5,10 +5,10 @@ from __future__ import print_function
 import tensorflow as tf
 
 import ray
-from ray.rllib.utils.policy_loss import PolicyLoss
+from ray.rllib.utils.policy_graph import PolicyGraph
 
 
-class TFPolicyLoss(PolicyLoss):
+class TFPolicyGraph(PolicyGraph):
     """An agent policy and loss implemented in TensorFlow.
 
     Extending this class enables RLlib to perform TensorFlow specific
@@ -18,7 +18,7 @@ class TFPolicyLoss(PolicyLoss):
     All input and output tensors are of shape [BATCH_DIM, ...].
 
     Examples:
-        >>> policy = TFPolicyLossSubclass(
+        >>> policy = TFPolicyGraphSubclass(
             sess, obs_input, action_sampler, loss, loss_inputs, is_training)
 
         >>> print(policy.compute_actions([1, 0, 2]))
