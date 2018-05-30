@@ -70,6 +70,8 @@ class Monitor(object):
 
     Attributes:
         redis: A connection to the Redis server.
+        use_raylet: A bool indicating whether to use the raylet code path or
+            not.
         subscribe_client: A pubsub client for the Redis server. This is used to
             receive notifications about failed components.
         subscribed: A dictionary mapping channel names (str) to whether or not
@@ -89,6 +91,7 @@ class Monitor(object):
         # Initialize the Redis clients.
         self.state = ray.experimental.state.GlobalState()
         self.state._initialize_global_state(redis_address, redis_port)
+        self.use_raylet = self.state.use_raylet
         self.redis = redis.StrictRedis(
             host=redis_address, port=redis_port, db=0)
         # TODO(swang): Update pubsub client to use ray.experimental.state once
@@ -212,6 +215,11 @@ class Monitor(object):
         that we do not miss any notifications for deleted clients that occurred
         before we subscribed.
         """
+        # Exit if we are using the raylet code path because client_table is
+        # implemented differently. TODO(rkn): Fix this.
+        if self.use_raylet:
+            return
+
         clients = self.state.client_table()
         if type(clients) is list:
             return  # TODO(ekl) is this scan necessary in Xray?
@@ -550,6 +558,7 @@ class Monitor(object):
 
         # Handle messages from the subscription channels.
         while True:
+<<<<<<< HEAD
             # Update the mapping from local scheduler client ID to IP address.
             # This is only used to update the load metrics for the autoscaler.
             local_schedulers = self.state.local_schedulers()
@@ -564,6 +573,24 @@ class Monitor(object):
             # Process autoscaling actions
             if self.autoscaler:
                 self.autoscaler.update()
+=======
+            # TODO(rkn): The autoscaler needs to be re-enabled for xray.
+            if not self.use_raylet:
+                # Update the mapping from local scheduler client ID to IP
+                # address. This is only used to update the load metrics for the
+                # autoscaler.
+                local_schedulers = self.state.local_schedulers()
+                self.local_scheduler_id_to_ip_map = {}
+                for local_scheduler_info in local_schedulers:
+                    client_id = local_scheduler_info["DBClientID"]
+                    ip_address = local_scheduler_info["AuxAddress"].split(":")[
+                        0]
+                    self.local_scheduler_id_to_ip_map[client_id] = ip_address
+
+                # Process autoscaling actions
+                if self.autoscaler:
+                    self.autoscaler.update()
+>>>>>>> fd234e317108b5d5649a707dd6b3d6da0b4222f8
             # Record how many dead local schedulers and plasma managers we had
             # at the beginning of this round.
             num_dead_local_schedulers = len(self.dead_local_schedulers)
