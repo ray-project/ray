@@ -186,6 +186,7 @@ class ModelCatalog(object):
         if obs_rank > 1:
             return PyTorchVisionNet(input_shape, num_outputs, options)
 
+        # TODO(alok): overhaul PyTorchFCNet so it can just take input shape directly
         return PyTorchFCNet(input_shape[0], num_outputs, options)
 
     @staticmethod
