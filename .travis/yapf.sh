@@ -9,6 +9,7 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT"
 
+# Format specified files
 format() {
     yapf \
         --style "$ROOT/.style.yapf" \
@@ -17,6 +18,7 @@ format() {
         "$@"
 }
 
+# Format files that differ from main branch
 format_changed() {
     # Formats python files that changed in last commit
     git diff --name-only HEAD~1 HEAD | grep '\.py$' | xargs -P 5 \
@@ -26,6 +28,7 @@ format_changed() {
 
 }
 
+# Format all files
 format_all() {
 
     yapf \
@@ -49,7 +52,7 @@ if [[ "$1" == '--files' ]]; then
     # If `--all` is passed, then any further arguments are ignored and the
     # entire python directory is formatted.
 elif [[ "$1" == '--all' ]]; then
-    format_all 'test' 'python'
+    format_all
 else
     # Format only the files that changed in last commit. Ignores uncommitted
     # files.
