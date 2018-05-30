@@ -43,9 +43,6 @@ def process_rollout(rollout, last_r, gamma, lambda_=1.0, use_gae=True):
             [rollout["rewards"], np.array([last_r])])
         traj["advantages"] = discount(rewards_plus_v, gamma)[:-1]
 
-    for i in range(traj["advantages"].shape[0]):
-        traj["advantages"][i] = traj["advantages"][i]
-
     traj["advantages"] = traj["advantages"].copy()
 
     assert all(val.shape[0] == trajsize for val in traj.values()), \
