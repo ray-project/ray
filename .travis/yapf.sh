@@ -19,7 +19,7 @@ YAPF_EXCLUDES="--exclude 'python/ray/cloudpickle' \
 --exclude 'python/ray/core/src/ray/gcs' \
 --exclude 'python/ray/common/thirdparty'"
 
-UPSTREAM_MASTER=${RAY_UPSTREAM_BRANCH:-upstream/master}
+UPSTREAM_MASTER=${RAY_UPSTREAM_BRANCH:-origin/master}
 
 # Format specified files
 format() {
