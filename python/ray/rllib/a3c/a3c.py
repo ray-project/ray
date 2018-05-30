@@ -14,7 +14,6 @@ from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
 from ray.rllib.a3c.common import get_policy_cls
 from ray.tune.trial import Resources
 
-
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     "num_workers": 4,
@@ -53,7 +52,7 @@ DEFAULT_CONFIG = {
         # (Image statespace) - Converts image to (dim, dim, C)
         "dim": 80,
         # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False
+        "channel_major": False,
     },
     # Arguments to pass to the rllib optimizer
     "optimizer": {
@@ -74,7 +73,8 @@ class A3CAgent(Agent):
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         return Resources(
-            cpu=1, gpu=0,
+            cpu=1,
+            gpu=0,
             extra_cpu=cf["num_workers"],
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
@@ -114,21 +114,23 @@ class A3CAgent(Agent):
             ev.__ray_terminate__.remote()
 
     def _save(self, checkpoint_dir):
-        checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration))
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
         extra_data = {
             "remote_state": agent_state,
-            "local_state": self.local_evaluator.save()}
+            "local_state": self.local_evaluator.save()
+        }
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        ray.get(
-            [a.restore.remote(o) for a, o in zip(
-                self.remote_evaluators, extra_data["remote_state"])])
+        ray.get([
+            a.restore.remote(o)
+            for a, o in zip(self.remote_evaluators, extra_data["remote_state"])
+        ])
         self.local_evaluator.restore(extra_data["local_state"])
 
     def compute_action(self, observation, state=[]):
