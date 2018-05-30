@@ -2142,12 +2142,26 @@ def connect(info,
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             ray.ObjectID(NIL_ACTOR_ID), ray.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter, False, [], {"CPU": 0}, worker.use_raylet)
-        global_state._execute_command(
-            driver_task.task_id(), "RAY.TASK_TABLE_ADD",
-            driver_task.task_id().id(),
-            TASK_STATUS_RUNNING, NIL_LOCAL_SCHEDULER_ID,
-            driver_task.execution_dependencies_string(), 0,
-            ray.local_scheduler.task_to_string(driver_task))
+
+        # Add the driver task to the task table.
+        if not worker.use_raylet:
+            global_state._execute_command(
+                driver_task.task_id(), "RAY.TASK_TABLE_ADD",
+                driver_task.task_id().id(), TASK_STATUS_RUNNING,
+                NIL_LOCAL_SCHEDULER_ID,
+                driver_task.execution_dependencies_string(), 0,
+                ray.local_scheduler.task_to_string(driver_task))
+        else:
+            TablePubsub_RAYLET_TASK = 2
+
+            # TODO(rkn): When we shard the GCS in xray, we will need to change
+            # this to use _execute_command.
+            global_state.redis_client.execute_command(
+                "RAY.TABLE_ADD", state.TablePrefix_RAYLET_TASK,
+                TablePubsub_RAYLET_TASK,
+                driver_task.task_id().id(),
+                driver_task._serialized_raylet_task())
+
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
         worker.current_task_id = driver_task.task_id()

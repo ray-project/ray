@@ -1,6 +1,11 @@
+#ifndef RAY_REDIS_STRING_H_
+#define RAY_REDIS_STRING_H_
+
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
+
+#include "redismodule.h"
 
 /* Format a RedisModuleString.
  *
@@ -65,3 +70,5 @@ RedisModuleString *RedisString_Format(RedisModuleCtx *ctx,
   va_end(ap);
   return result;
 }
+
+#endif  // RAY_REDIS_STRING_H_

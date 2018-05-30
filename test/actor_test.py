@@ -420,6 +420,32 @@ class ActorMethods(unittest.TestCase):
         c2.increase.remote()
         self.assertEqual(ray.get(c2.value.remote()), 2)
 
+    def testActorClassMethods(self):
+        ray.init()
+
+        class Foo(object):
+            x = 2
+
+            @classmethod
+            def as_remote(cls):
+                return ray.remote(cls)
+
+            @classmethod
+            def f(cls):
+                return cls.x
+
+            @classmethod
+            def g(cls, y):
+                return cls.x + y
+
+            def echo(self, value):
+                return value
+
+        a = Foo.as_remote().remote()
+        self.assertEqual(ray.get(a.echo.remote(2)), 2)
+        self.assertEqual(ray.get(a.f.remote()), 2)
+        self.assertEqual(ray.get(a.g.remote(2)), 4)
+
     def testMultipleActors(self):
         # Create a bunch of actors and call a bunch of methods on all of them.
         ray.init(num_workers=0)
@@ -1905,6 +1931,44 @@ class DistributedActorHandles(unittest.TestCase):
         # Verify that we can call a method on the unpickled handle. TODO(rkn):
         # we should also test this from a different driver.
         ray.get(new_f.method.remote())
+
+    def testRegisterAndGetNamedActors(self):
+        # TODO(heyucongtom): We should test this from another driver.
+        ray.worker.init(num_workers=1)
+
+        @ray.remote
+        class Foo(object):
+            def __init__(self):
+                self.x = 0
+
+            def method(self):
+                self.x += 1
+                return self.x
+
+        f1 = Foo.remote()
+        # Test saving f.
+        ray.experimental.register_actor("f1", f1)
+        # Test getting f.
+        f2 = ray.experimental.get_actor("f1")
+        self.assertEqual(f1._actor_id, f2._actor_id)
+
+        # Test same name register shall raise error.
+        with self.assertRaises(ValueError):
+            ray.experimental.register_actor("f1", f2)
+
+        # Test register with wrong object type.
+        with self.assertRaises(TypeError):
+            ray.experimental.register_actor("f3", 1)
+
+        # Test getting a nonexistent actor.
+        with self.assertRaises(ValueError):
+            ray.experimental.get_actor("nonexistent")
+
+        # Test method
+        self.assertEqual(ray.get(f1.method.remote()), 1)
+        self.assertEqual(ray.get(f2.method.remote()), 2)
+        self.assertEqual(ray.get(f1.method.remote()), 3)
+        self.assertEqual(ray.get(f2.method.remote()), 4)
 
 
 class ActorPlacementAndResources(unittest.TestCase):
