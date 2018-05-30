@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import redis
 import sys
 import time
@@ -51,8 +52,10 @@ def get_next_message(pubsub_client, timeout_seconds=10):
 
 class TestGlobalStateStore(unittest.TestCase):
     def setUp(self):
-        redis_port, _ = ray.services.start_redis_instance()
-        self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)
+        unused_primary_redis_addr, redis_shards = ray.services.start_redis(
+            "localhost", use_credis="RAY_USE_NEW_GCS" in os.environ)
+        self.redis = redis.StrictRedis(
+            host="localhost", port=redis_shards[0].split(":")[-1], db=0)
 
     def tearDown(self):
         ray.services.cleanup()

@@ -45,7 +45,9 @@ const std::vector<std::string> db_client_table_get_ip_addresses(
   for (auto const &manager_id : manager_ids) {
     DBClient client = redis_cache_get_db_client(db_handle, manager_id);
     RAY_CHECK(!client.manager_address.empty());
-    manager_vector.push_back(client.manager_address);
+    if (client.is_alive) {
+      manager_vector.push_back(client.manager_address);
+    }
   }
 
   int64_t end_time = current_time_ms();
