@@ -1,0 +1,19 @@
+# Default values for ray.
+
+## Controller configuration
+rayhead:
+  deployment:
+    replicaCount: 1
+    image:
+      repository: ray
+      tag: latest
+      pullPolicy: IfNotPresent
+      port: 6379
+
+raynode:
+  deployment:
+     replicaCount: 3
+     image:
+       repository: ray
+       tag: latest
+       pullPolicy: IfNotPresent

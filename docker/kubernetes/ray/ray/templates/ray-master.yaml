@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "fullname" . }}
+  labels:
+    name: {{ template "fullname" . }}
+spec:
+  ports:
+    - port: 6379
+  selector:
+    ray-master: "true"
+
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: rayhead
+  labels:
+    name: rayhead
+spec:
+  replicas: {{ .Values.rayhead.deployment.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: redis-master
+        ray-master: "true"
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: ray-master
+        image: "{{ .Values.rayhead.deployment.image.repository }}:{{ .Values.rayhead.deployment.image.tag }}"
+        imagePullPolicy: {{ .Values.rayhead.deployment.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.rayhead.deployment.image.port }}
+        env:
+        - name: HEAD
+          value: "true"

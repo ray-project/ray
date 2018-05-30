@@ -1,0 +1,22 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: raynode
+  labels:
+    name: raynode
+spec:
+  replicas: {{ .Values.raynode.deployment.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: ray-cluster
+        ray-master: "true"
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: ray-slave
+        image: "{{ .Values.raynode.deployment.image.repository }}:{{ .Values.raynode.deployment.image.tag }}"
+        imagePullPolicy: {{ .Values.raynode.deployment.image.pullPolicy }}
+        env:
+        - name: HEAD
+          value: "false"

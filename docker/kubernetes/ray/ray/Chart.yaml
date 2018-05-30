@@ -1,0 +1,4 @@
+apiVersion: v1
+description: A Helm chart for ray
+name: ray
+version: 0.4
