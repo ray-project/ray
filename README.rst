@@ -1,8 +1,8 @@
 Ray
 ===
 
-.. image:: https://travis-ci.org/ray-project/ray.svg?branch=master
-    :target: https://travis-ci.org/ray-project/ray
+.. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
+    :target: https://travis-ci.com/ray-project/ray
 
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest

@@ -376,17 +376,6 @@ public class RunManager {
       runInfo.allProcesses.get(i).clear();
       runInfo.deadProcess.clear();
     }
-
-    if (killAll) {
-      // kill all workers that are forked by local scheduler
-      // ps aux | grep DefaultWorker | awk '{system("kill "$2);}'
-      String[] cmd = {"/bin/sh", "-c", ""};
-      cmd[2] = "ps aux | grep DefaultWorker | grep -v grep | awk \"{print \\$2}\" | xargs kill";
-      try {
-        Runtime.getRuntime().exec(cmd);
-      } catch (IOException e) {
-      }
-    }
   }
 
   private void record_log_files_in_redis(String redis_address, String node_ip_address,
