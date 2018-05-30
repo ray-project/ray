@@ -20,11 +20,14 @@ format() {
 
 # Format files that differ from main branch
 format_changed() {
-    # Formats python files that changed in last commit
-    git diff --name-only HEAD~1 HEAD | grep '\.py$' | xargs -P 5 \
-        yapf \
-        --style "$ROOT/.style.yapf" \
-        --in-place --recursive --parallel
+    # Formats python files that changed in last commit. Only runs if there are
+    # python files that differ from main branch.
+    if ! git diff --quiet --exit-code master HEAD -- '*.py'; then
+        git diff --name-only master HEAD -- '*.py' | xargs -P 5 \
+            yapf \
+            --style "$ROOT/.style.yapf" \
+            --in-place --recursive --parallel
+    fi
 
 }
 
