@@ -12,5 +12,5 @@ Install ray with [helm](https://github.com/kubernetes/helm)
 
 ```console
 helm init
-helm install --name ray --namespace ray-system ./kubeless
+helm install --name ray --namespace ray-system ./ray
 ```
