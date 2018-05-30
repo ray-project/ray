@@ -66,7 +66,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
     def __init__(
             self,
             env_creator,
-            policy_cls,
+            policy_graph,
             tf_session_creator=None,
             batch_steps=100,
             batch_mode="truncate_episodes",
@@ -84,8 +84,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         Arguments:
             env_creator (func): Function that returns a gym.Env given an
                 env config dict.
-            policy_cls (class): A function that returns an
-                object implementing rllib.PolicyGraph or rllib.TFPolicyGraph.
+            policy_graph (class): A class implementing rllib.PolicyGraph or
+                rllib.TFPolicyGraph.
             tf_session_creator (func): A function that returns a TF session.
                 This is optional and only useful with TFPolicyGraph.
             batch_steps (int): The target number of env transitions to include
@@ -124,7 +124,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         assert batch_mode in [
             "complete_episodes", "truncate_episodes", "pack_episodes"]
         self.env_creator = env_creator
-        self.policy_cls = policy_cls
+        self.policy_graph = policy_graph
         self.batch_steps = batch_steps
         self.batch_mode = batch_mode
         self.compress_observations = compress_observations
@@ -141,7 +141,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.vectorized = hasattr(self.env, "vector_reset")
         self.policy_map = {}
 
-        if issubclass(policy_cls, TFPolicyGraph):
+        if issubclass(policy_graph, TFPolicyGraph):
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.sess = tf_session_creator()
@@ -149,11 +149,11 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                     self.sess = tf.Session(config=tf.ConfigProto(
                         gpu_options=tf.GPUOptions(allow_growth=True)))
                 with self.sess.as_default():
-                    policy = policy_cls(
+                    policy = policy_graph(
                         self.env.observation_space, self.env.action_space,
                         registry, policy_config)
         else:
-            policy = policy_cls(
+            policy = policy_graph(
                 self.env.observation_space, self.env.action_space,
                 registry, policy_config)
         self.policy_map = {
