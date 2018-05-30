@@ -114,7 +114,7 @@ class RayConfig {
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
         worker_fetch_request_size_(10000),
-        max_lineage_size_(1000),
+        max_lineage_size_(100),
         actor_max_dummy_objects_(1000),
         num_connect_attempts_(50),
         connect_timeout_milliseconds_(100),
