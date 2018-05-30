@@ -12,6 +12,32 @@ from . import get_npartitions
 _NAN_BLOCKS = {}
 
 
+class memoize:
+    """A basic memoizer that cache the input and output of the remote function
+
+    Notes:
+        - This will not work if the argument is mutable. Use with caution.
+    """
+
+    def __init__(self, f):
+        self.old_remote_func = f.remote
+        self.cache = {}
+        self.object_table = ray.global_state.object_table
+
+    def remote(self, *args):
+        """Return cached result if the arguments are cached
+        """
+        args = tuple(args)
+
+        if args in self.cache:
+            cached_result = self.cache[args]
+            return cached_result
+
+        result = self.old_remote_func(*args)
+        self.cache[args] = result
+        return result
+
+
 def _get_nan_block_id(n_row=1, n_col=1, transpose=False):
     """A memory efficent way to get a block of NaNs.
 
@@ -308,6 +334,7 @@ def create_blocks_helper(df, npartitions, axis):
     return blocks
 
 
+@memoize
 @ray.remote
 def _blocks_to_col(*partition):
     if len(partition):
@@ -317,6 +344,7 @@ def _blocks_to_col(*partition):
         return pd.Series()
 
 
+@memoize
 @ray.remote
 def _blocks_to_row(*partition):
     row_part = pd.concat(partition, axis=1, copy=False)\
