@@ -54,7 +54,15 @@ helpful.
    something like ``flake8 ray/python/ray/worker.py``. You may need to first run
    ``pip install flake8``.
 
-5. **Inspecting Redis shards by hand:** To inspect the primary Redis shard by
+5. **Autoformatting code**. We use ``yapf``
+   https://github.com/google/yapf for linting, and the config file is
+   located at ``.style.yapf``. We recommend adding ``.travis/yapf.sh``
+   to git's ``pre-push`` hook, so that you never have to worry about
+   your code formatting ever again. Note that RLlib is not currently
+   autoformatted, though running ``yapf`` over the individual files you
+   edit with ``yapf -i -p -r <file1> <file2> <...>`` is a good idea.
+
+6. **Inspecting Redis shards by hand:** To inspect the primary Redis shard by
    hand, you can query it with commands like the following.
 
    .. code-block:: python
