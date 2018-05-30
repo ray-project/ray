@@ -95,7 +95,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
 
   /* Construct worker command */
   std::stringstream worker_command_ss;
-  worker_command_ss << "python ../../../python/ray/workers/default_worker.py"
+  worker_command_ss << "python ../python/ray/workers/default_worker.py"
                     << " --node-ip-address=" << node_ip_address
                     << " --object-store-name=" << plasma_store_socket_name
                     << " --object-store-manager-name="

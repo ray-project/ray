@@ -82,13 +82,9 @@ echo "Using Python executable $PYTHON_EXECUTABLE."
 bash $ROOT_DIR/setup_thirdparty.sh $PYTHON_EXECUTABLE $LANGUAGE
 
 # Now we build everything.
-if [[ "$LANGUAGE" == "java" ]]; then
-  BUILD_DIR="$ROOT_DIR/build/"
-  if [ ! -d "${BUILD_DIR}" ]; then
-  mkdir -p ${BUILD_DIR}
-  fi
-else
-  BUILD_DIR="$ROOT_DIR/python/ray/core"
+BUILD_DIR="$ROOT_DIR/build/"
+if [ ! -d "${BUILD_DIR}" ]; then
+mkdir -p ${BUILD_DIR}
 fi
 
 pushd "$BUILD_DIR"

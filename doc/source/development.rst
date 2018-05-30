@@ -29,7 +29,7 @@ helpful.
 
    .. code-block:: shell
 
-     cd ray/python/ray/core
+     cd ray/build
      make -j8
 
 2. **Starting processes in a debugger:** When processes are crashing, it is

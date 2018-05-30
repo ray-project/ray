@@ -68,12 +68,12 @@ matrix:
         - ./.travis/install-ray.sh
 
       script:
-        - cd python/ray/core
-        - bash ../../../src/common/test/run_valgrind.sh
-        - bash ../../../src/plasma/test/run_valgrind.sh
-        - bash ../../../src/local_scheduler/test/run_valgrind.sh
-        - bash ../../../src/ray/test/run_object_manager_valgrind.sh
-        - cd ../../..
+        - cd build
+        - bash ../src/common/test/run_valgrind.sh
+        - bash ../src/plasma/test/run_valgrind.sh
+        - bash ../src/local_scheduler/test/run_valgrind.sh
+        - bash ../src/ray/test/run_object_manager_valgrind.sh
+        - cd ..
 
         - python ./python/ray/plasma/test/test.py valgrind
         - python ./python/ray/local_scheduler/test/test.py valgrind
@@ -167,19 +167,19 @@ install:
   - ./.travis/install-ray.sh
   - ./.travis/install-cython-examples.sh
 
-  - cd python/ray/core
-  - bash ../../../src/ray/test/run_gcs_tests.sh
+  - cd build
+  - bash ../src/ray/test/run_gcs_tests.sh
   # Raylet tests.
-  - bash ../../../src/ray/test/run_object_manager_tests.sh
+  - bash ../src/ray/test/run_object_manager_tests.sh
   - ./src/ray/raylet/task_test
   - ./src/ray/raylet/worker_pool_test
   - ./src/ray/raylet/lineage_cache_test
   - ./src/ray/raylet/task_dependency_manager_test
 
-  - bash ../../../src/common/test/run_tests.sh
-  - bash ../../../src/plasma/test/run_tests.sh
-  - bash ../../../src/local_scheduler/test/run_tests.sh
-  - cd ../../..
+  - bash ../src/common/test/run_tests.sh
+  - bash ../src/plasma/test/run_tests.sh
+  - bash ../src/local_scheduler/test/run_tests.sh
+  - cd ..
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
