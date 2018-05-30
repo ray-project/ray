@@ -54,18 +54,10 @@ helpful.
    something like ``flake8 ray/python/ray/worker.py``. You may need to first run
    ``pip install flake8``.
 
-5. **Autoformatting code**. We use ``yapf``
-   https://github.com/google/yapf for linting, and the config file is
-   located at ``.style.yapf``. We recommend adding
-   ``scripts/yapf.sh`` to your git ``pre-push`` hooks, so that you
-   never have to worry about your code formatting ever again. We also
-   encourage adding that line to your ``pre-commit`` hooks, to ensure
-   easily reviewable (and easily mergeable) code. This will format all
-   Python files that differ from ``master``. If you want to format *all*
-   Python files, use ``scripts/yapf.sh --all``. Note that RLlib is not
-   currently autoformatted, though running ``yapf`` over the individual
-   files you edit with ``scripts/yapf.sh --files <file1> <file2> <...>``
-   will do so (and is a good idea).
+5. **Autoformatting code**. We use ``yapf`` https://github.com/google/yapf for
+   linting, and the config file is located at ``.style.yapf``. We recommend
+   running ``.travis/yapf.sh`` prior to pushing to format changed files.
+   Note that some projects such as dataframes and rllib are currently excluded.
 
 6. **Inspecting Redis shards by hand:** To inspect the primary Redis shard by
    hand, you can query it with commands like the following.
