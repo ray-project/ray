@@ -350,7 +350,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
       for (auto &oid : wait_state.remaining) {
         // Subscribe to object notifications.
         wait_state.requested_objects.insert(oid);
-        object_directory_->LookupLocations(
+        RAY_CHECK_OK(object_directory_->LookupLocations(
             oid, [this, wait_id](const std::vector<ClientID> &client_ids,
                                  const ObjectID &object_id) {
               auto &wait_state = active_wait_requests_.find(wait_id)->second;
@@ -362,13 +362,13 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
               if (wait_state.requested_objects.empty()) {
                 WaitComplete(wait_id);
               }
-            });
+            }));
       }
     } else {
       for (auto &oid : wait_state.remaining) {
         // Subscribe to object notifications.
         wait_state.requested_objects.insert(oid);
-        object_directory_->SubscribeObjectLocations(
+        RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
             wait_id, oid, [this, wait_id](const std::vector<ClientID> &client_ids,
                                           const ObjectID &object_id) {
               auto &wait_state = active_wait_requests_.find(wait_id)->second;
@@ -377,11 +377,12 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
                 wait_state.found.insert(object_id);
               }
               wait_state.requested_objects.erase(object_id);
-              object_directory_->UnsubscribeObjectLocations(wait_id, object_id);
+              RAY_CHECK_OK(
+                  object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
               if (wait_state.found.size() >= wait_state.num_required_objects) {
                 WaitComplete(wait_id);
               }
-            });
+            }));
       }
       // Set timeout.
       // TODO (hme): If we need to just wait for all objects independent of time
@@ -405,7 +406,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   RAY_CHECK(!(wait_state.requested_objects.size() > 0) || wait_state.wait_ms > 0);
   // Unsubscribe to any objects that weren't found in the time allotted.
   for (auto &object_id : wait_state.requested_objects) {
-    object_directory_->UnsubscribeObjectLocations(wait_id, object_id);
+    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
   }
   // Cancel the timer. This is okay even if the timer hasn't been started.
   // The timer handler will be given a non-zero error code. The handler
