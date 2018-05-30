@@ -332,27 +332,29 @@ void LineageCache::Flush() {
 
 bool LineageCache::SubscribeTask(const UniqueID &task_id) {
   auto inserted = subscribed_tasks_.insert(task_id);
-  if (inserted.second) {
+  bool unsubscribed = inserted.second;
+  if (unsubscribed) {
     // Request notifications for the task if we haven't already requested
     // notifications for it.
     RAY_CHECK_OK(task_pubsub_.RequestNotifications(JobID::nil(), task_id, client_id_));
-    return true;
-  } else {
-    return false;
   }
+  // Return whether we were previously unsubscribed to this task and are now
+  // subscribed.
+  return unsubscribed;
 }
 
 bool LineageCache::UnsubscribeTask(const UniqueID &task_id) {
   auto it = subscribed_tasks_.find(task_id);
-  if (it != subscribed_tasks_.end()) {
+  bool subscribed = (it != subscribed_tasks_.end());
+  if (subscribed) {
     // Cancel notifications for the task if we previously requested
     // notifications for it.
     RAY_CHECK_OK(task_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
     subscribed_tasks_.erase(it);
-    return true;
-  } else {
-    return false;
   }
+  // Return whether we were previously subscribed to this task and are now
+  // unsubscribed.
+  return subscribed;
 }
 
 void LineageCache::EvictRemoteLineage(const UniqueID &task_id) {
