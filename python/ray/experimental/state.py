@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import binascii
 import copy
 from collections import defaultdict
 import heapq
@@ -122,8 +121,6 @@ class GlobalState(object):
         """
         self.redis_client = redis.StrictRedis(
             host=redis_ip_address, port=redis_port)
-
-        self.use_raylet = int(self.redis_client.get("UseRaylet")) == 1
 
         start_time = time.time()
 
