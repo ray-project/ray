@@ -7,7 +7,7 @@ set -eo pipefail
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 
 ROOT="$(git rev-parse --show-toplevel)"
-builtin cd "$ROOT"
+builtin cd "$ROOT" || exit 1
 
 YAPF_FLAGS=(
     "--style $ROOT/.style.yapf"
@@ -31,10 +31,18 @@ format() {
     yapf "${YAPF_FLAGS[@]}" -- "$@"
 }
 
-# Format files that differ from main branch
+# Format files that differ from main branch. Ignores dirs that are not slated
+# for autoformat yet.
 format_changed() {
-    FILES=`git diff --name-only $UPSTREAM_MASTER -- '*.py'`
-    yapf $YAPF_FLAGS $YAPF_EXCLUDES -- $FILES
+    if ! git diff --quiet --exit-code "$UPSTREAM_MASTER" HEAD -- '*.py' &>dev/null; then
+        git diff --name-only "$UPSTREAM_MASTER" HEAD -- '*.py' | xargs -P 5 \
+            yapf "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
+    fi
+}
+
+# Formats *all* files that differ from main branch.
+format_all_changed() {
+    YAPF_EXCLUDES=() format_changed
 }
 
 # Format all files
@@ -55,7 +63,7 @@ else
     format_changed
 fi
 
-if ! git diff --quiet; then
+if ! git diff --quiet &>/dev/null; then
     echo 'Reformatted changed files. Please review and stage the changes.'
     echo 'Files updated:'
     echo
