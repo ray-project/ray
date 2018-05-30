@@ -12,7 +12,7 @@ from ray.rllib.models.misc import (conv2d, linear, flatten,
 from ray.rllib.models.model import Model
 
 
-class LSTM(Model):
+class ImpalaShadowNet(Model):
     """Vision LSTM network based here:
     https://github.com/openai/universe-starter-agent"""
 
@@ -21,18 +21,21 @@ class LSTM(Model):
         use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
                          distutils.version.LooseVersion("1.0.0"))
 
+        num_trajs = options["num_trajs"]
+        traj_length = options["traj_length"]
         # (batch_size, ob_space) where, in running time,
         # batch_size is 1 for act, 
         # batch_size is num_trajectories * sample_batch_size for updating
-        self.x = x = inputs
+        self.x = _x = inputs
         for i in range(4):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+            _x = tf.nn.elu(conv2d(_x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
         # Introduce a "fake" batch dimension of 1 after flatten so that we can
         # do LSTM over the time dim.
-        x = tf.expand_dims(flatten(x), [0])
+        x = tf.expand_dims(flatten(_x), [0])
         # Transform to standard shape (batch_size, max_time, ob_space)
-        # for 'dynamic_rnn' method
-        xs = tf.reshape(x, [-1, options["traj_length"], np.prod(x.get_shape().as_list()[1:])])
+        # for 'dynamic_rnn' method where batch_size = num_trajs, 
+        # max_time = traj_length
+        xs = tf.reshape(_x, [num_trajs, traj_length, np.prod(_x.get_shape().as_list()[1:])])
 
         # set up the cell
         size = 256
@@ -40,16 +43,19 @@ class LSTM(Model):
             lstm = rnn.BasicLSTMCell(size, state_is_tuple=True)
         else:
             lstm = rnn.rnn_cell.BasicLSTMCell(size, state_is_tuple=True)
-        # shape = (ob_space)
         step_size = tf.shape(self.x)[:1]
 
         # common initializers
         c_init = np.zeros((1, lstm.state_size.c), np.float32)
         h_init = np.zeros((1, lstm.state_size.h), np.float32)
         self.state_init = [c_init, h_init]
+        # initializer(s)
         c_in = tf.placeholder(tf.float32, [1, lstm.state_size.c])
         h_in = tf.placeholder(tf.float32, [1, lstm.state_size.h])
+        c_ins = tf.placeholder(tf.float32, [num_trajs, lstm.state_size.c])
+        h_ins = tf.placeholder(tf.float32, [num_trajs, lstm.state_size.h])
         self.state_in = [c_in, h_in]
+        self.state_ins = [c_ins, h_ins]
 
         # this branch is for acting
         if use_tf100_api:
@@ -68,21 +74,16 @@ class LSTM(Model):
 
         # this branch is for updating
         if use_tf100_api:
-            state_ins = rnn.LSTMStateTuple(
-                tf.tile(c_in, [tf.shape(xs)[0],1]),
-                tf.tile(h_in, [tf.shape(xs)[0],1]))
+            state_ins = rnn.LSTMStateTuple(c_ins, h_ins)
         else:
-            state_ins = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
+            state_ins = rnn.rnn_cell.LSTMStateTuple(c_ins, h_ins)
         lstm_outs, lstm_states = tf.nn.dynamic_rnn(lstm, xs,
                                                  initial_state=state_ins,
-                                                 sequence_length=step_size,
+                                                 sequence_length=num_trajs*[traj_length],
                                                  time_major=False)
-        #lstm_cs, lstm_hs = lstm_states
         xs = tf.reshape(lstm_outs, [-1, size])
         with tf.variable_scope("lstm-fc", reuse=True):
-            logits = linear(xs, num_outputs, "action", normc_initializer(0.01))
-            self.logits = tf.reshape(logits, [-1, options["traj_length"], num_outputs])
-        #self.state_outs = [lstm_cs, lstm_hs[:1, :]]
-        self.xs = tf.reshape(xs, [-1, options["traj_length"], size])
+            self.logits = linear(xs, num_outputs, "action", normc_initializer(0.01))
+        self.last_layers = xs
         
         return logit, x
