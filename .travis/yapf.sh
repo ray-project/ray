@@ -24,7 +24,13 @@ YAPF_EXCLUDES=(
     '--exclude python/ray/core/src/ray/gcs'
     '--exclude python/ray/common/thirdparty')
 
-UPSTREAM_MASTER=${RAY_UPSTREAM_BRANCH:-origin/master}
+# Add the upstream branch if it doesn't exist
+if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
+    git remote add 'upstream' 'https://github.com/ray-project/ray.git'
+fi
+
+# Only fetch master, not whole tree.
+git fetch 'upstream' 'master'
 
 # Format specified files
 format() {
@@ -34,15 +40,15 @@ format() {
 # Format files that differ from main branch. Ignores dirs that are not slated
 # for autoformat yet.
 format_changed() {
-    if ! git diff --quiet --exit-code "$UPSTREAM_MASTER" HEAD -- '*.py' &>dev/null; then
-        git diff --name-only "$UPSTREAM_MASTER" HEAD -- '*.py' | xargs -P 5 \
+    if ! git diff --diff-filter=ACM --quiet --exit-code 'upstream/master' 'HEAD' -- '*.py' &>dev/null; then
+        git diff --name-only 'upstream/master' 'HEAD' -- '*.py' | xargs -P 5 \
             yapf "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
     fi
 }
 
 # Formats *all* files that differ from main branch.
 format_all_changed() {
-    YAPF_EXCLUDES=() format_changed
+    YAPF_EXCLUDES='' format_changed
 }
 
 # Format all files
