@@ -42,9 +42,14 @@ format() {
 # Format files that differ from main branch. Ignores dirs that are not slated
 # for autoformat yet.
 format_changed() {
-    if ! git diff --diff-filter=ACM --quiet --exit-code 'upstream/master' 'HEAD' -- '*.py' &>dev/null; then
-        git diff --name-only 'upstream/master' 'HEAD' -- '*.py' | xargs -P 5 \
-            yapf "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
+    # The `if` guard ensures that the list of filenames is not empty, which
+    # could cause yapf to receive 0 positional arguments, making it hang
+    # waiting for STDIN.
+    #
+    # `diff-filter=ACM` is to ensure we only format files that exist on both
+    # branches.
+    if ! git diff --diff-filter=ACM --quiet --exit-code 'upstream/master' -- '*.py' &>dev/null; then
+        git diff --name-only --diff-filter=ACM 'upstream/master' -- '*.py' | yapf "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
     fi
 }
 
