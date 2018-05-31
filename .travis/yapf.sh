@@ -11,10 +11,19 @@ builtin cd "$ROOT"
 
 yapf \
     --style "$ROOT/.style.yapf" \
-    --diff --recursive --parallel \
+    --in-place --recursive --parallel \
     --exclude 'python/ray/cloudpickle' \
     --exclude 'python/ray/dataframe' \
     --exclude 'python/ray/rllib' \
     -- \
     'test' 'python'
 
+if ! git diff --quiet; then
+    echo 'Reformatted staged files. Please review and stage the changes.'
+    echo 'Files updated:'
+    echo
+
+    git --no-pager diff --name-only
+
+    exit 1
+fi
