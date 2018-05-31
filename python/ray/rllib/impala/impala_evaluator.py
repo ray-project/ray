@@ -5,7 +5,7 @@ from __future__ import print_function
 import numpy as np
 
 import ray
-from ray.rllib.impala.shadow_model import ShadowModel
+from ray.rllib.impala.policy import Policy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import PolicyEvaluator
 from ray.rllib.utils.filter import NoFilter
@@ -17,17 +17,17 @@ class ImpalaEvaluator(PolicyEvaluator):
 
     def __init__(self, registry, env_creator, config):
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]))
+            registry, env_creator(config["env_config"]), config["model"])
 
         # contains model, target_model
-        self.policy = ShadowModel(
+        self.policy = Policy(
             registry, self.env.observation_space.shape, self.env.action_space, config)
         self.config = config
 
         self.obs_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
         self.rew_filter = get_filter(
-            config["reward_filter"], self.)
+            config["reward_filter"], ())
         self.sampler = SyncSampler(
                         self.env, self.model.model, self.obs_filter,
                         config["num_local_steps"], horizon=config["horizon"])
@@ -40,11 +40,9 @@ class ImpalaEvaluator(PolicyEvaluator):
         return samples
 
     def compute_gradients(self, samples):
-        """Returns critic, actor gradients."""
         return self.model.compute_gradients(samples)
 
     def apply_gradients(self, grads):
-        """Applies gradients to evaluator weights."""
         self.model.apply_gradients(grads)
 
     def compute_apply(self, samples):
@@ -52,11 +50,9 @@ class ImpalaEvaluator(PolicyEvaluator):
         self.apply_gradients(grads)
 
     def get_weights(self):
-        """Returns model weights."""
         return self.model.get_weights()
 
     def set_weights(self, weights):
-        """Sets model weights."""
         self.model.set_weights(weights)
 
     def get_completed_rollout_metrics(self):

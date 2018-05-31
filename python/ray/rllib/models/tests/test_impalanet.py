@@ -10,19 +10,23 @@ from ray.rllib.models.impalanet import ImpalaShadowNet
 from ray.rllib.models import ModelCatalog
 
 
-def test_shadow():
-    env_model = {
-        "grayscale": True,
-        "zero_mean": False,
-        "dim": 80,
-        "channel_major": False
-    }
-    env_creator = lambda env_config: gym.make("PongNoFrameskip-v4")
+def test_shadow(env_id):
+    if env_id == "CartPole-v0":
+        env_model = {}
+    else:
+        env_model = {
+            "grayscale": True,
+            "zero_mean": False,
+            "dim": 80,
+            "channel_major": False
+        }
+    env_creator = lambda env_config: gym.make(env_id)
     env = ModelCatalog.get_preprocessor_as_wrapper(
             None, env_creator(""), env_model)
     ob_space = env.observation_space.shape
     ac_space = env.action_space
 
+    tf.reset_default_graph()
     num_trajs = 2
     traj_length = 3
     x = tf.placeholder(tf.float32, [None] + list(ob_space))
@@ -52,7 +56,7 @@ def test_shadow():
     num_step = 0
     while not done:
         action, c, h = sess.run([sample] + state_out, feed_dict={x: [last_state], state_in[0]: last_features[0], state_in[1]: last_features[1]})
-        next_state, rwd, done, info = env.step(action)
+        next_state, rwd, done, info = env.step(action[0])
         
         obs.append(last_state)
         actions.append(action)
@@ -76,4 +80,5 @@ def test_shadow():
     print(last_layers.shape)
 
 if __name__=="__main__":
-    test_shadow()
+    test_shadow("PongNoFrameskip-v4")
+    test_shadow("CartPole-v0")

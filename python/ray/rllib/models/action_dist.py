@@ -3,6 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+
+import distutils.version
 import numpy as np
 from ray.rllib.utils.reshaper import Reshaper
 
@@ -42,18 +44,32 @@ class Categorical(ActionDistribution):
             logits=self.inputs, labels=x)
 
     def entropy(self):
-        a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
-                                         keepdims=True)
+        use_tf180_api = (distutils.version.LooseVersion(tf.VERSION) >=
+                         distutils.version.LooseVersion("1.8.0"))
+
+        if use_tf180_api:
+            a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1], keepdims=True)
+        else:
+            a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1], keep_dims=True)
+         
         ea0 = tf.exp(a0)
-        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
+        if use_tf180_api:
+            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)
+        else:
+            z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
         p0 = ea0 / z0
         return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
 
     def kl(self, other):
-        a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
-                                         keepdims=True)
-        a1 = other.inputs - tf.reduce_max(other.inputs, reduction_indices=[1],
-                                          keepdims=True)
+        use_tf180_api = (distutils.version.LooseVersion(tf.VERSION) >=
+                         distutils.version.LooseVersion("1.8.0"))
+        if use_tf180_api:
+            a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1], keepdims=True)
+            a1 = other.inputs - tf.reduce_max(other.inputs, reduction_indices=[1], keepdims=True)
+        else:
+            a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1], keep_dims=True)
+            a1 = other.inputs - tf.reduce_max(other.inputs, reduction_indices=[1], keep_dims=True)
+
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
         z0 = tf.reduce_sum(ea0, reduction_indices=[1], keepdims=True)

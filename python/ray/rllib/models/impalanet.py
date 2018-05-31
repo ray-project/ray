@@ -13,7 +13,7 @@ from ray.rllib.models.model import Model
 
 
 class ImpalaShadowNet(Model):
-    """Vision LSTM network based here:
+    """Normal and Vision (CNN) LSTM network based here:
     https://github.com/openai/universe-starter-agent"""
 
     # TODO(rliaw): Add LSTM code for other algorithms
@@ -23,20 +23,26 @@ class ImpalaShadowNet(Model):
 
         num_trajs = options["num_trajs"]
         traj_length = options["traj_length"]
+        obs_rank = len(inputs.shape) - 1
         # (batch_size, ob_space) where, in running time,
         # batch_size is 1 for act, 
         # batch_size is num_trajectories * sample_batch_size for updating
-        self.x = _x = inputs
-        for i in range(4):
-            _x = tf.nn.elu(conv2d(_x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
-        # Introduce a "fake" batch dimension of 1 after flatten so that we can
-        # do LSTM over the time dim.
-        x = tf.expand_dims(flatten(_x), [0])
-        # Transform to standard shape (batch_size, max_time, ob_space)
-        # for 'dynamic_rnn' method where batch_size = num_trajs, 
-        # max_time = traj_length
-        xs = tf.reshape(_x, [num_trajs, traj_length, np.prod(_x.get_shape().as_list()[1:])])
-
+        if obs_rank > 1:
+            self.x = _x = inputs
+            for i in range(4):
+                _x = tf.nn.elu(conv2d(_x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+            # Introduce a "fake" batch dimension of 1 after flatten so that we can
+            # do LSTM over the time dim.
+            x = tf.expand_dims(flatten(_x), [0])
+            # Transform to standard shape (batch_size, max_time, ob_space)
+            # for 'dynamic_rnn' method where batch_size = num_trajs, 
+            # max_time = traj_length
+            xs = tf.reshape(_x, [num_trajs, traj_length, np.prod(_x.get_shape().as_list()[1:])])
+        else:
+            self.x = _x = inputs
+            x = tf.expand_dims(_x, 0)
+            xs = tf.reshape(_x, [num_trajs, traj_length, np.prod(_x.get_shape().as_list()[1:])])
+        
         # set up the cell
         size = 256
         if use_tf100_api:

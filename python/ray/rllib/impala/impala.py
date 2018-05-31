@@ -6,6 +6,7 @@ import numpy as np
 
 import ray
 from ray.rllib.agent import Agent
+from ray.rllib.utils import FilterManager
 from ray.rllib.impala.impala_evaluator import ImpalaEvaluator, RemoteImpalaEvaluator
 from ray.rllib.optimizers import ImpalaOptimizer
 from ray.tune.result import TrainingResult
@@ -13,12 +14,14 @@ from ray.tune.result import TrainingResult
 DEFAULT_CONFIG = {
     # learning rate
     "lr": 0.0006,
+    # rmsprop epsilon
+    "epsilon": 1e-7,
     # If not None, clip gradients during optimization at this value
     'grad_norm_clipping': 40.0,
     # Baseline loss scaling
     "vf_loss_coeff": 0.5,
     # Entropy regularizater
-    "entropy_coeff": -0.01,
+    "entropy_coeff": -0.0001,
     # Arguments to pass in to env creator
     "env_config": {},
     # N-step v-trace learning
@@ -26,9 +29,9 @@ DEFAULT_CONFIG = {
     # MDP Discount factor
     "gamma": 0.99,
     # importance weight truncation ruo
-    "avg_ruo": 10.0
+    "avg_ruo": 10.0,
     # importance weight truncation c
-    "avg_c": 5.0
+    "avg_c": 5.0,
     # scaling truction c
     "lambda": 0.9,
     # Number of steps after which the rollout gets cut
@@ -48,12 +51,19 @@ DEFAULT_CONFIG = {
         # Whether to clip rewards
         "clip_rewards": True,
         # Size of batch sampled from replay buffer
-        "train_batch_size": 32,
-        # add 'n_step' to 'optimizer'
+        "train_batch_size": 100,
     },
-
-    # Number of steps taken per training iteration
-    "train_steps": 600,
+    # Model and preprocessor options
+    "model": {
+        # (Image statespace) - Converts image to Channels = 1
+        "grayscale": True,
+        # (Image statespace) - Each pixel
+        "zero_mean": False,
+        # (Image statespace) - Converts image to (dim, dim, C)
+        "dim": 80,
+        # (Image statespace) - Converts image shape to (C, dim, dim)
+        "channel_major": False
+    }
 }
 
 
@@ -62,6 +72,12 @@ class ImpalaAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
+        # each training batch consists of 'num_trajs' trajectories
+        assert self.config["num_local_steps"] < self.config["optimizer"]["train_batch_size"]
+        assert self.config["optimizer"]["train_batch_size"] % self.config["num_local_steps"] == 0
+        num_trajs = self.config["optimizer"]["train_batch_size"] // self.config["num_local_steps"]
+        self.config["optimizer"]["num_trajs"] = num_trajs
+
         self.local_evaluator = ImpalaEvaluator(
             self.registry, self.env_creator, self.config)
 
@@ -70,15 +86,14 @@ class ImpalaAgent(Agent):
                 self.registry, self.env_creator, self.config)
             for _ in range(self.config["num_workers"])]
 
-        self.config["optimizer"]["min_batch_size"] = self.config["n_step"]
         self.optimizer = ImpalaOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
 
     def _train(self):
-        for _ in range(self.config["train_steps"]):
-            self.optimizer.step()
-
+        self.optimizer.step()
+        FilterManager.synchronize(
+            self.local_evaluator.filters, self.remote_evaluators)
         # generate training result
         return self._fetch_metrics()
 
