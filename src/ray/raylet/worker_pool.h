@@ -28,7 +28,7 @@ class WorkerPool {
   ///
   /// \param num_workers The number of workers to start.
   /// \param worker_command The command used to start the worker process.
-  WorkerPool(int num_workers, const std::vector<std::string> &worker_command);
+  WorkerPool(int num_workers, int num_cpus, const std::vector<std::string> &worker_command);
 
   /// Create a pool with zero workers.
   ///
@@ -99,6 +99,9 @@ class WorkerPool {
   uint32_t NumStartedWorkers() const;
 
  private:
+  /// The number of CPUs this Raylet has available.
+  int num_cpus_;
+  /// The command and arguments used to start the worker.
   std::vector<std::string> worker_command_;
   /// The pool of idle workers.
   std::list<std::shared_ptr<Worker>> pool_;
