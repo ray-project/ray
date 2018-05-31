@@ -29,9 +29,6 @@ enum GcsStatus {
   /// The task has been written to the GCS and we are waiting for an
   /// acknowledgement of the commit.
   GcsStatus_COMMITTING,
-  /// The task has been committed in the GCS. It's safe to remove this entry
-  /// from the lineage cache.
-  GcsStatus_COMMITTED,
 };
 
 /// \class LineageEntry
@@ -164,7 +161,7 @@ class LineageCache {
   /// TODO(swang): Pass in the policy (interface?).
   LineageCache(const ClientID &client_id,
                gcs::TableInterface<TaskID, protocol::Task> &task_storage,
-               gcs::PubsubInterface<TaskID> &task_pubsub);
+               gcs::PubsubInterface<TaskID> &task_pubsub, uint64_t max_lineage_size);
 
   /// Add a task that is waiting for execution and its uncommitted lineage.
   /// These entries will not be written to the GCS until set to ready.
@@ -214,6 +211,15 @@ class LineageCache {
   /// parents that are not committed yet, then the child will be flushed once
   /// the parents have been committed.
   bool FlushTask(const TaskID &task_id);
+  /// Evict a remote task and its lineage. This should only be called if we
+  /// are sure that the remote task and its lineage are committed.
+  void EvictRemoteLineage(const UniqueID &task_id);
+  /// Subscribe to notifications for a task. Returns whether the operation
+  /// was successful (whether we were not already subscribed).
+  bool SubscribeTask(const UniqueID &task_id);
+  /// Unsubscribe from notifications for a task. Returns whether the operation
+  /// was successful (whether we were subscribed).
+  bool UnsubscribeTask(const UniqueID &task_id);
 
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.
@@ -223,6 +229,11 @@ class LineageCache {
   /// The pubsub storage system for task information. This can be used to
   /// request notifications for the commit of a task entry.
   gcs::PubsubInterface<TaskID> &task_pubsub_;
+  /// The maximum size that a remote task's uncommitted lineage can get to. If
+  /// a remote task's uncommitted lineage exceeds this size, then a
+  /// notification will be requested from the pubsub storage system so that
+  /// the task and its lineage can be evicted from the stash.
+  uint64_t max_lineage_size_;
   /// The set of tasks that are in UNCOMMITTED_READY state. This is a cache of
   /// the tasks that may be flushable.
   // TODO(swang): As an optimization, we may also want to further distinguish
