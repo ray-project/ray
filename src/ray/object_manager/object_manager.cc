@@ -214,11 +214,11 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
   RAY_LOG(WARNING) << "Invalid Push request ObjectID: " << object_id
                    << " after waiting for " << config_.push_timeout_ms << " ms.";
   auto iter = unfulfilled_push_tasks_.find(object_id);
-  if (iter != unfulfilled_push_tasks_.end()) {
-    iter->second.erase(client_id);
-    if (iter->second.size() == 0) {
-      unfulfilled_push_tasks_.erase(iter);
-    }
+  RAY_CHECK(iter != unfulfilled_push_tasks_.end());
+  uint num_erased = iter->second.erase(client_id);
+  RAY_CHECK(num_erased == 1);
+  if (iter->second.size() == 0) {
+    unfulfilled_push_tasks_.erase(iter);
   }
 }
 
