@@ -28,7 +28,8 @@ class WorkerPool {
   ///
   /// \param num_workers The number of workers to start.
   /// \param worker_command The command used to start the worker process.
-  WorkerPool(int num_workers, int num_cpus, const std::vector<std::string> &worker_command);
+  WorkerPool(int num_workers, int num_cpus,
+             const std::vector<std::string> &worker_command);
 
   /// Create a pool with zero workers.
   ///
