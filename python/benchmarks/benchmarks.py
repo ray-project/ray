@@ -34,7 +34,6 @@ class MemSuite(object):
 
 
 class MicroBenchmarkSuite(object):
-
     def time_submit(self):
         test_functions.empty_function.remote()
 
