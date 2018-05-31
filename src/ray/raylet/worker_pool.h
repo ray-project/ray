@@ -96,7 +96,7 @@ class WorkerPool {
   /// Return a number of workers currently started but not registered.
   ///
   /// \return The number of worker PIDs stored for started workers.
-  uint32_t NumStartedWorkers() const;
+  int NumStartedWorkers() const;
 
  private:
   /// The number of CPUs this Raylet has available.
