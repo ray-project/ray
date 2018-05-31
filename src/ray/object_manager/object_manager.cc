@@ -348,7 +348,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
   } else {
     if (wait_ms == 0) {
       for (auto &oid : wait_state.remaining) {
-        // Subscribe to object notifications.
+        // Lookup remaining objects.
         wait_state.requested_objects.insert(oid);
         RAY_CHECK_OK(object_directory_->LookupLocations(
             oid, [this, wait_id](const std::vector<ClientID> &client_ids,
@@ -418,7 +418,18 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
           ? 0
           : (boost::posix_time::second_clock::local_time() - wait_state.start_time)
                 .total_milliseconds();
+  // Wait semantics require marking at most num_required_objects as found.
+  int64_t num_move = wait_state.found.size() - wait_state.num_required_objects;
+  if (num_move > 0) {
+    auto iter = wait_state.found.begin();
+    while (num_move > 0) {
+      num_move -= 1;
+      wait_state.remaining.insert(*iter);
+      iter = wait_state.found.erase(iter);
+    }
+  }
   wait_state.callback(time_taken, wait_state.found, wait_state.remaining);
+  active_wait_requests_.erase(wait_id);
 }
 
 std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(

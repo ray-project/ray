@@ -814,6 +814,12 @@ class APITest(unittest.TestCase):
         self.assertEqual(ready_ids, [])
         self.assertEqual(remaining_ids, [])
 
+        # Test semantics of num_returns with no timeout.
+        oids = [ray.put(i) for i in range(10)]
+        (found, rest) = ray.wait(oids, num_returns=2)
+        self.assertEqual(len(found), 2)
+        self.assertEqual(len(rest), 8)
+
         # Verify that incorrect usage raises a TypeError.
         x = ray.put(1)
         with self.assertRaises(TypeError):
