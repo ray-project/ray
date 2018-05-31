@@ -19,7 +19,7 @@ from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
     hash_launch_conf, fillout_defaults
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_NAME
+    TAG_RAY_NODE_NAME
 from ray.autoscaler.updater import NodeUpdaterProcess
 
 
@@ -57,7 +57,7 @@ def teardown_cluster(config_file, yes):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
+        TAG_RAY_NODE_TYPE: "head",
     }
     for node in provider.nodes(head_node_tags):
         print("Terminating head node {}".format(node))
@@ -76,7 +76,7 @@ def get_or_create_head_node(config, no_restart, yes):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
+        TAG_RAY_NODE_TYPE: "head",
     }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
@@ -98,7 +98,8 @@ def get_or_create_head_node(config, no_restart, yes):
             provider.terminate_node(head_node)
         print("Launching new head node...")
         head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
-        head_node_tags[TAG_NAME] = "ray-{}-head".format(config["cluster_name"])
+        head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
+            config["cluster_name"])
         provider.create_node(config["head_node"], head_node_tags, 1)
 
     nodes = provider.nodes(head_node_tags)
@@ -185,7 +186,7 @@ def get_head_node_ip(config_file):
     config = yaml.load(open(config_file).read())
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
+        TAG_RAY_NODE_TYPE: "head",
     }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:
