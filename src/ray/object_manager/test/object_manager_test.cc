@@ -281,11 +281,14 @@ class TestObjectManagerCommands : public TestObjectManager {
             const std::unordered_set<ray::ObjectID> &remaining) {
           switch (current_wait_test) {
           case 0: {
+            // Ensure wait_ms = 0 returns immediately after lookup when objects are
+            // remote.
             ASSERT_TRUE(elapsed == 0);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
           } break;
           case 1: {
+            // Ensure lookup succeeds as expected when objects are local.
             RAY_LOG(DEBUG) << "elapsed " << elapsed;
             RAY_LOG(DEBUG) << "found " << found.size();
             RAY_LOG(DEBUG) << "remaining " << remaining.size();
@@ -294,6 +297,7 @@ class TestObjectManagerCommands : public TestObjectManager {
             NextWaitTest();
           } break;
           case 2: {
+            // Ensure lookup succeeds as expected when objects are remote.
             RAY_LOG(DEBUG) << "elapsed " << elapsed;
             RAY_LOG(DEBUG) << "found " << found.size();
             RAY_LOG(DEBUG) << "remaining " << remaining.size();
@@ -302,6 +306,7 @@ class TestObjectManagerCommands : public TestObjectManager {
             NextWaitTest();
           } break;
           case 3: {
+            // Ensure lookup returns after wait_ms elapses when one object doesn't exist.
             RAY_LOG(DEBUG) << "elapsed " << elapsed;
             RAY_LOG(DEBUG) << "found " << found.size();
             RAY_LOG(DEBUG) << "remaining " << remaining.size();
