@@ -9,11 +9,20 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
+# Add the upstream branch if it doesn't exist
+if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
+    git remote add 'upstream' 'https://github.com/ray-project/ray.git'
+fi
+
+# Only fetch master since that's the branch we're diffing against.
+git fetch 'upstream' 'master'
+
 YAPF_FLAGS=(
     "--style $ROOT/.style.yapf"
     '--in-place'
     '--recursive'
-    '--parallel')
+    '--parallel'
+)
 
 YAPF_EXCLUDES=(
     '--exclude python/ray/dataframe'
@@ -22,15 +31,8 @@ YAPF_EXCLUDES=(
     '--exclude python/build'
     '--exclude python/ray/pyarrow_files'
     '--exclude python/ray/core/src/ray/gcs'
-    '--exclude python/ray/common/thirdparty')
-
-# Add the upstream branch if it doesn't exist
-if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
-    git remote add 'upstream' 'https://github.com/ray-project/ray.git'
-fi
-
-# Only fetch master, not whole tree.
-git fetch 'upstream' 'master'
+    '--exclude python/ray/common/thirdparty'
+)
 
 # Format specified files
 format() {
@@ -44,11 +46,6 @@ format_changed() {
         git diff --name-only 'upstream/master' 'HEAD' -- '*.py' | xargs -P 5 \
             yapf "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
     fi
-}
-
-# Formats *all* files that differ from main branch.
-format_all_changed() {
-    YAPF_EXCLUDES='' format_changed
 }
 
 # Format all files
