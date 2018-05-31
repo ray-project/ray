@@ -50,7 +50,7 @@ class PGAgent(Agent):
             evaluator_cls=CommonPolicyEvaluator,
             evaluator_args={
                 "env_creator": self.env_creator,
-                "policy_cls": PGPolicyGraph,
+                "policy_graph": PGPolicyGraph,
                 "batch_steps": self.config["batch_size"],
                 "batch_mode": "truncate_episodes",
                 "registry": self.registry,

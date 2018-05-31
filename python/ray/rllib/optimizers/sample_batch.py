@@ -11,13 +11,18 @@ class SampleBatchBuilder(object):
 
     def __init__(self):
         self.buffers = collections.defaultdict(list)
+        self.count = 0
 
     def add_values(self, **values):
         for k, v in values.items():
             self.buffers[k].append(v)
+        self.count += 1
 
-    def build(self):
-        return SampleBatch({k: np.array(v) for k, v in self.buffers.items()})
+    def build_and_reset(self):
+        batch = SampleBatch({k: np.array(v) for k, v in self.buffers.items()})
+        self.buffers.clear()
+        self.count = 0
+        return batch
 
 
 class SampleBatch(object):

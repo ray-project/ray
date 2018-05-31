@@ -13,6 +13,7 @@ from ray.rllib.utils.atari_wrappers import wrap_deepmind
 from ray.rllib.utils.compression import pack
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler, SyncSampler
+from ray.rllib.utils.vector_env import VectorEnv
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 from ray.tune.registry import get_registry
 from ray.tune.result import TrainingResult
@@ -70,15 +71,18 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             tf_session_creator=None,
             batch_steps=100,
             batch_mode="truncate_episodes",
+            episode_horizon=None,
             preprocessor_pref="rllib",
             sample_async=False,
             compress_observations=False,
+            vector_width=1,
             consumer_buffer_size=0,
             observation_filter="NoFilter",
             registry=None,
             env_config=None,
             model_config=None,
-            policy_config=None):
+            policy_config=None,
+            init_hook=None):
         """Initialize a policy evaluator.
 
         Arguments:
@@ -97,6 +101,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                     in size, and include transitions from one episode only.
                 pack_episodes: each batch will be exactly batch_steps in
                     size, and may include transitions from multiple episodes.
+            episode_horizon (int): Whether to stop episodes at this horizon.
             preprocessor_pref (str): Whether to prefer RLlib preprocessors
                 ("rllib") or deepmind ("deepmind") when applicable.
             sample_async (bool): Whether to compute samples asynchronously in
@@ -104,6 +109,9 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 to be slightly off-policy.
             compress_observations (bool): If true, compress the observations
                 returned.
+            vector_width (int): If more than one, will create multiple envs
+                and vectorize the computation of actions. If the env implements
+                VectorEnv, that will be used instead of creating multiple envs.
             consumer_buffer_size (int): If non-zero, buffers up to N sample
                 batches in-memory for use so that they can be retrieved
                 by multiple consumers. This only makes sense in multi-agent.
@@ -114,7 +122,11 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy.
+            init_hook (func): Function to call on init.
         """
+
+        if init_hook:
+            init_hook(self)
 
         registry = registry or get_registry()
         env_config = env_config or {}
@@ -131,14 +143,22 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         self.env = env_creator(env_config)
         is_atari = hasattr(self.env.unwrapped, "ale")
-        if is_atari and "custom_preprocessor" not in model_config and \
+        if hasattr(self.env, "vector_reset"):
+            def wrap(env):
+                return env  # we can't auto-wrap already vectorized envs
+        elif is_atari and "custom_preprocessor" not in model_config and \
                 preprocessor_pref == "deepmind":
-            self.env = wrap_deepmind(self.env, dim=model_config.get("dim", 80))
+            def wrap(env):
+                return wrap_deepmind(env, dim=model_config.get("dim", 80))
         else:
-            self.env = ModelCatalog.get_preprocessor_as_wrapper(
-                registry, self.env, model_config)
+            def wrap(env):
+                return ModelCatalog.get_preprocessor_as_wrapper(
+                    registry, env, model_config)
+        self.env = wrap(self.env)
 
-        self.vectorized = hasattr(self.env, "vector_reset")
+        def make_env():
+            return wrap(env_creator(env_config))
+
         self.policy_map = {}
 
         if issubclass(policy_graph, TFPolicyGraph):
@@ -164,21 +184,26 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             observation_filter, self.env.observation_space.shape)
         self.filters = {"obs_filter": self.obs_filter}
 
-        if self.vectorized:
-            raise NotImplementedError("Vector envs not yet supported")
+        # Always use vector env for consistency even if vector_width = 1
+        if not hasattr(self.env, "vector_reset"):
+            self.vector_env = VectorEnv.wrap(make_env, [self.env])
         else:
-            if batch_mode not in ["pack_episodes", "truncate_episodes"]:
-                raise NotImplementedError("Batch mode not yet supported")
-            pack = batch_mode == "pack_episodes"
-            if sample_async:
-                self.sampler = AsyncSampler(
-                    self.env, self.policy_map["default"], self.obs_filter,
-                    batch_steps, pack=pack)
-                self.sampler.start()
-            else:
-                self.sampler = SyncSampler(
-                    self.env, self.policy_map["default"], self.obs_filter,
-                    batch_steps, pack=pack)
+            self.vector_env = self.env
+
+        if batch_mode not in ["pack_episodes", "truncate_episodes"]:
+            raise NotImplementedError("Batch mode not yet supported")
+        pack = batch_mode == "pack_episodes"
+        if sample_async:
+            self.sampler = AsyncSampler(
+                self.vector_env, self.policy_map["default"], self.obs_filter,
+                batch_steps, horizon=episode_horizon, pack=pack,
+                vector_width=vector_width)
+            self.sampler.start()
+        else:
+            self.sampler = SyncSampler(
+                self.vector_env, self.policy_map["default"], self.obs_filter,
+                batch_steps, horizon=episode_horizon, pack=pack,
+                vector_width=vector_width)
 
     def sample(self, consumer_uuid=None):
         """Evaluate the current policies and return a batch of experiences.
