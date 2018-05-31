@@ -26,8 +26,6 @@ DEFAULT_SERVICE_ACCOUNT_CONFIG = {
 DEFAULT_SERVICE_ACCOUNT_ROLES = ("roles/storage.objectAdmin",
                                  "roles/compute.admin")
 
-DEFAULT_PROJECT_ID = "ray-autoscaler-" + VERSION
-
 MAX_POLLS = 12
 POLL_INTERVAL = 5
 
