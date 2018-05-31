@@ -317,17 +317,16 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
                                 const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::from_random();
 
-  if (wait_ms < 0) {
-    return ray::Status::Invalid("Unable to wait negative wait time.");
-  }
-
   if (wait_local) {
     return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
   }
 
-  RAY_CHECK(object_ids.size() != 0);
+  RAY_CHECK(wait_ms >= 0);
   RAY_CHECK(num_required_objects != 0);
   RAY_CHECK(num_required_objects <= object_ids.size());
+  if (object_ids.size() == 0) {
+    callback(0, std::unordered_set<ObjectID>(), std::unordered_set<ObjectID>());
+  }
 
   // Initialize fields.
   active_wait_requests_.emplace(wait_id, WaitState(*main_service_, wait_ms, callback));

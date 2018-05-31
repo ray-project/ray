@@ -56,6 +56,8 @@ enum MessageType:int {
   ForwardTaskRequest,
   // Wait for objects to be ready either from local or remote Plasma stores.
   WaitRequest,
+  // The response message to WaitRequest; replies with the objects found and objects
+  // remaining.
   WaitReply
 }
 

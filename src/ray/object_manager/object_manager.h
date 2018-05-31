@@ -142,9 +142,9 @@ class ObjectManager : public ObjectManagerInterface {
   ray::Status Cancel(const ObjectID &object_id);
 
   /// Callback definition for wait.
-  using WaitCallback = std::function<void(int64_t elapsed,
-                                          const std::unordered_set<ray::ObjectID> &found,
-                                          const std::unordered_set<ray::ObjectID> &remaining)>;
+  using WaitCallback =
+      std::function<void(int64_t elapsed, const std::unordered_set<ray::ObjectID> &found,
+                         const std::unordered_set<ray::ObjectID> &remaining)>;
   /// Wait until either num_required_objects are located or wait_ms has elapsed,
   /// then invoke the provided callback.
   ///
@@ -157,7 +157,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// is satisfied.
   /// \return Status of whether the wait successfully initiated.
   ray::Status Wait(const std::vector<ObjectID> &object_ids, int64_t wait_ms,
-                   uint64_t num_required_objects, bool wait_local, const WaitCallback &callback);
+                   uint64_t num_required_objects, bool wait_local,
+                   const WaitCallback &callback);
 
  private:
   ClientID client_id_;
@@ -198,18 +199,27 @@ class ObjectManager : public ObjectManagerInterface {
   UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
 
   struct WaitState {
-    WaitState(asio::io_service &service, int64_t wait_ms, const WaitCallback &callback) :
-        wait_ms(wait_ms),
-        timeout_timer(std::make_shared<boost::asio::deadline_timer>(service, boost::posix_time::milliseconds(wait_ms))),
-        callback(callback)
-    {}
+    WaitState(asio::io_service &service, int64_t wait_ms, const WaitCallback &callback)
+        : wait_ms(wait_ms),
+          timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
+              new boost::asio::deadline_timer(service,
+                                              boost::posix_time::milliseconds(wait_ms)))),
+          callback(callback) {}
+    /// The period of time to wait before invoking the callback.
     int64_t wait_ms;
-    std::shared_ptr<boost::asio::deadline_timer> timeout_timer;
+    /// The timer used whenever wait_ms > 0.
+    std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
+    /// The callback invoked when WaitCallback is complete.
     WaitCallback callback;
+    /// The objects that have not yet been found.
     std::unordered_set<ObjectID> remaining;
+    /// The objects that have been found.
     std::unordered_set<ObjectID> found;
+    /// Objects that have been requested either by Lookup or Subscribe.
     std::unordered_set<ObjectID> requested_objects;
+    /// The number of required objects.
     uint64_t num_required_objects;
+    /// The time at which the wait operation begins.
     boost::posix_time::ptime start_time;
   };
 

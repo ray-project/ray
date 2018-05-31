@@ -178,8 +178,7 @@ void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
 /// \param timeout The duration to wait before returning.
 /// \param wait_local Whether to wait for objects to appear on this node.
 /// \return A pair with the first element containing the object ids that were
-/// found,
-/// and the second element the objects that were not found.
+/// found, and the second element the objects that were not found.
 std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     LocalSchedulerConnection *conn,
     const std::vector<ObjectID> &object_ids,

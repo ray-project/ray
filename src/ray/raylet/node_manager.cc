@@ -472,8 +472,8 @@ void NodeManager::ProcessClientMessage(
           flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
               fbb, to_flatbuf(fbb, found_vec), to_flatbuf(fbb, remaining_vec));
           fbb.Finish(wait_reply);
-          client->WriteMessage(protocol::MessageType_WaitReply, fbb.GetSize(),
-                               fbb.GetBufferPointer());
+          RAY_CHECK_OK(client->WriteMessage(protocol::MessageType_WaitReply,
+                                            fbb.GetSize(), fbb.GetBufferPointer()));
         });
     RAY_CHECK_OK(status);
   } break;
