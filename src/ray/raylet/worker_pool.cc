@@ -2,6 +2,8 @@
 
 #include <sys/wait.h>
 
+#include <thread>
+
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
