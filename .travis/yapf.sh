@@ -18,20 +18,20 @@ fi
 git fetch 'upstream' 'master'
 
 YAPF_FLAGS=(
-    "--style $ROOT/.style.yapf"
+    '--style' "$ROOT/.style.yapf"
     '--in-place'
     '--recursive'
     '--parallel'
 )
 
 YAPF_EXCLUDES=(
-    '--exclude python/ray/dataframe'
-    '--exclude python/ray/rllib'
-    '--exclude python/ray/cloudpickle'
-    '--exclude python/build'
-    '--exclude python/ray/pyarrow_files'
-    '--exclude python/ray/core/src/ray/gcs'
-    '--exclude python/ray/common/thirdparty'
+    '--exclude' 'python/ray/dataframe'
+    '--exclude' 'python/ray/rllib'
+    '--exclude' 'python/ray/cloudpickle'
+    '--exclude' 'python/build'
+    '--exclude' 'python/ray/pyarrow_files'
+    '--exclude' 'python/ray/core/src/ray/gcs'
+    '--exclude' 'python/ray/common/thirdparty'
 )
 
 # Format specified files
