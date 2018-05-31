@@ -53,7 +53,7 @@ format_all_changed() {
 
 # Format all files
 format_all() {
-    yapf "${YAPF_FLAGS[@]}" "${YAPF_EXCLUDES[@]}" python
+    yapf "${YAPF_FLAGS[@]}" "${YAPF_EXCLUDES[@]}" test python
 }
 
 # This flag formats individual files. --files *must* be the first command line
