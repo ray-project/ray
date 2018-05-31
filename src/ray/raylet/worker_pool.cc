@@ -52,7 +52,9 @@ uint32_t WorkerPool::Size() const {
 
 void WorkerPool::StartWorker(bool force_start) {
   RAY_CHECK(!worker_command_.empty()) << "No worker command provided";
-  if (!started_worker_pids_.empty() && !force_start) {
+  // The first condition makes sure that we are always starting up to
+  // std::thread::hardware_concurrency() number of processes in parallel.
+  if (NumStartedWorkers() > std::thread::hardware_concurrency() && !force_start) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << started_worker_pids_.size() << " workers pending registration";
     return;

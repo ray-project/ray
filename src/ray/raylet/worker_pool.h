@@ -87,16 +87,16 @@ class WorkerPool {
   /// \return The total count of all workers (actor and non-actor) in the pool.
   uint32_t Size() const;
 
-  /// Return a number of workers currently started but not registered.
-  ///
-  /// \return The number of worker PIDs stored for started workers.
-  uint32_t NumStartedWorkers() const;
-
  protected:
   /// Add started worker PID to the internal list of started workers (for testing).
   ///
   /// \param pid A process identifier for the worker being started.
   void AddStartedWorker(pid_t pid);
+
+  /// Return a number of workers currently started but not registered.
+  ///
+  /// \return The number of worker PIDs stored for started workers.
+  uint32_t NumStartedWorkers() const;
 
  private:
   std::vector<std::string> worker_command_;

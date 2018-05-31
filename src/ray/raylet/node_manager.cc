@@ -621,13 +621,7 @@ void NodeManager::AssignTask(Task &task) {
     if (!spec.IsActorTask()) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker.
-      bool force_start = false;
-      if (worker_pool_.NumStartedWorkers() < 32) {
-        // We will need a new worker for this actor, so force start one.
-        // This parallelizes starting lots of actor workers.
-        force_start = spec.IsActorCreationTask();
-      }
-      worker_pool_.StartWorker(force_start);
+      worker_pool_.StartWorker();
     }
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
