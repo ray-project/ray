@@ -88,10 +88,10 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
-  // Handle the unfulfilled_push_tasks_ which contains the push request that is not
+  // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
-  auto iter = unfulfilled_push_tasks_.find(object_id);
-  if (iter != unfulfilled_push_tasks_.end()) {
+  auto iter = unfulfilled_push_requests_.find(object_id);
+  if (iter != unfulfilled_push_requests_.end()) {
     for (auto &pair : iter->second) {
       auto &client_id = pair.first;
       main_service_->post(
@@ -101,7 +101,7 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
         pair.second->cancel();
       }
     }
-    unfulfilled_push_tasks_.erase(iter);
+    unfulfilled_push_requests_.erase(iter);
   }
 }
 
@@ -214,19 +214,19 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
                                           const ClientID &client_id) {
   RAY_LOG(WARNING) << "Invalid Push request ObjectID: " << object_id
                    << " after waiting for " << config_.push_timeout_ms << " ms.";
-  auto iter = unfulfilled_push_tasks_.find(object_id);
-  RAY_CHECK(iter != unfulfilled_push_tasks_.end());
+  auto iter = unfulfilled_push_requests_.find(object_id);
+  RAY_CHECK(iter != unfulfilled_push_requests_.end());
   uint num_erased = iter->second.erase(client_id);
   RAY_CHECK(num_erased == 1);
   if (iter->second.size() == 0) {
-    unfulfilled_push_tasks_.erase(iter);
+    unfulfilled_push_requests_.erase(iter);
   }
 }
 
 ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and client pair.
-    auto &clients = unfulfilled_push_tasks_[object_id];
+    auto &clients = unfulfilled_push_requests_[object_id];
     if (clients.count(client_id) == 0) {
       // If config_.push_timeout_ms < 0, we give an empty timer
       // and the task will be kept infinitely.

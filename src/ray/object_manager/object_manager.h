@@ -226,18 +226,18 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
-
-  /// Invoked when lookup for remaining objects has been invoked.
+  /// Invoked when lookup for remaining objects has been invoked. This method subscribes
+  /// to any remaining objects if wait conditions have not yet been satisfied.
   void WaitLookupComplete(const UniqueID &wait_id);
   /// Completion handler for Wait.
   void WaitComplete(const UniqueID &wait_id);
 
-  /// Unfulfilled Push tasks.
-  /// The timer is for removing a push task due to unsatisfied local object.
+  /// Maintains a map of push requests that have not been fulfilled due to an object not
+  /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
   std::unordered_map<
       ObjectID,
       std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
-      unfulfilled_push_tasks_;
+      unfulfilled_push_requests_;
 
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
