@@ -71,7 +71,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   foreach(file
       "src/common/thirdparty/redis/src/redis-server"
       "src/common/redis_module/libray_redis_module.so"
-      "src/plasma/plasma_store" "src/plasma/plasma_manager"
+      "src/plasma/plasma_manager"
       "src/local_scheduler/local_scheduler"
       "src/local_scheduler/liblocal_scheduler_library_python.so"
       "src/global_scheduler/global_scheduler" "src/ray/raylet/raylet_monitor"
