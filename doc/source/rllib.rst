@@ -37,7 +37,7 @@ for instructions on installing PyTorch.
 
 .. code-block:: bash
 
-  pip install tensorflow # or tensorflow-gpu
+  pip install tensorflow  # or tensorflow-gpu
 
 Then, install Ray with extra RLlib dependencies:
 
