@@ -326,23 +326,18 @@ class TestObjectManagerCommands : public TestObjectManager {
           for (uint i = 0; i < object_ids.size(); ++i) {
             ObjectID oid = object_ids[i];
             // Make sure the object is in either the found vector or the remaining vector.
-            if (!((!found.empty() && found[j] == oid) ||
-                  (!remaining.empty() && remaining[k] == oid))) {
-              // If we're at the end of both arrays, then an object is missing.
-              ASSERT_TRUE(j < found.size() || k < remaining.size());
-              if (j < found.size() && oid == found[j + 1]) {
-                j += 1;
-              }
-              if (k < remaining.size() && oid == remaining[k + 1]) {
-                k += 1;
-              }
+            if (j < found.size() && found[j] == oid) {
+              j += 1;
+            }
+            if (k < remaining.size() && remaining[k] == oid) {
+              k += 1;
             }
           }
           if (!found.empty()) {
-            ASSERT_EQ(j + 1, found.size());
+            ASSERT_EQ(j, found.size());
           }
           if (!remaining.empty()) {
-            ASSERT_EQ(k + 1, remaining.size());
+            ASSERT_EQ(k, remaining.size());
           }
 
           switch (current_wait_test) {
