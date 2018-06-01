@@ -66,6 +66,8 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/local_scheduler/)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/global_scheduler/)
 
 if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
+  # NOTE: The lists below must be kept in sync with ray/python/setup.py.
+
   set(ray_file_list
         "src/common/thirdparty/redis/src/redis-server"
         "src/common/redis_module/libray_redis_module.so"
