@@ -72,10 +72,11 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
         "src/plasma/plasma_manager"
         "src/local_scheduler/local_scheduler"
         "src/local_scheduler/liblocal_scheduler_library_python.so"
-        "src/global_scheduler/global_scheduler" "src/ray/raylet/raylet_monitor"
+        "src/global_scheduler/global_scheduler"
+        "src/ray/raylet/raylet_monitor"
         "src/ray/raylet/raylet")
 
-  set(build_ray_file_list )
+  set(build_ray_file_list)
   foreach(file ${ray_file_list})
     list(APPEND build_ray_file_list ${CMAKE_BINARY_DIR}/${file})
   endforeach()
