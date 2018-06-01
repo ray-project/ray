@@ -23,7 +23,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  RAY_CHECK(config_.max_push_retries > 0);
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
       [this](const ObjectInfoT &object_info) { NotifyDirectoryObjectAdd(object_info); });
@@ -47,7 +46,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       connection_pool_() {
   RAY_CHECK(config_.max_sends > 0);
   RAY_CHECK(config_.max_receives > 0);
-  RAY_CHECK(config_.max_push_retries > 0);
   // TODO(hme) Client ID is never set with this constructor.
   main_service_ = &main_service;
   store_notification_.SubscribeObjAdded(
@@ -90,6 +88,21 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
+  // Handle the unfulfilled_push_tasks_ which contains the push request that is not
+  // completed due to unsatisfied local objects.
+  auto iter = unfulfilled_push_tasks_.find(object_id);
+  if (iter != unfulfilled_push_tasks_.end()) {
+    for (auto &pair : iter->second) {
+      auto &client_id = pair.first;
+      main_service_->post(
+          [this, object_id, client_id]() { RAY_CHECK_OK(Push(object_id, client_id)); });
+      // When push timeout is set to -1, there will be an empty timer in pair.second.
+      if (pair.second != nullptr) {
+        pair.second->cancel();
+      }
+    }
+    unfulfilled_push_tasks_.erase(iter);
+  }
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -196,19 +209,49 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
   return ray::Status::OK();
 }
 
-ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id,
-                                int retry) {
+void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
+                                          const ClientID &client_id) {
+  RAY_LOG(WARNING) << "Invalid Push request ObjectID: " << object_id
+                   << " after waiting for " << config_.push_timeout_ms << " ms.";
+  auto iter = unfulfilled_push_tasks_.find(object_id);
+  RAY_CHECK(iter != unfulfilled_push_tasks_.end());
+  uint num_erased = iter->second.erase(client_id);
+  RAY_CHECK(num_erased == 1);
+  if (iter->second.size() == 0) {
+    unfulfilled_push_tasks_.erase(iter);
+  }
+}
+
+ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   if (local_objects_.count(object_id) == 0) {
-    if (retry < 0) {
-      retry = config_.max_push_retries;
-    } else if (retry == 0) {
-      RAY_LOG(ERROR) << "Invalid Push request ObjectID: " << object_id
-                     << " after retrying " << config_.max_push_retries << " times.";
-      return ray::Status::OK();
+    // Avoid setting duplicated timer for the same object and client pair.
+    auto &clients = unfulfilled_push_tasks_[object_id];
+    if (clients.count(client_id) == 0) {
+      // If config_.push_timeout_ms < 0, we give an empty timer
+      // and the task will be kept infinitely.
+      auto timer = std::unique_ptr<boost::asio::deadline_timer>();
+      if (config_.push_timeout_ms == 0) {
+        // The Push request fails directly when config_.push_timeout_ms == 0.
+        RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
+                         << " due to direct timeout setting. ";
+      } else if (config_.push_timeout_ms > 0) {
+        // Put the task into a queue and wait for the notification of Object added.
+        timer.reset(new boost::asio::deadline_timer(*main_service_));
+        auto clean_push_period = boost::posix_time::milliseconds(config_.push_timeout_ms);
+        timer->expires_from_now(clean_push_period);
+        timer->async_wait(
+            [this, object_id, client_id](const boost::system::error_code &error) {
+              // Timer killing will receive the boost::asio::error::operation_aborted,
+              // we only handle the timeout event.
+              if (!error) {
+                HandlePushTaskTimeout(object_id, client_id);
+              }
+            });
+      }
+      if (config_.push_timeout_ms != 0) {
+        clients.emplace(client_id, std::move(timer));
+      }
     }
-    main_service_->post([this, object_id, client_id, retry]() {
-      RAY_CHECK_OK(Push(object_id, client_id, retry - 1));
-    });
     return ray::Status::OK();
   }
 

@@ -31,7 +31,7 @@ namespace ray {
 
 struct ObjectManagerConfig {
   /// The time in milliseconds to wait before retrying a pull
-  /// that failed due to client id lookup.
+  /// that fails due to client id lookup.
   uint pull_timeout_ms;
   /// Maximum number of sends allowed.
   int max_sends;
@@ -41,8 +41,11 @@ struct ObjectManagerConfig {
   uint64_t object_chunk_size;
   /// The stored socked name.
   std::string store_socket_name;
-  /// Maximun number of push retries.
-  int max_push_retries;
+  /// The time in milliseconds to wait until a Push request
+  /// fails due to unsatisfied local object. Special value:
+  /// Negative: waiting infinitely.
+  /// 0: giving up retrying immediately.
+  int push_timeout_ms;
 };
 
 class ObjectManagerInterface {
@@ -99,9 +102,8 @@ class ObjectManager : public ObjectManagerInterface {
   ///
   /// \param object_id The object's object id.
   /// \param client_id The remote node's client id.
-  /// \param retry The count down retries, -1 means the default maximum retries.
   /// \return Status of whether the push request successfully initiated.
-  ray::Status Push(const ObjectID &object_id, const ClientID &client_id, int retry = -1);
+  ray::Status Push(const ObjectID &object_id, const ClientID &client_id);
 
   /// Pull an object from ClientID. Returns UniqueID asociated with
   /// an invocation of this method.
@@ -194,6 +196,13 @@ class ObjectManager : public ObjectManagerInterface {
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT> local_objects_;
 
+  /// Unfulfilled Push tasks.
+  /// The timer is for removing a push task due to unsatisfied local object.
+  std::unordered_map<
+      ObjectID,
+      std::unordered_map<ClientID, std::unique_ptr<boost::asio::deadline_timer>>>
+      unfulfilled_push_tasks_;
+
   /// Handle starting, running, and stopping asio io_service.
   void StartIOService();
   void RunSendService();
@@ -261,6 +270,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// Handles disconnect message of an existing client connection.
   void DisconnectClient(std::shared_ptr<TcpClientConnection> &conn,
                         const uint8_t *message);
+  /// Handle Push task timeout.
+  void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 };
 
 }  // namespace ray
