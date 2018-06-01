@@ -22,8 +22,8 @@ class LSTM(Model):
                          distutils.version.LooseVersion("1.0.0"))
 
         self.x = x = inputs
-        # for i in range(4):
-        #     x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+        for i in range(4):
+            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
         # Introduce a "fake" batch dimension of 1 after flatten so that we can
         # do LSTM over the time dim.
         x = tf.expand_dims(flatten(x), [0])
@@ -47,7 +47,7 @@ class LSTM(Model):
         else:
             state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(lstm, x,
-                                                 initial_state=self.state_init,
+                                                 initial_state=self.state_in,
                                                  sequence_length=step_size,
                                                  time_major=False)
         lstm_c, lstm_h = lstm_state

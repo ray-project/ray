@@ -184,7 +184,6 @@ def extend_args(function_signature, args, kwargs):
 
     for keyword_name in kwargs:
         if keyword_name not in keyword_names:
-            import ipdb; ipdb.set_trace()
             raise Exception("The name '{}' is not a valid keyword argument "
                             "for the function '{}'.".format(
                                 keyword_name, function_name))
