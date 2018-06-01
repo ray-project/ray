@@ -198,7 +198,7 @@ class TRPOPolicy(SharedTorchPolicy):
         prob_ratio = new_prob / old_prob
 
         surrogate_loss = -torch.mean(prob_ratio * self._adv) - (
-            self.config['ent_coeff'] * entropy)
+            self.config['entropy_coeff'] * entropy)
 
         # Gradient wrt policy
         self._model.zero_grad()

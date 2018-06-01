@@ -24,7 +24,7 @@ DEFAULT_CONFIG = {
     'use_pytorch': True,
     'observation_filter': 'NoFilter',
     'reward_filter': 'NoFilter',
-    'ent_coeff': 0.0,
+    'entropy_coeff': 0.0,
     'max_kl': 0.001,
     'cg_damping': 0.001,
     'residual_tol': 1e-10,
