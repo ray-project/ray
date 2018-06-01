@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# This needs to be run in the build tree, which is normally ray/python/ray/core
+# This needs to be run in the build tree, which is normally ray/build
 
 # Cause the script to exit if a single command fails.
 set -e
@@ -20,7 +20,7 @@ if [ ! -d "$RAY_ROOT/python" ]; then
   exit 1
 fi
 
-CORE_DIR="$RAY_ROOT/python/ray/core"
+CORE_DIR="$RAY_ROOT/build"
 REDIS_DIR="$CORE_DIR/src/common/thirdparty/redis/src"
 REDIS_MODULE="$CORE_DIR/src/common/redis_module/libray_redis_module.so"
 STORE_EXEC="$CORE_DIR/src/plasma/plasma_store"

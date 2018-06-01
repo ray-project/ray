@@ -40,7 +40,7 @@ class TestObjectManagerBase : public ::testing::Test {
     // Use a default worker that can execute empty tasks with dependencies.
     node_manager_config.worker_command.push_back("python");
     node_manager_config.worker_command.push_back(
-        "../../../src/ray/python/default_worker.py");
+        "../python/ray/workers/default_worker.py");
     node_manager_config.worker_command.push_back(raylet_socket_name.c_str());
     node_manager_config.worker_command.push_back(store_socket_name.c_str());
     return node_manager_config;
