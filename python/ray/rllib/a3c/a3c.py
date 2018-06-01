@@ -18,15 +18,13 @@ from ray.tune.trial import Resources
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     "num_workers": 4,
-    # Size of rollout batch
+    # Size of rollout
     "batch_size": 10,
-    # Use LSTM model - only applicable for image states
+    # Only applicable for image states
     "use_lstm": False,
-    # Use PyTorch as backend - no LSTM support
+    # No LSTM support if PyTorch used
     "use_pytorch": False,
-    # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
-    # Which reward filter to apply to the reward
     "reward_filter": "NoFilter",
     # Discount factor of MDP
     "gamma": 0.99,
@@ -36,9 +34,7 @@ DEFAULT_CONFIG = {
     "grad_clip": 40.0,
     # Learning rate
     "lr": 0.0001,
-    # Value Function Loss coefficient
     "vf_loss_coeff": 0.5,
-    # Entropy coefficient
     "entropy_coeff": -0.01,
     # Whether to place workers on GPUs
     "use_gpu_for_workers": False,

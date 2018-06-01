@@ -17,8 +17,12 @@ DEFAULT_CONFIG = {
     'use_gpu_for_workers': False,
     'vf_loss_coeff': 0.5,
     'use_lstm': False,
-    # Size of rollout batch
+    # Size of rollout
     'batch_size': 512,
+    # GAE(gamma) parameter
+    "lambda": 1.0,
+    # Max global norm for each gradient calculated by worker
+    "grad_clip": 40.0,
     # Discount factor of MDP
     'gamma': 0.99,
     'use_pytorch': True,
@@ -28,16 +32,22 @@ DEFAULT_CONFIG = {
     'max_kl': 0.001,
     'cg_damping': 0.001,
     'residual_tol': 1e-10,
-
     # Number of steps after which the rollout gets cut
     'horizon': 500,
     # Learning rate
-    'lr': 0.0004,
+    'lr': 0.0001,
     # Arguments to pass to the RLlib optimizer
     'optimizer': {},
-    # Model parameters
-    'model': {
-        'fcnet_hiddens': [128, 128]
+    # Model and preprocessor options
+    "model": {
+        # (Image statespace) - Converts image to Channels = 1
+        "grayscale": True,
+        # (Image statespace) - Each pixel
+        "zero_mean": False,
+        # (Image statespace) - Converts image to (dim, dim, C)
+        "dim": 80,
+        # (Image statespace) - Converts image shape to (C, dim, dim)
+        "channel_major": False,
     },
     # Arguments to pass to the env creator
     'env_config': {},
