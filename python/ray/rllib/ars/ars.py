@@ -137,7 +137,6 @@ class Worker(object):
         for i in range(rollout_length):
             action = self.policy.compute(ob)
             ob, reward, done, _ = self.env.step(action)
-            ob = np.reshape(ob, -1)
             steps += 1
             total_reward += (reward - shift)
             if done:
@@ -204,9 +203,6 @@ class ARSAgent(agent.Agent):
             self.registry, env)
 
         self.timesteps = 0
-        self.n_iter = 1000
-        self.action_size = env.action_space.shape[0]
-        self.ob_size = env.observation_space.shape[0]
         self.num_deltas = self.config["num_deltas"]
         self.deltas_used = self.config["deltas_used"]
         self.rollout_length = self.config["rollout_length"]
