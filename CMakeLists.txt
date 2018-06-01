@@ -90,6 +90,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
   foreach(file ${ray_file_list})
     list(APPEND build_ray_file_list ${CMAKE_BINARY_DIR}/${file})
   endforeach()
+
   add_custom_target(copy_ray ALL
       DEPENDS ${build_ray_file_list})
 
