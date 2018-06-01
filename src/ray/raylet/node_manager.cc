@@ -463,14 +463,11 @@ void NodeManager::ProcessClientMessage(
 
     ray::Status status = object_manager_.Wait(
         object_ids, wait_ms, num_required_objects, wait_local,
-        [this, client](std::unordered_set<ObjectID> found,
-                       std::unordered_set<ObjectID> remaining) {
+        [this, client](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
           // Write the data.
-          std::vector<ObjectID> found_vec(found.begin(), found.end());
-          std::vector<ObjectID> remaining_vec(remaining.begin(), remaining.end());
           flatbuffers::FlatBufferBuilder fbb;
           flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
-              fbb, to_flatbuf(fbb, found_vec), to_flatbuf(fbb, remaining_vec));
+              fbb, to_flatbuf(fbb, found), to_flatbuf(fbb, remaining));
           fbb.Finish(wait_reply);
           RAY_CHECK_OK(client->WriteMessage(protocol::MessageType_WaitReply,
                                             fbb.GetSize(), fbb.GetBufferPointer()));

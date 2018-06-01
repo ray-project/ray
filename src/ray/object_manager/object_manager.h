@@ -142,9 +142,8 @@ class ObjectManager : public ObjectManagerInterface {
   ray::Status Cancel(const ObjectID &object_id);
 
   /// Callback definition for wait.
-  using WaitCallback =
-      std::function<void(const std::unordered_set<ray::ObjectID> &found,
-                         const std::unordered_set<ray::ObjectID> &remaining)>;
+  using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
+                                          const std::vector<ray::ObjectID> &remaining)>;
   /// Wait until either num_required_objects are located or wait_ms has elapsed,
   /// then invoke the provided callback.
   ///
@@ -211,6 +210,8 @@ class ObjectManager : public ObjectManagerInterface {
     std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
     /// The callback invoked when WaitCallback is complete.
     WaitCallback callback;
+    /// Ordered input object_ids.
+    std::vector<ObjectID> object_id_order;
     /// The objects that have not yet been found.
     std::unordered_set<ObjectID> remaining;
     /// The objects that have been found.

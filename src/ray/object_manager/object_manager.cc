@@ -325,12 +325,13 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
   RAY_CHECK(num_required_objects != 0);
   RAY_CHECK(num_required_objects <= object_ids.size());
   if (object_ids.size() == 0) {
-    callback(std::unordered_set<ObjectID>(), std::unordered_set<ObjectID>());
+    callback(std::vector<ObjectID>(), std::vector<ObjectID>());
   }
 
   // Initialize fields.
   active_wait_requests_.emplace(wait_id, WaitState(*main_service_, wait_ms, callback));
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  wait_state.object_id_order = object_ids;
   wait_state.num_required_objects = num_required_objects;
   for (auto &oid : object_ids) {
     if (local_objects_.count(oid) > 0) {
@@ -340,6 +341,8 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
     }
   }
 
+  // TODO: Debias returning local objects first by doing a lookup on remaining
+  // objects before subscribing.
   if (wait_state.found.size() >= wait_state.num_required_objects) {
     // Requirements already satisfied.
     WaitComplete(wait_id);
@@ -411,16 +414,32 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   // will do nothing on non-zero error codes.
   wait_state.timeout_timer->cancel();
   // Wait semantics require marking at most num_required_objects as found.
-  int64_t num_move = wait_state.found.size() - wait_state.num_required_objects;
-  if (num_move > 0) {
-    auto iter = wait_state.found.begin();
-    while (num_move > 0) {
-      num_move -= 1;
-      wait_state.remaining.insert(*iter);
-      iter = wait_state.found.erase(iter);
+
+  //  int64_t num_move = wait_state.found.size() - wait_state.num_required_objects;
+  //  if (num_move > 0) {
+  //    auto iter = wait_state.found.begin();
+  //    while (num_move > 0) {
+  //      num_move -= 1;
+  //      wait_state.remaining.insert(*iter);
+  //      iter = wait_state.found.erase(iter);
+  //    }
+  //  }
+  //  std::vector<ObjectID> found_vec(wait_state.found.begin(), wait_state.found.end());
+  //  std::vector<ObjectID> remaining_vec(wait_state.remaining.begin(),
+  //  wait_state.remaining.end());
+
+  std::vector<ObjectID> found_vec;
+  std::vector<ObjectID> remaining_vec;
+
+  for (auto item : wait_state.object_id_order) {
+    if (found_vec.size() < wait_state.num_required_objects &&
+        wait_state.found.count(item) > 0) {
+      found_vec.push_back(item);
+    } else {
+      remaining_vec.push_back(item);
     }
   }
-  wait_state.callback(wait_state.found, wait_state.remaining);
+  wait_state.callback(found_vec, remaining_vec);
   active_wait_requests_.erase(wait_id);
 }
 

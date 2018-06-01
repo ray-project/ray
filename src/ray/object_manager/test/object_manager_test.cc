@@ -277,13 +277,40 @@ class TestObjectManagerCommands : public TestObjectManager {
     boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
     server1->object_manager_.Wait(
         object_ids, wait_ms, required_objects, false,
-        [this, num_objects, wait_ms, required_objects, start_time](
-            const std::unordered_set<ray::ObjectID> &found,
-            const std::unordered_set<ray::ObjectID> &remaining) {
-          int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time).total_milliseconds();
+        [this, object_ids, num_objects, wait_ms, required_objects, start_time](
+            const std::vector<ray::ObjectID> &found,
+            const std::vector<ray::ObjectID> &remaining) {
+          int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
+                                .total_milliseconds();
           RAY_LOG(DEBUG) << "elapsed " << elapsed;
           RAY_LOG(DEBUG) << "found " << found.size();
           RAY_LOG(DEBUG) << "remaining " << remaining.size();
+
+          // Ensure object order is preserved for all invocations.
+          uint j = 0;
+          uint k = 0;
+          for (uint i = 0; i < object_ids.size(); ++i) {
+            ObjectID oid = object_ids[i];
+            // Make sure the object is in either the found vector or the remaining vector.
+            if (!((!found.empty() && found[j] == oid) ||
+                  (!remaining.empty() && remaining[k] == oid))) {
+              // If we're at the end of both arrays, then an object is missing.
+              ASSERT_TRUE(j < found.size() || k < remaining.size());
+              if (j < found.size() && oid == found[j + 1]) {
+                j += 1;
+              }
+              if (k < remaining.size() && oid == remaining[k + 1]) {
+                k += 1;
+              }
+            }
+          }
+          if (!found.empty()) {
+            ASSERT_EQ(j + 1, found.size());
+          }
+          if (!remaining.empty()) {
+            ASSERT_EQ(k + 1, remaining.size());
+          }
+
           switch (current_wait_test) {
           case 0: {
             // Ensure wait_ms = 0 returns expected number of found / remaining objects.
