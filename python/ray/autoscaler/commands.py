@@ -44,7 +44,7 @@ def create_or_update_cluster(config_file, override_min_workers,
 
     bootstrap_config, _ = importer()
     config = bootstrap_config(config)
-    get_or_create_head_node(config, no_restart, yes)
+    get_or_create_head_node(config, no_restart, files_only, yes)
 
 
 def teardown_cluster(config_file, yes):
@@ -72,7 +72,7 @@ def teardown_cluster(config_file, yes):
         nodes = provider.nodes({})
 
 
-def get_or_create_head_node(config, no_restart, yes):
+def get_or_create_head_node(config, no_restart, files_only, yes):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -207,40 +207,40 @@ def confirm(msg, yes):
     return None if yes else click.confirm(msg, abort=True)
 
 
-def file_sync(config_file):
-    """Returns head node IP for given configuration file if exists."""
-    # config = yaml.load(open(config_file).read())
-    # validate_config(config)
-    # config = fillout_defaults(config)
-    # importer = NODE_PROVIDERS.get(config["provider"]["type"])
-    # if not importer:
-    #     raise NotImplementedError("Unsupported provider {}".format(
-    #         config["provider"]))
+# def file_sync(config_file):
+#     """Returns head node IP for given configuration file if exists."""
+#     # config = yaml.load(open(config_file).read())
+#     # validate_config(config)
+#     # config = fillout_defaults(config)
+#     # importer = NODE_PROVIDERS.get(config["provider"]["type"])
+#     # if not importer:
+#     #     raise NotImplementedError("Unsupported provider {}".format(
+#     #         config["provider"]))
 
-    # bootstrap_config, provider_cls = importer()
-    # config = bootstrap_config(config)
+#     # bootstrap_config, provider_cls = importer()
+#     # config = bootstrap_config(config)
 
-    provider = provider_cls(config["provider"], config["cluster_name"])
-    head_node_tags = {
-        TAG_RAY_NODE_TYPE: "Head",
-    }
-    nodes = provider.nodes(head_node_tags)
-    if len(nodes) > 0:
-        head_node = nodes[0]
-    else:
-        print("Head node of cluster ({}) not found!".format(
-            config["cluster_name"]))
-        sys.exit(1)
+#     provider = provider_cls(config["provider"], config["cluster_name"])
+#     head_node_tags = {
+#         TAG_RAY_NODE_TYPE: "Head",
+#     }
+#     nodes = provider.nodes(head_node_tags)
+#     if len(nodes) > 0:
+#         head_node = nodes[0]
+#     else:
+#         print("Head node of cluster ({}) not found!".format(
+#             config["cluster_name"]))
+#         sys.exit(1)
 
-    runtime_hash = hash_runtime_conf(config["file_mounts"], config)
+#     runtime_hash = hash_runtime_conf(config["file_mounts"], config)
 
-    updater = NodeUpdaterProcess(
-        head_node,
-        config["provider"],
-        config["auth"],
-        config["cluster_name"],
-        config["file_mounts"],
-        [],
-        runtime_hash,
-        redirect_output=False)
-    updater.sync_files(config["file_mounts"])
+#     updater = NodeUpdaterProcess(
+#         head_node,
+#         config["provider"],
+#         config["auth"],
+#         config["cluster_name"],
+#         config["file_mounts"],
+#         [],
+#         runtime_hash,
+#         redirect_output=False)
+#     updater.sync_files(config["file_mounts"])
