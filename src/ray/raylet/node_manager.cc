@@ -463,7 +463,7 @@ void NodeManager::ProcessClientMessage(
 
     ray::Status status = object_manager_.Wait(
         object_ids, wait_ms, num_required_objects, wait_local,
-        [this, client](int64_t time_taken, std::unordered_set<ObjectID> found,
+        [this, client](std::unordered_set<ObjectID> found,
                        std::unordered_set<ObjectID> remaining) {
           // Write the data.
           std::vector<ObjectID> found_vec(found.begin(), found.end());

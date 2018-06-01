@@ -325,14 +325,13 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
   RAY_CHECK(num_required_objects != 0);
   RAY_CHECK(num_required_objects <= object_ids.size());
   if (object_ids.size() == 0) {
-    callback(0, std::unordered_set<ObjectID>(), std::unordered_set<ObjectID>());
+    callback(std::unordered_set<ObjectID>(), std::unordered_set<ObjectID>());
   }
 
   // Initialize fields.
   active_wait_requests_.emplace(wait_id, WaitState(*main_service_, wait_ms, callback));
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
   wait_state.num_required_objects = num_required_objects;
-  wait_state.start_time = boost::posix_time::second_clock::local_time();
   for (auto &oid : object_ids) {
     if (local_objects_.count(oid) > 0) {
       wait_state.found.insert(oid);
@@ -411,12 +410,6 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   // The timer handler will be given a non-zero error code. The handler
   // will do nothing on non-zero error codes.
   wait_state.timeout_timer->cancel();
-  // Invoke the wait handler.
-  int64_t time_taken =
-      wait_state.wait_ms == 0
-          ? 0
-          : (boost::posix_time::second_clock::local_time() - wait_state.start_time)
-                .total_milliseconds();
   // Wait semantics require marking at most num_required_objects as found.
   int64_t num_move = wait_state.found.size() - wait_state.num_required_objects;
   if (num_move > 0) {
@@ -427,7 +420,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
       iter = wait_state.found.erase(iter);
     }
   }
-  wait_state.callback(time_taken, wait_state.found, wait_state.remaining);
+  wait_state.callback(wait_state.found, wait_state.remaining);
   active_wait_requests_.erase(wait_id);
 }
 

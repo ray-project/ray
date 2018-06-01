@@ -143,7 +143,7 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// Callback definition for wait.
   using WaitCallback =
-      std::function<void(int64_t elapsed, const std::unordered_set<ray::ObjectID> &found,
+      std::function<void(const std::unordered_set<ray::ObjectID> &found,
                          const std::unordered_set<ray::ObjectID> &remaining)>;
   /// Wait until either num_required_objects are located or wait_ms has elapsed,
   /// then invoke the provided callback.
@@ -219,8 +219,6 @@ class ObjectManager : public ObjectManagerInterface {
     std::unordered_set<ObjectID> requested_objects;
     /// The number of required objects.
     uint64_t num_required_objects;
-    /// The time at which the wait operation begins.
-    boost::posix_time::ptime start_time;
   };
 
   /// A set of active wait requests.

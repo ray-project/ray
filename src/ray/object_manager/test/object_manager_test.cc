@@ -274,42 +274,37 @@ class TestObjectManagerCommands : public TestObjectManager {
       num_objects += 1;
       object_ids.push_back(ObjectID::from_random());
     }
+    boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
     server1->object_manager_.Wait(
         object_ids, wait_ms, required_objects, false,
-        [this, num_objects, wait_ms, required_objects](
-            int64_t elapsed, const std::unordered_set<ray::ObjectID> &found,
+        [this, num_objects, wait_ms, required_objects, start_time](
+            const std::unordered_set<ray::ObjectID> &found,
             const std::unordered_set<ray::ObjectID> &remaining) {
+          int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time).total_milliseconds();
+          RAY_LOG(DEBUG) << "elapsed " << elapsed;
+          RAY_LOG(DEBUG) << "found " << found.size();
+          RAY_LOG(DEBUG) << "remaining " << remaining.size();
           switch (current_wait_test) {
           case 0: {
-            // Ensure wait_ms = 0 returns immediately after lookup when objects are
-            // remote.
-            ASSERT_TRUE(elapsed == 0);
+            // Ensure wait_ms = 0 returns expected number of found / remaining objects.
+            ASSERT_TRUE(found.size() <= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
           } break;
           case 1: {
             // Ensure lookup succeeds as expected when objects are local.
-            RAY_LOG(DEBUG) << "elapsed " << elapsed;
-            RAY_LOG(DEBUG) << "found " << found.size();
-            RAY_LOG(DEBUG) << "remaining " << remaining.size();
             ASSERT_TRUE(found.size() >= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
           } break;
           case 2: {
             // Ensure lookup succeeds as expected when objects are remote.
-            RAY_LOG(DEBUG) << "elapsed " << elapsed;
-            RAY_LOG(DEBUG) << "found " << found.size();
-            RAY_LOG(DEBUG) << "remaining " << remaining.size();
             ASSERT_TRUE(found.size() >= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
           } break;
           case 3: {
             // Ensure lookup returns after wait_ms elapses when one object doesn't exist.
-            RAY_LOG(DEBUG) << "elapsed " << elapsed;
-            RAY_LOG(DEBUG) << "found " << found.size();
-            RAY_LOG(DEBUG) << "remaining " << remaining.size();
             ASSERT_TRUE(elapsed >= wait_ms);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             TestWaitComplete();
