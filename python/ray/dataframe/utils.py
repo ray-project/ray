@@ -16,6 +16,10 @@ _MEMOIZER_CAPACITY = 1000  # Capacity per function
 
 class LRUCache:
     """A LRUCache implemented with collections.OrderedDict
+
+    Notes:
+        - OrderedDict will record the order each item is inserted.
+        - The head of the queue will be LRU items.
     """
 
     def __init__(self, capacity):
@@ -47,10 +51,41 @@ class memoize:
     """A basic memoizer that cache the input and output of the remote function
 
     Notes:
-        - This will not work if the argument is mutable. Use with caution.
+        - How is this implemented?
+          This meoizer is implemented by adding a caching layer to the remote
+          function's remote attribute. When user call f.remote(*args), we will
+          first check against the cache, and then call the ray remote function
+          if we can't find the return value in the cache.
+        - When should this be used?
+          This should be used when we anticipate temporal locality for the
+          function. For example, we can reasonally assume users will perform
+          columnar operation repetitively over time (like sum() or loc[]).
+        - Caveat
+          Don't use this decorator if the any argument to the remote function
+          will mutate. Following snippet will fail
+          ```py
+              @memoize
+              @ray.remote
+              def f(obj):
+                ...
+
+              mutable_obj = [1]
+              oid_1 = f.remote(mutable_obj) # will be cached
+
+              mutable_obj.append(3)
+              oid_2 = f.remote(mutable_obj) # cache hit!
+
+              oid_1 == oid_2 # True!
+           ```
+           In short, use this function sparingly. The ideal case is that all
+           inputs are ray ObjectIDs because they are immutable objects.
+        - Future Development
+          - Fix the mutability bug
+          - Dynamic cache size (Fixed as 1000 for now)
     """
 
     def __init__(self, f):
+        # Save of remote function
         self.old_remote_func = f.remote
         self.cache = LRUCache(capacity=_MEMOIZER_CAPACITY)
 
