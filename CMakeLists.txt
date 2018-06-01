@@ -75,6 +75,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
         "src/global_scheduler/global_scheduler"
         "src/ray/raylet/raylet_monitor"
         "src/ray/raylet/raylet")
+
   if (RAY_USE_NEW_GCS)
     list(APPEND ray_file_list "src/credis/build/src/libmember.so")
     list(APPEND ray_file_list "src/credis/build/src/libmaster.so")
