@@ -64,3 +64,21 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/common/)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/plasma/)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/local_scheduler/)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/global_scheduler/)
+
+if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
+  add_custom_target(copy_ray ALL
+    DEPENDS ${CMAKE_BINARY_DIR}/src/ray/raylet/raylet)
+  foreach(file
+      "src/common/thirdparty/redis/src/redis-server"
+      "src/common/redis_module/libray_redis_module.so"
+      "src/plasma/plasma_store" "src/plasma/plasma_manager"
+      "src/local_scheduler/local_scheduler"
+      "src/local_scheduler/liblocal_scheduler_library_python.so"
+      "src/global_scheduler/global_scheduler" "src/ray/raylet/raylet_monitor"
+      "src/ray/raylet/raylet")
+  add_custom_command(TARGET copy_ray POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E
+                        copy ${CMAKE_BINARY_DIR}/${file}
+                            ${CMAKE_BINARY_DIR}/../python/ray/core/${file})
+  endforeach()
+endif()

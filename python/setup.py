@@ -79,7 +79,6 @@ class build_ext(_build_ext.build_ext):
             source = "../build/" + filename
             destination = "ray/core/" + filename
             self.move_file(source, os.path.join(self.build_lib, destination))
-            self.move_file(source, destination)
         # Copy over the existing ray files.
         for filename in ray_files:
             self.move_file(filename, os.path.join(self.build_lib, filename))
@@ -112,7 +111,6 @@ class build_ext(_build_ext.build_ext):
                 destination = "ray/core/" + filename
                 self.move_file(source, os.path.join(self.build_lib,
                                                     destination))
-                self.move_file(source, destination)
             except Exception as e:
                 print("Failed to copy optional file {}. This is ok."
                       .format(source))
