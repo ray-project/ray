@@ -131,9 +131,7 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed) {
   return h;
 }
 
-size_t UniqueID::hash() const {
-  return MurmurHash64A(&id_[0], kUniqueIDSize, 0);
-}
+size_t UniqueID::hash() const { return MurmurHash64A(&id_[0], kUniqueIDSize, 0); }
 
 std::ostream &operator<<(std::ostream &os, const UniqueID &id) {
   os << id.hex();
