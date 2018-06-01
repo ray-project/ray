@@ -14,9 +14,9 @@ class WorkerPoolMock : public WorkerPool {
       : WorkerPool(worker_command) {}
 
   void StartWorker(pid_t pid, bool force_start = false) {
-    if (NumStartedWorkers() > 0 && !force_start) {
+    if (NumWorkersStarting() > 0 && !force_start) {
       // Workers have been started, but not registered. Force start disabled -- returning.
-      RAY_LOG(DEBUG) << NumStartedWorkers() << " workers pending registration";
+      RAY_LOG(DEBUG) << NumWorkersStarting() << " workers pending registration";
       return;
     }
     // Either no workers are pending registration or the worker start is being forced.

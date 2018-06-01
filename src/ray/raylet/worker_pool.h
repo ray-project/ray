@@ -43,7 +43,8 @@ class WorkerPool {
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register a new Worker, then add itself to the pool. Failure to start
-  /// the worker process is a fatal error.
+  /// the worker process is a fatal error. This function will start up to
+  /// num_cpus many workers in parallel if it is called multiple times.
   ///
   /// \param force_start Controls whether to force starting a worker regardless of any
   /// workers that have already been started but not yet registered.
@@ -94,10 +95,10 @@ class WorkerPool {
   /// \param pid A process identifier for the worker being started.
   void AddStartedWorker(pid_t pid);
 
-  /// Return a number of workers currently started but not registered.
+  /// Return a number of workers currently starting but not registered.
   ///
   /// \return The number of worker PIDs stored for started workers.
-  int NumStartedWorkers() const;
+  int NumWorkersStarting() const;
 
  private:
   /// The number of CPUs this Raylet has available.
