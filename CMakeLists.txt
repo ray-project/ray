@@ -81,6 +81,7 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
     list(APPEND ray_file_list "src/credis/build/src/libmaster.so")
     list(APPEND ray_file_list "src/credis/redis/src/redis-server")
   endif()
+
   if (DEFINED ENV{INCLUDE_UI} AND "$ENV{INCLUDE_UI}" STREQUAL "1")
     list(APPEND ray_file_list "src/catapult_files/index.html")
     list(APPEND ray_file_list "src/catapult_files/trace_viewer_full.html")
