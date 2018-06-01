@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# This needs to be run in the build tree, which is normally ray/python/ray/core
+# This needs to be run in the build tree, which is normally ray/build
 
 # Cause the script to exit if a single command fails.
 set -e
