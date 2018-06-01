@@ -2573,8 +2573,6 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
         if len(object_ids) != len(set(object_ids)):
             raise Exception("Wait requires a list of unique object IDs.")
-        if len(object_ids) == 0:
-            raise Exception("Invalid number of objects %d." % len(object_ids))
         if num_returns <= 0:
             raise Exception("Invalid number of objects to return %d." % num_returns)
         if num_returns > len(object_ids):
