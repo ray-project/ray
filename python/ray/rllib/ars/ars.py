@@ -5,13 +5,11 @@ Aurelia Guy
 Benjamin Recht 
 '''
 
-# FIXME(ev) implement reward normalization
 # FIXME(ev) make the shift part actually work
-# FIXME(ev) rewrite config in normal RLlib style
 # FIXME(ev) test this code on a few examples
-# FIXME(ev) implement both v2 and v1
 # FIXME(ev) import Linear Models in a way compliant with RLlib
 # FIXME(ev) doesn't work for pendulum yet
+# FIXME(ev) do rollout length in a standard way
 
 import parser
 import time
@@ -35,12 +33,11 @@ Result = namedtuple("Result", [
     "eval_returns", "eval_lengths"
 ])
 
-
 DEFAULT_CONFIG = dict(
     policy_params=None,
     num_workers=2,
-    num_deltas=20, #320
-    deltas_used=10, #320
+    num_deltas=320,  # 320
+    deltas_used=320,  # 320
     delta_std=0.02,
     logdir=None,
     rollout_length=200,
@@ -68,7 +65,6 @@ def create_shared_noise():
 
 class SharedNoiseTable(object):
     def __init__(self, noise, seed=11):
-
         self.rg = np.random.RandomState(seed)
         self.noise = noise
         assert self.noise.dtype == np.float64
@@ -90,7 +86,7 @@ class Worker(object):
     Object class for parallel rollout generation.
     """
 
-    def __init__(self, registry, config,  env_creator,
+    def __init__(self, registry, config, env_creator,
                  env_seed,
                  deltas=None,
                  rollout_length=1000,
@@ -120,13 +116,12 @@ class Worker(object):
             registry, self.sess, self.env.action_space, self.preprocessor,
             config["observation_filter"])
 
-
-    def rollout(self, shift = 0., rollout_length = None):
+    def rollout(self, shift=0., rollout_length=None):
         """ 
         Performs one rollout of maximum length rollout_length. 
         At each time-step it substracts shift from the reward.
         """
-        
+
         if rollout_length is None:
             rollout_length = self.rollout_length
 
@@ -141,10 +136,10 @@ class Worker(object):
             total_reward += (reward - shift)
             if done:
                 break
-            
+
         return total_reward, steps
 
-    def do_rollouts(self, w_policy, num_rollouts = 1, shift = 1, evaluate = False):
+    def do_rollouts(self, w_policy, num_rollouts=1, shift=1, evaluate=False):
         """ 
         Generate multiple rollouts with a policy parametrized by w_policy.
         """
@@ -158,35 +153,41 @@ class Worker(object):
                 self.policy.set_weights(w_policy)
                 deltas_idx.append(-1)
 
-                # for evaluation we do not shift the rewards (shift = 0) and we use the
+                # for evaluation we do not shift the rewards (shift = 0)
+                # and we use the
                 # default rollout length (1000 for the MuJoCo locomotion tasks)
-                reward, r_steps = self.rollout(shift = 0., rollout_length = self.env.spec.timestep_limit)
+                time_limit = self.env.spec.timestep_limit
+                reward, r_steps = self.rollout(shift=0.,
+                                               rollout_length=time_limit)
                 rollout_rewards.append(reward)
-                
+
             else:
                 idx, delta = self.deltas.get_delta(w_policy.size)
-             
+
                 delta = (self.delta_std * delta).reshape(w_policy.shape)
                 deltas_idx.append(idx)
 
-                # compute reward and number of timesteps used for positive perturbation rollout
+                # compute reward and number of timesteps used
+                # for positive perturbation rollout
                 self.policy.set_weights(w_policy + delta)
-                pos_reward, pos_steps  = self.rollout(shift = shift)
+                pos_reward, pos_steps = self.rollout(shift=shift)
 
-                # compute reward and number of timesteps used for negative pertubation rollout
+                # compute reward and number of timesteps used f
+                # or negative pertubation rollout
                 self.policy.set_weights(w_policy - delta)
-                neg_reward, neg_steps = self.rollout(shift = shift) 
+                neg_reward, neg_steps = self.rollout(shift=shift)
                 steps += pos_steps + neg_steps
 
                 rollout_rewards.append([pos_reward, neg_reward])
-                            
-        return {'deltas_idx': deltas_idx, 'rollout_rewards': rollout_rewards, "steps": steps}
 
+        return {'deltas_idx': deltas_idx,
+                'rollout_rewards': rollout_rewards,
+                "steps": steps}
 
     def get_weights(self):
         return self.policy.get_weights()
 
-    
+
 class ARSAgent(agent.Agent):
     """ 
     Object class implementing the ARS algorithm.
@@ -234,8 +235,8 @@ class ARSAgent(agent.Agent):
         self.sess = utils.make_session(single_threaded=False)
         # initialize policy 
         self.policy = LinearPolicy(
-        self.registry, self.sess, env.action_space, preprocessor,
-        self.config["observation_filter"])
+            self.registry, self.sess, env.action_space, preprocessor,
+            self.config["observation_filter"])
         self.w_policy = self.policy.get_weights()
 
         # initialize optimization algorithm
@@ -243,7 +244,7 @@ class ARSAgent(agent.Agent):
         print("Initialization of ARS complete.")
 
     # FIXME(ev) should return the rewards and some other statistics
-    def aggregate_rollouts(self, num_rollouts = None, evaluate = False):
+    def aggregate_rollouts(self, num_rollouts=None, evaluate=False):
         """ 
         Aggregate update step from rollouts generated in parallel.
         """
@@ -252,25 +253,27 @@ class ARSAgent(agent.Agent):
             num_deltas = self.num_deltas
         else:
             num_deltas = num_rollouts
-            
+
         # put policy weights in the object store
         policy_id = ray.put(self.w_policy)
 
         t1 = time.time()
         num_rollouts = int(num_deltas / self.num_workers)
-            
+
         # parallel generation of rollouts
         rollout_ids_one = [worker.do_rollouts.remote(policy_id,
-                                                 num_rollouts = num_rollouts,
-                                                 shift = self.shift,
-                                                 evaluate=evaluate) for worker in self.workers]
+                                                     num_rollouts=num_rollouts,
+                                                     shift=self.shift,
+                                                     evaluate=evaluate)
+                           for worker in self.workers]
 
+        remainder_workers = self.workers[:(num_deltas % self.num_workers)]
         # handle the remainder of num_delta/num_workers
         rollout_ids_two = [worker.do_rollouts.remote(policy_id,
-                                                 num_rollouts = 1,
-                                                 shift = self.shift,
-                                                 evaluate=evaluate)
-                           for worker in self.workers[:(num_deltas % self.num_workers)]]
+                                                     num_rollouts=1,
+                                                     shift=self.shift,
+                                                     evaluate=evaluate)
+                           for worker in remainder_workers]
 
         # gather results 
         results_one = ray.get(rollout_ids_one)
@@ -296,8 +299,8 @@ class ARSAgent(agent.Agent):
                      'rollout_rewards': rollout_rewards,
                      'steps': steps}
         deltas_idx = np.array(deltas_idx)
-        rollout_rewards = np.array(rollout_rewards, dtype = np.float64)
-        
+        rollout_rewards = np.array(rollout_rewards, dtype=np.float64)
+
         print('Maximum reward of collected rollouts:', rollout_rewards.max())
         t2 = time.time()
 
@@ -311,37 +314,39 @@ class ARSAgent(agent.Agent):
         if self.deltas_used > self.num_deltas:
             self.deltas_used = self.num_deltas
 
-        idx = np.arange(max_rewards.size)[max_rewards >= np.percentile(max_rewards, 100*(1 - (self.deltas_used / self.num_deltas)))]
+        percentage = (1 - (self.deltas_used / self.num_deltas))
+        idx = np.arange(max_rewards.size)[
+            max_rewards >= np.percentile(max_rewards, 100 * percentage)]
         deltas_idx = deltas_idx[idx]
-        rollout_rewards = rollout_rewards[idx,:]
-        
+        rollout_rewards = rollout_rewards[idx, :]
+
         # normalize rewards by their standard deviation
         rollout_rewards /= np.std(rollout_rewards)
 
         t1 = time.time()
-        # aggregate rollouts to form g_hat, the gradient used to compute SGD step
-        g_hat, count = utils.batched_weighted_sum(rollout_rewards[:,0] - rollout_rewards[:,1],
-                                                  (self.deltas.get(idx, self.w_policy.size)
-                                                   for idx in deltas_idx),
-                                                  batch_size = 500)
+        # aggregate rollouts to form the gradient used to compute SGD step
+        reward_diff = rollout_rewards[:, 0] - rollout_rewards[:, 1]
+        deltas_tuple = (self.deltas.get(idx, self.w_policy.size)
+                        for idx in deltas_idx)
+        g_hat, count = utils.batched_weighted_sum(reward_diff, deltas_tuple,
+                                                  batch_size=500)
         g_hat /= deltas_idx.size
         t2 = time.time()
         print('time to aggregate rollouts', t2 - t1)
         return g_hat, info_dict
-        
 
     def train_step(self):
         """ 
         Perform one update step of the policy weights.
         """
-        
+
         g_hat, info_dict = self.aggregate_rollouts()
         print("Euclidean norm of update step:", np.linalg.norm(g_hat))
-        self.w_policy -= self.optimizer._compute_step(g_hat).reshape(self.w_policy.shape)
-        return g_hat ,info_dict
+        compute_step = self.optimizer._compute_step(g_hat)
+        self.w_policy -= compute_step.reshape(self.w_policy.shape)
+        return g_hat, info_dict
 
     def _train(self):
-
 
         # perform the training
         t1 = time.time()
@@ -351,21 +356,9 @@ class ARSAgent(agent.Agent):
 
         # record statistics every 10 iterations
 
-        rewards = self.aggregate_rollouts(num_rollouts=10, evaluate = True)
+        rewards = self.aggregate_rollouts(num_rollouts=10, evaluate=True)
         w = ray.get(self.workers[0].get_weights.remote())
-        #np.savez(self.logdir + "/lin_policy_plus", w)
 
-        # print(sorted(self.params.items()))
-        # logz.log_tabular("Time", time.time() - start)
-        # logz.log_tabular("Iteration", i + 1)
-        # logz.log_tabular("AverageReward", np.mean(rewards))
-        # logz.log_tabular("StdRewards", np.std(rewards))
-        # logz.log_tabular("MaxRewardRollout", np.max(rewards))
-        # logz.log_tabular("MinRewardRollout", np.min(rewards))
-        # logz.log_tabular("timesteps", self.timesteps)
-        # logz.dump_tabular()
-
-        step_tend = time.time()
         tlogger.record_tabular("AverageReward", np.mean(rewards))
         tlogger.record_tabular("StdRewards", np.std(rewards))
         tlogger.record_tabular("WeightNorm", float(np.square(w).sum()))
@@ -375,8 +368,8 @@ class ARSAgent(agent.Agent):
         tlogger.dump_tabular()
 
         result = ray.tune.result.TrainingResult(
-            episode_reward_mean=np.mean(rewards),#eval_returns.mean(),
-            episode_len_mean=100,#eval_lengths.mean(),
+            episode_reward_mean=np.mean(rewards),
+            episode_len_mean=np.mean(info_dict['steps']),
             timesteps_this_iter=np.sum(info_dict['steps']))
 
         return result
@@ -408,11 +401,10 @@ class ARSAgent(agent.Agent):
 
 
 if __name__ == '__main__':
-
     local_ip = socket.gethostbyname(socket.gethostname())
-    ray.init(num_cpus=2, redirect_output=False) #redis_address= local_ip + ':6379')
+    ray.init(num_cpus=2, redirect_output=False)  # redis_address= local_ip + ':6379')
 
-    #run_ars(params)
+    # run_ars(params)
     config = DEFAULT_CONFIG
     config["step_size"] = grid_search([.02])
     tune.run_experiments({
