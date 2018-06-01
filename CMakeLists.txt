@@ -75,6 +75,15 @@ if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
         "src/global_scheduler/global_scheduler"
         "src/ray/raylet/raylet_monitor"
         "src/ray/raylet/raylet")
+  if (RAY_USE_NEW_GCS)
+    list(APPEND ray_file_list "src/credis/build/src/libmember.so")
+    list(APPEND ray_file_list "src/credis/build/src/libmaster.so")
+    list(APPEND ray_file_list "src/credis/redis/src/redis-server")
+  endif()
+  if (DEFINED ENV{INCLUDE_UI} AND "$ENV{INCLUDE_UI}" STREQUAL "1")
+    list(APPEND ray_file_list "src/catapult_files/index.html")
+    list(APPEND ray_file_list "src/catapult_files/trace_viewer_full.html")
+  endif()
 
   set(build_ray_file_list)
   foreach(file ${ray_file_list})
