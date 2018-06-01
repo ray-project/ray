@@ -47,7 +47,7 @@ class LSTM(Model):
         else:
             state_in = rnn.rnn_cell.LSTMStateTuple(c_in, h_in)
         lstm_out, lstm_state = tf.nn.dynamic_rnn(lstm, x,
-                                                 initial_state=self.state_in,
+                                                 initial_state=state_in,
                                                  sequence_length=step_size,
                                                  time_major=False)
         lstm_c, lstm_h = lstm_state
