@@ -309,7 +309,7 @@ class TestObjectManagerCommands : public TestObjectManager {
       object_ids.push_back(ObjectID::from_random());
     }
     boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
-    server1->object_manager_.Wait(
+    RAY_CHECK_OK(server1->object_manager_.Wait(
         object_ids, wait_ms, required_objects, false,
         [this, object_ids, num_objects, wait_ms, required_objects, start_time](
             const std::vector<ray::ObjectID> &found,
@@ -371,7 +371,7 @@ class TestObjectManagerCommands : public TestObjectManager {
             TestWaitComplete();
           } break;
           }
-        });
+        }));
   }
 
   void TestWaitComplete() { main_service.stop(); }
