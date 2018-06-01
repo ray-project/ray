@@ -41,7 +41,10 @@ ray_ui_files_generated = [
     "src/catapult_files/trace_viewer_full.html"
 ]
 
-ray_autoscaler_files = ["ray/autoscaler/aws/example-full.yaml"]
+ray_autoscaler_files = [
+    "ray/autoscaler/aws/example-full.yaml",
+    "ray/autoscaler/gcp/example-full.yaml",
+]
 
 if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ray_files_generated += [

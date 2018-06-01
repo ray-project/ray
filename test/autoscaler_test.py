@@ -251,7 +251,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "Worker"}, 10)
+        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "worker"}, 10)
         autoscaler = StandardAutoscaler(
             config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
         self.assertEqual(len(self.provider.nodes({})), 10)
@@ -398,12 +398,12 @@ class AutoscalingTest(unittest.TestCase):
             node.state = "running"
         assert len(
             self.provider.nodes({
-                TAG_RAY_NODE_STATUS: "Uninitialized"
+                TAG_RAY_NODE_STATUS: "uninitialized"
             })) == 2
         autoscaler.update()
         self.waitFor(
             lambda: len(self.provider.nodes(
-                {TAG_RAY_NODE_STATUS: "Up-to-date"})) == 2)
+                {TAG_RAY_NODE_STATUS: "up-to-date"})) == 2)
 
     def testReportsConfigFailures(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -424,12 +424,12 @@ class AutoscalingTest(unittest.TestCase):
             node.state = "running"
         assert len(
             self.provider.nodes({
-                TAG_RAY_NODE_STATUS: "Uninitialized"
+                TAG_RAY_NODE_STATUS: "uninitialized"
             })) == 2
         autoscaler.update()
         self.waitFor(
             lambda: len(self.provider.nodes(
-                {TAG_RAY_NODE_STATUS: "UpdateFailed"})) == 2)
+                {TAG_RAY_NODE_STATUS: "update-failed"})) == 2)
 
     def testConfiguresOutdatedNodes(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -451,7 +451,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitFor(
             lambda: len(self.provider.nodes(
-                {TAG_RAY_NODE_STATUS: "Up-to-date"})) == 2)
+                {TAG_RAY_NODE_STATUS: "up-to-date"})) == 2)
         runner.calls = []
         new_config = SMALL_CLUSTER.copy()
         new_config["worker_setup_commands"] = ["cmdX", "cmdY"]
@@ -520,7 +520,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitFor(
             lambda: len(self.provider.nodes(
-                {TAG_RAY_NODE_STATUS: "Up-to-date"})) == 2)
+                {TAG_RAY_NODE_STATUS: "up-to-date"})) == 2)
 
         # Mark a node as unhealthy
         lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
