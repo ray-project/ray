@@ -2578,7 +2578,8 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         if len(object_ids) != len(set(object_ids)):
             raise Exception("Wait requires a list of unique object IDs.")
         if num_returns <= 0:
-            raise Exception("Invalid number of objects to return %d." % num_returns)
+            raise Exception(
+                "Invalid number of objects to return %d." % num_returns)
         if num_returns > len(object_ids):
             raise Exception("num_returns cannot be greater than the number "
                             "of objects provided to ray.wait.")
