@@ -136,7 +136,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     /// The callback to invoke when object locations are found.
     std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
-    std::unordered_set<ClientID> location_client_ids;
+    std::unordered_set<ClientID> current_object_locations;
   };
 
   /// Info about subscribers to object locations.

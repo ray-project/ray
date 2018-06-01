@@ -6,10 +6,31 @@ ObjectDirectory::ObjectDirectory(std::shared_ptr<gcs::AsyncGcsClient> &gcs_clien
   gcs_client_ = gcs_client;
 }
 
+std::vector<ClientID> UpdateObjectLocations(
+    std::unordered_set<ClientID> &client_ids,
+    const std::vector<ObjectTableDataT> &location_history) {
+  // location_history contains the history of locations of the object (it is a log),
+  // which might look like the following:
+  //   client1.is_eviction = false
+  //   client1.is_eviction = true
+  //   client2.is_eviction = false
+  // In such a scenario, we want to indicate client2 is the only client that contains
+  // the object, which the following code achieves.
+  for (const auto &object_table_data : location_history) {
+    ClientID client_id = ClientID::from_binary(object_table_data.manager);
+    if (!object_table_data.is_eviction) {
+      client_ids.insert(client_id);
+    } else {
+      client_ids.erase(client_id);
+    }
+  }
+  return std::vector<ClientID>(client_ids.begin(), client_ids.end());
+}
+
 void ObjectDirectory::RegisterBackend() {
   auto object_notification_callback = [this](
       gcs::AsyncGcsClient *client, const ObjectID &object_id,
-      const std::vector<ObjectTableDataT> &object_location_ids) {
+      const std::vector<ObjectTableDataT> &location_history) {
     // Objects are added to this map in SubscribeObjectLocations.
     auto object_id_listener_pair = listeners_.find(object_id);
     // Do nothing for objects we are not listening for.
@@ -17,25 +38,9 @@ void ObjectDirectory::RegisterBackend() {
       return;
     }
     // Update entries for this object.
-    auto &location_client_id_set = object_id_listener_pair->second.location_client_ids;
-    // object_location_ids contains the history of locations of the object (it is a log),
-    // which might look like the following:
-    //   client1.is_eviction = false
-    //   client1.is_eviction = true
-    //   client2.is_eviction = false
-    // In such a scenario, we want to indicate client2 is the only client that contains
-    // the object, which the following code achieves.
-    for (const auto &object_table_data : object_location_ids) {
-      ClientID client_id = ClientID::from_binary(object_table_data.manager);
-      if (!object_table_data.is_eviction) {
-        location_client_id_set.insert(client_id);
-      } else {
-        location_client_id_set.erase(client_id);
-      }
-    }
-    if (!location_client_id_set.empty()) {
-      std::vector<ClientID> client_id_vec(location_client_id_set.begin(),
-                                          location_client_id_set.end());
+    std::vector<ClientID> client_id_vec = UpdateObjectLocations(
+        object_id_listener_pair->second.current_object_locations, location_history);
+    if (!client_id_vec.empty()) {
       // Copy the callbacks so that the callbacks can unsubscribe without interrupting
       // looping over the callbacks.
       auto callbacks = object_id_listener_pair->second.callbacks;
@@ -45,9 +50,9 @@ void ObjectDirectory::RegisterBackend() {
       }
     }
   };
-  RAY_CHECK_OK(gcs_client_->object_table().Subscribe(UniqueID::nil(),
-                                        gcs_client_->client_table().GetLocalClientId(),
-                                        object_notification_callback, nullptr));
+  RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
+      UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(),
+      object_notification_callback, nullptr));
 }
 
 ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
@@ -112,9 +117,10 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   }
   listeners_[object_id].callbacks.emplace(callback_id, callback);
   // Immediately notify of found object locations.
-  if (!listeners_[object_id].location_client_ids.empty()) {
-    std::vector<ClientID> client_id_vec(listeners_[object_id].location_client_ids.begin(),
-                                        listeners_[object_id].location_client_ids.end());
+  if (!listeners_[object_id].current_object_locations.empty()) {
+    std::vector<ClientID> client_id_vec(
+        listeners_[object_id].current_object_locations.begin(),
+        listeners_[object_id].current_object_locations.end());
     callback(client_id_vec, object_id);
   }
   return status;
@@ -142,19 +148,11 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
   ray::Status status = gcs_client_->object_table().Lookup(
       job_id, object_id,
       [this, callback](gcs::AsyncGcsClient *client, const ObjectID &object_id,
-                       const std::vector<ObjectTableDataT> &location_entries) {
+                       const std::vector<ObjectTableDataT> &location_history) {
         // Build the set of current locations based on the entries in the log.
-        std::unordered_set<ClientID> locations;
-        for (auto entry : location_entries) {
-          ClientID client_id = ClientID::from_binary(entry.manager);
-          if (!entry.is_eviction) {
-            locations.insert(client_id);
-          } else {
-            locations.erase(client_id);
-          }
-        }
-        // Invoke the callback.
-        std::vector<ClientID> locations_vector(locations.begin(), locations.end());
+        std::unordered_set<ClientID> client_ids;
+        std::vector<ClientID> locations_vector =
+            UpdateObjectLocations(client_ids, location_history);
         callback(locations_vector, object_id);
       });
   return status;
