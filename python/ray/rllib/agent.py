@@ -246,6 +246,9 @@ def get_agent_class(alg):
     elif alg == "DDPG":
         from ray.rllib import ddpg
         return ddpg.DDPGAgent
+    elif alg == "ARS":
+        from ray.rllib import ars
+        return ars.ARSAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner
