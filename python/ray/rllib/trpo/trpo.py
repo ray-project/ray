@@ -2,14 +2,16 @@ from __future__ import absolute_import, division, print_function
 
 import os
 import pickle
-import numpy as np
-import ray
-from ray.tune.trial import Resources
-from ray.rllib.agent import Agent
-from ray.rllib.optimizers import LocalSyncOptimizer
-from ray.tune.result import TrainingResult
 
+import numpy as np
+
+import ray
+from ray.rllib.agent import Agent
+from ray.rllib.optimizers import AsyncOptimizer, LocalSyncOptimizer
 from ray.rllib.trpo.trpo_evaluator import TRPOEvaluator
+from ray.rllib.utils import FilterManager
+from ray.tune.result import TrainingResult
+from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
@@ -118,16 +120,17 @@ class TRPOAgent(Agent):
                 episode_lengths.append(episode.episode_length)
                 episode_rewards.append(episode.episode_reward)
 
-        avg_reward = np.mean(episode_rewards) if episode_rewards else float('nan')
-        avg_length = np.mean(episode_lengths) if episode_lengths else float('nan')
+        avg_reward = (np.mean(episode_rewards)
+                      if episode_rewards else float('nan'))
+        avg_length = (np.mean(episode_lengths)
+                      if episode_lengths else float('nan'))
         timesteps = np.sum(episode_lengths) if episode_lengths else 0
 
         result = TrainingResult(
             episode_reward_mean=avg_reward,
             episode_len_mean=avg_length,
             timesteps_this_iter=timesteps,
-            info={},
-        )
+            info={})
 
         return result
 

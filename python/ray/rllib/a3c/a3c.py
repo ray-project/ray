@@ -1,17 +1,16 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
+
+import os
+import pickle
 
 import numpy as np
-import pickle
-import os
 
 import ray
+from ray.rllib.a3c.a3c_evaluator import (A3CEvaluator, GPURemoteA3CEvaluator,
+                                         RemoteA3CEvaluator,)
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import AsyncOptimizer
 from ray.rllib.utils import FilterManager
-from ray.rllib.a3c.a3c_evaluator import A3CEvaluator, RemoteA3CEvaluator, \
-    GPURemoteA3CEvaluator
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
@@ -80,15 +79,18 @@ class A3CAgent(Agent):
             self.config,
             self.logdir,
             start_sampler=False)
+
         if self.config["use_gpu_for_workers"]:
             remote_cls = GPURemoteA3CEvaluator
         else:
             remote_cls = RemoteA3CEvaluator
+
         self.remote_evaluators = [
             remote_cls.remote(self.registry, self.env_creator, self.config,
                               self.logdir)
             for i in range(self.config["num_workers"])
         ]
+
         self.optimizer = AsyncOptimizer(self.config["optimizer"],
                                         self.local_evaluator,
                                         self.remote_evaluators)
@@ -97,20 +99,23 @@ class A3CAgent(Agent):
         self.optimizer.step()
         FilterManager.synchronize(self.local_evaluator.filters,
                                   self.remote_evaluators)
-        res = self._fetch_metrics_from_remote_evaluators()
-        return res
+        result = self._fetch_metrics_from_remote_evaluators()
+        return result
 
     def _fetch_metrics_from_remote_evaluators(self):
         episode_rewards = []
         episode_lengths = []
+
         metric_lists = [
             a.get_completed_rollout_metrics.remote()
             for a in self.remote_evaluators
         ]
+
         for metrics in metric_lists:
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
                 episode_rewards.append(episode.episode_reward)
+
         avg_reward = (np.mean(episode_rewards)
                       if episode_rewards else float('nan'))
         avg_length = (np.mean(episode_lengths)
@@ -133,21 +138,27 @@ class A3CAgent(Agent):
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
+
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
+
         extra_data = {
             "remote_state": agent_state,
             "local_state": self.local_evaluator.save()
         }
+
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+
         ray.get([
             a.restore.remote(o)
             for a, o in zip(self.remote_evaluators, extra_data["remote_state"])
         ])
+
         self.local_evaluator.restore(extra_data["local_state"])
 
     def compute_action(self, observation):
