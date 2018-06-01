@@ -28,6 +28,7 @@ import ray.services as services
 import ray.signature
 import ray.local_scheduler
 import ray.plasma
+import ray.ray_constants as ray_constants
 from ray.utils import random_string, binary_to_hex, is_cython
 
 # Import flatbuffer bindings.
@@ -637,6 +638,13 @@ class Worker(object):
             else:
                 del function.__globals__[function.__name__]
 
+        if len(pickled_function) > ray_constants.PICKLE_OBJECT_WARNING_SIZE:
+            print("Warning: The remote function {} has size {} when pickled. "
+                  "It will be stored in Redis, which could cause memory "
+                  "issues. This may mean that the function definition uses a "
+                  "large array or other object.".format(
+                      function_name, len(pickled_function)))
+
         self.redis_client.hmset(
             key, {
                 "driver_id": self.task_driver_id.id(),
@@ -684,6 +692,15 @@ class Worker(object):
                 # In this case, the function has already been exported, so
                 # we don't need to export it again.
                 return
+
+            if (len(pickled_function) >
+                    ray_constants.PICKLE_OBJECT_WARNING_SIZE):
+                print("Warning: The function {} has size {} when pickled. "
+                      "It will be stored in Redis, which could cause memory "
+                      "issues. This may mean that the remote function "
+                      "definition uses a large array or other object.".format(
+                          function.__name__, len(pickled_function)))
+
             # Run the function on all workers.
             self.redis_client.hmset(
                 key, {

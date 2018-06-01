@@ -12,6 +12,10 @@ def env_integer(key, default):
     return default
 
 
+# If a remote function or actor (or some other export) has serialized size
+# greater than this quantity, print an warning.
+PICKLE_OBJECT_WARNING_SIZE = 10**7
+
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
 AUTOSCALER_MAX_NUM_FAILURES = env_integer("AUTOSCALER_MAX_NUM_FAILURES", 5)
