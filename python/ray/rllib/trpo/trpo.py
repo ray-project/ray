@@ -1,5 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
+import os
+import pickle
 import numpy as np
 import ray
 from ray.tune.trial import Resources
@@ -81,15 +83,24 @@ class TRPOAgent(Agent):
             optimizer_config=self.config['optimizer'],
         )
 
+        self.optimizer = AsyncOptimizer(self.config["optimizer"],
+                                        self.local_evaluator,
+                                        self.remote_evaluators)
+
     def _train(self):
         self.optimizer.step()
+        FilterManager.synchronize(self.local_evaluator.filters,
+                                  self.remote_evaluators)
+        result = self._fetch_metrics_from_remote_evaluators()
+        return result
 
+    def _fetch_metrics_from_remote_evaluators(self):
         episode_rewards = []
         episode_lengths = []
 
         metric_lists = [
             a.get_completed_rollout_metrics.remote()
-            for a in self.optimizer.remote_evaluators
+            for a in self.remote_evaluators
         ]
 
         for metrics in metric_lists:
@@ -110,7 +121,35 @@ class TRPOAgent(Agent):
 
         return result
 
-    # TODO(alok): implement `_stop`, `_save`, `_restore`
+    def _stop(self):
+        # workaround for https://github.com/ray-project/ray/issues/1516
+        for ev in self.remote_evaluators:
+            ev.__ray_terminate__.remote()
+
+    def _save(self, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir,
+                                       "checkpoint-{}".format(self.iteration))
+        agent_state = ray.get(
+            [a.save.remote() for a in self.remote_evaluators])
+
+        extra_data = {
+            "remote_state": agent_state,
+            "local_state": self.local_evaluator.save()
+        }
+
+        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+
+        return checkpoint_path
+
+    def _restore(self, checkpoint_path):
+        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+
+        ray.get([
+            a.restore.remote(o)
+            for a, o in zip(self.remote_evaluators, extra_data["remote_state"])
+        ])
+
+        self.local_evaluator.restore(extra_data["local_state"])
 
     def compute_action(self, observation):
         obs = self.local_evaluator.obs_filter(observation, update=False)

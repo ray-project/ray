@@ -1,5 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
+import pickle
+
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import PolicyEvaluator
 from ray.rllib.trpo.policy import TRPOPolicy
@@ -102,3 +104,39 @@ class TRPOEvaluator(PolicyEvaluator):
         """Sets model weights."""
 
         return self.policy.set_weights(weights)
+
+    def save(self):
+        filters = self.get_filters(flush_after=True)
+        weights = self.get_weights()
+        return pickle.dumps({"filters": filters, "weights": weights})
+
+    def restore(self, objs):
+        objs = pickle.loads(objs)
+        self.sync_filters(objs["filters"])
+        self.set_weights(objs["weights"])
+
+    def sync_filters(self, new_filters):
+        """Changes self's filter to given and rebases any accumulated delta.
+
+        Args:
+            new_filters (dict): Filters with new state to update local copy.
+        """
+        assert all(k in new_filters for k in self.filters)
+        for k in self.filters:
+            self.filters[k].sync(new_filters[k])
+
+    def get_filters(self, flush_after=False):
+        """Returns a snapshot of filters.
+
+        Args:
+            flush_after (bool): Clears the filter buffer state.
+
+        Returns:
+            return_filters (dict): Dict for serializable filters
+        """
+        return_filters = {}
+        for k, f in self.filters.items():
+            return_filters[k] = f.as_serializable()
+            if flush_after:
+                f.clear_buffer()
+        return return_filters
