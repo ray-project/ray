@@ -2,6 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ray
+import ray.test.test_functions as test_functions
+
+
+def setup():
+    ray.init(num_workers=4, num_cpus=4)
+
 
 class TimeSuite(object):
     """An example benchmark."""
@@ -24,3 +31,15 @@ class TimeSuite(object):
 class MemSuite(object):
     def mem_list(self):
         return [0] * 256
+
+
+class MicroBenchmarkSuite(object):
+    def time_submit(self):
+        test_functions.empty_function.remote()
+
+    def time_submit_and_get(self):
+        x = test_functions.trivial_function.remote()
+        ray.get(x)
+
+    def time_put(self):
+        ray.put(1)
