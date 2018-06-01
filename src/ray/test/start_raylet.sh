@@ -25,5 +25,5 @@ fi
 ./src/ray/raylet/raylet $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME 127.0.0.1 127.0.0.1 6379 &
 
 echo
-echo "WORKER COMMAND: python ../src/ray/python/worker.py $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME"
+echo "WORKER COMMAND: python ../python/ray/worker.py $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME"
 echo
