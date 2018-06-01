@@ -225,6 +225,8 @@ class ObjectManager : public ObjectManagerInterface {
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
 
+  /// Invoked when lookup for remaining objects has been invoked.
+  void WaitLookupComplete(const UniqueID &wait_id);
   /// Completion handler for Wait.
   void WaitComplete(const UniqueID &wait_id);
 
