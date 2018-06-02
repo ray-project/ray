@@ -116,6 +116,12 @@ bool ResourceSet::GetResource(const std::string &resource_name, double *value) c
   return true;
 }
 
+double ResourceSet::GetNumCpus() const {
+  double num_cpus;
+  RAY_CHECK(GetResource(kCPU_ResourceLabel, &num_cpus));
+  return num_cpus;
+}
+
 const std::string ResourceSet::ToString() const {
   std::string return_string = "";
   for (const auto &resource_pair : this->resource_capacity_) {

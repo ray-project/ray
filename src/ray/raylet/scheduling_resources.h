@@ -99,6 +99,11 @@ class ResourceSet {
   ///         False otherwise.
   bool GetResource(const std::string &resource_name, double *value) const;
 
+  /// Return the number of CPUs.
+  ///
+  /// \return Number of CPUs.
+  double GetNumCpus() const;
+
   /// Return true if the resource set is empty. False otherwise.
   ///
   /// \return True if the resource capacity is zero. False otherwise.
