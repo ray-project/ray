@@ -219,7 +219,8 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
   for (uint i = 0; i < result.first.size(); ++i) {
     PyList_SetItem(py_found, i, PyObjectID_make(result.first[i]));
   }
-  PyObject *py_remaining = PyList_New(static_cast<Py_ssize_t>(result.second.size()));
+  PyObject *py_remaining =
+      PyList_New(static_cast<Py_ssize_t>(result.second.size()));
   for (uint i = 0; i < result.second.size(); ++i) {
     PyList_SetItem(py_remaining, i, PyObjectID_make(result.second[i]));
   }
