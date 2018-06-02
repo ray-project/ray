@@ -2531,7 +2531,8 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
     Ordering of the input list of object IDs is preserved: if A precedes B in
     the input list, and both are in the ready list, then A will precede B in
-    the ready list. This also holds true if A and B are both in the remaining list.
+    the ready list. This also holds true if A and B are both in the remaining
+    list.
 
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
