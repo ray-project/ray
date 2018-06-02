@@ -193,6 +193,7 @@ class ESAgent(agent.Agent):
                                          in result.noisy_lengths])
                     num_timesteps += sum([sum(pair) for pair
                                           in result.noisy_lengths])
+        # FIXME have this depend on min_episodes or min_timesteps
         else:
             rollout_ids = [worker.do_rollouts.remote(theta_id, eval_reward)
                            for worker in self.workers]
@@ -312,7 +313,7 @@ class ESAgent(agent.Agent):
 
         results, num_episodes, num_timesteps = self._collect_results(
             theta_id,
-            2,
+            10,
             config["timesteps_per_batch"], eval_reward=True)
 
         # Loop over the results.
