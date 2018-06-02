@@ -10,10 +10,6 @@
 #include "common.h"
 #include "common_extension.h"
 #include "common_protocol.h"
-#include "ray/raylet/task.h"
-#include "ray/raylet/task_spec.h"
-#include "ray/raylet/task_execution_spec.h"
-#include "task.h"
 
 #include <string>
 
@@ -51,8 +47,6 @@ void init_pickle_module(void) {
   RAY_CHECK(pickle_protocol != NULL);
 }
 
-TaskBuilder *g_task_builder = NULL;
-
 /* Define the PyObjectID class. */
 
 int PyStringToUniqueID(PyObject *object, ObjectID *object_id) {
@@ -74,10 +68,6 @@ int PyObjectToUniqueID(PyObject *object, ObjectID *objectid) {
     PyErr_SetString(PyExc_TypeError, "must be an ObjectID");
     return 0;
   }
-}
-
-bool use_raylet(PyTask *task) {
-  return task->spec == nullptr;
 }
 
 static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
@@ -121,8 +111,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
   }
   PyTask *result = PyObject_New(PyTask, &PyTaskType);
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
-  result->size = size;
-  result->spec = TaskSpec_copy((TaskSpec *) data, size);
+  result->taskInterface = new NonRayletTask(data, size);
   /* The created task does not include any execution dependencies. */
   result->execution_dependencies = new std::vector<ObjectID>();
   /* TODO(pcm): Use flatbuffers validation here. */
@@ -145,15 +134,7 @@ PyObject *PyTask_to_string(PyObject *self, PyObject *args) {
     return NULL;
   }
   PyTask *task = (PyTask *) arg;
-  if (!use_raylet(task)) {
-    return PyBytes_FromStringAndSize((char *) task->spec, task->size);
-  } else {
-    flatbuffers::FlatBufferBuilder fbb;
-    auto task_spec_string = task->task_spec->ToFlatbuffer(fbb);
-    fbb.Finish(task_spec_string);
-    return PyBytes_FromStringAndSize((char *) fbb.GetBufferPointer(),
-                                     fbb.GetSize());
-  }
+  return task->taskInterface->to_string();
 }
 
 static PyObject *PyObjectID_id(PyObject *self) {
@@ -387,78 +368,25 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
     required_resources["CPU"] = 1.0;
   }
 
-  Py_ssize_t num_args = PyList_Size(arguments);
-
-  bool use_raylet = false;
-  if (use_raylet_object != nullptr && PyObject_IsTrue(use_raylet_object) == 1) {
-    use_raylet = true;
-  }
-  self->spec = nullptr;
-  self->task_spec = nullptr;
-
+  std::function<PyObject *(PyObject *)> callMethodObjArgs =
+    std::bind(PyObject_CallMethodObjArgs, pickle_module, pickle_dumps,
+                std::placeholders::_1, pickle_protocol, NULL);
+  std::function<bool(PyObject *)> isPyObjectIDType = 
+    std::bind(PyObject_IsInstance, std::placeholders::_1,
+      reinterpret_cast<PyObject *>(&PyObjectIDType));
   // Create the task spec.
-  if (!use_raylet) {
+  if (use_raylet_object == nullptr || PyObject_IsTrue(use_raylet_object) != 1) {
     // The non-raylet code path.
-
-    // Construct the task specification.
-    TaskSpec_start_construct(
-        g_task_builder, driver_id, parent_task_id, parent_counter,
-        actor_creation_id, actor_creation_dummy_object_id, actor_id,
-        actor_handle_id, actor_counter, is_actor_checkpoint_method, function_id,
-        num_returns);
-    // Add the task arguments.
-    for (Py_ssize_t i = 0; i < num_args; ++i) {
-      PyObject *arg = PyList_GetItem(arguments, i);
-      if (PyObject_IsInstance(arg,
-                              reinterpret_cast<PyObject *>(&PyObjectIDType))) {
-        TaskSpec_args_add_ref(g_task_builder,
-                              &(reinterpret_cast<PyObjectID *>(arg))->object_id,
-                              1);
-      } else {
-        PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,
-                                                    arg, pickle_protocol, NULL);
-        TaskSpec_args_add_val(
-            g_task_builder, reinterpret_cast<uint8_t *>(PyBytes_AsString(data)),
-            PyBytes_Size(data));
-        Py_DECREF(data);
-      }
-    }
-    // Set the resource requirements for the task.
-    for (auto const &resource_pair : required_resources) {
-      TaskSpec_set_required_resource(g_task_builder, resource_pair.first,
-                                     resource_pair.second);
-    }
-
-    // Compute the task ID and the return object IDs.
-    self->spec = TaskSpec_finish_construct(g_task_builder, &self->size);
-
+    self->taskInterface = new NonRayletTask(driver_id, parent_task_id, parent_counter,
+      actor_creation_id, actor_creation_dummy_object_id, actor_id, actor_handle_id, 
+      actor_counter, is_actor_checkpoint_method, function_id, num_returns,
+      arguments, required_resources, callMethodObjArgs, isPyObjectIDType);
   } else {
     // The raylet code path.
-
-    // Parse the arguments from the list.
-    std::vector<std::shared_ptr<ray::raylet::TaskArgument>> args;
-    for (Py_ssize_t i = 0; i < num_args; ++i) {
-      PyObject *arg = PyList_GetItem(arguments, i);
-      if (PyObject_IsInstance(arg,
-                              reinterpret_cast<PyObject *>(&PyObjectIDType))) {
-        std::vector<ObjectID> references = {
-            reinterpret_cast<PyObjectID *>(arg)->object_id};
-        args.push_back(
-            std::make_shared<ray::raylet::TaskArgumentByReference>(references));
-      } else {
-        PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,
-                                                    arg, pickle_protocol, NULL);
-        args.push_back(std::make_shared<ray::raylet::TaskArgumentByValue>(
-            reinterpret_cast<uint8_t *>(PyBytes_AsString(data)),
-            PyBytes_Size(data)));
-        Py_DECREF(data);
-      }
-    }
-
-    self->task_spec = new ray::raylet::TaskSpecification(
-        driver_id, parent_task_id, parent_counter, actor_creation_id,
-        actor_creation_dummy_object_id, actor_id, actor_handle_id,
-        actor_counter, function_id, args, num_returns, required_resources);
+    self->taskInterface = new RayletTask(driver_id, parent_task_id, parent_counter,
+      actor_creation_id, actor_creation_dummy_object_id, actor_id, actor_handle_id, 
+      actor_counter, is_actor_checkpoint_method, function_id, num_returns, arguments,
+      required_resources, callMethodObjArgs, isPyObjectIDType);
   }
 
   /* Set the task's execution dependencies. */
@@ -481,129 +409,58 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 }
 
 static void PyTask_dealloc(PyTask *self) {
-  if (!use_raylet(self)) {
-    TaskSpec_free(self->spec);
-  } else {
-    delete self->task_spec;
-  }
+  delete self->taskInterface;
   delete self->execution_dependencies;
   Py_TYPE(self)->tp_free(reinterpret_cast<PyObject *>(self));
 }
 
 static PyObject *PyTask_function_id(PyTask *self) {
-  FunctionID function_id;
-  if (!use_raylet(self)) {
-    function_id = TaskSpec_function(self->spec);
-  } else {
-    function_id = self->task_spec->FunctionId();
-  }
-  return PyObjectID_make(function_id);
+  return PyObjectID_make(self->taskInterface->function_id());
 }
 
 static PyObject *PyTask_actor_id(PyTask *self) {
-  ActorID actor_id;
-  if (!use_raylet(self)) {
-    actor_id = TaskSpec_actor_id(self->spec);
-  } else {
-    actor_id = self->task_spec->ActorId();
-  }
-  return PyObjectID_make(actor_id);
+  return PyObjectID_make(self->taskInterface->actor_id());
 }
 
 static PyObject *PyTask_actor_counter(PyTask *self) {
-  int64_t actor_counter;
-  if (!use_raylet(self)) {
-    actor_counter = TaskSpec_actor_counter(self->spec);
-  } else {
-    actor_counter = self->task_spec->ActorCounter();
-  }
-  return PyLong_FromLongLong(actor_counter);
+  return PyLong_FromLongLong(self->taskInterface->actor_counter());
 }
 
 static PyObject *PyTask_driver_id(PyTask *self) {
-  UniqueID driver_id;
-  if (!use_raylet(self)) {
-    driver_id = TaskSpec_driver_id(self->spec);
-  } else {
-    driver_id = self->task_spec->DriverId();
-  }
-  return PyObjectID_make(driver_id);
+  return PyObjectID_make(self->taskInterface->driver_id());
 }
 
 static PyObject *PyTask_task_id(PyTask *self) {
-  TaskID task_id;
-  if (!use_raylet(self)) {
-    task_id = TaskSpec_task_id(self->spec);
-  } else {
-    task_id = self->task_spec->TaskId();
-  }
-  return PyObjectID_make(task_id);
+  return PyObjectID_make(self->taskInterface->task_id());
 }
 
 static PyObject *PyTask_parent_task_id(PyTask *self) {
-  TaskID task_id;
-  if (!use_raylet(self)) {
-    task_id = TaskSpec_parent_task_id(self->spec);
-  } else {
-    task_id = self->task_spec->ParentTaskId();
-  }
-  return PyObjectID_make(task_id);
+  return PyObjectID_make(self->taskInterface->parent_task_id());
 }
 
 static PyObject *PyTask_parent_counter(PyTask *self) {
-  int64_t parent_counter;
-  if (!use_raylet(self)) {
-    parent_counter = TaskSpec_parent_counter(self->spec);
-  } else {
-    parent_counter = self->task_spec->ParentCounter();
-  }
-  return PyLong_FromLongLong(parent_counter);
+  return PyLong_FromLongLong(self->taskInterface->parent_counter());
 }
 
 static PyObject *PyTask_arguments(PyTask *self) {
-  TaskSpec *task = self->spec;
-  ray::raylet::TaskSpecification *task_spec = self->task_spec;
-
-  int64_t num_args;
-  if (!use_raylet(self)) {
-    num_args = TaskSpec_num_args(task);
-  } else {
-    num_args = self->task_spec->NumArgs();
-  }
+  int64_t num_args = self->taskInterface->num_args();
 
   PyObject *arg_list = PyList_New((Py_ssize_t) num_args);
   for (int i = 0; i < num_args; ++i) {
-    int count;
-    if (!use_raylet(self)) {
-      count = TaskSpec_arg_id_count(task, i);
-    } else {
-      count = task_spec->ArgIdCount(i);
-    }
+    int count = self->taskInterface->arg_id_count(i);
 
     if (count > 0) {
       assert(count == 1);
 
-      ObjectID object_id;
-      if (!use_raylet(self)) {
-        object_id = TaskSpec_arg_id(task, i, 0);
-      } else {
-        object_id = task_spec->ArgId(i, 0);
-      }
+      ObjectID object_id = self->taskInterface->arg_id(i, 0);
 
       PyList_SetItem(arg_list, i, PyObjectID_make(object_id));
     } else {
       RAY_CHECK(pickle_module != NULL);
       RAY_CHECK(pickle_loads != NULL);
 
-      const uint8_t *arg_val;
-      int64_t arg_length;
-      if (!use_raylet(self)) {
-        arg_val = TaskSpec_arg_val(task, i);
-        arg_length = TaskSpec_arg_length(task, i);
-      } else {
-        arg_val = task_spec->ArgVal(i);
-        arg_length = task_spec->ArgValLength(i);
-      }
+      const uint8_t *arg_val = self->taskInterface->arg_val(i);
+      int64_t arg_length = self->taskInterface->arg_length(i);
 
       PyObject *str =
           PyBytes_FromStringAndSize(reinterpret_cast<const char *>(arg_val),
@@ -618,41 +475,19 @@ static PyObject *PyTask_arguments(PyTask *self) {
 }
 
 static PyObject *PyTask_actor_creation_id(PyTask *self) {
-  ActorID actor_creation_id;
-  if (!use_raylet(self)) {
-    actor_creation_id = TaskSpec_actor_creation_id(self->spec);
-  } else {
-    actor_creation_id = self->task_spec->ActorCreationId();
-  }
-  return PyObjectID_make(actor_creation_id);
+  return PyObjectID_make(self->taskInterface->actor_creation_id());
 }
 
 static PyObject *PyTask_actor_creation_dummy_object_id(PyTask *self) {
-  ObjectID actor_creation_dummy_object_id;
-  if (!use_raylet(self)) {
-    if (TaskSpec_is_actor_task(self->spec)) {
-      actor_creation_dummy_object_id =
-          TaskSpec_actor_creation_dummy_object_id(self->spec);
-    } else {
-      actor_creation_dummy_object_id = ObjectID::nil();
-    }
-  } else {
-    actor_creation_dummy_object_id =
-        self->task_spec->ActorCreationDummyObjectId();
-  }
+  ObjectID actor_creation_dummy_object_id = 
+    self->taskInterface->actor_creation_dummy_object_id();
   return PyObjectID_make(actor_creation_dummy_object_id);
 }
 
 static PyObject *PyTask_required_resources(PyTask *self) {
   PyObject *required_resources = PyDict_New();
 
-  std::unordered_map<std::string, double> resource_map;
-  if (!use_raylet(self)) {
-    resource_map = TaskSpec_get_required_resources(self->spec);
-  } else {
-    resource_map = self->task_spec->GetRequiredResources().GetResourceMap();
-  }
-
+  auto resource_map = self->taskInterface->get_required_resources();
   for (auto const &resource_pair : resource_map) {
     std::string resource_name = resource_pair.first;
 #if PY_MAJOR_VERSION >= 3
@@ -671,24 +506,11 @@ static PyObject *PyTask_required_resources(PyTask *self) {
 }
 
 static PyObject *PyTask_returns(PyTask *self) {
-  TaskSpec *task = self->spec;
-  ray::raylet::TaskSpecification *task_spec = self->task_spec;
-
-  int64_t num_returns;
-  if (!use_raylet(self)) {
-    num_returns = TaskSpec_num_returns(task);
-  } else {
-    num_returns = task_spec->NumReturns();
-  }
+  int64_t num_returns = self->taskInterface->num_returns();
 
   PyObject *return_id_list = PyList_New((Py_ssize_t) num_returns);
   for (int i = 0; i < num_returns; ++i) {
-    ObjectID object_id;
-    if (!use_raylet(self)) {
-      object_id = TaskSpec_return(task, i);
-    } else {
-      object_id = task_spec->ReturnId(i);
-    }
+    ObjectID object_id = self->taskInterface->return_id(i);
     PyList_SetItem(return_id_list, i, PyObjectID_make(object_id));
   }
   return return_id_list;
@@ -703,18 +525,10 @@ static PyObject *PyTask_execution_dependencies_string(PyTask *self) {
                                    fbb.GetSize());
 }
 
-static PyObject *PyTask_to_serialized_flatbuf(PyTask *self) {
-  RAY_CHECK(use_raylet(self));
-
-  const std::vector<ObjectID> execution_dependencies(
-      *self->execution_dependencies);
-  auto const execution_spec = ray::raylet::TaskExecutionSpecification(
-      std::move(execution_dependencies));
-  auto const task = ray::raylet::Task(execution_spec, *self->task_spec);
-
+static PyObject *PyTask_to_serialized_flatbuf(PyTask *self) { 
   flatbuffers::FlatBufferBuilder fbb;
-  auto task_flatbuffer = task.ToFlatbuffer(fbb);
-  fbb.Finish(task_flatbuffer);
+  self->taskInterface->to_serialized_flatbuf(
+    fbb, *self->execution_dependencies);
 
   return PyBytes_FromStringAndSize(
       reinterpret_cast<char *>(fbb.GetBufferPointer()), fbb.GetSize());
@@ -803,8 +617,7 @@ PyTypeObject PyTaskType = {
 PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size) {
   PyTask *result = PyObject_New(PyTask, &PyTaskType);
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
-  result->spec = task_spec;
-  result->size = task_size;
+  result->taskInterface = new NonRayletTask(task_spec, task_size);
   /* The created task does not include any execution dependencies. */
   result->execution_dependencies = new std::vector<ObjectID>();
   return (PyObject *) result;
