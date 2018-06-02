@@ -70,7 +70,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_ms_(config.heartbeat_period_ms),
       local_resources_(config.resource_config),
-      worker_pool_(config.num_initial_workers, config.worker_command),
+      worker_pool_(config.num_initial_workers,
+                   static_cast<int>(config.resource_config.GetNumCpus()),
+                   config.worker_command),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); }),
@@ -400,8 +402,7 @@ void NodeManager::ProcessClientMessage(
       const auto &task = tasks.front();
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      double required_cpus = 0;
-      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      double required_cpus = required_resources.GetNumCpus();
       const std::unordered_map<std::string, double> cpu_resources = {
           {kCPU_ResourceLabel, required_cpus}};
       // Release the CPU resources.
@@ -429,8 +430,7 @@ void NodeManager::ProcessClientMessage(
       const auto &task = tasks.front();
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      double required_cpus = 0;
-      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      double required_cpus = required_resources.GetNumCpus();
       const std::unordered_map<std::string, double> cpu_resources = {
           {kCPU_ResourceLabel, required_cpus}};
       // Acquire the CPU resources.
