@@ -211,7 +211,7 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
   // Invoke wait.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result =
       local_scheduler_wait(
-          ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
+          reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection,
           object_ids, num_returns, timeout_ms, static_cast<bool>(wait_local));
 
   // Convert result to py object.
