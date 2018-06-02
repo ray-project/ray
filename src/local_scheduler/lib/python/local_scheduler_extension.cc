@@ -54,14 +54,10 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
           ->local_scheduler_connection;
   PyTask *task = reinterpret_cast<PyTask *>(py_task);
 
-  if (!use_raylet(task)) {
-    TaskExecutionSpec execution_spec = TaskExecutionSpec(
-        *task->execution_dependencies, task->spec, task->size);
-    local_scheduler_submit(connection, execution_spec);
-  } else {
-    local_scheduler_submit_raylet(connection, *task->execution_dependencies,
-                                  *task->task_spec);
-  }
+  flatbuffers::FlatBufferBuilder fbb;
+  task->taskInterface->to_submit_message(fbb, *task->execution_dependencies);
+
+  local_scheduler_submit(connection, fbb);
 
   Py_RETURN_NONE;
 }
