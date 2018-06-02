@@ -85,7 +85,7 @@ class Worker(object):
             add_noise=add_noise)
         return rollout_rewards, rollout_length
 
-    def do_rollouts(self, params, timestep_limit=None):
+    def do_rollouts(self, params, eval_reward=False, timestep_limit=None):
         # Set the network weights.
         self.policy.set_weights(params)
 
@@ -97,12 +97,13 @@ class Worker(object):
         while (len(noise_indices) == 0 or
                time.time() - task_tstart < self.min_task_runtime):
 
-            if np.random.uniform() < self.config["eval_prob"]:
+            if np.random.uniform() < self.config["eval_prob"] or eval_reward:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_weights(params)
                 rewards, length = self.rollout(timestep_limit, add_noise=False)
                 eval_returns.append(rewards.sum())
                 eval_lengths.append(length)
+                noise_indices.append(1)
             else:
                 # Do a regular run with parameter perturbations.
                 noise_index = self.noise.sample_index(self.policy.num_params)
@@ -171,14 +172,29 @@ class ESAgent(agent.Agent):
         self.timesteps_so_far = 0
         self.tstart = time.time()
 
-    def _collect_results(self, theta_id, min_episodes, min_timesteps):
+    def _collect_results(self, theta_id, min_episodes, min_timesteps,
+                         eval_reward=False):
         num_episodes, num_timesteps = 0, 0
         results = []
-        while num_episodes < min_episodes or num_timesteps < min_timesteps:
-            print(
-                "Collected {} episodes {} timesteps so far this iter".format(
-                    num_episodes, num_timesteps))
-            rollout_ids = [worker.do_rollouts.remote(theta_id)
+        if eval_reward==False:
+            while num_episodes < min_episodes or num_timesteps < min_timesteps:
+                print(
+                    "Collected {} episodes {} timesteps so far this iter".format(
+                        num_episodes, num_timesteps))
+                rollout_ids = [worker.do_rollouts.remote(theta_id, eval_reward)
+                               for worker in self.workers]
+                # Get the results of the rollouts.
+                for result in ray.get(rollout_ids):
+                    results.append(result)
+                    # Update the number of episodes and the number of timesteps
+                    # keeping in mind that result.noisy_lengths is a list of lists,
+                    # where the inner lists have length 2.
+                    num_episodes += sum([len(pair) for pair
+                                         in result.noisy_lengths])
+                    num_timesteps += sum([sum(pair) for pair
+                                          in result.noisy_lengths])
+        else:
+            rollout_ids = [worker.do_rollouts.remote(theta_id, eval_reward)
                            for worker in self.workers]
             # Get the results of the rollouts.
             for result in ray.get(rollout_ids):
@@ -248,7 +264,7 @@ class ESAgent(agent.Agent):
             proc_noisy_returns[:, 0] - proc_noisy_returns[:, 1],
             (self.noise.get(index, self.policy.num_params)
              for index in noise_indices),
-            batch_size=500)
+            batch_size=int(self.config["episodes_per_batch"]/2.0))
         g /= noisy_returns.size
         assert (
             g.shape == (self.policy.num_params,) and
@@ -293,6 +309,36 @@ class ESAgent(agent.Agent):
             "time_elapsed_this_iter": step_tend - step_tstart,
             "time_elapsed": step_tend - self.tstart
         }
+
+        results, num_episodes, num_timesteps = self._collect_results(
+            theta_id,
+            2,
+            config["timesteps_per_batch"], eval_reward=True)
+
+        # Loop over the results.
+        all_noise_indices = []
+        all_training_returns = []
+        all_training_lengths = []
+        all_eval_returns = []
+        all_eval_lengths = []
+
+        for result in results:
+            all_eval_returns += result.eval_returns
+            all_eval_lengths += result.eval_lengths
+
+            all_noise_indices += result.noise_indices
+            all_training_returns += result.noisy_returns
+            all_training_lengths += result.noisy_lengths
+
+        # assert len(all_eval_returns) == len(all_eval_lengths)
+        # assert (len(all_noise_indices) == len(all_training_returns) ==
+        #         len(all_training_lengths))
+
+        self.episodes_so_far += num_episodes
+        self.timesteps_so_far += num_timesteps
+
+        # Assemble the results.
+        eval_returns = np.array(all_eval_returns)
 
         result = ray.tune.result.TrainingResult(
             episode_reward_mean=eval_returns.mean(),

@@ -34,17 +34,13 @@ Result = namedtuple("Result", [
 ])
 
 DEFAULT_CONFIG = dict(
-    policy_params=None,
     num_workers=2,
     num_deltas=320,  # 320
     deltas_used=320,  # 320
     delta_std=0.02,
-    logdir=None,
-    rollout_length=200,
-    step_size=0.01,
+    sgd_stepsize=0.01,
     shift=0,
     observation_filter='MeanStdFilter',
-    params=None,
     seed=123,
     env_config={}
 )
@@ -206,11 +202,9 @@ class ARSAgent(agent.Agent):
         self.timesteps = 0
         self.num_deltas = self.config["num_deltas"]
         self.deltas_used = self.config["deltas_used"]
-        self.rollout_length = self.config["rollout_length"]
-        self.step_size = self.config["step_size"]
+        self.step_size = self.config["sgd_stepsize"]
         self.delta_std = self.config["delta_std"]
         seed = self.config["seed"]
-        self.logdir = self.config["logdir"]
         self.shift = self.config["shift"]
         self.max_past_avg_reward = float('-inf')
         self.num_episodes_used = float('inf')
@@ -223,12 +217,13 @@ class ARSAgent(agent.Agent):
         # Create the actors.
         print("Creating actors.")
         self.num_workers = self.config["num_workers"]
+        import ipdb; ipdb.set_trace()
         self.workers = [
             Worker.remote(
                 self.registry, self.config, self.env_creator,
                 seed + 7 * i,
                 deltas=noise_id,
-                rollout_length=self.rollout_length,
+                rollout_length=env.horizon,
                 delta_std=self.delta_std)
             for i in range(self.config["num_workers"])]
 
