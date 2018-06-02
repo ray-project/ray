@@ -401,7 +401,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
             }
             wait_state.requested_objects.erase(object_id);
             if (wait_state.requested_objects.empty()) {
-              WaitLookupComplete(wait_id);
+              AllWaitLookupsComplete(wait_id);
             }
           }));
     }
@@ -409,7 +409,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
   return ray::Status::OK();
 }
 
-void ObjectManager::WaitLookupComplete(const UniqueID &wait_id) {
+void ObjectManager::AllWaitLookupsComplete(const UniqueID &wait_id) {
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
   if (wait_state.found.size() >= wait_state.num_required_objects ||
       wait_state.wait_ms == 0) {

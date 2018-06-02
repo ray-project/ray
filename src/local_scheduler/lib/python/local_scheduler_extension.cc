@@ -215,11 +215,11 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
           object_ids, num_returns, timeout_ms, static_cast<bool>(wait_local));
 
   // Convert result to py object.
-  PyObject *py_found = PyList_New((Py_ssize_t) result.first.size());
+  PyObject *py_found = PyList_New(static_cast<Py_ssize_t>(result.first.size()));
   for (uint i = 0; i < result.first.size(); ++i) {
     PyList_SetItem(py_found, i, PyObjectID_make(result.first[i]));
   }
-  PyObject *py_remaining = PyList_New((Py_ssize_t) result.second.size());
+  PyObject *py_remaining = PyList_New(static_cast<Py_ssize_t>(result.second.size()));
   for (uint i = 0; i < result.second.size(); ++i) {
     PyList_SetItem(py_remaining, i, PyObjectID_make(result.second[i]));
   }
