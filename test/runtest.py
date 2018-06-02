@@ -758,6 +758,27 @@ class APITest(unittest.TestCase):
         results = ray.get([object_ids[i] for i in indices])
         self.assertEqual(results, indices)
 
+    def testGetMultipleExperimental(self):
+        self.init_ray()
+        object_ids = [ray.put(i) for i in range(10)]
+
+        object_ids_tuple = tuple(object_ids)
+        self.assertEqual(
+            ray.experimental.get(object_ids_tuple), list(range(10)))
+
+        object_ids_nparray = np.array(object_ids)
+        self.assertEqual(
+            ray.experimental.get(object_ids_nparray), list(range(10)))
+
+    def testGetDict(self):
+        self.init_ray()
+        d = {str(i): ray.put(i) for i in range(5)}
+        for i in range(5, 10):
+            d[str(i)] = i
+        result = ray.experimental.get(d)
+        expected = {str(i): i for i in range(10)}
+        self.assertEqual(result, expected)
+
     def testWait(self):
         self.init_ray(num_cpus=1)
 
@@ -829,6 +850,9 @@ class APITest(unittest.TestCase):
         with self.assertRaises(TypeError):
             ray.wait([1])
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
         # launched in this experiment can run at the same time.
