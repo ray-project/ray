@@ -34,17 +34,13 @@ Result = namedtuple("Result", [
 ])
 
 DEFAULT_CONFIG = dict(
-    policy_params=None,
     num_workers=2,
     num_deltas=320,  # 320
     deltas_used=320,  # 320
     delta_std=0.02,
-    logdir=None,
-    rollout_length=200,
-    step_size=0.01,
+    sgd_stepsize=0.01,
     shift=0,
     observation_filter='MeanStdFilter',
-    params=None,
     seed=123,
     env_config={}
 )
@@ -206,11 +202,9 @@ class ARSAgent(agent.Agent):
         self.timesteps = 0
         self.num_deltas = self.config["num_deltas"]
         self.deltas_used = self.config["deltas_used"]
-        self.rollout_length = self.config["rollout_length"]
-        self.step_size = self.config["step_size"]
+        self.step_size = self.config["sgd_stepsize"]
         self.delta_std = self.config["delta_std"]
         seed = self.config["seed"]
-        self.logdir = self.config["logdir"]
         self.shift = self.config["shift"]
         self.max_past_avg_reward = float('-inf')
         self.num_episodes_used = float('inf')
@@ -228,7 +222,7 @@ class ARSAgent(agent.Agent):
                 self.registry, self.config, self.env_creator,
                 seed + 7 * i,
                 deltas=noise_id,
-                rollout_length=self.rollout_length,
+                rollout_length=env.spec.max_episode_steps,
                 delta_std=self.delta_std)
             for i in range(self.config["num_workers"])]
 
@@ -240,7 +234,7 @@ class ARSAgent(agent.Agent):
         self.w_policy = self.policy.get_weights()
 
         # initialize optimization algorithm
-        self.optimizer = optimizers.SGD(self.w_policy, self.config["step_size"])
+        self.optimizer = optimizers.SGD(self.w_policy, self.config["sgd_stepsize"])
         print("Initialization of ARS complete.")
 
     # FIXME(ev) should return the rewards and some other statistics
