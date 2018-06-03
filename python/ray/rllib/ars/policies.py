@@ -73,7 +73,7 @@ class LinearPolicy(object):
         observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(self.sampler,
                                feed_dict={self.inputs: observation})
-        return action
+        return np.reshape(action, -1)
 
     def set_weights(self, x):
         self.variables.set_flat(x)

@@ -226,6 +226,9 @@ class ARSAgent(agent.Agent):
                 delta_std=self.delta_std)
             for i in range(self.config["num_workers"])]
 
+        self.episodes_so_far = 0
+        self.timesteps_so_far = 0
+
         self.sess = utils.make_session(single_threaded=False)
         # initialize policy 
         self.policy = LinearPolicy(
@@ -348,8 +351,10 @@ class ARSAgent(agent.Agent):
         t2 = time.time()
         print('total time of one step', t2 - t1)
 
-        # record statistics every 10 iterations
+        self.episodes_so_far += len(info_dict['steps'])
+        self.timesteps_so_far += np.sum(info_dict['steps'])
 
+        # Evaluate the reward with the unperturbed params
         rewards = self.aggregate_rollouts(num_rollouts=10, evaluate=True)
         w = ray.get(self.workers[0].get_weights.remote())
 
