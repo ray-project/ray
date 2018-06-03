@@ -837,6 +837,9 @@ def check_and_update_resources(resources):
     for _, resource_quantity in resources.items():
         assert (isinstance(resource_quantity, int)
                 or isinstance(resource_quantity, float))
+        if (isinstance(resource_quantity, float) and
+                not resource_quantity.is_integer()):
+            raise ValueError("Resource quantities must all be whole numbers.")
 
     return resources
 

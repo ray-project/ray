@@ -81,12 +81,22 @@ table SubmitTaskRequest {
   task_spec: string;
 }
 
+//
+table ResourceIdSetInfo {
+  //
+  resource_name: string;
+  //
+  resource_ids: [long];
+  //
+  resource_fractions: [double];
+}
+
 // This message is sent from the local scheduler to a worker.
 table GetTaskReply {
   // A string of bytes representing the task specification.
   task_spec: string;
-  // The IDs of the GPUs that the worker is allowed to use for this task.
-  gpu_ids: [int];
+  //
+  fractional_resource_ids: [ResourceIdSetInfo];
 }
 
 // This struct is used to register a new worker with the local scheduler.

@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/raylet/format/node_manager_generated.h"
+
 namespace ray {
 
 namespace raylet {
@@ -117,6 +119,79 @@ class ResourceSet {
  private:
   /// Resource capacity map.
   std::unordered_map<std::string, double> resource_capacity_;
+};
+
+/// \class ResourceIds
+/// \brief TODO(rkn): Document!!
+class ResourceIds {
+ public:
+  ResourceIds();
+
+  ResourceIds(double resource_quantity);
+
+  ResourceIds(const std::vector<int64_t> &whole_ids);
+
+  ResourceIds(const std::vector<std::pair<int64_t, double>> &fractional_ids);
+
+  ResourceIds(const std::vector<int64_t> &whole_ids,
+              const std::vector<std::pair<int64_t, double>> &fractional_ids);
+
+  bool Contains(double resource_quantity) const;
+
+  ResourceIds Acquire(double resource_quantity);
+
+  void Release(const ResourceIds &resource_ids);
+
+  ResourceIds Plus(const ResourceIds &resource_ids) const;
+
+  const std::vector<int64_t> &WholeIds() const;
+
+  const std::vector<std::pair<int64_t, double>> &FractionalIds() const;
+
+  double TotalQuantity() const;
+
+  std::string ToString() const;
+
+ private:
+  bool IsWhole(double resource_quantity) const;
+
+  /// A vector of distinct resource IDs.
+  std::vector<int64_t> whole_ids_;
+  /// A vector of pairs of resource ID and a fraction of that ID (the fraction
+  /// is at least zero and strictly less than 1).
+  std::vector<std::pair<int64_t, double>> fractional_ids_;
+};
+
+/// \class ResourceIdSet
+/// \brief TODO(rkn): Document!!
+class ResourceIdSet {
+ public:
+  ResourceIdSet();
+
+  ResourceIdSet(const ResourceSet &resource_set);
+
+  ResourceIdSet(const std::unordered_map<std::string, ResourceIds> &available_resources);
+
+  bool Contains(const ResourceSet &resource_set) const;
+
+  ResourceIdSet Acquire(const ResourceSet &resource_set);
+
+  void Release(const ResourceIdSet &resource_id_set);
+
+  void Clear();
+
+  ResourceIdSet Plus(const ResourceIdSet &resource_id_set) const;
+
+  const std::unordered_map<std::string, ResourceIds> &AvailableResources() const;
+
+  ResourceSet ToResourceSet() const;
+
+  std::string ToString() const;
+
+  std::vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo>> ToFlatbuf(flatbuffers::FlatBufferBuilder &fbb) const;
+
+ private:
+  std::unordered_map<std::string, ResourceIds> available_resources_;
 };
 
 /// \class SchedulingResources

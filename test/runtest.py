@@ -1502,6 +1502,59 @@ class ResourcesTest(unittest.TestCase):
         a = Foo.remote()
         self.assertNotEqual(ray.get(a.method.remote()), local_plasma)
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") != "1",
+        "This test only works with xray.")
+    def testFractionalResources(self):
+        ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 1})
+
+        @ray.remote(num_gpus=0.5)
+        class Foo1(object):
+            def method(self):
+                gpu_ids = ray.get_gpu_ids()
+                assert len(gpu_ids) == 1
+                return gpu_ids[0]
+
+        foos = [Foo1.remote() for _ in range(6)]
+        gpu_ids = ray.get([f.method.remote() for f in foos])
+        for i in range(3):
+            assert gpu_ids.count(i) == 2
+        del foos
+
+        @ray.remote
+        class Foo2(object):
+            def method(self):
+                pass
+
+        # Create an actor that requires 0.7 of the custom resource.
+        f1 = Foo2._submit([], {}, resources={"Custom": 0.7})
+        ray.get(f1.method.remote())
+        # # Make sure that we cannot create an actor that requires 0.7 of the
+        # # custom resource. TODO(rkn): Re-enable this once ray.wait is
+        # # implemented.
+        # f2 = Foo2._submit([], {}, resources={"Custom": 0.7})
+        # ready, _ = ray.wait(f2.method.remote(), timeout=500)
+        # assert len(ready) == 0
+        # Make sure we can start an actor that requries only 0.3 of the custom
+        # resource.
+        f3 = Foo2._submit([], {}, resources={"Custom": 0.3})
+        ray.get(f3.method.remote())
+
+        del f1, f3
+
+        # Make sure that we get exceptions if we submit tasks that require a
+        # fractional number of resources greater than 1.
+
+        @ray.remote(num_cpus=1.5)
+        def test():
+            pass
+
+        with self.assertRaises(ValueError):
+            test.remote()
+
+        with self.assertRaises(ValueError):
+            Foo2._submit([], {}, resources={"Custom": 1.5})
+
     def testMultipleLocalSchedulers(self):
         # This test will define a bunch of tasks that can only be assigned to
         # specific local schedulers, and we will check that they are assigned
@@ -1656,6 +1709,9 @@ class ResourcesTest(unittest.TestCase):
         # custom resources gets blocked.
         ray.get([h.remote() for _ in range(5)])
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test does not work with xray yet.")
     def testTwoCustomResources(self):
         ray.worker._init(
             start_ray_local=True,
@@ -1760,9 +1816,6 @@ class CudaVisibleDevicesTest(unittest.TestCase):
         else:
             del os.environ["CUDA_VISIBLE_DEVICES"]
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testSpecificGPUs(self):
         allowed_gpu_ids = [4, 5, 6]
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(

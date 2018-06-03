@@ -5,6 +5,7 @@
 
 #include "ray/common/client_connection.h"
 #include "ray/id.h"
+#include "ray/raylet/scheduling_resources.h"
 
 namespace ray {
 
@@ -31,6 +32,14 @@ class Worker {
   /// Return the worker's connection.
   const std::shared_ptr<LocalClientConnection> Connection() const;
 
+  const ResourceIdSet &GetPermanentResourceIds() const;
+  void SetPermanentResourceIds(ResourceIdSet &resource_ids);
+  void ResetPermanentResourceIds();
+
+  const ResourceIdSet &GetTemporaryResourceIds() const;
+  void SetTemporaryResourceIds(ResourceIdSet &resource_ids);
+  void ResetTemporaryResourceIds();
+
  private:
   /// The worker's PID.
   pid_t pid_;
@@ -43,6 +52,12 @@ class Worker {
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
+  /// The specific resource IDs that this worker owns for its lifetime. This is
+  /// only used for actors.
+  ResourceIdSet permanent_resource_ids_;
+  /// The specific resource IDs that this worker currently owns for the duration
+  // of a task.
+  ResourceIdSet temporary_resource_ids_;
 };
 
 }  // namespace raylet

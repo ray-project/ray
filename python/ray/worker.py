@@ -592,6 +592,16 @@ class Worker(object):
 
             if resources is None:
                 raise ValueError("The resources dictionary is required.")
+            for value in resources.values():
+                assert (isinstance(value, int)
+                        or isinstance(value, float))
+                if value < 0:
+                    raise ValueError(
+                        "Resource quantities must be nonnegative.")
+                if (value >= 1 and isinstance(value, float) and
+                        not value.is_integer()):
+                    raise ValueError(
+                        "Resource quantities must all be whole numbers.")
 
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
@@ -1063,7 +1073,12 @@ def get_gpu_ids():
         raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
                         "MODE.")
 
-    assigned_ids = global_worker.local_scheduler_client.gpu_ids()
+    if not global_worker.use_raylet:
+        assigned_ids = global_worker.local_scheduler_client.gpu_ids()
+    else:
+        all_resource_ids = global_worker.local_scheduler_client.resource_ids()
+        assigned_ids = [resource_id for resource_id, _
+                        in all_resource_ids.get("GPU", [])]
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
@@ -1073,6 +1088,25 @@ def get_gpu_ids():
         ]
 
     return assigned_ids
+
+
+def get_resource_ids():
+    """Get the IDs of the resources that are available to the worker.
+
+    Returns:
+        A dictionary mapping the name of a resource to a list of pairs, where
+            each pair consists of the ID of a resource and the fraction of that
+            resource reserved for this worker.
+    """
+    if not global_worker.use_raylet:
+        raise Exception("ray.get_resource_ids() is only supported in the "
+                        "raylet code path.")
+
+    if _mode() == PYTHON_MODE:
+        raise Exception("ray.get_resource_ids() currently does not work in PYTHON "
+                        "MODE.")
+
+    return global_worker.local_scheduler_client.resource_ids()
 
 
 def _webui_url_helper(client):
@@ -1424,7 +1458,7 @@ def _init(address_info=None,
           plasma_directory=None,
           huge_pages=False,
           include_webui=True,
-          use_raylet=False):
+          use_raylet=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -2149,7 +2183,7 @@ def connect(info,
         local_scheduler_socket = info["raylet_socket_name"]
 
     worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-        local_scheduler_socket, worker.worker_id, is_worker)
+        local_scheduler_socket, worker.worker_id, is_worker, worker.use_raylet)
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
