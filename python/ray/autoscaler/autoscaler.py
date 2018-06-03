@@ -537,7 +537,8 @@ def check_extraneous(config, schema):
             if not isinstance(config[k], v):
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
-                        k, type(config[k]).__name__, v.__name__))
+                        k,
+                        type(config[k]).__name__, v.__name__))
         else:
             check_extraneous(config[k], v)
 
