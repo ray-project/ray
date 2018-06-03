@@ -298,7 +298,6 @@ class ARSAgent(agent.Agent):
         deltas_idx = np.array(deltas_idx)
         rollout_rewards = np.array(rollout_rewards, dtype=np.float64)
 
-        print('Maximum reward of collected rollouts:', rollout_rewards.max())
         t2 = time.time()
 
         print('Time to generate rollouts:', t2 - t1)
