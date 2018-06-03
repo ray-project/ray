@@ -22,9 +22,9 @@ DEFAULT_CONFIG = {
     # Size of rollout
     'batch_size': 512,
     # GAE(gamma) parameter
-    "lambda": 1.0,
+    'lambda': 1.0,
     # Max global norm for each gradient calculated by worker
-    "grad_clip": 40.0,
+    'grad_clip': 40.0,
     # Discount factor of MDP
     'gamma': 0.99,
     'use_pytorch': True,
@@ -39,17 +39,23 @@ DEFAULT_CONFIG = {
     # Learning rate
     'lr': 0.0001,
     # Arguments to pass to the RLlib optimizer
-    'optimizer': {},
+    'optimizer': {
+        # Number of gradients applied for each `train` step
+        'grads_per_step': 100,
+    },
     # Model and preprocessor options
-    "model": {
+    'model': {
         # (Image statespace) - Converts image to Channels = 1
-        "grayscale": True,
+        'grayscale': True,
         # (Image statespace) - Each pixel
-        "zero_mean": False,
+        'zero_mean': False,
         # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 80,
+        'dim': 80,
         # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False,
+        #
+        # XXX set to true by default here since there's currently only a
+        # PyTorch implementation.
+        "channel_major": True,
     },
     # Arguments to pass to the env creator
     'env_config': {},
@@ -67,8 +73,8 @@ class TRPOAgent(Agent):
         return Resources(
             cpu=1,
             gpu=0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
+            extra_cpu=cf['num_workers'],
+            extra_gpu=cf['use_gpu_for_workers'] and cf['num_workers'] or 0)
 
     def _init(self):
         self.local_evaluator = TRPOEvaluator(
