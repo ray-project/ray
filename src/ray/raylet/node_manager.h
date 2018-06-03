@@ -24,6 +24,7 @@ struct NodeManagerConfig {
   int num_initial_workers;
   std::vector<std::string> worker_command;
   uint64_t heartbeat_period_ms;
+  uint64_t max_lineage_size;
 };
 
 class NodeManager {

@@ -45,6 +45,7 @@ int main(int argc, char *argv[]) {
 
   node_manager_config.heartbeat_period_ms =
       RayConfig::instance().heartbeat_timeout_milliseconds();
+  node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
 
   // Configuration for the object manager.
   ray::ObjectManagerConfig object_manager_config;
@@ -54,6 +55,8 @@ int main(int argc, char *argv[]) {
   object_manager_config.max_sends = RayConfig::instance().object_manager_max_sends();
   object_manager_config.max_receives =
       RayConfig::instance().object_manager_max_receives();
+  object_manager_config.max_push_retries =
+      RayConfig::instance().object_manager_max_push_retries();
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 

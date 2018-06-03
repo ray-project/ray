@@ -1,15 +1,13 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import os
-import ray
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 
+import ray
 from ray.test.test_utils import run_and_get_output
 
 
@@ -215,12 +213,6 @@ class StartRayScriptTest(unittest.TestCase):
         run_and_get_output(["ray", "start", "--head", "--redis-port", "6379"])
         subprocess.Popen(["ray", "stop"]).wait()
 
-        # Test starting Ray with redis shard ports specified.
-        run_and_get_output([
-            "ray", "start", "--head", "--redis-shard-ports", "6380,6381,6382"
-        ])
-        subprocess.Popen(["ray", "stop"]).wait()
-
         # Test starting Ray with a node IP address specified.
         run_and_get_output(
             ["ray", "start", "--head", "--node-ip-address", "127.0.0.1"])
@@ -244,15 +236,23 @@ class StartRayScriptTest(unittest.TestCase):
             ["ray", "start", "--head", "--redis-max-clients", "100"])
         subprocess.Popen(["ray", "stop"]).wait()
 
-        # Test starting Ray with all arguments specified.
-        run_and_get_output([
-            "ray", "start", "--head", "--num-workers", "20", "--redis-port",
-            "6379", "--redis-shard-ports", "6380,6381,6382",
-            "--object-manager-port", "12345", "--num-cpus", "100",
-            "--num-gpus", "0", "--redis-max-clients", "100", "--resources",
-            "{\"Custom\": 1}"
-        ])
-        subprocess.Popen(["ray", "stop"]).wait()
+        if "RAY_USE_NEW_GCS" not in os.environ:
+            # Test starting Ray with redis shard ports specified.
+            run_and_get_output([
+                "ray", "start", "--head", "--redis-shard-ports",
+                "6380,6381,6382"
+            ])
+            subprocess.Popen(["ray", "stop"]).wait()
+
+            # Test starting Ray with all arguments specified.
+            run_and_get_output([
+                "ray", "start", "--head", "--num-workers", "20",
+                "--redis-port", "6379", "--redis-shard-ports",
+                "6380,6381,6382", "--object-manager-port", "12345",
+                "--num-cpus", "100", "--num-gpus", "0", "--redis-max-clients",
+                "100", "--resources", "{\"Custom\": 1}"
+            ])
+            subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with invalid arguments.
         with self.assertRaises(Exception):

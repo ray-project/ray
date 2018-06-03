@@ -5,8 +5,24 @@
 # Cause the script to exit if a single command fails.
 set -e
 
+LaunchRedis() {
+    port=$1
+    if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
+        ./src/credis/redis/src/redis-server \
+            --loglevel warning \
+            --loadmodule ./src/credis/build/src/libmember.so \
+            --loadmodule ./src/common/redis_module/libray_redis_module.so \
+            --port $port >/dev/null &
+    else
+        ./src/common/thirdparty/redis/src/redis-server \
+            --loglevel warning \
+            --loadmodule ./src/common/redis_module/libray_redis_module.so \
+            --port $port >/dev/null &
+    fi
+}
+
 # Start the GCS.
-./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so --port 6379 >/dev/null &
+LaunchRedis 6379
 sleep 1s
 
 if [[ $1 ]]; then

@@ -63,7 +63,7 @@ const TaskID FinishTaskId(const TaskID &task_id);
 /// Compute the object ID of an object returned by the task.
 ///
 /// \param task_id The task ID of the task that created the object.
-/// \param put_index What number return value this object is in the task.
+/// \param return_index What number return value this object is in the task.
 /// \return The computed object ID.
 const ObjectID ComputeReturnId(const TaskID &task_id, int64_t return_index);
 
