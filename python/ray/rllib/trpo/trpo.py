@@ -71,11 +71,12 @@ class TRPOAgent(Agent):
             extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
 
     def _init(self):
-
         self.local_evaluator = TRPOEvaluator(
             self.registry,
             self.env_creator,
             self.config,
+            self.logdir,
+            start_sampler=False,
         )
 
         RemoteTRPOEvaluator = ray.remote(TRPOEvaluator)
@@ -85,17 +86,12 @@ class TRPOAgent(Agent):
                 self.registry,
                 self.env_creator,
                 self.config,
+                self.logdir,
+                start_sampler=True,
             ) for _ in range(self.config['num_workers'])
         ]
 
-        self.optimizer = LocalSyncOptimizer.make(
-            evaluator_cls=TRPOEvaluator,
-            evaluator_args=[self.registry, self.env_creator, self.config],
-            num_workers=self.config['num_workers'],
-            optimizer_config=self.config['optimizer'],
-        )
-
-        self.optimizer = AsyncOptimizer(self.config["optimizer"],
+        self.optimizer = AsyncOptimizer(self.config['optimizer'],
                                         self.local_evaluator,
                                         self.remote_evaluators)
 
@@ -141,28 +137,28 @@ class TRPOAgent(Agent):
 
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
+                                       'checkpoint-{}'.format(self.iteration))
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
 
         extra_data = {
-            "remote_state": agent_state,
-            "local_state": self.local_evaluator.save()
+            'remote_state': agent_state,
+            'local_state': self.local_evaluator.save()
         }
 
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+        pickle.dump(extra_data, open(checkpoint_path + '.extra_data', 'wb'))
 
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        extra_data = pickle.load(open(checkpoint_path + '.extra_data', 'rb'))
 
         ray.get([
             a.restore.remote(o)
-            for a, o in zip(self.remote_evaluators, extra_data["remote_state"])
+            for a, o in zip(self.remote_evaluators, extra_data['remote_state'])
         ])
 
-        self.local_evaluator.restore(extra_data["local_state"])
+        self.local_evaluator.restore(extra_data['local_state'])
 
     def compute_action(self, observation):
         obs = self.local_evaluator.obs_filter(observation, update=False)

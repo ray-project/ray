@@ -7,7 +7,7 @@ from ray.rllib.optimizers import PolicyEvaluator
 from ray.rllib.trpo.policy import TRPOPolicy
 from ray.rllib.utils.filter import NoFilter, get_filter
 from ray.rllib.utils.process_rollout import process_rollout
-from ray.rllib.utils.sampler import SyncSampler
+from ray.rllib.utils.sampler import AsyncSampler
 
 
 class TRPOEvaluator(PolicyEvaluator):
@@ -28,6 +28,8 @@ class TRPOEvaluator(PolicyEvaluator):
             registry,
             env_creator,
             config,
+            logdir,
+            start_sampler=True,
     ):
         self.config = config
 
@@ -55,7 +57,7 @@ class TRPOEvaluator(PolicyEvaluator):
             'rew_filter': self.rew_filter,
         }
 
-        self.sampler = SyncSampler(
+        self.sampler = AsyncSampler(
             self.env,
             self.policy,
             obs_filter=NoFilter(),
@@ -63,13 +65,18 @@ class TRPOEvaluator(PolicyEvaluator):
             horizon=config['horizon'],
         )
 
+        if start_sampler and self.sampler._async:
+            self.sampler.start()
+        self.logdir = logdir
+
     def sample(self):
         rollout = self.sampler.get_data()
 
         samples = process_rollout(
             rollout,
-            NoFilter(),
+            self.rew_filter,
             gamma=self.config['gamma'],
+            lambda_=self.config['lambda'],
             use_gae=False,
         )
 
@@ -108,12 +115,12 @@ class TRPOEvaluator(PolicyEvaluator):
     def save(self):
         filters = self.get_filters(flush_after=True)
         weights = self.get_weights()
-        return pickle.dumps({"filters": filters, "weights": weights})
+        return pickle.dumps({'filters': filters, 'weights': weights})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        self.sync_filters(objs["filters"])
-        self.set_weights(objs["weights"])
+        self.sync_filters(objs['filters'])
+        self.set_weights(objs['weights'])
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
