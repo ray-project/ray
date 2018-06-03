@@ -7,6 +7,7 @@ import hashlib
 import os
 import subprocess
 import time
+import threading
 import traceback
 
 from collections import defaultdict
@@ -243,6 +244,8 @@ class StandardAutoscaler(object):
         self.num_failed_updates = defaultdict(int)
         self.num_successful_updates = defaultdict(int)
         self.num_failures = 0
+        self.num_launches_pending = 0
+        self.launch_lock = threading.Lock()
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
@@ -318,9 +321,10 @@ class StandardAutoscaler(object):
 
         # Launch new nodes if needed
         target_num = self.target_num_workers()
-        if len(nodes) < target_num:
+        num_nodes = len(nodes) + self.num_launches_pending
+        if num_nodes < target_num:
             self.launch_new_node(
-                min(self.max_concurrent_launches, target_num - len(nodes)))
+                min(self.max_concurrent_launches, target_num - num_nodes))
             print(self.debug_string())
 
         # Process any completed updates
@@ -451,8 +455,7 @@ class StandardAutoscaler(object):
             return False
         return True
 
-    def launch_new_node(self, count):
-        print("StandardAutoscaler: Launching {} new nodes".format(count))
+    def _launch_new_node(self, count):
         num_before = len(self.workers())
         self.provider.create_node(
             self.config["worker_nodes"], {
@@ -462,18 +465,28 @@ class StandardAutoscaler(object):
                 TAG_RAY_NODE_STATUS: "uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             }, count)
+        with self.launch_lock:
+            self.num_launches_pending -= count
         if len(self.workers()) <= num_before:
             print("Warning: Num nodes failed to increase after node creation")
 
+    def launch_new_node(self, count):
+        print("StandardAutoscaler: Launching {} new nodes".format(count))
+        with self.launch_lock:
+            self.num_launches_pending += count
+        t = threading.Thread(target=self._launch_new_node, args=(count, ))
+        t.daemon = True
+        t.start()
+
     def workers(self):
-        return self.provider.nodes(tag_filters={
-            TAG_RAY_NODE_TYPE: "worker",
-        })
+        return self.provider.nodes(tag_filters={TAG_RAY_NODE_TYPE: "worker"})
 
     def debug_string(self, nodes=None):
         if nodes is None:
             nodes = self.workers()
         suffix = ""
+        if self.num_launches_pending:
+            suffix += " ({} pending)".format(self.num_launches_pending)
         if self.updaters:
             suffix += " ({} updating)".format(len(self.updaters))
         if self.num_failed_updates:
@@ -524,8 +537,7 @@ def check_extraneous(config, schema):
             if not isinstance(config[k], v):
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
-                        k,
-                        type(config[k]).__name__, v.__name__))
+                        k, type(config[k]).__name__, v.__name__))
         else:
             check_extraneous(config[k], v)
 
