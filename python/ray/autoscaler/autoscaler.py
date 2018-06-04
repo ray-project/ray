@@ -203,14 +203,17 @@ class LoadMetrics(object):
 
 
 class NodeLauncher(threading.Thread):
-    def __init__(self, queue, pending, config, *args, **kwargs):
+    def __init__(self, queue, pending, *args, **kwargs):
         self.queue = queue
         self.pending = pending
-        self.provider = get_node_provider(config["provider"],
-                                          config["cluster_name"])
+        self.provider = None
         super().__init__(*args, **kwargs)
 
     def _launch_node(self, config, count):
+        if self.provider is None:
+            self.provider = get_node_provider(config["provider"],
+                                              config["cluster_name"])
+
         tag_filters = {TAG_RAY_NODE_TYPE: "worker"}
         before = self.provider.nodes(tag_filters=tag_filters)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
@@ -232,11 +235,10 @@ class NodeLauncher(threading.Thread):
             try:
                 self._launch_node(config, count)
             finally:
-                self.queue.task_done()
                 self.pending.dec(count)
 
 
-class Counter():
+class ConcurrentCounter():
     def __init__(self):
         self._value = 0
         self._lock = threading.Lock()
@@ -309,14 +311,14 @@ class StandardAutoscaler(object):
 
         # Node launchers
         self.launch_queue = queue.Queue()
-        self.num_launches_pending = Counter()
+        self.num_launches_pending = ConcurrentCounter()
+        # max_batches = integer ceiling of max_concurrent_launches / max_launch_batch
         max_batches = max_concurrent_launches // max_launch_batch
         max_batches += (max_concurrent_launches % max_launch_batch > 0)
         for i in range(max_batches):
             node_launcher = NodeLauncher(
                 queue=self.launch_queue,
-                pending=self.num_launches_pending,
-                config=self.config)
+                pending=self.num_launches_pending)
             node_launcher.daemon = True
             node_launcher.start()
 

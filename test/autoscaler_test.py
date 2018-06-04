@@ -403,13 +403,15 @@ class AutoscalingTest(unittest.TestCase):
             max_failures=0,
             update_interval_s=10)
         autoscaler.update()
+        self.waitForNodes(2)
         self.assertEqual(autoscaler.num_launches_pending.value, 0)
-        self.assertEqual(len(self.provider.nodes({})), 2)
         new_config = SMALL_CLUSTER.copy()
         new_config["max_workers"] = 1
         self.write_config(new_config)
         autoscaler.update()
         # not updated yet
+        # note that node termination happens in the main thread, so
+        # we do not need to add any delay here before checking
         self.assertEqual(len(self.provider.nodes({})), 2)
         self.assertEqual(autoscaler.num_launches_pending.value, 0)
 
