@@ -49,13 +49,10 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 /// Submit a task using the raylet code path.
 ///
 /// \param The connection information.
-/// \param The execution dependencies.
-/// \param The task specification.
+/// \param The buffer will be submitted.
 /// \return Void.
-void local_scheduler_submit_raylet(
-    LocalSchedulerConnection *conn,
-    const std::vector<ObjectID> &execution_dependencies,
-    ray::raylet::TaskSpecification task_spec);
+void local_scheduler_submit(LocalSchedulerConnection *conn,
+                            flatbuffers::FlatBufferBuilder &fbb);
 
 /**
  * Notify the local scheduler that this client is disconnecting gracefully. This

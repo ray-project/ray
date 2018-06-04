@@ -1,9 +1,8 @@
 #ifndef COMMON_EXTENSION_H
 #define COMMON_EXTENSION_H
 
-#include <vector>
-
 #include <Python.h>
+#include <vector>
 #include "marshal.h"
 #include "structmember.h"
 
@@ -15,29 +14,9 @@ class TaskBuilder;
 
 extern PyObject *CommonError;
 
-// clang-format off
-typedef struct {
-  PyObject_HEAD
-  ray::ObjectID object_id;
-} PyObjectID;
-
-typedef struct {
-  PyObject_HEAD
-  int64_t size;
-  // The task spec to use in the non-raylet case.
-  TaskSpec *spec;
-  // The task spec to use in the raylet case.
-  ray::raylet::TaskSpecification *task_spec;
-  std::vector<ray::ObjectID> *execution_dependencies;
-} PyTask;
-// clang-format on
-
 extern PyTypeObject PyObjectIDType;
 
 extern PyTypeObject PyTaskType;
-
-bool use_raylet(PyTask *task);
-
 /* Python module for pickling. */
 extern PyObject *pickle_module;
 extern PyObject *pickle_dumps;
@@ -46,8 +25,6 @@ extern PyObject *pickle_loads;
 int init_numpy_module(void);
 
 void init_pickle_module(void);
-
-extern TaskBuilder *g_task_builder;
 
 int PyStringToUniqueID(PyObject *object, ray::ObjectID *object_id);
 
