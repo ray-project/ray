@@ -287,7 +287,7 @@ class DataFrame(object):
                                   for _ in range(len(self.index))])
             col_dots.index = self.index
             col_dots.name = "..."
-            x = pd.concat([front, col_dots, back], axis=1)
+            x = pd.concat([front, col_dots, back], axis=1, copy=False)
 
             # If less than 60 rows, x is already in the correct format.
             if len(self._row_metadata) < 60:
@@ -474,7 +474,8 @@ class DataFrame(object):
         if isinstance(self._dtypes_cache, list) and \
                 isinstance(self._dtypes_cache[0],
                            ray.ObjectID):
-            self._dtypes_cache = pd.concat(ray.get(self._dtypes_cache))
+            self._dtypes_cache = pd.concat(ray.get(self._dtypes_cache),
+                                           copy=False)
             self._dtypes_cache.index = self.columns
 
         return self._dtypes_cache
@@ -1040,7 +1041,7 @@ class DataFrame(object):
         # be returned immediately
         is_series = ray.get(is_series)
         if all(is_series):
-            new_series = pd.concat(ray.get(new_parts))
+            new_series = pd.concat(ray.get(new_parts), copy=False)
             new_series.index = self.columns if axis == 0 else self.index
             return new_series
         # This error is thrown when some of the partitions return Series and
@@ -1191,7 +1192,7 @@ class DataFrame(object):
                         else [func[key]]),
                     self._col_partitions[part])
                     for (part, ind), key in part_ind_tuples]
-                return pd.concat(ray.get(result), axis=1)
+                return pd.concat(ray.get(result), axis=1, copy=False)
             else:
                 result = [_deploy_func.remote(
                     lambda df: df.iloc[:, ind].apply(func[key]),
@@ -1822,7 +1823,7 @@ class DataFrame(object):
         result_type = ray.get(_deploy_func.remote(lambda df: type(df),
                                                   new_rows[0]))
         if result_type is pd.Series:
-            new_series = pd.concat(ray.get(new_rows), axis=0)
+            new_series = pd.concat(ray.get(new_rows), axis=0, copy=False)
             new_series.index = self.index
             return new_series
 
@@ -4069,7 +4070,8 @@ class DataFrame(object):
             for row, idx in index_builder:
                 row.index = [str(idx)]
 
-            broadcast_values = pd.concat([row for row, idx in index_builder])
+            broadcast_values = pd.concat([row for row, idx in index_builder],
+                                         copy=False)
 
         # We are converting the by to string here so that we don't have a
         # collision with the RangeIndex on the inner frame. It is cheap and
@@ -5328,7 +5330,7 @@ def _merge_columns(left_columns, right_columns, *args):
 def _where_helper(left, cond, other, left_columns, cond_columns,
                   other_columns, *args):
 
-    left = pd.concat(ray.get(left.tolist()), axis=1)
+    left = pd.concat(ray.get(left.tolist()), axis=1, copy=False)
     # We have to reset the index and columns here because we are coming
     # from blocks and the axes are set according to the blocks. We have
     # already correctly copartitioned everything, so there's no
@@ -5336,12 +5338,12 @@ def _where_helper(left, cond, other, left_columns, cond_columns,
     left.reset_index(inplace=True, drop=True)
     left.columns = left_columns
 
-    cond = pd.concat(ray.get(cond.tolist()), axis=1)
+    cond = pd.concat(ray.get(cond.tolist()), axis=1, copy=False)
     cond.reset_index(inplace=True, drop=True)
     cond.columns = cond_columns
 
     if isinstance(other, np.ndarray):
-        other = pd.concat(ray.get(other.tolist()), axis=1)
+        other = pd.concat(ray.get(other.tolist()), axis=1, copy=False)
         other.reset_index(inplace=True, drop=True)
         other.columns = other_columns
 
@@ -5351,7 +5353,7 @@ def _where_helper(left, cond, other, left_columns, cond_columns,
 @ray.remote
 def reindex_helper(old_index, new_index, axis, npartitions, method, fill_value,
                    limit, tolerance, *df):
-    df = pd.concat(df, axis=axis ^ 1)
+    df = pd.concat(df, axis=axis ^ 1, copy=False)
     if axis == 1:
         df.index = old_index
     else:
@@ -5365,8 +5367,8 @@ def reindex_helper(old_index, new_index, axis, npartitions, method, fill_value,
 
 @ray.remote
 def _equals_helper(left, right):
-    right = pd.concat(ray.get(right.tolist()), axis=1)
-    left = pd.concat(ray.get(left.tolist()), axis=1)
+    right = pd.concat(ray.get(right.tolist()), axis=1, copy=False)
+    left = pd.concat(ray.get(left.tolist()), axis=1, copy=False)
     # Since we know that the index and columns match, we can just check the
     # values. We can't use np.array_equal here because it doesn't recognize
     # np.nan as equal to another np.nan
