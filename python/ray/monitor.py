@@ -221,8 +221,6 @@ class Monitor(object):
             return
 
         clients = self.state.client_table()
-        if type(clients) is list:
-            return  # TODO(ekl) is this scan necessary in Xray?
         for node_ip_address, node_clients in clients.items():
             for client in node_clients:
                 db_client_id = client["DBClientID"]
