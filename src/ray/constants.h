@@ -1,12 +1,17 @@
 #ifndef RAY_CONSTANTS_H_
 #define RAY_CONSTANTS_H_
 
+#include <limits.h>
+
 /// Length of Ray IDs in bytes.
 constexpr int64_t kUniqueIDSize = 20;
 
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.
 constexpr int kObjectIdIndexSize = 32;
+static_assert(kObjectIdIndexSize % CHAR_BIT == 0,
+              "ObjectID prefix not a multiple of bytes");
+
 /// The maximum number of objects that can be returned by a task when finishing
 /// execution. An ObjectID's bytes are split into the task ID itself and the
 /// index of the object's creation. A positive index indicates an object

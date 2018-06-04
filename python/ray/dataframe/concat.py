@@ -38,17 +38,17 @@ def concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
                          "and ray.dataframe.DataFrame objs are "
                          "valid", type(type_check))
 
-    all_series = all([isinstance(obj, pandas.Series)
-                      for obj in objs])
+    all_series = all(isinstance(obj, pandas.Series)
+                     for obj in objs)
     if all_series:
-        return pandas.concat(objs, axis, join, join_axes,
-                             ignore_index, keys, levels, names,
-                             verify_integrity, copy)
+        return DataFrame(pandas.concat(objs, axis, join, join_axes,
+                                       ignore_index, keys, levels, names,
+                                       verify_integrity, copy))
 
     if isinstance(objs, dict):
         raise NotImplementedError(
-              "Obj as dicts not implemented. To contribute to "
-              "Pandas on Ray, please visit github.com/ray-project/ray.")
+            "Obj as dicts not implemented. To contribute to "
+            "Pandas on Ray, please visit github.com/ray-project/ray.")
 
     axis = pandas.DataFrame()._get_axis_number(axis)
 

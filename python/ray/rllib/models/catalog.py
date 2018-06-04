@@ -123,7 +123,7 @@ class ModelCatalog(object):
                                       " not supported".format(action_space))
 
     @staticmethod
-    def get_model(registry, inputs, num_outputs, options=dict()):
+    def get_model(registry, inputs, num_outputs, options={}):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -156,7 +156,7 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def get_torch_model(registry, input_shape, num_outputs, options=dict()):
+    def get_torch_model(registry, input_shape, num_outputs, options={}):
         """Returns a PyTorch suitable model. This is currently only supported
         in A3C.
 
@@ -180,15 +180,18 @@ class ModelCatalog(object):
             return registry.get(RLLIB_MODEL, model)(
                 input_shape, num_outputs, options)
 
+        # TODO(alok): fix to handle Discrete(n) state spaces
         obs_rank = len(input_shape) - 1
 
         if obs_rank > 1:
             return PyTorchVisionNet(input_shape, num_outputs, options)
 
+        # TODO(alok): overhaul PyTorchFCNet so it can just
+        # take input shape directly
         return PyTorchFCNet(input_shape[0], num_outputs, options)
 
     @staticmethod
-    def get_preprocessor(registry, env, options=dict()):
+    def get_preprocessor(registry, env, options={}):
         """Returns a suitable processor for the given environment.
 
         Args:
@@ -215,7 +218,7 @@ class ModelCatalog(object):
         return preprocessor(env.observation_space, options)
 
     @staticmethod
-    def get_preprocessor_as_wrapper(registry, env, options=dict()):
+    def get_preprocessor_as_wrapper(registry, env, options={}):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:

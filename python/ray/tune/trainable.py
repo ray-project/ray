@@ -112,7 +112,7 @@ class Trainable(object):
 
         Subclasses should override ``_train()`` instead to return results.
         This method auto-fills many fields, so only ``timesteps_this_iter``
-        is requied to be present.
+        is required to be present.
 
         Returns:
             A TrainingResult that describes training progress.
@@ -203,10 +203,8 @@ class Trainable(object):
         out = io.BytesIO()
         with gzip.GzipFile(fileobj=out, mode="wb") as f:
             compressed = pickle.dumps({
-                "checkpoint_name":
-                os.path.basename(checkpoint_prefix),
-                "data":
-                data,
+                "checkpoint_name": os.path.basename(checkpoint_prefix),
+                "data": data,
             })
             if len(compressed) > 10e6:  # getting pretty large
                 print("Checkpoint size is {} bytes".format(len(compressed)))

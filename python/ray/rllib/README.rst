@@ -15,9 +15,8 @@ RLlib includes the following reference algorithms:
 
 - Deep Deterministic Policy Gradients (`DDPG <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg>`__, `DDPG2 <https://github.com/ray-project/ray/tree/master/python/ray/rllib/ddpg2>`__).
 
-- Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg2/apex.py>`__ variants.
+- Ape-X Distributed Prioritized Experience Replay, including both `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/apex.py>`__ and `DDPG <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ddpg/apex.py>`__ variants.
 
-- Evolution Strategies (`ES <https://github.com/ray-project/ray/tree/master/python/ray/rllib/es>`__), as described in `this
-   paper <https://arxiv.org/abs/1703.03864>`__.
+- Evolution Strategies (`ES <https://github.com/ray-project/ray/tree/master/python/ray/rllib/es>`__), as described in `this paper <https://arxiv.org/abs/1703.03864>`__.
 
 These algorithms can be run on any OpenAI Gym MDP, including custom ones written and registered by the user.

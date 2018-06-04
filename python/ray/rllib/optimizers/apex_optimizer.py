@@ -7,12 +7,12 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import queue
 import random
 import time
 import threading
 
 import numpy as np
+from six.moves import queue
 
 import ray
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
@@ -21,6 +21,7 @@ from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.actors import TaskPool, create_colocated
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
+
 
 SAMPLE_QUEUE_DEPTH = 2
 REPLAY_QUEUE_DEPTH = 4

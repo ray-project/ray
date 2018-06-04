@@ -54,7 +54,9 @@ class MockServer {
     client_info.node_manager_address = ip;
     client_info.node_manager_port = object_manager_port;
     client_info.object_manager_port = object_manager_port;
-    return gcs_client_->client_table().Connect(client_info);
+    ray::Status status = gcs_client_->client_table().Connect(client_info);
+    object_manager_.RegisterGcs();
+    return status;
   }
 
   void DoAcceptObjectManager() {
@@ -65,9 +67,7 @@ class MockServer {
 
   void HandleAcceptObjectManager(const boost::system::error_code &error) {
     ClientHandler<boost::asio::ip::tcp> client_handler =
-        [this](std::shared_ptr<TcpClientConnection> client) {
-          object_manager_.ProcessNewClient(client);
-        };
+        [this](TcpClientConnection &client) { object_manager_.ProcessNewClient(client); };
     MessageHandler<boost::asio::ip::tcp> message_handler = [this](
         std::shared_ptr<TcpClientConnection> client, int64_t message_type,
         const uint8_t *message) {
@@ -124,6 +124,7 @@ class TestObjectManagerBase : public ::testing::Test {
     int max_sends = 2;
     int max_receives = 2;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
+    int push_timeout_ms = 10000;
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
@@ -133,6 +134,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.max_sends = max_sends;
     om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
+    om_config_1.push_timeout_ms = push_timeout_ms;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
@@ -143,11 +145,12 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.max_sends = max_sends;
     om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
+    om_config_2.push_timeout_ms = push_timeout_ms;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_id_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
-    ARROW_CHECK_OK(client2.Connect(store_id_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client1.Connect(store_id_1, "", plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(client2.Connect(store_id_2, "", plasma::kPlasmaDefaultReleaseDelay));
   }
 
   void TearDown() {

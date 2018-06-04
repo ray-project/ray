@@ -40,7 +40,7 @@ class TestObjectManagerBase : public ::testing::Test {
     // Use a default worker that can execute empty tasks with dependencies.
     node_manager_config.worker_command.push_back("python");
     node_manager_config.worker_command.push_back(
-        "../../../src/ray/python/default_worker.py");
+        "../python/ray/workers/default_worker.py");
     node_manager_config.worker_command.push_back(raylet_socket_name.c_str());
     node_manager_config.worker_command.push_back(store_socket_name.c_str());
     return node_manager_config;
@@ -55,6 +55,7 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
+    om_config_1.push_timeout_ms = 10000;
     server1.reset(new ray::raylet::Raylet(
         main_service, "raylet_1", "0.0.0.0", "127.0.0.1", 6379,
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
@@ -63,13 +64,14 @@ class TestObjectManagerBase : public ::testing::Test {
     gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
+    om_config_2.push_timeout_ms = 10000;
     server2.reset(new ray::raylet::Raylet(
         main_service, "raylet_2", "0.0.0.0", "127.0.0.1", 6379,
         GetNodeManagerConfig("raylet_2", store_sock_2), om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_sock_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
-    ARROW_CHECK_OK(client2.Connect(store_sock_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client1.Connect(store_sock_1, "", plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(client2.Connect(store_sock_2, "", plasma::kPlasmaDefaultReleaseDelay));
   }
 
   void TearDown() {

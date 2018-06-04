@@ -14,9 +14,9 @@ class WorkerPoolMock : public WorkerPool {
       : WorkerPool(worker_command) {}
 
   void StartWorker(pid_t pid, bool force_start = false) {
-    if (NumStartedWorkers() > 0 && !force_start) {
+    if (NumWorkersStarting() > 0 && !force_start) {
       // Workers have been started, but not registered. Force start disabled -- returning.
-      RAY_LOG(DEBUG) << NumStartedWorkers() << " workers pending registration";
+      RAY_LOG(DEBUG) << NumWorkersStarting() << " workers pending registration";
       return;
     }
     // Either no workers are pending registration or the worker start is being forced.
@@ -30,8 +30,8 @@ class WorkerPoolTest : public ::testing::Test {
   WorkerPoolTest() : worker_pool_({}), io_service_() {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid) {
-    std::function<void(std::shared_ptr<LocalClientConnection>)> client_handler = [this](
-        std::shared_ptr<LocalClientConnection> client) { HandleNewClient(client); };
+    std::function<void(LocalClientConnection &)> client_handler =
+        [this](LocalClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *)>
         message_handler = [this](std::shared_ptr<LocalClientConnection> client,
                                  int64_t message_type, const uint8_t *message) {
@@ -49,7 +49,7 @@ class WorkerPoolTest : public ::testing::Test {
   boost::asio::io_service io_service_;
 
  private:
-  void HandleNewClient(std::shared_ptr<LocalClientConnection>){};
+  void HandleNewClient(LocalClientConnection &){};
   void HandleMessage(std::shared_ptr<LocalClientConnection>, int64_t, const uint8_t *){};
 };
 

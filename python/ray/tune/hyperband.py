@@ -391,11 +391,11 @@ class Bracket():
 
     def __repr__(self):
         status = ", ".join([
-            "Max Size (n)={}".format(self._n), "Milestone (r)={}".format(
-                self._cumul_r), "completed={:.1%}".format(
-                    self.completion_percentage())
+            "Max Size (n)={}".format(self._n),
+            "Milestone (r)={}".format(self._cumul_r),
+            "completed={:.1%}".format(self.completion_percentage())
         ])
         counts = collections.Counter([t.status for t in self._all_trials])
         trial_statuses = ", ".join(
-            sorted(["{}: {}".format(k, v) for k, v in counts.items()]))
+            sorted("{}: {}".format(k, v) for k, v in counts.items()))
         return "Bracket({}): {{{}}} ".format(status, trial_statuses)

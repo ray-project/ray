@@ -241,7 +241,7 @@ def subblocks(a, *ranges):
     result = DistArray(shape)
     for index in np.ndindex(*result.num_blocks):
         result.objectids[index] = a.objectids[tuple(
-            [ranges[i][index[i]] for i in range(a.ndim)])]
+            ranges[i][index[i]] for i in range(a.ndim))]
     return result
 
 

@@ -128,7 +128,7 @@ class TensorFlowTest(unittest.TestCase):
         variables2.set_flat(flat_weights)
         assert_almost_equal(flat_weights, variables2.get_flat())
 
-        variables3 = ray.experimental.TensorFlowVariables(loss2)
+        variables3 = ray.experimental.TensorFlowVariables([loss2])
         self.assertEqual(variables3.sess, None)
         sess = tf.Session()
         variables3.set_session(sess)
@@ -252,8 +252,8 @@ class TensorFlowTest(unittest.TestCase):
                 for _ in range(2)
             ])
             mean_grads = [
-                sum([gradients[i]
-                     for gradients in gradients_list]) / len(gradients_list)
+                sum(gradients[i]
+                    for gradients in gradients_list) / len(gradients_list)
                 for i in range(len(gradients_list[0]))
             ]
             feed_dict = {

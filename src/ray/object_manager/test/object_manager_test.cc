@@ -45,7 +45,9 @@ class MockServer {
     client_info.node_manager_address = ip;
     client_info.node_manager_port = object_manager_port;
     client_info.object_manager_port = object_manager_port;
-    return gcs_client_->client_table().Connect(client_info);
+    ray::Status status = gcs_client_->client_table().Connect(client_info);
+    object_manager_.RegisterGcs();
+    return status;
   }
 
   void DoAcceptObjectManager() {
@@ -56,9 +58,7 @@ class MockServer {
 
   void HandleAcceptObjectManager(const boost::system::error_code &error) {
     ClientHandler<boost::asio::ip::tcp> client_handler =
-        [this](std::shared_ptr<TcpClientConnection> client) {
-          object_manager_.ProcessNewClient(client);
-        };
+        [this](TcpClientConnection &client) { object_manager_.ProcessNewClient(client); };
     MessageHandler<boost::asio::ip::tcp> message_handler = [this](
         std::shared_ptr<TcpClientConnection> client, int64_t message_type,
         const uint8_t *message) {
@@ -114,6 +114,7 @@ class TestObjectManager : public ::testing::Test {
     int max_sends = 2;
     int max_receives = 2;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
+    push_timeout_ms = 1000;
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
@@ -123,6 +124,8 @@ class TestObjectManager : public ::testing::Test {
     om_config_1.max_sends = max_sends;
     om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
+    // Push will stop immediately if local object is not satisfied.
+    om_config_1.push_timeout_ms = push_timeout_ms;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
@@ -133,11 +136,13 @@ class TestObjectManager : public ::testing::Test {
     om_config_2.max_sends = max_sends;
     om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
+    // Push will wait infinitely until local object is satisfied.
+    om_config_2.push_timeout_ms = push_timeout_ms;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    ARROW_CHECK_OK(client1.Connect(store_id_1, "", PLASMA_DEFAULT_RELEASE_DELAY));
-    ARROW_CHECK_OK(client2.Connect(store_id_2, "", PLASMA_DEFAULT_RELEASE_DELAY));
+    ARROW_CHECK_OK(client1.Connect(store_id_1, "", plasma::kPlasmaDefaultReleaseDelay));
+    ARROW_CHECK_OK(client2.Connect(store_id_2, "", plasma::kPlasmaDefaultReleaseDelay));
   }
 
   void TearDown() {
@@ -152,8 +157,8 @@ class TestObjectManager : public ::testing::Test {
     StopStore(store_id_2);
   }
 
-  ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
-    ObjectID object_id = ObjectID::from_random();
+  ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size,
+                             ObjectID object_id) {
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
@@ -183,16 +188,20 @@ class TestObjectManager : public ::testing::Test {
 
   std::string store_id_1;
   std::string store_id_2;
+
+  uint push_timeout_ms;
 };
 
 class TestObjectManagerCommands : public TestObjectManager {
  public:
   int num_connected_clients = 0;
-  uint num_expected_objects;
   ClientID client_id_1;
   ClientID client_id_2;
 
-  ObjectID created_object_id;
+  ObjectID created_object_id1;
+  ObjectID created_object_id2;
+
+  std::unique_ptr<boost::asio::deadline_timer> timer;
 
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
@@ -219,21 +228,45 @@ class TestObjectManagerCommands : public TestObjectManager {
     status = server1->object_manager_.SubscribeObjAdded(
         [this](const ObjectInfoT &object_info) {
           object_added_handler_1(ObjectID::from_binary(object_info.object_id));
-          if (v1.size() == num_expected_objects) {
-            NotificationTestComplete(created_object_id,
-                                     ObjectID::from_binary(object_info.object_id));
-          }
+          NotificationTestCompleteIfSatisfied();
+        });
+    RAY_CHECK_OK(status);
+    status = server2->object_manager_.SubscribeObjAdded(
+        [this](const ObjectInfoT &object_info) {
+          object_added_handler_2(ObjectID::from_binary(object_info.object_id));
+          NotificationTestCompleteIfSatisfied();
         });
     RAY_CHECK_OK(status);
 
-    num_expected_objects = 1;
     uint data_size = 1000000;
-    created_object_id = WriteDataToClient(client1, data_size);
+
+    // dummy_id is not local. The push function will timeout.
+    ObjectID dummy_id = ObjectID::from_random();
+    status = server1->object_manager_.Push(
+        dummy_id, gcs_client_2->client_table().GetLocalClientId());
+
+    created_object_id1 = ObjectID::from_random();
+    WriteDataToClient(client1, data_size, created_object_id1);
+    // Server1 holds Object1 so this Push call will success.
+    status = server1->object_manager_.Push(
+        created_object_id1, gcs_client_2->client_table().GetLocalClientId());
+
+    // This timer is used to guarantee that the Push function for dummy_id will timeout.
+    timer.reset(new boost::asio::deadline_timer(main_service));
+    auto period = boost::posix_time::milliseconds(push_timeout_ms + 10);
+    timer->expires_from_now(period);
+    created_object_id2 = ObjectID::from_random();
+    timer->async_wait([this, data_size](const boost::system::error_code &error) {
+      WriteDataToClient(client2, data_size, created_object_id2);
+    });
   }
 
-  void NotificationTestComplete(ObjectID object_id_1, ObjectID object_id_2) {
-    ASSERT_EQ(object_id_1, object_id_2);
-    main_service.stop();
+  void NotificationTestCompleteIfSatisfied() {
+    uint num_expected_objects1 = 1;
+    uint num_expected_objects2 = 2;
+    if (v1.size() == num_expected_objects1 && v2.size() == num_expected_objects2) {
+      main_service.stop();
+    }
   }
 
   void TestConnections() {

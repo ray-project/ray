@@ -22,8 +22,9 @@ from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
 from ray.autoscaler.updater import NodeUpdaterProcess
 from ray.autoscaler.docker import dockerize_if_needed
-from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
+from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
+                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
+                                 TAG_RAY_NODE_NAME)
 import ray.services as services
 
 REQUIRED, OPTIONAL = True, False
@@ -58,6 +59,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "availability_zone": (str, OPTIONAL),  # e.g. us-east-1a
             "module": (str,
                        OPTIONAL),  # module, if using external node provider
+            "project_id": (None, OPTIONAL),  # gcp project id, if using gcp
         },
         REQUIRED),
 
@@ -142,6 +144,7 @@ class LoadMetrics(object):
         def prune(mapping):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
+                print("Removed mapping", unwanted_key, mapping[unwanted_key])
                 del mapping[unwanted_key]
             if unwanted:
                 print("Removed {} stale ip mappings: {} not in {}".format(
@@ -181,19 +184,15 @@ class LoadMetrics(object):
             nodes_used += max_frac
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
         return {
-            "ResourceUsage":
-            ", ".join([
+            "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
                     round(resources_used[rid], 2),
                     round(resources_total[rid], 2), rid)
                 for rid in sorted(resources_used)
             ]),
-            "NumNodesConnected":
-            len(self.static_resources_by_ip),
-            "NumNodesUsed":
-            round(nodes_used, 2),
-            "NodeIdleSeconds":
-            "Min={} Mean={} Max={}".format(
+            "NumNodesConnected": len(self.static_resources_by_ip),
+            "NumNodesUsed": round(nodes_used, 2),
+            "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,
                 int(np.max(idle_times)) if idle_times else -1),
@@ -247,6 +246,14 @@ class StandardAutoscaler(object):
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
+        # Expand local file_mounts to allow ~ in the paths. This can't be done
+        # earlier when the config is written since we might be on different
+        # platform and the expansion would result in wrong path.
+        self.config["file_mounts"] = {
+            remote: os.path.expanduser(local)
+            for remote, local in self.config["file_mounts"].items()
+        }
+
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
@@ -257,8 +264,8 @@ class StandardAutoscaler(object):
             self.reload_config(errors_fatal=False)
             self._update()
         except Exception as e:
-            print("StandardAutoscaler: Error during autoscaling: {}",
-                  traceback.format_exc())
+            print("StandardAutoscaler: Error during autoscaling: {}"
+                  "".format(traceback.format_exc()))
             self.num_failures += 1
             if self.num_failures > self.max_failures:
                 print("*** StandardAutoscaler: Too many errors, abort. ***")
@@ -449,18 +456,18 @@ class StandardAutoscaler(object):
         num_before = len(self.workers())
         self.provider.create_node(
             self.config["worker_nodes"], {
-                TAG_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
-                TAG_RAY_NODE_TYPE: "Worker",
-                TAG_RAY_NODE_STATUS: "Uninitialized",
+                TAG_RAY_NODE_NAME: "ray-{}-worker".format(
+                    self.config["cluster_name"]),
+                TAG_RAY_NODE_TYPE: "worker",
+                TAG_RAY_NODE_STATUS: "uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             }, count)
-        # TODO(ekl) be less conservative in this check
-        assert len(self.workers()) > num_before, \
-            "Num nodes failed to increase after creating a new node"
+        if len(self.workers()) <= num_before:
+            print("Warning: Num nodes failed to increase after node creation")
 
     def workers(self):
         return self.provider.nodes(tag_filters={
-            TAG_RAY_NODE_TYPE: "Worker",
+            TAG_RAY_NODE_TYPE: "worker",
         })
 
     def debug_string(self, nodes=None):
@@ -569,7 +576,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
                     with open(os.path.join(dirpath, name), "rb") as f:
                         hasher.update(f.read())
         else:
-            with open(path, 'r') as f:
+            with open(os.path.expanduser(path), "r") as f:
                 hasher.update(f.read().encode("utf-8"))
 
     hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))

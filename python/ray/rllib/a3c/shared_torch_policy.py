@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import torch
-from torch.autograd import Variable
 import torch.nn.functional as F
 
 from ray.rllib.a3c.torchpolicy import TorchPolicy
@@ -17,9 +16,9 @@ class SharedTorchPolicy(TorchPolicy):
     other_output = ["vf_preds"]
     is_recurrent = False
 
-    def __init__(self, ob_space, ac_space, config, **kwargs):
-        super(SharedTorchPolicy, self).__init__(
-            ob_space, ac_space, config, **kwargs)
+    def __init__(self, registry, ob_space, ac_space, config, **kwargs):
+        super(SharedTorchPolicy, self).__init__(registry, ob_space, ac_space,
+                                                config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         _, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
@@ -31,32 +30,36 @@ class SharedTorchPolicy(TorchPolicy):
     def compute(self, ob, *args):
         """Should take in a SINGLE ob"""
         with self.lock:
-            ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+            ob = torch.from_numpy(ob).float().unsqueeze(0)
             logits, values = self._model(ob)
-            samples = self._model.probs(logits).multinomial().squeeze()
-            values = values.squeeze(0)
-            return var_to_np(samples), {"vf_preds": var_to_np(values)}
+            # TODO(alok): Support non-categorical distributions. Multinomial
+            # is only for categorical.
+            sampled_actions = F.softmax(logits, dim=1).multinomial(1).squeeze()
+            values = values.squeeze()
+            return var_to_np(sampled_actions), {"vf_preds": var_to_np(values)}
 
     def compute_logits(self, ob, *args):
         with self.lock:
-            ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+            ob = torch.from_numpy(ob).float().unsqueeze(0)
             res = self._model.hidden_layers(ob)
             return var_to_np(self._model.logits(res))
 
     def value(self, ob, *args):
         with self.lock:
-            ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+            ob = torch.from_numpy(ob).float().unsqueeze(0)
             res = self._model.hidden_layers(ob)
             res = self._model.value_branch(res)
-            res = res.squeeze(0)
+            res = res.squeeze()
             return var_to_np(res)
 
     def _evaluate(self, obs, actions):
         """Passes in multiple obs."""
         logits, values = self._model(obs)
-        log_probs = F.log_softmax(logits)
-        probs = self._model.probs(logits)
+        log_probs = F.log_softmax(logits, dim=1)
+        probs = F.softmax(logits, dim=1)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
+        # TODO(alok): set distribution based on action space and use its
+        # `.entropy()` method to calculate automatically
         entropy = -(log_probs * probs).sum(-1).sum()
         return values, action_log_probs, entropy
 
@@ -64,15 +67,19 @@ class SharedTorchPolicy(TorchPolicy):
         """Loss is encoded in here. Defining a new loss function
         would start by rewriting this function"""
 
-        states, acs, advs, rs, _ = convert_batch(batch)
-        values, ac_logprobs, entropy = self._evaluate(states, acs)
-        pi_err = -(advs * ac_logprobs).sum()
-        value_err = 0.5 * (values - rs).pow(2).sum()
+        states, actions, advs, rs, _ = convert_batch(batch)
+        values, action_log_probs, entropy = self._evaluate(states, actions)
+        pi_err = -advs.dot(action_log_probs.reshape(-1))
+        value_err = F.mse_loss(values.reshape(-1), rs)
 
         self.optimizer.zero_grad()
-        overall_err = (pi_err +
-                       value_err * self.config["vf_loss_coeff"] +
-                       entropy * self.config["entropy_coeff"])
+
+        overall_err = sum([
+            pi_err,
+            self.config["vf_loss_coeff"] * value_err,
+            self.config["entropy_coeff"] * entropy,
+        ])
+
         overall_err.backward()
-        torch.nn.utils.clip_grad_norm(
-            self._model.parameters(), self.config["grad_clip"])
+        torch.nn.utils.clip_grad_norm_(self._model.parameters(),
+                                       self.config["grad_clip"])

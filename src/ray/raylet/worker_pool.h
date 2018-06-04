@@ -28,7 +28,8 @@ class WorkerPool {
   ///
   /// \param num_workers The number of workers to start.
   /// \param worker_command The command used to start the worker process.
-  WorkerPool(int num_workers, const std::vector<std::string> &worker_command);
+  WorkerPool(int num_workers, int num_cpus,
+             const std::vector<std::string> &worker_command);
 
   /// Create a pool with zero workers.
   ///
@@ -42,7 +43,8 @@ class WorkerPool {
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register a new Worker, then add itself to the pool. Failure to start
-  /// the worker process is a fatal error.
+  /// the worker process is a fatal error. This function will start up to
+  /// num_cpus many workers in parallel if it is called multiple times.
   ///
   /// \param force_start Controls whether to force starting a worker regardless of any
   /// workers that have already been started but not yet registered.
@@ -60,7 +62,7 @@ class WorkerPool {
   /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
   std::shared_ptr<Worker> GetRegisteredWorker(
-      std::shared_ptr<LocalClientConnection> connection) const;
+      const std::shared_ptr<LocalClientConnection> &connection) const;
 
   /// Disconnect a registered worker.
   ///
@@ -93,12 +95,15 @@ class WorkerPool {
   /// \param pid A process identifier for the worker being started.
   void AddStartedWorker(pid_t pid);
 
-  /// Return a number of workers currently started but not registered.
+  /// Return a number of workers currently starting but not registered.
   ///
   /// \return The number of worker PIDs stored for started workers.
-  uint32_t NumStartedWorkers() const;
+  int NumWorkersStarting() const;
 
  private:
+  /// The number of CPUs this Raylet has available.
+  int num_cpus_;
+  /// The command and arguments used to start the worker.
   std::vector<std::string> worker_command_;
   /// The pool of idle workers.
   std::list<std::shared_ptr<Worker>> pool_;

@@ -2,7 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pipes
+try:  # py3
+    from shlex import quote
+except ImportError:  # py2
+    from pipes import quote
 import os
 import subprocess
 import sys
@@ -17,6 +20,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
+SSH_CHECK_INTERVAL = 5
 
 
 def pretty_cmd(cmd_str):
@@ -43,7 +47,10 @@ class NodeUpdater(object):
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_ip = self.provider.external_ip(node_id)
         self.node_id = node_id
-        self.file_mounts = file_mounts
+        self.file_mounts = {
+            remote: os.path.expanduser(local)
+            for remote, local in file_mounts.items()
+        }
         self.setup_cmds = setup_cmds
         self.runtime_hash = runtime_hash
         if redirect_output:
@@ -73,15 +80,15 @@ class NodeUpdater(object):
                 "See {} for remote logs.".format(error_str, self.output_name),
                 file=self.stdout)
             self.provider.set_node_tags(self.node_id,
-                                        {TAG_RAY_NODE_STATUS: "UpdateFailed"})
+                                        {TAG_RAY_NODE_STATUS: "update-failed"})
             if self.logfile is not None:
-                print("----- BEGIN REMOTE LOGS -----\n" + open(
-                    self.logfile.name).read() + "\n----- END REMOTE LOGS -----"
-                      )
+                print("----- BEGIN REMOTE LOGS -----\n" +
+                      open(self.logfile.name).read() +
+                      "\n----- END REMOTE LOGS -----")
             raise e
         self.provider.set_node_tags(
             self.node_id, {
-                TAG_RAY_NODE_STATUS: "Up-to-date",
+                TAG_RAY_NODE_STATUS: "up-to-date",
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
         print(
@@ -91,7 +98,7 @@ class NodeUpdater(object):
 
     def do_update(self):
         self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "WaitingForSSH"})
+                                    {TAG_RAY_NODE_STATUS: "waiting-for-ssh"})
         deadline = time.time() + NODE_START_WAIT_S
 
         # Wait for external IP
@@ -130,20 +137,20 @@ class NodeUpdater(object):
                 print(
                     "NodeUpdater: SSH not up, retrying: {}".format(retry_str),
                     file=self.stdout)
-                time.sleep(5)
+                time.sleep(SSH_CHECK_INTERVAL)
             else:
                 break
         assert ssh_ok, "Unable to SSH to node"
 
         # Rsync file mounts
         self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "SyncingFiles"})
+                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
         for remote_path, local_path in self.file_mounts.items():
             print(
                 "NodeUpdater: Syncing {} to {}...".format(
                     local_path, remote_path),
                 file=self.stdout)
-            assert os.path.exists(local_path)
+            assert os.path.exists(local_path), local_path
             if os.path.isdir(local_path):
                 if not local_path.endswith("/"):
                     local_path += "/"
@@ -162,7 +169,7 @@ class NodeUpdater(object):
 
         # Run init commands
         self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "SettingUp"})
+                                    {TAG_RAY_NODE_STATUS: "setting-up"})
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 
@@ -172,14 +179,13 @@ class NodeUpdater(object):
                 "NodeUpdater: running {} on {}...".format(
                     pretty_cmd(cmd), self.ssh_ip),
                 file=self.stdout)
-        force_interactive = "set -i && source ~/.bashrc && "
+        force_interactive = "set -i || true && source ~/.bashrc && "
         self.process_runner.check_call(
             [
                 "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
-                "-o", "StrictHostKeyChecking=no",
-                "-i", self.ssh_private_key, "{}@{}".format(
-                    self.ssh_user, self.ssh_ip), "bash --login -c {}".format(
-                        pipes.quote(force_interactive + cmd))
+                "-o", "StrictHostKeyChecking=no", "-i", self.ssh_private_key,
+                "{}@{}".format(self.ssh_user, self.ssh_ip),
+                "bash --login -c {}".format(quote(force_interactive + cmd))
             ],
             stdout=redirect or self.stdout,
             stderr=redirect or self.stderr)

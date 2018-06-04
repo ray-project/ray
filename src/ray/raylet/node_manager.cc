@@ -70,16 +70,16 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_ms_(config.heartbeat_period_ms),
       local_resources_(config.resource_config),
-      worker_pool_(config.num_initial_workers, config.worker_command),
+      worker_pool_(config.num_initial_workers,
+                   static_cast<int>(config.resource_config.GetNumCpus()),
+                   config.worker_command),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); }),
-      task_dependency_manager_(
-          object_manager,
-          // reconstruction_policy_,
-          [this](const TaskID &task_id) { HandleWaitingTaskReady(task_id); }),
+      task_dependency_manager_(object_manager),
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
-                     gcs_client->raylet_task_table(), gcs_client->raylet_task_table()),
+                     gcs_client->raylet_task_table(), gcs_client->raylet_task_table(),
+                     config.max_lineage_size),
       remote_clients_(),
       remote_server_connections_(),
       actor_registry_() {
@@ -88,9 +88,18 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_.emplace(local_client_id,
                                 SchedulingResources(config.resource_config));
+
+  RAY_CHECK_OK(object_manager_.SubscribeObjAdded([this](const ObjectInfoT &object_info) {
+    ObjectID object_id = ObjectID::from_binary(object_info.object_id);
+    HandleObjectLocal(object_id);
+  }));
+  RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
+      [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 }
 
 ray::Status NodeManager::RegisterGcs() {
+  object_manager_.RegisterGcs();
+
   // Subscribe to task entry commits in the GCS. These notifications are
   // forwarded to the lineage cache, which requests notifications about tasks
   // that were executed remotely.
@@ -156,7 +165,7 @@ void NodeManager::Heartbeat() {
   ray::Status status = heartbeat_table.Add(
       UniqueID::nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
       [](ray::gcs::AsyncGcsClient *client, const ClientID &id,
-         std::shared_ptr<HeartbeatTableDataT> data) {
+         const HeartbeatTableDataT &data) {
         RAY_LOG(DEBUG) << "[HEARTBEAT] heartbeat sent callback";
       });
 
@@ -223,13 +232,14 @@ void NodeManager::HeartbeatAdded(gcs::AsyncGcsClient *client, const ClientID &cl
   }
   // Locate the client id in remote client table and update available resources based on
   // the received heartbeat information.
-  if (this->cluster_resource_map_.count(client_id) == 0) {
+  auto it = this->cluster_resource_map_.find(client_id);
+  if (it == cluster_resource_map_.end()) {
     // Haven't received the client registration for this client yet, skip this heartbeat.
     RAY_LOG(INFO) << "[HeartbeatAdded]: received heartbeat from unknown client id "
                   << client_id;
     return;
   }
-  SchedulingResources &resources = this->cluster_resource_map_[client_id];
+  SchedulingResources &resources = it->second;
   ResourceSet heartbeat_resource_available(heartbeat_data.resources_available_label,
                                            heartbeat_data.resources_available_capacity);
   resources.SetAvailableResources(
@@ -251,37 +261,45 @@ void NodeManager::HandleActorCreation(const ActorID &actor_id,
 
   // Register the new actor.
   ActorRegistration actor_registration(data.back());
+  ClientID received_node_manager_id = actor_registration.GetNodeManagerId();
   // Extend the frontier to include the actor creation task. NOTE(swang): The
   // creator of the actor is always assigned nil as the actor handle ID.
   actor_registration.ExtendFrontier(ActorHandleID::nil(),
                                     actor_registration.GetActorCreationDependency());
   auto inserted = actor_registry_.emplace(actor_id, std::move(actor_registration));
-  RAY_CHECK(inserted.second);
-
-  // Dequeue any methods that were submitted before the actor's location was
-  // known.
-  const auto &methods = local_queues_.GetUncreatedActorMethods();
-  std::unordered_set<TaskID> created_actor_method_ids;
-  for (const auto &method : methods) {
-    if (method.GetTaskSpecification().ActorId() == actor_id) {
-      created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
+  if (!inserted.second) {
+    // If we weren't able to insert the actor's location, check that the
+    // existing entry is the same as the new one.
+    // TODO(swang): This is not true in the case of failures.
+    RAY_CHECK(received_node_manager_id == inserted.first->second.GetNodeManagerId())
+        << "Actor scheduled on " << inserted.first->second.GetNodeManagerId()
+        << ", but received notification for " << received_node_manager_id;
+  } else {
+    // The actor's location is now known. Dequeue any methods that were
+    // submitted before the actor's location was known.
+    const auto &methods = local_queues_.GetUncreatedActorMethods();
+    std::unordered_set<TaskID> created_actor_method_ids;
+    for (const auto &method : methods) {
+      if (method.GetTaskSpecification().ActorId() == actor_id) {
+        created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
+      }
     }
-  }
-  // Resubmit the methods that were submitted before the actor's location was
-  // known.
-  auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
-  for (const auto &method : created_actor_methods) {
-    lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId());
-    // The task's uncommitted lineage was already added to the local lineage
-    // cache upon the initial submission, so it's okay to resubmit it with an
-    // empty lineage this time.
-    SubmitTask(method, Lineage());
+    // Resubmit the methods that were submitted before the actor's location was
+    // known.
+    auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
+    for (const auto &method : created_actor_methods) {
+      lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId());
+      // The task's uncommitted lineage was already added to the local lineage
+      // cache upon the initial submission, so it's okay to resubmit it with an
+      // empty lineage this time.
+      SubmitTask(method, Lineage());
+    }
   }
 }
 
-void NodeManager::ProcessNewClient(std::shared_ptr<LocalClientConnection> client) {
+void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   // The new client is a worker, so begin listening for messages.
-  client->ProcessMessages();
+  client.ProcessMessages();
 }
 
 void NodeManager::DispatchTasks() {
@@ -309,9 +327,9 @@ void NodeManager::DispatchTasks() {
   }
 }
 
-void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> client,
-                                       int64_t message_type,
-                                       const uint8_t *message_data) {
+void NodeManager::ProcessClientMessage(
+    const std::shared_ptr<LocalClientConnection> &client, int64_t message_type,
+    const uint8_t *message_data) {
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
   switch (message_type) {
@@ -319,7 +337,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     if (message->is_worker()) {
       // Create a new worker from the registration request.
-      std::shared_ptr<Worker> worker(new Worker(message->worker_pid(), client));
+      auto worker = std::make_shared<Worker>(message->worker_pid(), client);
       // Register the new worker.
       worker_pool_.RegisterWorker(std::move(worker));
     }
@@ -329,10 +347,10 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     RAY_CHECK(worker);
     // If the worker was assigned a task, mark it as finished.
     if (!worker->GetAssignedTaskId().is_nil()) {
-      FinishAssignedTask(worker);
+      FinishAssignedTask(*worker);
     }
     // Return the worker to the idle pool.
-    worker_pool_.PushWorker(worker);
+    worker_pool_.PushWorker(std::move(worker));
     // Call task dispatch to assign work to the new worker.
     DispatchTasks();
 
@@ -366,7 +384,12 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
     auto message = flatbuffers::GetRoot<protocol::ReconstructObject>(message_data);
     ObjectID object_id = from_flatbuf(*message->object_id());
     RAY_LOG(DEBUG) << "reconstructing object " << object_id;
-    RAY_CHECK_OK(object_manager_.Pull(object_id));
+    if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
+      // TODO(swang): Instead of calling Pull on the object directly, record the
+      // fact that the blocked task is dependent on this object_id in the task
+      // dependency manager.
+      RAY_CHECK_OK(object_manager_.Pull(object_id));
+    }
 
     // If the blocked client is a worker, and the worker isn't already blocked,
     // then release any CPU resources that it acquired for its assigned task
@@ -379,8 +402,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       const auto &task = tasks.front();
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      double required_cpus = 0;
-      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      double required_cpus = required_resources.GetNumCpus();
       const std::unordered_map<std::string, double> cpu_resources = {
           {kCPU_ResourceLabel, required_cpus}};
       // Release the CPU resources.
@@ -408,8 +430,7 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
       const auto &task = tasks.front();
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      double required_cpus = 0;
-      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      double required_cpus = required_resources.GetNumCpus();
       const std::unordered_map<std::string, double> cpu_resources = {
           {kCPU_ResourceLabel, required_cpus}};
       // Acquire the CPU resources.
@@ -436,14 +457,13 @@ void NodeManager::ProcessClientMessage(std::shared_ptr<LocalClientConnection> cl
   client->ProcessMessages();
 }
 
-void NodeManager::ProcessNewNodeManager(
-    std::shared_ptr<TcpClientConnection> node_manager_client) {
-  node_manager_client->ProcessMessages();
+void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client) {
+  node_manager_client.ProcessMessages();
 }
 
-void NodeManager::ProcessNodeManagerMessage(
-    std::shared_ptr<TcpClientConnection> node_manager_client, int64_t message_type,
-    const uint8_t *message_data) {
+void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_client,
+                                            int64_t message_type,
+                                            const uint8_t *message_data) {
   switch (message_type) {
   case protocol::MessageType_ForwardTaskRequest: {
     auto message = flatbuffers::GetRoot<protocol::ForwardTaskRequest>(message_data);
@@ -458,14 +478,7 @@ void NodeManager::ProcessNodeManagerMessage(
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
-  node_manager_client->ProcessMessages();
-}
-
-void NodeManager::HandleWaitingTaskReady(const TaskID &task_id) {
-  auto ready_tasks = local_queues_.RemoveTasks({task_id});
-  local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
-  // Schedule the newly ready tasks if possible.
-  ScheduleTasks();
+  node_manager_client.ProcessMessages();
 }
 
 void NodeManager::ScheduleTasks() {
@@ -493,23 +506,32 @@ void NodeManager::ScheduleTasks() {
       RAY_CHECK(1 == tasks.size());
       Task &task = tasks.front();
       // TODO(swang): Handle forward task failure.
-      // TODO(swang): Unsubscribe this task in the task dependency manager.
       RAY_CHECK_OK(ForwardTask(task, client_id));
     }
+    // Notify the task dependency manager that we no longer need this task's
+    // object dependencies.
+    // NOTE(swang): For local tasks, the scheduled task's dependencies may get
+    // evicted before it can be assigned to a worker.
+    task_dependency_manager_.UnsubscribeDependencies(task_id);
   }
 
   // Transition locally scheduled tasks to SCHEDULED and dispatch scheduled tasks.
-  std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
-  local_queues_.QueueScheduledTasks(tasks);
-  DispatchTasks();
+  if (local_task_ids.size() > 0) {
+    std::vector<Task> tasks = local_queues_.RemoveTasks(local_task_ids);
+    local_queues_.QueueScheduledTasks(tasks);
+    DispatchTasks();
+  }
 }
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage) {
-  const TaskSpecification &spec = task.GetTaskSpecification();
-
   // Add the task and its uncommitted lineage to the lineage cache.
   lineage_cache_.AddWaitingTask(task, uncommitted_lineage);
+  // Mark the task as pending. Once the task has finished execution, or once it
+  // has been forwarded to another node, the task must be marked as canceled in
+  // the TaskDependencyManager.
+  task_dependency_manager_.TaskPending(task);
 
+  const TaskSpecification &spec = task.GetTaskSpecification();
   if (spec.IsActorTask()) {
     // Check whether we know the location of the actor.
     const auto actor_entry = actor_registry_.find(spec.ActorId());
@@ -554,14 +576,31 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 }
 
+void NodeManager::HandleRemoteDependencyRequired(const ObjectID &dependency_id) {
+  // Try to fetch the object from the object manager.
+  RAY_CHECK_OK(object_manager_.Pull(dependency_id));
+  // TODO(swang): Request reconstruction of the object, possibly after a
+  // timeout.
+}
+
+void NodeManager::HandleRemoteDependencyCanceled(const ObjectID &dependency_id) {
+  // Cancel the fetch request from the object manager.
+  RAY_CHECK_OK(object_manager_.Cancel(dependency_id));
+  // TODO(swang): Cancel reconstruction of the object.
+}
+
 void NodeManager::QueueTask(const Task &task) {
-  // Queue the task depending on the availability of its arguments.
-  if (task_dependency_manager_.TaskReady(task)) {
-    local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+  // Subscribe to the task's dependencies.
+  bool ready = task_dependency_manager_.SubscribeDependencies(
+      task.GetTaskSpecification().TaskId(), task.GetDependencies());
+  // Queue the task. If all dependencies are available, then the task is queued
+  // in the READY state, else the WAITING.
+  if (ready) {
+    local_queues_.QueueReadyTasks({task});
+    // Try to schedule the newly ready task.
     ScheduleTasks();
   } else {
-    local_queues_.QueueWaitingTasks(std::vector<Task>({task}));
-    task_dependency_manager_.SubscribeTaskReady(task);
+    local_queues_.QueueWaitingTasks({task});
   }
 }
 
@@ -609,10 +648,13 @@ void NodeManager::AssignTask(Task &task) {
     // If the task was an actor task, then record this execution to guarantee
     // consistency in the case of reconstruction.
     if (spec.IsActorTask()) {
-      // Extend the frontier to include the executing task.
       auto actor_entry = actor_registry_.find(spec.ActorId());
       RAY_CHECK(actor_entry != actor_registry_.end());
-      actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
+      auto execution_dependency = actor_entry->second.GetExecutionDependency();
+      // The execution dependency is initialized to the actor creation task's
+      // return value, and is subsequently updated to the assigned tasks'
+      // return values, so it should never be nil.
+      RAY_CHECK(!execution_dependency.is_nil());
       // Update the task's execution dependencies to reflect the actual
       // execution order, to support deterministic reconstruction.
       // NOTE(swang): The update of an actor task's execution dependencies is
@@ -621,8 +663,9 @@ void NodeManager::AssignTask(Task &task) {
       // guarantee deterministic reconstruction ordering for tasks whose
       // updates are reflected in the task table.
       TaskExecutionSpecification &mutable_spec = task.GetTaskExecutionSpec();
-      mutable_spec.SetExecutionDependencies(
-          {actor_entry->second.GetExecutionDependency()});
+      mutable_spec.SetExecutionDependencies({execution_dependency});
+      // Extend the frontier to include the executing task.
+      actor_entry->second.ExtendFrontier(spec.ActorHandleId(), spec.ActorDummyObject());
     }
     // We started running the task, so the task is ready to write to GCS.
     lineage_cache_.AddReadyTask(task);
@@ -639,8 +682,8 @@ void NodeManager::AssignTask(Task &task) {
   }
 }
 
-void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
-  TaskID task_id = worker->GetAssignedTaskId();
+void NodeManager::FinishAssignedTask(Worker &worker) {
+  TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
   auto tasks = local_queues_.RemoveTasks({task_id});
   auto task = *tasks.begin();
@@ -648,14 +691,14 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
   if (task.GetTaskSpecification().IsActorCreationTask()) {
     // If this was an actor creation task, then convert the worker to an actor.
     auto actor_id = task.GetTaskSpecification().ActorCreationId();
-    worker->AssignActorId(actor_id);
+    worker.AssignActorId(actor_id);
 
     // Publish the actor creation event to all other nodes so that methods for
     // the actor will be forwarded directly to this node.
     auto actor_notification = std::make_shared<ActorTableDataT>();
     actor_notification->actor_id = actor_id.binary();
     actor_notification->actor_creation_dummy_object_id =
-        task.GetTaskSpecification().ActorCreationDummyObjectId().binary();
+        task.GetTaskSpecification().ActorDummyObject().binary();
     // TODO(swang): The driver ID.
     actor_notification->driver_id = JobID::nil().binary();
     actor_notification->node_manager_id =
@@ -680,15 +723,48 @@ void NodeManager::FinishAssignedTask(std::shared_ptr<Worker> worker) {
   if (task.GetTaskSpecification().IsActorCreationTask() ||
       task.GetTaskSpecification().IsActorTask()) {
     auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
-    task_dependency_manager_.MarkDependencyReady(dummy_object);
+    HandleObjectLocal(dummy_object);
   }
 
+  // Notify the task dependency manager that this task has finished execution.
+  task_dependency_manager_.TaskCanceled(task_id);
+
   // Unset the worker's assigned task.
-  worker->AssignTaskId(TaskID::nil());
+  worker.AssignTaskId(TaskID::nil());
 }
 
 void NodeManager::ResubmitTask(const TaskID &task_id) {
   throw std::runtime_error("Method not implemented");
+}
+
+void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
+  // Notify the task dependency manager that this object is local.
+  const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
+  // Transition the tasks whose dependencies are now fulfilled to the ready
+  // state.
+  if (ready_task_ids.size() > 0) {
+    std::unordered_set<TaskID> ready_task_id_set(ready_task_ids.begin(),
+                                                 ready_task_ids.end());
+    auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
+    local_queues_.QueueReadyTasks(std::vector<Task>(ready_tasks));
+    // Schedule the newly ready tasks.
+    ScheduleTasks();
+  }
+}
+
+void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
+  // Notify the task dependency manager that this object is no longer local.
+  const auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(object_id);
+  // Transition any tasks that were in the runnable state and are dependent on
+  // this object to the waiting state.
+  if (!waiting_task_ids.empty()) {
+    // Transition the tasks back to the waiting state. They will be made
+    // runnable once the deleted object becomes available again.
+    std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
+                                                   waiting_task_ids.end());
+    auto waiting_tasks = local_queues_.RemoveTasks(waiting_task_id_set);
+    local_queues_.QueueWaitingTasks(std::vector<Task>(waiting_tasks));
+  }
 }
 
 ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) {
@@ -712,13 +788,14 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   auto client_info = gcs_client_->client_table().GetClient(node_id);
 
   // Lookup remote server connection for this node_id and use it to send the request.
-  if (remote_server_connections_.count(node_id) == 0) {
+  auto it = remote_server_connections_.find(node_id);
+  if (it == remote_server_connections_.end()) {
     // TODO(atumanov): caller must handle failure to ensure tasks are not lost.
     RAY_LOG(INFO) << "No NodeManager connection found for GCS client id " << node_id;
     return ray::Status::IOError("NodeManager connection not found");
   }
 
-  auto &server_conn = remote_server_connections_.at(node_id);
+  auto &server_conn = it->second;
   auto status = server_conn.WriteMessage(protocol::MessageType_ForwardTaskRequest,
                                          fbb.GetSize(), fbb.GetBufferPointer());
   if (status.ok()) {
@@ -726,7 +803,9 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
     // lineage cache since the receiving node is now responsible for writing
     // the task to the GCS.
     lineage_cache_.RemoveWaitingTask(task_id);
-
+    // Notify the task dependency manager that we are no longer responsible
+    // for executing this task.
+    task_dependency_manager_.TaskCanceled(task_id);
     // Preemptively push any local arguments to the receiving node. For now, we
     // only do this with actor tasks, since actor tasks must be executed by a
     // specific process and therefore have affinity to the receiving node.
