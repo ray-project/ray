@@ -426,6 +426,16 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, left_idx,
 def _match_partitioning(column_partition, lengths, index):
     """Match the number of rows on each partition. Used in df.merge().
 
+    NOTE: This function can cause problems when there are empty column
+        partitions.
+
+        The way this function is intended to be used is as follows: Align the
+        right partitioning with the left. The left will remain unchanged. Then,
+        you are free to perform actions on a per-partition basis with the
+        partitioning.
+
+        The index objects must already be identical for this to work correctly.
+
     Args:
         column_partition: The column partition to change.
         lengths: The lengths of each row partition to match to.
