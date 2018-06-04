@@ -183,6 +183,8 @@ class AutoscalingTest(unittest.TestCase):
         for _ in range(50):
             if condition():
                 return
+            time.sleep(.1)
+        raise Exception("Timed out waiting for {}".format(condition))
 
     def waitForNodes(self, expected, comparison=None, tag_filters={}):
         MAX_ITER = 50
@@ -287,6 +289,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
+            max_launch_batch=5,
             max_concurrent_launches=5,
             max_failures=0,
             update_interval_s=0)
@@ -316,6 +319,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
+            max_launch_batch=5,
             max_concurrent_launches=5,
             max_failures=0,
             update_interval_s=0)
@@ -324,13 +328,13 @@ class AutoscalingTest(unittest.TestCase):
         # Update will try to create, but will block until we set the flag
         self.provider.ready_to_create.clear()
         autoscaler.update()
-        self.assertEqual(autoscaler.num_launches_pending, 2)
+        self.assertEqual(autoscaler.num_launches_pending.value, 2)
         self.assertEqual(len(self.provider.nodes({})), 0)
 
         # Set the flag, check it updates
         self.provider.ready_to_create.set()
         self.waitForNodes(2)
-        self.assertEqual(autoscaler.num_launches_pending, 0)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
 
         # Update the config to reduce the cluster size
         new_config = SMALL_CLUSTER.copy()
@@ -341,45 +345,52 @@ class AutoscalingTest(unittest.TestCase):
 
     def testDelayedLaunchWithFailure(self):
         config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 9
-        config["max_workers"] = 9
+        config["min_workers"] = 10
+        config["max_workers"] = 10
         config_path = self.write_config(config)
         self.provider = MockProvider()
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
-            max_concurrent_launches=5,
+            max_launch_batch=5,
+            max_concurrent_launches=8,
             max_failures=0,
             update_interval_s=0)
         self.assertEqual(len(self.provider.nodes({})), 0)
 
-        # update() should launch a wave of 5 nodes (max_concurrent_launches).
+        # update() should launch a wave of 5 nodes (max_launch_batch)
         # Force this first wave to block.
         rtc1 = self.provider.ready_to_create
         rtc1.clear()
         autoscaler.update()
-        self.assertEqual(autoscaler.num_launches_pending, 5)
+        self.assertEqual(autoscaler.num_launches_pending.value, 5)
         self.assertEqual(len(self.provider.nodes({})), 0)
 
-        # Call update() to launch a second wave of 4 nodes.
-        # Make this wave will complete immediately.
+        # Call update() to launch a second wave of 3 nodes,
+        # as 5 + 3 = 8 = max_concurrent_launches.
+        # Make this wave complete immediately.
         rtc2 = threading.Event()
         self.provider.ready_to_create = rtc2
         rtc2.set()
         autoscaler.update()
-        self.waitForNodes(4)
+        self.waitForNodes(3)
 
         # The first wave of 5 will now tragically fail
         self.provider.fail_creates = True
         rtc1.set()
-        self.waitFor(lambda: autoscaler.num_launches_pending == 0)
-        self.assertEqual(len(self.provider.nodes({})), 4)
+        self.waitFor(lambda: autoscaler.num_launches_pending.value == 0)
+        self.assertEqual(len(self.provider.nodes({})), 3)
 
         # Retry the first wave, allowing it to succeed this time
         self.provider.fail_creates = False
         autoscaler.update()
-        self.waitForNodes(9)
-        self.assertEqual(autoscaler.num_launches_pending, 0)
+        self.waitForNodes(8)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
+
+        # Final wave of 2 nodes
+        autoscaler.update()
+        self.waitForNodes(10)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
 
     def testUpdateThrottling(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -387,11 +398,12 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
+            max_launch_batch=5,
             max_concurrent_launches=5,
             max_failures=0,
             update_interval_s=10)
         autoscaler.update()
-        self.assertEqual(autoscaler.num_launches_pending, 0)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
         self.assertEqual(len(self.provider.nodes({})), 2)
         new_config = SMALL_CLUSTER.copy()
         new_config["max_workers"] = 1
@@ -399,7 +411,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # not updated yet
         self.assertEqual(len(self.provider.nodes({})), 2)
-        self.assertEqual(autoscaler.num_launches_pending, 0)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
 
     def testLaunchConfigChange(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -407,19 +419,18 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
         autoscaler.update()
-        self.assertEqual(len(self.provider.nodes({})), 2)
+        self.waitForNodes(2)
 
         # Update the config to change the node type
         new_config = SMALL_CLUSTER.copy()
         new_config["worker_nodes"]["InstanceType"] = "updated"
         self.write_config(new_config)
-        existing_nodes = set(self.provider.nodes({}))
+        self.provider.ready_to_create.clear()
         for _ in range(5):
             autoscaler.update()
+        self.waitForNodes(0)
+        self.provider.ready_to_create.set()
         self.waitForNodes(2)
-        new_nodes = set(self.provider.nodes({}))
-        self.assertEqual(len(new_nodes), 2)
-        self.assertEqual(len(new_nodes.intersection(existing_nodes)), 0)
 
     def testIgnoresCorruptedConfig(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -427,6 +438,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
+            max_launch_batch=10,
             max_concurrent_launches=10,
             max_failures=0,
             update_interval_s=0)
@@ -438,7 +450,7 @@ class AutoscalingTest(unittest.TestCase):
         for _ in range(10):
             autoscaler.update()
         time.sleep(0.1)
-        self.assertEqual(autoscaler.num_launches_pending, 0)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
         self.assertEqual(len(self.provider.nodes({})), 2)
 
         # New a good config again
@@ -563,7 +575,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         autoscaler.update()
-        self.assertEqual(autoscaler.num_launches_pending, 0)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
         self.assertEqual(len(self.provider.nodes({})), 2)
 
         # Scales up as nodes are reported as used
@@ -579,19 +591,19 @@ class AutoscalingTest(unittest.TestCase):
         lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2})
         lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2})
         autoscaler.update()
-        self.assertEqual(autoscaler.num_launches_pending, 0)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
         self.assertEqual(len(self.provider.nodes({})), 6)
 
         # Scales down as nodes become unused
         lm.last_used_time_by_ip["172.0.0.0"] = 0
         lm.last_used_time_by_ip["172.0.0.1"] = 0
         autoscaler.update()
-        self.assertEqual(autoscaler.num_launches_pending, 0)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
         self.assertEqual(len(self.provider.nodes({})), 4)
         lm.last_used_time_by_ip["172.0.0.2"] = 0
         lm.last_used_time_by_ip["172.0.0.3"] = 0
         autoscaler.update()
-        self.assertEqual(autoscaler.num_launches_pending, 0)
+        self.assertEqual(autoscaler.num_launches_pending.value, 0)
         self.assertEqual(len(self.provider.nodes({})), 2)
 
     def testRecoverUnhealthyWorkers(self):
@@ -608,6 +620,7 @@ class AutoscalingTest(unittest.TestCase):
             node_updater_cls=NodeUpdaterThread,
             update_interval_s=0)
         autoscaler.update()
+        self.waitForNodes(2)
         for node in self.provider.mock_nodes.values():
             node.state = "running"
         autoscaler.update()
