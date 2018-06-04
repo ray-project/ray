@@ -15,7 +15,7 @@ if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
 fi
 
 # Only fetch master since that's the branch we're diffing against.
-git fetch 'upstream' 'master'
+git fetch upstream master
 
 YAPF_FLAGS=(
     '--style' "$ROOT/.style.yapf"
@@ -46,10 +46,13 @@ format_changed() {
     # could cause yapf to receive 0 positional arguments, making it hang
     # waiting for STDIN.
     #
-    # `diff-filter=ACM` is to ensure we only format files that exist on both
-    # branches.
-    if ! git diff --diff-filter=ACM --quiet --exit-code 'upstream/master' -- '*.py' &>dev/null; then
-        git diff --name-only --diff-filter=ACM 'upstream/master' -- '*.py' | yapf "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
+    # `diff-filter=ACM` and $MERGEBASE is to ensure we only format files that
+    # exist on both branches.
+    MERGEBASE="$(git merge-base upstream/master HEAD)"
+
+    if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
+        declare -a unformatted_files && mapfile -t unformatted_files < <(git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py')
+        yapf "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}" -- "${unformatted_files[@]}"
     fi
 }
 
