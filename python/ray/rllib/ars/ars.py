@@ -143,7 +143,7 @@ class Worker(object):
         Generate multiple rollouts with a policy parametrized by w_policy.
         """
 
-        rollout_rewards, deltas_idx = [], []
+        rollout_rewards, steps, deltas_idx = [], [], []
         steps = 0
 
         for i in range(num_rollouts):
@@ -175,7 +175,7 @@ class Worker(object):
                 # or negative pertubation rollout
                 self.policy.set_weights(w_policy - delta)
                 neg_reward, neg_steps = self.rollout(shift=shift)
-                steps += pos_steps + neg_steps
+                steps += [pos_steps, neg_steps]
 
                 rollout_rewards.append([pos_reward, neg_reward])
 
@@ -370,7 +370,7 @@ class ARSAgent(agent.Agent):
 
         result = ray.tune.result.TrainingResult(
             episode_reward_mean=np.mean(rewards),
-            episode_len_mean=np.mean(info_dict['steps']),
+            episode_len_mean=np.mean(info_dict['steps'])/2.0,
             timesteps_this_iter=np.sum(info_dict['steps']))
 
         return result
