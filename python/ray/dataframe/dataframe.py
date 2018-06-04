@@ -23,6 +23,7 @@ from pandas.errors import MergeError
 
 import warnings
 import numpy as np
+from numpy.testing import assert_equal
 import ray
 import itertools
 import io
@@ -1639,7 +1640,10 @@ class DataFrame(object):
                         partitions = [partitions]
                         indexes = [indexes]
 
+                    print("coords", coords)
+                    print(label)
                     for part, index in zip(partitions, indexes):
+                        print("part, index:", part, index)
                         x = _deploy_func.remote(
                             lambda df: df.drop(labels=index, axis=axis,
                                                errors='ignore'),
@@ -1677,7 +1681,6 @@ class DataFrame(object):
                             [obj._col_partitions[i] if i != part
                              else x
                              for i in range(len(obj._col_partitions))]
-
                         # The decrement here is because we're dropping one at a
                         # time and the index is automatically updated when we
                         # convert back to blocks.
@@ -1700,14 +1703,16 @@ class DataFrame(object):
                         raise ValueError("The label [{}] is not in the [{}]",
                                          label, axis)
                     else:
+                        # labels = [l for l in labels if l in getattr(self, axis)]
+                        # print("Labels: ", labels)
                         obj = drop_helper(obj, axis, label)
             else:
                 if errors != 'ignore' and labels and \
                         labels not in getattr(self, axis):
                     raise ValueError("The label [{}] is not in the [{}]",
                                      labels, axis)
-                else:
-                    obj = drop_helper(obj, axis, labels)
+                # else:
+                obj = drop_helper(obj, axis, labels)
 
         if not inplace:
             return obj
@@ -1757,11 +1762,17 @@ class DataFrame(object):
             args=(df, self._row_metadata._lengths, other.index),
             num_return_vals=len(self._row_metadata._lengths))
             for df in other._col_partitions]).T
+        # a = [False for left, right in zip(self._row_partitions,
+        #                                           repartitioned_other)
+        #              if not ray.get(_equals_helper.remote(left, right))]
+        #
+        # if len(a) != 0:
+        #     z = [pd.concat(ray.get(i.tolist()), axis=1) for i in repartitioned_other]
+        #     print(z)
 
-        # We are using innocent until proven guilty strategy
         return next((False for left, right in zip(self._row_partitions,
-                                              repartitioned_other)
-                     if not ray.get(_equals_helper(left, right))), True)
+                                                  repartitioned_other)
+                     if not ray.get(_equals_helper.remote(left, right))), True)
 
     def eval(self, expr, inplace=False, **kwargs):
         """Evaluate a Python expression as a string using various backends.
@@ -5369,4 +5380,12 @@ def reindex_helper(old_index, new_index, axis, npartitions, method, fill_value,
 
 @ray.remote
 def _equals_helper(left, right):
-    return left.equals(right)
+    right = pd.concat(ray.get(right.tolist()), axis=1)
+    # Since we know that the index and columns match, we can just check the
+    # values. We can't use np.array_equal here because it doesn't recognize
+    # np.nan as equal to another np.nan
+    try:
+        assert_equal(left.values, right.values)
+    except AssertionError:
+        return False
+    return True

@@ -133,8 +133,15 @@ def to_pandas(df):
         A new pandas DataFrame.
     """
     pd_df = pd.concat(ray.get(df._row_partitions), copy=False)
-    pd_df.index = df.index
-    pd_df.columns = df.columns
+
+    try:
+        pd_df.index = df.index
+        pd_df.columns = df.columns
+    except Exception as e:
+        print(pd_df)
+        print(df.columns)
+        print(df.index)
+        raise e
     return pd_df
 
 
