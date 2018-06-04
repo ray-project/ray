@@ -17,7 +17,7 @@ def _wait(fs, timeout, num_returns, loop):
     The fs argument must be a collection of Futures.
     """
     
-    assert fs, 'Set of Futures is empty.'
+    assert fs, "Set of Futures is empty."
     assert 0 < num_returns <= len(fs)
     
     waiter = loop.create_future()
@@ -76,15 +76,17 @@ class PlasmaObjectFuture(asyncio.Future):
 
 
 class PlasmaPoll(selectors.BaseSelector):
-    def __init__(self):
+    def __init__(self, worker):
+        self.worker = worker
         self.waiting_dict = collections.defaultdict(list)
     
     def close(self):
         self.waiting_dict.clear()
     
     def select(self, timeout=None):
+        polling_ids = list(self.waiting_dict.keys())
         ready_keys = []
-        object_ids = ray.wait(list(self.waiting_dict.keys()), num_returns=len(self.waiting_dict), timeout=timeout)
+        object_ids = ray.wait(polling_ids, num_returns=len(polling_ids), timeout=timeout, worker=self.worker)
         for oid in object_ids:
             key = self.waiting_dict[oid]
             ready_keys.append(key)
@@ -92,7 +94,7 @@ class PlasmaPoll(selectors.BaseSelector):
     
     def register(self, plasma_fut, events=None, data=None):
         if plasma_fut.object_id in self.waiting_dict:
-            raise Exception('ObjectID already been registered.')
+            raise Exception("ObjectID already been registered.")
         else:
             key = selectors.SelectorKey(fileobj=plasma_fut, fd=plasma_fut.object_id, events=events, data=data)
             self.waiting_dict[key.fd] = key
@@ -110,14 +112,15 @@ class PlasmaPoll(selectors.BaseSelector):
 
 class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     
-    def __init__(self, selector=None):
+    def __init__(self, selector):
         super().__init__()
-        self._selector = PlasmaPoll() if selector is None else selector
+        assert isinstance(selector, selectors.BaseSelector)
+        self._selector = selector
     
     def _process_events(self, event_list):
         for key in event_list:
             handle, future = key.data
-            assert isinstance(handle, asyncio.events.Handle), 'A Handle is required here'
+            assert isinstance(handle, asyncio.events.Handle), "A Handle is required here"
             if handle._cancelled:
                 return
             assert not isinstance(handle, asyncio.events.TimerHandle)
