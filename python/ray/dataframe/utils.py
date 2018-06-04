@@ -133,15 +133,8 @@ def to_pandas(df):
         A new pandas DataFrame.
     """
     pd_df = pd.concat(ray.get(df._row_partitions), copy=False)
-
-    try:
-        pd_df.index = df.index
-        pd_df.columns = df.columns
-    except Exception as e:
-        print(pd_df)
-        print(df.columns)
-        print(df.index)
-        raise e
+    pd_df.index = df.index
+    pd_df.columns = df.columns
     return pd_df
 
 
@@ -432,6 +425,16 @@ def _co_op_helper(func, left_columns, right_columns, left_df_len, left_idx,
 @ray.remote
 def _match_partitioning(column_partition, lengths, index):
     """Match the number of rows on each partition. Used in df.merge().
+
+    NOTE: This function can cause problems when there are empty column
+        partitions.
+
+        The way this function is intended to be used is as follows: Align the
+        right partitioning with the left. The left will remain unchanged. Then,
+        you are free to perform actions on a per-partition basis with the
+        partitioning.
+
+        The index objects must already be identical for this to work correctly.
 
     Args:
         column_partition: The column partition to change.

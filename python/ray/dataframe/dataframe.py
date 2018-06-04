@@ -1589,17 +1589,12 @@ class DataFrame(object):
         """Return new object with labels in requested axis removed.
         Args:
             labels: Index or column labels to drop.
-
             axis: Whether to drop labels from the index (0 / 'index') or
                 columns (1 / 'columns').
-
             index, columns: Alternative to specifying axis (labels, axis=1 is
                 equivalent to columns=labels).
-
             level: For MultiIndex
-
             inplace: If True, do operation inplace and return None.
-
             errors: If 'ignore', suppress error and existing labels are
                 dropped.
         Returns:
@@ -1640,10 +1635,7 @@ class DataFrame(object):
                         partitions = [partitions]
                         indexes = [indexes]
 
-                    print("coords", coords)
-                    print(label)
                     for part, index in zip(partitions, indexes):
-                        print("part, index:", part, index)
                         x = _deploy_func.remote(
                             lambda df: df.drop(labels=index, axis=axis,
                                                errors='ignore'),
@@ -1681,6 +1673,7 @@ class DataFrame(object):
                             [obj._col_partitions[i] if i != part
                              else x
                              for i in range(len(obj._col_partitions))]
+
                         # The decrement here is because we're dropping one at a
                         # time and the index is automatically updated when we
                         # convert back to blocks.
@@ -1703,16 +1696,14 @@ class DataFrame(object):
                         raise ValueError("The label [{}] is not in the [{}]",
                                          label, axis)
                     else:
-                        # labels = [l for l in labels if l in getattr(self, axis)]
-                        # print("Labels: ", labels)
                         obj = drop_helper(obj, axis, label)
             else:
                 if errors != 'ignore' and labels and \
                         labels not in getattr(self, axis):
                     raise ValueError("The label [{}] is not in the [{}]",
                                      labels, axis)
-                # else:
-                obj = drop_helper(obj, axis, labels)
+                else:
+                    obj = drop_helper(obj, axis, labels)
 
         if not inplace:
             return obj
@@ -1756,23 +1747,17 @@ class DataFrame(object):
                 self.columns.equals(other.columns):
             return False
 
-        # We are going to use row partitions to perform the equals so we have
-        # to make sure they match up.
-        repartitioned_other = np.array([_match_partitioning._submit(
-            args=(df, self._row_metadata._lengths, other.index),
-            num_return_vals=len(self._row_metadata._lengths))
-            for df in other._col_partitions]).T
-        # a = [False for left, right in zip(self._row_partitions,
-        #                                           repartitioned_other)
-        #              if not ray.get(_equals_helper.remote(left, right))]
-        #
-        # if len(a) != 0:
-        #     z = [pd.concat(ray.get(i.tolist()), axis=1) for i in repartitioned_other]
-        #     print(z)
+        # We copartition because we don't know what the DataFrames look like
+        # before this. Empty partitions can give problems with
+        # _match_partitioning (See _match_partitioning)
+        new_zipped_parts = self._copartition(other, self.index)
 
-        return next((False for left, right in zip(self._row_partitions,
-                                                  repartitioned_other)
-                     if not ray.get(_equals_helper.remote(left, right))), True)
+        equals_partitions = [_equals_helper.remote(left, right)
+                             for left, right in new_zipped_parts]
+
+        # To avoid getting all we use next notation.
+        return next((False for eq in equals_partitions if not ray.get(eq)),
+                    True)
 
     def eval(self, expr, inplace=False, **kwargs):
         """Evaluate a Python expression as a string using various backends.
@@ -5381,6 +5366,7 @@ def reindex_helper(old_index, new_index, axis, npartitions, method, fill_value,
 @ray.remote
 def _equals_helper(left, right):
     right = pd.concat(ray.get(right.tolist()), axis=1)
+    left = pd.concat(ray.get(left.tolist()), axis=1)
     # Since we know that the index and columns match, we can just check the
     # values. We can't use np.array_equal here because it doesn't recognize
     # np.nan as equal to another np.nan

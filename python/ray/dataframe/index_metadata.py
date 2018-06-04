@@ -8,7 +8,6 @@ from .utils import (
     _build_coord_df)
 
 from pandas.core.indexing import convert_to_index_sliceable
-from pandas.core.dtypes.common import is_list_like
 
 
 class _IndexMetadata(object):
@@ -50,7 +49,7 @@ class _IndexMetadata(object):
                 lengths_oid = _build_col_widths.remote(dfs)
             coord_df_oid = _build_coord_df.remote(lengths_oid, index)
 
-        self._lengths_cache = lengths_oid
+        self._lengths = lengths_oid
         self._coord_df = coord_df_oid
         self._index_cache = index
         self._cached_index = False
@@ -60,13 +59,6 @@ class _IndexMetadata(object):
             (isinstance(self._lengths_cache, list) and
              isinstance(self._lengths_cache[0], ray.ObjectID)):
             self._lengths_cache = ray.get(self._lengths_cache)
-
-        # NOTE: Something
-        self._lengths_cache = [l for l in self._lengths_cache if l != 0]
-
-        if len(self._lengths_cache) == 0:
-            self._lengths_cache = [0]
-
         return self._lengths_cache
 
     def _set__lengths(self, lengths):
@@ -361,9 +353,6 @@ class _IndexMetadata(object):
         Returns:
             DataFrame with coordinates of dropped labels
         """
-        if not is_list_like(labels):
-            labels = [labels]
-
         dropped = self.coords_of(labels)
 
         # Update first lengths to prevent possible length inconsistencies
@@ -383,19 +372,9 @@ class _IndexMetadata(object):
             drop_per_part[dropped["partition"]] = 1
         else:
             raise AssertionError("Unrecognized result from `coords_of`")
+        self._lengths = self._lengths - drop_per_part
 
-        self._lengths_cache = self._lengths - drop_per_part
         self._coord_df = self._coord_df.drop(labels, errors=errors)
-
-        # Since we are dropping the empty partition(s) when we convert to
-        # blocks, update the partition number here
-
-        x = self._coord_df['partition'].unique()
-        z = dict(zip(x, range(len(x))))
-
-        self._coord_df['partition'] = \
-            [z[i] for i in self._coord_df['partition']]
-
         return dropped
 
     def rename_index(self, mapper):
@@ -423,8 +402,3 @@ class _IndexMetadata(object):
         return (self._coord_df
                     .sort_values(['partition', 'index_within_partition'])
                     .index)
-
-
-@ray.remote
-def _get_lengths_from_coords_df(coords_df):
-    return coords_df.groupby(by='partition').apply(lambda x: len(x))
