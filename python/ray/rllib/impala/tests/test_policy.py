@@ -26,7 +26,8 @@ def test_shadow(env_id):
 
 
     config = DEFAULT_CONFIG
-    config["optimizer"]["train_batch_size"] = 40
+    config["optimizer"]["train_batch_size"] = 120
+    config["num_local_steps"] = 40
     num_trajs = config["optimizer"]["train_batch_size"] // config["num_local_steps"]
     config["optimizer"]["num_trajs"] = num_trajs
     traj_length = config["num_local_steps"]
@@ -35,73 +36,89 @@ def test_shadow(env_id):
 
     
     obs = list()
-    features = list()
+    #features = list()
     actions = list()
     rewards = list()
     extras = list()
+    dones = list()
 
     traj_obs = list()
-    traj_features = list()
+    #traj_features = list()
     traj_actions = list()
     traj_rewards = list()
     traj_extras = list()
+    traj_dones = list()
 
     num_step = 0
     all_rwd = list()
 
     for t in range(1000):
         last_state = env.reset()
-        last_features = agent.get_initial_features()
+        #last_features = agent.get_initial_features()
         done = False
         episode_ts = 0
         episode_rwd = .0
         while not done:
             action, pi_info = agent.compute(
-                last_state,
-                last_features[0],
-                last_features[1])
+                last_state)#,
+                #last_features[0],
+                #last_features[1])
             next_state, rwd, done, info = env.step(action)
             
             traj_obs.append(last_state)
-            traj_features.append(last_features)
+            #traj_features.append(last_features)
             traj_actions.append(action)
             episode_rwd += rwd
             traj_rewards.append(rwd)
             traj_extras.append(pi_info["logprobs"])
+            traj_dones.append(done)
+            if done:
+                for i in range(traj_length-len(traj_obs)):
+                    traj_obs.append(next_state)
+                    #traj_features.append(pi_info["features"])
+                    traj_actions.append(0)
+                    traj_rewards.append(.0)
+                    traj_extras.append(np.array([.5, .5]))
+                    traj_dones.append(done)
             if len(traj_obs) == traj_length:
                 obs += traj_obs#obs.append(traj_obs)
-                features.append(traj_features)
+                #features.append(traj_features)
                 actions+=traj_actions#actions.append(traj_actions)
                 rewards+=traj_rewards#rewards.append(traj_rewards)
                 extras+=traj_extras#extras.append(traj_extras)
+                dones+=traj_dones
                 if len(obs) == num_trajs * traj_length:
                     samples = {
                         "obs": obs,
-                        "features": features,
+                        #"features": features,
                         "actions": actions,
                         "rewards": rewards,
-                        "logprobs": extras}
+                        "logprobs": extras,
+                        "dones": dones}
                     #agent.compute_gradients(samples)
                     agent.compute_and_apply_gradients(samples)
-                    raw_input()
+                    #raw_input()
                     obs = list()
-                    features = list()
+                    #features = list()
                     actions = list()
                     rewards = list()
                     extras = list()
+                    dones = list()
                 traj_obs = list()
-                traj_features = list()
+                #traj_features = list()
                 traj_actions = list()
                 traj_rewards = list()
                 traj_extras = list()
+                traj_dones = list()
 
             episode_ts += 1
             last_state = next_state
-            last_features = pi_info["features"]
+            #last_features = pi_info["features"]
 
         all_rwd.append(episode_rwd)
-        print(np.mean(all_rwd[-100:]))
+        print("%d\t%.3f\t%.3f" % (episode_ts, episode_rwd, np.mean(all_rwd[-100:])))
 
 
 if __name__=="__main__":
     test_shadow("CartPole-v0")
+    #test_shadow("PongNoFrameskip-v4")

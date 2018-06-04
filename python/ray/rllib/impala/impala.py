@@ -15,13 +15,13 @@ DEFAULT_CONFIG = {
     # learning rate
     "lr": 0.0006,
     # rmsprop epsilon
-    "epsilon": 1e-7,
+    "epsilon": 0.01,
     # If not None, clip gradients during optimization at this value
     'grad_norm_clipping': 40.0,
     # Baseline loss scaling
     "vf_loss_coeff": 0.5,
     # Entropy regularizater
-    "entropy_coeff": -0.0001,
+    "entropy_coeff": -0.01,
     # Arguments to pass in to env creator
     "env_config": {},
     # N-step v-trace learning
@@ -42,6 +42,8 @@ DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     "num_workers": 24,
 
+    # whether use lstm
+    "use_lstm": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
     # Which reward filter to apply to the reward
