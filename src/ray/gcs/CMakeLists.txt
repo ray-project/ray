@@ -12,7 +12,7 @@ add_custom_command(
   # flatbuffers message Message, which can be used to store deserialized
   # messages in data structures. This is currently used for ObjectInfo for
   # example.
-  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${GCS_FBS_SRC} --cpp --gen-object-api --gen-mutable
+  COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${GCS_FBS_SRC} --cpp --gen-object-api --gen-mutable --scoped-enums
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${GCS_FBS_SRC}"
   VERBATIM)
