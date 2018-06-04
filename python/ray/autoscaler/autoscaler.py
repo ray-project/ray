@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import json
 import hashlib
+import math
 import os
 import queue
 import subprocess
@@ -312,13 +313,11 @@ class StandardAutoscaler(object):
         # Node launchers
         self.launch_queue = queue.Queue()
         self.num_launches_pending = ConcurrentCounter()
-        # max_batches = integer ceiling of max_concurrent_launches / max_launch_batch
-        max_batches = max_concurrent_launches // max_launch_batch
-        max_batches += (max_concurrent_launches % max_launch_batch > 0)
-        for i in range(max_batches):
+        max_batches = math.ceil(
+            max_concurrent_launches / float(max_launch_batch))
+        for i in range(int(max_batches)):
             node_launcher = NodeLauncher(
-                queue=self.launch_queue,
-                pending=self.num_launches_pending)
+                queue=self.launch_queue, pending=self.num_launches_pending)
             node_launcher.daemon = True
             node_launcher.start()
 
