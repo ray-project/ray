@@ -9,6 +9,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+// Using flatbuffer types definded in "format/local_scheduler_generated.h"
+using namespace ray::local_scheduler::protocol;
+
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID client_id,

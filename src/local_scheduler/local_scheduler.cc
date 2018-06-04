@@ -28,6 +28,9 @@
 #include "state/object_table.h"
 #include "state/error_table.h"
 
+// Using flatbuffer types defined in "format/local_scheduler_generated.h"
+using namespace ray::local_scheduler::protocol;
+
 /**
  * A helper function for printing available and requested resource information.
  *
