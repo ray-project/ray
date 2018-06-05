@@ -374,7 +374,17 @@ class _IndexMetadata(object):
             raise AssertionError("Unrecognized result from `coords_of`")
         self._lengths = self._lengths - drop_per_part
 
-        self._coord_df = self._coord_df.drop(labels, errors=errors)
+        new_coord_df = self._coord_df.drop(labels, errors=errors)
+
+        num_dropped = 0
+        for i, length in enumerate(self._lengths):
+            if length == 0:
+                num_dropped += 1
+            if num_dropped > 0:
+                new_coord_df['partition'][new_coord_df['partition'] == i] \
+                    -= num_dropped
+
+        self._coord_df = new_coord_df
         return dropped
 
     def rename_index(self, mapper):

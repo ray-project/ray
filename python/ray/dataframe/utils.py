@@ -223,7 +223,8 @@ def to_pandas(df):
     Returns:
         A new pandas DataFrame.
     """
-    pd_df = pd.concat(ray.get(df._row_partitions), copy=False)
+    pd_df = pd.concat(ray.get(df._row_partitions), copy=False) \
+        if len(df._row_partitions) > 0 else pd.DataFrame()
     pd_df.index = df.index
     pd_df.columns = df.columns
     return pd_df
@@ -342,8 +343,9 @@ def _build_row_lengths(df_row):
 @ray.remote
 def _build_coord_df(lengths, index):
     """Build the coordinate dataframe over all partitions."""
+    filtered_lengths = [x for x in lengths if x > 0]
     coords = np.vstack([np.column_stack((np.full(l, i), np.arange(l)))
-                        for i, l in enumerate(lengths)])
+                        for i, l in enumerate(filtered_lengths)])
 
     col_names = ("partition", "index_within_partition")
     return pd.DataFrame(coords, index=index, columns=col_names)
@@ -353,6 +355,8 @@ def _create_block_partitions(partitions, axis=0, length=None):
 
     if length is not None and length != 0 and get_npartitions() > length:
         npartitions = length
+    elif length == 0:
+        npartitions = 1
     else:
         npartitions = get_npartitions()
 

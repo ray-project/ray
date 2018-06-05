@@ -136,7 +136,8 @@ class DataFrame(object):
                 elif col_partitions is not None:
                     axis = 1
                     partitions = col_partitions
-                    axis_length = None
+                    axis_length = len(index) if index is not None else \
+                        len(row_metadata)
                     # All partitions will already have correct dtypes
                     self._dtypes_cache = [
                             _deploy_func.remote(lambda df: df.dtypes, pd_df)
@@ -194,8 +195,10 @@ class DataFrame(object):
     _frame_data = property(_get_frame_data, _set_frame_data)
 
     def _get_row_partitions(self):
+        empty_rows_mask = self._row_metadata._lengths > 0
+        self._block_partitions = self._block_partitions[empty_rows_mask, :]
         return [_blocks_to_row.remote(*part)
-                for part in self._block_partitions]
+                for i, part in enumerate(self._block_partitions)]
 
     def _set_row_partitions(self, new_row_partitions):
         self._block_partitions = \
@@ -205,6 +208,8 @@ class DataFrame(object):
     _row_partitions = property(_get_row_partitions, _set_row_partitions)
 
     def _get_col_partitions(self):
+        empty_cols_mask = self._col_metadata._lengths > 0
+        self._block_partitions = self._block_partitions[:, empty_cols_mask]
         return [_blocks_to_col.remote(*self._block_partitions[:, i])
                 for i in range(self._block_partitions.shape[1])]
 
@@ -488,9 +493,7 @@ class DataFrame(object):
             True if the DataFrame is empty.
             False otherwise.
         """
-        all_empty = ray.get(_map_partitions(
-            lambda df: df.empty, self._row_partitions))
-        return False not in all_empty
+        return self._block_partitions.size == 0
 
     @property
     def values(self):
