@@ -301,8 +301,7 @@ void RayletTask::to_submit_message(
     flatbuffers::FlatBufferBuilder &fbb,
     const std::vector<ObjectID> &execution_dependencies) {
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
-  auto message = CreateSubmitTaskRequest(fbb, execution_dependencies_message,
-                                         task_spec->ToFlatbuffer(fbb));
-
+  auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(
+      fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
   fbb.Finish(message);
 }
