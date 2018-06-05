@@ -86,9 +86,8 @@ void local_scheduler_submit_raylet(
     ray::raylet::TaskSpecification task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
-  auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(fbb,
-      execution_dependencies_message,
-                                         task_spec.ToFlatbuffer(fbb));
+  auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(
+      fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
   fbb.Finish(message);
   write_message(conn->conn,
                 ray::local_scheduler::protocol::MessageType_SubmitTask,
