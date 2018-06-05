@@ -12,33 +12,33 @@ namespace local_scheduler_protocol = ray::local_scheduler::protocol;
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
 // Check consistency between client and server protocol.
-RAY_CHECK_ENUM(protocol::MessageType_SubmitTask,
+RAY_CHECK_ENUM(protocol::MessageType::SubmitTask,
                local_scheduler_protocol::MessageType::SubmitTask);
-RAY_CHECK_ENUM(protocol::MessageType_TaskDone,
+RAY_CHECK_ENUM(protocol::MessageType::TaskDone,
                local_scheduler_protocol::MessageType::TaskDone);
-RAY_CHECK_ENUM(protocol::MessageType_EventLogMessage,
+RAY_CHECK_ENUM(protocol::MessageType::EventLogMessage,
                local_scheduler_protocol::MessageType::EventLogMessage);
-RAY_CHECK_ENUM(protocol::MessageType_RegisterClientRequest,
+RAY_CHECK_ENUM(protocol::MessageType::RegisterClientRequest,
                local_scheduler_protocol::MessageType::RegisterClientRequest);
-RAY_CHECK_ENUM(protocol::MessageType_RegisterClientReply,
+RAY_CHECK_ENUM(protocol::MessageType::RegisterClientReply,
                local_scheduler_protocol::MessageType::RegisterClientReply);
-RAY_CHECK_ENUM(protocol::MessageType_DisconnectClient,
+RAY_CHECK_ENUM(protocol::MessageType::DisconnectClient,
                local_scheduler_protocol::MessageType::DisconnectClient);
-RAY_CHECK_ENUM(protocol::MessageType_GetTask,
+RAY_CHECK_ENUM(protocol::MessageType::GetTask,
                local_scheduler_protocol::MessageType::GetTask);
-RAY_CHECK_ENUM(protocol::MessageType_ExecuteTask,
+RAY_CHECK_ENUM(protocol::MessageType::ExecuteTask,
                local_scheduler_protocol::MessageType::ExecuteTask);
-RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject,
+RAY_CHECK_ENUM(protocol::MessageType::ReconstructObject,
                local_scheduler_protocol::MessageType::ReconstructObject);
-RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked,
+RAY_CHECK_ENUM(protocol::MessageType::NotifyUnblocked,
                local_scheduler_protocol::MessageType::NotifyUnblocked);
-RAY_CHECK_ENUM(protocol::MessageType_PutObject,
+RAY_CHECK_ENUM(protocol::MessageType::PutObject,
                local_scheduler_protocol::MessageType::PutObject);
-RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierRequest,
+RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierRequest,
                local_scheduler_protocol::MessageType::GetActorFrontierRequest);
-RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierReply,
+RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierReply,
                local_scheduler_protocol::MessageType::GetActorFrontierReply);
-RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier,
+RAY_CHECK_ENUM(protocol::MessageType::SetActorFrontier,
                local_scheduler_protocol::MessageType::SetActorFrontier);
 
 /// A helper function to determine whether a given actor task has already been executed
