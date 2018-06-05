@@ -7,7 +7,9 @@ import ray.test.test_functions as test_functions
 
 
 def setup():
-    ray.init(num_workers=4, num_cpus=4)
+    if not hasattr(setup, "is_initialized"):
+        ray.init(num_workers=4, num_cpus=4)
+        setup.is_initialized = True
 
 
 class TimeSuite(object):
