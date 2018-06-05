@@ -528,13 +528,14 @@ void assign_task_to_worker(LocalSchedulerState *state,
 
   /* Construct a flatbuffer object to send to the worker. */
   flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      CreateGetTaskReply(fbb, fbb.CreateString((char *) spec, task_spec_size),
-                         fbb.CreateVector(worker->gpus_in_use));
+  auto message = ray::local_scheduler::protocol::CreateGetTaskReply(
+      fbb, fbb.CreateString((char *) spec, task_spec_size),
+      fbb.CreateVector(worker->gpus_in_use));
   fbb.Finish(message);
 
-  if (write_message(worker->sock, MessageType_ExecuteTask, fbb.GetSize(),
-                    (uint8_t *) fbb.GetBufferPointer()) < 0) {
+  if (write_message(worker->sock,
+                    ray::local_scheduler::protocol::MessageType_ExecuteTask,
+                    fbb.GetSize(), (uint8_t *) fbb.GetBufferPointer()) < 0) {
     if (errno == EPIPE || errno == EBADF) {
       /* Something went wrong, so kill the worker. */
       kill_worker(state, worker, false, false);
@@ -923,9 +924,10 @@ void reconstruct_object(LocalSchedulerState *state,
                       reconstruct_object_lookup_callback, (void *) state);
 }
 
-void handle_client_register(LocalSchedulerState *state,
-                            LocalSchedulerClient *worker,
-                            const RegisterClientRequest *message) {
+void handle_client_register(
+    LocalSchedulerState *state,
+    LocalSchedulerClient *worker,
+    const ray::local_scheduler::protocol::RegisterClientRequest *message) {
   /* Make sure this worker hasn't already registered. */
   RAY_CHECK(!worker->registered);
   worker->registered = true;
@@ -1029,13 +1031,15 @@ void handle_get_actor_frontier(LocalSchedulerState *state,
     frontier_vector.push_back(frontier[handle.first]);
   }
   flatbuffers::FlatBufferBuilder fbb;
-  auto reply = CreateActorFrontier(
+  auto reply = ray::local_scheduler::protocol::CreateActorFrontier(
       fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, handle_vector),
       fbb.CreateVector(task_counter_vector), to_flatbuf(fbb, frontier_vector));
   fbb.Finish(reply);
   /* Respond with the built ActorFrontier. */
-  if (write_message(worker->sock, MessageType_GetActorFrontierReply,
-                    fbb.GetSize(), (uint8_t *) fbb.GetBufferPointer()) < 0) {
+  if (write_message(
+          worker->sock,
+          ray::local_scheduler::protocol::MessageType_GetActorFrontierReply,
+          fbb.GetSize(), (uint8_t *) fbb.GetBufferPointer()) < 0) {
     if (errno == EPIPE || errno == EBADF) {
       /* Something went wrong, so kill the worker. */
       kill_worker(state, worker, false, false);
@@ -1047,9 +1051,10 @@ void handle_get_actor_frontier(LocalSchedulerState *state,
   }
 }
 
-void handle_set_actor_frontier(LocalSchedulerState *state,
-                               LocalSchedulerClient *worker,
-                               ActorFrontier const &frontier) {
+void handle_set_actor_frontier(
+    LocalSchedulerState *state,
+    LocalSchedulerClient *worker,
+    ray::local_scheduler::protocol::ActorFrontier const &frontier) {
   /* Parse the ActorFrontier flatbuffer. */
   ActorID actor_id = from_flatbuf(*frontier.actor_id());
   std::unordered_map<ActorID, int64_t> task_counters;
@@ -1082,8 +1087,10 @@ void process_message(event_loop *loop,
   RAY_LOG(DEBUG) << "New event of type " << type;
 
   switch (type) {
-  case MessageType_SubmitTask: {
-    auto message = flatbuffers::GetRoot<SubmitTaskRequest>(input);
+  case ray::local_scheduler::protocol::MessageType_SubmitTask: {
+    auto message =
+        flatbuffers::GetRoot<ray::local_scheduler::protocol::SubmitTaskRequest>(
+            input);
     TaskExecutionSpec execution_spec =
         TaskExecutionSpec(from_flatbuf(*message->execution_dependencies()),
                           (TaskSpec *) message->task_spec()->data(),
@@ -1110,9 +1117,9 @@ void process_message(event_loop *loop,
                                   execution_spec);
     }
   } break;
-  case MessageType_TaskDone: {
+  case ray::local_scheduler::protocol::MessageType_TaskDone: {
   } break;
-  case MessageType_DisconnectClient: {
+  case ray::local_scheduler::protocol::MessageType_DisconnectClient: {
     finish_task(state, worker);
     RAY_CHECK(!worker->disconnected);
     worker->disconnected = true;
@@ -1122,9 +1129,11 @@ void process_message(event_loop *loop,
       start_worker(state);
     }
   } break;
-  case MessageType_EventLogMessage: {
+  case ray::local_scheduler::protocol::MessageType_EventLogMessage: {
     /* Parse the message. */
-    auto message = flatbuffers::GetRoot<EventLogMessage>(input);
+    auto message =
+        flatbuffers::GetRoot<ray::local_scheduler::protocol::EventLogMessage>(
+            input);
     if (state->db != NULL) {
       RayLogger_log_event(state->db, (uint8_t *) message->key()->data(),
                           message->key()->size(),
@@ -1132,11 +1141,12 @@ void process_message(event_loop *loop,
                           message->value()->size(), message->timestamp());
     }
   } break;
-  case MessageType_RegisterClientRequest: {
-    auto message = flatbuffers::GetRoot<RegisterClientRequest>(input);
+  case ray::local_scheduler::protocol::MessageType_RegisterClientRequest: {
+    auto message = flatbuffers::GetRoot<
+        ray::local_scheduler::protocol::RegisterClientRequest>(input);
     handle_client_register(state, worker, message);
   } break;
-  case MessageType_GetTask: {
+  case ray::local_scheduler::protocol::MessageType_GetTask: {
     /* If this worker reports a completed task, account for resources. */
     finish_task(state, worker);
     /* Let the scheduling algorithm process the fact that there is an available
@@ -1147,8 +1157,10 @@ void process_message(event_loop *loop,
       handle_actor_worker_available(state, state->algorithm_state, worker);
     }
   } break;
-  case MessageType_ReconstructObject: {
-    auto message = flatbuffers::GetRoot<ReconstructObject>(input);
+  case ray::local_scheduler::protocol::MessageType_ReconstructObject: {
+    auto message =
+        flatbuffers::GetRoot<ray::local_scheduler::protocol::ReconstructObject>(
+            input);
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
       /* If the worker was executing a task (i.e. non-driver) and it wasn't
        * already blocked on an object that's not locally available, update its
@@ -1178,7 +1190,7 @@ void process_message(event_loop *loop,
     RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_sock;
     handle_client_disconnect(state, worker);
   } break;
-  case MessageType_NotifyUnblocked: {
+  case ray::local_scheduler::protocol::MessageType_NotifyUnblocked: {
     /* TODO(rkn): A driver may call this as well, right? */
     if (worker->task_in_progress != NULL) {
       /* If the worker was executing a task (i.e. non-driver), update its
@@ -1206,18 +1218,22 @@ void process_message(event_loop *loop,
     }
     print_worker_info("Worker unblocked", state->algorithm_state);
   } break;
-  case MessageType_PutObject: {
-    auto message = flatbuffers::GetRoot<PutObject>(input);
+  case ray::local_scheduler::protocol::MessageType_PutObject: {
+    auto message =
+        flatbuffers::GetRoot<ray::local_scheduler::protocol::PutObject>(input);
     result_table_add(state->db, from_flatbuf(*message->object_id()),
                      from_flatbuf(*message->task_id()), true, NULL, NULL, NULL);
   } break;
-  case MessageType_GetActorFrontierRequest: {
-    auto message = flatbuffers::GetRoot<GetActorFrontierRequest>(input);
+  case ray::local_scheduler::protocol::MessageType_GetActorFrontierRequest: {
+    auto message = flatbuffers::GetRoot<
+        ray::local_scheduler::protocol::GetActorFrontierRequest>(input);
     ActorID actor_id = from_flatbuf(*message->actor_id());
     handle_get_actor_frontier(state, worker, actor_id);
   } break;
-  case MessageType_SetActorFrontier: {
-    auto message = flatbuffers::GetRoot<ActorFrontier>(input);
+  case ray::local_scheduler::protocol::MessageType_SetActorFrontier: {
+    auto message =
+        flatbuffers::GetRoot<ray::local_scheduler::protocol::ActorFrontier>(
+            input);
     handle_set_actor_frontier(state, worker, *message);
   } break;
   default:
