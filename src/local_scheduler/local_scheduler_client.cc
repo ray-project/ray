@@ -192,12 +192,13 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     LocalSchedulerConnection *conn,
     const std::vector<ObjectID> &object_ids,
     int num_returns,
-    int64_t timeout,
+    int64_t timeout_milliseconds,
     bool wait_local) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
-      fbb, to_flatbuf(fbb, object_ids), num_returns, timeout, wait_local);
+      fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds,
+      wait_local);
   fbb.Finish(message);
   write_message(conn->conn, ray::protocol::MessageType_WaitRequest,
                 fbb.GetSize(), fbb.GetBufferPointer());
@@ -206,6 +207,7 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
   int64_t reply_size;
   uint8_t *reply;
   read_message(conn->conn, &type, &reply_size, &reply);
+  RAY_CHECK(type == ray::protocol::MessageType_WaitReply);
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
   // Convert result.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result;
@@ -219,5 +221,7 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
     ObjectID object_id = ObjectID::from_binary(remaining->Get(i)->str());
     result.second.push_back(object_id);
   }
+  /* Free the original message from the local scheduler. */
+  free(reply);
   return result;
 }

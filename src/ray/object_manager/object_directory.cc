@@ -112,15 +112,17 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
     status = gcs_client_->object_table().RequestNotifications(
         JobID::nil(), object_id, gcs_client_->client_table().GetLocalClientId());
   }
-  if (listeners_[object_id].callbacks.count(callback_id) > 0) {
+  auto &listener_state = listeners_.find(object_id)->second;
+  // TODO(hme): Make this fatal after implementing Pull suppression.
+  if (listener_state.callbacks.count(callback_id) > 0) {
     return ray::Status::OK();
   }
-  listeners_[object_id].callbacks.emplace(callback_id, callback);
+  listener_state.callbacks.emplace(callback_id, callback);
   // Immediately notify of found object locations.
-  if (!listeners_[object_id].current_object_locations.empty()) {
+  if (!listener_state.current_object_locations.empty()) {
     std::vector<ClientID> client_id_vec(
-        listeners_[object_id].current_object_locations.begin(),
-        listeners_[object_id].current_object_locations.end());
+        listener_state.current_object_locations.begin(),
+        listener_state.current_object_locations.end());
     callback(client_id_vec, object_id);
   }
   return status;

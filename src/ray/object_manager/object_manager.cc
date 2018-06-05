@@ -355,16 +355,16 @@ ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
   return status;
 }
 
-ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t wait_ms,
-                                uint64_t num_required_objects, bool wait_local,
-                                const WaitCallback &callback) {
+ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
+                                int64_t timeout_ms, uint64_t num_required_objects,
+                                bool wait_local, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::from_random();
 
   if (wait_local) {
     return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
   }
 
-  RAY_CHECK(wait_ms >= 0);
+  RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);
   RAY_CHECK(num_required_objects <= object_ids.size());
   if (object_ids.size() == 0) {
@@ -372,34 +372,39 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
   }
 
   // Initialize fields.
-  active_wait_requests_.emplace(wait_id, WaitState(*main_service_, wait_ms, callback));
+  active_wait_requests_.emplace(wait_id, WaitState(*main_service_, timeout_ms, callback));
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
   wait_state.object_id_order = object_ids;
-  wait_state.wait_ms = wait_ms;
+  wait_state.timeout_ms = timeout_ms;
   wait_state.num_required_objects = num_required_objects;
-  for (auto &oid : object_ids) {
-    if (local_objects_.count(oid) > 0) {
-      wait_state.found.insert(oid);
+  for (auto &object_id : object_ids) {
+    if (local_objects_.count(object_id) > 0) {
+      wait_state.found.insert(object_id);
     } else {
-      wait_state.remaining.insert(oid);
+      wait_state.remaining.insert(object_id);
     }
   }
 
   if (wait_state.remaining.empty()) {
     WaitComplete(wait_id);
   } else {
-    for (auto &oid : wait_state.remaining) {
+    // We invoke lookup calls immediately after checking which objects are local to
+    // obtain current information about the location of remote objects. Thus,
+    // we obtain information about all given objects, regardless of their location.
+    // This is required to ensure we do not bias returning locally available objects
+    // as ready whenever Wait is invoked with a mixture of local and remote objects.
+    for (auto &object_id : wait_state.remaining) {
       // Lookup remaining objects.
-      wait_state.requested_objects.insert(oid);
+      wait_state.requested_objects.insert(object_id);
       RAY_CHECK_OK(object_directory_->LookupLocations(
-          oid, [this, wait_id](const std::vector<ClientID> &client_ids,
-                               const ObjectID &object_id) {
+          object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
+                                     const ObjectID &lookup_object_id) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             if (!client_ids.empty()) {
-              wait_state.remaining.erase(object_id);
-              wait_state.found.insert(object_id);
+              wait_state.remaining.erase(lookup_object_id);
+              wait_state.found.insert(lookup_object_id);
             }
-            wait_state.requested_objects.erase(object_id);
+            wait_state.requested_objects.erase(lookup_object_id);
             if (wait_state.requested_objects.empty()) {
               AllWaitLookupsComplete(wait_id);
             }
@@ -412,47 +417,46 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids, int64_t
 void ObjectManager::AllWaitLookupsComplete(const UniqueID &wait_id) {
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
   if (wait_state.found.size() >= wait_state.num_required_objects ||
-      wait_state.wait_ms == 0) {
+      wait_state.timeout_ms == 0) {
     // Requirements already satisfied.
     WaitComplete(wait_id);
   } else {
-    for (auto &oid : wait_state.remaining) {
+    for (auto &object_id : wait_state.remaining) {
       // Subscribe to object notifications.
-      wait_state.requested_objects.insert(oid);
+      wait_state.requested_objects.insert(object_id);
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-          wait_id, oid, [this, wait_id](const std::vector<ClientID> &client_ids,
-                                        const ObjectID &object_id) {
+          wait_id, object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
+                                              const ObjectID &subscribe_object_id) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
-            if (wait_state.remaining.count(object_id) != 0) {
-              wait_state.remaining.erase(object_id);
-              wait_state.found.insert(object_id);
-            }
-            wait_state.requested_objects.erase(object_id);
-            RAY_CHECK_OK(
-                object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
+            RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
+            wait_state.found.insert(subscribe_object_id);
+            wait_state.requested_objects.erase(subscribe_object_id);
+            RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
+                wait_id, subscribe_object_id));
             if (wait_state.found.size() >= wait_state.num_required_objects) {
               WaitComplete(wait_id);
             }
           }));
     }
-    // Set timeout.
-    // TODO (hme): If we need to just wait for all objects independent of time
-    // (i.e. infinite wait time), determine what the value of wait_ms should be and
-    // skip this call. WaitComplete will be invoked when all objects have locations.
-    wait_state.timeout_timer->async_wait(
-        [this, wait_id](const boost::system::error_code &error_code) {
-          if (error_code.value() != 0) {
-            return;
-          }
-          WaitComplete(wait_id);
-        });
+    if (wait_state.timeout_ms != -1) {
+      wait_state.timeout_timer->async_wait(
+          [this, wait_id](const boost::system::error_code &error_code) {
+            if (error_code.value() != 0) {
+              return;
+            }
+            WaitComplete(wait_id);
+          });
+    }
   }
 }
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
-  // If we complete with outstanding requests, then wait_ms should be non-zero.
-  RAY_CHECK(!(wait_state.requested_objects.size() > 0) || wait_state.wait_ms > 0);
+  // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
+  // (infinite wait time).
+  if (!wait_state.requested_objects.empty()) {
+    RAY_CHECK(wait_state.timeout_ms > 0 || wait_state.timeout_ms == -1);
+  }
   // Unsubscribe to any objects that weren't found in the time allotted.
   for (auto &object_id : wait_state.requested_objects) {
     RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));

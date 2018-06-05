@@ -451,13 +451,7 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType_WaitRequest: {
     // Read the data.
     auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
-    auto object_id_strings = message->object_ids();
-    int num_requests = object_id_strings->size();
-    std::vector<ObjectID> object_ids;
-    for (int i = 0; i < num_requests; i++) {
-      ObjectID object_id = ObjectID::from_binary(object_id_strings->Get(i)->str());
-      object_ids.push_back(object_id);
-    }
+    std::vector<ObjectID> object_ids = from_flatbuf(*message->object_ids());
     int64_t wait_ms = message->timeout();
     uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
     bool wait_local = message->wait_local();

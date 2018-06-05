@@ -278,6 +278,8 @@ class TestObjectManagerCommands : public TestObjectManager {
     current_wait_test += 1;
     switch (current_wait_test) {
     case 0: {
+      // Simple test with timeout = 0 to ensure timeout_ms = 0 is handled correctly.
+      // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
       TestWait(100, 5, 3, 0, false, false);
     } break;
     case 1: {
@@ -289,10 +291,13 @@ class TestObjectManagerCommands : public TestObjectManager {
     case 3: {
       TestWait(100, 5, 6, 1000, true, false);
     } break;
+    case 4: {
+      TestWait(100, 5, 5, -1, false, false);
+    } break;
     }
   }
 
-  void TestWait(int data_size, int num_objects, uint64_t required_objects, int wait_ms,
+  void TestWait(int data_size, int num_objects, uint64_t required_objects, int timeout_ms,
                 bool include_nonexistent, bool test_local) {
     std::vector<ObjectID> object_ids;
     for (int i = -1; ++i < num_objects;) {
@@ -310,8 +315,8 @@ class TestObjectManagerCommands : public TestObjectManager {
     }
     boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
     RAY_CHECK_OK(server1->object_manager_.Wait(
-        object_ids, wait_ms, required_objects, false,
-        [this, object_ids, num_objects, wait_ms, required_objects, start_time](
+        object_ids, timeout_ms, required_objects, false,
+        [this, object_ids, num_objects, timeout_ms, required_objects, start_time](
             const std::vector<ray::ObjectID> &found,
             const std::vector<ray::ObjectID> &remaining) {
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
@@ -342,7 +347,7 @@ class TestObjectManagerCommands : public TestObjectManager {
 
           switch (current_wait_test) {
           case 0: {
-            // Ensure wait_ms = 0 returns expected number of found / remaining objects.
+            // Ensure timeout_ms = 0 returns expected number of found / remaining objects.
             ASSERT_TRUE(found.size() <= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
@@ -360,9 +365,16 @@ class TestObjectManagerCommands : public TestObjectManager {
             NextWaitTest();
           } break;
           case 3: {
-            // Ensure lookup returns after wait_ms elapses when one object doesn't exist.
-            ASSERT_TRUE(elapsed >= wait_ms);
+            // Ensure lookup returns after timeout_ms elapses when one object doesn't
+            // exist.
+            ASSERT_TRUE(elapsed >= timeout_ms);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
+            NextWaitTest();
+          } break;
+          case 4: {
+            // Ensure timeout_ms = -1 works properly.
+            ASSERT_TRUE(static_cast<int>(found.size()) == num_objects);
+            ASSERT_TRUE(remaining.size() == 0);
             TestWaitComplete();
           } break;
           }

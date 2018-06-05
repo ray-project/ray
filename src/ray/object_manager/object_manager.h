@@ -157,7 +157,7 @@ class ObjectManager : public ObjectManagerInterface {
   /// \param callback Invoked when either timeout_ms is satisfied OR num_ready_objects
   /// is satisfied.
   /// \return Status of whether the wait successfully initiated.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, int64_t wait_ms,
+  ray::Status Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                    uint64_t num_required_objects, bool wait_local,
                    const WaitCallback &callback);
 
@@ -197,17 +197,20 @@ class ObjectManager : public ObjectManagerInterface {
   /// Cache of locally available objects.
   std::unordered_map<ObjectID, ObjectInfoT> local_objects_;
 
+  /// This is used as the callback identifier in Pull for
+  /// SubscribeObjectLocations. We only need one identifier because we never need to
+  /// subscribe multiple times to the same object during Pull.
   UniqueID object_directory_pull_callback_id_ = UniqueID::from_random();
 
   struct WaitState {
-    WaitState(asio::io_service &service, int64_t wait_ms, const WaitCallback &callback)
-        : wait_ms(wait_ms),
+    WaitState(asio::io_service &service, int64_t timeout_ms, const WaitCallback &callback)
+        : timeout_ms(timeout_ms),
           timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
-              new boost::asio::deadline_timer(service,
-                                              boost::posix_time::milliseconds(wait_ms)))),
+              new boost::asio::deadline_timer(
+                  service, boost::posix_time::milliseconds(timeout_ms)))),
           callback(callback) {}
     /// The period of time to wait before invoking the callback.
-    int64_t wait_ms;
+    int64_t timeout_ms;
     /// The timer used whenever wait_ms > 0.
     std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
     /// The callback invoked when WaitCallback is complete.
