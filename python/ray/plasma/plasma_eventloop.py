@@ -1,6 +1,9 @@
 import asyncio
 import collections
+import ctypes
 import selectors
+import socket
+import sys
 
 import ray
 
@@ -73,6 +76,60 @@ class PlasmaObjectFuture(asyncio.Future):
     
     def complete(self):
         self.set_result(self.object_id)
+
+
+class PlasmaEpoll(selectors.BaseSelector):
+    def __init__(self, worker):
+        self.worker = worker
+        self.client = self.worker.plasma_client
+        self.socket = socket.fromfd(self.client.notification_fd, socket.AF_UNIX, socket.SOCK_STREAM, 0)
+        self.waiting_dict = collections.defaultdict(list)
+    
+    def _read_message(self):
+        size_data = self.socket.recv(ctypes.sizeof(ctypes.c_int64))
+        size = int.from_bytes(size_data, sys.byteorder, signed=True)
+        data = self.socket.recv(size)
+        return data
+    
+    def _decode_data(self, data):
+        # `ObjectInfo` is defined in `ray/src/common/format/common.fbs`
+        # TODO: decode data
+        raise NotImplementedError
+    
+    def select(self, timeout=None):
+        self.socket.settimeout(timeout)
+        
+        try:
+            data = self._read_message()
+        except (BlockingIOError, socket.timeout):
+            return []
+        finally:
+            self.socket.settimeout(None)
+        
+        ready_keys = []
+        object_ids = self._decode_data(data)
+        for oid in object_ids:
+            if oid in self.waiting_dict:
+                key = self.waiting_dict[oid]
+                ready_keys.append(key)
+        return ready_keys
+    
+    def register(self, plasma_fut, events=None, data=None):
+        if plasma_fut.object_id in self.waiting_dict:
+            raise Exception("ObjectID already been registered.")
+        else:
+            key = selectors.SelectorKey(fileobj=plasma_fut, fd=plasma_fut.object_id, events=events, data=data)
+            self.waiting_dict[key.fd] = key
+            return key
+    
+    def unregister(self, plasma_fut):
+        return self.waiting_dict.pop(plasma_fut.object_id)
+    
+    def get_map(self):
+        return self.waiting_dict
+    
+    def get_key(self, object_id):
+        return self.waiting_dict[object_id]
 
 
 class PlasmaPoll(selectors.BaseSelector):
@@ -179,7 +236,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     def wait(self, object_ids, num_returns=1, timeout=None):
         futures = [self._register_id(oid) for oid in object_ids]
         _done, _pending = yield from _wait(futures, timeout=timeout, num_returns=num_returns, loop=self)
-        done = [fut.object_id for fut in _done]
+        done = [fut.object_id for fut in _done]  # done object_ids should all be unregistered
         pending = [fut.object_id for fut in _pending]
         self._release(*pending)
         return done, pending
