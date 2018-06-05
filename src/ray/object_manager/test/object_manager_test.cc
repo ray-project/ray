@@ -307,11 +307,12 @@ class TestObjectManagerCommands : public TestObjectManager {
             const std::vector<ray::ObjectID> &remaining) {
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
                                 .total_milliseconds();
-          RAY_LOG(INFO) << "elapsed " << elapsed;
-          RAY_LOG(INFO) << "found " << found.size();
-          RAY_LOG(INFO) << "remaining " << remaining.size();
-          // There's nothing more to test. The process will exit if something goes wrong.
+          RAY_LOG(DEBUG) << "elapsed " << elapsed;
+          RAY_LOG(DEBUG) << "found " << found.size();
+          RAY_LOG(DEBUG) << "remaining " << remaining.size();
           RAY_CHECK(found.size() == 1);
+          // There's nothing more to test. A check will fail if unexpected behavior is
+          // triggered.
           get_object_directory(*server1).UnsubscribeObjectLocations(sub_id, object_1);
           NextWaitTest();
         }));
@@ -321,21 +322,29 @@ class TestObjectManagerCommands : public TestObjectManager {
     current_wait_test += 1;
     switch (current_wait_test) {
     case 0: {
-      // Simple test with timeout = 0 to ensure timeout_ms = 0 is handled correctly.
+      // Ensure timeout_ms = 0 is handled correctly.
       // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
-      TestWait(100, 5, 3, 0, false, false);
+      TestWait(100, 5, 3, /*timeout_ms=*/0, false, false);
     } break;
     case 1: {
-      TestWait(100, 5, 3, 1000, false, true);
+      // Ensure timeout_ms = 1000 is handled correctly.
+      // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
+      TestWait(100, 5, 3, /*timeout_ms=*/1000, false, false);
     } break;
     case 2: {
-      TestWait(100, 5, 3, 1000, false, false);
+      // Generate objects locally to ensure local object code-path works properly.
+      // Out of 5 objects, we expect 3 ready objects and 2 remaining objects.
+      TestWait(100, 5, 3, 1000, false, /*test_local=*/true);
     } break;
     case 3: {
-      TestWait(100, 5, 6, 1000, true, false);
+      // Wait on an object that's never registered with GCS to ensure timeout works
+      // properly.
+      TestWait(100, /*num_objects=*/5, /*required_objects=*/6, 1000,
+               /*include_nonexistent=*/true, false);
     } break;
     case 4: {
-      TestWait(100, 5, 5, -1, false, false);
+      // Ensure infinite time code-path works properly.
+      TestWait(100, 5, 5, /*timeout_ms=*/-1, false, false);
     } break;
     }
   }
@@ -396,13 +405,13 @@ class TestObjectManagerCommands : public TestObjectManager {
             NextWaitTest();
           } break;
           case 1: {
-            // Ensure lookup succeeds as expected when objects are local.
+            // Ensure lookup succeeds as expected when timeout_ms = 1000.
             ASSERT_TRUE(found.size() >= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
           } break;
           case 2: {
-            // Ensure lookup succeeds as expected when objects are remote.
+            // Ensure lookup succeeds as expected when objects are local.
             ASSERT_TRUE(found.size() >= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
