@@ -20,7 +20,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
    * NOTE(swang): If the local scheduler exits and we are registered as a
    * worker, we will get killed. */
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateRegisterClientRequest(
+  auto message = ray::local_scheduler::protocol::CreateRegisterClientRequest(
       fbb, is_worker, to_flatbuf(fbb, client_id), getpid());
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
@@ -40,7 +40,7 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn) {
 
 void local_scheduler_disconnect_client(LocalSchedulerConnection *conn) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateDisconnectClient(fbb);
+  auto message = ray::local_scheduler::protocol::CreateDisconnectClient(fbb);
   fbb.Finish(message);
   write_message(conn->conn,
                 ray::local_scheduler::protocol::MessageType_DisconnectClient,
@@ -56,8 +56,8 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
   flatbuffers::FlatBufferBuilder fbb;
   auto key_string = fbb.CreateString((char *) key, key_length);
   auto value_string = fbb.CreateString((char *) value, value_length);
-  auto message =
-      CreateEventLogMessage(fbb, key_string, value_string, timestamp);
+  auto message = ray::local_scheduler::protocol::CreateEventLogMessage(fbb,
+      key_string, value_string, timestamp);
   fbb.Finish(message);
   write_message(conn->conn,
                 ray::local_scheduler::protocol::MessageType_EventLogMessage,
@@ -72,8 +72,8 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
   auto task_spec =
       fbb.CreateString(reinterpret_cast<char *>(execution_spec.Spec()),
                        execution_spec.SpecSize());
-  auto message =
-      CreateSubmitTaskRequest(fbb, execution_dependencies, task_spec);
+  auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(fbb,
+      execution_dependencies, task_spec);
   fbb.Finish(message);
   write_message(conn->conn,
                 ray::local_scheduler::protocol::MessageType_SubmitTask,
@@ -86,7 +86,8 @@ void local_scheduler_submit_raylet(
     ray::raylet::TaskSpecification task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
-  auto message = CreateSubmitTaskRequest(fbb, execution_dependencies_message,
+  auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(fbb,
+      execution_dependencies_message,
                                          task_spec.ToFlatbuffer(fbb));
   fbb.Finish(message);
   write_message(conn->conn,
@@ -143,7 +144,8 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn) {
 void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
                                         ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateReconstructObject(fbb, to_flatbuf(fbb, object_id));
+  auto message = ray::local_scheduler::protocol::CreateReconstructObject(fbb,
+      to_flatbuf(fbb, object_id));
   fbb.Finish(message);
   write_message(conn->conn,
                 ray::local_scheduler::protocol::MessageType_ReconstructObject,
@@ -167,8 +169,8 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
                                 TaskID task_id,
                                 ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreatePutObject(fbb, to_flatbuf(fbb, task_id),
-                                 to_flatbuf(fbb, object_id));
+  auto message = ray::local_scheduler::protocol::CreatePutObject(fbb,
+      to_flatbuf(fbb, task_id), to_flatbuf(fbb, object_id));
   fbb.Finish(message);
 
   write_message(conn->conn,
@@ -180,7 +182,8 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
     LocalSchedulerConnection *conn,
     ActorID actor_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateGetActorFrontierRequest(fbb, to_flatbuf(fbb, actor_id));
+  auto message = ray::local_scheduler::protocol::CreateGetActorFrontierRequest(
+      fbb, to_flatbuf(fbb, actor_id));
   fbb.Finish(message);
   write_message(
       conn->conn,
