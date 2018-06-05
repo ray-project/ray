@@ -56,8 +56,8 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
   flatbuffers::FlatBufferBuilder fbb;
   auto key_string = fbb.CreateString((char *) key, key_length);
   auto value_string = fbb.CreateString((char *) value, value_length);
-  auto message = ray::local_scheduler::protocol::CreateEventLogMessage(fbb,
-      key_string, value_string, timestamp);
+  auto message = ray::local_scheduler::protocol::CreateEventLogMessage(
+      fbb, key_string, value_string, timestamp);
   fbb.Finish(message);
   write_message(conn->conn,
                 ray::local_scheduler::protocol::MessageType_EventLogMessage,
@@ -72,8 +72,8 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
   auto task_spec =
       fbb.CreateString(reinterpret_cast<char *>(execution_spec.Spec()),
                        execution_spec.SpecSize());
-  auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(fbb,
-      execution_dependencies, task_spec);
+  auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(
+      fbb, execution_dependencies, task_spec);
   fbb.Finish(message);
   write_message(conn->conn,
                 ray::local_scheduler::protocol::MessageType_SubmitTask,
@@ -144,8 +144,8 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn) {
 void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
                                         ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::local_scheduler::protocol::CreateReconstructObject(fbb,
-      to_flatbuf(fbb, object_id));
+  auto message = ray::local_scheduler::protocol::CreateReconstructObject(
+      fbb, to_flatbuf(fbb, object_id));
   fbb.Finish(message);
   write_message(conn->conn,
                 ray::local_scheduler::protocol::MessageType_ReconstructObject,
@@ -169,8 +169,8 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
                                 TaskID task_id,
                                 ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::local_scheduler::protocol::CreatePutObject(fbb,
-      to_flatbuf(fbb, task_id), to_flatbuf(fbb, object_id));
+  auto message = ray::local_scheduler::protocol::CreatePutObject(
+      fbb, to_flatbuf(fbb, task_id), to_flatbuf(fbb, object_id));
   fbb.Finish(message);
 
   write_message(conn->conn,

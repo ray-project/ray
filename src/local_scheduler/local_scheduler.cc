@@ -528,8 +528,8 @@ void assign_task_to_worker(LocalSchedulerState *state,
 
   /* Construct a flatbuffer object to send to the worker. */
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::local_scheduler::protocol::CreateGetTaskReply(fbb,
-      fbb.CreateString((char *) spec, task_spec_size),
+  auto message = ray::local_scheduler::protocol::CreateGetTaskReply(
+      fbb, fbb.CreateString((char *) spec, task_spec_size),
       fbb.CreateVector(worker->gpus_in_use));
   fbb.Finish(message);
 
@@ -925,7 +925,8 @@ void reconstruct_object(LocalSchedulerState *state,
 }
 
 void handle_client_register(
-    LocalSchedulerState *state, LocalSchedulerClient *worker,
+    LocalSchedulerState *state,
+    LocalSchedulerClient *worker,
     const ray::local_scheduler::protocol::RegisterClientRequest *message) {
   /* Make sure this worker hasn't already registered. */
   RAY_CHECK(!worker->registered);
@@ -1051,7 +1052,8 @@ void handle_get_actor_frontier(LocalSchedulerState *state,
 }
 
 void handle_set_actor_frontier(
-    LocalSchedulerState *state, LocalSchedulerClient *worker,
+    LocalSchedulerState *state,
+    LocalSchedulerClient *worker,
     ray::local_scheduler::protocol::ActorFrontier const &frontier) {
   /* Parse the ActorFrontier flatbuffer. */
   ActorID actor_id = from_flatbuf(*frontier.actor_id());
