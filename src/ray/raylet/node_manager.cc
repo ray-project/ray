@@ -6,28 +6,40 @@
 
 namespace {
 
+namespace local_scheduler_protocol = ray::local_scheduler::protocol;
+
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
 // Check consistency between client and server protocol.
-RAY_CHECK_ENUM(protocol::MessageType_SubmitTask, MessageType_SubmitTask);
-RAY_CHECK_ENUM(protocol::MessageType_TaskDone, MessageType_TaskDone);
-RAY_CHECK_ENUM(protocol::MessageType_EventLogMessage, MessageType_EventLogMessage);
+RAY_CHECK_ENUM(protocol::MessageType_SubmitTask,
+               local_scheduler_protocol::MessageType_SubmitTask);
+RAY_CHECK_ENUM(protocol::MessageType_TaskDone,
+               local_scheduler_protocol::MessageType_TaskDone);
+RAY_CHECK_ENUM(protocol::MessageType_EventLogMessage,
+               local_scheduler_protocol::MessageType_EventLogMessage);
 RAY_CHECK_ENUM(protocol::MessageType_RegisterClientRequest,
-               MessageType_RegisterClientRequest);
+               local_scheduler_protocol::MessageType_RegisterClientRequest);
 RAY_CHECK_ENUM(protocol::MessageType_RegisterClientReply,
-               MessageType_RegisterClientReply);
-RAY_CHECK_ENUM(protocol::MessageType_DisconnectClient, MessageType_DisconnectClient);
-RAY_CHECK_ENUM(protocol::MessageType_GetTask, MessageType_GetTask);
-RAY_CHECK_ENUM(protocol::MessageType_ExecuteTask, MessageType_ExecuteTask);
-RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject, MessageType_ReconstructObject);
-RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked, MessageType_NotifyUnblocked);
-RAY_CHECK_ENUM(protocol::MessageType_PutObject, MessageType_PutObject);
+               local_scheduler_protocol::MessageType_RegisterClientReply);
+RAY_CHECK_ENUM(protocol::MessageType_DisconnectClient,
+               local_scheduler_protocol::MessageType_DisconnectClient);
+RAY_CHECK_ENUM(protocol::MessageType_GetTask,
+               local_scheduler_protocol::MessageType_GetTask);
+RAY_CHECK_ENUM(protocol::MessageType_ExecuteTask,
+               local_scheduler_protocol::MessageType_ExecuteTask);
+RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject,
+               local_scheduler_protocol::MessageType_ReconstructObject);
+RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked,
+               local_scheduler_protocol::MessageType_NotifyUnblocked);
+RAY_CHECK_ENUM(protocol::MessageType_PutObject,
+               local_scheduler_protocol::MessageType_PutObject);
 RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierRequest,
-               MessageType_GetActorFrontierRequest);
+               local_scheduler_protocol::MessageType_GetActorFrontierRequest);
 RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierReply,
-               MessageType_GetActorFrontierReply);
-RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier, MessageType_SetActorFrontier);
+               local_scheduler_protocol::MessageType_GetActorFrontierReply);
+RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier,
+               local_scheduler_protocol::MessageType_SetActorFrontier);
 
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
@@ -70,7 +82,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_ms_(config.heartbeat_period_ms),
       local_resources_(config.resource_config),
-      worker_pool_(config.num_initial_workers, config.worker_command),
+      worker_pool_(config.num_initial_workers,
+                   static_cast<int>(config.resource_config.GetNumCpus()),
+                   config.worker_command),
       local_queues_(SchedulingQueue()),
       scheduling_policy_(local_queues_),
       reconstruction_policy_([this](const TaskID &task_id) { ResubmitTask(task_id); }),
@@ -400,8 +414,7 @@ void NodeManager::ProcessClientMessage(
       const auto &task = tasks.front();
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      double required_cpus = 0;
-      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      double required_cpus = required_resources.GetNumCpus();
       const std::unordered_map<std::string, double> cpu_resources = {
           {kCPU_ResourceLabel, required_cpus}};
       // Release the CPU resources.
@@ -429,8 +442,7 @@ void NodeManager::ProcessClientMessage(
       const auto &task = tasks.front();
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      double required_cpus = 0;
-      RAY_CHECK(required_resources.GetResource(kCPU_ResourceLabel, &required_cpus));
+      double required_cpus = required_resources.GetNumCpus();
       const std::unordered_map<std::string, double> cpu_resources = {
           {kCPU_ResourceLabel, required_cpus}};
       // Acquire the CPU resources.
