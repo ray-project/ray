@@ -8,10 +8,8 @@ set -x
 
 git clone https://github.com/ray-project/asv.git /tmp/asv/ || true
 cd /tmp/asv/
-git checkout force_commit
 pip install -e .
 
 cd /ray/python/
 asv machine --yes
 asv run --show-stderr --python=same --force-record-commit=$(cat ../git-rev)
-
