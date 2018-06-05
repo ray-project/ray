@@ -220,10 +220,10 @@ uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) {
         return 0;
     }
     auto entry = lineage_.GetEntry(task_id);
-    uint64_t cnt = 0;
     if (!entry) {
         return 0;
     }
+    uint64_t cnt = 0;
     for (const auto& parent_id : entry->GetParentTaskIds()) {
         cnt += CountUnsubscribedLineage(parent_id);
     }
@@ -241,7 +241,7 @@ void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
   entry->ResetStatus(GcsStatus_UNCOMMITTED_REMOTE);
   RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
 
-  // Request a notification for every one out of max_lineage_size_ tasks,
+  // Request a notification for every max_lineage_size_ tasks,
   // so that the task and its uncommitted lineage can be evicted
   // once the commit notification is received.
   // By doing this, we make sure that the unevicted lineage won't be more than
