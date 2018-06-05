@@ -41,7 +41,7 @@ DEFAULT_CONFIG = dict(
     sgd_stepsize=0.01,
     gamma=1.0,
     shift=0,
-    observation_filter='MeanStdFilter',
+    observation_filter='NoFilter',
     seed=123,
     env_config={}
 )
