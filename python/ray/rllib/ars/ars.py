@@ -144,7 +144,6 @@ class Worker(object):
         """
 
         rollout_rewards, steps, deltas_idx = [], [], []
-        steps = 0
 
         for i in range(num_rollouts):
 
@@ -283,14 +282,14 @@ class ARSAgent(agent.Agent):
 
         for result in results_one:
             if not evaluate:
-                self.timesteps += result["steps"]
+                self.timesteps += np.sum(result["steps"])
             deltas_idx += result['deltas_idx']
             rollout_rewards += result['rollout_rewards']
             steps += [result['steps']]
 
         for result in results_two:
             if not evaluate:
-                self.timesteps += result["steps"]
+                self.timesteps += np.sum(result["steps"])
             deltas_idx += result['deltas_idx']
             rollout_rewards += result['rollout_rewards']
             steps += [result['steps']]
