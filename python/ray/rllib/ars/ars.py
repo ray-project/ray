@@ -42,6 +42,7 @@ DEFAULT_CONFIG = dict(
     gamma=1.0,
     shift=0,
     observation_filter='NoFilter',
+    policy='Linear',
     seed=123,
     env_config={}
 )
@@ -110,9 +111,14 @@ class Worker(object):
         self.delta_std = delta_std
         self.rollout_length = rollout_length
         self.sess = utils.make_session(single_threaded=True)
-        self.policy = LinearPolicy(
-            registry, self.sess, self.env.action_space, self.preprocessor,
-            config["observation_filter"])
+        if config['policy'] == 'Linear':
+            self.policy = LinearPolicy(
+                registry, self.sess, self.env.action_space, self.preprocessor,
+                config["observation_filter"])
+        else:
+            self.policy = MLPPolicy(
+                registry, self.sess, self.env.action_space, self.preprocessor,
+                config["observation_filter"])
 
     def rollout(self, shift=0., rollout_length=None):
         """ 
@@ -235,10 +241,15 @@ class ARSAgent(agent.Agent):
         self.timesteps_so_far = 0
 
         self.sess = utils.make_session(single_threaded=False)
-        # initialize policy 
-        self.policy = LinearPolicy(
-            self.registry, self.sess, env.action_space, preprocessor,
-            self.config["observation_filter"])
+        # initialize policy
+        if self.config['policy'] == 'Linear':
+            self.policy = LinearPolicy(
+                self.registry, self.sess, env.action_space, preprocessor,
+                self.config["observation_filter"])
+        else:
+            self.policy = MLPPolicy(
+                self.registry, self.sess, env.action_space, preprocessor,
+                self.config["observation_filter"])
         self.w_policy = self.policy.get_weights()
 
         # initialize optimization algorithm
