@@ -105,7 +105,7 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   /* Receive a task from the local scheduler. This will block until the local
    * scheduler gives this client a task. */
   read_message(conn->conn, &type, &reply_size, &reply);
-  if (type == DISCONNECT_CLIENT) {
+  if (type == static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT)) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
@@ -193,7 +193,7 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
   int64_t type;
   std::vector<uint8_t> reply;
   read_vector(conn->conn, &type, reply);
-  if (type == DISCONNECT_CLIENT) {
+  if (type == static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT)) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }

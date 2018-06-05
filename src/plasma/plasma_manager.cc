@@ -1309,7 +1309,7 @@ void log_object_hash_mismatch_error_task_callback(Task *task,
                 << "hash. This may mean that a non-deterministic task was "
                 << "reexecuted.";
   push_error(state->db, TaskSpec_driver_id(spec),
-             OBJECT_HASH_MISMATCH_ERROR_INDEX, error_message.str());
+             ErrorIndex::OBJECT_HASH_MISMATCH_ERROR_INDEX, error_message.str());
 }
 
 void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
@@ -1532,7 +1532,7 @@ void process_message(event_loop *loop,
     ARROW_CHECK_OK(plasma::ReadStatusRequest(data, length, &object_id, 1));
     process_status_request(conn, object_id);
   } break;
-  case DISCONNECT_CLIENT: {
+  case static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT): {
     RAY_LOG(DEBUG) << "Disconnecting client on fd " << client_sock;
     event_loop_remove_file(loop, client_sock);
     ClientConnection_free(conn);

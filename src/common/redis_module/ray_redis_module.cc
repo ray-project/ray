@@ -1463,8 +1463,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
         "TaskSpec", task_spec, "spillback_count", spillback_count, NULL);
   }
 
-  if (state_value == TASK_STATUS_WAITING ||
-      state_value == TASK_STATUS_SCHEDULED) {
+  if (static_cast<TaskStatus>(state_value) == TaskStatus::WAITING ||
+      static_cast<TaskStatus>(state_value) == TaskStatus::SCHEDULED) {
     /* Build the PUBLISH topic and message for task table subscribers. The
      * topic is a string in the format
      * "TASK_PREFIX:<local scheduler ID>:<state>". The message is a serialized
