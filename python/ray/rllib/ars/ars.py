@@ -371,7 +371,7 @@ class ARSAgent(agent.Agent):
         self.timesteps_so_far += np.sum(info_dict['steps'])
 
         # Evaluate the reward with the unperturbed params
-        rewards = self.aggregate_rollouts(num_rollouts=10, evaluate=True) # FIXME (ev) set back to 10
+        rewards = self.aggregate_rollouts(num_rollouts=10, evaluate=True)
         w = ray.get(self.workers[0].get_weights.remote())
 
         tlogger.record_tabular("AverageReward", np.mean(rewards))

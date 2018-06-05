@@ -56,7 +56,8 @@ class MLPPolicy(object):
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
             self.action_space, dist_type="deterministic")
-        model = ModelCatalog.get_model(registry, self.inputs, dist_dim)
+        model = ModelCatalog.get_model(registry, self.inputs, dist_dim,
+                                       options={"fcnet_hiddens": [64, 64]})
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
 
