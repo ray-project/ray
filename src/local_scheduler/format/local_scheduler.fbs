@@ -1,4 +1,5 @@
 // Local scheduler protocol specification
+namespace ray.local_scheduler.protocol;
 
 enum MessageType:int {
   // Task is submitted to the local scheduler. This is sent from a worker to a
