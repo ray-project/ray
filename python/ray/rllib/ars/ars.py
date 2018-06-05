@@ -128,8 +128,11 @@ class Worker(object):
 
         ob = self.env.reset()
         for i in range(rollout_length):
+            #print('observation before acting is', ob)
             action = self.policy.compute(ob)
             ob, reward, done, _ = self.env.step(action)
+            #print('action is', action)
+            #print('observation after action is', ob)
             reward = reward*(self.gamma**i)
             steps += 1
             total_reward += (reward - shift)
@@ -342,6 +345,7 @@ class ARSAgent(agent.Agent):
         print("Euclidean norm of update step:", np.linalg.norm(g_hat))
         compute_step = self.optimizer._compute_step(g_hat)
         self.w_policy -= compute_step.reshape(self.w_policy.shape)
+        self.policy.set_weights(self.w_policy)
         return g_hat, info_dict
 
     def _train(self):
@@ -356,7 +360,7 @@ class ARSAgent(agent.Agent):
         self.timesteps_so_far += np.sum(info_dict['steps'])
 
         # Evaluate the reward with the unperturbed params
-        rewards = self.aggregate_rollouts(num_rollouts=10, evaluate=True)
+        rewards = self.aggregate_rollouts(num_rollouts=10, evaluate=True) # FIXME (ev) set back to 10
         w = ray.get(self.workers[0].get_weights.remote())
 
         tlogger.record_tabular("AverageReward", np.mean(rewards))
@@ -369,7 +373,7 @@ class ARSAgent(agent.Agent):
 
         result = ray.tune.result.TrainingResult(
             episode_reward_mean=np.mean(rewards),
-            episode_len_mean=np.mean(info_dict['steps'])/2.0,
+            episode_len_mean=np.mean(info_dict['steps']),
             timesteps_this_iter=np.sum(info_dict['steps']))
 
         return result
