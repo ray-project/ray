@@ -850,9 +850,29 @@ class APITest(unittest.TestCase):
         with self.assertRaises(TypeError):
             ray.wait([1])
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
+    def testWaitIterables(self):
+        self.init_ray(num_cpus=1)
+
+        @ray.remote
+        def f(delay):
+            time.sleep(delay)
+            return 1
+
+        objectids = (f.remote(1.0), f.remote(0.5), f.remote(0.5),
+                     f.remote(0.5))
+        ready_ids, remaining_ids = ray.experimental.wait(objectids)
+        self.assertEqual(len(ready_ids), 1)
+        self.assertEqual(len(remaining_ids), 3)
+
+        objectids = np.array(
+            [f.remote(1.0),
+             f.remote(0.5),
+             f.remote(0.5),
+             f.remote(0.5)])
+        ready_ids, remaining_ids = ray.experimental.wait(objectids)
+        self.assertEqual(len(ready_ids), 1)
+        self.assertEqual(len(remaining_ids), 3)
+
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
         # launched in this experiment can run at the same time.

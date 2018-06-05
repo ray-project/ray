@@ -162,6 +162,8 @@ class ObjectManager : public ObjectManagerInterface {
                    const WaitCallback &callback);
 
  private:
+  friend class TestObjectManager;
+
   ClientID client_id_;
   const ObjectManagerConfig config_;
   std::unique_ptr<ObjectDirectoryInterface> object_directory_;

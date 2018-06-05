@@ -421,12 +421,24 @@ void ObjectManager::AllWaitLookupsComplete(const UniqueID &wait_id) {
     // Requirements already satisfied.
     WaitComplete(wait_id);
   } else {
-    for (auto &object_id : wait_state.remaining) {
+    // Subscribe to objects in order to ensure Wait-related tests are deterministic.
+    for (auto &object_id : wait_state.object_id_order) {
+      if (wait_state.remaining.count(object_id) == 0) {
+        continue;
+      }
       // Subscribe to object notifications.
+      if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
+        // This is possible if an object's location is obtained immediately,
+        // within the current callstack. In this case, WaitComplete has been
+        // invoked already, so we're done.
+        return;
+      }
       wait_state.requested_objects.insert(object_id);
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
           wait_id, object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
                                               const ObjectID &subscribe_object_id) {
+            auto object_id_wait_state = active_wait_requests_.find(wait_id);
+            RAY_CHECK(object_id_wait_state != active_wait_requests_.end());
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
             wait_state.found.insert(subscribe_object_id);

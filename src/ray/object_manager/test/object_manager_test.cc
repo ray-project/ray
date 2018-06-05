@@ -70,6 +70,7 @@ class MockServer {
     DoAcceptObjectManager();
   }
 
+  friend class TestObjectManager;
   friend class TestObjectManagerCommands;
 
   boost::asio::ip::tcp::acceptor object_manager_acceptor_;
@@ -124,7 +125,6 @@ class TestObjectManager : public ::testing::Test {
     om_config_1.max_sends = max_sends;
     om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
-    // Push will stop immediately if local object is not satisfied.
     om_config_1.push_timeout_ms = push_timeout_ms;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
@@ -136,7 +136,6 @@ class TestObjectManager : public ::testing::Test {
     om_config_2.max_sends = max_sends;
     om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
-    // Push will wait infinitely until local object is satisfied.
     om_config_2.push_timeout_ms = push_timeout_ms;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
@@ -176,6 +175,10 @@ class TestObjectManager : public ::testing::Test {
   void object_added_handler_1(ObjectID object_id) { v1.push_back(object_id); };
 
   void object_added_handler_2(ObjectID object_id) { v2.push_back(object_id); };
+
+  ObjectDirectoryInterface &get_object_directory(const MockServer &server) {
+    return *server.object_manager_.object_directory_;
+  }
 
  protected:
   std::thread p;
@@ -270,8 +273,48 @@ class TestObjectManagerCommands : public TestObjectManager {
     uint num_expected_objects1 = 1;
     uint num_expected_objects2 = 2;
     if (v1.size() == num_expected_objects1 && v2.size() == num_expected_objects2) {
-      NextWaitTest();
+      TestWaitCallbacks1();
     }
+  }
+
+  void TestWaitCallbacks1() {
+    int data_size = 100;
+    // Test to ensure Wait works properly during an active subscription to the same
+    // object.
+    ObjectID object_1 = WriteDataToClient(client2, data_size);
+    ObjectID object_2 = WriteDataToClient(client2, data_size);
+    UniqueID sub_id = ray::ObjectID::from_random();
+
+    get_object_directory(*server1).SubscribeObjectLocations(
+        sub_id, object_1,
+        [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &,
+                                           const ray::ObjectID &object_id) {
+          TestWaitCallbacks2(sub_id, object_1, object_2);
+        });
+  }
+
+  void TestWaitCallbacks2(UniqueID sub_id, ObjectID object_1, ObjectID object_2) {
+    int num_objects = 2;
+    int required_objects = 1;
+    int timeout_ms = 1000;
+
+    std::vector<ObjectID> object_ids = {object_1, object_2};
+    boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
+    RAY_CHECK_OK(server1->object_manager_.Wait(
+        object_ids, timeout_ms, required_objects, false,
+        [this, sub_id, object_1, object_ids, num_objects, start_time](
+            const std::vector<ray::ObjectID> &found,
+            const std::vector<ray::ObjectID> &remaining) {
+          int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)
+                                .total_milliseconds();
+          RAY_LOG(INFO) << "elapsed " << elapsed;
+          RAY_LOG(INFO) << "found " << found.size();
+          RAY_LOG(INFO) << "remaining " << remaining.size();
+          // There's nothing more to test. The process will exit if something goes wrong.
+          RAY_CHECK(found.size() == 1);
+          get_object_directory(*server1).UnsubscribeObjectLocations(sub_id, object_1);
+          NextWaitTest();
+        }));
   }
 
   void NextWaitTest() {
