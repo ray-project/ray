@@ -363,6 +363,8 @@ class AutoscalingTest(unittest.TestCase):
         rtc1 = self.provider.ready_to_create
         rtc1.clear()
         autoscaler.update()
+        # Synchronization: wait for launch thread to be blocked on rtc1
+        self.waitFor(lambda: len(rtc1._cond._waiters) == 1)
         self.assertEqual(autoscaler.num_launches_pending.value, 5)
         self.assertEqual(len(self.provider.nodes({})), 0)
 
@@ -374,6 +376,7 @@ class AutoscalingTest(unittest.TestCase):
         rtc2.set()
         autoscaler.update()
         self.waitForNodes(3)
+        self.assertEqual(autoscaler.num_launches_pending.value, 5)
 
         # The first wave of 5 will now tragically fail
         self.provider.fail_creates = True
