@@ -208,7 +208,7 @@ class NodeLauncher(threading.Thread):
         self.queue = queue
         self.pending = pending
         self.provider = None
-        super().__init__(*args, **kwargs)
+        super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(self, config, count):
         if self.provider is None:
