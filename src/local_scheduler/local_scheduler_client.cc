@@ -82,8 +82,9 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 
 void local_scheduler_submit(LocalSchedulerConnection *conn,
                             flatbuffers::FlatBufferBuilder &fbb) {
-  write_message(conn->conn, MessageType_SubmitTask, fbb.GetSize(),
-                fbb.GetBufferPointer());
+  write_message(conn->conn, 
+                ray::local_scheduler::protocol::MessageType_SubmitTask, 
+                fbb.GetSize(), fbb.GetBufferPointer());
 }
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,

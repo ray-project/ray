@@ -162,8 +162,8 @@ void NonRayletTask::to_submit_message(
   auto task_spec =
       fbb.CreateString(reinterpret_cast<char *>(execution_spec.Spec()),
                        execution_spec.SpecSize());
-  auto message =
-      CreateSubmitTaskRequest(fbb, execution_dependencies, task_spec);
+  auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(
+      fbb, execution_dependencies, task_spec);
   fbb.Finish(message);
 }
 
@@ -302,6 +302,6 @@ void RayletTask::to_submit_message(
     const std::vector<ObjectID> &execution_dependencies) {
   auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(
-      fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
+      fbb, execution_dependencies_message, task_spec->ToFlatbuffer(fbb));
   fbb.Finish(message);
 }
