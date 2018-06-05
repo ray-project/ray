@@ -5,7 +5,8 @@
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace {
-namespace local_scheduler_protocol = ray::local_scheduler::protocol;
+
+using local_scheduler_protocol = ray::local_scheduler::protocol;
 
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
