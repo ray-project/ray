@@ -39,8 +39,10 @@ DEFAULT_CONFIG = dict(
     deltas_used=320,  # 320
     delta_std=0.02,
     sgd_stepsize=0.01,
+    gamma=1.0,
     shift=0,
-    observation_filter='MeanStdFilter',
+    observation_filter='NoFilter',
+    policy='Linear',
     seed=123,
     env_config={}
 )
@@ -91,6 +93,7 @@ class Worker(object):
         # initialize OpenAI environment for each worker
         self.env = env_creator(config["env_config"])
         self.env.seed(env_seed)
+        self.gamma = config["gamma"]
 
         from ray.rllib import models
         self.preprocessor = models.ModelCatalog.get_preprocessor(
@@ -108,9 +111,14 @@ class Worker(object):
         self.delta_std = delta_std
         self.rollout_length = rollout_length
         self.sess = utils.make_session(single_threaded=True)
-        self.policy = LinearPolicy(
-            registry, self.sess, self.env.action_space, self.preprocessor,
-            config["observation_filter"])
+        if config['policy'] == 'Linear':
+            self.policy = LinearPolicy(
+                registry, self.sess, self.env.action_space, self.preprocessor,
+                config["observation_filter"])
+        else:
+            self.policy = MLPPolicy(
+                registry, self.sess, self.env.action_space, self.preprocessor,
+                config["observation_filter"])
 
     def rollout(self, shift=0., rollout_length=None):
         """ 
@@ -126,8 +134,12 @@ class Worker(object):
 
         ob = self.env.reset()
         for i in range(rollout_length):
+            #print('observation before acting is', ob)
             action = self.policy.compute(ob)
             ob, reward, done, _ = self.env.step(action)
+            #print('action is', action)
+            #print('observation after action is', ob)
+            reward = reward*(self.gamma**i)
             steps += 1
             total_reward += (reward - shift)
             if done:
@@ -140,8 +152,7 @@ class Worker(object):
         Generate multiple rollouts with a policy parametrized by w_policy.
         """
 
-        rollout_rewards, deltas_idx = [], []
-        steps = 0
+        rollout_rewards, steps, deltas_idx = [], [], []
 
         for i in range(num_rollouts):
 
@@ -172,7 +183,7 @@ class Worker(object):
                 # or negative pertubation rollout
                 self.policy.set_weights(w_policy - delta)
                 neg_reward, neg_steps = self.rollout(shift=shift)
-                steps += pos_steps + neg_steps
+                steps += [pos_steps, neg_steps]
 
                 rollout_rewards.append([pos_reward, neg_reward])
 
@@ -223,19 +234,27 @@ class ARSAgent(agent.Agent):
                 self.registry, self.config, self.env_creator,
                 seed + 7 * i,
                 deltas=noise_id,
-                rollout_length=env.horizon,
+                rollout_length=env.spec.max_episode_steps,
                 delta_std=self.delta_std)
             for i in range(self.config["num_workers"])]
 
+        self.episodes_so_far = 0
+        self.timesteps_so_far = 0
+
         self.sess = utils.make_session(single_threaded=False)
-        # initialize policy 
-        self.policy = LinearPolicy(
-            self.registry, self.sess, env.action_space, preprocessor,
-            self.config["observation_filter"])
+        # initialize policy
+        if self.config['policy'] == 'Linear':
+            self.policy = LinearPolicy(
+                self.registry, self.sess, env.action_space, preprocessor,
+                self.config["observation_filter"])
+        else:
+            self.policy = MLPPolicy(
+                self.registry, self.sess, env.action_space, preprocessor,
+                self.config["observation_filter"])
         self.w_policy = self.policy.get_weights()
 
         # initialize optimization algorithm
-        self.optimizer = optimizers.SGD(self.w_policy, self.config["step_size"])
+        self.optimizer = optimizers.SGD(self.w_policy, self.config["sgd_stepsize"])
         print("Initialization of ARS complete.")
 
     # FIXME(ev) should return the rewards and some other statistics
@@ -278,14 +297,14 @@ class ARSAgent(agent.Agent):
 
         for result in results_one:
             if not evaluate:
-                self.timesteps += result["steps"]
+                self.timesteps += np.sum(result["steps"])
             deltas_idx += result['deltas_idx']
             rollout_rewards += result['rollout_rewards']
             steps += [result['steps']]
 
         for result in results_two:
             if not evaluate:
-                self.timesteps += result["steps"]
+                self.timesteps += np.sum(result["steps"])
             deltas_idx += result['deltas_idx']
             rollout_rewards += result['rollout_rewards']
             steps += [result['steps']]
@@ -296,7 +315,6 @@ class ARSAgent(agent.Agent):
         deltas_idx = np.array(deltas_idx)
         rollout_rewards = np.array(rollout_rewards, dtype=np.float64)
 
-        print('Maximum reward of collected rollouts:', rollout_rewards.max())
         t2 = time.time()
 
         print('Time to generate rollouts:', t2 - t1)
@@ -339,6 +357,7 @@ class ARSAgent(agent.Agent):
         print("Euclidean norm of update step:", np.linalg.norm(g_hat))
         compute_step = self.optimizer._compute_step(g_hat)
         self.w_policy -= compute_step.reshape(self.w_policy.shape)
+        self.policy.set_weights(self.w_policy)
         return g_hat, info_dict
 
     def _train(self):
@@ -349,9 +368,11 @@ class ARSAgent(agent.Agent):
         t2 = time.time()
         print('total time of one step', t2 - t1)
 
-        # record statistics every 10 iterations
+        self.episodes_so_far += len(info_dict['steps'])
+        self.timesteps_so_far += np.sum(info_dict['steps'])
 
-        rewards = self.aggregate_rollouts(num_rollouts=10, evaluate=True)
+        # Evaluate the reward with the unperturbed params
+        rewards = self.aggregate_rollouts(num_rollouts=4, evaluate=True)
         w = ray.get(self.workers[0].get_weights.remote())
 
         tlogger.record_tabular("AverageReward", np.mean(rewards))
