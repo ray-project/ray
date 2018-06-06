@@ -977,6 +977,42 @@ def start_raylet(redis_address,
     return raylet_name
 
 
+def start_gateway(node_ip_address,
+                  gateway_port,
+                  local_scheduler_name,
+                  redis_address,
+                  stdout_file=None,
+                  stderr_file=None,
+                  cleanup=True):
+    """This method starts the API gateway for external clients to connect.
+
+    Args:
+        node_ip_address (str): The IP address of the node that this worker is
+            running on.
+        gateway_port: The port that socat will listen on for commands to forward.
+        local_scheduler_name: The named socket that the gateway should forward
+           commands to.
+        redis_address (str): The address that the Redis server is listening on.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        cleanup (bool): True if using Ray in local mode. If cleanup is true,
+            then this process will be killed by services.cleanup() when the
+            Python process that imported services exits. This is True by
+            default.
+    """
+    command = [
+        "socat", "TCP-LISTEN:" + str(gateway_port) + ",reuseaddr,fork",
+        "UNIX-CONNECT:" + local_scheduler_name
+    ]
+    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    if cleanup:
+        all_processes[PROCESS_TYPE_WORKER].append(p)
+    record_log_files_in_redis(redis_address, node_ip_address,
+                              [stdout_file, stderr_file])
+
+
 def start_objstore(node_ip_address,
                    redis_address,
                    object_manager_port=None,
@@ -1228,7 +1264,8 @@ def start_ray_processes(address_info=None,
                         huge_pages=False,
                         autoscaling_config=None,
                         use_raylet=False,
-                        with_external=False):
+                        with_gateway=False,
+                        gateway_port=5432):
     """Helper method to start Ray processes.
 
     Args:
@@ -1283,8 +1320,9 @@ def start_ray_processes(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
-        with_external: True if this head node can receive commands from an
+        with_gateway: True if this head node can receive commands from an
             external client.
+        gateway_port: The port that socat will listen on for commands to forward.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1511,8 +1549,26 @@ def start_ray_processes(address_info=None,
         # Make sure that we've started all the workers.
         assert (sum(workers_per_local_scheduler) == 0)
 
-    if with_external:
-        print("Using external!!")
+    if with_gateway:
+        # TODO (dsuo): Arbitrarily choose the first local scheduler. We should make a more informed choice.
+        local_scheduler_name = address_info["local_scheduler_socket_names"][0]
+
+        print("Starting gateway on {}".format(local_scheduler_name))
+
+        # Create log files
+        gateway_stdout_file, gateway_stderr_file = new_log_files(
+            "gateway", redirect_output)
+
+        start_gateway(
+            node_ip_address,
+            # TODO (dsuo): Should make this an option
+            5432,
+            local_scheduler_name,
+            redis_address,
+            stdout_file=gateway_stdout_file,
+            stderr_file=gateway_stderr_file,
+            cleanup=cleanup
+        )
 
     # Try to start the web UI.
     if include_webui:
@@ -1601,7 +1657,7 @@ def start_ray_node(node_ip_address,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         use_raylet=use_raylet,
-        with_external=False)
+        with_gateway=False)
 
 
 def start_ray_head(address_info=None,
@@ -1624,7 +1680,8 @@ def start_ray_head(address_info=None,
                    huge_pages=False,
                    autoscaling_config=None,
                    use_raylet=False,
-                   with_external=False):
+                   with_gateway=False,
+                   gateway_port=5432):
     """Start Ray in local mode.
 
     Args:
@@ -1673,8 +1730,9 @@ def start_ray_head(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
-        with_external: True if this head node can receive commands from an
+        with_gateway: True if this head node can receive commands from an
             external client.
+        gateway_port: The port that socat will listen on for commands to forward.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1704,7 +1762,7 @@ def start_ray_head(address_info=None,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,
         use_raylet=use_raylet,
-        with_external=with_external)
+        with_gateway=with_gateway)
 
 
 def try_to_create_directory(directory_path):
