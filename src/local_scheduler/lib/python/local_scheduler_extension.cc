@@ -177,7 +177,9 @@ static PyObject *PyLocalSchedulerClient_resource_ids(PyObject *self) {
   // Construct a Python dictionary of resource IDs and resource fractions.
   PyObject *resource_ids = PyDict_New();
 
-  for (auto const &resource_info : reinterpret_cast<PyLocalSchedulerClient *>(self)->local_scheduler_connection->resource_ids_) {
+  for (auto const &resource_info :
+       reinterpret_cast<PyLocalSchedulerClient *>(self)
+           ->local_scheduler_connection->resource_ids_) {
     auto const &resource_name = resource_info.first;
     auto const &ids_and_fractions = resource_info.second;
 
@@ -191,8 +193,8 @@ static PyObject *PyLocalSchedulerClient_resource_ids(PyObject *self) {
     PyObject *value = PyList_New(ids_and_fractions.size());
     for (size_t i = 0; i < ids_and_fractions.size(); ++i) {
       auto const &id_and_fraction = ids_and_fractions[i];
-      PyObject *id_fraction_pair = Py_BuildValue("(Ld)", id_and_fraction.first,
-                                                 id_and_fraction.second);
+      PyObject *id_fraction_pair =
+          Py_BuildValue("(Ld)", id_and_fraction.first, id_and_fraction.second);
       PyList_SetItem(value, i, id_fraction_pair);
     }
     PyDict_SetItem(resource_ids, key, value);

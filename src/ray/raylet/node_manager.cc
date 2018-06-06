@@ -381,15 +381,15 @@ void NodeManager::ProcessClientMessage(
 
       const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
       // Return the resources that were being used by this worker.
-      RAY_LOG(INFO) << " BEFORE returning worker resources: " << local_available_resources_.ToString();
       local_available_resources_.Release(worker->GetTemporaryResourceIds());
-      cluster_resource_map_[client_id].Release(worker->GetTemporaryResourceIds().ToResourceSet());
+      cluster_resource_map_[client_id].Release(
+          worker->GetTemporaryResourceIds().ToResourceSet());
       worker->ResetTemporaryResourceIds();
 
       local_available_resources_.Release(worker->GetPermanentResourceIds());
-      cluster_resource_map_[client_id].Release(worker->GetPermanentResourceIds().ToResourceSet());
+      cluster_resource_map_[client_id].Release(
+          worker->GetPermanentResourceIds().ToResourceSet());
       worker->ResetPermanentResourceIds();
-      RAY_LOG(INFO) << " AFTER returning worker resources: " << local_available_resources_.ToString();
 
       // Since some resources may have been released, we can try to dispatch more tasks.
       DispatchTasks();
@@ -690,7 +690,8 @@ void NodeManager::AssignTask(Task &task) {
   const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
 
   // Resource accounting: acquire resources for the assigned task.
-  auto acquired_resources = local_available_resources_.Acquire(spec.GetRequiredResources());
+  auto acquired_resources =
+      local_available_resources_.Acquire(spec.GetRequiredResources());
   RAY_CHECK(
       this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
 
@@ -700,7 +701,8 @@ void NodeManager::AssignTask(Task &task) {
     worker->SetTemporaryResourceIds(acquired_resources);
   }
 
-  ResourceIdSet resource_id_set = worker->GetPermanentResourceIds().Plus(worker->GetTemporaryResourceIds());
+  ResourceIdSet resource_id_set =
+      worker->GetPermanentResourceIds().Plus(worker->GetTemporaryResourceIds());
   auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
   auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),

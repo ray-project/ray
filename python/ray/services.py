@@ -840,12 +840,12 @@ def check_and_update_resources(resources, use_raylet):
     for _, resource_quantity in resources.items():
         assert (isinstance(resource_quantity, int)
                 or isinstance(resource_quantity, float))
-        if (isinstance(resource_quantity, float) and
-                not resource_quantity.is_integer()):
+        if (isinstance(resource_quantity, float)
+                and not resource_quantity.is_integer()):
             raise ValueError("Resource quantities must all be whole numbers.")
 
-        if (use_raylet and resource_quantity >
-                ray.ray_constants.MAX_RESOURCE_QUANTITY):
+        if (use_raylet and
+                resource_quantity > ray.ray_constants.MAX_RESOURCE_QUANTITY):
             raise ValueError("Resource quantities must be at most {}."
                              .format(ray.ray_constants.MAX_RESOURCE_QUANTITY))
 

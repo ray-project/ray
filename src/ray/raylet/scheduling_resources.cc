@@ -147,16 +147,13 @@ ResourceIds::ResourceIds(double resource_quantity) {
   }
 }
 
-ResourceIds::ResourceIds(const std::vector<int64_t> &whole_ids)
-    : whole_ids_(whole_ids) {}
+ResourceIds::ResourceIds(const std::vector<int64_t> &whole_ids) : whole_ids_(whole_ids) {}
 
-ResourceIds::ResourceIds(
-    const std::vector<std::pair<int64_t, double>> &fractional_ids)
+ResourceIds::ResourceIds(const std::vector<std::pair<int64_t, double>> &fractional_ids)
     : fractional_ids_(fractional_ids) {}
 
-ResourceIds::ResourceIds(
-    const std::vector<int64_t> &whole_ids,
-    const std::vector<std::pair<int64_t, double>> &fractional_ids)
+ResourceIds::ResourceIds(const std::vector<int64_t> &whole_ids,
+                         const std::vector<std::pair<int64_t, double>> &fractional_ids)
     : whole_ids_(whole_ids), fractional_ids_(fractional_ids) {}
 
 bool ResourceIds::Contains(double resource_quantity) const {
@@ -220,15 +217,18 @@ void ResourceIds::Release(const ResourceIds &resource_ids) {
   auto const &whole_ids_to_return = resource_ids.WholeIds();
 
   // Return the whole IDs.
-  whole_ids_.insert(whole_ids_.end(), whole_ids_to_return.begin(), whole_ids_to_return.end());
+  whole_ids_.insert(whole_ids_.end(), whole_ids_to_return.begin(),
+                    whole_ids_to_return.end());
 
   // Return the fractional IDs.
   auto const &fractional_ids_to_return = resource_ids.FractionalIds();
   for (auto const &fractional_pair_to_return : fractional_ids_to_return) {
     int64_t resource_id = fractional_pair_to_return.first;
-    auto const &fractional_pair_it = std::find_if(
-        fractional_ids_.begin(), fractional_ids_.end(),
-        [resource_id](std::pair<int64_t, double> &fractional_pair) {return fractional_pair.first == resource_id;});
+    auto const &fractional_pair_it =
+        std::find_if(fractional_ids_.begin(), fractional_ids_.end(),
+                     [resource_id](std::pair<int64_t, double> &fractional_pair) {
+                       return fractional_pair.first == resource_id;
+                     });
     if (fractional_pair_it == fractional_ids_.end()) {
       fractional_ids_.push_back(fractional_pair_to_return);
     } else {
@@ -249,9 +249,7 @@ ResourceIds ResourceIds::Plus(const ResourceIds &resource_ids) const {
   return resource_ids_to_return;
 }
 
-const std::vector<int64_t> &ResourceIds::WholeIds() const {
-  return whole_ids_;
-}
+const std::vector<int64_t> &ResourceIds::WholeIds() const { return whole_ids_; }
 
 const std::vector<std::pair<int64_t, double>> &ResourceIds::FractionalIds() const {
   return fractional_ids_;
@@ -272,7 +270,8 @@ std::string ResourceIds::ToString() const {
   }
   return_string += "], Fractional IDs: ";
   for (auto const &fractional_pair : fractional_ids_) {
-    return_string += "(" + std::to_string(fractional_pair.first) + ", " + std::to_string(fractional_pair.second) + "), ";
+    return_string += "(" + std::to_string(fractional_pair.first) + ", " +
+                     std::to_string(fractional_pair.second) + "), ";
   }
   return_string += "]";
   return return_string;
@@ -295,7 +294,8 @@ ResourceIdSet::ResourceIdSet(const ResourceSet &resource_set) {
   }
 }
 
-ResourceIdSet::ResourceIdSet(const std::unordered_map<std::string, ResourceIds> &available_resources)
+ResourceIdSet::ResourceIdSet(
+    const std::unordered_map<std::string, ResourceIds> &available_resources)
     : available_resources_(available_resources) {}
 
 bool ResourceIdSet::Contains(const ResourceSet &resource_set) const {
@@ -356,9 +356,7 @@ void ResourceIdSet::Release(const ResourceIdSet &resource_id_set) {
   }
 }
 
-void ResourceIdSet::Clear() {
-  available_resources_.clear();
-}
+void ResourceIdSet::Clear() { available_resources_.clear(); }
 
 ResourceIdSet ResourceIdSet::Plus(const ResourceIdSet &resource_id_set) const {
   ResourceIdSet resource_id_set_to_return(available_resources_);
@@ -366,7 +364,8 @@ ResourceIdSet ResourceIdSet::Plus(const ResourceIdSet &resource_id_set) const {
   return resource_id_set_to_return;
 }
 
-const std::unordered_map<std::string, ResourceIds> &ResourceIdSet::AvailableResources() const {
+const std::unordered_map<std::string, ResourceIds> &ResourceIdSet::AvailableResources()
+    const {
   return available_resources_;
 }
 
@@ -388,7 +387,8 @@ std::string ResourceIdSet::ToString() const {
   return return_string;
 }
 
-std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToFlatbuf(flatbuffers::FlatBufferBuilder &fbb) const {
+std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToFlatbuf(
+    flatbuffers::FlatBufferBuilder &fbb) const {
   std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> return_message;
   for (auto const &resource_pair : available_resources_) {
     std::vector<int64_t> resource_ids;

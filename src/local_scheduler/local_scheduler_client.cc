@@ -158,23 +158,28 @@ TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
 
   // Create a copy of the task spec so we can free the reply.
   *task_size = reply_message->task_spec()->size();
-  const TaskSpec *data = reinterpret_cast<const TaskSpec *>(
-      reply_message->task_spec()->data());
+  const TaskSpec *data =
+      reinterpret_cast<const TaskSpec *>(reply_message->task_spec()->data());
   TaskSpec *spec = TaskSpec_copy(const_cast<TaskSpec *>(data), *task_size);
 
   // Set the resource IDs for this task.
   conn->resource_ids_.clear();
-  for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
-    auto const &fractional_resource_ids = reply_message->fractional_resource_ids()->Get(i);
-    auto &acquired_resources = conn->resource_ids_[string_from_flatbuf(*fractional_resource_ids->resource_name())];
+  for (size_t i = 0; i < reply_message->fractional_resource_ids()->size();
+       ++i) {
+    auto const &fractional_resource_ids =
+        reply_message->fractional_resource_ids()->Get(i);
+    auto &acquired_resources = conn->resource_ids_[string_from_flatbuf(
+        *fractional_resource_ids->resource_name())];
 
     size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();
-    size_t num_resource_fractions = fractional_resource_ids->resource_fractions()->size();
+    size_t num_resource_fractions =
+        fractional_resource_ids->resource_fractions()->size();
     RAY_CHECK(num_resource_ids == num_resource_fractions);
     RAY_CHECK(num_resource_ids > 0);
     for (size_t j = 0; j < num_resource_ids; ++j) {
       int64_t resource_id = fractional_resource_ids->resource_ids()->Get(j);
-      double resource_fraction = fractional_resource_ids->resource_fractions()->Get(j);
+      double resource_fraction =
+          fractional_resource_ids->resource_fractions()->Get(j);
       if (num_resource_ids > 1) {
         int64_t whole_fraction = resource_fraction;
         RAY_CHECK(whole_fraction == resource_fraction);

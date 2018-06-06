@@ -593,13 +593,12 @@ class Worker(object):
             if resources is None:
                 raise ValueError("The resources dictionary is required.")
             for value in resources.values():
-                assert (isinstance(value, int)
-                        or isinstance(value, float))
+                assert (isinstance(value, int) or isinstance(value, float))
                 if value < 0:
                     raise ValueError(
                         "Resource quantities must be nonnegative.")
-                if (value >= 1 and isinstance(value, float) and
-                        not value.is_integer()):
+                if (value >= 1 and isinstance(value, float)
+                        and not value.is_integer()):
                     raise ValueError(
                         "Resource quantities must all be whole numbers.")
 
@@ -1077,8 +1076,9 @@ def get_gpu_ids():
         assigned_ids = global_worker.local_scheduler_client.gpu_ids()
     else:
         all_resource_ids = global_worker.local_scheduler_client.resource_ids()
-        assigned_ids = [resource_id for resource_id, _
-                        in all_resource_ids.get("GPU", [])]
+        assigned_ids = [
+            resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
+        ]
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
@@ -1103,8 +1103,9 @@ def get_resource_ids():
                         "raylet code path.")
 
     if _mode() == PYTHON_MODE:
-        raise Exception("ray.get_resource_ids() currently does not work in PYTHON "
-                        "MODE.")
+        raise Exception(
+            "ray.get_resource_ids() currently does not work in PYTHON "
+            "MODE.")
 
     return global_worker.local_scheduler_client.resource_ids()
 

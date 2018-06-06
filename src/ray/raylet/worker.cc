@@ -47,9 +47,7 @@ const ResourceIdSet &Worker::GetPermanentResourceIds() const {
   return permanent_resource_ids_;
 }
 
-void Worker::ResetPermanentResourceIds() {
-  permanent_resource_ids_.Clear();
-}
+void Worker::ResetPermanentResourceIds() { permanent_resource_ids_.Clear(); }
 
 void Worker::SetPermanentResourceIds(ResourceIdSet &resource_ids) {
   permanent_resource_ids_ = resource_ids;
@@ -59,9 +57,7 @@ const ResourceIdSet &Worker::GetTemporaryResourceIds() const {
   return temporary_resource_ids_;
 }
 
-void Worker::ResetTemporaryResourceIds() {
-  temporary_resource_ids_.Clear();
-}
+void Worker::ResetTemporaryResourceIds() { temporary_resource_ids_.Clear(); }
 
 void Worker::SetTemporaryResourceIds(ResourceIdSet &resource_ids) {
   temporary_resource_ids_ = resource_ids;

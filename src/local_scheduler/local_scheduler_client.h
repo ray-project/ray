@@ -17,7 +17,8 @@ struct LocalSchedulerConnection {
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
-  std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>> resource_ids_;
+  std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>
+      resource_ids_;
 };
 
 /**

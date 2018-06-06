@@ -288,7 +288,8 @@ class ResourceIdSet {
   ///
   /// \param fbb A flatbuffer builder object.
   /// \return A flatbuffer serialized version of this object.
-  std::vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo>> ToFlatbuf(flatbuffers::FlatBufferBuilder &fbb) const;
+  std::vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo>> ToFlatbuf(
+      flatbuffers::FlatBufferBuilder &fbb) const;
 
  private:
   /// A mapping from reosurce name to a set of resource IDs for that resource.
