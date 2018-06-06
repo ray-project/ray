@@ -231,9 +231,20 @@ class ObjectManager : public ObjectManagerInterface {
 
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
+
+  /// Creates a wait request and adds it to active_wait_requests_.
+  ray::Status AddWaitRequest(const UniqueID &wait_id,
+                             const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                             uint64_t num_required_objects, bool wait_local,
+                             const WaitCallback &callback);
+
+  /// Lookup any remaining objects that are not local. This is invoked after
+  /// the wait request is created and local objects are identified.
+  ray::Status LookupRemainingWaitObjects(const UniqueID &wait_id);
+
   /// Invoked when lookup for remaining objects has been invoked. This method subscribes
   /// to any remaining objects if wait conditions have not yet been satisfied.
-  void AllWaitLookupsComplete(const UniqueID &wait_id);
+  void SubscribeRemainingWaitObjects(const UniqueID &wait_id);
   /// Completion handler for Wait.
   void WaitComplete(const UniqueID &wait_id);
 

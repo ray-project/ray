@@ -71,7 +71,6 @@ class MockServer {
   }
 
   friend class TestObjectManager;
-  friend class TestObjectManagerCommands;
 
   boost::asio::ip::tcp::acceptor object_manager_acceptor_;
   boost::asio::ip::tcp::socket object_manager_socket_;
@@ -79,9 +78,9 @@ class MockServer {
   ObjectManager object_manager_;
 };
 
-class TestObjectManager : public ::testing::Test {
+class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManager() {}
+  TestObjectManagerBase() {}
 
   std::string StartStore(const std::string &id) {
     std::string store_id = "/tmp/store";
@@ -176,10 +175,6 @@ class TestObjectManager : public ::testing::Test {
 
   void object_added_handler_2(ObjectID object_id) { v2.push_back(object_id); };
 
-  ObjectDirectoryInterface &get_object_directory(const MockServer &server) {
-    return *server.object_manager_.object_directory_;
-  }
-
  protected:
   std::thread p;
   boost::asio::io_service main_service;
@@ -199,7 +194,7 @@ class TestObjectManager : public ::testing::Test {
   uint push_timeout_ms;
 };
 
-class TestObjectManagerCommands : public TestObjectManager {
+class TestObjectManager : public TestObjectManagerBase {
  public:
   int current_wait_test = -1;
   int num_connected_clients = 0;
@@ -273,11 +268,11 @@ class TestObjectManagerCommands : public TestObjectManager {
     uint num_expected_objects1 = 1;
     uint num_expected_objects2 = 2;
     if (v1.size() == num_expected_objects1 && v2.size() == num_expected_objects2) {
-      TestWaitCallbacks1();
+      SubscribeObjectThenWait();
     }
   }
 
-  void TestWaitCallbacks1() {
+  void SubscribeObjectThenWait() {
     int data_size = 100;
     // Test to ensure Wait works properly during an active subscription to the same
     // object.
@@ -285,23 +280,26 @@ class TestObjectManagerCommands : public TestObjectManager {
     ObjectID object_2 = WriteDataToClient(client2, data_size);
     UniqueID sub_id = ray::ObjectID::from_random();
 
-    RAY_CHECK_OK(get_object_directory(*server1).SubscribeObjectLocations(
+    RAY_CHECK_OK(server1->object_manager_.object_directory_->SubscribeObjectLocations(
         sub_id, object_1,
         [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &,
                                            const ray::ObjectID &object_id) {
-          TestWaitCallbacks2(sub_id, object_1, object_2);
+          TestWaitWhileSubscribed(sub_id, object_1, object_2);
         }));
   }
 
-  void TestWaitCallbacks2(UniqueID sub_id, ObjectID object_1, ObjectID object_2) {
+  void TestWaitWhileSubscribed(UniqueID sub_id, ObjectID object_1, ObjectID object_2) {
     int num_objects = 2;
     int required_objects = 1;
     int timeout_ms = 1000;
 
     std::vector<ObjectID> object_ids = {object_1, object_2};
     boost::posix_time::ptime start_time = boost::posix_time::second_clock::local_time();
-    RAY_CHECK_OK(server1->object_manager_.Wait(
-        object_ids, timeout_ms, required_objects, false,
+
+    UniqueID wait_id = UniqueID::from_random();
+
+    RAY_CHECK_OK(server1->object_manager_.AddWaitRequest(
+        wait_id, object_ids, timeout_ms, required_objects, false,
         [this, sub_id, object_1, object_ids, num_objects, start_time](
             const std::vector<ray::ObjectID> &found,
             const std::vector<ray::ObjectID> &remaining) {
@@ -313,10 +311,14 @@ class TestObjectManagerCommands : public TestObjectManager {
           RAY_CHECK(found.size() == 1);
           // There's nothing more to test. A check will fail if unexpected behavior is
           // triggered.
-          RAY_CHECK_OK(get_object_directory(*server1).UnsubscribeObjectLocations(
-              sub_id, object_1));
+          RAY_CHECK_OK(
+              server1->object_manager_.object_directory_->UnsubscribeObjectLocations(
+                  sub_id, object_1));
           NextWaitTest();
         }));
+
+    // Skip lookups and rely on Subscribe only to test subscribe interaction.
+    server1->object_manager_.SubscribeRemainingWaitObjects(wait_id);
   }
 
   void NextWaitTest() {
@@ -400,7 +402,8 @@ class TestObjectManagerCommands : public TestObjectManager {
 
           switch (current_wait_test) {
           case 0: {
-            // Ensure timeout_ms = 0 returns expected number of found / remaining objects.
+            // Ensure timeout_ms = 0 returns expected number of found and remaining
+            // objects.
             ASSERT_TRUE(found.size() <= required_objects);
             ASSERT_TRUE(static_cast<int>(found.size() + remaining.size()) == num_objects);
             NextWaitTest();
@@ -454,7 +457,7 @@ class TestObjectManagerCommands : public TestObjectManager {
   }
 };
 
-TEST_F(TestObjectManagerCommands, StartTestObjectManagerCommands) {
+TEST_F(TestObjectManager, StartTestObjectManager) {
   auto AsyncStartTests = main_service.wrap([this]() { WaitConnections(); });
   AsyncStartTests();
   main_service.run();

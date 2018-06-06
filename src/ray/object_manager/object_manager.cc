@@ -359,7 +359,19 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
                                 int64_t timeout_ms, uint64_t num_required_objects,
                                 bool wait_local, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::from_random();
+  RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, timeout_ms, num_required_objects,
+                                   wait_local, callback));
+  RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
+  // LookupRemainingWaitObjects invokes SubscribeRemainingWaitObjects once lookup has
+  // been performed on all remaining objects.
+  return ray::Status::OK();
+}
 
+ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
+                                          const std::vector<ObjectID> &object_ids,
+                                          int64_t timeout_ms,
+                                          uint64_t num_required_objects, bool wait_local,
+                                          const WaitCallback &callback) {
   if (wait_local) {
     return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
   }
@@ -385,6 +397,12 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
     }
   }
 
+  return ray::Status::OK();
+}
+
+ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+
   if (wait_state.remaining.empty()) {
     WaitComplete(wait_id);
   } else {
@@ -396,7 +414,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
     for (const auto &object_id : wait_state.remaining) {
       // Lookup remaining objects.
       wait_state.requested_objects.insert(object_id);
-      RAY_CHECK_OK(object_directory_->LookupLocations(
+      RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
           object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
                                      const ObjectID &lookup_object_id) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
@@ -406,7 +424,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
             }
             wait_state.requested_objects.erase(lookup_object_id);
             if (wait_state.requested_objects.empty()) {
-              AllWaitLookupsComplete(wait_id);
+              SubscribeRemainingWaitObjects(wait_id);
             }
           }));
     }
@@ -414,19 +432,23 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
   return ray::Status::OK();
 }
 
-void ObjectManager::AllWaitLookupsComplete(const UniqueID &wait_id) {
+void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
   auto &wait_state = active_wait_requests_.find(wait_id)->second;
   if (wait_state.found.size() >= wait_state.num_required_objects ||
       wait_state.timeout_ms == 0) {
     // Requirements already satisfied.
     WaitComplete(wait_id);
   } else {
-    // Subscribe to objects in order to ensure Wait-related tests are deterministic.
+    // Wait may complete during the execution of any one of the following calls to
+    // SubscribeObjectLocations, so copy the object ids that need to be iterated over.
+    // Order matters for test purposes.
+    std::vector<ObjectID> ordered_remaining_object_ids;
     for (const auto &object_id : wait_state.object_id_order) {
-      if (wait_state.remaining.count(object_id) == 0) {
-        continue;
+      if (wait_state.remaining.count(object_id) > 0) {
+        ordered_remaining_object_ids.push_back(object_id);
       }
-      // Subscribe to object notifications.
+    }
+    for (const auto &object_id : ordered_remaining_object_ids) {
       if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
         // This is possible if an object's location is obtained immediately,
         // within the current callstack. In this case, WaitComplete has been
@@ -434,12 +456,15 @@ void ObjectManager::AllWaitLookupsComplete(const UniqueID &wait_id) {
         return;
       }
       wait_state.requested_objects.insert(object_id);
+      // Subscribe to object notifications.
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
           wait_id, object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
                                               const ObjectID &subscribe_object_id) {
             auto object_id_wait_state = active_wait_requests_.find(wait_id);
+            // We never expect to handle a subscription notification for a wait that has
+            // already completed.
             RAY_CHECK(object_id_wait_state != active_wait_requests_.end());
-            auto &wait_state = active_wait_requests_.find(wait_id)->second;
+            auto &wait_state = object_id_wait_state->second;
             RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
             wait_state.found.insert(subscribe_object_id);
             wait_state.requested_objects.erase(subscribe_object_id);
