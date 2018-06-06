@@ -363,8 +363,12 @@ class AutoscalingTest(unittest.TestCase):
         rtc1 = self.provider.ready_to_create
         rtc1.clear()
         autoscaler.update()
-        # Synchronization: wait for launch thread to be blocked on rtc1
-        self.waitFor(lambda: len(rtc1._cond._waiters) == 1)
+        # Synchronization: wait for launchy thread to be blocked on rtc1
+        if hasattr(rtc1, '_cond'):  # Python 3.5
+            waiters = rtc1._cond._waiters
+        else:  # Python 2.7
+            waiters = rtc1._Event__cond._Condition__waiters
+        self.waitFor(lambda: len(waiters) == 1)
         self.assertEqual(autoscaler.num_launches_pending.value, 5)
         self.assertEqual(len(self.provider.nodes({})), 0)
 
