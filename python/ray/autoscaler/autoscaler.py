@@ -353,6 +353,7 @@ class StandardAutoscaler(object):
             return
 
         self.last_update_time = time.time()
+        num_pending = self.num_launches_pending.value
         nodes = self.workers()
         print(self.debug_string(nodes))
         self.load_metrics.prune_active_ips(
@@ -393,7 +394,6 @@ class StandardAutoscaler(object):
 
         # Launch new nodes if needed
         target_num = self.target_num_workers()
-        num_pending = self.num_launches_pending.value
         num_nodes = len(nodes) + num_pending
         if num_nodes < target_num:
             max_allowed = min(self.max_launch_batch,
