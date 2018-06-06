@@ -417,7 +417,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
 Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
 Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
-                              const ClientID &local_scheduler_id, int test_state_bitmask,
+                              const ClientID &local_scheduler_id,
+                              SchedulingState test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 

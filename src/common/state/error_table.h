@@ -7,15 +7,15 @@
 /// An ErrorIndex may be used as an index into error_types.
 enum class ErrorIndex : int32_t {
   /// An object was added with a different hash from the existing one.
-  OBJECT_HASH_MISMATCH_ERROR_INDEX = 0,
+  OBJECT_HASH_MISMATCH = 0,
   /// An object that was created through a ray.put is lost.
-  PUT_RECONSTRUCTION_ERROR_INDEX,
+  PUT_RECONSTRUCTION,
   /// A worker died or was killed while executing a task.
-  WORKER_DIED_ERROR_INDEX,
+  WORKER_DIED,
   /// An actor hasn't been created for a while.
-  ACTOR_NOT_CREATED_ERROR_INDEX,
+  ACTOR_NOT_CREATED,
   /// The total number of error types.
-  MAX_ERROR_INDEX
+  MAX
 };
 
 /// Data that is needed to push an error.

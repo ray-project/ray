@@ -354,7 +354,7 @@ void TestTaskTable(const JobID &job_id, std::shared_ptr<gcs::AsyncGcsClient> cli
       client->task_table().Lookup(job_id, task_id, &TaskLookup, &TaskLookupFailure));
   auto update = std::make_shared<TaskTableTestAndUpdateT>();
   update->test_scheduler_id = local_scheduler_id.binary();
-  update->test_state_bitmask = static_cast<int32_t>(SchedulingState::SCHEDULED);
+  update->test_state_bitmask = SchedulingState::SCHEDULED;
   update->update_state = SchedulingState::LOST;
   // After test-and-setting, the callback will lookup the current state of the
   // task.

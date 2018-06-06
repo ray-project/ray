@@ -1673,8 +1673,8 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
 void redis_push_error(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   ErrorInfo *info = (ErrorInfo *) callback_data->data->Get();
-  RAY_CHECK(info->error_type < ErrorIndex::MAX_ERROR_INDEX &&
-            info->error_type >= ErrorIndex::OBJECT_HASH_MISMATCH_ERROR_INDEX);
+  RAY_CHECK(info->error_type < ErrorIndex::MAX &&
+            info->error_type >= ErrorIndex::OBJECT_HASH_MISMATCH);
   /// Look up the error type.
   const char *error_type = error_types[static_cast<int>(info->error_type)];
 

@@ -135,8 +135,8 @@ void kill_worker(LocalSchedulerState *state,
     error_message << "The worker with ID " << worker->client_id << " died or "
                   << "was killed while executing the task with ID "
                   << TaskSpec_task_id(spec);
-    push_error(state->db, TaskSpec_driver_id(spec),
-               ErrorIndex::WORKER_DIED_ERROR_INDEX, error_message.str());
+    push_error(state->db, TaskSpec_driver_id(spec), ErrorIndex::WORKER_DIED,
+               error_message.str());
   }
 
   /* Clean up the task in progress. */
@@ -699,7 +699,8 @@ void reconstruct_task_update_callback(Task *task,
 #else
         RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
             &state->gcs_client, Task_task_id(task), current_local_scheduler_id,
-            Task_state(task), SchedulingState_RECONSTRUCTING,
+            static_cast<SchedulingState>(Task_state(task)),
+            SchedulingState::RECONSTRUCTING,
             [task, user_context](gcs::AsyncGcsClient *, const ray::TaskID &,
                                  const TaskTableDataT &t, bool updated) {
               reconstruct_task_update_callback(task, user_context, updated);
@@ -757,7 +758,8 @@ void reconstruct_put_task_update_callback(Task *task,
 #else
         RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
             &state->gcs_client, Task_task_id(task), current_local_scheduler_id,
-            Task_state(task), SchedulingState_RECONSTRUCTING,
+            static_cast<SchedulingState>(Task_state(task)),
+            SchedulingState::RECONSTRUCTING,
             [task, user_context](gcs::AsyncGcsClient *, const ray::TaskID &,
                                  const TaskTableDataT &, bool updated) {
               reconstruct_put_task_update_callback(task, user_context, updated);
@@ -775,8 +777,7 @@ void reconstruct_put_task_update_callback(Task *task,
                       << " is still executing and so the object created by "
                       << "ray.put could not be reconstructed.";
         push_error(state->db, TaskSpec_driver_id(spec),
-                   ErrorIndex::PUT_RECONSTRUCTION_ERROR_INDEX,
-                   error_message.str());
+                   ErrorIndex::PUT_RECONSTRUCTION, error_message.str());
       }
     } else {
       /* (1) The task is still executing and it is the driver task. We cannot
@@ -789,8 +790,7 @@ void reconstruct_put_task_update_callback(Task *task,
                     << " is a driver task and so the object created by ray.put "
                     << "could not be reconstructed.";
       push_error(state->db, TaskSpec_driver_id(spec),
-                 ErrorIndex::PUT_RECONSTRUCTION_ERROR_INDEX,
-                 error_message.str());
+                 ErrorIndex::PUT_RECONSTRUCTION, error_message.str());
     }
   } else {
     /* The update to TaskStatus::RECONSTRUCTING succeeded, so continue with
@@ -828,13 +828,15 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
 #else
   RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
       &state->gcs_client, task_id, DBClientID::nil(),
-      SchedulingState_DONE | SchedulingState_LOST,
-      SchedulingState_RECONSTRUCTING,
+      static_cast<SchedulingState>(static_cast<uint>(SchedulingState::DONE) |
+                                   static_cast<uint>(SchedulingState::LOST)),
+      SchedulingState::RECONSTRUCTING,
       [done_callback, state](gcs::AsyncGcsClient *, const ray::TaskID &,
                              const TaskTableDataT &t, bool updated) {
-        Task *task = Task_alloc(
-            t.task_info.data(), t.task_info.size(), t.scheduling_state,
-            DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
+        Task *task = Task_alloc(t.task_info.data(), t.task_info.size(),
+                                static_cast<TaskStatus>(t.scheduling_state),
+                                DBClientID::from_binary(t.scheduler_id),
+                                std::vector<ObjectID>());
         done_callback(task, state, updated);
         Task_free(task);
       }));
@@ -863,13 +865,14 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
                              reconstruct_task_update_callback, state);
 #else
   RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
-      &state->gcs_client, task_id, DBClientID::nil(), SchedulingState_LOST,
-      SchedulingState_RECONSTRUCTING,
+      &state->gcs_client, task_id, DBClientID::nil(), SchedulingState::LOST,
+      SchedulingState::RECONSTRUCTING,
       [state](gcs::AsyncGcsClient *, const ray::TaskID &,
               const TaskTableDataT &t, bool updated) {
-        Task *task = Task_alloc(
-            t.task_info.data(), t.task_info.size(), t.scheduling_state,
-            DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
+        Task *task = Task_alloc(t.task_info.data(), t.task_info.size(),
+                                static_cast<TaskStatus>(t.scheduling_state),
+                                DBClientID::from_binary(t.scheduler_id),
+                                std::vector<ObjectID>());
         reconstruct_task_update_callback(task, state, updated);
         Task_free(task);
       }));

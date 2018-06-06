@@ -958,8 +958,8 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
   auto update = flatbuffers::GetRoot<TaskTableTestAndUpdate>(update_buf);
 
-  bool do_update =
-      static_cast<int>(data->scheduling_state()) & update->test_state_bitmask();
+  bool do_update = static_cast<int>(data->scheduling_state()) &
+                   static_cast<int>(update->test_state_bitmask());
 
   if (!is_nil(update->test_scheduler_id()->str())) {
     do_update =

@@ -887,8 +887,7 @@ void spillback_tasks_handler(LocalSchedulerState *state) {
                         << " ";
         }
         push_error(state->db, TaskSpec_driver_id(spec),
-                   ErrorIndex::ACTOR_NOT_CREATED_ERROR_INDEX,
-                   error_message.str());
+                   ErrorIndex::ACTOR_NOT_CREATED, error_message.str());
       }
     }
 
