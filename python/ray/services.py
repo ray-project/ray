@@ -1227,7 +1227,8 @@ def start_ray_processes(address_info=None,
                         plasma_directory=None,
                         huge_pages=False,
                         autoscaling_config=None,
-                        use_raylet=False):
+                        use_raylet=False,
+                        with_external=False):
     """Helper method to start Ray processes.
 
     Args:
@@ -1282,6 +1283,8 @@ def start_ray_processes(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        with_external: True if this head node can receive commands from an
+            external client.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1508,6 +1511,9 @@ def start_ray_processes(address_info=None,
         # Make sure that we've started all the workers.
         assert (sum(workers_per_local_scheduler) == 0)
 
+    if with_external:
+        print("Using external!!")
+
     # Try to start the web UI.
     if include_webui:
         ui_stdout_file, ui_stderr_file = new_log_files(
@@ -1616,7 +1622,8 @@ def start_ray_head(address_info=None,
                    plasma_directory=None,
                    huge_pages=False,
                    autoscaling_config=None,
-                   use_raylet=False):
+                   use_raylet=False,
+                   with_external=False):
     """Start Ray in local mode.
 
     Args:
@@ -1665,6 +1672,8 @@ def start_ray_head(address_info=None,
         autoscaling_config: path to autoscaling config file.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        with_external: True if this head node can receive commands from an
+            external client.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1693,7 +1702,8 @@ def start_ray_head(address_info=None,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
         autoscaling_config=autoscaling_config,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        with_external=with_external)
 
 
 def try_to_create_directory(directory_path):
