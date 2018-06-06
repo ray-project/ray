@@ -83,7 +83,7 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
   std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
   gcs::raylet::TaskTable::WriteCallback notification_callback_;
   std::unordered_set<TaskID> subscribed_tasks_;
-  int num_requested_notifications_;
+  int num_requested_notifications_ = 0;
 };
 
 class LineageCacheTest : public ::testing::Test {
@@ -395,14 +395,14 @@ TEST_F(LineageCacheTest, TestEviction) {
   // All tasks have now been flushed. Check that enough lineage has been
   // evicted that the uncommitted lineage is now less than the maximum size.
   uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
-  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
+  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
 }
 
 TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   // Insert a chain of dependent tasks that is more than twice as long as the
   // maximum lineage size. This will ensure that we request notifications for
   // at most 2 remote tasks.
-  uint64_t lineage_size = (2 * max_lineage_size_) + 1;
+  uint64_t lineage_size = (2 * max_lineage_size_) + 2;
   size_t num_tasks_flushed = 0;
   std::vector<Task> tasks;
   InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
@@ -447,7 +447,7 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   // All tasks have now been flushed. Check that enough lineage has been
   // evicted that the uncommitted lineage is now less than the maximum size.
   uncommitted_lineage = lineage_cache_.GetUncommittedLineage(last_task_id);
-  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() < max_lineage_size_);
+  ASSERT_TRUE(uncommitted_lineage.GetEntries().size() <= max_lineage_size_);
 }
 
 }  // namespace raylet

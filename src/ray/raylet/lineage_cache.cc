@@ -223,7 +223,7 @@ uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) {
     if (!entry) {
         return 0;
     }
-    uint64_t cnt = 0;
+    uint64_t cnt = 1;
     for (const auto& parent_id : entry->GetParentTaskIds()) {
         cnt += CountUnsubscribedLineage(parent_id);
     }
