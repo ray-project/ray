@@ -1600,7 +1600,8 @@ def start_ray_node(node_ip_address,
         resources=resources,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages,
-        use_raylet=use_raylet)
+        use_raylet=use_raylet,
+        with_external=False)
 
 
 def start_ray_head(address_info=None,
