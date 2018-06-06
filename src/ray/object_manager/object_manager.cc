@@ -505,7 +505,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   // Order objects according to input order.
   std::vector<ObjectID> found;
   std::vector<ObjectID> remaining;
-  for (const auto item : wait_state.object_id_order) {
+  for (const auto &item : wait_state.object_id_order) {
     if (found.size() < wait_state.num_required_objects &&
         wait_state.found.count(item) > 0) {
       found.push_back(item);
