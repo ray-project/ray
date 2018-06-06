@@ -184,7 +184,7 @@ ResourceIds ResourceIds::Acquire(double resource_quantity) {
     // Handle the whole case.
     RAY_CHECK(IsWhole(resource_quantity));
     int64_t whole_quantity = resource_quantity;
-    RAY_CHECK(whole_ids_.size() >= whole_quantity);
+    RAY_CHECK(static_cast<int64_t>(whole_ids_.size()) >= whole_quantity);
 
     std::vector<int64_t> ids_to_return;
     for (int64_t i = 0; i < whole_quantity; ++i) {
