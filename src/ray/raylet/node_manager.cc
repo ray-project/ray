@@ -322,15 +322,12 @@ void NodeManager::DispatchTasks() {
   if (scheduled_tasks.empty()) {
     return;
   }
-  // const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
 
   for (const auto &task : scheduled_tasks) {
-    // const auto &local_resources =
-    //     cluster_resource_map_[my_client_id].GetAvailableResources();
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
     if (!local_available_resources_.Contains(task_resources)) {
-      RAY_LOG(INFO) << "Contains returns false! local_available_resources_: " << local_available_resources_.ToString();
       // Not enough local resources for this task right now, skip this task.
+      // Note that we always skip node managers that have 0 CPUs.
       continue;
     }
     // We have enough resources for this task. Assign task.

@@ -12,6 +12,15 @@ def env_integer(key, default):
     return default
 
 
+# If a remote function or actor (or some other export) has serialized size
+# greater than this quantity, print an warning.
+PICKLE_OBJECT_WARNING_SIZE = 10**7
+
+# The maximum resource quantity that is allowed. TODO(rkn): This could be
+# relaxed, but the current implementation of the node manager will be slower
+# for large resource quantities due to bookkeeping of specific resource IDs.
+MAX_RESOURCE_QUANTITY = 512
+
 # Different types of Ray errors that can be pushed to the driver.
 # TODO(rkn): These should be defined in flatbuffers and must be synced with
 # the existing C++ definitions.
@@ -28,10 +37,6 @@ WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
 HASH_MISMATCH_PUSH_ERROR = "object_hash_mismatch"
-
-# If a remote function or actor (or some other export) has serialized size
-# greater than this quantity, print an warning.
-PICKLE_OBJECT_WARNING_SIZE = 10**7
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.

@@ -144,8 +144,8 @@ TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;
-  /* Receive a task from the local scheduler. This will block until the local
-   * scheduler gives this client a task. */
+  // Receive a task from the local scheduler. This will block until the local
+  // scheduler gives this client a task.
   read_message(conn->conn, &type, &reply_size, &reply);
   if (type == DISCONNECT_CLIENT) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
@@ -153,20 +153,16 @@ TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
   }
   RAY_CHECK(type == ray::local_scheduler::protocol::MessageType_ExecuteTask);
 
-  /* Parse the flatbuffer object. */
+  // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
 
-  /* Create a copy of the task spec so we can free the reply. */
+  // Create a copy of the task spec so we can free the reply.
   *task_size = reply_message->task_spec()->size();
   const TaskSpec *data = reinterpret_cast<const TaskSpec *>(
       reply_message->task_spec()->data());
   TaskSpec *spec = TaskSpec_copy(const_cast<TaskSpec *>(data), *task_size);
 
-  // Set the GPU IDs for this task. We only do this for non-actor tasks because
-  // for actors the GPUs are associated with the actor itself and not with the
-  // actor methods. Note that this also processes GPUs for actor creation tasks.
-
-
+  // Set the resource IDs for this task.
   conn->resource_ids_.clear();
   for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
     auto const &fractional_resource_ids = reply_message->fractional_resource_ids()->Get(i);
@@ -188,18 +184,9 @@ TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
     }
   }
 
-  // resource_ids_
-  //
-  // if (!TaskSpec_is_actor_task(spec)) {
-  //   conn->gpu_ids.clear();
-  //   for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {
-  //     conn->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
-  //   }
-  // }
-
-  /* Free the original message from the local scheduler. */
+  // Free the original message from the local scheduler.
   free(reply);
-  /* Return the copy of the task spec and pass ownership to the caller. */
+  // Return the copy of the task spec and pass ownership to the caller.
   return spec;
 }
 

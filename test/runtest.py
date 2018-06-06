@@ -1482,6 +1482,9 @@ class ResourcesTest(unittest.TestCase):
         a1 = Actor1.remote()
         ray.get(a1.test.remote())
 
+    @unittest.skipIf(
+        os.environ.get("RAY_USE_XRAY") == "1",
+        "This test only works with xray.")
     def testZeroCPUs(self):
         ray.worker._init(
             start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
