@@ -15,6 +15,9 @@ import setuptools.command.build_ext as _build_ext
 # MANIFEST.in gets applied at the very beginning when setup.py runs
 # before these files have been created, so we have to move the files
 # manually.
+
+# NOTE: The lists below must be kept in sync with ray/CMakeLists.txt.
+
 ray_files = [
     "ray/core/src/common/thirdparty/redis/src/redis-server",
     "ray/core/src/common/redis_module/libray_redis_module.so",
@@ -40,7 +43,10 @@ ray_ui_files = [
     "ray/core/src/catapult_files/trace_viewer_full.html"
 ]
 
-ray_autoscaler_files = ["ray/autoscaler/aws/example-full.yaml"]
+ray_autoscaler_files = [
+    "ray/autoscaler/aws/example-full.yaml",
+    "ray/autoscaler/gcp/example-full.yaml",
+]
 
 if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ray_files += [

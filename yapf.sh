@@ -1,0 +1,79 @@
+set -eo pipefail
+
+# this stops git rev-parse from failing if we run this from the .git directory
+builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
+
+ROOT="$(git rev-parse --show-toplevel)"
+builtin cd "$ROOT" || exit 1
+
+# Add the upstream branch if it doesn't exist
+if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
+    git remote add 'upstream' 'https://github.com/ray-project/ray.git'
+fi
+
+# Only fetch master since that's the branch we're diffing against.
+git fetch 'upstream' 'master'
+
+YAPF_FLAGS=(
+    '--style' "$ROOT/.style.yapf"
+    '--in-place'
+    '--recursive'
+    '--parallel'
+)
+
+YAPF_EXCLUDES=(
+    '--exclude' 'python/ray/dataframe'
+    '--exclude' 'python/ray/rllib'
+    '--exclude' 'python/ray/cloudpickle'
+    '--exclude' 'python/build'
+    '--exclude' 'python/ray/pyarrow_files'
+    '--exclude' 'python/ray/core/src/ray/gcs'
+    '--exclude' 'python/ray/common/thirdparty'
+)
+
+# Format specified files
+format() {
+    yapf "${YAPF_FLAGS[@]}" -- "$@"
+}
+
+# Format files that differ from main branch. Ignores dirs that are not slated
+# for autoformat yet.
+format_changed() {
+    # The `if` guard ensures that the list of filenames is not empty, which
+    # could cause yapf to receive 0 positional arguments, making it hang
+    # waiting for STDIN.
+    #
+    # `diff-filter=ACM` is to ensure we only format files that exist on both
+    # branches.
+    if ! git diff --diff-filter=ACM --quiet --exit-code 'upstream/master' -- '*.py' &>/dev/null; then
+       yapf "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}" `git diff --name-only --diff-filter=ACM 'upstream/master' -- '*.py'`
+    fi
+}
+
+# Format all files
+format_all() {
+    yapf "${YAPF_FLAGS[@]}" "${YAPF_EXCLUDES[@]}" test python
+}
+
+# This flag formats individual files. --files *must* be the first command line
+# arg to use this option.
+if [[ "$1" == '--files' ]]; then
+    format "${@:2}"
+    # If `--all` is passed, then any further arguments are ignored and the
+    # entire python directory is formatted.
+elif [[ "$1" == '--all' ]]; then
+    format_all
+else
+    # Format only the files that changed in last commit.
+    format_changed
+fi
+
+if ! git diff --quiet &>/dev/null; then
+    echo 'Reformatted changed files. Please review and stage the changes.'
+    echo 'Files updated:'
+    echo
+
+    git --no-pager diff --name-only
+
+    exit 1
+fi
