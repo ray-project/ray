@@ -285,12 +285,12 @@ class TestObjectManagerCommands : public TestObjectManager {
     ObjectID object_2 = WriteDataToClient(client2, data_size);
     UniqueID sub_id = ray::ObjectID::from_random();
 
-    get_object_directory(*server1).SubscribeObjectLocations(
+    RAY_CHECK_OK(get_object_directory(*server1).SubscribeObjectLocations(
         sub_id, object_1,
         [this, sub_id, object_1, object_2](const std::vector<ray::ClientID> &,
                                            const ray::ObjectID &object_id) {
           TestWaitCallbacks2(sub_id, object_1, object_2);
-        });
+        }));
   }
 
   void TestWaitCallbacks2(UniqueID sub_id, ObjectID object_1, ObjectID object_2) {
@@ -313,7 +313,8 @@ class TestObjectManagerCommands : public TestObjectManager {
           RAY_CHECK(found.size() == 1);
           // There's nothing more to test. A check will fail if unexpected behavior is
           // triggered.
-          get_object_directory(*server1).UnsubscribeObjectLocations(sub_id, object_1);
+          RAY_CHECK_OK(get_object_directory(*server1).UnsubscribeObjectLocations(
+              sub_id, object_1));
           NextWaitTest();
         }));
   }

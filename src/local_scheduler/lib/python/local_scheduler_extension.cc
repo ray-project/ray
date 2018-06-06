@@ -183,12 +183,15 @@ static PyObject *PyLocalSchedulerClient_wait(PyObject *self, PyObject *args) {
   PyObject *py_object_ids;
   int num_returns;
   int64_t timeout_ms;
-  int wait_local;
+  PyObject *py_wait_local;
 
-  if (!PyArg_ParseTuple(args, "Oili", &py_object_ids, &num_returns, &timeout_ms,
-                        &wait_local)) {
+  if (!PyArg_ParseTuple(args, "OilO", &py_object_ids, &num_returns, &timeout_ms,
+                        &py_wait_local)) {
     return NULL;
   }
+
+  bool wait_local = PyObject_IsTrue(py_wait_local);
+
   // Convert object ids.
   PyObject *iter = PyObject_GetIter(py_object_ids);
   if (!iter) {

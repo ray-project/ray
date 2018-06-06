@@ -120,9 +120,8 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   listener_state.callbacks.emplace(callback_id, callback);
   // Immediately notify of found object locations.
   if (!listener_state.current_object_locations.empty()) {
-    std::vector<ClientID> client_id_vec(
-        listener_state.current_object_locations.begin(),
-        listener_state.current_object_locations.end());
+    std::vector<ClientID> client_id_vec(listener_state.current_object_locations.begin(),
+                                        listener_state.current_object_locations.end());
     callback(client_id_vec, object_id);
   }
   return status;

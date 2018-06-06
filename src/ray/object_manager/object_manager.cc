@@ -377,7 +377,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
   wait_state.object_id_order = object_ids;
   wait_state.timeout_ms = timeout_ms;
   wait_state.num_required_objects = num_required_objects;
-  for (auto &object_id : object_ids) {
+  for (const auto &object_id : object_ids) {
     if (local_objects_.count(object_id) > 0) {
       wait_state.found.insert(object_id);
     } else {
@@ -393,7 +393,7 @@ ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
     // we obtain information about all given objects, regardless of their location.
     // This is required to ensure we do not bias returning locally available objects
     // as ready whenever Wait is invoked with a mixture of local and remote objects.
-    for (auto &object_id : wait_state.remaining) {
+    for (const auto &object_id : wait_state.remaining) {
       // Lookup remaining objects.
       wait_state.requested_objects.insert(object_id);
       RAY_CHECK_OK(object_directory_->LookupLocations(
@@ -422,7 +422,7 @@ void ObjectManager::AllWaitLookupsComplete(const UniqueID &wait_id) {
     WaitComplete(wait_id);
   } else {
     // Subscribe to objects in order to ensure Wait-related tests are deterministic.
-    for (auto &object_id : wait_state.object_id_order) {
+    for (const auto &object_id : wait_state.object_id_order) {
       if (wait_state.remaining.count(object_id) == 0) {
         continue;
       }
@@ -470,7 +470,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
     RAY_CHECK(wait_state.timeout_ms > 0 || wait_state.timeout_ms == -1);
   }
   // Unsubscribe to any objects that weren't found in the time allotted.
-  for (auto &object_id : wait_state.requested_objects) {
+  for (const auto &object_id : wait_state.requested_objects) {
     RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
   }
   // Cancel the timer. This is okay even if the timer hasn't been started.
@@ -480,7 +480,7 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   // Order objects according to input order.
   std::vector<ObjectID> found;
   std::vector<ObjectID> remaining;
-  for (auto item : wait_state.object_id_order) {
+  for (const auto item : wait_state.object_id_order) {
     if (found.size() < wait_state.num_required_objects &&
         wait_state.found.count(item) > 0) {
       found.push_back(item);
