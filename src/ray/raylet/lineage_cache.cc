@@ -215,19 +215,19 @@ void LineageCache::AddReadyTask(const Task &task) {
   }
 }
 
-uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) {
-    if (subscribed_tasks_.count(task_id) == 1) {
-        return 0;
-    }
-    auto entry = lineage_.GetEntry(task_id);
-    if (!entry) {
-        return 0;
-    }
-    uint64_t cnt = 1;
-    for (const auto& parent_id : entry->GetParentTaskIds()) {
-        cnt += CountUnsubscribedLineage(parent_id);
-    }
-    return cnt;
+uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) const{
+  if (subscribed_tasks_.count(task_id) == 1) {
+    return 0;
+  }
+  auto entry = lineage_.GetEntry(task_id);
+  if (!entry) {
+    return 0;
+  }
+  uint64_t cnt = 1;
+  for (const auto& parent_id : entry->GetParentTaskIds()) {
+    cnt += CountUnsubscribedLineage(parent_id);
+  }
+  return cnt;
 }
 
 void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
