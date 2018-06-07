@@ -215,7 +215,7 @@ void LineageCache::AddReadyTask(const Task &task) {
   }
 }
 
-uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) const{
+uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) const {
   if (subscribed_tasks_.count(task_id) == 1) {
     return 0;
   }
