@@ -1,8 +1,0 @@
-pendulum-ddpg2:
-    env: Pendulum-v0
-    run: DDPG2
-    stop:
-        episode_reward_mean: -100
-        time_total_s: 600
-    config:
-        num_workers: 1
