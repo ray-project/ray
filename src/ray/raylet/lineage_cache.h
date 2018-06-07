@@ -220,6 +220,8 @@ class LineageCache {
   /// Unsubscribe from notifications for a task. Returns whether the operation
   /// was successful (whether we were subscribed).
   bool UnsubscribeTask(const UniqueID &task_id);
+  /// Count the size of unsubscribed and uncommitted lineage
+  uint64_t CountUnsubscribedLineage(const UniqueID &task_id) const;
 
   /// The client ID, used to request notifications for specific tasks.
   /// TODO(swang): Move the ClientID into the generic Table implementation.

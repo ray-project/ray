@@ -215,6 +215,21 @@ void LineageCache::AddReadyTask(const Task &task) {
   }
 }
 
+uint64_t LineageCache::CountUnsubscribedLineage(const TaskID &task_id) const {
+  if (subscribed_tasks_.count(task_id) == 1) {
+    return 0;
+  }
+  auto entry = lineage_.GetEntry(task_id);
+  if (!entry) {
+    return 0;
+  }
+  uint64_t cnt = 1;
+  for (const auto &parent_id : entry->GetParentTaskIds()) {
+    cnt += CountUnsubscribedLineage(parent_id);
+  }
+  return cnt;
+}
+
 void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
   auto entry = lineage_.PopEntry(task_id);
   // It's only okay to remove a task that is waiting for execution.
@@ -226,24 +241,18 @@ void LineageCache::RemoveWaitingTask(const TaskID &task_id) {
   entry->ResetStatus(GcsStatus_UNCOMMITTED_REMOTE);
   RAY_CHECK(lineage_.SetEntry(std::move(*entry)));
 
-  // Try to evict a task and its uncommitted lineage if the uncommitted lineage
-  // exceeds the maximum size.
+  // Request a notification for every max_lineage_size_ tasks,
+  // so that the task and its uncommitted lineage can be evicted
+  // once the commit notification is received.
+  // By doing this, we make sure that the unevicted lineage won't be more than
+  // max_lineage_size_, and the number of subscribed tasks won't be more than
+  // N / max_lineage_size_, where N is the size of the task chain.
   // NOTE(swang): The number of entries in the uncommitted lineage also
   // includes local tasks that haven't been committed yet, not just remote
   // tasks, so this is an overestimate.
-  const auto uncommitted_lineage = GetUncommittedLineage(task_id);
-  if (uncommitted_lineage.GetEntries().size() > max_lineage_size_) {
-    // Request a notification for the newly remote task so that the task and
-    // its uncommitted lineage can be evicted once the commit notification is
-    // received. Since this task was in state WAITING, check that we were not
+  if (CountUnsubscribedLineage(task_id) > max_lineage_size_) {
+    // Since this task was in state WAITING, check that we were not
     // already subscribed to the task.
-    // NOTE(swang): We may end up requesting notifications for too many tasks
-    // from the GCS if we do not receive a notification for this task fast
-    // enough, since every dependent and waiting task that gets removed
-    // afterwards will also have an uncommitted lineage that's too large. If
-    // this becomes an issue, we can be smarter about which tasks to request by
-    // either storing the dependency depth as part of the task specs, or
-    // storing that information as a data structure in the lineage cache.
     RAY_CHECK(SubscribeTask(task_id));
   }
 }
