@@ -169,10 +169,11 @@ class PlasmaPoll(selectors.BaseSelector):
 
 class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     
-    def __init__(self, selector):
+    def __init__(self, selector, worker):
         super().__init__()
         assert isinstance(selector, selectors.BaseSelector)
         self._selector = selector
+        self._worker = worker
     
     def _process_events(self, event_list):
         for key in event_list:
@@ -227,10 +228,10 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     def get(self, object_ids):
         if not isinstance(object_ids, list):
             ready_id = yield from self._register_id(object_ids)
-            return ray.get(ready_id)
+            return ray.get(ready_id, worker=self._worker)
         else:
             ready_ids = yield from asyncio.gather(*[self._register_id(oid) for oid in object_ids], loop=self)
-            return ray.get(ready_ids)
+            return ray.get(ready_ids, worker=self._worker)
     
     @asyncio.coroutine
     def wait(self, object_ids, num_returns=1, timeout=None):
