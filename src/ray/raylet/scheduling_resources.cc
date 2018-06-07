@@ -148,13 +148,13 @@ SchedulingResources::~SchedulingResources() {}
 ResourceAvailabilityStatus SchedulingResources::CheckResourcesSatisfied(
     ResourceSet &resources) const {
   if (!resources.IsSubset(this->resources_total_)) {
-    return kInfeasible;
+    return ResourceAvailabilityStatus::kInfeasible;
   }
   // Resource demand specified is feasible. Check if it's available.
   if (!resources.IsSubset(this->resources_available_)) {
-    return kResourcesUnavailable;
+    return ResourceAvailabilityStatus::kResourcesUnavailable;
   }
-  return kFeasible;
+  return ResourceAvailabilityStatus::kFeasible;
 }
 
 const ResourceSet &SchedulingResources::GetAvailableResources() const {

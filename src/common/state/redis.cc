@@ -536,7 +536,7 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
         flatbuffers::GetRoot<TaskExecutionDependencies>(
             message->execution_dependencies()->data());
     task = Task_alloc(
-        spec, task_spec_size, message->state(),
+        spec, task_spec_size, static_cast<TaskStatus>(message->state()),
         from_flatbuf(*message->local_scheduler_id()),
         from_flatbuf(*execution_dependencies->execution_dependencies()));
   } else {
@@ -932,7 +932,7 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
   TaskID task_id = Task_task_id(task);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
   redisAsyncContext *context = get_redis_context(db, task_id);
-  int state = Task_state(task);
+  int state = static_cast<int>(Task_state(task));
 
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
   TaskSpec *spec = execution_spec->Spec();
@@ -998,7 +998,7 @@ void redis_task_table_update(TableCallbackData *callback_data) {
   TaskID task_id = Task_task_id(task);
   redisAsyncContext *context = get_redis_context(db, task_id);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
-  int state = Task_state(task);
+  int state = static_cast<int>(Task_state(task));
 
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
   flatbuffers::FlatBufferBuilder fbb;
@@ -1108,7 +1108,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     /* Handle a task table event. Parse the payload and call the callback. */
     auto message = flatbuffers::GetRoot<TaskReply>(payload->str);
     /* Extract the scheduling state. */
-    int64_t state = message->state();
+    TaskStatus state = static_cast<TaskStatus>(message->state());
     /* Extract the local scheduler ID. */
     DBClientID local_scheduler_id =
         from_flatbuf(*message->local_scheduler_id());
@@ -1673,9 +1673,10 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
 void redis_push_error(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   ErrorInfo *info = (ErrorInfo *) callback_data->data->Get();
-  RAY_CHECK(info->error_type < MAX_ERROR_INDEX && info->error_type >= 0);
+  RAY_CHECK(info->error_type < ErrorIndex::MAX &&
+            info->error_type >= ErrorIndex::OBJECT_HASH_MISMATCH);
   /// Look up the error type.
-  const char *error_type = error_types[info->error_type];
+  const char *error_type = error_types[static_cast<int>(info->error_type)];
 
   /* Set the error information. */
   int status = redisAsyncCommand(

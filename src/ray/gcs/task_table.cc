@@ -54,7 +54,8 @@ Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task) {
 // TODO(pcm): This is a helper method that should go away once we get rid of
 // the Task* datastructure and replace it with TaskTableDataT.
 Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
-                              const ClientID &local_scheduler_id, int test_state_bitmask,
+                              const ClientID &local_scheduler_id,
+                              SchedulingState test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback) {
   auto data = std::make_shared<TaskTableTestAndUpdateT>();

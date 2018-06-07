@@ -16,19 +16,19 @@ namespace ray {
 namespace raylet {
 
 /// The status of a lineage cache entry according to its status in the GCS.
-enum GcsStatus {
+enum class GcsStatus {
   /// The task is not in the lineage cache.
-  GcsStatus_NONE = 0,
+  NONE = 0,
   /// The task is being executed or created on a remote node.
-  GcsStatus_UNCOMMITTED_REMOTE,
+  UNCOMMITTED_REMOTE,
   /// The task is waiting to be executed or created locally.
-  GcsStatus_UNCOMMITTED_WAITING,
+  UNCOMMITTED_WAITING,
   /// The task has started execution, but the entry has not been written to the
   /// GCS yet.
-  GcsStatus_UNCOMMITTED_READY,
+  UNCOMMITTED_READY,
   /// The task has been written to the GCS and we are waiting for an
   /// acknowledgement of the commit.
-  GcsStatus_COMMITTING,
+  COMMITTING,
 };
 
 /// \class LineageEntry
