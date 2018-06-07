@@ -219,9 +219,8 @@ class GlobalState(object):
         # Return information about a single object ID.
         if not self.use_raylet:
             # Use the non-raylet code path.
-            object_locations = self._execute_command(object_id,
-                                                     "RAY.OBJECT_TABLE_LOOKUP",
-                                                     object_id.id())
+            object_locations = self._execute_command(
+                object_id, "RAY.OBJECT_TABLE_LOOKUP", object_id.id())
             if object_locations is not None:
                 manager_ids = [
                     binary_to_hex(manager_id)
@@ -832,8 +831,8 @@ class GlobalState(object):
                         "ph": "X",
                         "name": info["function_name"] + ":execute",
                         "args": total_info,
-                        "dur": micros(
-                            info["execute_end"] - info["execute_start"]),
+                        "dur": micros(info["execute_end"] -
+                                      info["execute_start"]),
                         "cname": "rail_animation"
                     }
                     full_trace.append(execute_trace)
@@ -975,8 +974,7 @@ class GlobalState(object):
                                     "args": {},
                                     "bp": "e",
                                     "cname": "cq_build_attempt_failed",
-                                    "id": "obj" + str(arg) +
-                                    str(seen_obj[arg])
+                                    "id": "obj" + str(arg) + str(seen_obj[arg])
                                 }
                                 full_trace.append(owner)
 
