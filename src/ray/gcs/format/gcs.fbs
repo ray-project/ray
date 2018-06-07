@@ -82,7 +82,7 @@ table TaskTableData {
 
 table TaskTableTestAndUpdate {
   test_scheduler_id: string;
-  test_state_bitmask: int;
+  test_state_bitmask: SchedulingState;
   update_state: SchedulingState;
 }
 

@@ -124,7 +124,7 @@ class TestObjectManagerBase : public ::testing::Test {
     int max_sends = 2;
     int max_receives = 2;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
-    int max_push_retries = 1000;
+    int push_timeout_ms = 10000;
 
     // start first server
     gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(new gcs::AsyncGcsClient());
@@ -134,7 +134,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.max_sends = max_sends;
     om_config_1.max_receives = max_receives;
     om_config_1.object_chunk_size = object_chunk_size;
-    om_config_1.max_push_retries = max_push_retries;
+    om_config_1.push_timeout_ms = push_timeout_ms;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
@@ -145,7 +145,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.max_sends = max_sends;
     om_config_2.max_receives = max_receives;
     om_config_2.object_chunk_size = object_chunk_size;
-    om_config_2.max_push_retries = max_push_retries;
+    om_config_2.push_timeout_ms = push_timeout_ms;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
@@ -200,7 +200,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
 class StressTestObjectManager : public TestObjectManagerBase {
  public:
-  enum TransferPattern {
+  enum class TransferPattern {
     PUSH_A_B,
     PUSH_B_A,
     BIDIRECTIONAL_PUSH,
@@ -214,13 +214,13 @@ class StressTestObjectManager : public TestObjectManagerBase {
   uint num_expected_objects;
 
   std::vector<TransferPattern> async_loop_patterns = {
-      PUSH_A_B,
-      PUSH_B_A,
-      BIDIRECTIONAL_PUSH,
-      PULL_A_B,
-      PULL_B_A,
-      BIDIRECTIONAL_PULL,
-      BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE};
+      TransferPattern::PUSH_A_B,
+      TransferPattern::PUSH_B_A,
+      TransferPattern::BIDIRECTIONAL_PUSH,
+      TransferPattern::PULL_A_B,
+      TransferPattern::PULL_B_A,
+      TransferPattern::BIDIRECTIONAL_PULL,
+      TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE};
 
   int num_connected_clients = 0;
 
@@ -319,8 +319,9 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void TransferTestComplete() {
     int64_t elapsed = current_time_ms() - start_time;
-    RAY_LOG(INFO) << "TransferTestComplete: " << async_loop_patterns[async_loop_index]
-                  << " " << v1.size() << " " << elapsed;
+    RAY_LOG(INFO) << "TransferTestComplete: "
+                  << static_cast<int>(async_loop_patterns[async_loop_index]) << " "
+                  << v1.size() << " " << elapsed;
     ASSERT_TRUE(v1.size() == v2.size());
     for (uint i = 0; i < v1.size(); ++i) {
       ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
@@ -347,9 +348,9 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
     ray::Status status = ray::Status::OK();
 
-    if (transfer_pattern == BIDIRECTIONAL_PULL ||
-        transfer_pattern == BIDIRECTIONAL_PUSH ||
-        transfer_pattern == BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE) {
+    if (transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL ||
+        transfer_pattern == TransferPattern::BIDIRECTIONAL_PUSH ||
+        transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE) {
       num_expected_objects = (uint)2 * num_trials;
     } else {
       num_expected_objects = (uint)num_trials;
@@ -358,19 +359,19 @@ class StressTestObjectManager : public TestObjectManagerBase {
     start_time = current_time_ms();
 
     switch (transfer_pattern) {
-    case PUSH_A_B: {
+    case TransferPattern::PUSH_A_B: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
         status = server1->object_manager_.Push(oid1, client_id_2);
       }
     } break;
-    case PUSH_B_A: {
+    case TransferPattern::PUSH_B_A: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid2 = WriteDataToClient(client2, data_size);
         status = server2->object_manager_.Push(oid2, client_id_1);
       }
     } break;
-    case BIDIRECTIONAL_PUSH: {
+    case TransferPattern::BIDIRECTIONAL_PUSH: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
         status = server1->object_manager_.Push(oid1, client_id_2);
@@ -378,19 +379,19 @@ class StressTestObjectManager : public TestObjectManagerBase {
         status = server2->object_manager_.Push(oid2, client_id_1);
       }
     } break;
-    case PULL_A_B: {
+    case TransferPattern::PULL_A_B: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
         status = server2->object_manager_.Pull(oid1);
       }
     } break;
-    case PULL_B_A: {
+    case TransferPattern::PULL_B_A: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid2 = WriteDataToClient(client2, data_size);
         status = server1->object_manager_.Pull(oid2);
       }
     } break;
-    case BIDIRECTIONAL_PULL: {
+    case TransferPattern::BIDIRECTIONAL_PULL: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
         status = server2->object_manager_.Pull(oid1);
@@ -398,7 +399,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
         status = server1->object_manager_.Pull(oid2);
       }
     } break;
-    case BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE: {
+    case TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE: {
       std::random_device rd;
       std::mt19937 gen(rd());
       std::uniform_int_distribution<> dis(1, 50);
@@ -410,7 +411,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
       }
     } break;
     default: {
-      RAY_LOG(FATAL) << "No case for transfer_pattern " << transfer_pattern;
+      RAY_LOG(FATAL) << "No case for transfer_pattern "
+                     << static_cast<int>(transfer_pattern);
     } break;
     }
   }

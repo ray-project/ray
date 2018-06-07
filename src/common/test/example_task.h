@@ -42,7 +42,7 @@ static inline TaskExecutionSpec example_task_execution_spec(
 
 static inline Task *example_task_with_args(int64_t num_args,
                                            int64_t num_returns,
-                                           int task_state,
+                                           TaskStatus task_state,
                                            ObjectID arg_ids[]) {
   TaskExecutionSpec spec =
       example_task_execution_spec_with_args(num_args, num_returns, arg_ids);
@@ -52,7 +52,7 @@ static inline Task *example_task_with_args(int64_t num_args,
 
 static inline Task *example_task(int64_t num_args,
                                  int64_t num_returns,
-                                 int task_state) {
+                                 TaskStatus task_state) {
   TaskExecutionSpec spec = example_task_execution_spec(num_args, num_returns);
   Task *instance = Task_alloc(spec, task_state, UniqueID::nil());
   return instance;

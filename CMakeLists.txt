@@ -64,3 +64,43 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/common/)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/plasma/)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/local_scheduler/)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/global_scheduler/)
+
+if ("${CMAKE_RAY_LANG_PYTHON}" STREQUAL "YES")
+  # NOTE: The lists below must be kept in sync with ray/python/setup.py.
+
+  set(ray_file_list
+        "src/common/thirdparty/redis/src/redis-server"
+        "src/common/redis_module/libray_redis_module.so"
+        "src/plasma/plasma_manager"
+        "src/local_scheduler/local_scheduler"
+        "src/local_scheduler/liblocal_scheduler_library_python.so"
+        "src/global_scheduler/global_scheduler"
+        "src/ray/raylet/raylet_monitor"
+        "src/ray/raylet/raylet")
+
+  if (RAY_USE_NEW_GCS)
+    list(APPEND ray_file_list "src/credis/build/src/libmember.so")
+    list(APPEND ray_file_list "src/credis/build/src/libmaster.so")
+    list(APPEND ray_file_list "src/credis/redis/src/redis-server")
+  endif()
+
+  if (DEFINED ENV{INCLUDE_UI} AND "$ENV{INCLUDE_UI}" STREQUAL "1")
+    list(APPEND ray_file_list "src/catapult_files/index.html")
+    list(APPEND ray_file_list "src/catapult_files/trace_viewer_full.html")
+  endif()
+
+  set(build_ray_file_list)
+  foreach(file ${ray_file_list})
+    list(APPEND build_ray_file_list ${CMAKE_BINARY_DIR}/${file})
+  endforeach()
+
+  add_custom_target(copy_ray ALL
+      DEPENDS ${build_ray_file_list})
+
+  foreach(file ${ray_file_list})
+  add_custom_command(TARGET copy_ray POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E
+                        copy ${CMAKE_BINARY_DIR}/${file}
+                            ${CMAKE_BINARY_DIR}/../python/ray/core/${file})
+  endforeach()
+endif()
