@@ -9,7 +9,7 @@
 struct aeEventLoop;
 typedef aeEventLoop event_loop;
 
-enum common_message_type {
+enum class CommonMessageType : int32_t {
   /** Disconnect a client. */
   DISCONNECT_CLIENT,
   /** Log a message from a client. */

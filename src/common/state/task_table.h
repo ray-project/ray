@@ -122,8 +122,8 @@ void task_table_test_and_update(
     DBHandle *db_handle,
     TaskID task_id,
     DBClientID test_local_scheduler_id,
-    int test_state_bitmask,
-    int update_state,
+    TaskStatus test_state_bitmask,
+    TaskStatus update_state,
     RetryInfo *retry,
     task_table_test_and_update_callback done_callback,
     void *user_context);
@@ -133,8 +133,8 @@ typedef struct {
   /** The value to test the current local scheduler ID against. This field is
    *  ignored if equal to NIL_ID. */
   DBClientID test_local_scheduler_id;
-  int test_state_bitmask;
-  int update_state;
+  TaskStatus test_state_bitmask;
+  TaskStatus update_state;
   DBClientID local_scheduler_id;
 } TaskTableTestAndUpdateData;
 
@@ -171,7 +171,7 @@ typedef void (*task_table_subscribe_callback)(Task *task, void *user_context);
  */
 void task_table_subscribe(DBHandle *db_handle,
                           DBClientID local_scheduler_id,
-                          int state_filter,
+                          TaskStatus state_filter,
                           task_table_subscribe_callback subscribe_callback,
                           void *subscribe_context,
                           RetryInfo *retry,
@@ -182,7 +182,7 @@ void task_table_subscribe(DBHandle *db_handle,
  * database. */
 typedef struct {
   DBClientID local_scheduler_id;
-  int state_filter;
+  TaskStatus state_filter;
   task_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
 } TaskTableSubscribeData;
