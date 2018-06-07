@@ -8,6 +8,7 @@ import org.ray.spi.KeyValueStoreLink;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
+import redis.clients.jedis.Protocol.Command;
 
 public class RedisClient implements KeyValueStoreLink {
 
@@ -202,5 +203,27 @@ public class RedisClient implements KeyValueStoreLink {
   @Override
   public Object GetImpl() {
     return jedisPool;
+  }
+
+  static enum ModuleCommand implements Commands {
+    SIMPLE("testmodule.simple")  ;
+
+    private final byte[] raw;
+
+    ModuleCommand(String alt) {
+      raw = SafeEncoder.encode(alt);
+    }
+
+    @Override
+    public byte[] getRaw() {
+      return raw;
+    }
+  }
+
+  @Override
+  public void SendCommand() {
+    try (Jedis jedis = jedisPool.getResource()) {
+      return jedis.getClient().sendCommand();
+    }
   }
 }

@@ -77,7 +77,7 @@ public class RayNativeRuntime extends RayRuntime {
       initStateStore(params.redis_address);
     } else {
       initStateStore(params.redis_address);
-      if (!isWorker) {
+      if (!isWorker && !params.use_raylet) {
         List<AddressInfo> nodes = stateStoreProxy.getAddressInfo(params.node_ip_address, 5);
         params.object_store_name = nodes.get(0).storeName;
         params.object_store_manager_name = nodes.get(0).managerName;
@@ -145,6 +145,7 @@ public class RayNativeRuntime extends RayRuntime {
     params.object_store_name = manager.info().local_stores.get(0).storeName;
     params.object_store_manager_name = manager.info().local_stores.get(0).managerName;
     params.local_scheduler_name = manager.info().local_stores.get(0).schedulerName;
+    params.raylet_name = manager.info().local_stores.get(0).rayletName;
     //params.node_ip_address = NetworkUtil.getIpAddress();
   }
 

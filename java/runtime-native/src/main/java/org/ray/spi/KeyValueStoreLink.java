@@ -122,4 +122,6 @@ public interface KeyValueStoreLink {
   Long Publish(byte[] channel, byte[] message);
 
   Object GetImpl();
+
+  void SendCommand();
 }
