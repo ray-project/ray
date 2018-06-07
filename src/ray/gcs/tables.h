@@ -85,8 +85,8 @@ class Log : virtual public PubsubInterface<ID> {
   Log(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : context_(context),
         client_(client),
-        pubsub_channel_(TablePubsub_NO_PUBLISH),
-        prefix_(TablePrefix_UNUSED),
+        pubsub_channel_(TablePubsub::NO_PUBLISH),
+        prefix_(TablePrefix::UNUSED),
         subscribe_callback_index_(-1){};
 
   /// Append a log entry to a key.
@@ -273,8 +273,8 @@ class ObjectTable : public Log<ObjectID, ObjectTableData> {
  public:
   ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Log(context, client) {
-    pubsub_channel_ = TablePubsub_OBJECT;
-    prefix_ = TablePrefix_OBJECT;
+    pubsub_channel_ = TablePubsub::OBJECT;
+    prefix_ = TablePrefix::OBJECT;
   };
   virtual ~ObjectTable(){};
 };
@@ -283,8 +283,8 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
  public:
   HeartbeatTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
-    pubsub_channel_ = TablePubsub_HEARTBEAT;
-    prefix_ = TablePrefix_HEARTBEAT;
+    pubsub_channel_ = TablePubsub::HEARTBEAT;
+    prefix_ = TablePrefix::HEARTBEAT;
   }
   virtual ~HeartbeatTable() {}
 };
@@ -293,8 +293,8 @@ class FunctionTable : public Table<ObjectID, FunctionTableData> {
  public:
   FunctionTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
-    pubsub_channel_ = TablePubsub_NO_PUBLISH;
-    prefix_ = TablePrefix_FUNCTION;
+    pubsub_channel_ = TablePubsub::NO_PUBLISH;
+    prefix_ = TablePrefix::FUNCTION;
   };
 };
 
@@ -305,8 +305,8 @@ class ActorTable : public Log<ActorID, ActorTableData> {
  public:
   ActorTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Log(context, client) {
-    pubsub_channel_ = TablePubsub_ACTOR;
-    prefix_ = TablePrefix_ACTOR;
+    pubsub_channel_ = TablePubsub::ACTOR;
+    prefix_ = TablePrefix::ACTOR;
   }
 };
 
@@ -315,7 +315,7 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
   TaskReconstructionLog(const std::shared_ptr<RedisContext> &context,
                         AsyncGcsClient *client)
       : Log(context, client) {
-    prefix_ = TablePrefix_TASK_RECONSTRUCTION;
+    prefix_ = TablePrefix::TASK_RECONSTRUCTION;
   }
 };
 
@@ -325,8 +325,8 @@ class TaskTable : public Table<TaskID, ray::protocol::Task> {
  public:
   TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
-    pubsub_channel_ = TablePubsub_RAYLET_TASK;
-    prefix_ = TablePrefix_RAYLET_TASK;
+    pubsub_channel_ = TablePubsub::RAYLET_TASK;
+    prefix_ = TablePrefix::RAYLET_TASK;
   }
 
   TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
@@ -342,8 +342,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
  public:
   TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
       : Table(context, client) {
-    pubsub_channel_ = TablePubsub_TASK;
-    prefix_ = TablePrefix_TASK;
+    pubsub_channel_ = TablePubsub::TASK;
+    prefix_ = TablePrefix::TASK;
   };
 
   TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client,
@@ -417,7 +417,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
 Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
 Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client, const TaskID &task_id,
-                              const ClientID &local_scheduler_id, int test_state_bitmask,
+                              const ClientID &local_scheduler_id,
+                              SchedulingState test_state_bitmask,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
@@ -449,8 +450,8 @@ class ClientTable : private Log<UniqueID, ClientTableData> {
         disconnected_(false),
         client_id_(client_id),
         local_client_() {
-    pubsub_channel_ = TablePubsub_CLIENT;
-    prefix_ = TablePrefix_CLIENT;
+    pubsub_channel_ = TablePubsub::CLIENT;
+    prefix_ = TablePrefix::CLIENT;
 
     // Set the local client's ID.
     local_client_.client_id = client_id.binary();

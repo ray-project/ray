@@ -2,12 +2,15 @@
 
 #include "common_protocol.h"
 #include "format/local_scheduler_generated.h"
+#include "ray/raylet/format/node_manager_generated.h"
 
 #include "common/io.h"
 #include "common/task.h"
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+using MessageType = ray::local_scheduler::protocol::MessageType;
 
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
@@ -25,8 +28,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
   int success = write_message(
-      result->conn,
-      ray::local_scheduler::protocol::MessageType_RegisterClientRequest,
+      result->conn, static_cast<int64_t>(MessageType::RegisterClientRequest),
       fbb.GetSize(), fbb.GetBufferPointer());
   RAY_CHECK(success == 0) << "Unable to register worker with local scheduler";
 
@@ -42,8 +44,7 @@ void local_scheduler_disconnect_client(LocalSchedulerConnection *conn) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::local_scheduler::protocol::CreateDisconnectClient(fbb);
   fbb.Finish(message);
-  write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_DisconnectClient,
+  write_message(conn->conn, static_cast<int64_t>(MessageType::DisconnectClient),
                 fbb.GetSize(), fbb.GetBufferPointer());
 }
 
@@ -59,8 +60,7 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
   auto message = ray::local_scheduler::protocol::CreateEventLogMessage(
       fbb, key_string, value_string, timestamp);
   fbb.Finish(message);
-  write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_EventLogMessage,
+  write_message(conn->conn, static_cast<int64_t>(MessageType::EventLogMessage),
                 fbb.GetSize(), fbb.GetBufferPointer());
 }
 
@@ -75,8 +75,7 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
   auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(
       fbb, execution_dependencies, task_spec);
   fbb.Finish(message);
-  write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_SubmitTask,
+  write_message(conn->conn, static_cast<int64_t>(MessageType::SubmitTask),
                 fbb.GetSize(), fbb.GetBufferPointer());
 }
 
@@ -89,26 +88,25 @@ void local_scheduler_submit_raylet(
   auto message = ray::local_scheduler::protocol::CreateSubmitTaskRequest(
       fbb, execution_dependencies_message, task_spec.ToFlatbuffer(fbb));
   fbb.Finish(message);
-  write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_SubmitTask,
+  write_message(conn->conn, static_cast<int64_t>(MessageType::SubmitTask),
                 fbb.GetSize(), fbb.GetBufferPointer());
 }
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                    int64_t *task_size) {
-  write_message(conn->conn, ray::local_scheduler::protocol::MessageType_GetTask,
-                0, NULL);
+  write_message(conn->conn, static_cast<int64_t>(MessageType::GetTask), 0,
+                NULL);
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;
   /* Receive a task from the local scheduler. This will block until the local
    * scheduler gives this client a task. */
   read_message(conn->conn, &type, &reply_size, &reply);
-  if (type == DISCONNECT_CLIENT) {
+  if (type == static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT)) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
-  RAY_CHECK(type == ray::local_scheduler::protocol::MessageType_ExecuteTask);
+  RAY_CHECK(static_cast<MessageType>(type) == MessageType::ExecuteTask);
 
   /* Parse the flatbuffer object. */
   auto reply_message =
@@ -136,8 +134,8 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
 }
 
 void local_scheduler_task_done(LocalSchedulerConnection *conn) {
-  write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_TaskDone, 0, NULL);
+  write_message(conn->conn, static_cast<int64_t>(MessageType::TaskDone), 0,
+                NULL);
 }
 
 void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
@@ -147,21 +145,19 @@ void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
       fbb, to_flatbuf(fbb, object_id));
   fbb.Finish(message);
   write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_ReconstructObject,
+                static_cast<int64_t>(MessageType::ReconstructObject),
                 fbb.GetSize(), fbb.GetBufferPointer());
   /* TODO(swang): Propagate the error. */
 }
 
 void local_scheduler_log_message(LocalSchedulerConnection *conn) {
-  write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_EventLogMessage, 0,
-                NULL);
+  write_message(conn->conn, static_cast<int64_t>(MessageType::EventLogMessage),
+                0, NULL);
 }
 
 void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn) {
-  write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_NotifyUnblocked, 0,
-                NULL);
+  write_message(conn->conn, static_cast<int64_t>(MessageType::NotifyUnblocked),
+                0, NULL);
 }
 
 void local_scheduler_put_object(LocalSchedulerConnection *conn,
@@ -172,8 +168,7 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
       fbb, to_flatbuf(fbb, task_id), to_flatbuf(fbb, object_id));
   fbb.Finish(message);
 
-  write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_PutObject,
+  write_message(conn->conn, static_cast<int64_t>(MessageType::PutObject),
                 fbb.GetSize(), fbb.GetBufferPointer());
 }
 
@@ -184,26 +179,65 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
   auto message = ray::local_scheduler::protocol::CreateGetActorFrontierRequest(
       fbb, to_flatbuf(fbb, actor_id));
   fbb.Finish(message);
-  write_message(
-      conn->conn,
-      ray::local_scheduler::protocol::MessageType_GetActorFrontierRequest,
-      fbb.GetSize(), fbb.GetBufferPointer());
+  write_message(conn->conn,
+                static_cast<int64_t>(MessageType::GetActorFrontierRequest),
+                fbb.GetSize(), fbb.GetBufferPointer());
 
   int64_t type;
   std::vector<uint8_t> reply;
   read_vector(conn->conn, &type, reply);
-  if (type == DISCONNECT_CLIENT) {
+  if (static_cast<CommonMessageType>(type) ==
+      CommonMessageType::DISCONNECT_CLIENT) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
-  RAY_CHECK(type ==
-            ray::local_scheduler::protocol::MessageType_GetActorFrontierReply);
+  RAY_CHECK(static_cast<MessageType>(type) ==
+            MessageType::GetActorFrontierReply);
   return reply;
 }
 
 void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
                                         const std::vector<uint8_t> &frontier) {
-  write_message(conn->conn,
-                ray::local_scheduler::protocol::MessageType_SetActorFrontier,
+  write_message(conn->conn, static_cast<int64_t>(MessageType::SetActorFrontier),
                 frontier.size(), const_cast<uint8_t *>(frontier.data()));
+}
+
+std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &object_ids,
+    int num_returns,
+    int64_t timeout_milliseconds,
+    bool wait_local) {
+  // Write request.
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateWaitRequest(
+      fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds,
+      wait_local);
+  fbb.Finish(message);
+  write_message(conn->conn,
+                static_cast<int64_t>(ray::protocol::MessageType::WaitRequest),
+                fbb.GetSize(), fbb.GetBufferPointer());
+  // Read result.
+  int64_t type;
+  int64_t reply_size;
+  uint8_t *reply;
+  read_message(conn->conn, &type, &reply_size, &reply);
+  RAY_CHECK(static_cast<ray::protocol::MessageType>(type) ==
+            ray::protocol::MessageType::WaitReply);
+  auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
+  // Convert result.
+  std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result;
+  auto found = reply_message->found();
+  for (uint i = 0; i < found->size(); i++) {
+    ObjectID object_id = ObjectID::from_binary(found->Get(i)->str());
+    result.first.push_back(object_id);
+  }
+  auto remaining = reply_message->remaining();
+  for (uint i = 0; i < remaining->size(); i++) {
+    ObjectID object_id = ObjectID::from_binary(remaining->Get(i)->str());
+    result.second.push_back(object_id);
+  }
+  /* Free the original message from the local scheduler. */
+  free(reply);
+  return result;
 }

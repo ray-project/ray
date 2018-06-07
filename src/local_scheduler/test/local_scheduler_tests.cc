@@ -228,10 +228,10 @@ TEST object_reconstruction_test(void) {
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
-    /* Set the task's status to TASK_STATUS_DONE to prevent the race condition
+    /* Set the task's status to TaskStatus::DONE to prevent the race condition
      * that would suppress object reconstruction. */
     Task *task = Task_alloc(
-        execution_spec, TASK_STATUS_DONE,
+        execution_spec, TaskStatus::DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
 #if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
@@ -349,10 +349,10 @@ TEST object_reconstruction_recursive_test(void) {
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
-    /* Set the final task's status to TASK_STATUS_DONE to prevent the race
+    /* Set the final task's status to TaskStatus::DONE to prevent the race
      * condition that would suppress object reconstruction. */
     Task *last_task = Task_alloc(
-        specs[NUM_TASKS - 1], TASK_STATUS_DONE,
+        specs[NUM_TASKS - 1], TaskStatus::DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
 #if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,

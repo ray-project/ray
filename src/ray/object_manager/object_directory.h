@@ -46,24 +46,41 @@ class ObjectDirectoryInterface {
                                      const InfoFailureCallback &fail_cb) = 0;
 
   /// Callback for object location notifications.
-  using OnLocationsFound = std::function<void(const std::vector<ray::ClientID> &v,
+  using OnLocationsFound = std::function<void(const std::vector<ray::ClientID> &,
                                               const ray::ObjectID &object_id)>;
+
+  /// Lookup object locations. Callback may be invoked with empty list of client ids.
+  ///
+  /// \param object_id The object's ObjectID.
+  /// \param callback Invoked with (possibly empty) list of client ids and object_id.
+  /// \return Status of whether async call to backend succeeded.
+  virtual ray::Status LookupLocations(const ObjectID &object_id,
+                                      const OnLocationsFound &callback) = 0;
 
   /// Subscribe to be notified of locations (ClientID) of the given object.
   /// The callback will be invoked whenever locations are obtained for the
-  /// specified object.
+  /// specified object. The callback provided to this method may fire immediately,
+  /// within the call to this method, if any other listener is subscribed to the same
+  /// object: This occurs when location data for the object has already been obtained.
   ///
+  /// \param callback_id The id associated with the specified callback. This is
+  /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
   /// \param success_cb Invoked with non-empty list of client ids and object_id.
   /// \return Status of whether subscription succeeded.
-  virtual ray::Status SubscribeObjectLocations(const ObjectID &object_id,
+  virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
+                                               const ObjectID &object_id,
                                                const OnLocationsFound &callback) = 0;
 
   /// Unsubscribe to object location notifications.
   ///
+  /// \param callback_id The id associated with a callback. This was given
+  /// at subscription time, and unsubscribes the corresponding callback from
+  /// further notifications about the given object's location.
   /// \param object_id The object id invoked with Subscribe.
-  /// \return
-  virtual ray::Status UnsubscribeObjectLocations(const ObjectID &object_id) = 0;
+  /// \return Status of unsubscribing from object location notifications.
+  virtual ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                                 const ObjectID &object_id) = 0;
 
   /// Report objects added to this node's store to the object directory.
   ///
@@ -96,9 +113,14 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                              const InfoSuccessCallback &success_callback,
                              const InfoFailureCallback &fail_callback) override;
 
-  ray::Status SubscribeObjectLocations(const ObjectID &object_id,
+  ray::Status LookupLocations(const ObjectID &object_id,
+                              const OnLocationsFound &callback) override;
+
+  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
+                                       const ObjectID &object_id,
                                        const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const ObjectID &object_id) override;
+  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                         const ObjectID &object_id) override;
 
   ray::Status ReportObjectAdded(const ObjectID &object_id, const ClientID &client_id,
                                 const ObjectInfoT &object_info) override;
@@ -113,12 +135,10 @@ class ObjectDirectory : public ObjectDirectoryInterface {
  private:
   /// Callbacks associated with a call to GetLocations.
   struct LocationListenerState {
-    LocationListenerState(const OnLocationsFound &locations_found_callback)
-        : locations_found_callback(locations_found_callback) {}
     /// The callback to invoke when object locations are found.
-    OnLocationsFound locations_found_callback;
+    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
-    std::unordered_set<ClientID> client_ids;
+    std::unordered_set<ClientID> current_object_locations;
   };
 
   /// Info about subscribers to object locations.
