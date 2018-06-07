@@ -34,9 +34,7 @@ class DDPGEvaluator(PolicyEvaluator):
 
         # since each sample is one step, no discounting needs to be applied;
         # this does not involve config["gamma"]
-        samples = compute_advantages(
-                    rollout, NoFilter(),
-                    gamma=1.0, use_gae=False)
+        samples = compute_advantages(rollout, 0.0, gamma=1.0, use_gae=False)
 
         return samples
 
