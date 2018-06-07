@@ -16,7 +16,7 @@ from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
-from ray.rllib.utils.process_rollout import process_rollout
+from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.ppo.loss import ProximalPolicyGraph
 
 
@@ -191,7 +191,7 @@ class PPOEvaluator(PolicyEvaluator):
         while num_steps_so_far < self.config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
             last_r = 0.0  # note: not needed since we don't truncate rollouts
-            samples = process_rollout(
+            samples = compute_advantages(
                 rollout, last_r, self.config["gamma"],
                 self.config["lambda"], use_gae=self.config["use_gae"])
             num_steps_so_far += samples.count

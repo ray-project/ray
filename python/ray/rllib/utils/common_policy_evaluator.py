@@ -182,9 +182,12 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         if self.vectorized:
             raise NotImplementedError("Vector envs not yet supported")
         else:
-            if batch_mode not in ["pack_episodes", "truncate_episodes"]:
+            if batch_mode not in [
+                    "pack_episodes", "truncate_episodes", "complete_episodes"]:
                 raise NotImplementedError("Batch mode not yet supported")
             pack = batch_mode == "pack_episodes"
+            if batch_mode == "complete_episodes":
+                batch_steps = 999999
             if sample_async:
                 self.sampler = AsyncSampler(
                     self.env, self.policy_map["default"], self.obs_filter,

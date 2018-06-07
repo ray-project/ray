@@ -5,7 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 import gym
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.process_rollout import process_rollout
+from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
@@ -64,7 +64,7 @@ class A3CTFPolicyGraph(TFPolicyGraph):
         # The "policy gradients" loss: its derivative is precisely the policy
         # gradient. Notice that self.ac is a placeholder that is provided
         # externally. adv will contain the advantages, as calculated in
-        # process_rollout.
+        # compute_advantages.
         self.pi_loss = - tf.reduce_sum(log_prob * self.adv)
 
         delta = self.vf - self.r
@@ -98,5 +98,5 @@ class A3CTFPolicyGraph(TFPolicyGraph):
             for i in range(len(self.state_in)):
                 next_state.append([sample_batch["state_out_{}".format(i)][-1]])
             last_r = self.value(sample_batch["new_obs"][-1], *next_state)
-        return process_rollout(
+        return compute_advantages(
             sample_batch, last_r, self.config["gamma"], self.config["lambda"])

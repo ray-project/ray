@@ -17,6 +17,17 @@ class PolicyGraph(object):
     graphs and multi-GPU support.
     """
 
+    def __init__(self, registry, observation_space, action_space, config):
+        """Initialize the graph.
+
+        Args:
+            registry (obj): Object registry for user-defined envs, models, etc.
+            observation_space (gym.Space): Observation space of the env.
+            action_space (gym.Space): Action space of the env.
+            config (dict): Policy-specific configuration data.
+        """
+        pass
+
     def compute_actions(self, obs_batch, state_batches, is_training=False):
         """Compute actions for the current policy.
 
@@ -26,9 +37,12 @@ class PolicyGraph(object):
             is_training (bool): whether we are training the policy
 
         Returns:
-            actions (np.ndarray): batch of output actions
-            state_outs (list): list of RNN state output batches, if any
-            info (dict): dictionary of extra feature batches, if any
+            actions (np.ndarray): batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs (list): list of RNN state output batches, if any, with
+                shape like [STATE_SIZE, BATCH_SIZE].
+            info (dict): dictionary of extra feature batches, if any, with
+                shape like {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
         """
         raise NotImplementedError
 
