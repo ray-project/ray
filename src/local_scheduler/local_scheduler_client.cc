@@ -138,14 +138,16 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn) {
                 NULL);
 }
 
-void local_scheduler_reconstruct_object(LocalSchedulerConnection *conn,
-                                        ObjectID object_id) {
+void local_scheduler_reconstruct_objects(LocalSchedulerConnection *conn,
+                                         const std::vector<ObjectID>& object_ids,
+                                         bool fetch_only) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::local_scheduler::protocol::CreateReconstructObject(
-      fbb, to_flatbuf(fbb, object_id));
+  auto object_ids_message = to_flatbuf(fbb, object_ids);
+  auto message = ray::local_scheduler::protocol::CreateReconstructObjects(
+      fbb, object_ids_message, fetch_only);
   fbb.Finish(message);
   write_message(conn->conn,
-                static_cast<int64_t>(MessageType::ReconstructObject),
+                static_cast<int64_t>(MessageType::ReconstructObjects),
                 fbb.GetSize(), fbb.GetBufferPointer());
   /* TODO(swang): Propagate the error. */
 }
