@@ -16,7 +16,7 @@ from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
-    "num_workers": 4,
+    "num_workers": 2,
     # Size of rollout batch
     "batch_size": 10,
     # Use LSTM model - only applicable for image states
@@ -81,12 +81,25 @@ class A3CAgent(Agent):
     def _init(self):
         self.policy_cls = get_policy_cls(self.config)
 
+        if self.config["use_pytorch"]:
+            session_creator = None
+        else:
+            import tensorflow as tf
+
+            def session_creator():
+                return tf.Session(
+                    config=tf.ConfigProto(
+                        intra_op_parallelism_threads=1,
+                        inter_op_parallelism_threads=1,
+                        gpu_options=tf.GPUOptions(allow_growth=True)))
+
         remote_cls = CommonPolicyEvaluator.as_remote(
             num_gpus=1 if self.config["use_gpu_for_workers"] else 0)
         self.local_evaluator = CommonPolicyEvaluator(
             self.env_creator, self.policy_cls,
             batch_steps=self.config["batch_size"],
             batch_mode="truncate_episodes",
+            tf_session_creator=session_creator,
             registry=self.registry, env_config=self.config["env_config"],
             model_config=self.config["model"], policy_config=self.config)
         self.remote_evaluators = [
@@ -94,6 +107,7 @@ class A3CAgent(Agent):
                 self.env_creator, self.policy_cls,
                 batch_steps=self.config["batch_size"],
                 batch_mode="truncate_episodes", sample_async=True,
+                tf_session_creator=session_creator,
                 registry=self.registry, env_config=self.config["env_config"],
                 model_config=self.config["model"], policy_config=self.config)
             for i in range(self.config["num_workers"])]

@@ -32,7 +32,6 @@ class A3CTFPolicyGraph(TFPolicyGraph):
             loss_inputs=self.loss_in, is_training=self.is_training,
             state_inputs=self.state_in, state_outputs=self.state_out)
 
-        # TODO(ekl) move session creation and init to CommonPolicyEvaluator
         self.sess.run(tf.global_variables_initializer())
 
         if self.summarize:

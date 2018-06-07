@@ -56,7 +56,7 @@ class BCPolicy(object):
     def initialize(self):
         if self.summarize:
             bs = tf.to_float(tf.shape(self.x)[0])
-            tf.summary.scalar("model/policy_graph", self.pi_loss / bs)
+            tf.summary.scalar("model/policy_loss", self.pi_loss / bs)
             tf.summary.scalar("model/grad_gnorm", tf.global_norm(self.grads))
             tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
             self.summary_op = tf.summary.merge_all()
