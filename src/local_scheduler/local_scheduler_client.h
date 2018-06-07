@@ -169,4 +169,22 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
 void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
                                         const std::vector<uint8_t> &frontier);
 
+/// Wait for the given objects until timeout expires or num_return objects are
+/// found.
+///
+/// \param conn The connection information.
+/// \param object_ids The objects to wait for.
+/// \param num_returns The number of objects to wait for.
+/// \param timeout_milliseconds Duration, in milliseconds, to wait before
+/// returning.
+/// \param wait_local Whether to wait for objects to appear on this node.
+/// \return A pair with the first element containing the object ids that were
+/// found, and the second element the objects that were not found.
+std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID> &object_ids,
+    int num_returns,
+    int64_t timeout_milliseconds,
+    bool wait_local);
+
 #endif
