@@ -44,6 +44,7 @@ DEFAULT_CONFIG = dict(
     observation_filter='NoFilter',
     policy='Linear',
     seed=123,
+    eval_rollouts=50,
     env_config={}
 )
 
@@ -242,12 +243,12 @@ class ARSAgent(agent.Agent):
 
         self.sess = utils.make_session(single_threaded=False)
         # initialize policy
-        if self.config['policy'] == 'Linear':
-            self.policy = LinearPolicy(
+        if self.config['policy'] == 'MLP':
+            self.policy = MLPPolicy(
                 self.registry, self.sess, env.action_space, preprocessor,
                 self.config["observation_filter"])
         else:
-            self.policy = MLPPolicy(
+            self.policy = LinearPolicy(
                 self.registry, self.sess, env.action_space, preprocessor,
                 self.config["observation_filter"])
         self.w_policy = self.policy.get_weights()
@@ -371,12 +372,14 @@ class ARSAgent(agent.Agent):
         self.timesteps_so_far += np.sum(info_dict['steps'])
 
         # Evaluate the reward with the unperturbed params
-        rewards = self.aggregate_rollouts(num_rollouts=4, evaluate=True)
+        rewards = self.aggregate_rollouts(num_rollouts=self.config['eval_rollouts'],
+                                          evaluate=True)
         w = ray.get(self.workers[0].get_weights.remote())
 
         tlogger.record_tabular("AverageReward", np.mean(rewards))
         tlogger.record_tabular("StdRewards", np.std(rewards))
         tlogger.record_tabular("WeightNorm", float(np.square(w).sum()))
+        tlogger.record_tabular("WeightStd", float(np.std(w)))
         tlogger.record_tabular("GradNorm", float(np.square(g_hat).sum()))
         tlogger.record_tabular("MaxRewardRollout", np.max(rewards))
         tlogger.record_tabular("MinRewardRollout", np.min(rewards))
