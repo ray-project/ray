@@ -214,14 +214,16 @@ std::pair<std::vector<ObjectID>, std::vector<ObjectID>> local_scheduler_wait(
       fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds,
       wait_local);
   fbb.Finish(message);
-  write_message(conn->conn, ray::protocol::MessageType_WaitRequest,
+  write_message(conn->conn,
+                static_cast<int64_t>(ray::protocol::MessageType::WaitRequest),
                 fbb.GetSize(), fbb.GetBufferPointer());
   // Read result.
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;
   read_message(conn->conn, &type, &reply_size, &reply);
-  RAY_CHECK(type == ray::protocol::MessageType_WaitReply);
+  RAY_CHECK(static_cast<ray::protocol::MessageType>(type) ==
+            ray::protocol::MessageType::WaitReply);
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply);
   // Convert result.
   std::pair<std::vector<ObjectID>, std::vector<ObjectID>> result;

@@ -91,7 +91,8 @@ RedisModuleString *FormatPubsubChannel(
   // Format the pubsub channel enum to a string. TablePubsub_MAX should be more
   // than enough digits, but add 1 just in case for the null terminator.
   char pubsub_channel[static_cast<int>(TablePubsub::MAX) + 1];
-  sprintf(pubsub_channel, "%d", ParseTablePubsub(pubsub_channel_str));
+  sprintf(pubsub_channel, "%d",
+          static_cast<int>(ParseTablePubsub(pubsub_channel_str)));
   return RedisString_Format(ctx, "%s:%S", pubsub_channel, id);
 }
 
