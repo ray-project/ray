@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
 import copy
 import json
 import hashlib
@@ -644,10 +645,10 @@ def hash_runtime_conf(file_mounts, extra_objs):
                 for name in filenames:
                     hasher.update(name.encode("utf-8"))
                     with open(os.path.join(dirpath, name), "rb") as f:
-                        hasher.update(f.read())
+                        hasher.update(binascii.hexlify(f.read()))
         else:
-            with open(os.path.expanduser(path), "r") as f:
-                hasher.update(f.read().encode("utf-8"))
+            with open(os.path.expanduser(path), "rb") as f:
+                hasher.update(binascii.hexlify(f.read()))
 
     hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
     hasher.update(json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
