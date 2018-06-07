@@ -5,7 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.process_rollout import process_rollout
+from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
 
 
@@ -41,5 +41,5 @@ class PGPolicyGraph(TFPolicyGraph):
         self.sess.run(tf.global_variables_initializer())
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
-        return process_rollout(
+        return compute_advantages(
             sample_batch, 0.0, self.config["gamma"], use_gae=False)

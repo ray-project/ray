@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 from ray.rllib.models.pytorch.misc import var_to_np, convert_batch
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.process_rollout import process_rollout
+from ray.rllib.utils.process_rollout import compute_advantages
 from ray.rllib.utils.policy_graph import PolicyGraph
 
 
@@ -109,5 +109,5 @@ class SharedTorchPolicy(PolicyGraph):
             last_r = 0.0
         else:
             last_r = self.value(sample_batch["new_obs"][-1])
-        return process_rollout(
+        return compute_advantages(
             sample_batch, last_r, self.config["gamma"], self.config["lambda"])

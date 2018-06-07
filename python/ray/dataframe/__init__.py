@@ -16,9 +16,9 @@ pd_version = pd.__version__
 pd_major = int(pd_version.split(".")[0])
 pd_minor = int(pd_version.split(".")[1])
 
-if pd_major == 0 and pd_minor < 22:
-    raise Exception("In order to use Pandas on Ray, please upgrade your Pandas"
-                    " version to >= 0.22.")
+if pd_major == 0 and pd_minor != 22:
+    raise Exception("In order to use Pandas on Ray, your pandas version must "
+                    "be 0.22. You can run 'pip install pandas==0.22'")
 
 DEFAULT_NPARTITIONS = 8
 

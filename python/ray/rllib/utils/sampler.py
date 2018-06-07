@@ -150,8 +150,10 @@ def _env_runner(
     Args:
         vector_env: env implementing vector_reset() and vector_step().
         policy: Policy used to interact with environment. Also sets fields
-            to be included in `SampleBatch`.
-        num_local_steps: Number of steps before `SampleBatch` is yielded.
+            to be included in `SampleBatch`
+        num_local_steps: Number of steps before `SampleBatch` is yielded. Set
+            to infinity to yield complete episodes.
+        horizon: Horizon of the episode.
         obs_filter: Filter used to process observations.
         pack: Whether to pack multiple episodes into each batch. This
             guarantees batches will be exactly `num_local_steps` in size.

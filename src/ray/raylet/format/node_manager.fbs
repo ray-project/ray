@@ -53,7 +53,12 @@ enum MessageType:int {
   // making their execution dependencies available.
   SetActorFrontier,
   // A node manager request to process a task forwarded from another node manager.
-  ForwardTaskRequest
+  ForwardTaskRequest,
+  // Wait for objects to be ready either from local or remote Plasma stores.
+  WaitRequest,
+  // The response message to WaitRequest; replies with the objects found and objects
+  // remaining.
+  WaitReply
 }
 
 table TaskExecutionSpecification {
@@ -116,4 +121,22 @@ table ForwardTaskRequest {
 table ReconstructObject {
   // Object ID of the object that needs to be reconstructed.
   object_id: string;
+}
+
+table WaitRequest {
+  // List of object ids we'll be waiting on.
+  object_ids: [string];
+  // Number of objects expected to be returned, if available.
+  num_ready_objects: int;
+  // timeout
+  timeout: long;
+  // Whether to wait until objects appear locally.
+  wait_local: bool;
+}
+
+table WaitReply {
+  // List of object ids found.
+  found: [string];
+  // List of object ids not found.
+  remaining: [string];
 }

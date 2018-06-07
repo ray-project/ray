@@ -56,8 +56,27 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
     TODO: vector env
     TODO: multi-agent
-    TODO: consumer buffering
+    TODO: consumer buffering for multi-agent
     TODO: complete episode batch mode
+
+    Examples:
+        # Create a policy evaluator and using it to collect experiences.
+        >>> evaluator = CommonPolicyEvaluator(
+              env_creator=lambda _: gym.make("CartPole-v0"),
+              policy_graph=PGPolicyGraph)
+        >>> print(evaluator.sample().keys())
+        {"obs": [[...]], "actions": [[...]], "rewards": [[...]],
+         "dones": [[...]], "new_obs": [[...]]}
+
+        # Creating policy evaluators using optimizer_cls.make().
+        >>> optimizer = LocalSyncOptimizer.make(
+              evaluator_cls=CommonPolicyEvaluator,
+              evaluator_args={
+                "env_creator": lambda _: gym.make("CartPole-v0"),
+                "policy_graph": PGPolicyGraph,
+              },
+              num_workers=10)
+        >>> for _ in range(10): optimizer.step()
     """
 
     @classmethod
@@ -76,7 +95,6 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             sample_async=False,
             compress_observations=False,
             vector_width=1,
-            consumer_buffer_size=0,
             observation_filter="NoFilter",
             registry=None,
             env_config=None,
@@ -112,13 +130,10 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             vector_width (int): If more than one, will create multiple envs
                 and vectorize the computation of actions. If the env implements
                 VectorEnv, that will be used instead of creating multiple envs.
-            consumer_buffer_size (int): If non-zero, buffers up to N sample
-                batches in-memory for use so that they can be retrieved
-                by multiple consumers. This only makes sense in multi-agent.
             observation_filter (str): Name of observation filter to use.
-            registry (tune.Registry): Tune object registry. Pass in the value
-                from tune.registry.get_registry() if you're having trouble
-                resolving objects registered in tune.
+            registry (tune.Registry): User-registered objects. Pass in the
+                value from tune.registry.get_registry() if you're having
+                trouble resolving things like custom envs.
             env_config (dict): Config to pass to the env creator.
             model_config (dict): Config to use when creating the policy model.
             policy_config (dict): Config to pass to the policy.
@@ -190,9 +205,14 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         else:
             self.vector_env = self.env
 
-        if batch_mode not in ["pack_episodes", "truncate_episodes"]:
-            raise NotImplementedError("Batch mode not yet supported")
+        if batch_mode not in [
+                "pack_episodes", "truncate_episodes", "complete_episodes"]:
+            raise NotImplementedError(
+                "Unsupported batch mode: {}".format(batch_mode)
+
         pack = batch_mode == "pack_episodes"
+        if batch_mode == "complete_episodes":
+            batch_steps = 999999
         if sample_async:
             self.sampler = AsyncSampler(
                 self.vector_env, self.policy_map["default"], self.obs_filter,
@@ -205,12 +225,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
                 batch_steps, horizon=episode_horizon, pack=pack,
                 vector_width=vector_width)
 
-    def sample(self, consumer_uuid=None):
+    def sample(self):
         """Evaluate the current policies and return a batch of experiences.
-
-        Arguments:
-            consumer_uuid (str): Unique id for the consumer. This enables the
-                sharing of experiences across multiple consumers.
 
         Return:
             SampleBatch from evaluating the current policies.

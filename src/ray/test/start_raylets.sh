@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# This needs to be run in the build tree, which is normally ray/python/ray/core
+# This needs to be run in the build tree, which is normally ray/build
 
 # Cause the script to exit if a single command fails.
 set -e
@@ -47,6 +47,6 @@ for i in `seq 1 $NUM_RAYLETS`; do
   ./src/ray/raylet/raylet $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME 127.0.0.1 127.0.0.1 6379 &
 
   echo
-  echo "WORKER COMMAND: python ../../../src/ray/python/worker.py $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME"
+  echo "WORKER COMMAND: python ../python/ray/worker.py $RAYLET_SOCKET_NAME $STORE_SOCKET_NAME"
   echo
 done

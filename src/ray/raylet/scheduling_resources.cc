@@ -116,6 +116,12 @@ bool ResourceSet::GetResource(const std::string &resource_name, double *value) c
   return true;
 }
 
+double ResourceSet::GetNumCpus() const {
+  double num_cpus;
+  RAY_CHECK(GetResource(kCPU_ResourceLabel, &num_cpus));
+  return num_cpus;
+}
+
 const std::string ResourceSet::ToString() const {
   std::string return_string = "";
   for (const auto &resource_pair : this->resource_capacity_) {
@@ -142,13 +148,13 @@ SchedulingResources::~SchedulingResources() {}
 ResourceAvailabilityStatus SchedulingResources::CheckResourcesSatisfied(
     ResourceSet &resources) const {
   if (!resources.IsSubset(this->resources_total_)) {
-    return kInfeasible;
+    return ResourceAvailabilityStatus::kInfeasible;
   }
   // Resource demand specified is feasible. Check if it's available.
   if (!resources.IsSubset(this->resources_available_)) {
-    return kResourcesUnavailable;
+    return ResourceAvailabilityStatus::kResourcesUnavailable;
   }
-  return kFeasible;
+  return ResourceAvailabilityStatus::kFeasible;
 }
 
 const ResourceSet &SchedulingResources::GetAvailableResources() const {

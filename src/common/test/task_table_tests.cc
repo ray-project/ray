@@ -105,7 +105,7 @@ void subscribe_success_callback(TaskID task_id, void *context) {
 }
 
 TEST add_lookup_test(void) {
-  add_lookup_task = example_task(1, 1, TASK_STATUS_WAITING);
+  add_lookup_task = example_task(1, 1, TaskStatus::WAITING);
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", std::vector<std::string>());
@@ -116,7 +116,7 @@ TEST add_lookup_test(void) {
       .fail_callback = add_lookup_fail_callback,
   };
   /* Wait for subscription to succeed before adding the task. */
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+  task_table_subscribe(db, UniqueID::nil(), TaskStatus::WAITING, NULL, NULL,
                        &retry, subscribe_success_callback, (void *) db);
   /* Disconnect the database to see if the lookup times out. */
   event_loop_run(g_loop);
@@ -156,7 +156,7 @@ TEST subscribe_timeout_test(void) {
       .timeout = 100,
       .fail_callback = subscribe_fail_callback,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+  task_table_subscribe(db, UniqueID::nil(), TaskStatus::WAITING, NULL, NULL,
                        &retry, subscribe_done_callback,
                        (void *) subscribe_timeout_context);
   /* Disconnect the database to see if the subscribe times out. */
@@ -194,11 +194,11 @@ TEST publish_timeout_test(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
-  Task *task = example_task(1, 1, TASK_STATUS_WAITING);
+  Task *task = example_task(1, 1, TaskStatus::WAITING);
   RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = publish_fail_callback,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+  task_table_subscribe(db, UniqueID::nil(), TaskStatus::WAITING, NULL, NULL,
                        &retry, NULL, NULL);
   task_table_add_task(db, task, &retry, publish_done_callback,
                       (void *) publish_timeout_context);
@@ -270,7 +270,7 @@ TEST subscribe_retry_test(void) {
       .timeout = 100,
       .fail_callback = subscribe_retry_fail_callback,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+  task_table_subscribe(db, UniqueID::nil(), TaskStatus::WAITING, NULL, NULL,
                        &retry, subscribe_retry_done_callback,
                        (void *) subscribe_retry_context);
   /* Disconnect the database to see if the subscribe times out. */
@@ -315,13 +315,13 @@ TEST publish_retry_test(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
-  Task *task = example_task(1, 1, TASK_STATUS_WAITING);
+  Task *task = example_task(1, 1, TaskStatus::WAITING);
   RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
       .fail_callback = publish_retry_fail_callback,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+  task_table_subscribe(db, UniqueID::nil(), TaskStatus::WAITING, NULL, NULL,
                        &retry, NULL, NULL);
   task_table_add_task(db, task, &retry, publish_retry_done_callback,
                       (void *) publish_retry_context);
@@ -374,7 +374,7 @@ TEST subscribe_late_test(void) {
       .timeout = 0,
       .fail_callback = subscribe_late_fail_callback,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+  task_table_subscribe(db, UniqueID::nil(), TaskStatus::WAITING, NULL, NULL,
                        &retry, subscribe_late_done_callback,
                        (void *) subscribe_late_context);
   /* Install handler for terminating the event loop. */
@@ -414,13 +414,13 @@ TEST publish_late_test(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
-  Task *task = example_task(1, 1, TASK_STATUS_WAITING);
+  Task *task = example_task(1, 1, TaskStatus::WAITING);
   RetryInfo retry = {
       .num_retries = 0,
       .timeout = 0,
       .fail_callback = publish_late_fail_callback,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+  task_table_subscribe(db, UniqueID::nil(), TaskStatus::WAITING, NULL, NULL,
                        NULL, NULL, NULL);
   task_table_add_task(db, task, &retry, publish_late_done_callback,
                       (void *) publish_late_context);

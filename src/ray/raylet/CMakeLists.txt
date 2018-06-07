@@ -12,7 +12,7 @@ add_custom_command(
         # flatbuffers message Message, which can be used to store deserialized
         # messages in data structures. This is currently used for ObjectInfo for
         # example.
-        COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${NODE_MANAGER_FBS_SRC} --cpp --gen-object-api --gen-mutable
+        COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${NODE_MANAGER_FBS_SRC} --cpp --gen-object-api --gen-mutable --scoped-enums
         DEPENDS ${FBS_DEPENDS}
         COMMENT "Running flatc compiler on ${NODE_MANAGER_FBS_SRC}"
         VERBATIM)
@@ -20,7 +20,7 @@ add_custom_command(
 add_custom_target(gen_node_manager_fbs DEPENDS ${NODE_MANAGER_FBS_OUTPUT_FILES})
 
 # Generate Python bindings for the flatbuffers objects.
-set(PYTHON_OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated/)
+set(PYTHON_OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../python/ray/core/generated/)
 add_custom_command(
     TARGET gen_node_manager_fbs
     COMMAND ${FLATBUFFERS_COMPILER} -p -o ${PYTHON_OUTPUT_DIR} ${NODE_MANAGER_FBS_SRC}
