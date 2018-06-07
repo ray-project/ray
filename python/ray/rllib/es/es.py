@@ -32,6 +32,7 @@ DEFAULT_CONFIG = dict(
     episodes_per_batch=1000,
     timesteps_per_batch=10000,
     eval_prob=0.003,
+    gamma=.999,
     return_proc_mode="centered_rank",
     num_workers=10,
     stepsize=0.01,
@@ -68,6 +69,7 @@ class Worker(object):
         self.config = config
         self.policy_params = policy_params
         self.noise = SharedNoiseTable(noise)
+        self.gamma = config["gamma"]
 
         self.env = env_creator(config["env_config"])
         from ray.rllib import models
@@ -81,7 +83,8 @@ class Worker(object):
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
-            self.policy, self.env, timestep_limit=timestep_limit,
+            self.policy, self.env, gamma=self.gamma,
+            timestep_limit=timestep_limit,
             add_noise=add_noise)
         return rollout_rewards, rollout_length
 
@@ -97,7 +100,7 @@ class Worker(object):
         while (len(noise_indices) == 0 or
                time.time() - task_tstart < self.min_task_runtime):
 
-            if np.random.uniform() < self.config["eval_prob"] or eval_reward:
+            if eval_reward:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_weights(params)
                 rewards, length = self.rollout(timestep_limit, add_noise=False)
