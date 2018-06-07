@@ -255,8 +255,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             print("\nYou can also connect an external client to the cluster "
                   "from Python by running\n\n"
                   "    import ray\n"
-                  "    ray.init(redis_address=\"{}\", gateway_port={})\n\n". \
-                  format(address_info["redis_address"], gateway_port))
+                  "    ray.init(redis_address=\"{}\", driver_mode=ray.CLIENT_MODE, "
+                  "gateway_port={})\n\n".format(address_info["redis_address"],
+                                                gateway_port))
 
         print("If you wish to terminate the processes that have been started"
               ", run\n\n"

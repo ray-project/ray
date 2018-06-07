@@ -13,6 +13,7 @@ import numpy as np
 import os
 import redis
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -38,6 +39,7 @@ SCRIPT_MODE = 0
 WORKER_MODE = 1
 PYTHON_MODE = 2
 SILENT_MODE = 3
+CLIENT_MODE = 4
 
 LOG_POINT = 0
 LOG_SPAN_START = 1
@@ -195,7 +197,7 @@ class Worker(object):
             remote functions that can be executed by this worker.
         connected (bool): True if Ray has been started and False otherwise.
         mode: The mode of the worker. One of SCRIPT_MODE, PYTHON_MODE,
-            SILENT_MODE, and WORKER_MODE.
+            SILENT_MODE, WORKER_MODE, and CLIENT_MODE.
         cached_remote_functions_and_actors: A list of information for exporting
             remote functions and actor classes definitions that were defined
             before the worker called connect. When the worker eventually does
@@ -267,9 +269,13 @@ class Worker(object):
         print any information about errors because some of the tests
         intentionally fail.
 
+        The mode CLIENT_MODE should be used only if no local resources or Ray
+        process exist. All behavior is proxied to the head node on a Ray
+        cluster.
+
         args:
-            mode: One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, and
-                SILENT_MODE.
+            mode: One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, 
+                SILENT_MODE, and CLIENT_MODE.
         """
         self.mode = mode
 
@@ -1378,7 +1384,8 @@ def _init(address_info=None,
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         driver_mode (bool): The mode in which to start the driver. This should
-            be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+            be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, ray.SILENT_MODE,
+            ray.CLIENT_MODE.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -1415,9 +1422,9 @@ def _init(address_info=None,
             arguments is passed in.
     """
     check_main_thread()
-    if driver_mode not in [SCRIPT_MODE, PYTHON_MODE, SILENT_MODE]:
+    if driver_mode not in [SCRIPT_MODE, PYTHON_MODE, SILENT_MODE, CLIENT_MODE]:
         raise Exception("Driver_mode must be in [ray.SCRIPT_MODE, "
-                        "ray.PYTHON_MODE, ray.SILENT_MODE].")
+                        "ray.PYTHON_MODE, ray.SILENT_MODE, ray.CLIENT_MODE].")
 
     # Get addresses of existing services.
     if address_info is None:
@@ -1430,6 +1437,9 @@ def _init(address_info=None,
     # Start any services that do not yet exist.
     if driver_mode == PYTHON_MODE:
         # If starting Ray in PYTHON_MODE, don't start any other processes.
+        pass
+    elif driver_mode == CLIENT_MODE:
+        # If starting Ray in CLIENT_MODE, don't start any other processes.
         pass
     elif start_ray_local:
         # In this case, we launch a scheduler, a new object store, and some
@@ -1517,6 +1527,29 @@ def _init(address_info=None,
     # when the Python script exits.
     if driver_mode == PYTHON_MODE:
         driver_address_info = {}
+    if driver_mode == CLIENT_MODE:
+        # TODO (dsuo): assumes redis address == node address
+        driver_address_info = {
+            "node_ip_address": address_info["node_ip_address"],
+            "redis_address": address_info["redis_address"],
+            "gateway_port": address_info["gateway_port"]
+        }
+
+        # TODO (dsuo): generate this name more meaningfully
+        # TODO (dsuo): ignore raylets for now
+        driver_address_info["local_scheduler_socket_name"] = "/tmp/ray_client"
+
+        # TODO (dsuo): move this into services.py
+        command = [
+            "socat", "UNIX-LISTEN:" + \
+            driver_address_info["local_scheduler_socket_name"] + \
+            ",reuseaddr,fork", "TCP:" + redis_address.split(":")[0] + ":" + \
+            str(driver_address_info["gateway_port"])
+        ]
+
+        # TODO (dsuo): handle cleanup, logging, etc
+        p = subprocess.Popen(command, stdout=None, stderr=None)
+
     else:
         driver_address_info = {
             "node_ip_address": node_ip_address,
@@ -1559,7 +1592,8 @@ def init(redis_address=None,
          huge_pages=False,
          include_webui=True,
          object_store_memory=None,
-         use_raylet=False):
+         use_raylet=False,
+         gateway_port=5432):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1580,7 +1614,8 @@ def init(redis_address=None,
         num_workers (int): The number of workers to start. This is only
             provided if redis_address is not provided.
         driver_mode (bool): The mode in which to start the driver. This should
-            be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
+            be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, ray.SILENT_MODE, and
+            ray.CLIENT_MODE.
         redirect_worker_output: True if the stdout and stderr of worker
             processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
@@ -1605,6 +1640,7 @@ def init(redis_address=None,
             object store with.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
+        gateway_port: The port that socat will listen on for commands to forward.
 
 
     Returns:
@@ -1621,6 +1657,10 @@ def init(redis_address=None,
         redis_address = services.address_to_ip(redis_address)
 
     info = {"node_ip_address": node_ip_address, "redis_address": redis_address}
+
+    if driver_mode == CLIENT_MODE:
+        info["gateway_port"] = gateway_port
+
     return _init(
         address_info=info,
         start_ray_local=(redis_address is None),
@@ -1930,7 +1970,7 @@ def connect(info,
         object_id_seed: A seed to use to make the generation of object IDs
             deterministic.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE,
-            PYTHON_MODE, and SILENT_MODE.
+            PYTHON_MODE, SILENT_MODE, and CLIENT_MODE.
         use_raylet: True if the new raylet code path should be used. This is
             not supported yet.
     """
@@ -2039,16 +2079,29 @@ def connect(info,
             worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
         is_worker = True
+    elif mode == CLIENT_MODE:
+        driver_info = {
+            "node_ip_address": worker.node_ip_address,
+            "driver_id": worker.worker_id,
+            "start_time": time.time()
+        }
+        # TODO (dsuo): better naming mechanism
+        driver_info["name"] = "CLIENT"
+        worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
+        is_worker = False
     else:
         raise Exception("This code should be unreachable.")
 
-    # Create an object store client.
-    if not worker.use_raylet:
-        worker.plasma_client = plasma.connect(info["store_socket_name"],
-                                              info["manager_socket_name"], 64)
-    else:
-        worker.plasma_client = plasma.connect(info["store_socket_name"], "",
-                                              64)
+    # TODO (dsuo): ignore object store if in CLIENT_MODE
+
+    if mode != CLIENT_MODE:
+        # Create an object store client.
+        if not worker.use_raylet:
+            worker.plasma_client = plasma.connect(info["store_socket_name"],
+                                                info["manager_socket_name"], 64)
+        else:
+            worker.plasma_client = plasma.connect(info["store_socket_name"], "",
+                                                64)
 
     if not worker.use_raylet:
         local_scheduler_socket = info["local_scheduler_socket_name"]
@@ -2060,7 +2113,7 @@ def connect(info,
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
-    if mode in [SCRIPT_MODE, SILENT_MODE]:
+    if mode in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
         # If the user provided an object_id_seed, then set the current task ID
         # deterministically based on that seed (without altering the state of
         # the user's random number generator). Otherwise, set the current task
@@ -2569,7 +2622,7 @@ def export_remote_function(function_id,
                            function_properties,
                            worker=global_worker):
     check_main_thread()
-    if _mode(worker) not in [SCRIPT_MODE, SILENT_MODE]:
+    if _mode(worker) not in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
         raise Exception("export_remote_function can only be called on a "
                         "driver.")
 
@@ -2778,7 +2831,7 @@ def remote(*args, **kwargs):
             function_signature = signature.extract_signature(func)
 
             # Everything ready - export the function
-            if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
+            if worker.mode in [SCRIPT_MODE, SILENT_MODE, CLIENT_MODE]:
                 export_remote_function(function_id, func_name, func,
                                        func_invoker, function_properties)
             elif worker.mode is None:
