@@ -520,6 +520,20 @@ class Monitor(object):
             assert (message_handler is not None)
             message_handler(channel, data)
 
+    def update_local_scheduler_map(self):
+        if self.use_raylet:
+            local_schedulers = self.state.client_table()
+        else:
+            local_schedulers = self.state.local_schedulers()
+        self.local_scheduler_id_to_ip_map = {}
+        for local_scheduler_info in local_schedulers:
+            client_id = local_scheduler_info.get("DBClientID") or \
+                local_scheduler_info["ClientID"]
+            ip_address = (
+                local_scheduler_info.get("AuxAddress")
+                or local_scheduler_info["NodeManagerAddress"]).split(":")[0]
+            self.local_scheduler_id_to_ip_map[client_id] = ip_address
+
     def run(self):
         """Run the monitor.
 
@@ -558,15 +572,7 @@ class Monitor(object):
         while True:
             # Update the mapping from local scheduler client ID to IP address.
             # This is only used to update the load metrics for the autoscaler.
-            local_schedulers = self.state.local_schedulers()
-            self.local_scheduler_id_to_ip_map = {}
-            for local_scheduler_info in local_schedulers:
-                client_id = local_scheduler_info.get("DBClientID") or \
-                    local_scheduler_info["ClientID"]
-                ip_address = (local_scheduler_info.get("AuxAddress")
-                              or local_scheduler_info["NodeManagerAddress"]
-                              ).split(":")[0]
-                self.local_scheduler_id_to_ip_map[client_id] = ip_address
+            self.update_local_scheduler_map()
 
             # Process autoscaling actions
             if self.autoscaler:
