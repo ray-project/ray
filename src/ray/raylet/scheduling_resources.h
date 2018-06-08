@@ -57,14 +57,14 @@ class ResourceSet {
   ///
   /// \param other: The resource set we check being a subset of.
   /// \return True if the current resource set is the subset of other. False
-  ///          otherwise.
+  /// otherwise.
   bool IsSubset(const ResourceSet &other) const;
 
   /// \brief Test if this ResourceSet is a superset of the other ResourceSet.
   ///
   /// \param other: The resource set we check being a superset of.
   /// \return True if the current resource set is the superset of other.
-  ///         False otherwise.
+  /// False otherwise.
   bool IsSuperset(const ResourceSet &other) const;
 
   /// \brief Add a new resource to the resource set.
@@ -90,7 +90,7 @@ class ResourceSet {
   ///
   /// \param other: The resource set to subtract from the current resource set.
   /// \return True if the resource set was subtracted successfully.
-  ///         False otherwise.
+  /// False otherwise.
   bool SubtractResources(const ResourceSet &other);
 
   /// Return the capacity value associated with the specified resource.
@@ -98,7 +98,7 @@ class ResourceSet {
   /// \param resource_name: Resource name for which capacity is requested.
   /// \param[out] value: Resource capacity value.
   /// \return True if the resource capacity value was successfully retrieved.
-  ///         False otherwise.
+  /// False otherwise.
   bool GetResource(const std::string &resource_name, double *value) const;
 
   /// Return the number of CPUs.
@@ -122,7 +122,7 @@ class ResourceSet {
 };
 
 /// \class ResourceIds
-/// \brief TODO(rkn): This class generalizes the concept of a resource "quantity" to
+/// \brief This class generalizes the concept of a resource "quantity" to
 /// include specific resource IDs and fractions of those resources. A typical example
 /// is GPUs, where the GPUs are numbered 0 through N-1, where N is the total number
 /// of GPUs. This information is ultimately passed through to the worker processes
