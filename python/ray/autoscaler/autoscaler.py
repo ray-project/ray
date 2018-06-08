@@ -8,7 +8,7 @@ import json
 import hashlib
 import math
 import os
-import queue
+from six.moves import queue
 import subprocess
 import threading
 import time
