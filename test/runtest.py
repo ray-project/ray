@@ -698,9 +698,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(ray.get(k2.remote(1)), 2)
         self.assertEqual(ray.get(m.remote(1)), 2)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testSubmitAPI(self):
         self.init_ray(num_gpus=1, resources={"Custom": 1}, num_workers=1)
 
@@ -1128,9 +1125,6 @@ class PythonModeTest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testPythonMode(self):
         reload(test_functions)
         ray.init(driver_mode=ray.PYTHON_MODE)
@@ -1327,9 +1321,6 @@ class ResourcesTest(unittest.TestCase):
         self.assertLess(duration, 1 + time_buffer)
         self.assertGreater(duration, 1)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testGPUIDs(self):
         num_gpus = 10
         ray.init(num_cpus=10, num_gpus=num_gpus)
@@ -1484,7 +1475,7 @@ class ResourcesTest(unittest.TestCase):
 
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
-        "This test only works with xray.")
+        "This test does not work with xray yet.")
     def testZeroCPUs(self):
         ray.worker._init(
             start_ray_local=True, num_local_schedulers=2, num_cpus=[0, 2])
@@ -1712,9 +1703,6 @@ class ResourcesTest(unittest.TestCase):
         # custom resources gets blocked.
         ray.get([h.remote() for _ in range(5)])
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testTwoCustomResources(self):
         ray.worker._init(
             start_ray_local=True,
