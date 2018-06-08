@@ -6,62 +6,66 @@ import pickle
 import numpy as np
 
 import ray
-from ray.rllib.a3c.a3c_evaluator import (A3CEvaluator, GPURemoteA3CEvaluator,
-                                         RemoteA3CEvaluator,)
 from ray.rllib.agent import Agent
-from ray.rllib.optimizers import AsyncOptimizer
+from ray.rllib.optimizers import AsyncOptimizer, LocalSyncOptimizer
+from ray.rllib.trpo.trpo_evaluator import TRPOEvaluator
 from ray.rllib.utils import FilterManager
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Resources
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
-    "num_workers": 4,
+    'num_workers': 4,
+    'use_gpu_for_workers': False,
+    'vf_loss_coeff': 0.5,
+    'use_lstm': False,
     # Size of rollout
-    "batch_size": 10,
-    # Only applicable for image states
-    "use_lstm": False,
-    # No LSTM support if PyTorch used
-    "use_pytorch": False,
-    "observation_filter": "NoFilter",
-    "reward_filter": "NoFilter",
-    # Discount factor of MDP
-    "gamma": 0.99,
+    'batch_size': 512,
     # GAE(gamma) parameter
-    "lambda": 1.0,
+    'lambda': 1.0,
     # Max global norm for each gradient calculated by worker
-    "grad_clip": 40.0,
+    'grad_clip': 40.0,
+    # Discount factor of MDP
+    'gamma': 0.99,
+    'use_pytorch': True,
+    'observation_filter': 'NoFilter',
+    'reward_filter': 'NoFilter',
+    'entropy_coeff': 0.0,
+    'max_kl': 0.001,
+    'cg_damping': 0.001,
+    'residual_tol': 1e-10,
+    # Number of steps after which the rollout gets cut
+    'horizon': 500,
     # Learning rate
-    "lr": 0.0001,
-    "vf_loss_coeff": 0.5,
-    "entropy_coeff": -0.01,
-    # Whether to place workers on GPUs
-    "use_gpu_for_workers": False,
-    # Model and preprocessor options
-    "model": {
-        # (Image statespace) - Converts image to Channels = 1
-        "grayscale": True,
-        # (Image statespace) - Each pixel
-        "zero_mean": False,
-        # (Image statespace) - Converts image to (dim, dim, C)
-        "dim": 80,
-        # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False,
-    },
-    # Arguments to pass to the rllib optimizer
-    "optimizer": {
+    'lr': 0.0001,
+    # Arguments to pass to the RLlib optimizer
+    'optimizer': {
         # Number of gradients applied for each `train` step
-        "grads_per_step": 100,
+        'grads_per_step': 100,
+    },
+    # Model and preprocessor options
+    'model': {
+        # (Image statespace) - Converts image to Channels = 1
+        'grayscale': True,
+        # (Image statespace) - Each pixel
+        'zero_mean': False,
+        # (Image statespace) - Converts image to (dim, dim, C)
+        'dim': 80,
+        # (Image statespace) - Converts image shape to (C, dim, dim)
+        #
+        # XXX set to true by default here since there's currently only a
+        # PyTorch implementation.
+        "channel_major": True,
     },
     # Arguments to pass to the env creator
-    "env_config": {},
+    'env_config': {},
 }
 
 
-class A3CAgent(Agent):
-    _agent_name = "A3C"
+class TRPOAgent(Agent):
+    _agent_name = 'TRPO'
     _default_config = DEFAULT_CONFIG
-    _allow_unknown_subkeys = ["model", "optimizer", "env_config"]
+    _allow_unknown_subkeys = ['model', 'optimizer', 'env_config']
 
     @classmethod
     def default_resource_request(cls, config):
@@ -69,29 +73,31 @@ class A3CAgent(Agent):
         return Resources(
             cpu=1,
             gpu=0,
-            extra_cpu=cf["num_workers"],
-            extra_gpu=cf["use_gpu_for_workers"] and cf["num_workers"] or 0)
+            extra_cpu=cf['num_workers'],
+            extra_gpu=cf['use_gpu_for_workers'] and cf['num_workers'] or 0)
 
     def _init(self):
-        self.local_evaluator = A3CEvaluator(
+        self.local_evaluator = TRPOEvaluator(
             self.registry,
             self.env_creator,
             self.config,
             self.logdir,
-            start_sampler=False)
+            start_sampler=False,
+        )
 
-        if self.config["use_gpu_for_workers"]:
-            remote_cls = GPURemoteA3CEvaluator
-        else:
-            remote_cls = RemoteA3CEvaluator
+        RemoteTRPOEvaluator = ray.remote(TRPOEvaluator)
 
         self.remote_evaluators = [
-            remote_cls.remote(self.registry, self.env_creator, self.config,
-                              self.logdir)
-            for i in range(self.config["num_workers"])
+            RemoteTRPOEvaluator.remote(
+                self.registry,
+                self.env_creator,
+                self.config,
+                self.logdir,
+                start_sampler=True,
+            ) for _ in range(self.config['num_workers'])
         ]
 
-        self.optimizer = AsyncOptimizer(self.config["optimizer"],
+        self.optimizer = AsyncOptimizer(self.config['optimizer'],
                                         self.local_evaluator,
                                         self.remote_evaluators)
 
@@ -137,31 +143,30 @@ class A3CAgent(Agent):
 
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir,
-                                       "checkpoint-{}".format(self.iteration))
-
+                                       'checkpoint-{}'.format(self.iteration))
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
 
         extra_data = {
-            "remote_state": agent_state,
-            "local_state": self.local_evaluator.save()
+            'remote_state': agent_state,
+            'local_state': self.local_evaluator.save()
         }
 
-        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+        pickle.dump(extra_data, open(checkpoint_path + '.extra_data', 'wb'))
 
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        extra_data = pickle.load(open(checkpoint_path + '.extra_data', 'rb'))
 
         ray.get([
             a.restore.remote(o)
-            for a, o in zip(self.remote_evaluators, extra_data["remote_state"])
+            for a, o in zip(self.remote_evaluators, extra_data['remote_state'])
         ])
 
-        self.local_evaluator.restore(extra_data["local_state"])
+        self.local_evaluator.restore(extra_data['local_state'])
 
     def compute_action(self, observation):
         obs = self.local_evaluator.obs_filter(observation, update=False)
-        action, info = self.local_evaluator.policy.compute(obs)
+        action, _ = self.local_evaluator.policy.compute(obs)
         return action

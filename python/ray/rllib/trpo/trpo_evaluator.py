@@ -1,19 +1,16 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import pickle
 
-import ray
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import PolicyEvaluator
-from ray.rllib.a3c.common import get_policy_cls
-from ray.rllib.utils.filter import get_filter
-from ray.rllib.utils.sampler import AsyncSampler
+from ray.rllib.trpo.policy import TRPOPolicy
+from ray.rllib.utils.filter import NoFilter, get_filter
 from ray.rllib.utils.process_rollout import process_rollout
+from ray.rllib.utils.sampler import AsyncSampler
 
 
-class A3CEvaluator(PolicyEvaluator):
+class TRPOEvaluator(PolicyEvaluator):
     """Actor object to start running simulation on workers.
 
     The gradient computation is also executed from this object.
@@ -24,47 +21,65 @@ class A3CEvaluator(PolicyEvaluator):
         rew_filter: Reward filter used in rollout post-processing.
         sampler: Component for interacting with environment and generating
             rollouts.
-        logdir: Directory for logging.
     """
 
-    def __init__(self,
-                 registry,
-                 env_creator,
-                 config,
-                 logdir,
-                 start_sampler=True):
-        env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(config["env_config"]), config["model"])
-        self.env = env
-        policy_cls = get_policy_cls(config)
-        # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = policy_cls(registry, env.observation_space.shape,
-                                 env.action_space, config)
+    def __init__(
+            self,
+            registry,
+            env_creator,
+            config,
+            logdir,
+            start_sampler=True,
+    ):
         self.config = config
 
-        # Technically not needed when not remote
-        self.obs_filter = get_filter(config["observation_filter"],
-                                     env.observation_space.shape)
-        self.rew_filter = get_filter(config["reward_filter"], ())
+        self.env = ModelCatalog.get_preprocessor_as_wrapper(
+            registry,
+            env=env_creator(self.config['env_config']),
+            options=self.config['model'],
+        )
+
+        # TODO(alok): use ob_space directly rather than shape
+        self.policy = TRPOPolicy(
+            registry,
+            self.env.observation_space.shape,
+            self.env.action_space,
+            self.config,
+        )
+
+        self.obs_filter = get_filter(
+            self.config['observation_filter'],
+            self.env.observation_space.shape,
+        )
+        self.rew_filter = get_filter(self.config['reward_filter'], ())
         self.filters = {
-            "obs_filter": self.obs_filter,
-            "rew_filter": self.rew_filter
+            'obs_filter': self.obs_filter,
+            'rew_filter': self.rew_filter,
         }
 
-        self.sampler = AsyncSampler(env, self.policy, self.obs_filter,
-                                    config["batch_size"])
+        self.sampler = AsyncSampler(
+            self.env,
+            self.policy,
+            obs_filter=NoFilter(),
+            num_local_steps=config['batch_size'],
+            horizon=config['horizon'],
+        )
+
         if start_sampler and self.sampler._async:
             self.sampler.start()
         self.logdir = logdir
 
     def sample(self):
         rollout = self.sampler.get_data()
+
         samples = process_rollout(
             rollout,
             self.rew_filter,
-            gamma=self.config["gamma"],
-            lambda_=self.config["lambda"],
-            use_gae=True)
+            gamma=self.config['gamma'],
+            lambda_=self.config['lambda'],
+            use_gae=False,
+        )
+
         return samples
 
     def get_completed_rollout_metrics(self):
@@ -75,27 +90,37 @@ class A3CEvaluator(PolicyEvaluator):
         return self.sampler.get_metrics()
 
     def compute_gradients(self, samples):
-        gradient, info = self.policy.compute_gradients(samples)
+        """Returns gradient w.r.t.
+
+        samples.
+        """
+        gradient, _ = self.policy.compute_gradients(samples)
         return gradient, {}
 
     def apply_gradients(self, grads):
+        """Applies gradients to evaluator weights."""
+
         self.policy.apply_gradients(grads)
 
     def get_weights(self):
+        """Returns model weights."""
+
         return self.policy.get_weights()
 
-    def set_weights(self, params):
-        self.policy.set_weights(params)
+    def set_weights(self, weights):
+        """Sets model weights."""
+
+        return self.policy.set_weights(weights)
 
     def save(self):
         filters = self.get_filters(flush_after=True)
         weights = self.get_weights()
-        return pickle.dumps({"filters": filters, "weights": weights})
+        return pickle.dumps({'filters': filters, 'weights': weights})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        self.sync_filters(objs["filters"])
-        self.set_weights(objs["weights"])
+        self.sync_filters(objs['filters'])
+        self.set_weights(objs['weights'])
 
     def sync_filters(self, new_filters):
         """Changes self's filter to given and rebases any accumulated delta.
@@ -122,7 +147,3 @@ class A3CEvaluator(PolicyEvaluator):
             if flush_after:
                 f.clear_buffer()
         return return_filters
-
-
-RemoteA3CEvaluator = ray.remote(A3CEvaluator)
-GPURemoteA3CEvaluator = ray.remote(num_gpus=1)(A3CEvaluator)

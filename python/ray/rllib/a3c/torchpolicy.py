@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from copy import deepcopy
 import torch
 
 from ray.rllib.a3c.policy import Policy
@@ -30,6 +31,9 @@ class TorchPolicy(Policy):
         self.lock = Lock()
 
     def apply_gradients(self, grads):
+        # TODO(alok): see how A3C fills gradient buffers so that they don't get
+        # cleared by zero_grad
+        grads = deepcopy(grads)  # TODO rm
         self.optimizer.zero_grad()
         for g, p in zip(grads, self._model.parameters()):
             p.grad = torch.from_numpy(g)
