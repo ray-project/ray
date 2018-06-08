@@ -14,7 +14,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.filter import get_filter
 
 
-def rollout(policy, env, timestep_limit=None, add_noise=False):
+def rollout(policy, env, gamma=.999, timestep_limit=None, add_noise=False):
     """Do a rollout.
 
     If add_noise is True, the rollout will take noisy actions with
@@ -26,9 +26,10 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     rews = []
     t = 0
     observation = env.reset()
-    for _ in range(timestep_limit or 999999):
+    for i in range(timestep_limit or 999999):
         ac = policy.compute(observation, add_noise=add_noise)[0]
         observation, rew, done, _ = env.step(ac)
+        rew = rew*(gamma**i)
         rews.append(rew)
         t += 1
         if done:
