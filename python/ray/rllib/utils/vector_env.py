@@ -8,8 +8,8 @@ import threading
 
 class VectorEnv(object):
     @classmethod
-    def wrap(self, make_env=None, existing_envs=[]):
-        return _VectorizedGymEnv(make_env, existing_envs)
+    def wrap(self, make_env=None, existing_envs=None, vector_width=1):
+        return _VectorizedGymEnv(make_env, existing_envs or [], vector_width)
 
     def vector_reset(self, vector_width):
         raise NotImplementedError
@@ -25,20 +25,19 @@ class VectorEnv(object):
 
 
 class _VectorizedGymEnv(VectorEnv):
-    def __init__(self, make_env, existing_envs):
+    def __init__(self, make_env, existing_envs, vector_width):
         self.make_env = make_env
         self.envs = existing_envs
-        if make_env:
-            self.resetter = _AsyncResetter(make_env)
+        self.vector_width = vector_width
+        if make_env and vector_width > 1:
+            self.resetter = _AsyncResetter(
+                make_env, int(self.vector_width ** 0.5))
         else:
             self.resetter = _SimpleResetter(make_env)
-
-    def vector_reset(self, vector_width):
-        self.resetter.set_pool_size(int(vector_width ** 0.5))
-        self.vector_width = vector_width
-        while len(self.envs) < vector_width:
+        while len(self.envs) < self.vector_width:
             self.envs.append(self.make_env())
-        self.envs = self.envs[:self.vector_width]
+
+    def vector_reset(self):
         return [e.reset() for e in self.envs]
 
     def reset_at(self, index):
@@ -65,21 +64,19 @@ class _AsyncResetter(threading.Thread):
 
     This is useful since resetting an env can be 100x slower than stepping."""
 
-    def __init__(self, make_env):
+    def __init__(self, make_env, pool_size):
         threading.Thread.__init__(self)
         self.make_env = make_env
         self.pool_size = 0
         self.to_reset = queue.Queue()
         self.resetted = queue.Queue()
         self.daemon = True
-        self.start()
-
-    def set_pool_size(self, size):
-        self.pool_size = size
+        self.pool_size = pool_size
         while self.resetted.qsize() < self.pool_size:
             env = self.make_env()
             obs = env.reset()
             self.resetted.put((obs, env))
+        self.start()
 
     def run(self):
         while True:
@@ -95,9 +92,6 @@ class _AsyncResetter(threading.Thread):
 
 class _SimpleResetter(object):
     def __init__(self, make_env):
-        pass
-
-    def set_pool_size(self, size):
         pass
 
     def trade_for_resetted(self, env):

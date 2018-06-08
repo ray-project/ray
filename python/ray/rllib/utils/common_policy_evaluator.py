@@ -115,7 +115,7 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             batch_mode (str): One of the following choices:
                 complete_episodes: each batch will be at least batch_steps
                     in size, and will include one or more complete episodes.
-                truncate_episodes: each batch will be around batch_steps
+                truncate_episodes: each batch will be at most batch_steps
                     in size, and include transitions from one episode only.
                 pack_episodes: each batch will be exactly batch_steps in
                     size, and may include transitions from multiple episodes.
@@ -128,8 +128,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
             compress_observations (bool): If true, compress the observations
                 returned.
             vector_width (int): If more than one, will create multiple envs
-                and vectorize the computation of actions. If the env implements
-                VectorEnv, that will be used instead of creating multiple envs.
+                and vectorize the computation of actions. This has no affect if
+                if the env already implements VectorEnv.
             observation_filter (str): Name of observation filter to use.
             registry (tune.Registry): User-registered objects. Pass in the
                 value from tune.registry.get_registry() if you're having
@@ -201,14 +201,15 @@ class CommonPolicyEvaluator(PolicyEvaluator):
 
         # Always use vector env for consistency even if vector_width = 1
         if not hasattr(self.env, "vector_reset"):
-            self.vector_env = VectorEnv.wrap(make_env, [self.env])
+            self.vector_env = VectorEnv.wrap(
+                make_env, [self.env], vector_width=vector_width)
         else:
             self.vector_env = self.env
 
         if batch_mode not in [
                 "pack_episodes", "truncate_episodes", "complete_episodes"]:
             raise NotImplementedError(
-                "Unsupported batch mode: {}".format(batch_mode)
+                "Unsupported batch mode: {}".format(batch_mode))
 
         pack = batch_mode == "pack_episodes"
         if batch_mode == "complete_episodes":
@@ -216,14 +217,12 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         if sample_async:
             self.sampler = AsyncSampler(
                 self.vector_env, self.policy_map["default"], self.obs_filter,
-                batch_steps, horizon=episode_horizon, pack=pack,
-                vector_width=vector_width)
+                batch_steps, horizon=episode_horizon, pack=pack)
             self.sampler.start()
         else:
             self.sampler = SyncSampler(
                 self.vector_env, self.policy_map["default"], self.obs_filter,
-                batch_steps, horizon=episode_horizon, pack=pack,
-                vector_width=vector_width)
+                batch_steps, horizon=episode_horizon, pack=pack)
 
     def sample(self):
         """Evaluate the current policies and return a batch of experiences.

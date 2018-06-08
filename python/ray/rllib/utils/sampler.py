@@ -26,7 +26,7 @@ class SyncSampler(object):
 
     def __init__(
             self, env, policy, obs_filter, num_local_steps,
-            horizon=None, pack=False, vector_width=1):
+            horizon=None, pack=False):
         if not hasattr(env, "vector_reset"):
             env = VectorEnv.wrap(make_env=None, existing_envs=[env])
         self.vector_env = env
@@ -36,8 +36,7 @@ class SyncSampler(object):
         self._obs_filter = obs_filter
         self.rollout_provider = _env_runner(self.vector_env, self.policy,
                                             self.num_local_steps, self.horizon,
-                                            self._obs_filter, pack,
-                                            vector_width)
+                                            self._obs_filter, pack)
         self.metrics_queue = queue.Queue()
 
     def get_data(self):
@@ -66,7 +65,7 @@ class AsyncSampler(threading.Thread):
 
     def __init__(
             self, env, policy, obs_filter, num_local_steps,
-            horizon=None, pack=False, vector_width=1):
+            horizon=None, pack=False):
         assert getattr(
             obs_filter, "is_concurrent",
             False), ("Observation Filter must support concurrent updates.")
@@ -82,7 +81,6 @@ class AsyncSampler(threading.Thread):
         self._obs_filter = obs_filter
         self.daemon = True
         self.pack = pack
-        self.vector_width = vector_width
 
     def run(self):
         try:
@@ -94,8 +92,7 @@ class AsyncSampler(threading.Thread):
     def _run(self):
         rollout_provider = _env_runner(self.vector_env, self.policy,
                                        self.num_local_steps, self.horizon,
-                                       self._obs_filter, self.pack,
-                                       self.vector_width)
+                                       self._obs_filter, self.pack)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -107,24 +104,9 @@ class AsyncSampler(threading.Thread):
                 self.queue.put(item, timeout=600.0)
 
     def get_data(self):
-        """Gets currently accumulated data.
-
-        Returns:
-            rollout (SampleBatch): trajectory data (unprocessed)
-        """
         rollout = self.queue.get(timeout=600.0)
         if isinstance(rollout, BaseException):
             raise rollout
-        if self.vector_width > 1:
-            return rollout
-        while not rollout["dones"][-1]:
-            try:
-                part = self.queue.get_nowait()
-                if isinstance(part, BaseException):
-                    raise rollout
-                rollout = rollout.concat(part)
-            except queue.Empty:
-                break
         return rollout
 
     def get_metrics(self):
@@ -138,8 +120,7 @@ class AsyncSampler(threading.Thread):
 
 
 def _env_runner(
-        vector_env, policy, num_local_steps, horizon, obs_filter, pack,
-        vector_width):
+        vector_env, policy, num_local_steps, horizon, obs_filter, pack):
     """This implements the logic of the thread runner.
 
     It continually runs the policy, and as long as the rollout exceeds a
@@ -157,16 +138,11 @@ def _env_runner(
         obs_filter: Filter used to process observations.
         pack: Whether to pack multiple episodes into each batch. This
             guarantees batches will be exactly `num_local_steps` in size.
-        vector_width: If greater than one, enables vectorization. This requires
-            env to be a VectorEnv instances.
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
             terminal condition, and other fields as dictated by `policy`.
     """
-
-    if vector_width > 1:
-        assert hasattr(vector_env, "vector_reset"), "env is not a VectorEnv"
 
     try:
         if not horizon:
@@ -176,8 +152,8 @@ def _env_runner(
     if not horizon:
         horizon = 999999
 
-    def init_obs():
-        return [obs_filter(o) for o in vector_env.vector_reset(vector_width)]
+    last_observations = [obs_filter(o) for o in vector_env.vector_reset()]
+    vector_width = len(last_observations)
 
     def init_rnn():
         states = policy.get_initial_state()
@@ -187,7 +163,6 @@ def _env_runner(
                 state_vector[i] = s
         return state_vector
 
-    last_observations = init_obs()
     last_rnn_states = init_rnn()
 
     rnn_states = last_rnn_states
