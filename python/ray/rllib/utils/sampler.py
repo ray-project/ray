@@ -105,8 +105,25 @@ class AsyncSampler(threading.Thread):
 
     def get_data(self):
         rollout = self.queue.get(timeout=600.0)
+
+        # Propagate errors
         if isinstance(rollout, BaseException):
             raise rollout
+
+        # We can't auto-concat rollouts in vector mode
+        if not hasattr(self.vector_env, "vector_width") or \
+                self.vector_env.vector_width > 1:
+            return rollout
+
+        # Auto-concat rollouts; this is important for A3C perf
+        while not rollout["dones"][-1]:
+            try:
+                part = self.queue.get_nowait()
+                if isinstance(part, BaseException):
+                    raise rollout
+                rollout = rollout.concat(part)
+            except queue.Empty:
+                break
         return rollout
 
     def get_metrics(self):

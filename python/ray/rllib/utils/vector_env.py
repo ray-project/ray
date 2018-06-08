@@ -11,6 +11,14 @@ class VectorEnv(object):
     def wrap(self, make_env=None, existing_envs=None, vector_width=1):
         return _VectorizedGymEnv(make_env, existing_envs or [], vector_width)
 
+    @property
+    def action_space(self):
+        raise NotImplementedError
+
+    @property
+    def observation_space(self):
+        raise NotImplementedError
+
     def vector_reset(self, vector_width):
         raise NotImplementedError
 

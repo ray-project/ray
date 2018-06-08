@@ -157,7 +157,8 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         self.compress_observations = compress_observations
 
         self.env = env_creator(env_config)
-        is_atari = hasattr(self.env.unwrapped, "ale")
+        is_atari = hasattr(self.env, "unwrapped") and \
+            hasattr(self.env.unwrapped, "ale")
         if hasattr(self.env, "vector_reset"):
             def wrap(env):
                 return env  # we can't auto-wrap already vectorized envs

@@ -7,7 +7,8 @@ import time
 import unittest
 
 import ray
-from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator, \
+    collect_metrics
 from ray.rllib.utils.policy_graph import PolicyGraph
 from ray.rllib.utils.process_rollout import compute_advantages
 
@@ -20,13 +21,45 @@ class MockPolicyGraph(PolicyGraph):
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
+class MockEnv(gym.Env):
+    def __init__(self, episode_length):
+        self.episode_length = episode_length
+        self.i = 0
+        self.observation_space = gym.spaces.Discrete(1)
+        self.action_space = gym.spaces.Discrete(2)
+
+    def reset(self):
+        self.i = 0
+        return self.i
+
+    def step(self, action):
+        self.i += 1
+        return 0, 1, self.i >= self.episode_length, {}
+
+
+class MockVectorEnv(object):
+    def __init__(self, episode_length, vector_width):
+        self.envs = [
+            MockEnv(episode_length) for _ in range(vector_width)]
+
+    def vector_reset(self):
+        return [e.reset() for e in self.envs]
+
+    def vector_step(self, actions):
+        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
+        for i in range(len(self.envs)):
+            obs, rew, done, info = self.envs[i].step(actions[i])
+            obs_batch.append(obs)
+            rew_batch.append(rew)
+            done_batch.append(done)
+            info_batch.append(info)
+
+            o
+        self.i += 1
+        return 0, 1, self.i >= self.episode_length, {}
+
+
 class TestCommonPolicyEvaluator(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=10)
-
-    def tearDown(self):
-        ray.worker.cleanup()
-
     def testBasic(self):
         ev = CommonPolicyEvaluator(
             env_creator=lambda _: gym.make("CartPole-v0"),
@@ -35,6 +68,63 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
         for key in ["obs", "actions", "rewards", "dones", "advantages"]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
+
+    def testAsync(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            sample_async=True,
+            policy_graph=MockPolicyGraph)
+        batch = ev.sample()
+        for key in ["obs", "actions", "rewards", "dones", "advantages"]:
+            self.assertIn(key, batch)
+        self.assertGreater(batch["advantages"][0], 1)
+
+    def testAutoConcat(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=40),
+            policy_graph=MockPolicyGraph,
+            sample_async=True,
+            batch_steps=10,
+            batch_mode="truncate_episodes",
+            observation_filter="ConcurrentMeanStdFilter")
+        time.sleep(2)
+        batch = ev.sample()
+        self.assertEqual(batch.count, 40)  # auto-concat up to 5 episodes
+
+    def testAutoVectorization(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=20),
+            policy_graph=MockPolicyGraph,
+            batch_mode="truncate_episodes",
+            batch_steps=10, vector_width=8)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 0)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 8)
+
+    def testVectorEnvSupport(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockVectorEnv(
+                episode_length=20, vector_width=8),
+            policy_graph=MockPolicyGraph,
+            batch_mode="truncate_episodes",
+            batch_steps=10)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 0)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertEqual(result.episodes_total, 8)
 
     def testPackEpisodes(self):
         for batch_size in [1, 10, 100, 1000]:
@@ -135,4 +225,5 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    ray.init()
     unittest.main(verbosity=2)
