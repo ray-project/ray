@@ -70,7 +70,6 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
                        << t.GetTaskSpecification().GetRequiredResources().ToString()
                        << ", but no nodes have the necessary resources.";
     }
-
   }
   return decision;
 }
