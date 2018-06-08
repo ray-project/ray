@@ -194,8 +194,12 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
             self._selector.close()
             self._selector = None
     
+    @asyncio.coroutine
     def _register_id(self, object_id):
         self._check_closed()
+        
+        if asyncio.isfuture(object_id):
+            object_id = yield from object_id
         
         try:
             key = self._selector.get_key(object_id)
@@ -216,7 +220,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
         
         fut.inc_refcount()
         
-        return fut
+        return (yield from fut)
     
     def _release(self, *fut):
         for f in fut:
