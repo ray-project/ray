@@ -289,7 +289,6 @@ class TestObjectManager : public TestObjectManagerBase {
   }
 
   void TestWaitWhileSubscribed(UniqueID sub_id, ObjectID object_1, ObjectID object_2) {
-    int num_objects = 2;
     int required_objects = 1;
     int timeout_ms = 1000;
 
@@ -300,7 +299,7 @@ class TestObjectManager : public TestObjectManagerBase {
 
     RAY_CHECK_OK(server1->object_manager_.AddWaitRequest(
         wait_id, object_ids, timeout_ms, required_objects, false,
-        [this, sub_id, object_1, object_ids, num_objects, start_time](
+        [this, sub_id, object_1, object_ids, start_time](
             const std::vector<ray::ObjectID> &found,
             const std::vector<ray::ObjectID> &remaining) {
           int64_t elapsed = (boost::posix_time::second_clock::local_time() - start_time)

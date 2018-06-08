@@ -14,6 +14,8 @@ import ray.utils
 import redis
 # Import flatbuffer bindings.
 from ray.core.generated.DriverTableMessage import DriverTableMessage
+from ray.core.generated.GcsTableEntry import GcsTableEntry
+from ray.core.generated.HeartbeatTableData import HeartbeatTableData
 from ray.core.generated.LocalSchedulerInfoMessage import \
     LocalSchedulerInfoMessage
 from ray.core.generated.SubscribeToDBClientTableReply import \
@@ -36,6 +38,9 @@ TASK_STATUS_LOST = 32
 LOCAL_SCHEDULER_INFO_CHANNEL = b"local_schedulers"
 PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
 DRIVER_DEATH_CHANNEL = b"driver_deaths"
+
+# xray heartbeats
+XRAY_HEARTBEAT_CHANNEL = b"6"
 
 # common/redis_module/ray_redis_module.cc
 OBJECT_INFO_PREFIX = b"OI:"
@@ -286,6 +291,31 @@ class Monitor(object):
             print("Warning: could not find ip for client {}."
                   .format(client_id))
 
+    def xray_heartbeat_handler(self, unused_channel, data):
+        """Handle an xray heartbeat message from Redis."""
+
+        gcs_entries = GcsTableEntry.GetRootAsGcsTableEntry(data, 0)
+        heartbeat_data = gcs_entries.Entries(0)
+        message = HeartbeatTableData.GetRootAsHeartbeatTableData(
+            heartbeat_data, 0)
+        num_resources = message.ResourcesAvailableLabelLength()
+        static_resources = {}
+        dynamic_resources = {}
+        for i in range(num_resources):
+            dyn = message.ResourcesAvailableLabel(i)
+            static = message.ResourcesTotalLabel(i)
+            dynamic_resources[dyn] = message.ResourcesAvailableCapacity(i)
+            static_resources[static] = message.ResourcesTotalCapacity(i)
+
+        # Update the load metrics for this local scheduler.
+        client_id = message.ClientId().decode("utf-8")
+        ip = self.local_scheduler_id_to_ip_map.get(client_id)
+        if ip:
+            self.load_metrics.update(ip, static_resources, dynamic_resources)
+        else:
+            print("Warning: could not find ip for client {}."
+                  .format(client_id))
+
     def plasma_manager_heartbeat_handler(self, unused_channel, data):
         """Handle a plasma manager heartbeat from Redis.
 
@@ -480,12 +510,29 @@ class Monitor(object):
                 # The message was a notification that a driver was removed.
                 log.info("message-handler: driver_removed_handler")
                 message_handler = self.driver_removed_handler
+            elif channel == XRAY_HEARTBEAT_CHANNEL:
+                # Similar functionality as local scheduler info channel
+                message_handler = self.xray_heartbeat_handler
             else:
                 raise Exception("This code should be unreachable.")
 
             # Call the handler.
             assert (message_handler is not None)
             message_handler(channel, data)
+
+    def update_local_scheduler_map(self):
+        if self.use_raylet:
+            local_schedulers = self.state.client_table()
+        else:
+            local_schedulers = self.state.local_schedulers()
+        self.local_scheduler_id_to_ip_map = {}
+        for local_scheduler_info in local_schedulers:
+            client_id = local_scheduler_info.get("DBClientID") or \
+                local_scheduler_info["ClientID"]
+            ip_address = (
+                local_scheduler_info.get("AuxAddress")
+                or local_scheduler_info["NodeManagerAddress"]).split(":")[0]
+            self.local_scheduler_id_to_ip_map[client_id] = ip_address
 
     def run(self):
         """Run the monitor.
@@ -498,6 +545,7 @@ class Monitor(object):
         self.subscribe(LOCAL_SCHEDULER_INFO_CHANNEL)
         self.subscribe(PLASMA_MANAGER_HEARTBEAT_CHANNEL)
         self.subscribe(DRIVER_DEATH_CHANNEL)
+        self.subscribe(XRAY_HEARTBEAT_CHANNEL)
 
         # Scan the database table for dead database clients. NOTE: This must be
         # called before reading any messages from the subscription channel.
@@ -522,22 +570,14 @@ class Monitor(object):
 
         # Handle messages from the subscription channels.
         while True:
-            # TODO(rkn): The autoscaler needs to be re-enabled for xray.
-            if not self.use_raylet:
-                # Update the mapping from local scheduler client ID to IP
-                # address. This is only used to update the load metrics for the
-                # autoscaler.
-                local_schedulers = self.state.local_schedulers()
-                self.local_scheduler_id_to_ip_map = {}
-                for local_scheduler_info in local_schedulers:
-                    client_id = local_scheduler_info["DBClientID"]
-                    ip_address = local_scheduler_info["AuxAddress"].split(":")[
-                        0]
-                    self.local_scheduler_id_to_ip_map[client_id] = ip_address
+            # Update the mapping from local scheduler client ID to IP address.
+            # This is only used to update the load metrics for the autoscaler.
+            self.update_local_scheduler_map()
 
-                # Process autoscaling actions
-                if self.autoscaler:
-                    self.autoscaler.update()
+            # Process autoscaling actions
+            if self.autoscaler:
+                self.autoscaler.update()
+
             # Record how many dead local schedulers and plasma managers we had
             # at the beginning of this round.
             num_dead_local_schedulers = len(self.dead_local_schedulers)

@@ -322,7 +322,7 @@ void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
 
 disconnected:
   /* Handle the case in which the socket is closed. */
-  *type = DISCONNECT_CLIENT;
+  *type = static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT);
   *length = 0;
   *bytes = NULL;
   return;
@@ -382,13 +382,14 @@ int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
   return length;
 disconnected:
   /* Handle the case in which the socket is closed. */
-  *type = DISCONNECT_CLIENT;
+  *type = static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT);
   return 0;
 }
 
 void write_log_message(int fd, const char *message) {
   /* Account for the \0 at the end of the string. */
-  write_message(fd, LOG_MESSAGE, strlen(message) + 1, (uint8_t *) message);
+  write_message(fd, static_cast<int64_t>(CommonMessageType::LOG_MESSAGE),
+                strlen(message) + 1, (uint8_t *) message);
 }
 
 char *read_log_message(int fd) {
@@ -396,6 +397,7 @@ char *read_log_message(int fd) {
   int64_t type;
   int64_t length;
   read_message(fd, &type, &length, &bytes);
-  RAY_CHECK(type == LOG_MESSAGE);
+  RAY_CHECK(static_cast<CommonMessageType>(type) ==
+            CommonMessageType::LOG_MESSAGE);
   return (char *) bytes;
 }
