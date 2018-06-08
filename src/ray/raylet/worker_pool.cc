@@ -20,7 +20,7 @@ WorkerPool::WorkerPool(int num_worker_processes, int num_workers_per_process,
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
-  for (int i = 0; i < num_worker_processes * num_workers_per_process_; i++) {
+  for (int i = 0; i < num_worker_processes; i++) {
     // Force-start num_workers workers.
     StartWorkerProcess(true);
   }
