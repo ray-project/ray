@@ -919,9 +919,6 @@ class ActorsWithGPUs(unittest.TestCase):
     @unittest.skipIf(
         os.environ.get("RAY_USE_XRAY") == "1",
         "This test does not work with xray yet.")
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testActorDifferentNumbersOfGPUs(self):
         # Test that we can create actors on two nodes that have different
         # numbers of GPUs.
