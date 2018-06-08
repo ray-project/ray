@@ -1,0 +1,10 @@
+pendulum-ddpg:
+    env: MountainCarContinuous-v0
+    run: DDPG_baselines
+    stop:
+        episode_reward_mean: -50
+        time_total_s: 600
+    trial_resources:
+        cpu: 4
+    config:
+        num_workers: 1

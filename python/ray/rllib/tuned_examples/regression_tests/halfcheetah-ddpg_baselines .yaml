@@ -1,0 +1,7 @@
+pendulum-ddpg2:
+    env: HalfCheetah-v2
+    run: DDPG_baselines
+    stop:
+        episode_reward_mean: -500
+    config:
+        num_workers: 1
