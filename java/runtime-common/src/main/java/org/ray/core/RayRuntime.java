@@ -361,7 +361,7 @@ public abstract class RayRuntime implements RayApi {
   @Override
   public RayObjects call(UniqueID taskId, Class<?> funcCls, Serializable lambda, int returnCount,
       Object... args) {
-    return worker.rpc(taskId, UniqueID.nil, funcCls, lambda, returnCount, args);
+    return worker.rpc(taskId, funcCls, lambda, returnCount, args);
   }
 
   @Override

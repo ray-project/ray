@@ -3,16 +3,17 @@ package org.ray.spi.impl;
 import java.io.File;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.lingala.zip4j.core.ZipFile;
 import org.ray.api.UniqueID;
-import org.ray.core.RayRuntime;
-import org.ray.hook.JarRewriter;
-import org.ray.hook.runtime.JarLoader;
-import org.ray.hook.runtime.LoadedFunctions;
+import org.ray.core.JarLoader;
+import org.ray.core.LoadedFunctions;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.spi.RemoteFunctionManager;
 import org.ray.util.FileUtil;
+import org.ray.util.MethodId;
 import org.ray.util.SystemUtil;
 import org.ray.util.logger.RayLog;
 
@@ -95,7 +96,7 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
         if (res == null) {
           throw new RuntimeException("get resource null, the resId " + resId.toString());
         }
-        RayLog.core.info("ger resource of " + resId.toString() + ", result len " + res.length);
+        RayLog.core.info("get resource of " + resId.toString() + ", result len " + res.length);
         String resPath =
             appDir + "/" + driverId.toString() + "/" + String.valueOf(SystemUtil.pid());
         File dir = new File(resPath);
@@ -107,8 +108,8 @@ public class NativeRemoteFunctionManager implements RemoteFunctionManager {
         FileUtil.bytesToFile(res, zipPath);
         ZipFile zipFile = new ZipFile(zipPath);
         zipFile.extractAll(resPath);
-        rf = JarRewriter
-            .load(resPath, RayRuntime.getInstance().getPaths().java_runtime_rewritten_jars_dir);
+        Set<MethodId> methods = new HashSet<>();
+        rf = new LoadedFunctions(JarLoader.loadJars(resPath, false, methods), methods);
         loadedApps.put(driverId, rf);
       }
       return rf;

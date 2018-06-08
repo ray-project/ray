@@ -1,11 +1,12 @@
 package org.ray.util;
 
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Vector;
 
 public class StringUtil {
-
+  public static final Charset UTF8 = Charset.forName("UTF-8");
   // Holds the start of an element and which brace started it.
   private static class Start {
 
@@ -130,5 +131,18 @@ public class StringUtil {
     }
     return objs.length == 0 ? "" : sb.substring(0, sb.length() - concatenator.length());
   }
+
+  private static final char[] CHARS = "0123456789abcdef".toCharArray();
+  public static String toHexHashString(byte[] id) {
+    StringBuilder sb = new StringBuilder(20);
+    assert (id.length == 20);
+    for (int i = 0; i < 20; i++) {
+      int val = id[i] & 0xff;
+      sb.append(CHARS[val >> 4]);
+      sb.append(CHARS[val & 0xf]);
+    }
+    return sb.toString();
+  }
+
 }
 

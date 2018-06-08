@@ -16,9 +16,6 @@ public class PathConfig {
       defaultArrayIndirectSectionName = "ray.java.path.jni.build")
   public String[] java_jnilib_paths;
 
-  @AConfig(comment = "path to ray_functions.txt for the default rewritten functions in ray runtime")
-  public String java_runtime_rewritten_jars_dir = "";
-
   @AConfig(comment = "path to redis-server")
   public String redis_server;
 

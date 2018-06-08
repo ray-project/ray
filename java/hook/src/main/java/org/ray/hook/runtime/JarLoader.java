@@ -35,17 +35,17 @@ public class JarLoader {
     }
   }
 
-  public static URLClassLoader loadJars(String dir, boolean explicitLoadForHook) {
+  public static URLClassLoader loadJars(String dir, boolean explicitLoad) {
     // get all jars
     Collection<File> jars = FileUtils.listFiles(
         new File(dir),
         new RegexFileFilter(".*\\.jar"),
         DirectoryFileFilter.DIRECTORY
     );
-    return loadJar(jars, explicitLoadForHook);
+    return loadJar(jars, explicitLoad);
   }
 
-  public static ClassLoader loadJars(String[] appJars, boolean explicitLoadForHook) {
+  public static ClassLoader loadJars(String[] appJars, boolean explicitLoad) {
     List<File> jars = new ArrayList<>();
 
     for (String jar : appJars) {
@@ -56,14 +56,14 @@ public class JarLoader {
       }
     }
 
-    return loadJar(jars, explicitLoadForHook);
+    return loadJar(jars, explicitLoad);
   }
 
   public static void unloadJars(ClassLoader loader) {
     // TODO:
   }
 
-  private static URLClassLoader loadJar(Collection<File> appJars, boolean explicitLoadForHook) {
+  private static URLClassLoader loadJar(Collection<File> appJars, boolean explicitLoad) {
     List<JarFile> jars = new ArrayList<>();
     List<URL> urls = new ArrayList<>();
 
@@ -85,7 +85,7 @@ public class JarLoader {
 
     URLClassLoader cl = URLClassLoader.newInstance(urls.toArray(new URL[0]));
 
-    if (!explicitLoadForHook) {
+    if (!explicitLoad) {
       return cl;
     }
 

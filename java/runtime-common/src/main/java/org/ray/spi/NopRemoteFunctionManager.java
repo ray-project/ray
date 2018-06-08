@@ -1,15 +1,18 @@
 package org.ray.spi;
 
+import java.util.Collections;
 import java.util.Set;
 import org.ray.api.UniqueID;
-import org.ray.hook.MethodId;
-import org.ray.hook.runtime.LoadedFunctions;
+import org.ray.core.LoadedFunctions;
+import org.ray.util.MethodId;
 import org.ray.util.logger.RayLog;
 
 /**
  * mock version of remote function manager using local loaded jars + runtime hook
  */
 public class NopRemoteFunctionManager implements RemoteFunctionManager {
+
+  private final LoadedFunctions loadedFunctions = new LoadedFunctions(null, Collections.emptySet());
 
   public NopRemoteFunctionManager(UniqueID driverId) {
     //onLoad(driverId, Agent.hookedMethods);
@@ -76,5 +79,5 @@ public class NopRemoteFunctionManager implements RemoteFunctionManager {
     //assert (startupDriverId().equals(driverId));
   }
 
-  private final LoadedFunctions loadedFunctions = new LoadedFunctions();
+
 }

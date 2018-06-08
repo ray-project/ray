@@ -4,12 +4,10 @@ import java.lang.reflect.Method;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.api.UniqueID;
-import org.ray.hook.MethodId;
-import org.ray.hook.runtime.JarLoader;
-import org.ray.hook.runtime.LoadedFunctions;
 import org.ray.spi.RemoteFunctionManager;
 import org.ray.spi.model.FunctionArg;
 import org.ray.spi.model.RayMethod;
+import org.ray.util.MethodId;
 import org.ray.util.logger.RayLog;
 
 /**
@@ -26,17 +24,16 @@ public class LocalFunctionManager {
   }
 
   private synchronized FunctionTable loadDriverFunctions(UniqueID driverId) {
-    FunctionTable funcs = functionTables.get(driverId);
-    if (null == funcs) {
+    FunctionTable functionTable = functionTables.get(driverId);
+    if (null == functionTable) {
       RayLog.core.debug("DriverId " + driverId + " Try to load functions");
-      LoadedFunctions funcs2 = remoteLoader.loadFunctions(driverId);
-      if (funcs2 == null) {
+      LoadedFunctions funcs = remoteLoader.loadFunctions(driverId);
+      if (funcs == null) {
         throw new RuntimeException("Cannot find resource for app " + driverId.toString());
       }
-      funcs = new FunctionTable();
-      funcs.linkedFunctions = funcs2;
-      for (MethodId mid : funcs.linkedFunctions.functions) {
-        Method m = mid.load();
+      functionTable = new FunctionTable(funcs);
+      for (MethodId mid : functionTable.linkedFunctions.functions) {
+        Method m = mid.load(funcs.loader);
         assert (m != null);
         RayMethod v = new RayMethod(m);
         v.check();
@@ -45,29 +42,28 @@ public class LocalFunctionManager {
             "DriverId" + driverId + " load remote function " + m.getName() + ", hash = " + k
                 .toString();
         RayLog.core.debug(logInfo);
-        System.err.println(logInfo);
-        funcs.functions.put(k, v);
+        functionTable.functions.put(k, v);
       }
 
-      functionTables.put(driverId, funcs);
+      functionTables.put(driverId, functionTable);
     }
     // reSync automatically
     else {
       // more functions are loaded
-      if (funcs.linkedFunctions.functions.size() > funcs.functions.size()) {
-        for (MethodId mid : funcs.linkedFunctions.functions) {
+      if (functionTable.linkedFunctions.functions.size() > functionTable.functions.size()) {
+        for (MethodId mid : functionTable.linkedFunctions.functions) {
           UniqueID k = new UniqueID(mid.getSha1Hash());
-          if (!funcs.functions.containsKey(k)) {
+          if (!functionTable.functions.containsKey(k)) {
             Method m = mid.load();
             assert (m != null);
             RayMethod v = new RayMethod(m);
             v.check();
-            funcs.functions.put(k, v);
+            functionTable.functions.put(k, v);
           }
         }
       }
     }
-    return funcs;
+    return functionTable;
   }
 
   /**
@@ -77,23 +73,10 @@ public class LocalFunctionManager {
   public Pair<ClassLoader, RayMethod> getMethod(UniqueID driverId, UniqueID methodId,
       FunctionArg[] args) throws NoSuchMethodException, SecurityException, ClassNotFoundException {
     FunctionTable funcs = loadDriverFunctions(driverId);
-    RayMethod m;
-
-    // hooked methods
-    if (!UniqueIdHelper.isLambdaFunction(methodId)) {
-      m = funcs.functions.get(methodId);
-      if (null == m) {
-        throw new RuntimeException(
-            "DriverId " + driverId + " load remote function methodId:" + methodId + " failed");
-      }
-    }
-
-    // remote lambda
-    else {
-      assert args.length >= 2;
-      String fname = Serializer.decode(args[args.length - 2].data);
-      Method fm = Class.forName(fname).getMethod("execute", Object[].class);
-      m = new RayMethod(fm);
+    final RayMethod m = funcs.functions.get(methodId);
+    if (m == null) {
+      throw new RuntimeException(
+          "DriverId " + driverId + " load remote function methodId:" + methodId + " failed");
     }
 
     return Pair.of(funcs.linkedFunctions.loader, m);
@@ -110,10 +93,14 @@ public class LocalFunctionManager {
     }
   }
 
-  static class FunctionTable {
+  private static class FunctionTable {
 
-    public final ConcurrentHashMap<UniqueID, RayMethod> functions = new ConcurrentHashMap<>();
-    public LoadedFunctions linkedFunctions;
+    final ConcurrentHashMap<UniqueID, RayMethod> functions = new ConcurrentHashMap<>();
+    final LoadedFunctions linkedFunctions;
+
+    FunctionTable(LoadedFunctions funcs) {
+      this.linkedFunctions = funcs;
+    }
   }
 
   private final RemoteFunctionManager remoteLoader;

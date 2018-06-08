@@ -1,7 +1,7 @@
 package org.ray.spi;
 
 import org.ray.api.UniqueID;
-import org.ray.hook.runtime.LoadedFunctions;
+import org.ray.core.LoadedFunctions;
 
 /**
  * register and load functions from function table

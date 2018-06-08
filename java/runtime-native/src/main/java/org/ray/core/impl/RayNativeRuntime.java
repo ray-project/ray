@@ -198,7 +198,6 @@ public class RayNativeRuntime extends RayRuntime {
       cursorId = worker.rpcCreateActor(
           createTaskId,
           actorId,
-          UniqueID.nil,
           RayFunc_2_1.class,
           createActorLambda,
           1,
