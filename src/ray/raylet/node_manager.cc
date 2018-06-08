@@ -394,7 +394,7 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::ReconstructObjects: {
     // TODO(hme): handle multiple object ids.
     auto message = flatbuffers::GetRoot<protocol::ReconstructObjects>(message_data);
-    for (int i = 0; i < message->object_ids()->size(); ++i) {
+    for (size_t i = 0; i < message->object_ids()->size(); ++i) {
       ObjectID object_id = from_flatbuf(*message->object_ids()->Get(i));
       RAY_LOG(DEBUG) << "reconstructing object " << object_id;
       if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
