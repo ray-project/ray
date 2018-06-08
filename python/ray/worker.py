@@ -639,11 +639,17 @@ class Worker(object):
                 del function.__globals__[function.__name__]
 
         if len(pickled_function) > ray_constants.PICKLE_OBJECT_WARNING_SIZE:
-            print("Warning: The remote function {} has size {} when pickled. "
-                  "It will be stored in Redis, which could cause memory "
-                  "issues. This may mean that the function definition uses a "
-                  "large array or other object.".format(
-                      function_name, len(pickled_function)))
+            warning_message = ("Warning: The remote function {} has size {} "
+                               "when pickled. It will be stored in Redis, "
+                               "which could cause memory issues. This may "
+                               "mean that the function definition uses a "
+                               "large array or other object.".format(
+                                   function_name, len(pickled_function)))
+            ray.utils.push_error_to_driver(
+                self.redis_client,
+                "pickling_large_object",
+                warning_message,
+                driver_id=self.task_driver_id.id())
 
         self.redis_client.hmset(
             key, {
@@ -695,11 +701,18 @@ class Worker(object):
 
             if (len(pickled_function) >
                     ray_constants.PICKLE_OBJECT_WARNING_SIZE):
-                print("Warning: The function {} has size {} when pickled. "
-                      "It will be stored in Redis, which could cause memory "
-                      "issues. This may mean that the remote function "
-                      "definition uses a large array or other object.".format(
-                          function.__name__, len(pickled_function)))
+                warning_message = ("Warning: The function {} has size {} when "
+                                   "pickled. It will be stored in Redis, "
+                                   "which could cause memory issues. This may "
+                                   "mean that the remote function definition "
+                                   "uses a large array or other object."
+                                   .format(function.__name__,
+                                           len(pickled_function)))
+                ray.utils.push_error_to_driver(
+                    self.redis_client,
+                    "pickling_large_object",
+                    warning_message,
+                    driver_id=self.task_driver_id.id())
 
             # Run the function on all workers.
             self.redis_client.hmset(

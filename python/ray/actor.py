@@ -395,11 +395,17 @@ def export_actor_class(class_id, Class, actor_method_names,
 
     if (len(actor_class_info["class"]) >
             ray_constants.PICKLE_OBJECT_WARNING_SIZE):
-        print("Warning: The actor {} has size {} when pickled. "
-              "It will be stored in Redis, which could cause memory "
-              "issues. This may mean that the actor definition uses a large "
-              "array or other object.".format(actor_class_info["class_name"],
-                                              len(actor_class_info["class"])))
+        warning_message = ("Warning: The actor {} has size {} when pickled. "
+                           "It will be stored in Redis, which could cause "
+                           "memory issues. This may mean that the actor "
+                           "definition uses a large array or other object."
+                           .format(actor_class_info["class_name"],
+                                   len(actor_class_info["class"])))
+        ray.utils.push_error_to_driver(
+            worker.redis_client,
+            "pickling_large_object",
+            warning_message,
+            driver_id=worker.task_driver_id.id())
 
     if worker.mode is None:
         # This means that 'ray.init()' has not been called yet and so we must
