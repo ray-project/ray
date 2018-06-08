@@ -228,7 +228,6 @@ class ARSAgent(agent.Agent):
         # Create the actors.
         print("Creating actors.")
         self.num_workers = self.config["num_workers"]
-        import ipdb; ipdb.set_trace()
         self.workers = [
             Worker.remote(
                 self.registry, self.config, self.env_creator,
