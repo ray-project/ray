@@ -21,12 +21,6 @@ class MockPolicyGraph(PolicyGraph):
 
 
 class TestCommonPolicyEvaluator(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=10)
-
-    def tearDown(self):
-        ray.worker.cleanup()
-
     def testBasic(self):
         ev = CommonPolicyEvaluator(
             env_creator=lambda _: gym.make("CartPole-v0"),
@@ -135,4 +129,5 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    ray.init()
     unittest.main(verbosity=2)
