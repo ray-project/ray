@@ -40,11 +40,11 @@ class NodeUpdater(object):
                  runtime_hash,
                  redirect_output=True,
                  process_runner=subprocess,
-                 use_external_ip=True):
+                 use_internal_ip=False):
         self.daemon = True
         self.process_runner = process_runner
         self.node_id = node_id
-        self.use_external_ip = use_external_ip
+        self.use_internal_ip = use_internal_ip
         self.provider = get_node_provider(provider_config, cluster_name)
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
@@ -68,10 +68,10 @@ class NodeUpdater(object):
             self.stderr = sys.stderr
 
     def get_node_ip(self):
-        if use_external_ip:
-            return self.provider.external_ip(self.node_id)
-        else:
+        if self.use_internal_ip:
             return self.provider.internal_ip(self.node_id)
+        else:
+            return self.provider.external_ip(self.node_id)
 
     def run(self):
         print("NodeUpdater: Updating {} to {}, logging to {}".format(

@@ -489,7 +489,7 @@ class StandardAutoscaler(object):
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
             process_runner=self.process_runner,
-            use_external_ip=False)
+            use_internal_ip=True)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -516,7 +516,7 @@ class StandardAutoscaler(object):
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
             process_runner=self.process_runner,
-            use_external_ip=False)
+            use_internal_ip=True)
         updater.start()
         self.updaters[node_id] = updater
 
