@@ -1002,6 +1002,8 @@ def start_gateway(node_ip_address,
             Python process that imported services exits. This is True by
             default.
     """
+    # TODO (dsuo): provide option for both scheduler and data port, not just scheduler
+    # TODO (dsuo): move to gateway.py
     command = [
         "socat", "TCP-LISTEN:" + str(gateway_port) + ",reuseaddr,fork",
         "UNIX-CONNECT:" + local_scheduler_name
@@ -1009,6 +1011,17 @@ def start_gateway(node_ip_address,
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_WORKER].append(p)
+    record_log_files_in_redis(redis_address, node_ip_address,
+                              [stdout_file, stderr_file])
+    
+    gateway_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "gateway.py")
+    command = [
+        sys.executable, "-u", gateway_path
+    ]
+    p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
+    if cleanup:
+        all_processes[PROCESS_TYPE_MONITOR].append(p)
     record_log_files_in_redis(redis_address, node_ip_address,
                               [stdout_file, stderr_file])
 

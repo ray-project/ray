@@ -372,6 +372,14 @@ def stop():
         ],
         shell=True)
 
+    # Find the PID of the Ray gateway process and kill it.
+    subprocess.call(
+        [
+            "kill $(ps aux | grep gateway.py | grep -v grep | "
+            "awk '{ print $2 }') 2> /dev/null"
+        ],
+        shell=True)
+
     # Find the PID of the jupyter process and kill it.
     try:
         from notebook.notebookapp import list_running_servers
