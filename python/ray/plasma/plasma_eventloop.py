@@ -143,7 +143,7 @@ class PlasmaPoll(selectors.BaseSelector):
     def select(self, timeout=None):
         polling_ids = list(self.waiting_dict.keys())
         ready_keys = []
-        object_ids = ray.wait(polling_ids, num_returns=len(polling_ids), timeout=timeout, worker=self.worker)
+        object_ids, _ = ray.wait(polling_ids, num_returns=len(polling_ids), timeout=timeout, worker=self.worker)
         for oid in object_ids:
             key = self.waiting_dict[oid]
             ready_keys.append(key)
