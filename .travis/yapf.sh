@@ -19,24 +19,23 @@ git fetch upstream master
 
 YAPF_FLAGS=(
     '--style' "$ROOT/.style.yapf"
-    '--in-place'
     '--recursive'
     '--parallel'
 )
 
 YAPF_EXCLUDES=(
-    '--exclude' 'python/ray/dataframe'
-    '--exclude' 'python/ray/rllib'
-    '--exclude' 'python/ray/cloudpickle'
-    '--exclude' 'python/build'
-    '--exclude' 'python/ray/pyarrow_files'
-    '--exclude' 'python/ray/core/src/ray/gcs'
-    '--exclude' 'python/ray/common/thirdparty'
+    '--exclude' 'python/ray/dataframe/*'
+    '--exclude' 'python/ray/rllib/*'
+    '--exclude' 'python/ray/cloudpickle/*'
+    '--exclude' 'python/build/*'
+    '--exclude' 'python/ray/pyarrow_files/*'
+    '--exclude' 'python/ray/core/src/ray/gcs/*'
+    '--exclude' 'python/ray/common/thirdparty/*'
 )
 
 # Format specified files
 format() {
-    yapf "${YAPF_FLAGS[@]}" -- "$@"
+    yapf --in-place "${YAPF_FLAGS[@]}" -- "$@"
 }
 
 # Format files that differ from main branch. Ignores dirs that are not slated
@@ -52,13 +51,13 @@ format_changed() {
 
     if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         declare -a unformatted_files && mapfile -t unformatted_files < <(git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py')
-        yapf "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}" -- "${unformatted_files[@]}"
+        yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}" -- "${unformatted_files[@]}"
     fi
 }
 
-# Format all files
+# Format all files, and print the diff to stdout.
 format_all() {
-    yapf "${YAPF_FLAGS[@]}" "${YAPF_EXCLUDES[@]}" test python
+    yapf --diff "${YAPF_FLAGS[@]}" "${YAPF_EXCLUDES[@]}" test python
 }
 
 # This flag formats individual files. --files *must* be the first command line
