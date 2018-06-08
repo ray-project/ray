@@ -55,7 +55,7 @@ format_changed() {
     fi
 }
 
-# Format all files, and print the diff to stdout.
+# Format all files, and print the diff to stdout for travis.
 format_all() {
     yapf --diff "${YAPF_FLAGS[@]}" "${YAPF_EXCLUDES[@]}" test python
 }
