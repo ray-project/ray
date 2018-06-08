@@ -129,8 +129,3 @@ class LinearPolicy(object):
 
     def get_weights(self):
         return self.weights.flatten()
-
-    # def get_weights_plus_stats(self):
-    #     mu, std = self.observation_filter.get_stats()
-    #     aux = np.asarray([self.get_weights(), mu, std])
-    #     return aux
