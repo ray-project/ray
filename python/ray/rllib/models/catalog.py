@@ -139,7 +139,6 @@ class ModelCatalog(object):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom model {}".format(model))
-            import ipdb; ipdb.set_trace()
             return registry.get(RLLIB_MODEL, model)(
                 inputs, num_outputs, options)
 
