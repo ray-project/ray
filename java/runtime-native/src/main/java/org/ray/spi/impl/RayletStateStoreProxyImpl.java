@@ -1,5 +1,9 @@
 package org.ray.spi.impl;
 
+import com.google.flatbuffers.FlatBufferBuilder;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -10,7 +14,12 @@ import java.util.concurrent.TimeUnit;
 import org.ray.spi.KeyValueStoreLink;
 import org.ray.spi.StateStoreProxy;
 import org.ray.spi.model.AddressInfo;
+import org.ray.api.UniqueID;
 import org.ray.util.logger.RayLog;
+import org.ray.format.gcs.GcsTableEntry;
+import org.ray.format.gcs.ClientTableData;
+import org.ray.format.gcs.TablePrefix;
+import com.google.flatbuffers.*;
 
 /**
  * A class used to interface with the Ray control state
@@ -103,77 +112,23 @@ public class RayletStateStoreProxyImpl implements StateStoreProxy {
     }
     List<AddressInfo> schedulerInfo = new ArrayList<>();
 
-    Set<byte[]> cks = rayKvStore.Keys("CL:*".getBytes());
-    byte[] key;
-    List<Map<byte[], byte[]>> plasmaManager = new ArrayList<>();
-    List<Map<byte[], byte[]>> localScheduler = new ArrayList<>();
-    for (byte[] ck : cks) {
-      key = ck;
-      Map<byte[], byte[]> info = rayKvStore.hgetAll(key);
+    byte[] message = rayKvStore.SendCommand( "RAY.TABLE_LOOKUP", 
+          TablePrefix.CLIENT, UniqueID.genNil().getBytes());
+    ByteBuffer byteBuffer = ByteBuffer.wrap(message);
 
-      String deleted = CharsetDecode(info.get("deleted".getBytes()), "US-ASCII");
-      if (deleted != null) {
-        if (Boolean.getBoolean(deleted)) {
-          continue;
-        }
-      }
+    GcsTableEntry gcs_entry = GcsTableEntry.getRootAsGcsTableEntry(byteBuffer);
+    int i = 0;
+    while ( i < gcs_entry.entriesLength()) {
+      ByteBuffer byteBuffer2 = ByteBuffer.wrap(gcs_entry.entries(i).getBytes());
+      ClientTableData client = ClientTableData.getRootAsClientTableData(byteBuffer2);
 
-      if (!info.containsKey("ray_client_id".getBytes())) {
-        throw new Exception("no ray_client_id in any client");
-      } else if (!info.containsKey("nodeIpAddress".getBytes())) {
-        throw new Exception("no nodeIpAddress in any client");
-      } else if (!info.containsKey("client_type".getBytes())) {
-        throw new Exception("no client_type in any client");
-      }
-
-      if (CharsetDecode(info.get("nodeIpAddress".getBytes()), "US-ASCII")
-          .equals(nodeIpAddress)) {
-        String clientType = CharsetDecode(info.get("client_type".getBytes()), "US-ASCII");
-        if (clientType.equals("plasmaManager")) {
-          plasmaManager.add(info);
-        } else if (clientType.equals("localScheduler")) {
-          localScheduler.add(info);
-        }
-      }
-    }
-
-    if (plasmaManager.size() < 1 || localScheduler.size() < 1) {
-      throw new Exception("no plasmaManager or localScheduler");
-    } else if (plasmaManager.size() != localScheduler.size()) {
-      throw new Exception("plasmaManager number not Equal localScheduler number");
-    }
-
-    for (int i = 0; i < plasmaManager.size(); i++) {
       AddressInfo si = new AddressInfo();
-      si.storeName = CharsetDecode(plasmaManager.get(i).get("store_socket_name".getBytes()),
-          "US-ASCII");
-      si.managerName = CharsetDecode(plasmaManager.get(i).get("manager_socket_name".getBytes()),
-          "US-ASCII");
-
-      byte[] rpc = plasmaManager.get(i).get("manager_rpc_name".getBytes());
-      if (rpc != null) {
-        si.managerRpcAddr = CharsetDecode(rpc, "US-ASCII");
-      }
-
-      rpc = plasmaManager.get(i).get("store_rpc_name".getBytes());
-      if (rpc != null) {
-        si.storeRpcAddr = CharsetDecode(rpc, "US-ASCII");
-      }
-
-      String managerAddr = CharsetDecode(plasmaManager.get(i).get("manager_address".getBytes()),
-          "US-ASCII");
-      si.managerPort = Integer.parseInt(managerAddr.split(":")[1]);
-      si.schedulerName = CharsetDecode(
-          localScheduler.get(i).get("local_scheduler_socket_name".getBytes()), "US-ASCII");
-
-      rpc = localScheduler.get(i).get("local_scheduler_rpc_name".getBytes());
-      if (rpc != null) {
-        si.schedulerRpcAddr = CharsetDecode(rpc, "US-ASCII");
-      }
-
+      si.storeName = client.objectStoreSocketName();
+      si.rayletName = client.rayletSocketName();
+      si.managerRpcAddr = client.nodeManagerAddress();
+      si.managerPort = client.nodeManagerPort();
       schedulerInfo.add(si);
     }
-
     return schedulerInfo;
   }
 

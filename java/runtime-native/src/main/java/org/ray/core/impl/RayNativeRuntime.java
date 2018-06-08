@@ -26,6 +26,7 @@ import org.ray.spi.impl.DefaultLocalSchedulerClient;
 import org.ray.spi.impl.NativeRemoteFunctionManager;
 import org.ray.spi.impl.RedisClient;
 import org.ray.spi.impl.StateStoreProxyImpl;
+import org.ray.spi.impl.RayletStateStoreProxyImpl;
 import org.ray.spi.model.AddressInfo;
 import org.ray.util.exception.TaskExecutionException;
 import org.ray.util.logger.RayLog;
@@ -55,10 +56,11 @@ public class RayNativeRuntime extends RayRuntime {
   protected RayNativeRuntime() {
   }
 
-  private void initStateStore(String redisAddress) throws Exception {
+  private void initStateStore(String redisAddress, boolean use_raylet) throws Exception {
     kvStore = new RedisClient();
     kvStore.SetAddr(redisAddress);
-    stateStoreProxy = new StateStoreProxyImpl(kvStore);
+    stateStoreProxy = use_raylet ? new RayletStateStoreProxyImpl(kvStore) 
+                                 : new StateStoreProxyImpl(kvStore);
     //stateStoreProxy.setStore(kvStore);
     stateStoreProxy.initializeGlobalState();
   }
@@ -74,14 +76,16 @@ public class RayNativeRuntime extends RayRuntime {
         throw new Error("Redis address must be configured under Worker mode.");
       }
       startOnebox(params, pathConfig);
-      initStateStore(params.redis_address);
+      initStateStore(params.redis_address, params.use_raylet);
     } else {
-      initStateStore(params.redis_address);
+      initStateStore(params.redis_address, params.use_raylet);
       if (!isWorker && !params.use_raylet) {
         List<AddressInfo> nodes = stateStoreProxy.getAddressInfo(params.node_ip_address, 5);
         params.object_store_name = nodes.get(0).storeName;
         params.object_store_manager_name = nodes.get(0).managerName;
         params.local_scheduler_name = nodes.get(0).schedulerName;
+        params.raylet_name = nodes.get(0).rayletName;
+        
       }
     }
 
@@ -127,6 +131,10 @@ public class RayNativeRuntime extends RayRuntime {
       // register
       registerWorker(isWorker, params.node_ip_address, params.object_store_name,
           params.object_store_manager_name, params.local_scheduler_name);
+    } else {
+      // register
+      registerWorker(isWorker, params.node_ip_address, params.object_store_name,
+          params.raylet_name);
     }
 
     RayLog.core.info("RayNativeRuntime start with "
@@ -147,6 +155,33 @@ public class RayNativeRuntime extends RayRuntime {
     params.local_scheduler_name = manager.info().local_stores.get(0).schedulerName;
     params.raylet_name = manager.info().local_stores.get(0).rayletName;
     //params.node_ip_address = NetworkUtil.getIpAddress();
+  }
+
+  private void registerWorker(boolean isWorker, String node_ip_address, String storeName,
+      String rayletName) {
+    Map<String, String> workerInfo = new HashMap<>();
+    String workerId = new String(WorkerContext.currentWorkerID().getBytes());
+    if (!isWorker) {
+      workerInfo.put("node_ip_address", node_ip_address);
+      workerInfo.put("driver_id", workerId);
+      workerInfo.put("start_time", String.valueOf(System.currentTimeMillis()));
+      workerInfo.put("plasma_store_socket", storeName);
+      workerInfo.put("raylet_socket", rayletName);
+      workerInfo.put("name", System.getProperty("user.dir"));
+      //TODO: worker.redis_client.hmset(b"Drivers:" + worker.workerId, driver_info)
+      kvStore.Hmset("Drivers:" + workerId, workerInfo);
+    } else {
+      workerInfo.put("node_ip_address", node_ip_address);
+      //TODO:
+            /*
+             "stdout_file": os.path.abspath(log_stdout_file.name),
+             "stderr_file": os.path.abspath(log_stderr_file.name),
+             */
+      workerInfo.put("plasma_store_socket", storeName);
+      workerInfo.put("raylet_socket", rayletName);
+      //TODO: b"Workers:" + worker.workerId,
+      kvStore.Hmset("Workers:" + workerId, workerInfo);
+    }
   }
 
   private void registerWorker(boolean isWorker, String node_ip_address, String storeName,

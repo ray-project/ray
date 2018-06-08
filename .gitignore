@@ -151,4 +151,7 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/**/target
-java/**/bin
+java/example/bin
+java/**/bin/src
+*.jar
+java/**/bin/*.xml

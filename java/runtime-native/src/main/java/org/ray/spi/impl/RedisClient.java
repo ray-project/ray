@@ -1,10 +1,12 @@
 package org.ray.spi.impl;
-
+import com.google.flatbuffers.FlatBufferBuilder;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.ray.spi.KeyValueStoreLink;
+import org.ray.api.UniqueID;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
@@ -31,6 +33,8 @@ public class RedisClient implements KeyValueStoreLink {
       //TODO NUM maybe equels to the thread num
       jedisPoolConfig.setMaxTotal(1);
       jedisPool = new JedisPool(jedisPoolConfig, ipPort[0], Integer.parseInt(ipPort[1]), 30000);
+
+      connect(redisAddress);
     }
   }
 
@@ -205,25 +209,11 @@ public class RedisClient implements KeyValueStoreLink {
     return jedisPool;
   }
 
-  static enum ModuleCommand implements Commands {
-    SIMPLE("testmodule.simple")  ;
-
-    private final byte[] raw;
-
-    ModuleCommand(String alt) {
-      raw = SafeEncoder.encode(alt);
-    }
-
-    @Override
-    public byte[] getRaw() {
-      return raw;
-    }
-  }
-
   @Override
-  public void SendCommand() {
-    try (Jedis jedis = jedisPool.getResource()) {
-      return jedis.getClient().sendCommand();
-    }
+  public byte[] SendCommand(String command, int commandType, byte[] objectID) {
+    return execute_command(command, commandType, objectID);
   }
+  
+  private static native void connect(String redisAddress);
+  private static native byte[] execute_command(String command, int commandType, byte[] objectId);
 }
