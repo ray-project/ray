@@ -8,26 +8,30 @@ namespace ray {
 
 namespace raylet {
 
+int NUM_WORKERS_PER_PROCESS = 3;
+
 class WorkerPoolMock : public WorkerPool {
  public:
-  WorkerPoolMock(const std::vector<std::string> &worker_command)
-      : WorkerPool(worker_command) {}
+  WorkerPoolMock() : WorkerPool(0, NUM_WORKERS_PER_PROCESS, 0, {}) {}
 
-  void StartWorker(pid_t pid, bool force_start = false) {
-    if (NumWorkersStarting() > 0 && !force_start) {
+  void StartWorkerProcess(pid_t pid, bool force_start = false) {
+    if (NumWorkerProcessesStarting() > 0 && !force_start) {
       // Workers have been started, but not registered. Force start disabled -- returning.
-      RAY_LOG(DEBUG) << NumWorkersStarting() << " workers pending registration";
+      RAY_LOG(DEBUG) << NumWorkerProcessesStarting()
+                     << " worker processes pending registration";
       return;
     }
     // Either no workers are pending registration or the worker start is being forced.
-    RAY_LOG(DEBUG) << "starting worker, worker pool size " << Size();
-    AddStartedWorker(pid);
+    RAY_LOG(DEBUG) << "starting new worker process, worker pool size " << Size();
+    AddStartingWorkerProcess(pid);
   }
+
+  int NumWorkerProcessesStarting() const { return starting_worker_processes_.size(); }
 };
 
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest() : worker_pool_({}), io_service_() {}
+  WorkerPoolTest() : worker_pool_(), io_service_() {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid) {
     std::function<void(LocalClientConnection &)> client_handler =
@@ -40,7 +44,6 @@ class WorkerPoolTest : public ::testing::Test {
     boost::asio::local::stream_protocol::socket socket(io_service_);
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket));
-    worker_pool_.StartWorker(pid);
     return std::shared_ptr<Worker>(new Worker(pid, client));
   }
 
@@ -54,15 +57,29 @@ class WorkerPoolTest : public ::testing::Test {
 };
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
-  auto worker = CreateWorker(1234);
-  // Check that we cannot lookup the worker before it's registered.
-  ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
-  worker_pool_.RegisterWorker(worker);
-  // Check that we can lookup the worker after it's registered.
-  ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), worker);
-  worker_pool_.DisconnectWorker(worker);
-  // Check that we cannot lookup the worker after it's disconnected.
-  ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
+  pid_t pid = 1234;
+  worker_pool_.StartWorkerProcess(pid);
+  std::vector<std::shared_ptr<Worker>> workers;
+  for (int i = 0; i < NUM_WORKERS_PER_PROCESS; i++) {
+    workers.push_back(CreateWorker(pid));
+  }
+  for (const auto &worker : workers) {
+    // Check that there's still a starting worker process
+    // before all workers have been registered
+    ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 1);
+    // Check that we cannot lookup the worker before it's registered.
+    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
+    worker_pool_.RegisterWorker(worker);
+    // Check that we can lookup the worker after it's registered.
+    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), worker);
+  }
+  // Check that there's no starting worker process
+  ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 0);
+  for (const auto &worker : workers) {
+    worker_pool_.DisconnectWorker(worker);
+    // Check that we cannot lookup the worker after it's disconnected.
+    ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
+  }
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {

@@ -21,34 +21,30 @@ class Worker;
 /// is a container for a unit of work.
 class WorkerPool {
  public:
-  /// Create a pool and asynchronously start the specified number of workers.
-  /// Once each worker process has registered with an external server, the
-  /// process should create and register a new Worker, then add itself to the
-  /// pool.
+  /// Create a pool and asynchronously start the specified number of worker processes.
+  /// Once each worker process has registered with an external server,
+  /// the process should create and register the specified number of workers,
+  /// and add them to the pool.
   ///
-  /// \param num_workers The number of workers to start.
+  /// \param num_worker_processes The number of worker processes to start.
+  /// \param num_workers_per_process The number of workers per process.
   /// \param worker_command The command used to start the worker process.
-  WorkerPool(int num_workers, int num_cpus,
+  WorkerPool(int num_worker_processes, int num_workers_per_process, int num_cpus,
              const std::vector<std::string> &worker_command);
-
-  /// Create a pool with zero workers.
-  ///
-  /// \param num_workers The number of workers to start.
-  /// \param worker_command The command used to start the worker process.
-  WorkerPool(const std::vector<std::string> &worker_command);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
 
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
-  /// register a new Worker, then add itself to the pool. Failure to start
-  /// the worker process is a fatal error. This function will start up to
-  /// num_cpus many workers in parallel if it is called multiple times.
+  /// register num_workers_per_process_ workers, then add them to the pool.
+  /// Failure to start the worker process is a fatal error.
+  /// This function will start up to num_cpus many workers in parallel
+  /// if it is called multiple times.
   ///
   /// \param force_start Controls whether to force starting a worker regardless of any
   /// workers that have already been started but not yet registered.
-  void StartWorker(bool force_start = false);
+  void StartWorkerProcess(bool force_start = false);
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
@@ -93,14 +89,15 @@ class WorkerPool {
   /// Add started worker PID to the internal list of started workers (for testing).
   ///
   /// \param pid A process identifier for the worker being started.
-  void AddStartedWorker(pid_t pid);
+  void AddStartingWorkerProcess(pid_t pid);
 
-  /// Return a number of workers currently starting but not registered.
-  ///
-  /// \return The number of worker PIDs stored for started workers.
-  int NumWorkersStarting() const;
+  /// A map from the pids of worker processes that are starting
+  /// to the number of their unregistered workers.
+  std::unordered_map<pid_t, int> starting_worker_processes_;
 
  private:
+  /// The number of workers per process.
+  int num_workers_per_process_;
   /// The number of CPUs this Raylet has available.
   int num_cpus_;
   /// The command and arguments used to start the worker.
@@ -113,7 +110,6 @@ class WorkerPool {
   /// idle and executing.
   // TODO(swang): Make this a map to make GetRegisteredWorker faster.
   std::list<std::shared_ptr<Worker>> registered_workers_;
-  std::unordered_set<pid_t> started_worker_pids_;
 };
 
 }  // namespace raylet

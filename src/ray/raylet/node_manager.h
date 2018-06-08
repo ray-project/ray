@@ -22,6 +22,7 @@ namespace raylet {
 struct NodeManagerConfig {
   ResourceSet resource_config;
   int num_initial_workers;
+  int num_workers_per_process = 1;
   std::vector<std::string> worker_command;
   uint64_t heartbeat_period_ms;
   uint64_t max_lineage_size;
