@@ -45,7 +45,7 @@ class NodeUpdater(object):
         self.provider = get_node_provider(provider_config, cluster_name)
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
-        self.ssh_ip = self.provider.external_ip(node_id)
+        self.ssh_ip = self.provider.internal_ip(node_id)
         self.node_id = node_id
         self.file_mounts = {
             remote: os.path.expanduser(local)
@@ -107,7 +107,7 @@ class NodeUpdater(object):
             print(
                 "NodeUpdater: Waiting for IP of {}...".format(self.node_id),
                 file=self.stdout)
-            self.ssh_ip = self.provider.external_ip(self.node_id)
+            self.ssh_ip = self.provider.internal_ip(self.node_id)
             if self.ssh_ip is not None:
                 break
             time.sleep(10)
