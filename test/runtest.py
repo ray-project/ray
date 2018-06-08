@@ -779,9 +779,6 @@ class APITest(unittest.TestCase):
         expected = {str(i): i for i in range(10)}
         self.assertEqual(result, expected)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testWait(self):
         self.init_ray(num_cpus=1)
 
@@ -838,6 +835,12 @@ class APITest(unittest.TestCase):
         self.assertEqual(ready_ids, [])
         self.assertEqual(remaining_ids, [])
 
+        # Test semantics of num_returns with no timeout.
+        oids = [ray.put(i) for i in range(10)]
+        (found, rest) = ray.wait(oids, num_returns=2)
+        self.assertEqual(len(found), 2)
+        self.assertEqual(len(rest), 8)
+
         # Verify that incorrect usage raises a TypeError.
         x = ray.put(1)
         with self.assertRaises(TypeError):
@@ -847,9 +850,6 @@ class APITest(unittest.TestCase):
         with self.assertRaises(TypeError):
             ray.wait([1])
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testWaitIterables(self):
         self.init_ray(num_cpus=1)
 
@@ -873,9 +873,6 @@ class APITest(unittest.TestCase):
         self.assertEqual(len(ready_ids), 1)
         self.assertEqual(len(remaining_ids), 3)
 
-    @unittest.skipIf(
-        os.environ.get("RAY_USE_XRAY") == "1",
-        "This test does not work with xray yet.")
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
         # launched in this experiment can run at the same time.

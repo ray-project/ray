@@ -460,6 +460,27 @@ void NodeManager::ProcessClientMessage(
       worker->MarkUnblocked();
     }
   } break;
+  case protocol::MessageType_WaitRequest: {
+    // Read the data.
+    auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
+    std::vector<ObjectID> object_ids = from_flatbuf(*message->object_ids());
+    int64_t wait_ms = message->timeout();
+    uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
+    bool wait_local = message->wait_local();
+
+    ray::Status status = object_manager_.Wait(
+        object_ids, wait_ms, num_required_objects, wait_local,
+        [this, client](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+          // Write the data.
+          flatbuffers::FlatBufferBuilder fbb;
+          flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
+              fbb, to_flatbuf(fbb, found), to_flatbuf(fbb, remaining));
+          fbb.Finish(wait_reply);
+          RAY_CHECK_OK(client->WriteMessage(protocol::MessageType_WaitReply,
+                                            fbb.GetSize(), fbb.GetBufferPointer()));
+        });
+    RAY_CHECK_OK(status);
+  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;

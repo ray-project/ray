@@ -2529,6 +2529,11 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     correspond to objects that are stored in the object store. The second list
     corresponds to the rest of the object IDs (which may or may not be ready).
 
+    Ordering of the input list of object IDs is preserved: if A precedes B in
+    the input list, and both are in the ready list, then A will precede B in
+    the ready list. This also holds true if A and B are both in the remaining
+    list.
+
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
@@ -2540,9 +2545,6 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         A list of object IDs that are ready and a list of the remaining object
             IDs.
     """
-    if worker.use_raylet:
-        print("plasma_client.wait has not been implemented yet")
-        return
 
     if isinstance(object_ids, ray.ObjectID):
         raise TypeError(
@@ -2574,18 +2576,30 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         if len(object_ids) == 0:
             return [], []
 
-        object_id_strs = [
-            plasma.ObjectID(object_id.id()) for object_id in object_ids
-        ]
+        if len(object_ids) != len(set(object_ids)):
+            raise Exception("Wait requires a list of unique object IDs.")
+        if num_returns <= 0:
+            raise Exception(
+                "Invalid number of objects to return %d." % num_returns)
+        if num_returns > len(object_ids):
+            raise Exception("num_returns cannot be greater than the number "
+                            "of objects provided to ray.wait.")
         timeout = timeout if timeout is not None else 2**30
-        ready_ids, remaining_ids = worker.plasma_client.wait(
-            object_id_strs, timeout, num_returns)
-        ready_ids = [
-            ray.ObjectID(object_id.binary()) for object_id in ready_ids
-        ]
-        remaining_ids = [
-            ray.ObjectID(object_id.binary()) for object_id in remaining_ids
-        ]
+        if worker.use_raylet:
+            ready_ids, remaining_ids = worker.local_scheduler_client.wait(
+                object_ids, num_returns, timeout, False)
+        else:
+            object_id_strs = [
+                plasma.ObjectID(object_id.id()) for object_id in object_ids
+            ]
+            ready_ids, remaining_ids = worker.plasma_client.wait(
+                object_id_strs, timeout, num_returns)
+            ready_ids = [
+                ray.ObjectID(object_id.binary()) for object_id in ready_ids
+            ]
+            remaining_ids = [
+                ray.ObjectID(object_id.binary()) for object_id in remaining_ids
+            ]
         return ready_ids, remaining_ids
 
 
