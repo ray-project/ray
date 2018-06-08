@@ -529,6 +529,11 @@ void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_cl
                    << " spillback=" << task.GetTaskExecutionSpecReadonly().NumForwards();
     SubmitTask(task, uncommitted_lineage);
   } break;
+  case protocol::MessageType::DisconnectClient: {
+    // TODO(rkn): We need to do some cleanup here.
+    RAY_LOG(INFO) << "Received disconnect message from remote node manager. "
+                  << "We need to do some cleanup here.";
+  } break;
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
