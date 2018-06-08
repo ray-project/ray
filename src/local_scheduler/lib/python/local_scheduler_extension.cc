@@ -86,7 +86,7 @@ static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
   PyObject* py_object_ids;
   PyObject* py_fetch_only;
   std::vector<ObjectID> object_ids;
-  if (!PyArg_ParseTuple(args, "O", &py_object_ids, &py_fetch_only)) {
+  if (!PyArg_ParseTuple(args, "OO", &py_object_ids, &py_fetch_only)) {
     return NULL;
   }
   bool fetch_only = PyObject_IsTrue(py_fetch_only);
