@@ -139,19 +139,19 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
 // the raylet and non-raylet code paths.
 TaskSpec *local_scheduler_get_task_raylet(LocalSchedulerConnection *conn,
                                           int64_t *task_size) {
-  write_message(conn->conn, ray::local_scheduler::protocol::MessageType_GetTask,
-                0, nullptr);
+  write_message(conn->conn, static_cast<int64_t>(MessageType::GetTask), 0,
+                NULL);
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;
   // Receive a task from the local scheduler. This will block until the local
   // scheduler gives this client a task.
   read_message(conn->conn, &type, &reply_size, &reply);
-  if (type == DISCONNECT_CLIENT) {
+  if (type == static_cast<int64_t>(CommonMessageType::DISCONNECT_CLIENT)) {
     RAY_LOG(DEBUG) << "Exiting because local scheduler closed connection.";
     exit(1);
   }
-  RAY_CHECK(type == ray::local_scheduler::protocol::MessageType_ExecuteTask);
+  RAY_CHECK(type == static_cast<int64_t>(MessageType::ExecuteTask));
 
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply);
