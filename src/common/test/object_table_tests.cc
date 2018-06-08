@@ -79,7 +79,7 @@ TEST new_object_test(void) {
   new_object_failed = 0;
   new_object_succeeded = 0;
   new_object_id = ObjectID::from_random();
-  new_object_task = example_task(1, 1, TASK_STATUS_WAITING);
+  new_object_task = example_task(1, 1, TaskStatus::WAITING);
   new_object_task_spec = Task_task_execution_spec(new_object_task)->Spec();
   new_object_task_id = TaskSpec_task_id(new_object_task_spec);
   g_loop = event_loop_create();
@@ -91,7 +91,7 @@ TEST new_object_test(void) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+  task_table_subscribe(db, UniqueID::nil(), TaskStatus::WAITING, NULL, NULL,
                        &retry, task_table_subscribe_done, db);
   event_loop_run(g_loop);
   db_disconnect(db);

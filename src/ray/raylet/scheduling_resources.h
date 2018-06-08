@@ -14,11 +14,11 @@ const std::string kCPU_ResourceLabel = "CPU";
 
 /// Resource availability status reports whether the resource requirement is
 /// (1) infeasible, (2) feasible but currently unavailable, or (3) available.
-typedef enum {
+enum class ResourceAvailabilityStatus : int {
   kInfeasible,            ///< Cannot ever satisfy resource requirements.
   kResourcesUnavailable,  ///< Feasible, but not currently available.
   kFeasible               ///< Feasible and currently available.
-} ResourceAvailabilityStatus;
+};
 
 /// \class ResourceSet
 /// \brief Encapsulates and operates on a set of resources, including CPUs,

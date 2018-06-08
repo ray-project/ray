@@ -203,8 +203,9 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  RAY_CHECK_OK(conn->WriteMessage(object_manager_protocol::MessageType_PullRequest,
-                                  fbb.GetSize(), fbb.GetBufferPointer()));
+  RAY_CHECK_OK(conn->WriteMessage(
+      static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
+      fbb.GetSize(), fbb.GetBufferPointer()));
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
   return ray::Status::OK();
@@ -318,9 +319,9 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
   auto message = object_manager_protocol::CreatePushRequestMessage(
       fbb, fbb.CreateString(object_id.binary()), chunk_index, data_size, metadata_size);
   fbb.Finish(message);
-  ray::Status status =
-      conn->WriteMessage(object_manager_protocol::MessageType_PushRequest, fbb.GetSize(),
-                         fbb.GetBufferPointer());
+  ray::Status status = conn->WriteMessage(
+      static_cast<int64_t>(object_manager_protocol::MessageType::PushRequest),
+      fbb.GetSize(), fbb.GetBufferPointer());
   RAY_CHECK_OK(status);
   return SendObjectData(object_id, chunk_info, conn);
 }
@@ -528,8 +529,9 @@ std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
       fbb, fbb.CreateString(client_id_.binary()), is_transfer);
   fbb.Finish(message);
   // Send synchronously.
-  RAY_CHECK_OK(conn->WriteMessage(object_manager_protocol::MessageType_ConnectClient,
-                                  fbb.GetSize(), fbb.GetBufferPointer()));
+  RAY_CHECK_OK(conn->WriteMessage(
+      static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient),
+      fbb.GetSize(), fbb.GetBufferPointer()));
   // The connection is ready; return to caller.
   return conn;
 }
@@ -541,19 +543,19 @@ void ObjectManager::ProcessNewClient(TcpClientConnection &conn) {
 void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                                          int64_t message_type, const uint8_t *message) {
   switch (message_type) {
-  case object_manager_protocol::MessageType_PushRequest: {
+  case static_cast<int64_t>(object_manager_protocol::MessageType::PushRequest): {
     ReceivePushRequest(conn, message);
     break;
   }
-  case object_manager_protocol::MessageType_PullRequest: {
+  case static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest): {
     ReceivePullRequest(conn, message);
     break;
   }
-  case object_manager_protocol::MessageType_ConnectClient: {
+  case static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient): {
     ConnectClient(conn, message);
     break;
   }
-  case protocol::MessageType_DisconnectClient: {
+  case static_cast<int64_t>(protocol::MessageType::DisconnectClient): {
     // TODO(hme): Disconnect without depending on the node manager protocol.
     DisconnectClient(conn, message);
     break;

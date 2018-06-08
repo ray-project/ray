@@ -134,7 +134,7 @@ template <class T>
 void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &error) {
   if (error) {
     // If there was an error, disconnect the client.
-    read_type_ = protocol::MessageType_DisconnectClient;
+    read_type_ = static_cast<int64_t>(protocol::MessageType::DisconnectClient);
     read_length_ = 0;
     ProcessMessage(error);
     return;
@@ -154,7 +154,7 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
 template <class T>
 void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error) {
   if (error) {
-    read_type_ = protocol::MessageType_DisconnectClient;
+    read_type_ = static_cast<int64_t>(protocol::MessageType::DisconnectClient);
   }
   message_handler_(this->shared_from_this(), read_type_, read_message_.data());
 }

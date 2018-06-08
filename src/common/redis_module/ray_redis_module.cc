@@ -76,8 +76,8 @@ TablePubsub ParseTablePubsub(const RedisModuleString *pubsub_channel_str) {
                 pubsub_channel_str, &pubsub_channel_long) == REDISMODULE_OK)
       << "Pubsub channel must be a valid TablePubsub";
   auto pubsub_channel = static_cast<TablePubsub>(pubsub_channel_long);
-  RAY_CHECK(pubsub_channel >= TablePubsub_MIN &&
-            pubsub_channel <= TablePubsub_MAX)
+  RAY_CHECK(pubsub_channel >= TablePubsub::MIN &&
+            pubsub_channel <= TablePubsub::MAX)
       << "Pubsub channel must be a valid TablePubsub";
   return pubsub_channel;
 }
@@ -90,8 +90,9 @@ RedisModuleString *FormatPubsubChannel(
     const RedisModuleString *id) {
   // Format the pubsub channel enum to a string. TablePubsub_MAX should be more
   // than enough digits, but add 1 just in case for the null terminator.
-  char pubsub_channel[TablePubsub_MAX + 1];
-  sprintf(pubsub_channel, "%d", ParseTablePubsub(pubsub_channel_str));
+  char pubsub_channel[static_cast<int>(TablePubsub::MAX) + 1];
+  sprintf(pubsub_channel, "%d",
+          static_cast<int>(ParseTablePubsub(pubsub_channel_str)));
   return RedisString_Format(ctx, "%s:%S", pubsub_channel, id);
 }
 
@@ -123,12 +124,12 @@ RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
             REDISMODULE_OK)
       << "Prefix must be a valid TablePrefix";
   auto prefix = static_cast<TablePrefix>(prefix_long);
-  RAY_CHECK(prefix != TablePrefix_UNUSED)
+  RAY_CHECK(prefix != TablePrefix::UNUSED)
       << "This table has no prefix registered";
-  RAY_CHECK(prefix >= TablePrefix_MIN && prefix <= TablePrefix_MAX)
+  RAY_CHECK(prefix >= TablePrefix::MIN && prefix <= TablePrefix::MAX)
       << "Prefix must be a valid TablePrefix";
-  return OpenPrefixedKey(ctx, table_prefixes[prefix], keyname, mode,
-                         mutated_key_str);
+  return OpenPrefixedKey(ctx, table_prefixes[static_cast<long long>(prefix)],
+                         keyname, mode, mutated_key_str);
 }
 
 RedisModuleKey *OpenPrefixedKey(RedisModuleCtx *ctx,
@@ -486,14 +487,15 @@ int PublishTaskTableAdd(RedisModuleCtx *ctx,
   auto message = flatbuffers::GetRoot<TaskTableData>(buf);
   RAY_CHECK(message != nullptr);
 
-  if (message->scheduling_state() == SchedulingState_WAITING ||
-      message->scheduling_state() == SchedulingState_SCHEDULED) {
+  if (message->scheduling_state() == SchedulingState::WAITING ||
+      message->scheduling_state() == SchedulingState::SCHEDULED) {
     /* Build the PUBLISH topic and message for task table subscribers. The
      * topic
      * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>".
      * The
      * message is a serialized SubscribeToTasksReply flatbuffer object. */
-    std::string state = std::to_string(message->scheduling_state());
+    std::string state =
+        std::to_string(static_cast<int>(message->scheduling_state()));
     RedisModuleString *publish_topic = RedisString_Format(
         ctx, "%s%b:%s", TASK_PREFIX, message->scheduler_id()->str().data(),
         sizeof(DBClientID), state.c_str());
@@ -501,12 +503,13 @@ int PublishTaskTableAdd(RedisModuleCtx *ctx,
     /* Construct the flatbuffers object for the payload. */
     flatbuffers::FlatBufferBuilder fbb;
     /* Create the flatbuffers message. */
-    auto msg = CreateTaskReply(
-        fbb, RedisStringToFlatbuf(fbb, id), message->scheduling_state(),
-        fbb.CreateString(message->scheduler_id()),
-        fbb.CreateString(message->execution_dependencies()),
-        fbb.CreateString(message->task_info()), message->spillback_count(),
-        true /* not used */);
+    auto msg =
+        CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, id),
+                        static_cast<long long>(message->scheduling_state()),
+                        fbb.CreateString(message->scheduler_id()),
+                        fbb.CreateString(message->execution_dependencies()),
+                        fbb.CreateString(message->task_info()),
+                        message->spillback_count(), true /* not used */);
     fbb.Finish(msg);
 
     RedisModuleString *publish_message = RedisModule_CreateString(
@@ -613,12 +616,12 @@ int TableAdd_DoPublish(RedisModuleCtx *ctx,
 
   TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
 
-  if (pubsub_channel == TablePubsub_TASK) {
+  if (pubsub_channel == TablePubsub::TASK) {
     // Publish the task to its subscribers.
     // TODO(swang): This is only necessary for legacy Ray and should be removed
     // once we switch to using the new GCS API for the task table.
     return PublishTaskTableAdd(ctx, id, data);
-  } else if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+  } else if (pubsub_channel != TablePubsub::NO_PUBLISH) {
     // All other pubsub channels write the data back directly onto the channel.
     return PublishTableAdd(ctx, pubsub_channel_str, id, data);
   } else {
@@ -723,7 +726,7 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx,
     RAY_CHECK(flags == REDISMODULE_ZADD_ADDED) << "Appended a duplicate entry";
     // Publish a message on the requested pubsub channel if necessary.
     TablePubsub pubsub_channel = ParseTablePubsub(pubsub_channel_str);
-    if (pubsub_channel != TablePubsub_NO_PUBLISH) {
+    if (pubsub_channel != TablePubsub::NO_PUBLISH) {
       // All other pubsub channels write the data back directly onto the
       // channel.
       return PublishTableAdd(ctx, pubsub_channel_str, id, data);
@@ -956,7 +959,8 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
   auto update = flatbuffers::GetRoot<TaskTableTestAndUpdate>(update_buf);
 
-  bool do_update = data->scheduling_state() & update->test_state_bitmask();
+  bool do_update = static_cast<int>(data->scheduling_state()) &
+                   static_cast<int>(update->test_state_bitmask());
 
   if (!is_nil(update->test_scheduler_id()->str())) {
     do_update =
@@ -1460,8 +1464,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
         "TaskSpec", task_spec, "spillback_count", spillback_count, NULL);
   }
 
-  if (state_value == TASK_STATUS_WAITING ||
-      state_value == TASK_STATUS_SCHEDULED) {
+  if (static_cast<TaskStatus>(state_value) == TaskStatus::WAITING ||
+      static_cast<TaskStatus>(state_value) == TaskStatus::SCHEDULED) {
     /* Build the PUBLISH topic and message for task table subscribers. The
      * topic is a string in the format
      * "TASK_PREFIX:<local scheduler ID>:<state>". The message is a serialized

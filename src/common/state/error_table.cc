@@ -6,7 +6,7 @@ const char *error_types[] = {"object_hash_mismatch", "put_reconstruction",
 
 void push_error(DBHandle *db_handle,
                 DBClientID driver_id,
-                int error_type,
+                ErrorIndex error_type,
                 const std::string &error_message) {
   int64_t message_size = error_message.size();
 
