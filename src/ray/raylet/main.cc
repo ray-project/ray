@@ -35,7 +35,8 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Starting raylet with static resource configuration: "
                 << node_manager_config.resource_config.ToString();
   node_manager_config.num_initial_workers = num_initial_workers;
-  node_manager_config.num_workers_per_process = 1;
+  node_manager_config.num_workers_per_process =
+      RayConfig::instance().num_workers_per_process();
   // Use a default worker that can execute empty tasks with dependencies.
 
   std::stringstream worker_command_stream(worker_command);

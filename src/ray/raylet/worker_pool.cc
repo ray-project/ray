@@ -16,6 +16,7 @@ WorkerPool::WorkerPool(int num_worker_processes, int num_workers_per_process,
     : num_workers_per_process_(num_workers_per_process),
       num_cpus_(num_cpus),
       worker_command_(worker_command) {
+  RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
