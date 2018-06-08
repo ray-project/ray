@@ -13,6 +13,7 @@ dependencies:
   - expat
   - flask
   - flex
+  - ipython
   - libcurl
   - libedit
   - libffi
