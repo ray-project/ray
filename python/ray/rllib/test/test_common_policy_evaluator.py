@@ -41,9 +41,14 @@ class MockVectorEnv(object):
     def __init__(self, episode_length, vector_width):
         self.envs = [
             MockEnv(episode_length) for _ in range(vector_width)]
+        self.observation_space = gym.spaces.Discrete(1)
+        self.action_space = gym.spaces.Discrete(2)
 
     def vector_reset(self):
         return [e.reset() for e in self.envs]
+
+    def reset_at(self, index):
+        return self.envs[index].reset()
 
     def vector_step(self, actions):
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
@@ -53,10 +58,7 @@ class MockVectorEnv(object):
             rew_batch.append(rew)
             done_batch.append(done)
             info_batch.append(info)
-
-            o
-        self.i += 1
-        return 0, 1, self.i >= self.episode_length, {}
+        return obs_batch, rew_batch, done_batch, info_batch
 
 
 class TestCommonPolicyEvaluator(unittest.TestCase):
@@ -68,6 +70,19 @@ class TestCommonPolicyEvaluator(unittest.TestCase):
         for key in ["obs", "actions", "rewards", "dones", "advantages"]:
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
+
+    def testMetrics(self):
+        ev = CommonPolicyEvaluator(
+            env_creator=lambda _: MockEnv(episode_length=10),
+            policy_graph=MockPolicyGraph, batch_mode="complete_episodes")
+        remote_ev = CommonPolicyEvaluator.as_remote().remote(
+            env_creator=lambda _: MockEnv(episode_length=10),
+            policy_graph=MockPolicyGraph, batch_mode="complete_episodes")
+        ev.sample()
+        ray.get(remote_ev.sample.remote())
+        result = collect_metrics(ev, [remote_ev])
+        self.assertEqual(result.episodes_total, 2)
+        self.assertEqual(result.episode_reward_mean, 10)
 
     def testAsync(self):
         ev = CommonPolicyEvaluator(

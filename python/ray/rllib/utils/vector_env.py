@@ -7,8 +7,10 @@ import threading
 
 
 class VectorEnv(object):
-    @classmethod
-    def wrap(self, make_env=None, existing_envs=None, vector_width=1):
+    """An environment that supports batch evaluation."""
+
+    @staticmethod
+    def wrap(make_env=None, existing_envs=None, vector_width=1):
         return _VectorizedGymEnv(make_env, existing_envs or [], vector_width)
 
     @property
@@ -33,6 +35,8 @@ class VectorEnv(object):
 
 
 class _VectorizedGymEnv(VectorEnv):
+    """A gym environment wrapped to implement VectorEnv."""
+
     def __init__(self, make_env, existing_envs, vector_width):
         self.make_env = make_env
         self.envs = existing_envs

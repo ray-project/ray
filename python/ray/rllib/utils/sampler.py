@@ -115,7 +115,7 @@ class AsyncSampler(threading.Thread):
                 self.vector_env.vector_width > 1:
             return rollout
 
-        # Auto-concat rollouts; this is important for A3C perf
+        # Auto-concat rollouts; TODO(ekl) is this important for A3C perf?
         while not rollout["dones"][-1]:
             try:
                 part = self.queue.get_nowait()
