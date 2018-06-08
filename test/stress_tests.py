@@ -158,6 +158,9 @@ class TaskTests(unittest.TestCase):
                 ray.worker.cleanup()
 
 
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1",
+    "This test does not work with xray yet.")
 class ReconstructionTests(unittest.TestCase):
 
     num_local_schedulers = 1
@@ -504,6 +507,9 @@ class ReconstructionTests(unittest.TestCase):
                 for error in errors))
 
 
+@unittest.skipIf(
+    os.environ.get("RAY_USE_XRAY") == "1",
+    "This test does not work with xray yet.")
 class ReconstructionTestsMultinode(ReconstructionTests):
 
     # Run the same tests as the single-node suite, but with 4 local schedulers,
