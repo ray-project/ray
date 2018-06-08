@@ -415,14 +415,14 @@ void NodeManager::ProcessClientMessage(
           auto tasks = local_queues_.RemoveTasks({worker->GetAssignedTaskId()});
           const auto &task = tasks.front();
           // Get the CPU resources required by the running task.
-          const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+          const auto required_resources =
+              task.GetTaskSpecification().GetRequiredResources();
           double required_cpus = required_resources.GetNumCpus();
           const std::unordered_map<std::string, double> cpu_resources = {
               {kCPU_ResourceLabel, required_cpus}};
           // Release the CPU resources.
-          RAY_CHECK(
-              cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-                  ResourceSet(cpu_resources)));
+          RAY_CHECK(cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+                        .Release(ResourceSet(cpu_resources)));
           // Mark the task as blocked.
           local_queues_.QueueBlockedTasks(tasks);
           worker->MarkBlocked();

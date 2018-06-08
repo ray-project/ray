@@ -138,9 +138,10 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn) {
                 NULL);
 }
 
-void local_scheduler_reconstruct_objects(LocalSchedulerConnection *conn,
-                                         const std::vector<ObjectID>& object_ids,
-                                         bool fetch_only) {
+void local_scheduler_reconstruct_objects(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID>& object_ids,
+    bool fetch_only) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = ray::local_scheduler::protocol::CreateReconstructObjects(

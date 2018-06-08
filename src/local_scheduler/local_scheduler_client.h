@@ -118,9 +118,10 @@ void local_scheduler_task_done(LocalSchedulerConnection *conn);
  * @param fetch_only Only fetch objects, do not reconstruct them.
  * @return Void.
  */
-void local_scheduler_reconstruct_objects(LocalSchedulerConnection *conn,
-                                         const std::vector<ObjectID>& object_ids,
-                                         bool fetch_only = false);
+void local_scheduler_reconstruct_objects(
+    LocalSchedulerConnection *conn,
+    const std::vector<ObjectID>& object_ids,
+    bool fetch_only = false);
 
 /**
  * Send a log message to the local scheduler.

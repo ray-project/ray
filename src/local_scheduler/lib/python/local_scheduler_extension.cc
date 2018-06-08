@@ -83,8 +83,8 @@ static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
 
 static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
                                                             PyObject *args) {
-  PyObject* py_object_ids;
-  PyObject* py_fetch_only;
+  PyObject *py_object_ids;
+  PyObject *py_fetch_only;
   std::vector<ObjectID> object_ids;
   if (!PyArg_ParseTuple(args, "OO", &py_object_ids, &py_fetch_only)) {
     return NULL;
@@ -93,15 +93,15 @@ static PyObject *PyLocalSchedulerClient_reconstruct_objects(PyObject *self,
   Py_ssize_t n = PyList_Size(py_object_ids);
   for (int i = 0; i < n; i++) {
     ObjectID object_id;
-    PyObject* py_object_id = PyList_GetItem(py_object_ids, i);
+    PyObject *py_object_id = PyList_GetItem(py_object_ids, i);
     if (!PyObjectToUniqueID(py_object_id, &object_id)) {
       return NULL;
     }
     object_ids.push_back(object_id);
   }
   local_scheduler_reconstruct_objects(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      object_ids, fetch_only);
+      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, object_ids,
+      fetch_only);
   Py_RETURN_NONE;
 }
 

@@ -1164,9 +1164,8 @@ void process_message(event_loop *loop,
     }
   } break;
   case static_cast<int64_t>(MessageType::ReconstructObjects): {
-    auto message =
-        flatbuffers::GetRoot<ray::local_scheduler::protocol::ReconstructObjects>(
-            input);
+    auto message = flatbuffers::GetRoot<
+        ray::local_scheduler::protocol::ReconstructObjects>(input);
     RAY_CHECK(!message->fetch_only());
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
       /* If the worker was executing a task (i.e. non-driver) and it wasn't
