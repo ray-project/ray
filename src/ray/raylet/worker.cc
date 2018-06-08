@@ -43,24 +43,24 @@ const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
   return connection_;
 }
 
-const ResourceIdSet &Worker::GetPermanentResourceIds() const {
-  return permanent_resource_ids_;
+const ResourceIdSet &Worker::GetLifetimeResourceIds() const {
+  return lifetime_resource_ids_;
 }
 
-void Worker::ResetPermanentResourceIds() { permanent_resource_ids_.Clear(); }
+void Worker::ResetLifetimeResourceIds() { lifetime_resource_ids_.Clear(); }
 
-void Worker::SetPermanentResourceIds(ResourceIdSet &resource_ids) {
-  permanent_resource_ids_ = resource_ids;
+void Worker::SetLifetimeResourceIds(ResourceIdSet &resource_ids) {
+  lifetime_resource_ids_ = resource_ids;
 }
 
-const ResourceIdSet &Worker::GetTemporaryResourceIds() const {
-  return temporary_resource_ids_;
+const ResourceIdSet &Worker::GetTaskResourceIds() const {
+  return task_resource_ids_;
 }
 
-void Worker::ResetTemporaryResourceIds() { temporary_resource_ids_.Clear(); }
+void Worker::ResetTaskResourceIds() { task_resource_ids_.Clear(); }
 
-void Worker::SetTemporaryResourceIds(ResourceIdSet &resource_ids) {
-  temporary_resource_ids_ = resource_ids;
+void Worker::SetTaskResourceIds(ResourceIdSet &resource_ids) {
+  task_resource_ids_ = resource_ids;
 }
 
 }  // namespace raylet

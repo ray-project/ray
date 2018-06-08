@@ -32,13 +32,13 @@ class Worker {
   /// Return the worker's connection.
   const std::shared_ptr<LocalClientConnection> Connection() const;
 
-  const ResourceIdSet &GetPermanentResourceIds() const;
-  void SetPermanentResourceIds(ResourceIdSet &resource_ids);
-  void ResetPermanentResourceIds();
+  const ResourceIdSet &GetLifetimeResourceIds() const;
+  void SetLifetimeResourceIds(ResourceIdSet &resource_ids);
+  void ResetLifetimeResourceIds();
 
-  const ResourceIdSet &GetTemporaryResourceIds() const;
-  void SetTemporaryResourceIds(ResourceIdSet &resource_ids);
-  void ResetTemporaryResourceIds();
+  const ResourceIdSet &GetTaskResourceIds() const;
+  void SetTaskResourceIds(ResourceIdSet &resource_ids);
+  void ResetTaskResourceIds();
 
  private:
   /// The worker's PID.
@@ -54,10 +54,10 @@ class Worker {
   bool blocked_;
   /// The specific resource IDs that this worker owns for its lifetime. This is
   /// only used for actors.
-  ResourceIdSet permanent_resource_ids_;
+  ResourceIdSet lifetime_resource_ids_;
   /// The specific resource IDs that this worker currently owns for the duration
   // of a task.
-  ResourceIdSet temporary_resource_ids_;
+  ResourceIdSet task_resource_ids_;
 };
 
 }  // namespace raylet

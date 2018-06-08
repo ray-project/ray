@@ -327,7 +327,7 @@ void NodeManager::DispatchTasks() {
     const auto &task_resources = task.GetTaskSpecification().GetRequiredResources();
     if (!local_available_resources_.Contains(task_resources)) {
       // Not enough local resources for this task right now, skip this task.
-      // Note that we always skip node managers that have 0 CPUs.
+      // TODO(rkn): We should always skip node managers that have 0 CPUs.
       continue;
     }
     // We have enough resources for this task. Assign task.
@@ -380,16 +380,17 @@ void NodeManager::ProcessClientMessage(
       worker_pool_.DisconnectWorker(worker);
 
       const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
-      // Return the resources that were being used by this worker.
-      local_available_resources_.Release(worker->GetTemporaryResourceIds());
-      cluster_resource_map_[client_id].Release(
-          worker->GetTemporaryResourceIds().ToResourceSet());
-      worker->ResetTemporaryResourceIds();
 
-      local_available_resources_.Release(worker->GetPermanentResourceIds());
-      cluster_resource_map_[client_id].Release(
-          worker->GetPermanentResourceIds().ToResourceSet());
-      worker->ResetPermanentResourceIds();
+      // Return the resources that were being used by this worker.
+      auto const &task_resources = worker->GetTaskResourceIds();
+      local_available_resources_.Release(task_resources);
+      cluster_resource_map_[client_id].Release(task_resources.ToResourceSet());
+      worker->ResetTaskResourceIds();
+
+      auto const &lifetime_resources = worker->GetLifetimeResourceIds();
+      local_available_resources_.Release(lifetime_resources);
+      cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
+      worker->ResetLifetimeResourceIds();
 
       // Since some resources may have been released, we can try to dispatch more tasks.
       DispatchTasks();
@@ -701,13 +702,13 @@ void NodeManager::AssignTask(Task &task) {
       this->cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources()));
 
   if (spec.IsActorCreationTask()) {
-    worker->SetPermanentResourceIds(acquired_resources);
+    worker->SetLifetimeResourceIds(acquired_resources);
   } else {
-    worker->SetTemporaryResourceIds(acquired_resources);
+    worker->SetTaskResourceIds(acquired_resources);
   }
 
   ResourceIdSet resource_id_set =
-      worker->GetPermanentResourceIds().Plus(worker->GetTemporaryResourceIds());
+      worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
   auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
   auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
@@ -750,7 +751,7 @@ void NodeManager::AssignTask(Task &task) {
     // We failed to send the task to the worker, so disconnect the worker.
     ProcessClientMessage(worker->Connection(),
                          static_cast<int64_t>(protocol::MessageType::DisconnectClient),
-                         NULL);
+                         nullptr);
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
     local_queues_.QueueScheduledTasks(std::vector<Task>({task}));
@@ -786,8 +787,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
     // lifetime of the actor, so we do not release any resources here.
   } else {
     // Release task's resources.
-    local_available_resources_.Release(worker.GetTemporaryResourceIds());
-    worker.ResetTemporaryResourceIds();
+    local_available_resources_.Release(worker.GetTaskResourceIds());
+    worker.ResetTaskResourceIds();
 
     RAY_CHECK(this->cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
                   .Release(task.GetTaskSpecification().GetRequiredResources()));
