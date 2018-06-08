@@ -56,7 +56,7 @@ helpful.
 
 5. **Autoformatting code**. We use ``yapf`` https://github.com/google/yapf for
    linting, and the config file is located at ``.style.yapf``. We recommend
-   running ``.travis/yapf.sh`` prior to pushing to format changed files.
+   running ``scripts/yapf.sh`` prior to pushing to format changed files.
    Note that some projects such as dataframes and rllib are currently excluded.
 
 6. **Inspecting Redis shards by hand:** To inspect the primary Redis shard by
