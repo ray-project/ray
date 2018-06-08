@@ -1,3 +1,4 @@
+# This configuration can expect to reach -160 reward in 10k-15k timesteps
 pendulum-ddpg2:
     env: Pendulum-v0
     run: DDPG2

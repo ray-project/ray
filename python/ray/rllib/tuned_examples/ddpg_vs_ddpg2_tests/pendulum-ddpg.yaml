@@ -1,4 +1,4 @@
-# This configuration can expect to reach -160 reward in 10k-20k timesteps
+# This configuration can expect to reach -160 reward in 10k-15k timesteps
 pendulum-ddpg:
     env: Pendulum-v0
     run: DDPG

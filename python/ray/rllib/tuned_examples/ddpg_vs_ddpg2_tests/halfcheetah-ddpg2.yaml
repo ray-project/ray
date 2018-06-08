@@ -1,3 +1,4 @@
+# This configuration fails to achieve 2000 reward
 halfcheetah-ddpg2:
     env: HalfCheetah-v2
     run: DDPG2

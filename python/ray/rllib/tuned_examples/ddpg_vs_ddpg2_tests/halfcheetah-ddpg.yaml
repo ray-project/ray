@@ -1,3 +1,4 @@
+# This configuration can expect to reach 2000 reward in 100k-110k timesteps
 halfcheetah-ddpg:
     env: HalfCheetah-v2
     run: DDPG
