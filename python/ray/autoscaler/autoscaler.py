@@ -489,7 +489,8 @@ class StandardAutoscaler(object):
             with_head_node_ip(self.config["worker_start_ray_commands"]),
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
-            process_runner=self.process_runner)
+            process_runner=self.process_runner,
+            use_internal_ip=True)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -515,7 +516,8 @@ class StandardAutoscaler(object):
             with_head_node_ip(init_commands),
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
-            process_runner=self.process_runner)
+            process_runner=self.process_runner,
+            use_internal_ip=True)
         updater.start()
         self.updaters[node_id] = updater
 
