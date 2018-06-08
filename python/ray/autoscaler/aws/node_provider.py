@@ -24,7 +24,7 @@ def from_aws_format(tags):
 
     if "Name" in tags:
         tags[TAG_RAY_NODE_NAME] = tags["Name"]
-        del tags[TAG_RAY_NODE_NAME]
+        del tags["Name"]
     return tags
 
 
