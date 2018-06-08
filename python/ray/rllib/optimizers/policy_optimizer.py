@@ -46,7 +46,7 @@ class PolicyOptimizer(object):
         """
 
         remote_cls = ray.remote(**evaluator_resources)(evaluator_cls)
-        if type(evaluator_args) is list:
+        if isinstance(evaluator_args, list):
             local_evaluator = evaluator_cls(*evaluator_args)
             remote_evaluators = [
                 remote_cls.remote(*evaluator_args)
