@@ -135,7 +135,7 @@ class PlasmaEpoll(selectors.BaseSelector):
 class PlasmaPoll(selectors.BaseSelector):
     def __init__(self, worker):
         self.worker = worker
-        self.waiting_dict = collections.defaultdict(list)
+        self.waiting_dict = {}
     
     def close(self):
         self.waiting_dict.clear()
@@ -177,7 +177,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
     
     def _process_events(self, event_list):
         for key in event_list:
-            handle, future = key.data
+            handle = key.data
             assert isinstance(handle, asyncio.events.Handle), "A Handle is required here"
             if handle._cancelled:
                 return
@@ -213,7 +213,7 @@ class PlasmaSelectorEventLoop(asyncio.BaseEventLoop):
             
             fut = PlasmaObjectFuture(loop=self, object_id=object_id)
             handle = asyncio.events.Handle(callback, args=[fut], loop=self)
-            self._selector.register(object_id, events=None, data=handle)
+            self._selector.register(fut, events=None, data=handle)
         else:
             # Keep a unique Future object for an object_id. Increase ref_count instead.
             fut = key.data
