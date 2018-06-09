@@ -53,9 +53,7 @@ void Worker::SetLifetimeResourceIds(ResourceIdSet &resource_ids) {
   lifetime_resource_ids_ = resource_ids;
 }
 
-const ResourceIdSet &Worker::GetTaskResourceIds() const {
-  return task_resource_ids_;
-}
+const ResourceIdSet &Worker::GetTaskResourceIds() const { return task_resource_ids_; }
 
 void Worker::ResetTaskResourceIds() { task_resource_ids_.Clear(); }
 
