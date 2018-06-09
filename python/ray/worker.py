@@ -416,7 +416,7 @@ class Worker(object):
                     if not warning_sent:
                         ray.utils.push_error_to_driver(
                             self.redis_client,
-                            "wait_for_class",
+                            ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
                             warning_message,
                             driver_id=self.task_driver_id.id())
                     warning_sent = True
@@ -647,7 +647,7 @@ class Worker(object):
                                    function_name, len(pickled_function)))
             ray.utils.push_error_to_driver(
                 self.redis_client,
-                "pickling_large_object",
+                ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
                 warning_message,
                 driver_id=self.task_driver_id.id())
 
@@ -710,7 +710,7 @@ class Worker(object):
                                            len(pickled_function)))
                 ray.utils.push_error_to_driver(
                     self.redis_client,
-                    "pickling_large_object",
+                    ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
                     warning_message,
                     driver_id=self.task_driver_id.id())
 
@@ -765,7 +765,7 @@ class Worker(object):
                     if not warning_sent:
                         ray.utils.push_error_to_driver(
                             self.redis_client,
-                            "wait_for_function",
+                            ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                             warning_message,
                             driver_id=driver_id)
                     warning_sent = True
@@ -926,7 +926,7 @@ class Worker(object):
         # Log the error message.
         ray.utils.push_error_to_driver(
             self.redis_client,
-            "task",
+            ray_constants.TASK_PUSH_ERROR,
             str(failure_object),
             driver_id=self.task_driver_id.id(),
             data={
@@ -1162,6 +1162,11 @@ def error_info(worker=global_worker):
     for error_key in error_keys:
         if error_applies_to_driver(error_key, worker=worker):
             error_contents = worker.redis_client.hgetall(error_key)
+            error_contents = {
+                "type": error_contents[b"type"].decode("ascii"),
+                "message": error_contents[b"message"].decode("ascii"),
+                "data": error_contents[b"data"].decode("ascii")
+            }
             errors.append(error_contents)
 
     return errors
@@ -1853,7 +1858,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         # Log the error message.
         ray.utils.push_error_to_driver(
             worker.redis_client,
-            "register_remote_function",
+            ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
             traceback_str,
             driver_id=driver_id,
             data={
@@ -1898,7 +1903,7 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
                                      and hasattr(function, "__name__")) else ""
         ray.utils.push_error_to_driver(
             worker.redis_client,
-            "function_to_run",
+            ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
             traceback_str,
             driver_id=driver_id,
             data={"name": name})
@@ -2058,7 +2063,7 @@ def connect(info,
             traceback_str = traceback.format_exc()
             ray.utils.push_error_to_driver(
                 worker.redis_client,
-                "version_mismatch",
+                ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 driver_id=None)
 

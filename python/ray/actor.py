@@ -165,7 +165,7 @@ def save_and_log_checkpoint(worker, actor):
         # Log the error message.
         ray.utils.push_error_to_driver(
             worker.redis_client,
-            "checkpoint",
+            ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
             driver_id=worker.task_driver_id.id(),
             data={
@@ -189,7 +189,7 @@ def restore_and_log_checkpoint(worker, actor):
         # Log the error message.
         ray.utils.push_error_to_driver(
             worker.redis_client,
-            "checkpoint",
+            ray_constants.CHECKPOINT_PUSH_ERROR,
             traceback_str,
             driver_id=worker.task_driver_id.id(),
             data={
@@ -331,7 +331,7 @@ def fetch_and_register_actor(actor_class_key, worker):
         # Log the error message.
         push_error_to_driver(
             worker.redis_client,
-            "register_actor",
+            ray_constants.REGISTER_ACTOR_PUSH_ERROR,
             traceback_str,
             driver_id,
             data={"actor_id": actor_id_str})
@@ -403,7 +403,7 @@ def export_actor_class(class_id, Class, actor_method_names,
                                    len(actor_class_info["class"])))
         ray.utils.push_error_to_driver(
             worker.redis_client,
-            "pickling_large_object",
+            ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
             warning_message,
             driver_id=worker.task_driver_id.id())
 
