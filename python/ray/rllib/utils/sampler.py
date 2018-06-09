@@ -2,10 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six.moves.queue as queue
-import threading
 from collections import namedtuple
 import numpy as np
+import six.moves.queue as queue
+import threading
+
 from ray.rllib.optimizers.sample_batch import SampleBatchBuilder
 
 

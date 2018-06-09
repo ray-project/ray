@@ -127,5 +127,6 @@ class PolicyGraph(object):
         """Restores all local state.
 
         Arguments:
-            state (obj): Serialized local state."""
+            state (obj): Serialized local state.
+        """
         self.set_weights(state)
