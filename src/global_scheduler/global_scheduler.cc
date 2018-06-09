@@ -31,7 +31,7 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
                                           void *user_data) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   Task *task = (Task *) user_data;
-  RAY_CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
+  RAY_CHECK(Task_state(task) == TaskStatus::SCHEDULED);
 
   // If the local scheduler has died since we requested the task assignment, do
   // not retry again.
@@ -71,7 +71,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
   RAY_LOG(DEBUG) << "assigning task to local_scheduler_id = "
                  << local_scheduler_id;
-  Task_set_state(task, TASK_STATUS_SCHEDULED);
+  Task_set_state(task, TaskStatus::SCHEDULED);
   Task_set_local_scheduler(task, local_scheduler_id);
   RAY_LOG(DEBUG) << "Issuing a task table update for task = "
                  << Task_task_id(task);
@@ -438,7 +438,7 @@ void start_server(const char *node_ip_address,
    * submits tasks to the global scheduler before the global scheduler
    * successfully subscribes, then the local scheduler that submitted the tasks
    * will retry. */
-  task_table_subscribe(g_state->db, UniqueID::nil(), TASK_STATUS_WAITING,
+  task_table_subscribe(g_state->db, UniqueID::nil(), TaskStatus::WAITING,
                        process_task_waiting, (void *) g_state, NULL, NULL,
                        NULL);
 

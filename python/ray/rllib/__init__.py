@@ -6,6 +6,11 @@ from __future__ import print_function
 # This file is imported from the tune module in order to register RLlib agents.
 from ray.tune.registry import register_trainable
 
+from ray.rllib.utils.policy_graph import PolicyGraph
+from ray.rllib.utils.tf_policy_graph import TFPolicyGraph
+from ray.rllib.utils.common_policy_evaluator import CommonPolicyEvaluator
+from ray.rllib.optimizers.sample_batch import SampleBatch
+
 
 def _register_all():
     for key in ["PPO", "ES", "DQN", "APEX", "A3C", "BC", "PG", "DDPG",
@@ -16,3 +21,7 @@ def _register_all():
 
 
 _register_all()
+
+__all__ = [
+    "PolicyGraph", "TFPolicyGraph", "CommonPolicyEvaluator", "SampleBatch"
+]

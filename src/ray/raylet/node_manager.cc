@@ -12,34 +12,34 @@ namespace local_scheduler_protocol = ray::local_scheduler::protocol;
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
 // Check consistency between client and server protocol.
-RAY_CHECK_ENUM(protocol::MessageType_SubmitTask,
-               local_scheduler_protocol::MessageType_SubmitTask);
-RAY_CHECK_ENUM(protocol::MessageType_TaskDone,
-               local_scheduler_protocol::MessageType_TaskDone);
-RAY_CHECK_ENUM(protocol::MessageType_EventLogMessage,
-               local_scheduler_protocol::MessageType_EventLogMessage);
-RAY_CHECK_ENUM(protocol::MessageType_RegisterClientRequest,
-               local_scheduler_protocol::MessageType_RegisterClientRequest);
-RAY_CHECK_ENUM(protocol::MessageType_RegisterClientReply,
-               local_scheduler_protocol::MessageType_RegisterClientReply);
-RAY_CHECK_ENUM(protocol::MessageType_DisconnectClient,
-               local_scheduler_protocol::MessageType_DisconnectClient);
-RAY_CHECK_ENUM(protocol::MessageType_GetTask,
-               local_scheduler_protocol::MessageType_GetTask);
-RAY_CHECK_ENUM(protocol::MessageType_ExecuteTask,
-               local_scheduler_protocol::MessageType_ExecuteTask);
-RAY_CHECK_ENUM(protocol::MessageType_ReconstructObject,
-               local_scheduler_protocol::MessageType_ReconstructObject);
-RAY_CHECK_ENUM(protocol::MessageType_NotifyUnblocked,
-               local_scheduler_protocol::MessageType_NotifyUnblocked);
-RAY_CHECK_ENUM(protocol::MessageType_PutObject,
-               local_scheduler_protocol::MessageType_PutObject);
-RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierRequest,
-               local_scheduler_protocol::MessageType_GetActorFrontierRequest);
-RAY_CHECK_ENUM(protocol::MessageType_GetActorFrontierReply,
-               local_scheduler_protocol::MessageType_GetActorFrontierReply);
-RAY_CHECK_ENUM(protocol::MessageType_SetActorFrontier,
-               local_scheduler_protocol::MessageType_SetActorFrontier);
+RAY_CHECK_ENUM(protocol::MessageType::SubmitTask,
+               local_scheduler_protocol::MessageType::SubmitTask);
+RAY_CHECK_ENUM(protocol::MessageType::TaskDone,
+               local_scheduler_protocol::MessageType::TaskDone);
+RAY_CHECK_ENUM(protocol::MessageType::EventLogMessage,
+               local_scheduler_protocol::MessageType::EventLogMessage);
+RAY_CHECK_ENUM(protocol::MessageType::RegisterClientRequest,
+               local_scheduler_protocol::MessageType::RegisterClientRequest);
+RAY_CHECK_ENUM(protocol::MessageType::RegisterClientReply,
+               local_scheduler_protocol::MessageType::RegisterClientReply);
+RAY_CHECK_ENUM(protocol::MessageType::DisconnectClient,
+               local_scheduler_protocol::MessageType::DisconnectClient);
+RAY_CHECK_ENUM(protocol::MessageType::GetTask,
+               local_scheduler_protocol::MessageType::GetTask);
+RAY_CHECK_ENUM(protocol::MessageType::ExecuteTask,
+               local_scheduler_protocol::MessageType::ExecuteTask);
+RAY_CHECK_ENUM(protocol::MessageType::ReconstructObject,
+               local_scheduler_protocol::MessageType::ReconstructObject);
+RAY_CHECK_ENUM(protocol::MessageType::NotifyUnblocked,
+               local_scheduler_protocol::MessageType::NotifyUnblocked);
+RAY_CHECK_ENUM(protocol::MessageType::PutObject,
+               local_scheduler_protocol::MessageType::PutObject);
+RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierRequest,
+               local_scheduler_protocol::MessageType::GetActorFrontierRequest);
+RAY_CHECK_ENUM(protocol::MessageType::GetActorFrontierReply,
+               local_scheduler_protocol::MessageType::GetActorFrontierReply);
+RAY_CHECK_ENUM(protocol::MessageType::SetActorFrontier,
+               local_scheduler_protocol::MessageType::SetActorFrontier);
 
 /// A helper function to determine whether a given actor task has already been executed
 /// according to the given actor registry. Returns true if the task is a duplicate.
@@ -344,8 +344,8 @@ void NodeManager::ProcessClientMessage(
     const uint8_t *message_data) {
   RAY_LOG(DEBUG) << "Message of type " << message_type;
 
-  switch (message_type) {
-  case protocol::MessageType_RegisterClientRequest: {
+  switch (static_cast<protocol::MessageType>(message_type)) {
+  case protocol::MessageType::RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
     if (message->is_worker()) {
       // Create a new worker from the registration request.
@@ -354,7 +354,7 @@ void NodeManager::ProcessClientMessage(
       worker_pool_.RegisterWorker(std::move(worker));
     }
   } break;
-  case protocol::MessageType_GetTask: {
+  case protocol::MessageType::GetTask: {
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     RAY_CHECK(worker);
     // If the worker was assigned a task, mark it as finished.
@@ -367,7 +367,7 @@ void NodeManager::ProcessClientMessage(
     DispatchTasks();
 
   } break;
-  case protocol::MessageType_DisconnectClient: {
+  case protocol::MessageType::DisconnectClient: {
     // Remove the dead worker from the pool and stop listening for messages.
     const std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     if (worker) {
@@ -380,7 +380,7 @@ void NodeManager::ProcessClientMessage(
     }
     return;
   } break;
-  case protocol::MessageType_SubmitTask: {
+  case protocol::MessageType::SubmitTask: {
     // Read the task submitted by the client.
     auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
     TaskExecutionSpecification task_execution_spec(
@@ -391,7 +391,7 @@ void NodeManager::ProcessClientMessage(
     // locally, there is no uncommitted lineage.
     SubmitTask(task, Lineage());
   } break;
-  case protocol::MessageType_ReconstructObject: {
+  case protocol::MessageType::ReconstructObject: {
     // TODO(hme): handle multiple object ids.
     auto message = flatbuffers::GetRoot<protocol::ReconstructObject>(message_data);
     ObjectID object_id = from_flatbuf(*message->object_id());
@@ -430,7 +430,7 @@ void NodeManager::ProcessClientMessage(
       DispatchTasks();
     }
   } break;
-  case protocol::MessageType_NotifyUnblocked: {
+  case protocol::MessageType::NotifyUnblocked: {
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     // Re-acquire the CPU resources for the task that was assigned to the
     // unblocked worker.
@@ -460,6 +460,28 @@ void NodeManager::ProcessClientMessage(
       worker->MarkUnblocked();
     }
   } break;
+  case protocol::MessageType::WaitRequest: {
+    // Read the data.
+    auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
+    std::vector<ObjectID> object_ids = from_flatbuf(*message->object_ids());
+    int64_t wait_ms = message->timeout();
+    uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
+    bool wait_local = message->wait_local();
+
+    ray::Status status = object_manager_.Wait(
+        object_ids, wait_ms, num_required_objects, wait_local,
+        [client](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+          // Write the data.
+          flatbuffers::FlatBufferBuilder fbb;
+          flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
+              fbb, to_flatbuf(fbb, found), to_flatbuf(fbb, remaining));
+          fbb.Finish(wait_reply);
+          RAY_CHECK_OK(
+              client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
+                                   fbb.GetSize(), fbb.GetBufferPointer()));
+        });
+    RAY_CHECK_OK(status);
+  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
@@ -476,8 +498,8 @@ void NodeManager::ProcessNewNodeManager(TcpClientConnection &node_manager_client
 void NodeManager::ProcessNodeManagerMessage(TcpClientConnection &node_manager_client,
                                             int64_t message_type,
                                             const uint8_t *message_data) {
-  switch (message_type) {
-  case protocol::MessageType_ForwardTaskRequest: {
+  switch (static_cast<protocol::MessageType>(message_type)) {
+  case protocol::MessageType::ForwardTaskRequest: {
     auto message = flatbuffers::GetRoot<protocol::ForwardTaskRequest>(message_data);
     TaskID task_id = from_flatbuf(*message->task_id());
 
@@ -647,8 +669,9 @@ void NodeManager::AssignTask(Task &task) {
   auto message = protocol::CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
                                               fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
-  auto status = worker->Connection()->WriteMessage(protocol::MessageType_ExecuteTask,
-                                                   fbb.GetSize(), fbb.GetBufferPointer());
+  auto status = worker->Connection()->WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
+      fbb.GetBufferPointer());
   if (status.ok()) {
     // Resource accounting: acquire resources for the assigned task.
     const ClientID &my_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -686,7 +709,8 @@ void NodeManager::AssignTask(Task &task) {
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
-    ProcessClientMessage(worker->Connection(), protocol::MessageType_DisconnectClient,
+    ProcessClientMessage(worker->Connection(),
+                         static_cast<int64_t>(protocol::MessageType::DisconnectClient),
                          NULL);
     // Queue this task for future assignment. The task will be assigned to a
     // worker once one becomes available.
@@ -808,8 +832,9 @@ ray::Status NodeManager::ForwardTask(const Task &task, const ClientID &node_id) 
   }
 
   auto &server_conn = it->second;
-  auto status = server_conn.WriteMessage(protocol::MessageType_ForwardTaskRequest,
-                                         fbb.GetSize(), fbb.GetBufferPointer());
+  auto status = server_conn.WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
+      fbb.GetBufferPointer());
   if (status.ok()) {
     // If we were able to forward the task, remove the forwarded task from the
     // lineage cache since the receiving node is now responsible for writing

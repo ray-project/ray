@@ -543,7 +543,7 @@ bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) const {
 
 Task *Task_alloc(const TaskSpec *spec,
                  int64_t task_spec_size,
-                 int state,
+                 TaskStatus state,
                  DBClientID local_scheduler_id,
                  const std::vector<ObjectID> &execution_dependencies) {
   Task *result = new Task();
@@ -556,7 +556,7 @@ Task *Task_alloc(const TaskSpec *spec,
 }
 
 Task *Task_alloc(TaskExecutionSpec &execution_spec,
-                 int state,
+                 TaskStatus state,
                  DBClientID local_scheduler_id) {
   Task *result = new Task();
   result->execution_spec = std::unique_ptr<TaskExecutionSpec>(
@@ -575,11 +575,11 @@ int64_t Task_size(Task *task_arg) {
   return sizeof(Task) - sizeof(TaskSpec) + task_arg->execution_spec->SpecSize();
 }
 
-int Task_state(Task *task) {
+TaskStatus Task_state(Task *task) {
   return task->state;
 }
 
-void Task_set_state(Task *task, int state) {
+void Task_set_state(Task *task, TaskStatus state) {
   task->state = state;
 }
 

@@ -7,18 +7,14 @@ import numpy as np
 import torch
 
 
-def convert_batch(trajectory, has_features=False):
+def convert_batch(trajectory):
     """Convert trajectory from numpy to PT variable"""
     states = torch.from_numpy(trajectory["obs"]).float()
     acs = torch.from_numpy(trajectory["actions"])
     advs = torch.from_numpy(
         trajectory["advantages"].copy()).float().reshape(-1)
     rs = torch.from_numpy(trajectory["rewards"]).float().reshape(-1)
-    if has_features:
-        features = [torch.from_numpy(f) for f in trajectory["features"]]
-    else:
-        features = trajectory["features"]
-    return states, acs, advs, rs, features
+    return states, acs, advs, rs
 
 
 def var_to_np(var):

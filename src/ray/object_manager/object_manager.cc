@@ -88,10 +88,10 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
   local_objects_[object_id] = object_info;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, client_id_, object_info);
-  // Handle the unfulfilled_push_tasks_ which contains the push request that is not
+  // Handle the unfulfilled_push_requests_ which contains the push request that is not
   // completed due to unsatisfied local objects.
-  auto iter = unfulfilled_push_tasks_.find(object_id);
-  if (iter != unfulfilled_push_tasks_.end()) {
+  auto iter = unfulfilled_push_requests_.find(object_id);
+  if (iter != unfulfilled_push_requests_.end()) {
     for (auto &pair : iter->second) {
       auto &client_id = pair.first;
       main_service_->post(
@@ -101,7 +101,7 @@ void ObjectManager::NotifyDirectoryObjectAdd(const ObjectInfoT &object_info) {
         pair.second->cancel();
       }
     }
-    unfulfilled_push_tasks_.erase(iter);
+    unfulfilled_push_requests_.erase(iter);
   }
 }
 
@@ -129,9 +129,10 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id) {
     return ray::Status::OK();
   }
   ray::Status status_code = object_directory_->SubscribeObjectLocations(
-      object_id,
+      object_directory_pull_callback_id_, object_id,
       [this](const std::vector<ClientID> &client_ids, const ObjectID &object_id) {
-        RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(object_id));
+        RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
+            object_directory_pull_callback_id_, object_id));
         GetLocationsSuccess(client_ids, object_id);
       });
   return status_code;
@@ -202,8 +203,9 @@ ray::Status ObjectManager::PullSendRequest(const ObjectID &object_id,
   auto message = object_manager_protocol::CreatePullRequestMessage(
       fbb, fbb.CreateString(client_id_.binary()), fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
-  RAY_CHECK_OK(conn->WriteMessage(object_manager_protocol::MessageType_PullRequest,
-                                  fbb.GetSize(), fbb.GetBufferPointer()));
+  RAY_CHECK_OK(conn->WriteMessage(
+      static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest),
+      fbb.GetSize(), fbb.GetBufferPointer()));
   RAY_CHECK_OK(
       connection_pool_.ReleaseSender(ConnectionPool::ConnectionType::MESSAGE, conn));
   return ray::Status::OK();
@@ -213,19 +215,19 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
                                           const ClientID &client_id) {
   RAY_LOG(WARNING) << "Invalid Push request ObjectID: " << object_id
                    << " after waiting for " << config_.push_timeout_ms << " ms.";
-  auto iter = unfulfilled_push_tasks_.find(object_id);
-  RAY_CHECK(iter != unfulfilled_push_tasks_.end());
+  auto iter = unfulfilled_push_requests_.find(object_id);
+  RAY_CHECK(iter != unfulfilled_push_requests_.end());
   uint num_erased = iter->second.erase(client_id);
   RAY_CHECK(num_erased == 1);
   if (iter->second.size() == 0) {
-    unfulfilled_push_tasks_.erase(iter);
+    unfulfilled_push_requests_.erase(iter);
   }
 }
 
 ray::Status ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and client pair.
-    auto &clients = unfulfilled_push_tasks_[object_id];
+    auto &clients = unfulfilled_push_requests_[object_id];
     if (clients.count(client_id) == 0) {
       // If config_.push_timeout_ms < 0, we give an empty timer
       // and the task will be kept infinitely.
@@ -317,9 +319,9 @@ ray::Status ObjectManager::SendObjectHeaders(const ObjectID &object_id,
   auto message = object_manager_protocol::CreatePushRequestMessage(
       fbb, fbb.CreateString(object_id.binary()), chunk_index, data_size, metadata_size);
   fbb.Finish(message);
-  ray::Status status =
-      conn->WriteMessage(object_manager_protocol::MessageType_PushRequest, fbb.GetSize(),
-                         fbb.GetBufferPointer());
+  ray::Status status = conn->WriteMessage(
+      static_cast<int64_t>(object_manager_protocol::MessageType::PushRequest),
+      fbb.GetSize(), fbb.GetBufferPointer());
   RAY_CHECK_OK(status);
   return SendObjectData(object_id, chunk_info, conn);
 }
@@ -349,15 +351,171 @@ ray::Status ObjectManager::SendObjectData(const ObjectID &object_id,
 }
 
 ray::Status ObjectManager::Cancel(const ObjectID &object_id) {
-  ray::Status status = object_directory_->UnsubscribeObjectLocations(object_id);
+  ray::Status status = object_directory_->UnsubscribeObjectLocations(
+      object_directory_pull_callback_id_, object_id);
   return status;
 }
 
 ray::Status ObjectManager::Wait(const std::vector<ObjectID> &object_ids,
-                                uint64_t timeout_ms, int num_ready_objects,
-                                const WaitCallback &callback) {
-  // TODO: Implement wait.
+                                int64_t timeout_ms, uint64_t num_required_objects,
+                                bool wait_local, const WaitCallback &callback) {
+  UniqueID wait_id = UniqueID::from_random();
+  RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, timeout_ms, num_required_objects,
+                                   wait_local, callback));
+  RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
+  // LookupRemainingWaitObjects invokes SubscribeRemainingWaitObjects once lookup has
+  // been performed on all remaining objects.
   return ray::Status::OK();
+}
+
+ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
+                                          const std::vector<ObjectID> &object_ids,
+                                          int64_t timeout_ms,
+                                          uint64_t num_required_objects, bool wait_local,
+                                          const WaitCallback &callback) {
+  if (wait_local) {
+    return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
+  }
+
+  RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
+  RAY_CHECK(num_required_objects != 0);
+  RAY_CHECK(num_required_objects <= object_ids.size());
+  if (object_ids.size() == 0) {
+    callback(std::vector<ObjectID>(), std::vector<ObjectID>());
+  }
+
+  // Initialize fields.
+  active_wait_requests_.emplace(wait_id, WaitState(*main_service_, timeout_ms, callback));
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  wait_state.object_id_order = object_ids;
+  wait_state.timeout_ms = timeout_ms;
+  wait_state.num_required_objects = num_required_objects;
+  for (const auto &object_id : object_ids) {
+    if (local_objects_.count(object_id) > 0) {
+      wait_state.found.insert(object_id);
+    } else {
+      wait_state.remaining.insert(object_id);
+    }
+  }
+
+  return ray::Status::OK();
+}
+
+ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+
+  if (wait_state.remaining.empty()) {
+    WaitComplete(wait_id);
+  } else {
+    // We invoke lookup calls immediately after checking which objects are local to
+    // obtain current information about the location of remote objects. Thus,
+    // we obtain information about all given objects, regardless of their location.
+    // This is required to ensure we do not bias returning locally available objects
+    // as ready whenever Wait is invoked with a mixture of local and remote objects.
+    for (const auto &object_id : wait_state.remaining) {
+      // Lookup remaining objects.
+      wait_state.requested_objects.insert(object_id);
+      RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
+          object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
+                                     const ObjectID &lookup_object_id) {
+            auto &wait_state = active_wait_requests_.find(wait_id)->second;
+            if (!client_ids.empty()) {
+              wait_state.remaining.erase(lookup_object_id);
+              wait_state.found.insert(lookup_object_id);
+            }
+            wait_state.requested_objects.erase(lookup_object_id);
+            if (wait_state.requested_objects.empty()) {
+              SubscribeRemainingWaitObjects(wait_id);
+            }
+          }));
+    }
+  }
+  return ray::Status::OK();
+}
+
+void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  if (wait_state.found.size() >= wait_state.num_required_objects ||
+      wait_state.timeout_ms == 0) {
+    // Requirements already satisfied.
+    WaitComplete(wait_id);
+  } else {
+    // Wait may complete during the execution of any one of the following calls to
+    // SubscribeObjectLocations, so copy the object ids that need to be iterated over.
+    // Order matters for test purposes.
+    std::vector<ObjectID> ordered_remaining_object_ids;
+    for (const auto &object_id : wait_state.object_id_order) {
+      if (wait_state.remaining.count(object_id) > 0) {
+        ordered_remaining_object_ids.push_back(object_id);
+      }
+    }
+    for (const auto &object_id : ordered_remaining_object_ids) {
+      if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
+        // This is possible if an object's location is obtained immediately,
+        // within the current callstack. In this case, WaitComplete has been
+        // invoked already, so we're done.
+        return;
+      }
+      wait_state.requested_objects.insert(object_id);
+      // Subscribe to object notifications.
+      RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
+          wait_id, object_id, [this, wait_id](const std::vector<ClientID> &client_ids,
+                                              const ObjectID &subscribe_object_id) {
+            auto object_id_wait_state = active_wait_requests_.find(wait_id);
+            // We never expect to handle a subscription notification for a wait that has
+            // already completed.
+            RAY_CHECK(object_id_wait_state != active_wait_requests_.end());
+            auto &wait_state = object_id_wait_state->second;
+            RAY_CHECK(wait_state.remaining.erase(subscribe_object_id));
+            wait_state.found.insert(subscribe_object_id);
+            wait_state.requested_objects.erase(subscribe_object_id);
+            RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
+                wait_id, subscribe_object_id));
+            if (wait_state.found.size() >= wait_state.num_required_objects) {
+              WaitComplete(wait_id);
+            }
+          }));
+    }
+    if (wait_state.timeout_ms != -1) {
+      wait_state.timeout_timer->async_wait(
+          [this, wait_id](const boost::system::error_code &error_code) {
+            if (error_code.value() != 0) {
+              return;
+            }
+            WaitComplete(wait_id);
+          });
+    }
+  }
+}
+
+void ObjectManager::WaitComplete(const UniqueID &wait_id) {
+  auto &wait_state = active_wait_requests_.find(wait_id)->second;
+  // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
+  // (infinite wait time).
+  if (!wait_state.requested_objects.empty()) {
+    RAY_CHECK(wait_state.timeout_ms > 0 || wait_state.timeout_ms == -1);
+  }
+  // Unsubscribe to any objects that weren't found in the time allotted.
+  for (const auto &object_id : wait_state.requested_objects) {
+    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
+  }
+  // Cancel the timer. This is okay even if the timer hasn't been started.
+  // The timer handler will be given a non-zero error code. The handler
+  // will do nothing on non-zero error codes.
+  wait_state.timeout_timer->cancel();
+  // Order objects according to input order.
+  std::vector<ObjectID> found;
+  std::vector<ObjectID> remaining;
+  for (const auto &item : wait_state.object_id_order) {
+    if (found.size() < wait_state.num_required_objects &&
+        wait_state.found.count(item) > 0) {
+      found.push_back(item);
+    } else {
+      remaining.push_back(item);
+    }
+  }
+  wait_state.callback(found, remaining);
+  active_wait_requests_.erase(wait_id);
 }
 
 std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
@@ -371,8 +529,9 @@ std::shared_ptr<SenderConnection> ObjectManager::CreateSenderConnection(
       fbb, fbb.CreateString(client_id_.binary()), is_transfer);
   fbb.Finish(message);
   // Send synchronously.
-  RAY_CHECK_OK(conn->WriteMessage(object_manager_protocol::MessageType_ConnectClient,
-                                  fbb.GetSize(), fbb.GetBufferPointer()));
+  RAY_CHECK_OK(conn->WriteMessage(
+      static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient),
+      fbb.GetSize(), fbb.GetBufferPointer()));
   // The connection is ready; return to caller.
   return conn;
 }
@@ -384,19 +543,19 @@ void ObjectManager::ProcessNewClient(TcpClientConnection &conn) {
 void ObjectManager::ProcessClientMessage(std::shared_ptr<TcpClientConnection> &conn,
                                          int64_t message_type, const uint8_t *message) {
   switch (message_type) {
-  case object_manager_protocol::MessageType_PushRequest: {
+  case static_cast<int64_t>(object_manager_protocol::MessageType::PushRequest): {
     ReceivePushRequest(conn, message);
     break;
   }
-  case object_manager_protocol::MessageType_PullRequest: {
+  case static_cast<int64_t>(object_manager_protocol::MessageType::PullRequest): {
     ReceivePullRequest(conn, message);
     break;
   }
-  case object_manager_protocol::MessageType_ConnectClient: {
+  case static_cast<int64_t>(object_manager_protocol::MessageType::ConnectClient): {
     ConnectClient(conn, message);
     break;
   }
-  case protocol::MessageType_DisconnectClient: {
+  case static_cast<int64_t>(protocol::MessageType::DisconnectClient): {
     // TODO(hme): Disconnect without depending on the node manager protocol.
     DisconnectClient(conn, message);
     break;
