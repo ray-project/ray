@@ -39,7 +39,6 @@ DEFAULT_CONFIG = dict(
     deltas_used=320,  # 320
     delta_std=0.02,
     sgd_stepsize=0.01,
-    gamma=1.0,
     shift=0,
     observation_filter='NoFilter',
     policy='Linear',
@@ -94,7 +93,6 @@ class Worker(object):
         # initialize OpenAI environment for each worker
         self.env = env_creator(config["env_config"])
         self.env.seed(env_seed)
-        self.gamma = config["gamma"]
 
         from ray.rllib import models
         self.preprocessor = models.ModelCatalog.get_preprocessor(
@@ -138,9 +136,6 @@ class Worker(object):
             #print('observation before acting is', ob)
             action = self.policy.compute(ob)
             ob, reward, done, _ = self.env.step(action)
-            #print('action is', action)
-            #print('observation after action is', ob)
-            reward = reward*(self.gamma**i)
             steps += 1
             total_reward += (reward - shift)
             if done:
