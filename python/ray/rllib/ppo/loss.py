@@ -92,4 +92,6 @@ class ProximalPolicyGraph(object):
         return []
 
     def loss(self):
+        # TODO(ericl): this name (`self.loss`) conflicts with the self.loss
+        # defined earlier in this file.
         return self.loss
