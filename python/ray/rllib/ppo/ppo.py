@@ -226,7 +226,7 @@ class PPOAgent(Agent):
         if kl > 2.0 * config["kl_target"]:
             self.kl_coeff *= 1.5
         elif kl < 0.5 * config["kl_target"]:
-            self.kl_coeff *= 0.5
+            self.kl_coeff /= 2
 
         info = {
             "kl_divergence": kl,

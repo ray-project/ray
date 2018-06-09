@@ -193,20 +193,20 @@ class DQNAgent(Agent):
             self.optimizer.step()
             self.update_target_if_needed()
 
-        exp_vals = [self.exploration0.value(self.global_timestep)]
+        exploration_vals = [self.exploration0.value(self.global_timestep)]
         self.local_evaluator.for_policy(
-            lambda p: p.set_epsilon(exp_vals[0]))
+            lambda p: p.set_epsilon(exploration_vals[0]))
         for i, e in enumerate(self.remote_evaluators):
-            exp_val = self.explorations[i].value(self.global_timestep)
-            e.for_policy.remote(lambda p: p.set_epsilon(exp_val))
-            exp_vals.append(exp_val)
+            exploration_val = self.explorations[i].value(self.global_timestep)
+            e.for_policy.remote(lambda p: p.set_epsilon(exploration_val))
+            exploration_vals.append(exploration_val)
 
         result = collect_metrics(
             self.local_evaluator, self.remote_evaluators)
         return result._replace(
             info=dict({
-                "min_exploration": min(exp_vals),
-                "max_exploration": max(exp_vals),
+                "min_exploration": min(exploration_vals),
+                "max_exploration": max(exploration_vals),
                 "num_target_updates": self.num_target_updates,
             }, **self.optimizer.stats()))
 
@@ -237,9 +237,9 @@ class DQNAgent(Agent):
         self.num_target_updates = extra_data[3]
         self.last_target_update_ts = extra_data[4]
 
-    def compute_action(self, observation, state=None):
-        if state is None:
-            state = []
+    def compute_action(self, observation, hidden_state=None):
+        if hidden_state is None:
+            hidden_state = []
         return self.local_evaluator.for_policy(
             lambda p: p.compute_single_action(
-                observation, state, is_training=False)[0])
+                observation, hidden_state, is_training=False)[0])

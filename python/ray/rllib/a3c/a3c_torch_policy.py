@@ -33,8 +33,8 @@ class SharedTorchPolicy(PolicyGraph):
         self.optimizer = torch.optim.Adam(
             self._model.parameters(), lr=self.config["lr"])
 
-    def compute_single_action(self, obs, state, is_training=False):
-        assert not state, "RNN not supported"
+    def compute_single_action(self, obs, hidden_state, is_training=False):
+        assert not hidden_state, "RNN not supported"
         with self.lock:
             ob = torch.from_numpy(obs).float().unsqueeze(0)
             logits, values = self._model(ob)

@@ -196,8 +196,8 @@ class DDPGActorCritic():
         self.reward = tf.placeholder(tf.float32, [None], name="reward")
         self.critic_target = tf.expand_dims(self.reward, 1) + \
             self.config['gamma'] * self.target_Q
-        self.critic_loss = tf.reduce_mean(tf.square(
-                          self.critic_target - self.critic_eval))
+        self.critic_loss = tf.reduce_mean(
+                    (self.critic_target - self.critic_eval)**2)
 
     def _setup_critic_network(self, obs_space, ac_space):
         """Sets up Q network."""

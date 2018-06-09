@@ -6,6 +6,7 @@ import tensorflow as tf
 import numpy as np
 from ray.rllib.utils.reshaper import Reshaper
 
+# TODO(alok): Use tf/torch Distributions to clean this up.
 
 class ActionDistribution(object):
     """The policy action distribution of an agent.
@@ -81,22 +82,23 @@ class DiagGaussian(ActionDistribution):
         self.std = tf.exp(log_std)
 
     def logp(self, x):
-        return (-0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std),
-                                     reduction_indices=[1]) -
-                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
+        return (-tf.reduce_sum(((x - self.mean) / self.std)**2,
+                          reduction_indices=[1]) / 2 -
+                np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1] / 2) -
                 tf.reduce_sum(self.log_std, reduction_indices=[1]))
 
     def kl(self, other):
         assert isinstance(other, DiagGaussian)
-        return tf.reduce_sum(other.log_std - self.log_std +
-                             (tf.square(self.std) +
-                              tf.square(self.mean - other.mean)) /
-                             (2.0 * tf.square(other.std)) - 0.5,
-                             reduction_indices=[1])
+        return tf.reduce_sum(
+            other.log_std - self.log_std +
+            (self.std**2 + (self.mean - other.mean)**2) /
+            (2.0 * (other.std)**2) - 0.5,
+            reduction_indices=[1])
 
     def entropy(self):
-        return tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e),
-                             reduction_indices=[1])
+        return tf.reduce_sum(
+            self.log_std + np.log(2.0 * np.pi * np.e) / 2,
+            reduction_indices=[1])
 
     def sample(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))

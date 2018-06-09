@@ -55,11 +55,11 @@ class ProximalPolicyGraph(object):
             # We use a huber loss here to be more robust against outliers,
             # which seem to occur when the rollouts get longer (the variance
             # scales superlinearly with the length of the rollout)
-            self.vf_loss1 = tf.square(self.value_function - value_targets)
+            self.vf_loss1 = (self.value_function - value_targets)**2
             vf_clipped = prev_vf_preds + tf.clip_by_value(
                 self.value_function - prev_vf_preds,
                 -config["clip_param"], config["clip_param"])
-            self.vf_loss2 = tf.square(vf_clipped - value_targets)
+            self.vf_loss2 = (vf_clipped - value_targets)**2
             self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
             self.loss = tf.reduce_mean(
@@ -92,4 +92,6 @@ class ProximalPolicyGraph(object):
         return []
 
     def loss(self):
+        # TODO(ericl): this name (`self.loss`) conflicts with the self.loss
+        # defined earlier in this file.
         return self.loss

@@ -41,7 +41,7 @@ TensorFlow documentation).
   b = tf.Variable(tf.zeros([1]))
   y = w * x_data + b
 
-  loss = tf.reduce_mean(tf.square(y - y_data))
+  loss = tf.reduce_mean((y - y_data)**2)
   optimizer = tf.train.GradientDescentOptimizer(0.5)
   grads = optimizer.compute_gradients(loss)
   train = optimizer.apply_gradients(grads)
@@ -115,7 +115,7 @@ complex Python objects.
           b = tf.Variable(tf.zeros([1]))
           y = w * self.x_data + b
           # Define the loss.
-          self.loss = tf.reduce_mean(tf.square(y - self.y_data))
+          self.loss = tf.reduce_mean((y - self.y_data)**2)
           optimizer = tf.train.GradientDescentOptimizer(0.5)
           self.grads = optimizer.compute_gradients(self.loss)
           self.train = optimizer.apply_gradients(self.grads)
@@ -246,7 +246,7 @@ For reference, the full code is below:
           b = tf.Variable(tf.zeros([1]))
           y = w * x_data + b
           # Define the loss.
-          self.loss = tf.reduce_mean(tf.square(y - y_data))
+          self.loss = tf.reduce_mean((y - y_data)**2)
           optimizer = tf.train.GradientDescentOptimizer(0.5)
           self.grads = optimizer.compute_gradients(self.loss)
           self.train = optimizer.apply_gradients(self.grads)
@@ -342,7 +342,7 @@ class definiton ``Network`` with a ``TensorFlowVariables`` instance:
       def __init__(self):
           a = tf.Variable(1)
           b = tf.Variable(1)
-          c = tf.add(a, b)
+          c = a + b
           sess = tf.Session()
           init = tf.global_variables_initializer()
           sess.run(init)

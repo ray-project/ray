@@ -29,7 +29,7 @@ class MultiAgentMountainCarEnv(MountainCarEnv):
         self.reset()
 
     def step(self, action):
-        summed_act = 0.5 * np.sum(action)
+        summed_act = np.sum(action) / 2
 
         position, velocity = self.state
         velocity += (summed_act - 1) * 0.001

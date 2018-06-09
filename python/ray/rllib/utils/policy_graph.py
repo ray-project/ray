@@ -28,12 +28,12 @@ class PolicyGraph(object):
         """
         pass
 
-    def compute_actions(self, obs_batch, state_batches, is_training=False):
+    def compute_actions(self, obs_batch, hidden_state_batches, is_training=False):
         """Compute actions for the current policy.
 
         Arguments:
             obs_batch (np.ndarray): batch of observations
-            state_batches (list): list of RNN state input batches, if any
+            hidden_state_batches (list): list of RNN state input batches, if any
             is_training (bool): whether we are training the policy
 
         Returns:
@@ -46,12 +46,12 @@ class PolicyGraph(object):
         """
         raise NotImplementedError
 
-    def compute_single_action(self, obs, state, is_training=False):
+    def compute_single_action(self, obs, hidden_state, is_training=False):
         """Unbatched version of compute_actions.
 
         Arguments:
             obs (obj): single observation
-            state_batches (list): list of RNN state inputs, if any
+            hidden_state (list): list of RNN state inputs, if any
             is_training (bool): whether we are training the policy
 
         Returns:
@@ -61,9 +61,12 @@ class PolicyGraph(object):
         """
 
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state], is_training)
-        return action, [s[0] for s in state_out], \
-            {k: v[0] for k, v in info.items()}
+            [obs], [[s] for s in hidden_state], is_training)
+        return (
+            action,
+            [s[0] for s in state_out],
+            {k: v[0] for k, v in info.items()},
+        )
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):
         """Implements algorithm-specific trajectory postprocessing.

@@ -13,9 +13,21 @@ from ray.rllib.optimizers.sample_batch import SampleBatch
 
 
 def _register_all():
-    for key in ["PPO", "ES", "DQN", "APEX", "A3C", "BC", "PG", "DDPG",
-                "DDPG2", "APEX_DDPG", "__fake", "__sigmoid_fake_data",
-                "__parameter_tuning"]:
+    for key in [
+            "PPO",
+            "ES",
+            "DQN",
+            "APEX",
+            "A3C",
+            "BC",
+            "PG",
+            "DDPG",
+            "DDPG2",
+            "APEX_DDPG",
+            "__fake",
+            "__sigmoid_fake_data",
+            "__parameter_tuning",
+    ]:
         from ray.rllib.agent import get_agent_class
         register_trainable(key, get_agent_class(key))
 
@@ -23,5 +35,8 @@ def _register_all():
 _register_all()
 
 __all__ = [
-    "PolicyGraph", "TFPolicyGraph", "CommonPolicyEvaluator", "SampleBatch"
+    "PolicyGraph",
+    "TFPolicyGraph",
+    "CommonPolicyEvaluator",
+    "SampleBatch",
 ]
