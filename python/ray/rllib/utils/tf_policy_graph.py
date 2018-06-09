@@ -105,7 +105,7 @@ class TFPolicyGraph(PolicyGraph):
         feed_dict[self._is_training] = True
         for ph, value in zip(self._grads, gradients):
             feed_dict[ph] = value
-        fetches = self.sess.run(
+        fetches = self._sess.run(
             [self._apply_op, self.extra_apply_grad_fetches()],
             feed_dict=feed_dict)
         return fetches[1]
